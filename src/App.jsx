@@ -18,7 +18,7 @@ function App() {
   } = useAudioPipeline();
 
   return (
-    <div className="min-h-screen flex flex-col px-4 py-6">
+    <div className="h-screen flex flex-col px-4 py-6 overflow-hidden">
       {/* Header */}
       <header className="text-center mb-4 flex-shrink-0">
         <h1 className="text-3xl font-light text-white tracking-tight">
