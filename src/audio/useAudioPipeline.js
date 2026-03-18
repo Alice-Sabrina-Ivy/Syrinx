@@ -180,8 +180,13 @@ export function useAudioPipeline() {
   }, []);
 
   function handleAnalysisResult(data) {
-    const { pitch, intensity, formants, spectralTilt, hnr } = data;
-    const now = Date.now();
+    const { pitch, intensity, formants, spectralTilt, hnr, timestamp } = data;
+    // Use the worker's timestamp (performance.now()) converted to epoch ms.
+    // This reflects when audio was actually *analyzed*, not when the main
+    // thread got around to handling the message.  If the main thread is busy
+    // with React renders, queued results would otherwise all get the same
+    // Date.now() and bunch into a single x-position on the trace.
+    const now = Math.round(performance.timeOrigin + timestamp);
 
     // Silence = intensity below threshold for multiple consecutive frames.
     // Single-frame dips (from GC pauses or audio glitches) are bridged.
