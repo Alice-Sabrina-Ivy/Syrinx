@@ -84,7 +84,7 @@ function computeIntensity(buffer) {
 // --- YIN Pitch Detection ---
 
 function detectPitch(buffer, sr) {
-  const threshold = 0.15;
+  const threshold = 0.20;
   const minF0 = 75;
   const maxF0 = 600;
   const minLag = Math.floor(sr / maxF0);
