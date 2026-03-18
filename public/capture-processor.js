@@ -14,6 +14,14 @@ class CaptureProcessor extends AudioWorkletProcessor {
     this.writePos = 0;
     // Reusable chunk for sending (avoids allocation per send)
     this.chunk = new Float32Array(this.chunkSize);
+
+    // Direct MessagePort to DSP Worker (bypasses main thread)
+    this.workerPort = null;
+    this.port.onmessage = (e) => {
+      if (e.data.type === "port") {
+        this.workerPort = e.data.port;
+      }
+    };
   }
 
   process(inputs) {
@@ -46,7 +54,9 @@ class CaptureProcessor extends AudioWorkletProcessor {
       // Shift remaining data left
       this.buffer.copyWithin(0, this.chunkSize, this.writePos);
       this.writePos -= this.chunkSize;
-      this.port.postMessage(out.buffer, [out.buffer]);
+      // Send directly to DSP Worker (or fall back to main-thread relay)
+      const target = this.workerPort || this.port;
+      target.postMessage(out.buffer, [out.buffer]);
     }
 
     return true; // Keep processor alive

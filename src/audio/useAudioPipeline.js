@@ -91,12 +91,19 @@ export function useAudioPipeline() {
 
       worker.postMessage({ type: "init", sampleRate: audioCtx.sampleRate });
 
-      workletNode.port.onmessage = (e) => {
-        worker.postMessage(
-          { type: "chunk", buffer: e.data },
-          [e.data],
-        );
-      };
+      // Create a direct MessagePort between the AudioWorklet and the DSP
+      // Worker so audio chunks bypass the main thread entirely.  Without
+      // this, every chunk relays through the main-thread event loop, which
+      // stalls when React renders saturate it (especially at steady pitch).
+      const channel = new MessageChannel();
+      workletNode.port.postMessage(
+        { type: "port", port: channel.port1 },
+        [channel.port1],
+      );
+      worker.postMessage(
+        { type: "port", port: channel.port2 },
+        [channel.port2],
+      );
 
       worker.onmessage = (e) => {
         if (e.data.type === "analysis") {
