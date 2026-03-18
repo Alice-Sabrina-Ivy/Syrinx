@@ -300,6 +300,45 @@ function findPolynomialRoots(coefficients) {
   return roots;
 }
 
+// --- Radix-2 Cooley-Tukey FFT (in-place) ---
+
+function fft(re, im) {
+  const n = re.length;
+  // Bit-reversal permutation
+  for (let i = 1, j = 0; i < n; i++) {
+    let bit = n >> 1;
+    for (; j & bit; bit >>= 1) j ^= bit;
+    j ^= bit;
+    if (i < j) {
+      let tmp = re[i]; re[i] = re[j]; re[j] = tmp;
+      tmp = im[i]; im[i] = im[j]; im[j] = tmp;
+    }
+  }
+  // FFT butterfly
+  for (let len = 2; len <= n; len <<= 1) {
+    const half = len >> 1;
+    const angle = -2 * Math.PI / len;
+    const wRe = Math.cos(angle);
+    const wIm = Math.sin(angle);
+    for (let i = 0; i < n; i += len) {
+      let curRe = 1, curIm = 0;
+      for (let j = 0; j < half; j++) {
+        const a = i + j;
+        const b = a + half;
+        const tRe = curRe * re[b] - curIm * im[b];
+        const tIm = curRe * im[b] + curIm * re[b];
+        re[b] = re[a] - tRe;
+        im[b] = im[a] - tIm;
+        re[a] += tRe;
+        im[a] += tIm;
+        const nextRe = curRe * wRe - curIm * wIm;
+        curIm = curRe * wIm + curIm * wRe;
+        curRe = nextRe;
+      }
+    }
+  }
+}
+
 // --- Spectral Tilt: FFT Band Energy Ratio ---
 
 function computeSpectralTilt(buffer, sr) {
@@ -307,54 +346,64 @@ function computeSpectralTilt(buffer, sr) {
   const n = Math.min(buffer.length, fftSize);
 
   // Apply Hann window and zero-pad to fftSize
-  const windowed = new Float64Array(fftSize);
+  const re = new Float64Array(fftSize);
+  const im = new Float64Array(fftSize);
   for (let i = 0; i < n; i++) {
-    windowed[i] = buffer[buffer.length - n + i] * (0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (n - 1)));
+    re[i] = buffer[buffer.length - n + i] * (0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (n - 1)));
   }
 
-  // Real FFT via DFT (compute only positive frequencies)
+  fft(re, im);
+
   const binHz = sr / fftSize;
   let lowEnergy = 0;
   let highEnergy = 0;
 
-  for (let k = 0; k < fftSize / 2; k++) {
-    let re = 0, im = 0;
-    for (let i = 0; i < fftSize; i++) {
-      const angle = (2 * Math.PI * k * i) / fftSize;
-      re += windowed[i] * Math.cos(angle);
-      im -= windowed[i] * Math.sin(angle);
-    }
-    const energy = re * re + im * im;
+  for (let k = 1; k < fftSize / 2; k++) {
+    const energy = re[k] * re[k] + im[k] * im[k];
     const freq = k * binHz;
 
-    if (freq > 0 && freq < 1000) lowEnergy += energy;
-    else if (freq >= 1000 && freq < 4000) highEnergy += energy;
+    if (freq < 1000) lowEnergy += energy;
+    else if (freq < 4000) highEnergy += energy;
   }
 
   if (highEnergy === 0) return null;
   return 10 * Math.log10(lowEnergy / highEnergy);
 }
 
-// --- HNR: Harmonics-to-Noise Ratio (autocorrelation-based) ---
+// --- HNR: Harmonics-to-Noise Ratio (FFT-based autocorrelation) ---
 
 function computeHNR(buffer, sr) {
-  const halfLen = Math.floor(buffer.length / 2);
-  let r0 = 0;
+  // Use FFT to compute autocorrelation: IFFT(|FFT(x)|²)
+  // Pad to next power of 2 × 2 to avoid circular correlation artifacts
+  const n = buffer.length;
+  let fftLen = 1;
+  while (fftLen < n * 2) fftLen <<= 1;
 
-  for (let i = 0; i < buffer.length; i++) r0 += buffer[i] * buffer[i];
+  const re = new Float64Array(fftLen);
+  const im = new Float64Array(fftLen);
+  for (let i = 0; i < n; i++) re[i] = buffer[i];
+
+  // Forward FFT
+  fft(re, im);
+
+  // Power spectrum → re, zero im
+  for (let i = 0; i < fftLen; i++) {
+    re[i] = re[i] * re[i] + im[i] * im[i];
+    im[i] = 0;
+  }
+
+  // Inverse FFT (forward FFT + divide by N gives inverse)
+  fft(re, im);
+  const r0 = re[0] / fftLen; // autocorrelation at lag 0
   if (r0 === 0) return null;
 
   // Find max normalized autocorrelation in pitch range (75-600 Hz)
   const minLag = Math.floor(sr / 600);
-  const maxLag = Math.floor(sr / 75);
+  const maxLag = Math.min(Math.floor(sr / 75), Math.floor(n / 2));
   let maxVal = 0;
 
-  for (let lag = minLag; lag < Math.min(maxLag, halfLen); lag++) {
-    let sum = 0;
-    for (let i = 0; i < buffer.length - lag; i++) {
-      sum += buffer[i] * buffer[i + lag];
-    }
-    const normalized = sum / r0;
+  for (let lag = minLag; lag < maxLag; lag++) {
+    const normalized = (re[lag] / fftLen) / r0;
     if (normalized > maxVal) maxVal = normalized;
   }
 
