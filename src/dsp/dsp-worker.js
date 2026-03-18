@@ -1,8 +1,7 @@
 // dsp-worker.js — Web Worker that performs all DSP analysis off the main thread
-// Pitch detection (YIN), formant extraction (Burg LPC), and intensity
+// Pitch detection (YIN), formant extraction (Burg LPC), spectral tilt, HNR, intensity
 
 const WINDOW_MS = 200;
-const HOP_MS = 50; // Only analyze every 50ms (20 fps) — prevents worker queue buildup
 let sampleRate = 48000;
 let windowSize = Math.floor(sampleRate * WINDOW_MS / 1000);
 
@@ -12,8 +11,35 @@ let targetSR = 12000;
 const LPC_ORDER = 10;
 
 let ringBuffer = new Float32Array(0);
-let samplesAccumulated = 0;
-let hopSamples = Math.floor(sampleRate * HOP_MS / 1000);
+let analysisCount = 0;
+
+// Accept a direct MessagePort for receiving audio chunks (bypasses main thread)
+let chunkPort = null;
+
+function handleChunk(data) {
+  const chunk = new Float32Array(data);
+  appendToRingBuffer(chunk);
+
+  if (ringBuffer.length < windowSize) return;
+
+  const window = ringBuffer.slice(-windowSize);
+  const intensity = computeIntensity(window);
+  const pitch = detectPitch(window, sampleRate);
+
+  // Formants, spectral tilt, HNR are heavier — run every 4th analysis (~200ms)
+  let formants = null, spectralTilt = null, hnr = null;
+  if (analysisCount % 4 === 0) {
+    formants = extractFormants(window);
+    spectralTilt = computeSpectralTilt(window, sampleRate);
+    hnr = computeHNR(window, sampleRate);
+  }
+  analysisCount++;
+
+  self.postMessage({
+    type: "analysis",
+    data: { pitch, intensity, formants, spectralTilt, hnr, timestamp: performance.now() },
+  });
+}
 
 self.onmessage = (e) => {
   const { type } = e.data;
@@ -21,34 +47,23 @@ self.onmessage = (e) => {
   if (type === "init") {
     sampleRate = e.data.sampleRate;
     windowSize = Math.floor(sampleRate * WINDOW_MS / 1000);
-    hopSamples = Math.floor(sampleRate * HOP_MS / 1000);
     decimationFactor = Math.max(1, Math.round(sampleRate / 11000));
     targetSR = sampleRate / decimationFactor;
     ringBuffer = new Float32Array(0);
-    samplesAccumulated = 0;
+    analysisCount = 0;
     return;
   }
 
+  // Receive a MessagePort for direct AudioWorklet → Worker communication
+  if (type === "port") {
+    chunkPort = e.data.port;
+    chunkPort.onmessage = (ev) => handleChunk(ev.data);
+    return;
+  }
+
+  // Fallback: accept chunks via main thread relay
   if (type === "chunk") {
-    const chunk = new Float32Array(e.data.buffer);
-    appendToRingBuffer(chunk);
-    samplesAccumulated += chunk.length;
-
-    // Only analyze once we have enough data AND the hop interval has elapsed
-    if (ringBuffer.length < windowSize || samplesAccumulated < hopSamples) return;
-    samplesAccumulated = 0;
-
-    const window = ringBuffer.slice(-windowSize);
-    const intensity = computeIntensity(window);
-    const pitch = detectPitch(window, sampleRate);
-    const formants = extractFormants(window);
-    const spectralTilt = computeSpectralTilt(window, sampleRate);
-    const hnr = computeHNR(window, sampleRate);
-
-    self.postMessage({
-      type: "analysis",
-      data: { pitch, intensity, formants, spectralTilt, hnr, timestamp: performance.now() },
-    });
+    handleChunk(e.data.buffer);
   }
 };
 
@@ -89,24 +104,18 @@ function detectPitch(buffer, sr) {
   const maxF0 = 600;
   const minLag = Math.floor(sr / maxF0);
   const maxLag = Math.floor(sr / minF0);
-
-  // Use a shorter window for YIN: 3 periods of lowest F0 = ~40ms.
-  // YIN needs halfLen + maxLag samples, so use 2 * (maxLag + 1) samples.
-  const yinLen = Math.min(buffer.length, (maxLag + 1) * 2);
-  const yinBuf = buffer.length > yinLen
-    ? buffer.subarray(buffer.length - yinLen)
-    : buffer;
-  const halfLen = Math.floor(yinBuf.length / 2);
+  const halfLen = Math.floor(buffer.length / 2);
+  // Only compute diff/CMND up to the lags we actually search (+1 for parabolic interp)
   const searchLen = Math.min(maxLag + 2, halfLen);
 
   if (maxLag >= halfLen) return null;
 
-  // Step 1: Difference function
+  // Step 1: Difference function (outer loop limited to searchLen, inner uses full halfLen)
   const diff = new Float32Array(searchLen);
   for (let tau = 1; tau < searchLen; tau++) {
     let sum = 0;
     for (let i = 0; i < halfLen; i++) {
-      const d = yinBuf[i] - yinBuf[i + tau];
+      const d = buffer[i] - buffer[i + tau];
       sum += d * d;
     }
     diff[tau] = sum;
@@ -148,16 +157,11 @@ function detectPitch(buffer, sr) {
 // --- Formant Extraction (Burg LPC) ---
 
 function extractFormants(buffer) {
-  // Use last 1024 samples — enough for LPC formant estimation after decimation
-  const maxN = 1024;
-  const useLen = Math.min(buffer.length, maxN);
-  const offset = buffer.length - useLen;
-
   // Pre-emphasis: boost high frequencies
-  const preEmph = new Float64Array(useLen);
-  preEmph[0] = buffer[offset];
-  for (let i = 1; i < useLen; i++) {
-    preEmph[i] = buffer[offset + i] - 0.97 * buffer[offset + i - 1];
+  const preEmph = new Float64Array(buffer.length);
+  preEmph[0] = buffer[0];
+  for (let i = 1; i < buffer.length; i++) {
+    preEmph[i] = buffer[i] - 0.97 * buffer[i - 1];
   }
 
   // Hamming window
