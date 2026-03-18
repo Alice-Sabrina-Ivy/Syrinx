@@ -34,10 +34,12 @@ self.onmessage = (e) => {
     const intensity = computeIntensity(window);
     const pitch = detectPitch(window, sampleRate);
     const formants = extractFormants(window);
+    const spectralTilt = computeSpectralTilt(window, sampleRate);
+    const hnr = computeHNR(window, sampleRate);
 
     self.postMessage({
       type: "analysis",
-      data: { pitch, intensity, formants, timestamp: performance.now() },
+      data: { pitch, intensity, formants, spectralTilt, hnr, timestamp: performance.now() },
     });
   }
 };
@@ -296,4 +298,66 @@ function findPolynomialRoots(coefficients) {
   }
 
   return roots;
+}
+
+// --- Spectral Tilt: FFT Band Energy Ratio ---
+
+function computeSpectralTilt(buffer, sr) {
+  const fftSize = 2048;
+  const n = Math.min(buffer.length, fftSize);
+
+  // Apply Hann window and zero-pad to fftSize
+  const windowed = new Float64Array(fftSize);
+  for (let i = 0; i < n; i++) {
+    windowed[i] = buffer[buffer.length - n + i] * (0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (n - 1)));
+  }
+
+  // Real FFT via DFT (compute only positive frequencies)
+  const binHz = sr / fftSize;
+  let lowEnergy = 0;
+  let highEnergy = 0;
+
+  for (let k = 0; k < fftSize / 2; k++) {
+    let re = 0, im = 0;
+    for (let i = 0; i < fftSize; i++) {
+      const angle = (2 * Math.PI * k * i) / fftSize;
+      re += windowed[i] * Math.cos(angle);
+      im -= windowed[i] * Math.sin(angle);
+    }
+    const energy = re * re + im * im;
+    const freq = k * binHz;
+
+    if (freq > 0 && freq < 1000) lowEnergy += energy;
+    else if (freq >= 1000 && freq < 4000) highEnergy += energy;
+  }
+
+  if (highEnergy === 0) return null;
+  return 10 * Math.log10(lowEnergy / highEnergy);
+}
+
+// --- HNR: Harmonics-to-Noise Ratio (autocorrelation-based) ---
+
+function computeHNR(buffer, sr) {
+  const halfLen = Math.floor(buffer.length / 2);
+  let r0 = 0;
+
+  for (let i = 0; i < buffer.length; i++) r0 += buffer[i] * buffer[i];
+  if (r0 === 0) return null;
+
+  // Find max normalized autocorrelation in pitch range (75-600 Hz)
+  const minLag = Math.floor(sr / 600);
+  const maxLag = Math.floor(sr / 75);
+  let maxVal = 0;
+
+  for (let lag = minLag; lag < Math.min(maxLag, halfLen); lag++) {
+    let sum = 0;
+    for (let i = 0; i < buffer.length - lag; i++) {
+      sum += buffer[i] * buffer[i + lag];
+    }
+    const normalized = sum / r0;
+    if (normalized > maxVal) maxVal = normalized;
+  }
+
+  if (maxVal <= 0 || maxVal >= 1) return null;
+  return 10 * Math.log10(maxVal / (1 - maxVal));
 }

@@ -24,6 +24,8 @@ export function useAudioPipeline() {
     intensity: null,
     noteName: null,
     formants: { f1: null, f2: null, f3: null },
+    spectralTilt: null,
+    hnr: null,
   });
 
   const audioCtxRef = useRef(null);
@@ -42,6 +44,8 @@ export function useAudioPipeline() {
     pitch: null,
     noteName: null,
     formants: { f1: null, f2: null, f3: null },
+    spectralTilt: null,
+    hnr: null,
   });
 
   // History buffers for canvas visualizations (read directly by rAF loops)
@@ -137,11 +141,13 @@ export function useAudioPipeline() {
       intensity: null,
       noteName: null,
       formants: { f1: null, f2: null, f3: null },
+      spectralTilt: null,
+      hnr: null,
     });
   }, []);
 
   function handleAnalysisResult(data) {
-    const { pitch, intensity, formants } = data;
+    const { pitch, intensity, formants, spectralTilt, hnr } = data;
     const now = Date.now();
 
     const isSilent = intensity < SILENCE_THRESHOLD_DB || pitch === null;
@@ -169,6 +175,8 @@ export function useAudioPipeline() {
           intensity,
           noteName: held.noteName,
           formants: held.formants,
+          spectralTilt: held.spectralTilt,
+          hnr: held.hnr,
         }));
       } else {
         // Prolonged silence: clear everything
@@ -184,6 +192,8 @@ export function useAudioPipeline() {
           intensity,
           noteName: null,
           formants: { f1: null, f2: null, f3: null },
+          spectralTilt: null,
+          hnr: null,
         }));
       }
       return;
@@ -228,6 +238,8 @@ export function useAudioPipeline() {
       pitch: smoothedPitch,
       noteName,
       formants: smoothedFormants,
+      spectralTilt: spectralTilt ?? null,
+      hnr: hnr ?? null,
     };
 
     setState((s) => ({
@@ -238,6 +250,8 @@ export function useAudioPipeline() {
       intensity,
       noteName,
       formants: smoothedFormants,
+      spectralTilt: spectralTilt ?? null,
+      hnr: hnr ?? null,
     }));
   }
 

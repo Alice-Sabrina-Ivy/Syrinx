@@ -10,7 +10,7 @@ import {
   COLORS,
 } from "../utils/constants";
 
-export function PitchTrace({ pitchTraceRef, voiced, holding, pitch }) {
+export function PitchTrace({ pitchTraceRef, voiced, holding, pitch, compact = false }) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
 
@@ -223,35 +223,37 @@ export function PitchTrace({ pitchTraceRef, voiced, holding, pitch }) {
         <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
       </div>
 
-      {/* Hz + Note readout */}
-      <div className="mt-3 flex items-baseline justify-center gap-3">
-        <span
-          className={`text-3xl font-light tabular-nums transition-opacity duration-300 ${
-            !voiced && !holding
-              ? "text-neutral-600 opacity-40"
-              : holding
-                ? "text-white opacity-50"
-                : inTarget
-                  ? "text-green-400"
-                  : "text-red-400"
-          }`}
-        >
-          {pitch !== null ? `${Math.round(pitch)} Hz` : "— Hz"}
-        </span>
-        {noteInfo && (
+      {/* Hz + Note readout (hidden in compact mode) */}
+      {!compact && (
+        <div className="mt-3 flex items-baseline justify-center gap-3">
           <span
-            className={`text-lg font-medium transition-opacity duration-300 ${
-              holding ? "text-purple-400 opacity-50" : "text-purple-400"
+            className={`text-3xl font-light tabular-nums transition-opacity duration-300 ${
+              !voiced && !holding
+                ? "text-neutral-600 opacity-40"
+                : holding
+                  ? "text-white opacity-50"
+                  : inTarget
+                    ? "text-green-400"
+                    : "text-red-400"
             }`}
           >
-            {noteInfo.name}
-            <span className="text-xs text-neutral-500 ml-1">
-              {noteInfo.cents >= 0 ? "+" : ""}
-              {noteInfo.cents}¢
-            </span>
+            {pitch !== null ? `${Math.round(pitch)} Hz` : "— Hz"}
           </span>
-        )}
-      </div>
+          {noteInfo && (
+            <span
+              className={`text-lg font-medium transition-opacity duration-300 ${
+                holding ? "text-purple-400 opacity-50" : "text-purple-400"
+              }`}
+            >
+              {noteInfo.name}
+              <span className="text-xs text-neutral-500 ml-1">
+                {noteInfo.cents >= 0 ? "+" : ""}
+                {noteInfo.cents}¢
+              </span>
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 }
