@@ -90,12 +90,14 @@ function detectPitch(buffer, sr) {
   const minLag = Math.floor(sr / maxF0);
   const maxLag = Math.floor(sr / minF0);
   const halfLen = Math.floor(buffer.length / 2);
+  // Only compute diff/CMND up to the lags we actually search (+1 for parabolic interp)
+  const searchLen = Math.min(maxLag + 2, halfLen);
 
   if (maxLag >= halfLen) return null;
 
-  // Step 1: Difference function
-  const diff = new Float32Array(halfLen);
-  for (let tau = 1; tau < halfLen; tau++) {
+  // Step 1: Difference function (only up to searchLen, not halfLen)
+  const diff = new Float32Array(searchLen);
+  for (let tau = 1; tau < searchLen; tau++) {
     let sum = 0;
     for (let i = 0; i < halfLen; i++) {
       const d = buffer[i] - buffer[i + tau];
@@ -105,19 +107,19 @@ function detectPitch(buffer, sr) {
   }
 
   // Step 2: Cumulative mean normalized difference
-  const cmnd = new Float32Array(halfLen);
+  const cmnd = new Float32Array(searchLen);
   cmnd[0] = 1;
   let runningSum = 0;
-  for (let tau = 1; tau < halfLen; tau++) {
+  for (let tau = 1; tau < searchLen; tau++) {
     runningSum += diff[tau];
     cmnd[tau] = diff[tau] / (runningSum / tau);
   }
 
   // Step 3: Absolute threshold
   let bestTau = -1;
-  for (let tau = minLag; tau < Math.min(maxLag, halfLen); tau++) {
+  for (let tau = minLag; tau < Math.min(maxLag, searchLen); tau++) {
     if (cmnd[tau] < threshold) {
-      while (tau + 1 < halfLen && cmnd[tau + 1] < cmnd[tau]) tau++;
+      while (tau + 1 < searchLen && cmnd[tau + 1] < cmnd[tau]) tau++;
       bestTau = tau;
       break;
     }
@@ -128,7 +130,7 @@ function detectPitch(buffer, sr) {
   // Step 4: Parabolic interpolation
   const s0 = bestTau > 0 ? cmnd[bestTau - 1] : cmnd[bestTau];
   const s1 = cmnd[bestTau];
-  const s2 = bestTau + 1 < halfLen ? cmnd[bestTau + 1] : cmnd[bestTau];
+  const s2 = bestTau + 1 < searchLen ? cmnd[bestTau + 1] : cmnd[bestTau];
   const denom = 2 * (s0 - 2 * s1 + s2);
   const refinedTau = denom !== 0 ? bestTau + (s0 - s2) / denom : bestTau;
 
@@ -382,14 +384,16 @@ function computeSpectralTilt(buffer, sr) {
 
 function computeHNR(buffer, sr) {
   // Use FFT to compute autocorrelation: IFFT(|FFT(x)|²)
-  // Pad to next power of 2 × 2 to avoid circular correlation artifacts
-  const n = buffer.length;
+  // Use last 2048 samples — enough for pitch-range autocorrelation, keeps FFT at 4096
+  const maxN = 2048;
+  const n = Math.min(buffer.length, maxN);
+  const offset = buffer.length - n;
   let fftLen = 1;
   while (fftLen < n * 2) fftLen <<= 1;
 
   const re = new Float64Array(fftLen);
   const im = new Float64Array(fftLen);
-  for (let i = 0; i < n; i++) re[i] = buffer[i];
+  for (let i = 0; i < n; i++) re[i] = buffer[offset + i];
 
   // Forward FFT
   fft(re, im);
