@@ -56,14 +56,23 @@ export function useAudioPipeline() {
   const pitchTraceRef = useRef([]);
   const formantTrailRef = useRef([]);
 
-  // Debug counters — visible on canvas to diagnose pipeline stalls
+  // Debug stats — read by DebugPanel component on an interval
   const debugRef = useRef({
-    framesReceived: 0,      // total analysis results from worker
-    framesVoiced: 0,        // frames that produced a voiced trace entry
-    framesQuiet: 0,         // frames gated as quiet
-    framesNoPitch: 0,       // frames with no pitch detected
-    lastResultTime: 0,      // Date.now() of last worker message
-    workerAlive: false,     // have we received any worker message?
+    // Worker-reported stats
+    workerChunks: 0,         // total chunks received by worker
+    workerPitchDetected: 0,  // chunks where pitch != null
+    workerPitchNull: 0,      // chunks where pitch == null
+    // Main-thread stats
+    framesReceived: 0,       // total analysis results received on main thread
+    framesVoiced: 0,         // frames that produced a voiced trace entry
+    framesQuiet: 0,          // frames gated as quiet
+    framesNoPitch: 0,        // frames with no pitch detected (after silence gate)
+    lastResultTime: 0,       // Date.now() when last worker message arrived
+    // Per-second rate tracking
+    _rateWindow: [],         // timestamps for per-sec rate calc
+    ratePerSec: 0,           // analysis results per second
+    // Recent frames log (ring buffer of last 20 frames for inspection)
+    recentFrames: [],
   });
 
   useEffect(() => {
@@ -190,7 +199,7 @@ export function useAudioPipeline() {
   }, []);
 
   function handleAnalysisResult(data) {
-    const { pitch, intensity, formants, spectralTilt, hnr, timestamp } = data;
+    const { pitch, intensity, formants, spectralTilt, hnr, timestamp, workerStats } = data;
     // Use the worker's timestamp (performance.now()) converted to epoch ms.
     // This reflects when audio was actually *analyzed*, not when the main
     // thread got around to handling the message.  If the main thread is busy
@@ -201,8 +210,21 @@ export function useAudioPipeline() {
     // Debug tracking
     const dbg = debugRef.current;
     dbg.framesReceived++;
-    dbg.lastResultTime = Date.now();
-    dbg.workerAlive = true;
+    const wallNow = Date.now();
+    dbg.lastResultTime = wallNow;
+    // Worker stats
+    if (workerStats) {
+      dbg.workerChunks = workerStats.chunksReceived;
+      dbg.workerPitchDetected = workerStats.pitchDetected;
+      dbg.workerPitchNull = workerStats.pitchNull;
+    }
+    // Rate tracking (sliding 1-second window)
+    dbg._rateWindow.push(wallNow);
+    const cutoff1s = wallNow - 1000;
+    while (dbg._rateWindow.length > 0 && dbg._rateWindow[0] < cutoff1s) {
+      dbg._rateWindow.shift();
+    }
+    dbg.ratePerSec = dbg._rateWindow.length;
 
     // Silence = intensity below threshold for multiple consecutive frames.
     // Single-frame dips (from GC pauses or audio glitches) are bridged.
@@ -218,7 +240,21 @@ export function useAudioPipeline() {
 
     const isQuiet = quietFrameCountRef.current >= SILENCE_DEBOUNCE_FRAMES;
 
+    // Log this frame for debug panel (keep last 20)
+    const frameLog = {
+      t: wallNow,
+      rawPitch: pitch,
+      rawIntensity: intensity !== null ? +intensity.toFixed(1) : null,
+      frameQuiet,
+      quietRun: quietFrameCountRef.current,
+      isQuiet,
+      decision: null, // filled below
+    };
+    dbg.recentFrames.push(frameLog);
+    if (dbg.recentFrames.length > 20) dbg.recentFrames.shift();
+
     if (isQuiet) {
+      frameLog.decision = "GATED_QUIET";
       // Record silence start time
       if (silenceStartRef.current === null) {
         silenceStartRef.current = now;
@@ -278,6 +314,7 @@ export function useAudioPipeline() {
 
     if (effectivePitch === null) {
       // No pitch history to hold — treat as gap
+      frameLog.decision = "NO_PITCH";
       dbg.framesNoPitch++;
       pitchTraceRef.current.push({ time: now, pitch: null, voiced: false });
       trimHistory(pitchTraceRef.current, PITCH_TRACE_SECONDS * 1000, now);
@@ -305,6 +342,8 @@ export function useAudioPipeline() {
     const smoothedFormants = { f1, f2, f3 };
 
     // Update history buffers
+    frameLog.decision = "VOICED";
+    frameLog.smoothedPitch = smoothedPitch;
     dbg.framesVoiced++;
     pitchTraceRef.current.push({
       time: now,
