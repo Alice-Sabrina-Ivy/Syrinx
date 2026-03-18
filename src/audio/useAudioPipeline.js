@@ -205,16 +205,16 @@ export function useAudioPipeline() {
     // Smooth pitch with rolling median
     const smoothedPitch = pushAndMedian(pitchSmoothRef, pitch, PITCH_SMOOTH_LEN);
 
-    // Smooth formants with rolling median
+    // Smooth formants with rolling median — hold last valid value on null frames
     const f1 = formants?.f1
       ? pushAndMedian(f1SmoothRef, formants.f1, FORMANT_SMOOTH_LEN)
-      : null;
+      : median(f1SmoothRef.current);
     const f2 = formants?.f2
       ? pushAndMedian(f2SmoothRef, formants.f2, FORMANT_SMOOTH_LEN)
-      : null;
+      : median(f2SmoothRef.current);
     const f3 = formants?.f3
       ? pushAndMedian(f3SmoothRef, formants.f3, FORMANT_SMOOTH_LEN)
-      : null;
+      : median(f3SmoothRef.current);
 
     const noteInfo = hzToNote(smoothedPitch);
     const noteName = noteInfo?.name || null;
