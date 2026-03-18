@@ -51,6 +51,7 @@ function App() {
     stop,
     pitchTraceRef,
     formantTrailRef,
+    debugRef,
   } = useAudioPipeline();
 
   // Check first visit
@@ -149,6 +150,7 @@ function App() {
                   hnr={hnr}
                   pitchTraceRef={pitchTraceRef}
                   formantTrailRef={formantTrailRef}
+                  debugRef={debugRef}
                   start={start}
                   stop={stop}
                   status={status}
@@ -160,6 +162,7 @@ function App() {
                   <div className="flex-1 min-h-[240px]">
                     <PitchTrace
                       pitchTraceRef={pitchTraceRef}
+                      debugRef={debugRef}
                       voiced={voiced}
                       holding={holding}
                       pitch={pitch}
