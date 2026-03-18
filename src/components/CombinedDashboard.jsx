@@ -120,7 +120,7 @@ export function CombinedDashboard({
               F2
             </span>
             <span className="text-xl sm:text-2xl font-light tabular-nums text-neutral-300">
-              {formants?.f2 !== null ? `${Math.round(formants.f2)}` : "—"}
+              {formants?.f2 != null ? `${Math.round(formants.f2)}` : "—"}
               <span className="text-xs text-neutral-500 ml-0.5">Hz</span>
             </span>
           </div>

@@ -1,4 +1,5 @@
-// VowelSpacePlot.jsx — F1/F2 vowel space canvas with target zones, comet dot + fading trail line
+// VowelSpacePlot.jsx — F1/F2 vowel space canvas with target zones
+// Single glowing comet dot that slides smoothly, with a fading polyline trail.
 // X-axis: F2 (reversed — high on left, low on right)
 // Y-axis: F1 (inverted — low on top, high on bottom)
 
@@ -7,9 +8,11 @@ import {
   VOWEL_TARGETS,
   F1_RANGE,
   F2_RANGE,
-  FORMANT_TRAIL_SECONDS,
   COLORS,
 } from "../utils/constants";
+
+// Trail: store last ~40 screen positions (drawn as fading polyline)
+const TRAIL_LENGTH = 40;
 
 export function VowelSpacePlot({
   formantTrailRef,
@@ -20,8 +23,10 @@ export function VowelSpacePlot({
 }) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
-  // Smoothed position for interpolation
-  const smoothPosRef = useRef({ x: null, y: null });
+  // Smoothed screen position (lerp target)
+  const posRef = useRef({ x: null, y: null });
+  // Trail of past screen positions for the polyline
+  const trailRef = useRef([]);
 
   // Canvas sizing
   useEffect(() => {
@@ -49,6 +54,7 @@ export function VowelSpacePlot({
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     let animId;
+    let frameCount = 0;
 
     const padding = { top: 30, right: 20, bottom: 20, left: 20 };
 
@@ -56,7 +62,6 @@ export function VowelSpacePlot({
       const dpr = window.devicePixelRatio || 1;
       const plotLeft = padding.left * dpr;
       const plotRight = canvas.width - padding.right * dpr;
-      // Reversed: high F2 on left, low F2 on right
       const frac = (f2 - F2_RANGE.low) / (F2_RANGE.high - F2_RANGE.low);
       return plotLeft + (1 - frac) * (plotRight - plotLeft);
     }
@@ -65,7 +70,6 @@ export function VowelSpacePlot({
       const dpr = window.devicePixelRatio || 1;
       const plotTop = padding.top * dpr;
       const plotBottom = canvas.height - padding.bottom * dpr;
-      // Inverted: low F1 on top, high F1 on bottom
       const frac = (f1 - F1_RANGE.low) / (F1_RANGE.high - F1_RANGE.low);
       return plotTop + frac * (plotBottom - plotTop);
     }
@@ -86,7 +90,7 @@ export function VowelSpacePlot({
       const plotTop = padding.top * dpr;
       const plotBottom = h - padding.bottom * dpr;
 
-      // Grid lines
+      // --- Grid lines ---
       ctx.strokeStyle = COLORS.grid;
       ctx.lineWidth = 1;
       ctx.font = `${10 * dpr}px system-ui`;
@@ -124,27 +128,26 @@ export function VowelSpacePlot({
       ctx.font = `${10 * dpr}px system-ui`;
       ctx.textAlign = "center";
       ctx.textBaseline = "top";
-      ctx.fillText("F2 (Hz) →", (plotLeft + plotRight) / 2, 2 * dpr);
+      ctx.fillText("F2 (Hz) \u2192", (plotLeft + plotRight) / 2, 2 * dpr);
       ctx.save();
       ctx.translate(10 * dpr, (plotTop + plotBottom) / 2);
       ctx.rotate(-Math.PI / 2);
       ctx.textBaseline = "middle";
-      ctx.fillText("← F1 (Hz)", 0, 0);
+      ctx.fillText("\u2190 F1 (Hz)", 0, 0);
       ctx.restore();
 
-      // Vowel target zones
+      // --- Vowel target zones ---
       for (const vt of VOWEL_TARGETS) {
-        const x1 = f2ToX(vt.f2[1]); // high F2 → left
-        const x2 = f2ToX(vt.f2[0]); // low F2 → right
-        const y1 = f1ToY(vt.f1[0]); // low F1 → top
-        const y2 = f1ToY(vt.f1[1]); // high F1 → bottom
+        const x1 = f2ToX(vt.f2[1]);
+        const x2 = f2ToX(vt.f2[0]);
+        const y1 = f1ToY(vt.f1[0]);
+        const y2 = f1ToY(vt.f1[1]);
 
         const cx = (x1 + x2) / 2;
         const cy = (y1 + y2) / 2;
         const rx = Math.abs(x2 - x1) / 2;
         const ry = Math.abs(y2 - y1) / 2;
 
-        // Draw ellipse
         ctx.beginPath();
         ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
         ctx.fillStyle = vt.color;
@@ -153,7 +156,6 @@ export function VowelSpacePlot({
         ctx.lineWidth = 1.5;
         ctx.stroke();
 
-        // Label
         ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
         ctx.font = `${12 * dpr}px system-ui`;
         ctx.textAlign = "center";
@@ -161,34 +163,53 @@ export function VowelSpacePlot({
         ctx.fillText(vt.label, cx, cy);
       }
 
-      // --- Comet trail: fading line from trail history ---
-      const trail = formantTrailRef.current;
-      const now = Date.now();
-      const trailMs = FORMANT_TRAIL_SECONDS * 1000;
+      // --- Comet dot + trail ---
+      const f1 = formants?.f1;
+      const f2 = formants?.f2;
+      const hasTarget =
+        f1 != null &&
+        f2 != null &&
+        f1 >= F1_RANGE.low &&
+        f1 <= F1_RANGE.high &&
+        f2 >= F2_RANGE.low &&
+        f2 <= F2_RANGE.high;
+      const isActive = voiced || holding;
 
-      // Build valid trail points (recent, in-range, voiced)
-      const trailPts = [];
-      for (let i = 0; i < trail.length; i++) {
-        const pt = trail[i];
-        if (!pt.voiced || pt.f1 === null || pt.f2 === null) continue;
-        if (pt.f1 < F1_RANGE.low || pt.f1 > F1_RANGE.high) continue;
-        if (pt.f2 < F2_RANGE.low || pt.f2 > F2_RANGE.high) continue;
-        const age = now - pt.time;
-        if (age > trailMs) continue;
-        trailPts.push({ x: f2ToX(pt.f2), y: f1ToY(pt.f1), age });
+      const pos = posRef.current;
+      const trail = trailRef.current;
+
+      if (hasTarget && isActive) {
+        const targetX = f2ToX(f2);
+        const targetY = f1ToY(f1);
+
+        if (pos.x === null || pos.y === null) {
+          // First valid position — snap immediately
+          pos.x = targetX;
+          pos.y = targetY;
+        } else {
+          // Smooth interpolation toward target
+          pos.x += (targetX - pos.x) * 0.2;
+          pos.y += (targetY - pos.y) * 0.2;
+        }
+
+        // Push current position to trail every other frame (~30fps trail update)
+        frameCount++;
+        if (frameCount % 2 === 0) {
+          trail.push({ x: pos.x, y: pos.y });
+          if (trail.length > TRAIL_LENGTH) trail.shift();
+        }
       }
+      // During silence: don't update pos (freeze), don't push to trail
 
-      // Draw trail as a fading line (oldest to newest)
-      if (trailPts.length >= 2) {
-        for (let i = 1; i < trailPts.length; i++) {
-          const prev = trailPts[i - 1];
-          const curr = trailPts[i];
-          const opacity = Math.max(0.05, 1 - curr.age / trailMs) * 0.6;
-          const width = (1 + 2 * (1 - curr.age / trailMs)) * dpr;
+      // Draw trail as fading polyline
+      if (trail.length >= 2) {
+        for (let i = 1; i < trail.length; i++) {
+          const opacity = (i / trail.length) * (isActive ? 0.6 : 0.15);
+          const width = (0.5 + 2.5 * (i / trail.length)) * dpr;
 
           ctx.beginPath();
-          ctx.moveTo(prev.x, prev.y);
-          ctx.lineTo(curr.x, curr.y);
+          ctx.moveTo(trail[i - 1].x, trail[i - 1].y);
+          ctx.lineTo(trail[i].x, trail[i].y);
           ctx.strokeStyle = `rgba(167, 139, 250, ${opacity})`;
           ctx.lineWidth = width;
           ctx.lineCap = "round";
@@ -196,72 +217,36 @@ export function VowelSpacePlot({
         }
       }
 
-      // --- Current position: single large glowing comet dot ---
-      const f1 = formants?.f1;
-      const f2 = formants?.f2;
-      const inRange =
-        f1 !== null &&
-        f2 !== null &&
-        f1 >= F1_RANGE.low &&
-        f1 <= F1_RANGE.high &&
-        f2 >= F2_RANGE.low &&
-        f2 <= F2_RANGE.high;
-
-      // Compute target position
-      let targetX = smoothPosRef.current.x;
-      let targetY = smoothPosRef.current.y;
-      if (inRange) {
-        targetX = f2ToX(f2);
-        targetY = f1ToY(f1);
-      }
-
-      // Interpolate smoothly toward target (lerp)
-      const smooth = smoothPosRef.current;
-      if (smooth.x === null || smooth.y === null) {
-        // First valid position — snap
-        if (targetX !== null && targetY !== null) {
-          smooth.x = targetX;
-          smooth.y = targetY;
-        }
-      } else if (targetX !== null && targetY !== null) {
-        const lerpFactor = 0.18;
-        smooth.x += (targetX - smooth.x) * lerpFactor;
-        smooth.y += (targetY - smooth.y) * lerpFactor;
-      }
-
-      if (smooth.x !== null && smooth.y !== null) {
-        const x = smooth.x;
-        const y = smooth.y;
-        // During silence: freeze and dim to 30%
-        const isActive = voiced || holding;
-        const dotOpacity = isActive ? 1 : 0.3;
-        const dotRadius = 13 * dpr;
+      // Draw the single comet dot
+      if (pos.x !== null && pos.y !== null) {
+        const dotOpacity = isActive ? 1.0 : 0.3;
+        const dotRadius = 12 * dpr;
 
         // Outer glow
-        const glowR = 28 * dpr;
-        const grad = ctx.createRadialGradient(x, y, dotRadius * 0.3, x, y, glowR);
-        grad.addColorStop(0, `rgba(192, 132, 252, ${0.45 * dotOpacity})`);
-        grad.addColorStop(0.5, `rgba(167, 139, 250, ${0.15 * dotOpacity})`);
-        grad.addColorStop(1, "transparent");
+        const glowR = 26 * dpr;
+        const glow = ctx.createRadialGradient(pos.x, pos.y, dotRadius * 0.3, pos.x, pos.y, glowR);
+        glow.addColorStop(0, `rgba(192, 132, 252, ${0.4 * dotOpacity})`);
+        glow.addColorStop(0.5, `rgba(167, 139, 250, ${0.12 * dotOpacity})`);
+        glow.addColorStop(1, "transparent");
         ctx.beginPath();
-        ctx.arc(x, y, glowR, 0, Math.PI * 2);
-        ctx.fillStyle = grad;
+        ctx.arc(pos.x, pos.y, glowR, 0, Math.PI * 2);
+        ctx.fillStyle = glow;
         ctx.fill();
 
-        // Main dot
+        // Main filled dot
+        const dotGrad = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, dotRadius);
+        dotGrad.addColorStop(0, `rgba(230, 210, 255, ${dotOpacity})`);
+        dotGrad.addColorStop(0.5, `rgba(192, 132, 252, ${0.9 * dotOpacity})`);
+        dotGrad.addColorStop(1, `rgba(147, 100, 220, ${0.7 * dotOpacity})`);
         ctx.beginPath();
-        ctx.arc(x, y, dotRadius, 0, Math.PI * 2);
-        const dotGrad = ctx.createRadialGradient(x, y, 0, x, y, dotRadius);
-        dotGrad.addColorStop(0, `rgba(220, 200, 255, ${dotOpacity})`);
-        dotGrad.addColorStop(0.6, `rgba(192, 132, 252, ${0.9 * dotOpacity})`);
-        dotGrad.addColorStop(1, `rgba(167, 139, 250, ${0.7 * dotOpacity})`);
+        ctx.arc(pos.x, pos.y, dotRadius, 0, Math.PI * 2);
         ctx.fillStyle = dotGrad;
         ctx.fill();
 
-        // White highlight
+        // Small highlight for 3D effect
         ctx.beginPath();
-        ctx.arc(x - 3 * dpr, y - 3 * dpr, 4 * dpr, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(255, 255, 255, ${0.3 * dotOpacity})`;
+        ctx.arc(pos.x - 3 * dpr, pos.y - 3 * dpr, 3.5 * dpr, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255, 255, 255, ${0.25 * dotOpacity})`;
         ctx.fill();
       }
 
@@ -270,7 +255,7 @@ export function VowelSpacePlot({
 
     draw();
     return () => cancelAnimationFrame(animId);
-  }, [formantTrailRef, formants, holding, voiced]);
+  }, [formants, voiced, holding]);
 
   const f1 = formants?.f1;
   const f2 = formants?.f2;
@@ -284,7 +269,6 @@ export function VowelSpacePlot({
         <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
       </div>
 
-      {/* F1/F2 readout (hidden in compact mode) */}
       {!compact && (
         <div className="mt-3 flex items-baseline justify-center gap-4">
           <span
@@ -298,7 +282,7 @@ export function VowelSpacePlot({
           >
             F1:{" "}
             <span className="text-base font-light">
-              {f1 !== null ? `${Math.round(f1)} Hz` : "—"}
+              {f1 != null ? `${Math.round(f1)} Hz` : "\u2014"}
             </span>
           </span>
           <span
@@ -312,7 +296,7 @@ export function VowelSpacePlot({
           >
             F2:{" "}
             <span className="text-base font-light">
-              {f2 !== null ? `${Math.round(f2)} Hz` : "—"}
+              {f2 != null ? `${Math.round(f2)} Hz` : "\u2014"}
             </span>
           </span>
         </div>

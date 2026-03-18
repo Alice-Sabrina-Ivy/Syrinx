@@ -2,6 +2,7 @@
 // Pitch detection (YIN), formant extraction (Burg LPC), and intensity
 
 const WINDOW_MS = 200;
+const HOP_MS = 50; // Only analyze every 50ms (20 fps) — prevents worker queue buildup
 let sampleRate = 48000;
 let windowSize = Math.floor(sampleRate * WINDOW_MS / 1000);
 
@@ -11,6 +12,8 @@ let targetSR = 12000;
 const LPC_ORDER = 10;
 
 let ringBuffer = new Float32Array(0);
+let samplesAccumulated = 0;
+let hopSamples = Math.floor(sampleRate * HOP_MS / 1000);
 
 self.onmessage = (e) => {
   const { type } = e.data;
@@ -18,17 +21,22 @@ self.onmessage = (e) => {
   if (type === "init") {
     sampleRate = e.data.sampleRate;
     windowSize = Math.floor(sampleRate * WINDOW_MS / 1000);
+    hopSamples = Math.floor(sampleRate * HOP_MS / 1000);
     decimationFactor = Math.max(1, Math.round(sampleRate / 11000));
     targetSR = sampleRate / decimationFactor;
     ringBuffer = new Float32Array(0);
+    samplesAccumulated = 0;
     return;
   }
 
   if (type === "chunk") {
     const chunk = new Float32Array(e.data.buffer);
     appendToRingBuffer(chunk);
+    samplesAccumulated += chunk.length;
 
-    if (ringBuffer.length < windowSize) return;
+    // Only analyze once we have enough data AND the hop interval has elapsed
+    if (ringBuffer.length < windowSize || samplesAccumulated < hopSamples) return;
+    samplesAccumulated = 0;
 
     const window = ringBuffer.slice(-windowSize);
     const intensity = computeIntensity(window);
