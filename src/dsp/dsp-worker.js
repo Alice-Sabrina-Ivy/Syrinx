@@ -10,7 +10,11 @@ let decimationFactor = 4;
 let targetSR = 12000;
 const LPC_ORDER = 10;
 
-let ringBuffer = new Float32Array(0);
+// Pre-allocated ring buffer to avoid GC pressure from repeated allocations.
+// Uses a fixed-size buffer with a write position; oldest data is overwritten.
+let ringCapacity = windowSize * 2;
+let ringBuffer = new Float32Array(ringCapacity);
+let ringLen = 0; // how many valid samples are in the buffer
 let analysisCount = 0;
 
 self.onmessage = (e) => {
@@ -21,7 +25,9 @@ self.onmessage = (e) => {
     windowSize = Math.floor(sampleRate * WINDOW_MS / 1000);
     decimationFactor = Math.max(1, Math.round(sampleRate / 11000));
     targetSR = sampleRate / decimationFactor;
-    ringBuffer = new Float32Array(0);
+    ringCapacity = windowSize * 2;
+    ringBuffer = new Float32Array(ringCapacity);
+    ringLen = 0;
     analysisCount = 0;
     return;
   }
@@ -30,9 +36,11 @@ self.onmessage = (e) => {
     const chunk = new Float32Array(e.data.buffer);
     appendToRingBuffer(chunk);
 
-    if (ringBuffer.length < windowSize) return;
+    if (ringLen < windowSize) return;
 
-    const window = ringBuffer.slice(-windowSize);
+    // Extract analysis window (last windowSize samples) without allocating
+    const windowStart = ringLen - windowSize;
+    const window = ringBuffer.subarray(windowStart, ringLen);
     const intensity = computeIntensity(window);
     const pitch = detectPitch(window, sampleRate);
 
@@ -55,19 +63,16 @@ self.onmessage = (e) => {
 // --- Ring buffer ---
 
 function appendToRingBuffer(chunk) {
-  const maxLen = windowSize * 2;
-  const newLen = ringBuffer.length + chunk.length;
-  if (newLen <= maxLen) {
-    const newBuf = new Float32Array(newLen);
-    newBuf.set(ringBuffer);
-    newBuf.set(chunk, ringBuffer.length);
-    ringBuffer = newBuf;
+  if (ringLen + chunk.length <= ringCapacity) {
+    // Room to append directly
+    ringBuffer.set(chunk, ringLen);
+    ringLen += chunk.length;
   } else {
-    const keepLen = Math.min(ringBuffer.length, maxLen - chunk.length);
-    const newBuf = new Float32Array(keepLen + chunk.length);
-    newBuf.set(ringBuffer.subarray(ringBuffer.length - keepLen));
-    newBuf.set(chunk, keepLen);
-    ringBuffer = newBuf;
+    // Shift old data left to make room, keeping at most (ringCapacity - chunk.length)
+    const keepLen = Math.min(ringLen, ringCapacity - chunk.length);
+    ringBuffer.copyWithin(0, ringLen - keepLen, ringLen);
+    ringBuffer.set(chunk, keepLen);
+    ringLen = keepLen + chunk.length;
   }
 }
 
