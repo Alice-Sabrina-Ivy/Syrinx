@@ -89,18 +89,24 @@ function detectPitch(buffer, sr) {
   const maxF0 = 600;
   const minLag = Math.floor(sr / maxF0);
   const maxLag = Math.floor(sr / minF0);
-  const halfLen = Math.floor(buffer.length / 2);
-  // Only compute diff/CMND up to the lags we actually search (+1 for parabolic interp)
+
+  // Use a shorter window for YIN: 3 periods of lowest F0 = ~40ms.
+  // YIN needs halfLen + maxLag samples, so use 2 * (maxLag + 1) samples.
+  const yinLen = Math.min(buffer.length, (maxLag + 1) * 2);
+  const yinBuf = buffer.length > yinLen
+    ? buffer.subarray(buffer.length - yinLen)
+    : buffer;
+  const halfLen = Math.floor(yinBuf.length / 2);
   const searchLen = Math.min(maxLag + 2, halfLen);
 
   if (maxLag >= halfLen) return null;
 
-  // Step 1: Difference function (only up to searchLen, not halfLen)
+  // Step 1: Difference function
   const diff = new Float32Array(searchLen);
   for (let tau = 1; tau < searchLen; tau++) {
     let sum = 0;
     for (let i = 0; i < halfLen; i++) {
-      const d = buffer[i] - buffer[i + tau];
+      const d = yinBuf[i] - yinBuf[i + tau];
       sum += d * d;
     }
     diff[tau] = sum;
@@ -142,11 +148,16 @@ function detectPitch(buffer, sr) {
 // --- Formant Extraction (Burg LPC) ---
 
 function extractFormants(buffer) {
+  // Use last 1024 samples — enough for LPC formant estimation after decimation
+  const maxN = 1024;
+  const useLen = Math.min(buffer.length, maxN);
+  const offset = buffer.length - useLen;
+
   // Pre-emphasis: boost high frequencies
-  const preEmph = new Float64Array(buffer.length);
-  preEmph[0] = buffer[0];
-  for (let i = 1; i < buffer.length; i++) {
-    preEmph[i] = buffer[i] - 0.97 * buffer[i - 1];
+  const preEmph = new Float64Array(useLen);
+  preEmph[0] = buffer[offset];
+  for (let i = 1; i < useLen; i++) {
+    preEmph[i] = buffer[offset + i] - 0.97 * buffer[offset + i - 1];
   }
 
   // Hamming window
