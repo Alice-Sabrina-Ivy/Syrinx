@@ -86,10 +86,12 @@ export function useAudioPipeline() {
 
       worker.postMessage({ type: "init", sampleRate: audioCtx.sampleRate });
 
-      // Direct AudioWorklet → Worker channel (bypasses main thread)
-      const channel = new MessageChannel();
-      worker.postMessage({ type: "port", port: channel.port1 }, [channel.port1]);
-      workletNode.port.postMessage({ type: "port", port: channel.port2 }, [channel.port2]);
+      workletNode.port.onmessage = (e) => {
+        worker.postMessage(
+          { type: "chunk", buffer: e.data },
+          [e.data],
+        );
+      };
 
       worker.onmessage = (e) => {
         if (e.data.type === "analysis") {

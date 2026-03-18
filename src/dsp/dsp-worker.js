@@ -13,34 +13,6 @@ const LPC_ORDER = 10;
 let ringBuffer = new Float32Array(0);
 let analysisCount = 0;
 
-// Accept a direct MessagePort for receiving audio chunks (bypasses main thread)
-let chunkPort = null;
-
-function handleChunk(data) {
-  const chunk = new Float32Array(data);
-  appendToRingBuffer(chunk);
-
-  if (ringBuffer.length < windowSize) return;
-
-  const window = ringBuffer.slice(-windowSize);
-  const intensity = computeIntensity(window);
-  const pitch = detectPitch(window, sampleRate);
-
-  // Formants, spectral tilt, HNR are heavier — run every 4th analysis (~200ms)
-  let formants = null, spectralTilt = null, hnr = null;
-  if (analysisCount % 4 === 0) {
-    formants = extractFormants(window);
-    spectralTilt = computeSpectralTilt(window, sampleRate);
-    hnr = computeHNR(window, sampleRate);
-  }
-  analysisCount++;
-
-  self.postMessage({
-    type: "analysis",
-    data: { pitch, intensity, formants, spectralTilt, hnr, timestamp: performance.now() },
-  });
-}
-
 self.onmessage = (e) => {
   const { type } = e.data;
 
@@ -54,16 +26,29 @@ self.onmessage = (e) => {
     return;
   }
 
-  // Receive a MessagePort for direct AudioWorklet → Worker communication
-  if (type === "port") {
-    chunkPort = e.data.port;
-    chunkPort.onmessage = (ev) => handleChunk(ev.data);
-    return;
-  }
-
-  // Fallback: accept chunks via main thread relay
   if (type === "chunk") {
-    handleChunk(e.data.buffer);
+    const chunk = new Float32Array(e.data.buffer);
+    appendToRingBuffer(chunk);
+
+    if (ringBuffer.length < windowSize) return;
+
+    const window = ringBuffer.slice(-windowSize);
+    const intensity = computeIntensity(window);
+    const pitch = detectPitch(window, sampleRate);
+
+    // Formants, spectral tilt, HNR are heavier — run every 4th analysis (~200ms)
+    let formants = null, spectralTilt = null, hnr = null;
+    if (analysisCount % 4 === 0) {
+      formants = extractFormants(window);
+      spectralTilt = computeSpectralTilt(window, sampleRate);
+      hnr = computeHNR(window, sampleRate);
+    }
+    analysisCount++;
+
+    self.postMessage({
+      type: "analysis",
+      data: { pitch, intensity, formants, spectralTilt, hnr, timestamp: performance.now() },
+    });
   }
 };
 
