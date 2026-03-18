@@ -56,6 +56,16 @@ export function useAudioPipeline() {
   const pitchTraceRef = useRef([]);
   const formantTrailRef = useRef([]);
 
+  // Debug counters — visible on canvas to diagnose pipeline stalls
+  const debugRef = useRef({
+    framesReceived: 0,      // total analysis results from worker
+    framesVoiced: 0,        // frames that produced a voiced trace entry
+    framesQuiet: 0,         // frames gated as quiet
+    framesNoPitch: 0,       // frames with no pitch detected
+    lastResultTime: 0,      // Date.now() of last worker message
+    workerAlive: false,     // have we received any worker message?
+  });
+
   useEffect(() => {
     return () => stop();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -188,6 +198,12 @@ export function useAudioPipeline() {
     // Date.now() and bunch into a single x-position on the trace.
     const now = Math.round(performance.timeOrigin + timestamp);
 
+    // Debug tracking
+    const dbg = debugRef.current;
+    dbg.framesReceived++;
+    dbg.lastResultTime = Date.now();
+    dbg.workerAlive = true;
+
     // Silence = intensity below threshold for multiple consecutive frames.
     // Single-frame dips (from GC pauses or audio glitches) are bridged.
     // Pitch detection failure during loud audio is NOT silence.
@@ -211,6 +227,7 @@ export function useAudioPipeline() {
       const silenceDuration = now - silenceStartRef.current;
 
       // Add gap to pitch trace (null pitch = gap)
+      dbg.framesQuiet++;
       pitchTraceRef.current.push({ time: now, pitch: null, voiced: false });
       trimHistory(pitchTraceRef.current, PITCH_TRACE_SECONDS * 1000, now);
 
@@ -261,6 +278,7 @@ export function useAudioPipeline() {
 
     if (effectivePitch === null) {
       // No pitch history to hold — treat as gap
+      dbg.framesNoPitch++;
       pitchTraceRef.current.push({ time: now, pitch: null, voiced: false });
       trimHistory(pitchTraceRef.current, PITCH_TRACE_SECONDS * 1000, now);
       return;
@@ -287,6 +305,7 @@ export function useAudioPipeline() {
     const smoothedFormants = { f1, f2, f3 };
 
     // Update history buffers
+    dbg.framesVoiced++;
     pitchTraceRef.current.push({
       time: now,
       pitch: smoothedPitch,
@@ -331,6 +350,7 @@ export function useAudioPipeline() {
     stop,
     pitchTraceRef,
     formantTrailRef,
+    debugRef,
   };
 }
 

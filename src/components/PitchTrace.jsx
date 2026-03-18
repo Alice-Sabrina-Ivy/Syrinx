@@ -10,7 +10,7 @@ import {
   COLORS,
 } from "../utils/constants";
 
-export function PitchTrace({ pitchTraceRef, voiced, holding, pitch, compact = false }) {
+export function PitchTrace({ pitchTraceRef, debugRef, voiced, holding, pitch, compact = false }) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
 
@@ -213,12 +213,35 @@ export function PitchTrace({ pitchTraceRef, voiced, holding, pitch, compact = fa
         ctx.fill();
       }
 
+      // Debug overlay — shows pipeline health counters
+      if (debugRef?.current) {
+        const dbg = debugRef.current;
+        const staleSec = dbg.lastResultTime > 0
+          ? ((Date.now() - dbg.lastResultTime) / 1000).toFixed(1)
+          : "—";
+        const lines = [
+          `recv: ${dbg.framesReceived}  voiced: ${dbg.framesVoiced}  quiet: ${dbg.framesQuiet}  noPitch: ${dbg.framesNoPitch}`,
+          `trace: ${data.length} pts  stale: ${staleSec}s`,
+        ];
+        ctx.font = `${10 * dpr}px monospace`;
+        ctx.textAlign = "left";
+        ctx.textBaseline = "top";
+        for (let li = 0; li < lines.length; li++) {
+          const ty = plotTop + 4 * dpr + li * 13 * dpr;
+          ctx.fillStyle = "rgba(0,0,0,0.6)";
+          const tm = ctx.measureText(lines[li]);
+          ctx.fillRect(plotLeft + 4 * dpr, ty - 1 * dpr, tm.width + 6 * dpr, 12 * dpr);
+          ctx.fillStyle = "rgba(255,255,200,0.8)";
+          ctx.fillText(lines[li], plotLeft + 7 * dpr, ty);
+        }
+      }
+
       animId = requestAnimationFrame(draw);
     }
 
     draw();
     return () => cancelAnimationFrame(animId);
-  }, [pitchTraceRef]);
+  }, [pitchTraceRef, debugRef]);
 
   // Readout
   const noteInfo = pitch ? hzToNote(pitch) : null;
