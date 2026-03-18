@@ -1,5 +1,5 @@
 // CombinedDashboard.jsx — Default practice view: compact visualizations + live stats + session controls
-// Layout: compact pitch + resonance side-by-side (stacked mobile), stats row, session controls.
+// Layout: pitch 60% width, resonance 40% (stacked on mobile). Two-row stats. Distinct buttons.
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { PitchTrace } from "./PitchTrace";
@@ -66,10 +66,10 @@ export function CombinedDashboard({
 
   return (
     <div className="flex-1 flex flex-col w-full max-w-6xl min-h-0">
-      {/* Compact visualizations: pitch on top (mobile) or left (desktop), resonance below/right */}
+      {/* Compact visualizations: 60% pitch / 40% resonance (stacked on mobile) */}
       <div className="flex-1 flex flex-col lg:flex-row gap-3 min-h-0">
-        {/* Pitch trace — compact */}
-        <div className="flex-1 min-h-[180px] lg:min-h-0">
+        {/* Pitch trace — 60% */}
+        <div className="lg:w-[60%] min-h-[180px] lg:min-h-0">
           <PitchTrace
             pitchTraceRef={pitchTraceRef}
             voiced={voiced}
@@ -79,8 +79,8 @@ export function CombinedDashboard({
           />
         </div>
 
-        {/* Vowel space — compact */}
-        <div className="flex-1 min-h-[180px] lg:min-h-0">
+        {/* Vowel space — 40% */}
+        <div className="lg:w-[40%] min-h-[180px] lg:min-h-0">
           <VowelSpacePlot
             formantTrailRef={formantTrailRef}
             voiced={voiced}
@@ -91,16 +91,17 @@ export function CombinedDashboard({
         </div>
       </div>
 
-      {/* Live stats row */}
+      {/* Live stats — two rows */}
       <div className="flex-shrink-0 mt-3 px-2">
-        <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
+        {/* Row 1: Primary metrics (F0 + F2) — larger */}
+        <div className="flex items-center justify-center gap-x-8 gap-y-1">
           {/* F0 */}
           <div className={`text-center ${statOpacity} transition-opacity duration-300`}>
             <span className="text-[10px] text-neutral-500 uppercase tracking-wider block">
               F0
             </span>
             <span
-              className={`text-lg font-light tabular-nums ${
+              className={`text-xl sm:text-2xl font-light tabular-nums ${
                 pitch !== null
                   ? inPitchTarget
                     ? "text-green-400"
@@ -118,14 +119,17 @@ export function CombinedDashboard({
             <span className="text-[10px] text-neutral-500 uppercase tracking-wider block">
               F2
             </span>
-            <span className="text-lg font-light tabular-nums text-neutral-300">
+            <span className="text-xl sm:text-2xl font-light tabular-nums text-neutral-300">
               {formants?.f2 !== null ? `${Math.round(formants.f2)}` : "—"}
               <span className="text-xs text-neutral-500 ml-0.5">Hz</span>
             </span>
           </div>
+        </div>
 
+        {/* Row 2: Secondary metrics (Vocal Weight + HNR) */}
+        <div className="flex items-center justify-center gap-x-6 gap-y-1 mt-1.5">
           {/* Spectral Tilt gauge */}
-          <div className="w-40 sm:w-48">
+          <div className="w-36 sm:w-44">
             <SpectralTiltGauge
               spectralTilt={spectralTilt}
               voiced={voiced}
@@ -138,7 +142,7 @@ export function CombinedDashboard({
             <span className="text-[10px] text-neutral-500 uppercase tracking-wider block">
               HNR
             </span>
-            <span className="text-lg font-light tabular-nums text-neutral-300">
+            <span className="text-sm font-light tabular-nums text-neutral-300">
               {hnr !== null ? `${hnr.toFixed(1)}` : "—"}
               <span className="text-xs text-neutral-500 ml-0.5">dB</span>
             </span>
@@ -149,21 +153,21 @@ export function CombinedDashboard({
       {/* Session controls */}
       <div className="flex-shrink-0 mt-3 pb-2">
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-          {/* Start/stop recording */}
+          {/* Save session recording — visually distinct */}
           <button
             onClick={toggleRecording}
-            className={`flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-medium transition-colors cursor-pointer ${
+            className={`flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-medium transition-colors cursor-pointer border ${
               recording
-                ? "bg-red-500/20 text-red-400 hover:bg-red-500/30"
-                : "bg-purple-600/20 text-purple-400 hover:bg-purple-600/30"
+                ? "bg-red-500/15 text-red-400 border-red-500/30 hover:bg-red-500/25"
+                : "bg-neutral-800/60 text-neutral-300 border-neutral-700 hover:bg-neutral-700/60"
             }`}
           >
             <span
               className={`w-2.5 h-2.5 rounded-full ${
-                recording ? "bg-red-400 animate-pulse" : "bg-purple-400"
+                recording ? "bg-red-400 animate-pulse" : "bg-neutral-500"
               }`}
             />
-            {recording ? "Stop Recording" : "Start Recording"}
+            {recording ? "Stop Recording" : "Save Session"}
           </button>
 
           {/* Session timer */}
