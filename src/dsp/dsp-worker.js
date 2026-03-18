@@ -1,5 +1,6 @@
 // dsp-worker.js — Web Worker that performs all DSP analysis off the main thread
 // Pitch detection (YIN), formant extraction (Burg LPC), spectral tilt, HNR, intensity
+// Supports performance tiers: "desktop" (full analysis) and "mobile" (reduced rates)
 
 const WINDOW_MS = 200;
 let sampleRate = 48000;
@@ -17,11 +18,60 @@ let ringBuffer = new Float32Array(ringCapacity);
 let ringLen = 0; // how many valid samples are in the buffer
 let analysisCount = 0;
 
+// --- Performance tier system ---
+// "desktop": full analysis every 4th frame (original behavior)
+// "mobile": pitch every frame, formants every 3rd, tilt/HNR every 5th
+// "limited": pitch + formants only, tilt/HNR disabled (fallback)
+let perfTier = "desktop";
+const BENCHMARK_THRESHOLD_MS = 30;
+let formantInterval = 4;  // desktop default: every 4th chunk
+let tiltHnrInterval = 4;  // desktop default: same as formants
+let tiltHnrEnabled = true;
+
+// Queue depth tracking for fallback detection
+let queueDepth = 0;
+let slowFrameCount = 0;
+const SLOW_FRAME_THRESHOLD = 10; // consecutive slow frames before fallback
+
+function runBenchmark() {
+  // Generate synthetic audio buffer (sine wave at 200Hz)
+  const testBuffer = new Float32Array(windowSize);
+  for (let i = 0; i < windowSize; i++) {
+    testBuffer[i] = Math.sin(2 * Math.PI * 200 * i / sampleRate) * 0.5;
+  }
+
+  // Time one full analysis cycle (pitch + formants + tilt + HNR)
+  const start = performance.now();
+  detectPitch(testBuffer, sampleRate);
+  extractFormants(testBuffer);
+  computeSpectralTilt(testBuffer, sampleRate);
+  computeHNR(testBuffer, sampleRate);
+  const elapsed = performance.now() - start;
+
+  if (elapsed > BENCHMARK_THRESHOLD_MS) {
+    perfTier = "mobile";
+    formantInterval = 3;
+    tiltHnrInterval = 5;
+  } else {
+    perfTier = "desktop";
+    formantInterval = 4;
+    tiltHnrInterval = 4;
+  }
+
+  self.postMessage({ type: "perfTier", tier: perfTier, benchmarkMs: elapsed });
+}
+
 function processChunk(buffer) {
+  queueDepth++;
+  const frameStart = performance.now();
+
   const chunk = new Float32Array(buffer);
   appendToRingBuffer(chunk);
 
-  if (ringLen < windowSize) return;
+  if (ringLen < windowSize) {
+    queueDepth--;
+    return;
+  }
 
   // Extract analysis window (last windowSize samples) without allocating
   const windowStart = ringLen - windowSize;
@@ -29,14 +79,33 @@ function processChunk(buffer) {
   const intensity = computeIntensity(window);
   const pitch = detectPitch(window, sampleRate);
 
-  // Formants, spectral tilt, HNR are heavier — run every 4th analysis (~200ms)
+  // Expensive operations run at tier-dependent intervals
   let formants = null, spectralTilt = null, hnr = null;
-  if (analysisCount % 4 === 0) {
+  if (analysisCount % formantInterval === 0) {
     formants = extractFormants(window);
+  }
+  if (tiltHnrEnabled && analysisCount % tiltHnrInterval === 0) {
     spectralTilt = computeSpectralTilt(window, sampleRate);
     hnr = computeHNR(window, sampleRate);
   }
   analysisCount++;
+
+  const frameTime = performance.now() - frameStart;
+  queueDepth--;
+
+  // Fallback detection: if analysis consistently can't keep up, disable tilt/HNR
+  if (perfTier === "mobile" && tiltHnrEnabled) {
+    if (queueDepth > 2 || frameTime > 60) {
+      slowFrameCount++;
+    } else {
+      slowFrameCount = Math.max(0, slowFrameCount - 1);
+    }
+    if (slowFrameCount >= SLOW_FRAME_THRESHOLD) {
+      tiltHnrEnabled = false;
+      perfTier = "limited";
+      self.postMessage({ type: "perfTier", tier: "limited" });
+    }
+  }
 
   self.postMessage({
     type: "analysis",
@@ -56,6 +125,8 @@ self.onmessage = (e) => {
     ringBuffer = new Float32Array(ringCapacity);
     ringLen = 0;
     analysisCount = 0;
+    // Run benchmark after init to determine performance tier
+    runBenchmark();
     return;
   }
 
