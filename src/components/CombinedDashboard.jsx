@@ -18,6 +18,7 @@ export function CombinedDashboard({
   hnr,
   pitchTraceRef,
   formantTrailRef,
+  debugRef,
   start,
   stop,
   status,
@@ -72,6 +73,7 @@ export function CombinedDashboard({
         <div className="lg:w-[60%] min-h-[180px] lg:min-h-0">
           <PitchTrace
             pitchTraceRef={pitchTraceRef}
+            debugRef={debugRef}
             voiced={voiced}
             holding={holding}
             pitch={pitch}
