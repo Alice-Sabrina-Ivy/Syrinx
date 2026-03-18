@@ -16,7 +16,6 @@ export function CombinedDashboard({
   formants,
   spectralTilt,
   hnr,
-  limitedMode,
   pitchTraceRef,
   formantTrailRef,
   start,
@@ -129,33 +128,25 @@ export function CombinedDashboard({
 
         {/* Row 2: Secondary metrics (Vocal Weight + HNR) */}
         <div className="flex items-center justify-center gap-x-6 gap-y-1 mt-1.5">
-          {limitedMode ? (
-            <span className="text-[10px] text-yellow-500/80 uppercase tracking-wider">
-              Limited mode — pitch + resonance only
-            </span>
-          ) : (
-            <>
-              {/* Spectral Tilt gauge */}
-              <div className="w-36 sm:w-44">
-                <SpectralTiltGauge
-                  spectralTilt={spectralTilt}
-                  voiced={voiced}
-                  holding={holding}
-                />
-              </div>
+          {/* Spectral Tilt gauge */}
+          <div className="w-36 sm:w-44">
+            <SpectralTiltGauge
+              spectralTilt={spectralTilt}
+              voiced={voiced}
+              holding={holding}
+            />
+          </div>
 
-              {/* HNR */}
-              <div className={`text-center ${statOpacity} transition-opacity duration-300`}>
-                <span className="text-[10px] text-neutral-500 uppercase tracking-wider block">
-                  HNR
-                </span>
-                <span className="text-sm font-light tabular-nums text-neutral-300">
-                  {hnr !== null ? `${hnr.toFixed(1)}` : "—"}
-                  <span className="text-xs text-neutral-500 ml-0.5">dB</span>
-                </span>
-              </div>
-            </>
-          )}
+          {/* HNR */}
+          <div className={`text-center ${statOpacity} transition-opacity duration-300`}>
+            <span className="text-[10px] text-neutral-500 uppercase tracking-wider block">
+              HNR
+            </span>
+            <span className="text-sm font-light tabular-nums text-neutral-300">
+              {hnr !== null ? `${hnr.toFixed(1)}` : "—"}
+              <span className="text-xs text-neutral-500 ml-0.5">dB</span>
+            </span>
+          </div>
         </div>
       </div>
 

@@ -5,9 +5,8 @@
 class CaptureProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
-    // ~50ms at 48kHz = 2400 samples (default; mobile uses 75ms)
-    this.chunkMs = 0.05;
-    this.chunkSize = Math.floor(sampleRate * this.chunkMs);
+    // ~50ms at sample rate (e.g. 2400 samples at 48kHz)
+    this.chunkSize = Math.floor(sampleRate * 0.05);
     // Pre-allocate buffer large enough for 2 chunks + headroom for input frames
     // (avoids creating new Float32Array objects in process(), reducing GC pressure)
     this.bufferSize = this.chunkSize * 3;
@@ -21,14 +20,6 @@ class CaptureProcessor extends AudioWorkletProcessor {
     this.port.onmessage = (e) => {
       if (e.data.type === "port") {
         this.workerPort = e.data.port;
-      } else if (e.data.type === "setChunkMs") {
-        // Reconfigure chunk size (e.g. 75ms for mobile)
-        this.chunkMs = e.data.chunkMs;
-        this.chunkSize = Math.floor(sampleRate * this.chunkMs);
-        this.bufferSize = this.chunkSize * 3;
-        this.buffer = new Float32Array(this.bufferSize);
-        this.writePos = 0;
-        this.chunk = new Float32Array(this.chunkSize);
       }
     };
   }
