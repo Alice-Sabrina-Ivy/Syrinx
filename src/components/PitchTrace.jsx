@@ -25,8 +25,6 @@ export function PitchTrace({ pitchTraceRef, voiced, holding, pitch }) {
       const rect = container.getBoundingClientRect();
       canvas.width = rect.width * dpr;
       canvas.height = rect.height * dpr;
-      canvas.style.width = rect.width + "px";
-      canvas.style.height = rect.height + "px";
     }
 
     const observer = new ResizeObserver(resize);
@@ -220,9 +218,9 @@ export function PitchTrace({ pitchTraceRef, voiced, holding, pitch }) {
     <div className="flex flex-col h-full">
       <div
         ref={containerRef}
-        className="flex-1 min-h-0 rounded-xl overflow-hidden border border-neutral-800"
+        className="relative flex-1 min-h-0 rounded-xl overflow-hidden border border-neutral-800"
       >
-        <canvas ref={canvasRef} className="block w-full h-full" />
+        <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
       </div>
 
       {/* Hz + Note readout */}
