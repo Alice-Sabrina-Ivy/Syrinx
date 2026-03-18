@@ -32,6 +32,8 @@ export function useAudioPipeline() {
   const audioCtxRef = useRef(null);
   const workerRef = useRef(null);
   const streamRef = useRef(null);
+  const workletNodeRef = useRef(null);
+  const sourceNodeRef = useRef(null);
 
   // Smoothing buffers
   const pitchSmoothRef = useRef([]);
@@ -79,6 +81,7 @@ export function useAudioPipeline() {
 
       await audioCtx.audioWorklet.addModule("capture-processor.js");
       const workletNode = new AudioWorkletNode(audioCtx, "capture-processor");
+      workletNodeRef.current = workletNode;
 
       const worker = new Worker(
         new URL("../dsp/dsp-worker.js", import.meta.url),
@@ -103,6 +106,7 @@ export function useAudioPipeline() {
 
       const source = audioCtx.createMediaStreamSource(stream);
       source.connect(workletNode);
+      sourceNodeRef.current = source;
 
       setState((s) => ({ ...s, status: "running" }));
     } catch (err) {
@@ -115,6 +119,15 @@ export function useAudioPipeline() {
   }, []);
 
   const stop = useCallback(() => {
+    // Disconnect audio nodes before closing context
+    if (sourceNodeRef.current) {
+      sourceNodeRef.current.disconnect();
+      sourceNodeRef.current = null;
+    }
+    if (workletNodeRef.current) {
+      workletNodeRef.current.disconnect();
+      workletNodeRef.current = null;
+    }
     if (workerRef.current) {
       workerRef.current.terminate();
       workerRef.current = null;
