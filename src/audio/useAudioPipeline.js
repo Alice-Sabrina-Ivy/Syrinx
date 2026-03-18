@@ -104,6 +104,16 @@ export function useAudioPipeline() {
         }
       };
 
+      // Connect worklet to destination via a muted gain node.
+      // Without this, the browser may stop calling process() on the
+      // AudioWorklet because its output "isn't consumed" (no path to
+      // destination). This is per spec — the UA may skip processing
+      // for nodes whose output isn't reachable from the destination.
+      const muteNode = audioCtx.createGain();
+      muteNode.gain.value = 0;
+      workletNode.connect(muteNode);
+      muteNode.connect(audioCtx.destination);
+
       const source = audioCtx.createMediaStreamSource(stream);
       source.connect(workletNode);
       sourceNodeRef.current = source;
