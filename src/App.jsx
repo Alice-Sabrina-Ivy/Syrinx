@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAudioPipeline } from "./audio/useAudioPipeline";
 import { PitchTrace } from "./components/PitchTrace";
 import { VowelSpacePlot } from "./components/VowelSpacePlot";
@@ -10,8 +10,32 @@ const TABS = [
   { id: "resonance", label: "Resonance" },
 ];
 
+const WELCOME_KEY = "syrinx_welcomed";
+
+function WelcomeOverlay({ onDismiss }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4">
+      <div className="bg-neutral-900 border border-neutral-700 rounded-2xl p-6 max-w-sm w-full text-center shadow-xl">
+        <h2 className="text-xl font-light text-white mb-3">Welcome to Syrinx</h2>
+        <p className="text-sm text-neutral-300 leading-relaxed mb-5">
+          Syrinx gives you real-time visual feedback on your voice pitch, resonance, and
+          vocal weight — it needs microphone access to work.{" "}
+          The green target zones show the ranges you're aiming for.
+        </p>
+        <button
+          onClick={onDismiss}
+          className="px-6 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium transition-colors cursor-pointer"
+        >
+          Get Started
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [activeTab, setActiveTab] = useState("dashboard");
+  const [showWelcome, setShowWelcome] = useState(false);
   const {
     status,
     error,
@@ -29,8 +53,24 @@ function App() {
     formantTrailRef,
   } = useAudioPipeline();
 
+  // Check first visit
+  useEffect(() => {
+    if (!localStorage.getItem(WELCOME_KEY)) {
+      setShowWelcome(true);
+    }
+  }, []);
+
+  function dismissWelcome() {
+    localStorage.setItem(WELCOME_KEY, "1");
+    setShowWelcome(false);
+    start();
+  }
+
   return (
     <div className="h-screen flex flex-col px-4 py-4 overflow-hidden">
+      {/* Welcome overlay (first visit only) */}
+      {showWelcome && <WelcomeOverlay onDismiss={dismissWelcome} />}
+
       {/* Header */}
       <header className="text-center mb-2 flex-shrink-0">
         <h1 className="text-2xl font-light text-white tracking-tight">
@@ -142,7 +182,7 @@ function App() {
               )}
             </div>
 
-            {/* Voice status + stop button (shown on all tabs) */}
+            {/* Voice status + mic toggle */}
             <div className="flex-shrink-0 mt-3 flex items-center justify-center gap-4">
               <div className="flex items-center gap-2">
                 <div
@@ -165,9 +205,15 @@ function App() {
 
               <button
                 onClick={stop}
-                className="px-4 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-400 text-xs transition-colors cursor-pointer"
+                className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-400 text-xs transition-colors cursor-pointer"
               >
-                Stop
+                {/* Mic-off icon (inline SVG) */}
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+                  <path d="M7.5 2a2.5 2.5 0 0 0-2.5 2.5v4a2.5 2.5 0 0 0 5 0v-4A2.5 2.5 0 0 0 7.5 2z" opacity="0.5" />
+                  <path fillRule="evenodd" d="M3.5 7.5a.5.5 0 0 1 .5.5 3.5 3.5 0 1 0 7 0 .5.5 0 0 1 1 0 4.5 4.5 0 0 1-4 4.473V14.5h2a.5.5 0 0 1 0 1h-5a.5.5 0 0 1 0-1h2v-2.027A4.5 4.5 0 0 1 3 8a.5.5 0 0 1 .5-.5z" clipRule="evenodd" opacity="0.5" />
+                  <path d="M1.646 1.646a.5.5 0 0 1 .708 0l12 12a.5.5 0 0 1-.708.708l-12-12a.5.5 0 0 1 0-.708z" />
+                </svg>
+                Stop Listening
               </button>
             </div>
           </div>
