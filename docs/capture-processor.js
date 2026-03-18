@@ -1,29 +1,52 @@
 // capture-processor.js — AudioWorklet processor that runs in the audio thread
-// Collects mic audio samples into ~50ms chunks and posts them to the main thread
+// Collects mic audio samples into ~50ms chunks and posts them to the main thread.
+// Uses a pre-allocated ring buffer to avoid GC pauses on the audio thread.
 
 class CaptureProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
-    this.buffer = new Float32Array(0);
-    // ~50ms at 48kHz = 2400 samples. Adjusted dynamically if sample rate differs.
+    // ~50ms at 48kHz = 2400 samples
     this.chunkSize = Math.floor(sampleRate * 0.05);
+    // Pre-allocate buffer large enough for 2 chunks + headroom for input frames
+    // (avoids creating new Float32Array objects in process(), reducing GC pressure)
+    this.bufferSize = this.chunkSize * 3;
+    this.buffer = new Float32Array(this.bufferSize);
+    this.writePos = 0;
+    // Reusable chunk for sending (avoids allocation per send)
+    this.chunk = new Float32Array(this.chunkSize);
   }
 
   process(inputs) {
     const input = inputs[0]?.[0]; // mono channel
     if (!input || input.length === 0) return true;
 
-    // Append incoming samples to our accumulation buffer
-    const newBuffer = new Float32Array(this.buffer.length + input.length);
-    newBuffer.set(this.buffer);
-    newBuffer.set(input, this.buffer.length);
-    this.buffer = newBuffer;
+    // Copy input into pre-allocated buffer
+    if (this.writePos + input.length > this.bufferSize) {
+      // Should rarely happen — compact by shifting data left
+      if (this.writePos > 0) {
+        this.buffer.copyWithin(0, 0, this.writePos);
+      }
+      // If still not enough room, expand (very rare)
+      if (this.writePos + input.length > this.bufferSize) {
+        this.bufferSize = (this.writePos + input.length) * 2;
+        const newBuf = new Float32Array(this.bufferSize);
+        newBuf.set(this.buffer.subarray(0, this.writePos));
+        this.buffer = newBuf;
+      }
+    }
+    this.buffer.set(input, this.writePos);
+    this.writePos += input.length;
 
-    // Send complete chunks via transferable ArrayBuffer (zero-copy)
-    while (this.buffer.length >= this.chunkSize) {
-      const chunk = this.buffer.slice(0, this.chunkSize);
-      this.buffer = this.buffer.slice(this.chunkSize);
-      this.port.postMessage(chunk.buffer, [chunk.buffer]);
+    // Send complete chunks
+    while (this.writePos >= this.chunkSize) {
+      // Copy chunk data into a new transferable buffer
+      // (must be a fresh ArrayBuffer since transfer detaches it)
+      const out = new Float32Array(this.chunkSize);
+      out.set(this.buffer.subarray(0, this.chunkSize));
+      // Shift remaining data left
+      this.buffer.copyWithin(0, this.chunkSize, this.writePos);
+      this.writePos -= this.chunkSize;
+      this.port.postMessage(out.buffer, [out.buffer]);
     }
 
     return true; // Keep processor alive
