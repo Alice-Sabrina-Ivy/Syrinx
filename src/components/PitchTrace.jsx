@@ -46,22 +46,35 @@ export function PitchTrace({ pitchTraceRef, voiced, holding, pitch, compact = fa
     const displayLow = PITCH_DISPLAY_RANGE.low;
     const displayHigh = PITCH_DISPLAY_RANGE.high;
 
+    // Padding: enough room for Y-axis labels on left and "now" on right
+    const pad = { left: 48, right: 28, top: 8, bottom: 24 };
+
     function hzToY(hz) {
-      // Linear mapping: displayHigh → top, displayLow → bottom
+      const dpr = window.devicePixelRatio || 1;
+      const plotTop = pad.top * dpr;
+      const plotBottom = canvas.height - pad.bottom * dpr;
       const frac = (hz - displayLow) / (displayHigh - displayLow);
-      return canvas.height * (1 - frac);
+      return plotBottom - frac * (plotBottom - plotTop);
     }
 
     function timeToX(t, now) {
+      const dpr = window.devicePixelRatio || 1;
+      const plotLeft = pad.left * dpr;
+      const plotRight = canvas.width - pad.right * dpr;
       const age = now - t;
       const frac = 1 - age / (PITCH_TRACE_SECONDS * 1000);
-      return frac * canvas.width;
+      return plotLeft + frac * (plotRight - plotLeft);
     }
 
     function draw() {
       const dpr = window.devicePixelRatio || 1;
       const w = canvas.width;
       const h = canvas.height;
+
+      const plotLeft = pad.left * dpr;
+      const plotRight = w - pad.right * dpr;
+      const plotTop = pad.top * dpr;
+      const plotBottom = h - pad.bottom * dpr;
 
       ctx.clearRect(0, 0, w, h);
 
@@ -81,12 +94,12 @@ export function PitchTrace({ pitchTraceRef, voiced, holding, pitch, compact = fa
         ctx.strokeStyle = COLORS.grid;
         ctx.lineWidth = 1;
         ctx.beginPath();
-        ctx.moveTo(40 * dpr, y);
-        ctx.lineTo(w, y);
+        ctx.moveTo(plotLeft, y);
+        ctx.lineTo(plotRight, y);
         ctx.stroke();
 
         ctx.fillStyle = COLORS.gridLabel;
-        ctx.fillText(`${hz}`, 36 * dpr, y);
+        ctx.fillText(`${hz}`, plotLeft - 6 * dpr, y);
       }
 
       // Time labels
@@ -95,26 +108,26 @@ export function PitchTrace({ pitchTraceRef, voiced, holding, pitch, compact = fa
       const now = Date.now();
       for (let sec = 0; sec <= PITCH_TRACE_SECONDS; sec += 5) {
         const x = timeToX(now - sec * 1000, now);
-        if (x < 40 * dpr) continue;
+        if (x < plotLeft - 5 * dpr) continue;
         ctx.fillStyle = COLORS.gridLabel;
-        ctx.fillText(sec === 0 ? "now" : `-${sec}s`, x, h - 16 * dpr);
+        ctx.fillText(sec === 0 ? "now" : `-${sec}s`, x, plotBottom + 4 * dpr);
       }
 
       // Target band
       const bandTop = hzToY(targetHigh);
       const bandBottom = hzToY(targetLow);
       ctx.fillStyle = COLORS.targetBand;
-      ctx.fillRect(40 * dpr, bandTop, w - 40 * dpr, bandBottom - bandTop);
+      ctx.fillRect(plotLeft, bandTop, plotRight - plotLeft, bandBottom - bandTop);
 
       // Target band borders
       ctx.strokeStyle = COLORS.targetBandBorder;
       ctx.lineWidth = 1;
       ctx.setLineDash([4 * dpr, 4 * dpr]);
       ctx.beginPath();
-      ctx.moveTo(40 * dpr, bandTop);
-      ctx.lineTo(w, bandTop);
-      ctx.moveTo(40 * dpr, bandBottom);
-      ctx.lineTo(w, bandBottom);
+      ctx.moveTo(plotLeft, bandTop);
+      ctx.lineTo(plotRight, bandTop);
+      ctx.moveTo(plotLeft, bandBottom);
+      ctx.lineTo(plotRight, bandBottom);
       ctx.stroke();
       ctx.setLineDash([]);
 
@@ -134,7 +147,7 @@ export function PitchTrace({ pitchTraceRef, voiced, holding, pitch, compact = fa
         const pt = data[i];
         const x = timeToX(pt.time, now);
 
-        if (x < 40 * dpr) continue;
+        if (x < plotLeft) continue;
 
         if (!pt.voiced || pt.pitch === null) {
           // Gap — end current segment
