@@ -17,6 +17,33 @@ let ringBuffer = new Float32Array(ringCapacity);
 let ringLen = 0; // how many valid samples are in the buffer
 let analysisCount = 0;
 
+function processChunk(buffer) {
+  const chunk = new Float32Array(buffer);
+  appendToRingBuffer(chunk);
+
+  if (ringLen < windowSize) return;
+
+  // Extract analysis window (last windowSize samples) without allocating
+  const windowStart = ringLen - windowSize;
+  const window = ringBuffer.subarray(windowStart, ringLen);
+  const intensity = computeIntensity(window);
+  const pitch = detectPitch(window, sampleRate);
+
+  // Formants, spectral tilt, HNR are heavier — run every 4th analysis (~200ms)
+  let formants = null, spectralTilt = null, hnr = null;
+  if (analysisCount % 4 === 0) {
+    formants = extractFormants(window);
+    spectralTilt = computeSpectralTilt(window, sampleRate);
+    hnr = computeHNR(window, sampleRate);
+  }
+  analysisCount++;
+
+  self.postMessage({
+    type: "analysis",
+    data: { pitch, intensity, formants, spectralTilt, hnr, timestamp: performance.now() },
+  });
+}
+
 self.onmessage = (e) => {
   const { type } = e.data;
 
@@ -32,31 +59,15 @@ self.onmessage = (e) => {
     return;
   }
 
+  // Direct MessagePort from AudioWorklet (bypasses main thread)
+  if (type === "port") {
+    const port = e.data.port;
+    port.onmessage = (ev) => processChunk(ev.data);
+    return;
+  }
+
   if (type === "chunk") {
-    const chunk = new Float32Array(e.data.buffer);
-    appendToRingBuffer(chunk);
-
-    if (ringLen < windowSize) return;
-
-    // Extract analysis window (last windowSize samples) without allocating
-    const windowStart = ringLen - windowSize;
-    const window = ringBuffer.subarray(windowStart, ringLen);
-    const intensity = computeIntensity(window);
-    const pitch = detectPitch(window, sampleRate);
-
-    // Formants, spectral tilt, HNR are heavier — run every 4th analysis (~200ms)
-    let formants = null, spectralTilt = null, hnr = null;
-    if (analysisCount % 4 === 0) {
-      formants = extractFormants(window);
-      spectralTilt = computeSpectralTilt(window, sampleRate);
-      hnr = computeHNR(window, sampleRate);
-    }
-    analysisCount++;
-
-    self.postMessage({
-      type: "analysis",
-      data: { pitch, intensity, formants, spectralTilt, hnr, timestamp: performance.now() },
-    });
+    processChunk(e.data.buffer);
   }
 };
 
