@@ -16,6 +16,7 @@ export function VowelSpacePlot({
   voiced,
   holding,
   formants,
+  compact = false,
 }) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
@@ -241,37 +242,39 @@ export function VowelSpacePlot({
         <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
       </div>
 
-      {/* F1/F2 readout */}
-      <div className="mt-3 flex items-baseline justify-center gap-4">
-        <span
-          className={`text-sm tabular-nums transition-opacity duration-300 ${
-            !voiced && !holding
-              ? "text-neutral-600 opacity-40"
-              : holding
-                ? "text-neutral-300 opacity-50"
-                : "text-neutral-300"
-          }`}
-        >
-          F1:{" "}
-          <span className="text-base font-light">
-            {f1 !== null ? `${Math.round(f1)} Hz` : "—"}
+      {/* F1/F2 readout (hidden in compact mode) */}
+      {!compact && (
+        <div className="mt-3 flex items-baseline justify-center gap-4">
+          <span
+            className={`text-sm tabular-nums transition-opacity duration-300 ${
+              !voiced && !holding
+                ? "text-neutral-600 opacity-40"
+                : holding
+                  ? "text-neutral-300 opacity-50"
+                  : "text-neutral-300"
+            }`}
+          >
+            F1:{" "}
+            <span className="text-base font-light">
+              {f1 !== null ? `${Math.round(f1)} Hz` : "—"}
+            </span>
           </span>
-        </span>
-        <span
-          className={`text-sm tabular-nums transition-opacity duration-300 ${
-            !voiced && !holding
-              ? "text-neutral-600 opacity-40"
-              : holding
-                ? "text-neutral-300 opacity-50"
-                : "text-neutral-300"
-          }`}
-        >
-          F2:{" "}
-          <span className="text-base font-light">
-            {f2 !== null ? `${Math.round(f2)} Hz` : "—"}
+          <span
+            className={`text-sm tabular-nums transition-opacity duration-300 ${
+              !voiced && !holding
+                ? "text-neutral-600 opacity-40"
+                : holding
+                  ? "text-neutral-300 opacity-50"
+                  : "text-neutral-300"
+            }`}
+          >
+            F2:{" "}
+            <span className="text-base font-light">
+              {f2 !== null ? `${Math.round(f2)} Hz` : "—"}
+            </span>
           </span>
-        </span>
-      </div>
+        </div>
+      )}
     </div>
   );
 }
