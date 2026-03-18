@@ -10,7 +10,8 @@ import {
   FORMANT_TRAIL_SECONDS,
 } from "../utils/constants";
 
-const SILENCE_THRESHOLD_DB = -45;
+const SILENCE_THRESHOLD_DB = -50;
+const SILENCE_DEBOUNCE_FRAMES = 3; // require 3 consecutive quiet frames before gating
 const PITCH_SMOOTH_LEN = 3;
 const FORMANT_SMOOTH_LEN = 5;
 
@@ -40,6 +41,7 @@ export function useAudioPipeline() {
 
   // Silence gating
   const silenceStartRef = useRef(null);
+  const quietFrameCountRef = useRef(0);
   const lastVoicedRef = useRef({
     pitch: null,
     noteName: null,
@@ -130,6 +132,7 @@ export function useAudioPipeline() {
     f2SmoothRef.current = [];
     f3SmoothRef.current = [];
     silenceStartRef.current = null;
+    quietFrameCountRef.current = 0;
     pitchTraceRef.current = [];
     formantTrailRef.current = [];
     setState({
@@ -150,10 +153,19 @@ export function useAudioPipeline() {
     const { pitch, intensity, formants, spectralTilt, hnr } = data;
     const now = Date.now();
 
-    // Silence = intensity below threshold. Pitch detection failure during
-    // loud audio is NOT silence — hold the last pitch to bridge short gaps.
-    const isQuiet = intensity < SILENCE_THRESHOLD_DB;
+    // Silence = intensity below threshold for multiple consecutive frames.
+    // Single-frame dips (from GC pauses or audio glitches) are bridged.
+    // Pitch detection failure during loud audio is NOT silence.
+    const frameQuiet = intensity < SILENCE_THRESHOLD_DB;
     const hasPitch = pitch !== null;
+
+    if (frameQuiet) {
+      quietFrameCountRef.current++;
+    } else {
+      quietFrameCountRef.current = 0;
+    }
+
+    const isQuiet = quietFrameCountRef.current >= SILENCE_DEBOUNCE_FRAMES;
 
     if (isQuiet) {
       // Record silence start time
