@@ -47,6 +47,7 @@ function App() {
     formants,
     spectralTilt,
     hnr,
+    limitedMode,
     start,
     stop,
     pitchTraceRef,
@@ -147,6 +148,7 @@ function App() {
                   formants={formants}
                   spectralTilt={spectralTilt}
                   hnr={hnr}
+                  limitedMode={limitedMode}
                   pitchTraceRef={pitchTraceRef}
                   formantTrailRef={formantTrailRef}
                   start={start}

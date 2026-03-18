@@ -27,6 +27,7 @@ export function useAudioPipeline() {
     formants: { f1: null, f2: null, f3: null },
     spectralTilt: null,
     hnr: null,
+    limitedMode: false,
   });
 
   const audioCtxRef = useRef(null);
@@ -108,6 +109,14 @@ export function useAudioPipeline() {
       worker.onmessage = (e) => {
         if (e.data.type === "analysis") {
           handleAnalysisResult(e.data.data);
+        } else if (e.data.type === "perfTier") {
+          // Worker detected performance tier — adjust chunk interval for mobile
+          if (e.data.tier === "mobile" || e.data.tier === "limited") {
+            workletNode.port.postMessage({ type: "setChunkMs", chunkMs: 0.075 });
+          }
+          if (e.data.tier === "limited") {
+            setState((s) => ({ ...s, limitedMode: true }));
+          }
         }
       };
 
@@ -176,6 +185,7 @@ export function useAudioPipeline() {
       formants: { f1: null, f2: null, f3: null },
       spectralTilt: null,
       hnr: null,
+      limitedMode: false,
     });
   }, []);
 
