@@ -27,7 +27,16 @@ export function useAudioPipeline() {
     formants: { f1: null, f2: null, f3: null },
     spectralTilt: null,
     hnr: null,
-    limitedMode: false,
+  });
+
+  // Latency diagnostic state (temporary — visible on page for debugging)
+  const [diag, setDiag] = useState({
+    messageLatencyMs: 0,     // worker send → main thread receive
+    workerProcessingMs: 0,   // time spent in processChunk
+    pendingChunks: 0,        // chunks queued in worker
+    baseLatency: 0,          // AudioContext.baseLatency
+    outputLatency: 0,        // AudioContext.outputLatency
+    sampleRate: 0,           // actual AudioContext sample rate
   });
 
   const audioCtxRef = useRef(null);
@@ -108,15 +117,19 @@ export function useAudioPipeline() {
 
       worker.onmessage = (e) => {
         if (e.data.type === "analysis") {
-          handleAnalysisResult(e.data.data);
-        } else if (e.data.type === "perfTier") {
-          // Worker detected performance tier — adjust chunk interval for mobile
-          if (e.data.tier === "mobile" || e.data.tier === "limited") {
-            workletNode.port.postMessage({ type: "setChunkMs", chunkMs: 0.075 });
-          }
-          if (e.data.tier === "limited") {
-            setState((s) => ({ ...s, limitedMode: true }));
-          }
+          const receiveTime = performance.now();
+          const data = e.data.data;
+          // Diagnostic: measure message relay latency (worker → main thread)
+          const messageLatencyMs = receiveTime - data.timestamp;
+          setDiag({
+            messageLatencyMs: Math.round(messageLatencyMs * 10) / 10,
+            workerProcessingMs: Math.round((data.workerProcessingMs || 0) * 10) / 10,
+            pendingChunks: data.pendingChunks || 0,
+            baseLatency: Math.round((audioCtx.baseLatency || 0) * 1000 * 10) / 10,
+            outputLatency: Math.round((audioCtx.outputLatency || 0) * 1000 * 10) / 10,
+            sampleRate: audioCtx.sampleRate,
+          });
+          handleAnalysisResult(data);
         }
       };
 
@@ -185,7 +198,6 @@ export function useAudioPipeline() {
       formants: { f1: null, f2: null, f3: null },
       spectralTilt: null,
       hnr: null,
-      limitedMode: false,
     });
   }, []);
 
@@ -337,6 +349,7 @@ export function useAudioPipeline() {
 
   return {
     ...state,
+    diag,
     start,
     stop,
     pitchTraceRef,
