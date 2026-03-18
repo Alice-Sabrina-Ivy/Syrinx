@@ -3,7 +3,6 @@ import { useAudioPipeline } from "./audio/useAudioPipeline";
 import { PitchTrace } from "./components/PitchTrace";
 import { VowelSpacePlot } from "./components/VowelSpacePlot";
 import { CombinedDashboard } from "./components/CombinedDashboard";
-import { DebugPanel } from "./components/DebugPanel";
 
 const TABS = [
   { id: "dashboard", label: "Dashboard" },
@@ -52,7 +51,6 @@ function App() {
     stop,
     pitchTraceRef,
     formantTrailRef,
-    debugRef,
   } = useAudioPipeline();
 
   // Check first visit
@@ -72,13 +70,6 @@ function App() {
     <div className="h-screen flex flex-col px-4 py-4 overflow-hidden">
       {/* Welcome overlay (first visit only) */}
       {showWelcome && <WelcomeOverlay onDismiss={dismissWelcome} />}
-
-      {/* Debug panel — shows live pipeline stats at top of page */}
-      {status === "running" && (
-        <div className="flex-shrink-0 mb-2">
-          <DebugPanel debugRef={debugRef} />
-        </div>
-      )}
 
       {/* Header */}
       <header className="text-center mb-2 flex-shrink-0">
@@ -158,7 +149,6 @@ function App() {
                   hnr={hnr}
                   pitchTraceRef={pitchTraceRef}
                   formantTrailRef={formantTrailRef}
-                  debugRef={debugRef}
                   start={start}
                   stop={stop}
                   status={status}
@@ -170,7 +160,6 @@ function App() {
                   <div className="flex-1 min-h-[240px]">
                     <PitchTrace
                       pitchTraceRef={pitchTraceRef}
-                      debugRef={debugRef}
                       voiced={voiced}
                       holding={holding}
                       pitch={pitch}
