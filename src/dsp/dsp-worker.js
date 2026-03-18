@@ -17,8 +17,12 @@ let ringBuffer = new Float32Array(ringCapacity);
 let ringLen = 0; // how many valid samples are in the buffer
 let analysisCount = 0;
 
+// Worker-side diagnostic counters — sent with every analysis result
+let workerStats = { chunksReceived: 0, pitchDetected: 0, pitchNull: 0 };
+
 function processChunk(buffer) {
   const chunk = new Float32Array(buffer);
+  workerStats.chunksReceived++;
   appendToRingBuffer(chunk);
 
   if (ringLen < windowSize) return;
@@ -28,6 +32,9 @@ function processChunk(buffer) {
   const window = ringBuffer.subarray(windowStart, ringLen);
   const intensity = computeIntensity(window);
   const pitch = detectPitch(window, sampleRate);
+
+  if (pitch !== null) workerStats.pitchDetected++;
+  else workerStats.pitchNull++;
 
   // Formants, spectral tilt, HNR are heavier — run every 4th analysis (~200ms)
   let formants = null, spectralTilt = null, hnr = null;
@@ -40,7 +47,11 @@ function processChunk(buffer) {
 
   self.postMessage({
     type: "analysis",
-    data: { pitch, intensity, formants, spectralTilt, hnr, timestamp: performance.now() },
+    data: {
+      pitch, intensity, formants, spectralTilt, hnr,
+      timestamp: performance.now(),
+      workerStats: { ...workerStats },
+    },
   });
 }
 
