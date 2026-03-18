@@ -150,9 +150,12 @@ export function useAudioPipeline() {
     const { pitch, intensity, formants, spectralTilt, hnr } = data;
     const now = Date.now();
 
-    const isSilent = intensity < SILENCE_THRESHOLD_DB || pitch === null;
+    // Silence = intensity below threshold. Pitch detection failure during
+    // loud audio is NOT silence — hold the last pitch to bridge short gaps.
+    const isQuiet = intensity < SILENCE_THRESHOLD_DB;
+    const hasPitch = pitch !== null;
 
-    if (isSilent) {
+    if (isQuiet) {
       // Record silence start time
       if (silenceStartRef.current === null) {
         silenceStartRef.current = now;
@@ -199,11 +202,27 @@ export function useAudioPipeline() {
       return;
     }
 
-    // Voiced frame — clear silence timer
+    // Audio is above silence threshold — treat as voiced
     silenceStartRef.current = null;
 
-    // Smooth pitch with rolling median
-    const smoothedPitch = pushAndMedian(pitchSmoothRef, pitch, PITCH_SMOOTH_LEN);
+    // Use detected pitch, or hold last smoothed pitch across detection gaps
+    const effectivePitch = hasPitch
+      ? pitch
+      : (pitchSmoothRef.current.length > 0
+        ? pitchSmoothRef.current[pitchSmoothRef.current.length - 1]
+        : null);
+
+    if (effectivePitch === null) {
+      // No pitch history to hold — treat as gap
+      pitchTraceRef.current.push({ time: now, pitch: null, voiced: false });
+      trimHistory(pitchTraceRef.current, PITCH_TRACE_SECONDS * 1000, now);
+      return;
+    }
+
+    // Smooth pitch with rolling median (only push new detections, not held values)
+    const smoothedPitch = hasPitch
+      ? pushAndMedian(pitchSmoothRef, pitch, PITCH_SMOOTH_LEN)
+      : median(pitchSmoothRef.current);
 
     // Smooth formants with rolling median — hold last valid value on null frames
     const f1 = formants?.f1
