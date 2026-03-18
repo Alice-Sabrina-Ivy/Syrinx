@@ -86,12 +86,10 @@ export function useAudioPipeline() {
 
       worker.postMessage({ type: "init", sampleRate: audioCtx.sampleRate });
 
-      workletNode.port.onmessage = (e) => {
-        worker.postMessage(
-          { type: "chunk", buffer: e.data },
-          [e.data],
-        );
-      };
+      // Direct AudioWorklet → Worker channel (bypasses main thread)
+      const channel = new MessageChannel();
+      worker.postMessage({ type: "port", port: channel.port1 }, [channel.port1]);
+      workletNode.port.postMessage({ type: "port", port: channel.port2 }, [channel.port2]);
 
       worker.onmessage = (e) => {
         if (e.data.type === "analysis") {
@@ -233,13 +231,17 @@ export function useAudioPipeline() {
       trimHistory(formantTrailRef.current, FORMANT_TRAIL_SECONDS * 1000, now);
     }
 
+    // Use new values when provided, otherwise hold previous
+    const currentTilt = spectralTilt ?? lastVoicedRef.current.spectralTilt;
+    const currentHnr = hnr ?? lastVoicedRef.current.hnr;
+
     // Save as last voiced values (for hold behavior)
     lastVoicedRef.current = {
       pitch: smoothedPitch,
       noteName,
       formants: smoothedFormants,
-      spectralTilt: spectralTilt ?? null,
-      hnr: hnr ?? null,
+      spectralTilt: currentTilt,
+      hnr: currentHnr,
     };
 
     setState((s) => ({
@@ -250,8 +252,8 @@ export function useAudioPipeline() {
       intensity,
       noteName,
       formants: smoothedFormants,
-      spectralTilt: spectralTilt ?? null,
-      hnr: hnr ?? null,
+      spectralTilt: currentTilt,
+      hnr: currentHnr,
     }));
   }
 
