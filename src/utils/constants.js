@@ -24,6 +24,14 @@ export const PITCH_TRACE_SECONDS = 15;
 export const FORMANT_TRAIL_SECONDS = 2;
 export const SILENCE_HOLD_MS = 5000;
 
+// Spectral tilt display range (dB) — lower = lighter voice, higher = heavier
+export const SPECTRAL_TILT_RANGE = { min: -5, max: 25 };
+// Default target zone for voice feminization (lighter voice)
+export const SPECTRAL_TILT_TARGET = { low: -2, high: 8 };
+
+// HNR display range (dB) — higher = cleaner voice
+export const HNR_RANGE = { min: 0, max: 35 };
+
 // Colors
 export const COLORS = {
   inTarget: "#4ade80",
