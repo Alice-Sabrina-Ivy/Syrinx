@@ -139,7 +139,7 @@ export function useAudioPipeline() {
             // Audio age: how old is the audio that was just analyzed?
             // contextTime = AudioContext time when chunk was captured
             // Expected: contextTime ≈ audioCtx.currentTime (if no input buffering)
-            const audioAgeMs = data.contextTime
+            const audioAgeMs = data.contextTime != null
               ? Math.round((audioCtx.currentTime - data.contextTime) * 1000)
               : null;
             setDiag({
