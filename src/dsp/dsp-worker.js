@@ -1,7 +1,7 @@
 // dsp-worker.js — Web Worker that performs all DSP analysis off the main thread
 // Pitch detection (YIN), formant extraction (Burg LPC), spectral tilt, HNR, intensity
 
-const WINDOW_MS = 200;
+const WINDOW_MS = 100;
 let sampleRate = 48000;
 let windowSize = Math.floor(sampleRate * WINDOW_MS / 1000);
 
@@ -37,9 +37,9 @@ function processChunk(buffer, contextTime) {
   const intensity = computeIntensity(window);
   const pitch = detectPitch(window, sampleRate);
 
-  // Formants, spectral tilt, HNR are heavier — run every 4th analysis (~200ms)
+  // Formants, spectral tilt, HNR are heavier — run every 6th analysis (~180ms)
   let formants = null, spectralTilt = null, hnr = null;
-  if (analysisCount % 4 === 0) {
+  if (analysisCount % 6 === 0) {
     formants = extractFormants(window);
     spectralTilt = computeSpectralTilt(window, sampleRate);
     hnr = computeHNR(window, sampleRate);
