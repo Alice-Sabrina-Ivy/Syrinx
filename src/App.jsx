@@ -144,7 +144,7 @@ function App() {
               <span>base:<b>{diag.baseLatency}</b>ms</span>
               <span>out:<b>{diag.outputLatency}</b>ms</span>
               <span>sr:<b>{diag.sampleRate}</b></span>
-              <span>clk:<b>{Math.round(Date.now() - (performance.timeOrigin + performance.now()))}</b>ms</span>
+              <span>audioAge:<b>{diag.audioAgeMs ?? "—"}</b>ms</span>
             </div>
 
             {/* Tab content */}
