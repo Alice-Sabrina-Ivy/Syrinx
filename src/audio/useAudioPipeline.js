@@ -39,6 +39,14 @@ export function useAudioPipeline() {
     sampleRate: 0,           // actual AudioContext sample rate
   });
 
+  // Throttle setState to reduce React renders on mobile.
+  // Canvas animations read from refs at full rAF rate; setState only drives
+  // the text readouts (F0, F2, HNR, etc.) which don't need >5fps.
+  const lastStateUpdateRef = useRef(0);
+  const STATE_UPDATE_INTERVAL = 200; // ms (~5fps for text readouts)
+  const lastDiagUpdateRef = useRef(0);
+  const DIAG_UPDATE_INTERVAL = 500; // ms (~2fps for diagnostic panel)
+
   const audioCtxRef = useRef(null);
   const workerRef = useRef(null);
   const streamRef = useRef(null);
@@ -117,19 +125,24 @@ export function useAudioPipeline() {
 
       worker.onmessage = (e) => {
         if (e.data.type === "analysis") {
-          const receiveAbsolute = performance.timeOrigin + performance.now();
           const data = e.data.data;
-          // Diagnostic: measure message relay latency using absolute timestamps
-          const messageLatencyMs = receiveAbsolute - data.absoluteTime;
-          setDiag({
-            messageLatencyMs: Math.round(messageLatencyMs * 10) / 10,
-            workerProcessingMs: Math.round((data.workerProcessingMs || 0) * 10) / 10,
-            pendingChunks: data.pendingChunks || 0,
-            baseLatency: Math.round((audioCtx.baseLatency || 0) * 1000 * 10) / 10,
-            outputLatency: Math.round((audioCtx.outputLatency || 0) * 1000 * 10) / 10,
-            sampleRate: audioCtx.sampleRate,
-          });
+          // Always update refs immediately (canvas reads these at full rAF rate)
           handleAnalysisResult(data);
+          // Throttle diagnostic setState to ~2fps (avoid render pressure)
+          const diagNow = performance.now();
+          if (diagNow - lastDiagUpdateRef.current >= DIAG_UPDATE_INTERVAL) {
+            lastDiagUpdateRef.current = diagNow;
+            const receiveAbsolute = performance.timeOrigin + diagNow;
+            const messageLatencyMs = receiveAbsolute - data.absoluteTime;
+            setDiag({
+              messageLatencyMs: Math.round(messageLatencyMs * 10) / 10,
+              workerProcessingMs: Math.round((data.workerProcessingMs || 0) * 10) / 10,
+              pendingChunks: data.pendingChunks || 0,
+              baseLatency: Math.round((audioCtx.baseLatency || 0) * 1000 * 10) / 10,
+              outputLatency: Math.round((audioCtx.outputLatency || 0) * 1000 * 10) / 10,
+              sampleRate: audioCtx.sampleRate,
+            });
+          }
         }
       };
 
@@ -201,6 +214,17 @@ export function useAudioPipeline() {
     });
   }, []);
 
+  // Throttled setState: only fires at STATE_UPDATE_INTERVAL to avoid
+  // saturating the main thread with React renders on mobile.
+  // Canvas animations read from refs at full rAF rate (unaffected).
+  function throttledSetState(updater) {
+    const now = performance.now();
+    if (now - lastStateUpdateRef.current >= STATE_UPDATE_INTERVAL) {
+      lastStateUpdateRef.current = now;
+      setState(updater);
+    }
+  }
+
   function handleAnalysisResult(data) {
     const { pitch, intensity, formants, spectralTilt, hnr, absoluteTime } = data;
     // Use the worker's absolute timestamp (timeOrigin + performance.now()).
@@ -239,7 +263,7 @@ export function useAudioPipeline() {
       if (silenceDuration < SILENCE_HOLD_MS) {
         // Hold last voiced values (display goes to reduced opacity)
         const held = lastVoicedRef.current;
-        setState((s) => ({
+        throttledSetState((s) => ({
           ...s,
           voiced: false,
           holding: true,
@@ -256,7 +280,7 @@ export function useAudioPipeline() {
         f1SmoothRef.current = [];
         f2SmoothRef.current = [];
         f3SmoothRef.current = [];
-        setState((s) => ({
+        throttledSetState((s) => ({
           ...s,
           voiced: false,
           holding: false,
@@ -308,7 +332,7 @@ export function useAudioPipeline() {
     const noteName = noteInfo?.name || null;
     const smoothedFormants = { f1, f2, f3 };
 
-    // Update history buffers
+    // Update history buffers (always, at full rate — canvas reads these)
     pitchTraceRef.current.push({
       time: now,
       pitch: smoothedPitch,
@@ -334,7 +358,8 @@ export function useAudioPipeline() {
       hnr: currentHnr,
     };
 
-    setState((s) => ({
+    // Throttled: only update React state for text readouts at ~5fps
+    throttledSetState((s) => ({
       ...s,
       voiced: true,
       holding: false,

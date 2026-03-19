@@ -137,14 +137,14 @@ function App() {
             </nav>
 
             {/* Latency diagnostic (temporary) */}
-            <div className="flex-shrink-0 mb-2 mx-auto px-3 py-1.5 rounded-lg bg-yellow-900/30 border border-yellow-700/40 text-[10px] font-mono text-yellow-300/80 flex flex-wrap gap-x-4 gap-y-0.5">
-              <span>msg relay: <b>{diag.messageLatencyMs}ms</b></span>
-              <span>worker proc: <b>{diag.workerProcessingMs}ms</b></span>
-              <span>queue: <b>{diag.pendingChunks}</b></span>
-              <span>baseLatency: <b>{diag.baseLatency}ms</b></span>
-              <span>outputLatency: <b>{diag.outputLatency}ms</b></span>
-              <span>sampleRate: <b>{diag.sampleRate}Hz</b></span>
-              <span>clockOffset: <b>{Math.round(Date.now() - (performance.timeOrigin + performance.now()))}ms</b></span>
+            <div className="flex-shrink-0 mb-2 mx-auto px-3 py-1.5 rounded-lg bg-yellow-900/30 border border-yellow-700/40 text-[10px] font-mono text-yellow-300/80 flex flex-wrap gap-x-3 gap-y-0.5">
+              <span>relay:<b>{diag.messageLatencyMs}</b>ms</span>
+              <span>proc:<b>{diag.workerProcessingMs}</b>ms</span>
+              <span>q:<b>{diag.pendingChunks}</b></span>
+              <span>base:<b>{diag.baseLatency}</b>ms</span>
+              <span>out:<b>{diag.outputLatency}</b>ms</span>
+              <span>sr:<b>{diag.sampleRate}</b></span>
+              <span>clk:<b>{Math.round(Date.now() - (performance.timeOrigin + performance.now()))}</b>ms</span>
             </div>
 
             {/* Tab content */}

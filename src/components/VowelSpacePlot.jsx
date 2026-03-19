@@ -28,6 +28,15 @@ export function VowelSpacePlot({
   // Trail of past screen positions for the polyline
   const trailRef = useRef([]);
 
+  // "Latest ref" pattern: store props in refs so the rAF loop can read
+  // current values without restarting the useEffect on every render.
+  const formantRef = useRef(formants);
+  const voicedRef = useRef(voiced);
+  const holdingRef = useRef(holding);
+  formantRef.current = formants;
+  voicedRef.current = voiced;
+  holdingRef.current = holding;
+
   // Canvas sizing
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -164,8 +173,11 @@ export function VowelSpacePlot({
       }
 
       // --- Comet dot + trail ---
-      const f1 = formants?.f1;
-      const f2 = formants?.f2;
+      const curFormants = formantRef.current;
+      const curVoiced = voicedRef.current;
+      const curHolding = holdingRef.current;
+      const f1 = curFormants?.f1;
+      const f2 = curFormants?.f2;
       const hasTarget =
         f1 != null &&
         f2 != null &&
@@ -173,7 +185,7 @@ export function VowelSpacePlot({
         f1 <= F1_RANGE.high &&
         f2 >= F2_RANGE.low &&
         f2 <= F2_RANGE.high;
-      const isActive = voiced || holding;
+      const isActive = curVoiced || curHolding;
 
       const pos = posRef.current;
       const trail = trailRef.current;
@@ -255,7 +267,8 @@ export function VowelSpacePlot({
 
     draw();
     return () => cancelAnimationFrame(animId);
-  }, [formants, voiced, holding]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Reads formants/voiced/holding from refs — no deps needed
 
   const f1 = formants?.f1;
   const f2 = formants?.f2;
