@@ -5,8 +5,9 @@
 class CaptureProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
-    // ~50ms at sample rate (e.g. 2400 samples at 48kHz)
-    this.chunkSize = Math.floor(sampleRate * 0.05);
+    // ~30ms at sample rate (e.g. 1440 samples at 48kHz)
+    // Smaller chunks = more frequent analysis = faster pitch change detection
+    this.chunkSize = Math.floor(sampleRate * 0.03);
     // Pre-allocate buffer large enough for 2 chunks + headroom for input frames
     // (avoids creating new Float32Array objects in process(), reducing GC pressure)
     this.bufferSize = this.chunkSize * 3;
