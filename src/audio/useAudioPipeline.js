@@ -12,7 +12,7 @@ import {
 
 const SILENCE_THRESHOLD_DB = -50;
 const SILENCE_DEBOUNCE_FRAMES = 3; // require 3 consecutive quiet frames before gating
-const PITCH_SMOOTH_LEN = 3;
+const PITCH_SMOOTH_LEN = 2;
 const FORMANT_SMOOTH_LEN = 5;
 
 export function useAudioPipeline() {
@@ -29,26 +29,13 @@ export function useAudioPipeline() {
     hnr: null,
   });
 
-  // Latency diagnostic state (temporary — visible on page for debugging)
-  const [diag, setDiag] = useState({
-    messageLatencyMs: 0,     // worker send → main thread receive
-    workerProcessingMs: 0,   // time spent in processChunk
-    pendingChunks: 0,        // chunks queued in worker
-    baseLatency: 0,          // AudioContext.baseLatency
-    outputLatency: 0,        // AudioContext.outputLatency
-    sampleRate: 0,           // actual AudioContext sample rate
-  });
-
   // Throttle setState to reduce React renders on mobile.
   // Canvas animations read from refs at full rAF rate; setState only drives
   // the text readouts (F0, F2, HNR, etc.) which don't need >5fps.
   const lastStateUpdateRef = useRef(0);
   const STATE_UPDATE_INTERVAL = 200; // ms (~5fps for text readouts)
-  const lastDiagUpdateRef = useRef(0);
-  const DIAG_UPDATE_INTERVAL = 500; // ms (~2fps for diagnostic panel)
 
   const audioCtxRef = useRef(null);
-  const audioCtxCreatedRef = useRef(0); // Date.now() when AudioContext was created
   const workerRef = useRef(null);
   const streamRef = useRef(null);
   const workletNodeRef = useRef(null);
@@ -97,8 +84,6 @@ export function useAudioPipeline() {
 
       const audioCtx = new AudioContext({ latencyHint: "interactive" });
       audioCtxRef.current = audioCtx;
-      audioCtxCreatedRef.current = Date.now();
-
       await audioCtx.audioWorklet.addModule("capture-processor.js");
       const workletNode = new AudioWorkletNode(audioCtx, "capture-processor");
       workletNodeRef.current = workletNode;
@@ -130,28 +115,6 @@ export function useAudioPipeline() {
           const data = e.data.data;
           // Always update refs immediately (canvas reads these at full rAF rate)
           handleAnalysisResult(data);
-          // Throttle diagnostic setState to ~2fps (avoid render pressure)
-          const diagNow = performance.now();
-          if (diagNow - lastDiagUpdateRef.current >= DIAG_UPDATE_INTERVAL) {
-            lastDiagUpdateRef.current = diagNow;
-            const receiveAbsolute = performance.timeOrigin + diagNow;
-            const messageLatencyMs = receiveAbsolute - data.absoluteTime;
-            // Audio age: how old is the audio that was just analyzed?
-            // contextTime = AudioContext time when chunk was captured
-            // Expected: contextTime ≈ audioCtx.currentTime (if no input buffering)
-            const audioAgeMs = data.contextTime != null
-              ? Math.round((audioCtx.currentTime - data.contextTime) * 1000)
-              : null;
-            setDiag({
-              messageLatencyMs: Math.round(messageLatencyMs * 10) / 10,
-              workerProcessingMs: Math.round((data.workerProcessingMs || 0) * 10) / 10,
-              pendingChunks: data.pendingChunks || 0,
-              baseLatency: Math.round((audioCtx.baseLatency || 0) * 1000 * 10) / 10,
-              outputLatency: Math.round((audioCtx.outputLatency || 0) * 1000 * 10) / 10,
-              sampleRate: audioCtx.sampleRate,
-              audioAgeMs,
-            });
-          }
         }
       };
 
@@ -382,7 +345,6 @@ export function useAudioPipeline() {
 
   return {
     ...state,
-    diag,
     start,
     stop,
     pitchTraceRef,
