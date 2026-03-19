@@ -1,7 +1,7 @@
 // dsp-worker.js — Web Worker that performs all DSP analysis off the main thread
 // Pitch detection (YIN), formant extraction (Burg LPC), spectral tilt, HNR, intensity
 
-const WINDOW_MS = 100;
+const WINDOW_MS = 50;
 let sampleRate = 48000;
 let windowSize = Math.floor(sampleRate * WINDOW_MS / 1000);
 
