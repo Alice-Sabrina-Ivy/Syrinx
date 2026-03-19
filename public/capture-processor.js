@@ -55,8 +55,9 @@ class CaptureProcessor extends AudioWorkletProcessor {
       this.buffer.copyWithin(0, this.chunkSize, this.writePos);
       this.writePos -= this.chunkSize;
       // Send directly to DSP Worker (or fall back to main-thread relay)
+      // Include audio context time so downstream can measure audio age
       const target = this.workerPort || this.port;
-      target.postMessage(out.buffer, [out.buffer]);
+      target.postMessage({ buffer: out.buffer, contextTime: currentTime }, [out.buffer]);
     }
 
     return true; // Keep processor alive

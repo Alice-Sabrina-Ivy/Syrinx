@@ -19,10 +19,12 @@ let analysisCount = 0;
 
 // Diagnostic: track pending chunks for queue depth monitoring
 let pendingChunks = 0;
+let lastContextTime = 0; // AudioContext time when latest chunk was captured
 
-function processChunk(buffer) {
+function processChunk(buffer, contextTime) {
   const chunkReceiveTime = performance.now();
   pendingChunks--;
+  if (contextTime != null) lastContextTime = contextTime;
 
   const chunk = new Float32Array(buffer);
   appendToRingBuffer(chunk);
@@ -55,6 +57,7 @@ function processChunk(buffer) {
       // Diagnostic fields
       workerProcessingMs: analysisEndTime - chunkReceiveTime,
       pendingChunks,
+      contextTime: lastContextTime, // AudioContext time when audio was captured
     },
   });
 }
@@ -79,7 +82,14 @@ self.onmessage = (e) => {
     const port = e.data.port;
     port.onmessage = (ev) => {
       pendingChunks++;
-      processChunk(ev.data);
+      // Worklet sends {buffer, contextTime} — extract both
+      const msg = ev.data;
+      if (msg && msg.buffer) {
+        processChunk(msg.buffer, msg.contextTime);
+      } else {
+        // Fallback: raw ArrayBuffer (shouldn't happen with updated worklet)
+        processChunk(msg);
+      }
     };
     return;
   }
