@@ -48,6 +48,7 @@ export function useAudioPipeline() {
   const DIAG_UPDATE_INTERVAL = 500; // ms (~2fps for diagnostic panel)
 
   const audioCtxRef = useRef(null);
+  const audioCtxCreatedRef = useRef(0); // Date.now() when AudioContext was created
   const workerRef = useRef(null);
   const streamRef = useRef(null);
   const workletNodeRef = useRef(null);
@@ -94,8 +95,9 @@ export function useAudioPipeline() {
       });
       streamRef.current = stream;
 
-      const audioCtx = new AudioContext();
+      const audioCtx = new AudioContext({ latencyHint: "interactive" });
       audioCtxRef.current = audioCtx;
+      audioCtxCreatedRef.current = Date.now();
 
       await audioCtx.audioWorklet.addModule("capture-processor.js");
       const workletNode = new AudioWorkletNode(audioCtx, "capture-processor");
@@ -134,6 +136,12 @@ export function useAudioPipeline() {
             lastDiagUpdateRef.current = diagNow;
             const receiveAbsolute = performance.timeOrigin + diagNow;
             const messageLatencyMs = receiveAbsolute - data.absoluteTime;
+            // Audio age: how old is the audio that was just analyzed?
+            // contextTime = AudioContext time when chunk was captured
+            // Expected: contextTime ≈ audioCtx.currentTime (if no input buffering)
+            const audioAgeMs = data.contextTime
+              ? Math.round((audioCtx.currentTime - data.contextTime) * 1000)
+              : null;
             setDiag({
               messageLatencyMs: Math.round(messageLatencyMs * 10) / 10,
               workerProcessingMs: Math.round((data.workerProcessingMs || 0) * 10) / 10,
@@ -141,6 +149,7 @@ export function useAudioPipeline() {
               baseLatency: Math.round((audioCtx.baseLatency || 0) * 1000 * 10) / 10,
               outputLatency: Math.round((audioCtx.outputLatency || 0) * 1000 * 10) / 10,
               sampleRate: audioCtx.sampleRate,
+              audioAgeMs,
             });
           }
         }
