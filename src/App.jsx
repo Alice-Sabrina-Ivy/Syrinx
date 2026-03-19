@@ -47,7 +47,6 @@ function App() {
     formants,
     spectralTilt,
     hnr,
-    diag,
     start,
     stop,
     pitchTraceRef,
@@ -135,17 +134,6 @@ function App() {
                 </button>
               ))}
             </nav>
-
-            {/* Latency diagnostic (temporary) */}
-            <div className="flex-shrink-0 mb-2 mx-auto px-3 py-1.5 rounded-lg bg-yellow-900/30 border border-yellow-700/40 text-[10px] font-mono text-yellow-300/80 flex flex-wrap gap-x-3 gap-y-0.5">
-              <span>relay:<b>{diag.messageLatencyMs}</b>ms</span>
-              <span>proc:<b>{diag.workerProcessingMs}</b>ms</span>
-              <span>q:<b>{diag.pendingChunks}</b></span>
-              <span>base:<b>{diag.baseLatency}</b>ms</span>
-              <span>out:<b>{diag.outputLatency}</b>ms</span>
-              <span>sr:<b>{diag.sampleRate}</b></span>
-              <span>audioAge:<b>{diag.audioAgeMs ?? "—"}</b>ms</span>
-            </div>
 
             {/* Tab content */}
             <div className="flex-1 flex flex-col min-h-0">
