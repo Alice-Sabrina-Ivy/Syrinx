@@ -144,6 +144,7 @@ function App() {
               <span>baseLatency: <b>{diag.baseLatency}ms</b></span>
               <span>outputLatency: <b>{diag.outputLatency}ms</b></span>
               <span>sampleRate: <b>{diag.sampleRate}Hz</b></span>
+              <span>clockOffset: <b>{Math.round(Date.now() - (performance.timeOrigin + performance.now()))}ms</b></span>
             </div>
 
             {/* Tab content */}
