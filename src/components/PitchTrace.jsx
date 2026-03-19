@@ -105,7 +105,7 @@ export function PitchTrace({ pitchTraceRef, voiced, holding, pitch, compact = fa
       // Time labels
       ctx.textAlign = "center";
       ctx.textBaseline = "top";
-      const now = Date.now();
+      const now = Math.round(performance.timeOrigin + performance.now());
       for (let sec = 0; sec <= PITCH_TRACE_SECONDS; sec += 5) {
         const x = timeToX(now - sec * 1000, now);
         if (x < plotLeft - 5 * dpr) continue;
