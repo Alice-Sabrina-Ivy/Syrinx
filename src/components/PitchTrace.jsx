@@ -189,8 +189,11 @@ export function PitchTrace({ pitchTraceRef, voiced, holding, pitch, compact = fa
       }
       if (inSegment) ctx.stroke();
 
-      // Current position glow dot
-      const lastVoiced = [...data].reverse().find((p) => p.voiced && p.pitch !== null);
+      // Current position glow dot (backward scan avoids array copy + reverse)
+      let lastVoiced = null;
+      for (let i = data.length - 1; i >= 0; i--) {
+        if (data[i].voiced && data[i].pitch !== null) { lastVoiced = data[i]; break; }
+      }
       if (lastVoiced && now - lastVoiced.time < 500) {
         const x = timeToX(lastVoiced.time, now);
         const y = hzToY(lastVoiced.pitch);
