@@ -235,13 +235,12 @@ export function useAudioPipeline() {
   }
 
   function handleAnalysisResult(data) {
-    const { pitch, intensity, formants, spectralTilt, hnr, absoluteTime } = data;
-    // Use the worker's absolute timestamp (timeOrigin + performance.now()).
-    // This reflects when audio was actually *analyzed*, not when the main
-    // thread got around to handling the message.  Using absolute time from
-    // the worker avoids clock skew between worker and main thread
-    // performance.now() origins (which can differ by seconds on mobile).
-    const now = Math.round(absoluteTime);
+    const { pitch, intensity, formants, spectralTilt, hnr } = data;
+    // Use the main thread's own clock for data point timestamps.
+    // The draw loop also uses the main thread clock (performance.timeOrigin +
+    // performance.now()), so using the same clock source eliminates any
+    // cross-context timing offset between Worker and main thread.
+    const now = Math.round(performance.timeOrigin + performance.now());
 
     // Silence = intensity below threshold for multiple consecutive frames.
     // Single-frame dips (from GC pauses or audio glitches) are bridged.
