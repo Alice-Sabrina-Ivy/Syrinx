@@ -198,12 +198,12 @@ export function useAudioPipeline() {
   }
 
   function handleAnalysisResult(data) {
-    const { pitch, intensity, formants, spectralTilt, hnr } = data;
-    // Use the main thread's own clock for data point timestamps.
-    // The draw loop also uses the main thread clock (performance.timeOrigin +
-    // performance.now()), so using the same clock source eliminates any
-    // cross-context timing offset between Worker and main thread.
-    const now = Math.round(performance.timeOrigin + performance.now());
+    const { pitch, intensity, formants, spectralTilt, hnr, absoluteTime } = data;
+    // Use the worker's absolute timestamp for data points.
+    // This reflects when audio was *analyzed* in the worker, which is the
+    // true event time.  The draw loop also uses absoluteTime-based clocks,
+    // and clockOffset between worker and main thread is ~0ms.
+    const now = Math.round(absoluteTime);
 
     // Silence = intensity below threshold for multiple consecutive frames.
     // Single-frame dips (from GC pauses or audio glitches) are bridged.
