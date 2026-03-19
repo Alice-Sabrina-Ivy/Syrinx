@@ -117,10 +117,10 @@ export function useAudioPipeline() {
 
       worker.onmessage = (e) => {
         if (e.data.type === "analysis") {
-          const receiveTime = performance.now();
+          const receiveAbsolute = performance.timeOrigin + performance.now();
           const data = e.data.data;
-          // Diagnostic: measure message relay latency (worker → main thread)
-          const messageLatencyMs = receiveTime - data.timestamp;
+          // Diagnostic: measure message relay latency using absolute timestamps
+          const messageLatencyMs = receiveAbsolute - data.absoluteTime;
           setDiag({
             messageLatencyMs: Math.round(messageLatencyMs * 10) / 10,
             workerProcessingMs: Math.round((data.workerProcessingMs || 0) * 10) / 10,
@@ -202,13 +202,13 @@ export function useAudioPipeline() {
   }, []);
 
   function handleAnalysisResult(data) {
-    const { pitch, intensity, formants, spectralTilt, hnr, timestamp } = data;
-    // Use the worker's timestamp (performance.now()) converted to epoch ms.
+    const { pitch, intensity, formants, spectralTilt, hnr, absoluteTime } = data;
+    // Use the worker's absolute timestamp (timeOrigin + performance.now()).
     // This reflects when audio was actually *analyzed*, not when the main
-    // thread got around to handling the message.  If the main thread is busy
-    // with React renders, queued results would otherwise all get the same
-    // Date.now() and bunch into a single x-position on the trace.
-    const now = Math.round(performance.timeOrigin + timestamp);
+    // thread got around to handling the message.  Using absolute time from
+    // the worker avoids clock skew between worker and main thread
+    // performance.now() origins (which can differ by seconds on mobile).
+    const now = Math.round(absoluteTime);
 
     // Silence = intensity below threshold for multiple consecutive frames.
     // Single-frame dips (from GC pauses or audio glitches) are bridged.

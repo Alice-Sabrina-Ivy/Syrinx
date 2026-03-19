@@ -50,7 +50,8 @@ function processChunk(buffer) {
     type: "analysis",
     data: {
       pitch, intensity, formants, spectralTilt, hnr,
-      timestamp: performance.now(),
+      // Absolute timestamp comparable across threads
+      absoluteTime: performance.timeOrigin + performance.now(),
       // Diagnostic fields
       workerProcessingMs: analysisEndTime - chunkReceiveTime,
       pendingChunks,
