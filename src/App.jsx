@@ -1,13 +1,11 @@
 import { useState, useEffect } from "react";
 import { useAudioPipeline } from "./audio/useAudioPipeline";
 import { PitchTrace } from "./components/PitchTrace";
-import { VowelSpacePlot } from "./components/VowelSpacePlot";
 import { CombinedDashboard } from "./components/CombinedDashboard";
 
 const TABS = [
   { id: "dashboard", label: "Dashboard" },
   { id: "pitch", label: "Pitch" },
-  { id: "resonance", label: "Resonance" },
 ];
 
 const WELCOME_KEY = "syrinx_welcomed";
@@ -42,8 +40,6 @@ function App() {
     voiced,
     holding,
     pitch,
-    intensity,
-    noteName,
     formants,
     spectralTilt,
     hnr,
@@ -142,16 +138,11 @@ function App() {
                   voiced={voiced}
                   holding={holding}
                   pitch={pitch}
-                  intensity={intensity}
-                  noteName={noteName}
                   formants={formants}
                   spectralTilt={spectralTilt}
                   hnr={hnr}
                   pitchTraceRef={pitchTraceRef}
                   formantTrailRef={formantTrailRef}
-                  start={start}
-                  stop={stop}
-                  status={status}
                 />
               )}
 
@@ -163,19 +154,6 @@ function App() {
                       voiced={voiced}
                       holding={holding}
                       pitch={pitch}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {activeTab === "resonance" && (
-                <div className="flex-1 flex flex-col min-h-0">
-                  <div className="flex-1 min-h-[240px]">
-                    <VowelSpacePlot
-                      formantTrailRef={formantTrailRef}
-                      voiced={voiced}
-                      holding={holding}
-                      formants={formants}
                     />
                   </div>
                 </div>

@@ -7,7 +7,7 @@ import { hzToNote } from "../utils/pitchUtils";
 import {
   SILENCE_HOLD_MS,
   PITCH_TRACE_SECONDS,
-  FORMANT_TRAIL_SECONDS,
+  RESONANCE_TRACE_SECONDS,
 } from "../utils/constants";
 
 const SILENCE_THRESHOLD_DB = -50;
@@ -312,8 +312,8 @@ export function useAudioPipeline() {
     trimHistory(pitchTraceRef.current, PITCH_TRACE_SECONDS * 1000, now);
 
     if (f1 !== null && f2 !== null) {
-      formantTrailRef.current.push({ time: now, f1, f2, voiced: true });
-      trimHistory(formantTrailRef.current, FORMANT_TRAIL_SECONDS * 1000, now);
+      formantTrailRef.current.push({ time: now, f1, f2, f3: f3, voiced: true });
+      trimHistory(formantTrailRef.current, RESONANCE_TRACE_SECONDS * 1000, now);
     }
 
     // Use new values when provided, otherwise hold previous
