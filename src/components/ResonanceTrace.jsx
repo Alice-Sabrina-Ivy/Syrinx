@@ -159,7 +159,7 @@ export function ResonanceTrace({ formantTrailRef, voiced, holding, formants, com
             inSegment = false;
           }
           prevTime = pt.time;
-          if (!pt.voiced || pt.f2 == null) continue;
+          if (!pt.voiced || pt.f2 === null || pt.f2 === undefined) continue;
           // Time-gap with valid data: start a new segment at this point
         }
 
@@ -175,7 +175,7 @@ export function ResonanceTrace({ formantTrailRef, voiced, holding, formants, com
           const prevPt = data[i - 1];
           const prevInTarget =
             prevPt?.voiced &&
-            prevPt.f2 != null &&
+            prevPt.f2 !== null && prevPt.f2 !== undefined &&
             prevPt.f2 >= targetLow &&
             prevPt.f2 <= targetHigh;
 
@@ -196,7 +196,7 @@ export function ResonanceTrace({ formantTrailRef, voiced, holding, formants, com
       // Current position glow dot
       let lastVoiced = null;
       for (let i = data.length - 1; i >= 0; i--) {
-        if (data[i].voiced && data[i].f2 != null) { lastVoiced = data[i]; break; }
+        if (data[i].voiced && data[i].f2 !== null && data[i].f2 !== undefined) { lastVoiced = data[i]; break; }
       }
       if (lastVoiced && now - lastVoiced.time < 500) {
         const x = timeToX(lastVoiced.time, now);
@@ -230,7 +230,7 @@ export function ResonanceTrace({ formantTrailRef, voiced, holding, formants, com
   // Readout
   const f2 = formants?.f2;
   const inTarget =
-    f2 != null &&
+    f2 !== null && f2 !== undefined &&
     f2 >= DEFAULT_F2_TARGET.low &&
     f2 <= DEFAULT_F2_TARGET.high;
 
@@ -257,7 +257,7 @@ export function ResonanceTrace({ formantTrailRef, voiced, holding, formants, com
                     : "text-orange-400"
             }`}
           >
-            {f2 != null ? `${Math.round(f2)} Hz` : "\u2014 Hz"}
+            {f2 !== null && f2 !== undefined ? `${Math.round(f2)} Hz` : "\u2014 Hz"}
           </span>
           <span className="text-sm text-neutral-500">F2</span>
         </div>
