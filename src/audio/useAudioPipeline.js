@@ -13,7 +13,7 @@ import {
 const SILENCE_THRESHOLD_DB = -50;
 const SILENCE_DEBOUNCE_FRAMES = 3; // require 3 consecutive quiet frames before gating
 const PITCH_SMOOTH_LEN = 2;
-const FORMANT_SMOOTH_LEN = 13;
+const FORMANT_SMOOTH_LEN = 7;
 const FORMANT_OUTLIER_HZ = 500; // max plausible frame-to-frame formant jump
 
 export function useAudioPipeline() {
@@ -364,11 +364,18 @@ function pushAndMedian(ref, value, maxLen) {
 
 function pushAndMedianGated(ref, value, maxLen, maxJump) {
   const current = median(ref.current);
-  // Accept the value if the buffer is empty or within the jump threshold
-  if (current !== null && Math.abs(value - current) > maxJump) {
-    return current; // discard outlier, return existing median
+  // If buffer is empty, accept any value
+  if (current === null) {
+    ref.current.push(value);
+    return value;
   }
-  ref.current.push(value);
+  // Clamp outliers toward the current median so the buffer can drift
+  // toward the true value instead of getting permanently stuck
+  const delta = value - current;
+  const clamped = Math.abs(delta) > maxJump
+    ? current + Math.sign(delta) * maxJump
+    : value;
+  ref.current.push(clamped);
   if (ref.current.length > maxLen) ref.current.shift();
   return median(ref.current);
 }
