@@ -26,6 +26,44 @@ let analysisCount = 0;
 let pendingChunks = 0;
 let lastContextTime = 0; // AudioContext time when latest chunk was captured
 
+// --- Pre-allocated buffers for zero-GC-pressure hot path ---
+// These are sized for the default 48 kHz sample rate and re-allocated on 'init'.
+let _preEmph = new Float64Array(windowSize);
+let _windowed = new Float64Array(windowSize);
+let _decimated = new Float64Array(Math.floor(windowSize / decimationFactor));
+
+// YIN pitch: FFT-based autocorrelation buffers.
+// FFT size must be >= 2*windowSize and a power of 2.
+let _yinFftLen = 1;
+{ let _n = windowSize; while (_yinFftLen < _n * 2) _yinFftLen <<= 1; }
+let _yinRe = new Float64Array(_yinFftLen);
+let _yinIm = new Float64Array(_yinFftLen);
+let _yinDiff = new Float32Array(windowSize);
+let _yinCmnd = new Float32Array(windowSize);
+
+// Spectral tilt: 2048-point FFT (fixed size, independent of sample rate)
+const _tiltRe = new Float64Array(2048);
+const _tiltIm = new Float64Array(2048);
+
+// HNR: 4096-point FFT (fixed, accommodates 2048 samples zero-padded)
+const _hnrRe = new Float64Array(4096);
+const _hnrIm = new Float64Array(4096);
+
+// Burg LPC: pre-allocated prediction error buffers (sized for decimated length)
+let _burgEf = new Float64Array(Math.floor(windowSize / decimationFactor));
+let _burgEb = new Float64Array(Math.floor(windowSize / decimationFactor));
+let _burgEfTmp = new Float64Array(Math.floor(windowSize / decimationFactor));
+let _burgA = new Float64Array(LPC_ORDER + 1);
+let _burgANew = new Float64Array(LPC_ORDER + 1);
+
+// Root finding: flat typed arrays instead of object arrays (2 doubles per root)
+let _rootsRe = new Float64Array(LPC_ORDER);
+let _rootsIm = new Float64Array(LPC_ORDER);
+
+// Formant selection scratch arrays (max LPC_ORDER/2 = 5 formants)
+const _formantFreqs = new Float64Array(LPC_ORDER);
+const _formantBws = new Float64Array(LPC_ORDER);
+
 function processChunk(buffer, contextTime) {
   const chunkReceiveTime = performance.now();
   pendingChunks--;
@@ -82,6 +120,27 @@ self.onmessage = (e) => {
     ringBuffer = new Float32Array(ringCapacity);
     ringLen = 0;
     analysisCount = 0;
+
+    // Re-allocate pre-sized buffers for new sample rate
+    const decLen = Math.floor(windowSize / decimationFactor);
+    _preEmph = new Float64Array(windowSize);
+    _windowed = new Float64Array(windowSize);
+    _decimated = new Float64Array(decLen);
+    _burgEf = new Float64Array(decLen);
+    _burgEb = new Float64Array(decLen);
+    _burgEfTmp = new Float64Array(decLen);
+    _burgA = new Float64Array(LPC_ORDER + 1);
+    _burgANew = new Float64Array(LPC_ORDER + 1);
+    _rootsRe = new Float64Array(LPC_ORDER);
+    _rootsIm = new Float64Array(LPC_ORDER);
+
+    // YIN FFT buffers
+    _yinFftLen = 1;
+    while (_yinFftLen < windowSize * 2) _yinFftLen <<= 1;
+    _yinRe = new Float64Array(_yinFftLen);
+    _yinIm = new Float64Array(_yinFftLen);
+    _yinDiff = new Float32Array(windowSize);
+    _yinCmnd = new Float32Array(windowSize);
     return;
   }
 
@@ -134,33 +193,70 @@ function computeIntensity(buffer) {
   return 20 * Math.log10(rms);
 }
 
-// --- YIN Pitch Detection ---
+// --- YIN Pitch Detection (FFT-accelerated) ---
+// Uses FFT-based autocorrelation to compute the YIN difference function in
+// O(n log n) instead of O(n²). The difference function d(tau) can be expressed as:
+//   d(tau) = r(0) + r_shifted(0) - 2*r_cross(tau)
+// where r_cross is the cross-correlation computed via FFT.
 
 function detectPitch(buffer, sr) {
-  const threshold = 0.20; // YIN aperiodicity threshold — lower = stricter voicing detection
-  const minF0 = 75;       // lowest detectable pitch (Hz) — covers bass voices
-  const maxF0 = 600;      // highest detectable pitch (Hz) — covers soprano + head voice
+  const threshold = 0.20;
+  const minF0 = 75;
+  const maxF0 = 600;
   const minLag = Math.floor(sr / maxF0);
   const maxLag = Math.floor(sr / minF0);
   const halfLen = Math.floor(buffer.length / 2);
-  // Only compute diff/CMND up to the lags we actually search (+1 for parabolic interp)
   const searchLen = Math.min(maxLag + 2, halfLen);
 
   if (maxLag >= halfLen) return null;
 
-  // Step 1: Difference function (outer loop limited to searchLen, inner uses full halfLen)
-  const diff = new Float32Array(searchLen);
+  const N = buffer.length;
+  const fftLen = _yinFftLen;
+  const re = _yinRe;
+  const im = _yinIm;
+
+  // Zero-fill and load buffer into FFT arrays
+  re.fill(0);
+  im.fill(0);
+  for (let i = 0; i < N; i++) re[i] = buffer[i];
+
+  // Autocorrelation via FFT: IFFT(|FFT(x)|²)
+  fft(re, im);
+  for (let i = 0; i < fftLen; i++) {
+    re[i] = re[i] * re[i] + im[i] * im[i];
+    im[i] = 0;
+  }
+  fft(re, im);
+  // re[tau] / fftLen = autocorrelation at lag tau
+
+  // Compute cumulative energy for the difference function:
+  // d(tau) = cumEnergy[tau] + cumEnergy[tau] - 2 * autocorr(tau)
+  // More precisely: d(tau) = sum_{i=0}^{halfLen-1} (x[i] - x[i+tau])^2
+  //   = sum x[i]^2 (for i in [0,halfLen)) + sum x[i+tau]^2 (for i in [0,halfLen)) - 2*crosscorr(tau)
+  // We precompute prefix sums for the squared signal to get these partial sums in O(1).
+
+  const diff = _yinDiff;
+  // Energy of first half: sum_{i=0}^{halfLen-1} x[i]^2
+  let leftEnergy = 0;
+  for (let i = 0; i < halfLen; i++) leftEnergy += buffer[i] * buffer[i];
+
+  // For each tau, right energy = sum_{i=tau}^{tau+halfLen-1} x[i]^2
+  // We can compute this incrementally
+  let rightEnergy = leftEnergy; // tau=0: same as left
+  diff[0] = 0;
+
   for (let tau = 1; tau < searchLen; tau++) {
-    let sum = 0;
-    for (let i = 0; i < halfLen; i++) {
-      const d = buffer[i] - buffer[i + tau];
-      sum += d * d;
+    // Update right energy: remove x[tau-1]^2, add x[tau+halfLen-1]^2
+    rightEnergy -= buffer[tau - 1] * buffer[tau - 1];
+    if (tau + halfLen - 1 < N) {
+      rightEnergy += buffer[tau + halfLen - 1] * buffer[tau + halfLen - 1];
     }
-    diff[tau] = sum;
+    const autocorr = re[tau] / fftLen;
+    diff[tau] = leftEnergy + rightEnergy - 2 * autocorr;
   }
 
   // Step 2: Cumulative mean normalized difference
-  const cmnd = new Float32Array(searchLen);
+  const cmnd = _yinCmnd;
   cmnd[0] = 1;
   let runningSum = 0;
   for (let tau = 1; tau < searchLen; tau++) {
@@ -187,12 +283,9 @@ function detectPitch(buffer, sr) {
   const denom = 2 * (s0 - 2 * s1 + s2);
   let refinedTau = denom !== 0 ? bestTau + (s0 - s2) / denom : bestTau;
 
-  // Clamp refined lag so the resulting pitch stays within [minF0, maxF0].
-  // Parabolic interpolation can overshoot the original lag by up to ±0.5,
-  // which at band edges (75 Hz, 600 Hz) may produce out-of-range pitches.
-  const minTau = sr / maxF0; // highest pitch → shortest lag
-  const maxTau = sr / minF0; // lowest pitch → longest lag
-  refinedTau = Math.max(minTau, Math.min(maxTau, refinedTau));
+  const minTauVal = sr / maxF0;
+  const maxTauVal = sr / minF0;
+  refinedTau = Math.max(minTauVal, Math.min(maxTauVal, refinedTau));
 
   return sr / refinedTau;
 }
@@ -200,53 +293,64 @@ function detectPitch(buffer, sr) {
 // --- Formant Extraction (Burg LPC) ---
 
 function extractFormants(buffer) {
-  // Pre-emphasis: boost high frequencies to flatten the spectral envelope
-  // before LPC analysis. Coefficient 0.97 is standard for speech processing
-  // at 8-48 kHz sample rates (approximately a +6 dB/octave high-frequency lift).
-  const preEmph = new Float64Array(buffer.length);
-  preEmph[0] = buffer[0];
-  for (let i = 1; i < buffer.length; i++) {
-    preEmph[i] = buffer[i] - 0.97 * buffer[i - 1];
+  const n = buffer.length;
+
+  // Pre-emphasis into pre-allocated buffer
+  _preEmph[0] = buffer[0];
+  for (let i = 1; i < n; i++) {
+    _preEmph[i] = buffer[i] - 0.97 * buffer[i - 1];
   }
 
-  // Hamming window
-  const n = preEmph.length;
-  const windowed = new Float64Array(n);
+  // Hamming window into pre-allocated buffer
   for (let i = 0; i < n; i++) {
-    windowed[i] = preEmph[i] * (0.54 - 0.46 * Math.cos((2 * Math.PI * i) / (n - 1)));
+    _windowed[i] = _preEmph[i] * (0.54 - 0.46 * Math.cos((2 * Math.PI * i) / (n - 1)));
   }
 
-  // Downsample with anti-alias FIR filter to prevent aliasing artifacts
-  const downsampled = decimateWithFilter(windowed, decimationFactor);
+  // Downsample with anti-alias FIR filter (writes into _decimated)
+  const decLen = decimateWithFilter(_windowed, decimationFactor);
 
-  // Burg LPC
-  const { coefficients } = burgLPC(downsampled, LPC_ORDER);
+  // Burg LPC (uses pre-allocated buffers internally)
+  const coefficients = burgLPC(_decimated.subarray(0, decLen), LPC_ORDER);
 
-  // Find polynomial roots
-  const roots = findPolynomialRoots(coefficients);
+  // Find polynomial roots (uses pre-allocated flat arrays)
+  const rootCount = findPolynomialRoots(coefficients);
 
   // Convert roots to formant frequencies + bandwidths
-  const formants = [];
-  for (const root of roots) {
-    if (root.imag <= 0) continue; // Only positive frequencies
+  // Use a small fixed-size scratch array to avoid allocations
+  let fCount = 0;
+  const fFreqs = _formantFreqs;
+  const fBws = _formantBws;
+  for (let i = 0; i < rootCount; i++) {
+    if (_rootsIm[i] <= 0) continue;
 
-    const freq = (Math.atan2(root.imag, root.real) * targetSR) / (2 * Math.PI);
-    const mag = Math.sqrt(root.real * root.real + root.imag * root.imag);
+    const freq = (Math.atan2(_rootsIm[i], _rootsRe[i]) * targetSR) / (2 * Math.PI);
+    const mag = Math.sqrt(_rootsRe[i] * _rootsRe[i] + _rootsIm[i] * _rootsIm[i]);
     const bw = mag > 0 ? (-Math.log(mag) * targetSR) / Math.PI : Infinity;
 
-    // Valid formants: 90-5500 Hz covers F1 (~250-900 Hz) through F4 (~3500-4500 Hz).
-    // Bandwidth < 600 Hz rejects spurious roots — real formant bandwidths are typically 50-400 Hz.
     if (freq > 90 && freq < 5500 && bw > 0 && bw < 600) {
-      formants.push({ freq, bw });
+      fFreqs[fCount] = freq;
+      fBws[fCount] = bw;
+      fCount++;
     }
   }
 
-  formants.sort((a, b) => a.freq - b.freq);
+  // Sort by frequency (insertion sort — at most 5 elements)
+  for (let i = 1; i < fCount; i++) {
+    const kf = fFreqs[i], kb = fBws[i];
+    let j = i - 1;
+    while (j >= 0 && fFreqs[j] > kf) {
+      fFreqs[j + 1] = fFreqs[j];
+      fBws[j + 1] = fBws[j];
+      j--;
+    }
+    fFreqs[j + 1] = kf;
+    fBws[j + 1] = kb;
+  }
 
   return {
-    f1: formants[0]?.freq || null,
-    f2: formants[1]?.freq || null,
-    f3: formants[2]?.freq || null,
+    f1: fCount > 0 ? fFreqs[0] : null,
+    f2: fCount > 1 ? fFreqs[1] : null,
+    f3: fCount > 2 ? fFreqs[2] : null,
   };
 }
 
@@ -281,43 +385,54 @@ function designLowPassFIR(cutoffNormalized, numTaps) {
 antiAliasFilter = designLowPassFIR(0.4 / decimationFactor, decimationFactor * 16 + 1);
 
 // Downsample with FIR anti-alias filtering to prevent aliasing artifacts.
-// Applies the pre-computed low-pass filter before decimation.
+// Writes result into pre-allocated _decimated buffer. Returns the decimated length.
 function decimateWithFilter(buffer, factor) {
-  if (factor <= 1) return buffer;
+  if (factor <= 1) {
+    // Copy into _decimated for consistency
+    for (let i = 0; i < buffer.length; i++) _decimated[i] = buffer[i];
+    return buffer.length;
+  }
   const taps = antiAliasFilter;
   const numTaps = taps.length;
   const halfTaps = numTaps >> 1;
-  const newLen = Math.floor(buffer.length / factor);
-  const result = new Float64Array(newLen);
+  const bufLen = buffer.length;
+  const newLen = Math.floor(bufLen / factor);
   for (let i = 0; i < newLen; i++) {
     let sum = 0;
     const center = i * factor;
-    for (let j = 0; j < numTaps; j++) {
-      const idx = center - halfTaps + j;
-      if (idx >= 0 && idx < buffer.length) {
-        sum += buffer[idx] * taps[j];
-      }
+    // Compute clamped bounds to avoid per-sample branch
+    const jStart = Math.max(0, halfTaps - center);
+    const jEnd = Math.min(numTaps, bufLen - center + halfTaps);
+    for (let j = jStart; j < jEnd; j++) {
+      sum += buffer[center - halfTaps + j] * taps[j];
     }
-    result[i] = sum;
+    _decimated[i] = sum;
   }
-  return result;
+  return newLen;
 }
 
-// Burg LPC algorithm
+// Burg LPC algorithm — uses pre-allocated buffers to avoid per-frame GC.
+// Takes a buffer (the pre-allocated _decimated) and its valid length.
+// Returns _burgA (the coefficient array) directly.
 function burgLPC(samples, order) {
   const n = samples.length;
-  const a = new Float64Array(order + 1);
+  const a = _burgA;
+  const aNew = _burgANew;
+  const ef = _burgEf;
+  const eb = _burgEb;
+  const efTmp = _burgEfTmp;
+
+  a.fill(0);
   a[0] = 1;
 
-  let ef = Float64Array.from(samples);
-  let eb = Float64Array.from(samples);
-  let errorPower = 0;
-  for (let i = 0; i < n; i++) errorPower += samples[i] * samples[i];
-  errorPower /= n;
+  // Initialize ef and eb from samples
+  for (let i = 0; i < n; i++) {
+    ef[i] = samples[i];
+    eb[i] = samples[i];
+  }
 
   for (let m = 1; m <= order; m++) {
-    let num = 0,
-      den = 0;
+    let num = 0, den = 0;
     for (let i = m; i < n; i++) {
       num += ef[i] * eb[i - 1];
       den += ef[i] * ef[i] + eb[i - 1] * eb[i - 1];
@@ -325,93 +440,84 @@ function burgLPC(samples, order) {
     if (den === 0) break;
     const k = (-2 * num) / den;
 
-    // Update LPC coefficients
-    const aNew = new Float64Array(order + 1);
+    // Update LPC coefficients in-place via aNew scratch
     aNew[0] = 1;
     for (let i = 1; i < m; i++) {
       aNew[i] = a[i] + k * a[m - i];
     }
     aNew[m] = k;
+    for (let i = 0; i <= m; i++) a[i] = aNew[i];
 
-    // Update prediction errors
-    const efNew = new Float64Array(n);
-    const ebNew = new Float64Array(n);
+    // Update prediction errors in-place: use efTmp as scratch for ef
     for (let i = m; i < n; i++) {
-      efNew[i] = ef[i] + k * eb[i - 1];
-      ebNew[i] = eb[i - 1] + k * ef[i];
+      efTmp[i] = ef[i] + k * eb[i - 1];
+      eb[i] = eb[i - 1] + k * ef[i];
     }
-    ef = efNew;
-    eb = ebNew;
-    a.set(aNew);
-    errorPower *= 1 - k * k;
+    // Copy efTmp back to ef
+    for (let i = m; i < n; i++) ef[i] = efTmp[i];
   }
 
-  return { coefficients: a, error: errorPower };
+  return a;
 }
 
-// Durand-Kerner method for finding all roots of a polynomial
+// Durand-Kerner method for finding all roots of a polynomial.
+// Uses pre-allocated flat arrays _rootsRe/_rootsIm. Returns the root count (n).
 // coefficients[0..n] where poly = c[0]*z^n + c[1]*z^(n-1) + ... + c[n]
 function findPolynomialRoots(coefficients) {
-  const n = coefficients.length - 1; // Polynomial degree
-  if (n <= 0) return [];
+  const n = coefficients.length - 1;
+  if (n <= 0) return 0;
 
-  // Initial guesses: spread on a circle of radius 0.9 (inside the unit circle,
-  // where stable LPC roots reside) with a 0.4 radian offset to break symmetry
-  // and avoid degenerate starting positions.
-  const roots = [];
+  const rRe = _rootsRe;
+  const rIm = _rootsIm;
+
+  // Initial guesses on a circle of radius 0.9
   for (let i = 0; i < n; i++) {
     const angle = (2 * Math.PI * i) / n + 0.4;
-    const r = 0.9;
-    roots.push({ real: r * Math.cos(angle), imag: r * Math.sin(angle) });
+    rRe[i] = 0.9 * Math.cos(angle);
+    rIm[i] = 0.9 * Math.sin(angle);
   }
 
-  // Iterate — 50 max iterations is sufficient; well-conditioned polynomials
-  // typically converge within 20-30. Early exit below triggers when all root
-  // positions stop changing by more than 1e-10 between iterations.
   for (let iter = 0; iter < 50; iter++) {
     let maxDelta = 0;
 
     for (let i = 0; i < n; i++) {
-      // Evaluate polynomial at roots[i] using Horner's method
-      let pr = coefficients[0],
-        pi = 0;
+      // Evaluate polynomial at root[i] using Horner's method
+      let pr = coefficients[0], pi = 0;
+      const ri_re = rRe[i], ri_im = rIm[i];
       for (let j = 1; j <= n; j++) {
-        const newR = pr * roots[i].real - pi * roots[i].imag + coefficients[j];
-        const newI = pr * roots[i].imag + pi * roots[i].real;
+        const newR = pr * ri_re - pi * ri_im + coefficients[j];
+        pi = pr * ri_im + pi * ri_re;
         pr = newR;
-        pi = newI;
       }
 
-      // Compute product of (roots[i] - roots[j]) for j != i
-      let qr = 1,
-        qi = 0;
+      // Product of (root[i] - root[j]) for j != i
+      let qr = 1, qi = 0;
       for (let j = 0; j < n; j++) {
         if (j === i) continue;
-        const dr = roots[i].real - roots[j].real;
-        const di = roots[i].imag - roots[j].imag;
+        const dr = ri_re - rRe[j];
+        const di = ri_im - rIm[j];
         const newR = qr * dr - qi * di;
-        const newI = qr * di + qi * dr;
+        qi = qr * di + qi * dr;
         qr = newR;
-        qi = newI;
       }
 
-      // delta = p(z_i) / product
       const denom = qr * qr + qi * qi;
       if (denom < 1e-30) continue;
       const deltaR = (pr * qr + pi * qi) / denom;
       const deltaI = (pi * qr - pr * qi) / denom;
 
-      roots[i].real -= deltaR;
-      roots[i].imag -= deltaI;
+      rRe[i] = ri_re - deltaR;
+      rIm[i] = ri_im - deltaI;
 
-      const mag = Math.sqrt(deltaR * deltaR + deltaI * deltaI);
+      const mag = deltaR * deltaR + deltaI * deltaI;
       if (mag > maxDelta) maxDelta = mag;
     }
 
-    if (maxDelta < 1e-10) break;
+    // Compare squared magnitude against squared threshold (avoid sqrt)
+    if (maxDelta < 1e-20) break;
   }
 
-  return roots;
+  return n;
 }
 
 // --- Radix-2 Cooley-Tukey FFT (in-place) ---
@@ -461,30 +567,32 @@ function fft(re, im) {
 // --- Spectral Tilt: FFT Band Energy Ratio ---
 
 function computeSpectralTilt(buffer, sr) {
-  const fftSize = 2048; // ~43ms at 48 kHz — sufficient frequency resolution for band energy
+  const fftSize = 2048;
   const n = Math.min(buffer.length, fftSize);
+  const re = _tiltRe;
+  const im = _tiltIm;
 
-  // Apply Hann window and zero-pad to fftSize
-  const re = new Float64Array(fftSize);
-  const im = new Float64Array(fftSize);
+  // Zero-fill and apply Hann window
+  re.fill(0);
+  im.fill(0);
+  const offset = buffer.length - n;
   for (let i = 0; i < n; i++) {
-    re[i] = buffer[buffer.length - n + i] * (0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (n - 1)));
+    re[i] = buffer[offset + i] * (0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (n - 1)));
   }
 
   fft(re, im);
 
+  // Precompute bin boundaries to avoid per-bin multiply
   const binHz = sr / fftSize;
-  let lowEnergy = 0;
-  let highEnergy = 0;
+  const lowBinEnd = Math.min(Math.floor(1000 / binHz), fftSize / 2);
+  const highBinEnd = Math.min(Math.floor(4000 / binHz), fftSize / 2);
+  let lowEnergy = 0, highEnergy = 0;
 
-  for (let k = 1; k < fftSize / 2; k++) {
-    const energy = re[k] * re[k] + im[k] * im[k];
-    const freq = k * binHz;
-
-    // Split bands: <1000 Hz captures fundamental + low harmonics (vocal weight),
-    // 1000-4000 Hz captures upper harmonics/formants (brightness/clarity).
-    if (freq < 1000) lowEnergy += energy;
-    else if (freq < 4000) highEnergy += energy;
+  for (let k = 1; k < lowBinEnd; k++) {
+    lowEnergy += re[k] * re[k] + im[k] * im[k];
+  }
+  for (let k = lowBinEnd; k < highBinEnd; k++) {
+    highEnergy += re[k] * re[k] + im[k] * im[k];
   }
 
   if (highEnergy === 0) return null;
@@ -494,34 +602,30 @@ function computeSpectralTilt(buffer, sr) {
 // --- HNR: Harmonics-to-Noise Ratio (FFT-based autocorrelation) ---
 
 function computeHNR(buffer, sr) {
-  // Use FFT to compute autocorrelation: IFFT(|FFT(x)|²)
-  // 2048 samples (~43ms at 48 kHz) provides enough lags for the lowest pitch
-  // (75 Hz → 640-sample period) while keeping FFT size at 4096 for efficiency.
   const maxN = 2048;
   const n = Math.min(buffer.length, maxN);
   const offset = buffer.length - n;
-  let fftLen = 1;
-  while (fftLen < n * 2) fftLen <<= 1;
+  const fftLen = 4096; // Fixed: 2048 samples zero-padded to 4096
+  const re = _hnrRe;
+  const im = _hnrIm;
 
-  const re = new Float64Array(fftLen);
-  const im = new Float64Array(fftLen);
+  // Zero-fill and load signal
+  re.fill(0);
+  im.fill(0);
   for (let i = 0; i < n; i++) re[i] = buffer[offset + i];
 
-  // Forward FFT
   fft(re, im);
 
-  // Power spectrum → re, zero im
+  // Power spectrum in-place
   for (let i = 0; i < fftLen; i++) {
     re[i] = re[i] * re[i] + im[i] * im[i];
     im[i] = 0;
   }
 
-  // Inverse FFT (forward FFT + divide by N gives inverse)
   fft(re, im);
-  const r0 = re[0] / fftLen; // autocorrelation at lag 0
+  const r0 = re[0] / fftLen;
   if (r0 === 0) return null;
 
-  // Find max normalized autocorrelation in pitch range (75-600 Hz)
   const minLag = Math.floor(sr / 600);
   const maxLag = Math.min(Math.floor(sr / 75), Math.floor(n / 2));
   let maxVal = 0;
@@ -532,9 +636,6 @@ function computeHNR(buffer, sr) {
   }
 
   if (maxVal <= 0) return null;
-  // Clamp to 0.99 to prevent Infinity from log10(val / (1 - val)) on
-  // highly harmonic signals where autocorrelation approaches 1.0.
-  // 0.99 maps to ~20 dB HNR which is already an exceptionally clean signal.
   maxVal = Math.min(maxVal, 0.99);
   return 10 * Math.log10(maxVal / (1 - maxVal));
 }
