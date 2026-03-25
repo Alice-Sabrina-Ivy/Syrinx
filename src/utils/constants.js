@@ -7,10 +7,13 @@ export const DEFAULT_PITCH_TARGET = { low: 165, high: 255 };
 export const PITCH_DISPLAY_RANGE = { low: 75, high: 400 };
 
 // F2 resonance target range for voice feminization (Hz)
-export const DEFAULT_F2_TARGET = { low: 1800, high: 2500 };
+// Wide band because F2 varies heavily by vowel (low for "oo," high for "ee").
+// This represents generally feminine resonance territory across all vowels.
+// Values above the high end are fine — the concern is resonance being too low.
+export const DEFAULT_F2_TARGET = { low: 1400, high: 2800 };
 
 // Y-axis display range for resonance trace (Hz)
-export const F2_DISPLAY_RANGE = { low: 800, high: 3000 };
+export const F2_DISPLAY_RANGE = { low: 800, high: 3500 };
 
 // Resonance brightness target — composite score threshold (0-100 scale)
 // where 0 = male baseline, 100 = female target. 70+ indicates "bright" resonance.

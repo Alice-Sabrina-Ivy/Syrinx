@@ -66,8 +66,7 @@ export function CombinedDashboard({
 
   const inF2Target =
     formants?.f2 !== null && formants?.f2 !== undefined &&
-    formants.f2 >= DEFAULT_F2_TARGET.low &&
-    formants.f2 <= DEFAULT_F2_TARGET.high;
+    formants.f2 >= DEFAULT_F2_TARGET.low;
 
   const statOpacity = !voiced && !holding ? "opacity-40" : holding ? "opacity-50" : "";
 
