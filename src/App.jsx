@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAudioPipeline } from "./audio/useAudioPipeline";
 import { PitchTrace } from "./components/PitchTrace";
 import { CombinedDashboard } from "./components/CombinedDashboard";
@@ -34,6 +34,9 @@ function WelcomeOverlay({ onDismiss }) {
 function App() {
   const [activeTab, setActiveTab] = useState("dashboard");
   const [showWelcome, setShowWelcome] = useState(false);
+  // Ref for session metadata (notes, elapsed, recording state) —
+  // kept in sync by CombinedDashboard, readable by a future save/export feature.
+  const sessionRef = useRef({ recording: false, elapsed: 0, notes: "" });
   const {
     status,
     error,
@@ -143,6 +146,7 @@ function App() {
                   hnr={hnr}
                   pitchTraceRef={pitchTraceRef}
                   formantTrailRef={formantTrailRef}
+                  sessionRef={sessionRef}
                 />
               )}
 
