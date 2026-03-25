@@ -2,15 +2,15 @@
 // "Darker" on left, "Brighter" on right. Composite score from F1/F2/F3.
 // Color gradient: red → yellow → green as value approaches target.
 
-import { RESONANCE_BASELINES } from "../utils/constants";
+import { RESONANCE_BASELINES, RESONANCE_BRIGHTNESS_TARGET } from "../utils/constants";
 
 function computeBrightness(formants) {
   const { f1, f2, f3 } = formants;
-  if (f2 == null) return null;
+  if (f2 === null || f2 === undefined) return null;
 
   // Normalize each formant: 0 = male baseline, 100 = female target
   function norm(value, key) {
-    if (value == null) return null;
+    if (value === null || value === undefined) return null;
     const { male, female } = RESONANCE_BASELINES[key];
     const range = female - male;
     if (range === 0) return 50;
@@ -55,7 +55,7 @@ export function ResonanceGauge({ formants, voiced, holding }) {
   const brightness = formants ? computeBrightness(formants) : null;
   const clampedValue = brightness !== null ? Math.max(0, Math.min(100, brightness)) : null;
 
-  const inTarget = brightness !== null && brightness >= 70;
+  const inTarget = brightness !== null && brightness >= RESONANCE_BRIGHTNESS_TARGET;
   const opacity = !voiced && !holding ? 0.3 : holding ? 0.5 : 1;
 
   return (
@@ -75,12 +75,12 @@ export function ResonanceGauge({ formants, voiced, holding }) {
 
       {/* Gauge track */}
       <div className="relative h-3 rounded-full bg-neutral-800 overflow-hidden">
-        {/* Target zone highlight (70-100 range) */}
+        {/* Target zone highlight */}
         <div
           className="absolute top-0 h-full rounded-full"
           style={{
-            left: "70%",
-            width: "30%",
+            left: `${RESONANCE_BRIGHTNESS_TARGET}%`,
+            width: `${100 - RESONANCE_BRIGHTNESS_TARGET}%`,
             background:
               "linear-gradient(90deg, rgba(96,165,250,0.08), rgba(96,165,250,0.15), rgba(96,165,250,0.08))",
             borderTop: "1px solid rgba(96,165,250,0.25)",
