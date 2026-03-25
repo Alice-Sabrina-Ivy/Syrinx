@@ -8,6 +8,8 @@ let windowSize = Math.floor(sampleRate * WINDOW_MS / 1000);
 // Formant extraction parameters — computed on init
 let decimationFactor = 4;
 let targetSR = 12000;
+// LPC order 10 models up to 5 formants (2 poles per formant) — sufficient for
+// F1-F4 extraction from speech downsampled to ~12 kHz.
 const LPC_ORDER = 10;
 
 // Pre-allocated ring buffer to avoid GC pressure from repeated allocations.
@@ -24,7 +26,7 @@ let lastContextTime = 0; // AudioContext time when latest chunk was captured
 function processChunk(buffer, contextTime) {
   const chunkReceiveTime = performance.now();
   pendingChunks--;
-  if (contextTime != null) lastContextTime = contextTime;
+  if (contextTime !== null && contextTime !== undefined) lastContextTime = contextTime;
 
   const chunk = new Float32Array(buffer);
   appendToRingBuffer(chunk);
@@ -37,7 +39,9 @@ function processChunk(buffer, contextTime) {
   const intensity = computeIntensity(window);
   const pitch = detectPitch(window, sampleRate);
 
-  // Formants, spectral tilt, HNR are heavier — run every 6th analysis (~180ms)
+  // Formants, spectral tilt, HNR are heavier — run every 6th analysis frame.
+  // At ~30 fps DSP rate, this fires every ~200ms, saving significant CPU
+  // (LPC + root finding + FFT) while still being responsive enough for training.
   let formants = null, spectralTilt = null, hnr = null;
   if (analysisCount % 6 === 0) {
     formants = extractFormants(window);
@@ -129,9 +133,9 @@ function computeIntensity(buffer) {
 // --- YIN Pitch Detection ---
 
 function detectPitch(buffer, sr) {
-  const threshold = 0.20;
-  const minF0 = 75;
-  const maxF0 = 600;
+  const threshold = 0.20; // YIN aperiodicity threshold — lower = stricter voicing detection
+  const minF0 = 75;       // lowest detectable pitch (Hz) — covers bass voices
+  const maxF0 = 600;      // highest detectable pitch (Hz) — covers soprano + head voice
   const minLag = Math.floor(sr / maxF0);
   const maxLag = Math.floor(sr / minF0);
   const halfLen = Math.floor(buffer.length / 2);
@@ -177,17 +181,24 @@ function detectPitch(buffer, sr) {
   const s1 = cmnd[bestTau];
   const s2 = bestTau + 1 < searchLen ? cmnd[bestTau + 1] : cmnd[bestTau];
   const denom = 2 * (s0 - 2 * s1 + s2);
-  const refinedTau = denom !== 0 ? bestTau + (s0 - s2) / denom : bestTau;
+  let refinedTau = denom !== 0 ? bestTau + (s0 - s2) / denom : bestTau;
 
-  const pitch = sr / refinedTau;
-  if (pitch < minF0 || pitch > maxF0) return null;
-  return pitch;
+  // Clamp refined lag so the resulting pitch stays within [minF0, maxF0].
+  // Parabolic interpolation can overshoot the original lag by up to ±0.5,
+  // which at band edges (75 Hz, 600 Hz) may produce out-of-range pitches.
+  const minTau = sr / maxF0; // highest pitch → shortest lag
+  const maxTau = sr / minF0; // lowest pitch → longest lag
+  refinedTau = Math.max(minTau, Math.min(maxTau, refinedTau));
+
+  return sr / refinedTau;
 }
 
 // --- Formant Extraction (Burg LPC) ---
 
 function extractFormants(buffer) {
-  // Pre-emphasis: boost high frequencies
+  // Pre-emphasis: boost high frequencies to flatten the spectral envelope
+  // before LPC analysis. Coefficient 0.97 is standard for speech processing
+  // at 8-48 kHz sample rates (approximately a +6 dB/octave high-frequency lift).
   const preEmph = new Float64Array(buffer.length);
   preEmph[0] = buffer[0];
   for (let i = 1; i < buffer.length; i++) {
@@ -219,7 +230,8 @@ function extractFormants(buffer) {
     const mag = Math.sqrt(root.real * root.real + root.imag * root.imag);
     const bw = mag > 0 ? (-Math.log(mag) * targetSR) / Math.PI : Infinity;
 
-    // Valid formants: 90-5500 Hz with bandwidth < 600 Hz
+    // Valid formants: 90-5500 Hz covers F1 (~250-900 Hz) through F4 (~3500-4500 Hz).
+    // Bandwidth < 600 Hz rejects spurious roots — real formant bandwidths are typically 50-400 Hz.
     if (freq > 90 && freq < 5500 && bw > 0 && bw < 600) {
       formants.push({ freq, bw });
     }
@@ -300,7 +312,9 @@ function findPolynomialRoots(coefficients) {
   const n = coefficients.length - 1; // Polynomial degree
   if (n <= 0) return [];
 
-  // Initial guesses: spread on a circle with slight offset
+  // Initial guesses: spread on a circle of radius 0.9 (inside the unit circle,
+  // where stable LPC roots reside) with a 0.4 radian offset to break symmetry
+  // and avoid degenerate starting positions.
   const roots = [];
   for (let i = 0; i < n; i++) {
     const angle = (2 * Math.PI * i) / n + 0.4;
@@ -308,8 +322,10 @@ function findPolynomialRoots(coefficients) {
     roots.push({ real: r * Math.cos(angle), imag: r * Math.sin(angle) });
   }
 
-  // Iterate
-  for (let iter = 0; iter < 80; iter++) {
+  // Iterate — 50 max iterations is sufficient; well-conditioned polynomials
+  // typically converge within 20-30. Early exit below triggers when all root
+  // positions stop changing by more than 1e-10 between iterations.
+  for (let iter = 0; iter < 50; iter++) {
     let maxDelta = 0;
 
     for (let i = 0; i < n; i++) {
@@ -359,6 +375,11 @@ function findPolynomialRoots(coefficients) {
 
 function fft(re, im) {
   const n = re.length;
+  // Radix-2 FFT requires n to be a power of 2. Callers are expected to
+  // provide correctly sized buffers, but guard against silent corruption.
+  if (n === 0 || (n & (n - 1)) !== 0) {
+    throw new Error(`FFT length must be a power of 2, got ${n}`);
+  }
   // Bit-reversal permutation
   for (let i = 1, j = 0; i < n; i++) {
     let bit = n >> 1;
@@ -397,7 +418,7 @@ function fft(re, im) {
 // --- Spectral Tilt: FFT Band Energy Ratio ---
 
 function computeSpectralTilt(buffer, sr) {
-  const fftSize = 2048;
+  const fftSize = 2048; // ~43ms at 48 kHz — sufficient frequency resolution for band energy
   const n = Math.min(buffer.length, fftSize);
 
   // Apply Hann window and zero-pad to fftSize
@@ -417,6 +438,8 @@ function computeSpectralTilt(buffer, sr) {
     const energy = re[k] * re[k] + im[k] * im[k];
     const freq = k * binHz;
 
+    // Split bands: <1000 Hz captures fundamental + low harmonics (vocal weight),
+    // 1000-4000 Hz captures upper harmonics/formants (brightness/clarity).
     if (freq < 1000) lowEnergy += energy;
     else if (freq < 4000) highEnergy += energy;
   }
@@ -429,7 +452,8 @@ function computeSpectralTilt(buffer, sr) {
 
 function computeHNR(buffer, sr) {
   // Use FFT to compute autocorrelation: IFFT(|FFT(x)|²)
-  // Use last 2048 samples — enough for pitch-range autocorrelation, keeps FFT at 4096
+  // 2048 samples (~43ms at 48 kHz) provides enough lags for the lowest pitch
+  // (75 Hz → 640-sample period) while keeping FFT size at 4096 for efficiency.
   const maxN = 2048;
   const n = Math.min(buffer.length, maxN);
   const offset = buffer.length - n;
@@ -464,6 +488,10 @@ function computeHNR(buffer, sr) {
     if (normalized > maxVal) maxVal = normalized;
   }
 
-  if (maxVal <= 0 || maxVal >= 1) return null;
+  if (maxVal <= 0) return null;
+  // Clamp to 0.99 to prevent Infinity from log10(val / (1 - val)) on
+  // highly harmonic signals where autocorrelation approaches 1.0.
+  // 0.99 maps to ~20 dB HNR which is already an exceptionally clean signal.
+  maxVal = Math.min(maxVal, 0.99);
   return 10 * Math.log10(maxVal / (1 - maxVal));
 }

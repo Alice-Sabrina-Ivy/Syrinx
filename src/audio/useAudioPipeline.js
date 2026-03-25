@@ -69,6 +69,12 @@ export function useAudioPipeline() {
   }, []);
 
   const start = useCallback(async () => {
+    // If a previous AudioContext was closed (e.g. via stop()), discard the
+    // stale reference so we create a fresh one. A closed AudioContext cannot
+    // be resumed — the spec requires a new instance.
+    if (audioCtxRef.current && audioCtxRef.current.state === "closed") {
+      audioCtxRef.current = null;
+    }
     if (audioCtxRef.current) return;
 
     setState((s) => ({ ...s, status: "requesting", error: null }));

@@ -17,6 +17,7 @@ export function CombinedDashboard({
   hnr,
   pitchTraceRef,
   formantTrailRef,
+  sessionRef,
 }) {
   const [recording, setRecording] = useState(false);
   const [elapsed, setElapsed] = useState(0);
@@ -39,6 +40,13 @@ export function CombinedDashboard({
     }
   }, [recording]);
 
+  // Keep sessionRef in sync so a future save/export feature can read it
+  useEffect(() => {
+    if (sessionRef) {
+      sessionRef.current = { recording, elapsed, notes };
+    }
+  }, [recording, elapsed, notes, sessionRef]);
+
   useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
@@ -57,7 +65,7 @@ export function CombinedDashboard({
     pitch <= DEFAULT_PITCH_TARGET.high;
 
   const inF2Target =
-    formants?.f2 != null &&
+    formants?.f2 !== null && formants?.f2 !== undefined &&
     formants.f2 >= DEFAULT_F2_TARGET.low &&
     formants.f2 <= DEFAULT_F2_TARGET.high;
 
@@ -120,14 +128,14 @@ export function CombinedDashboard({
             </span>
             <span
               className={`text-xl sm:text-2xl font-light tabular-nums ${
-                formants?.f2 != null
+                formants?.f2 !== null && formants?.f2 !== undefined
                   ? inF2Target
                     ? "text-blue-400"
                     : "text-orange-400"
                   : "text-neutral-600"
               }`}
             >
-              {formants?.f2 != null ? `${Math.round(formants.f2)}` : "\u2014"}
+              {formants?.f2 !== null && formants?.f2 !== undefined ? `${Math.round(formants.f2)}` : "\u2014"}
               <span className="text-xs text-neutral-500 ml-0.5">Hz</span>
             </span>
           </div>
