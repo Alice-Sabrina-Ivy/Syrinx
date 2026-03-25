@@ -80,7 +80,7 @@ export function ResonanceTrace({ formantTrailRef, voiced, holding, formants, com
       ctx.fillRect(0, 0, w, h);
 
       // Grid lines + labels
-      const gridHz = [1000, 1500, 2000, 2500, 3000];
+      const gridHz = [1000, 1500, 2000, 2500, 3000, 3500];
       ctx.textAlign = "right";
       ctx.textBaseline = "middle";
       ctx.font = `${11 * dpr}px system-ui`;
@@ -164,7 +164,7 @@ export function ResonanceTrace({ formantTrailRef, voiced, holding, formants, com
         }
 
         const y = hzToY(pt.f2);
-        const inTarget = pt.f2 >= targetLow && pt.f2 <= targetHigh;
+        const inTarget = pt.f2 >= targetLow;
 
         if (!inSegment) {
           ctx.beginPath();
@@ -176,8 +176,7 @@ export function ResonanceTrace({ formantTrailRef, voiced, holding, formants, com
           const prevInTarget =
             prevPt?.voiced &&
             prevPt.f2 !== null && prevPt.f2 !== undefined &&
-            prevPt.f2 >= targetLow &&
-            prevPt.f2 <= targetHigh;
+            prevPt.f2 >= targetLow;
 
           if (inTarget !== prevInTarget) {
             ctx.lineTo(x, y);
@@ -201,8 +200,7 @@ export function ResonanceTrace({ formantTrailRef, voiced, holding, formants, com
       if (lastVoiced && now - lastVoiced.time < 500) {
         const x = timeToX(lastVoiced.time, now);
         const y = hzToY(lastVoiced.f2);
-        const inTarget =
-          lastVoiced.f2 >= targetLow && lastVoiced.f2 <= targetHigh;
+        const inTarget = lastVoiced.f2 >= targetLow;
         const color = inTarget ? COLORS.resInTarget : COLORS.resOutOfTarget;
 
         ctx.beginPath();
@@ -231,8 +229,7 @@ export function ResonanceTrace({ formantTrailRef, voiced, holding, formants, com
   const f2 = formants?.f2;
   const inTarget =
     f2 !== null && f2 !== undefined &&
-    f2 >= DEFAULT_F2_TARGET.low &&
-    f2 <= DEFAULT_F2_TARGET.high;
+    f2 >= DEFAULT_F2_TARGET.low;
 
   return (
     <div className="flex flex-col h-full">
