@@ -216,6 +216,16 @@ export function PitchTrace({ pitchTraceRef, voiced, holding, pitch, compact = fa
         ctx.fill();
       }
 
+      // True end-to-end lag: draw clock minus latest data point's worker timestamp
+      if (data.length > 0) {
+        const newest = data[data.length - 1];
+        const lag = now - newest.time;
+        ctx.fillStyle = "rgba(255,200,50,0.7)";
+        ctx.font = `${10 * dpr}px monospace`;
+        ctx.textAlign = "left";
+        ctx.textBaseline = "top";
+        ctx.fillText(`e2e: ${lag}ms`, plotLeft + 4 * dpr, plotTop + 4 * dpr);
+      }
 
       animId = requestAnimationFrame(draw);
     }
