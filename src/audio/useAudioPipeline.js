@@ -13,7 +13,8 @@ import {
 const SILENCE_THRESHOLD_DB = -50;
 const SILENCE_DEBOUNCE_FRAMES = 3; // require 3 consecutive quiet frames before gating
 const PITCH_SMOOTH_LEN = 2;
-const FORMANT_SMOOTH_LEN = 5;
+const FORMANT_SMOOTH_LEN = 13;
+const FORMANT_OUTLIER_HZ = 500; // max plausible frame-to-frame formant jump
 
 export function useAudioPipeline() {
   const [state, setState] = useState({
@@ -288,15 +289,18 @@ export function useAudioPipeline() {
       ? pushAndMedian(pitchSmoothRef, pitch, PITCH_SMOOTH_LEN)
       : median(pitchSmoothRef.current);
 
-    // Smooth formants with rolling median — hold last valid value on null frames
+    // Smooth formants with rolling median + outlier rejection.
+    // Discard values that jump more than FORMANT_OUTLIER_HZ from the
+    // current median — such spikes are measurement artifacts, not real
+    // vocal tract changes.
     const f1 = formants?.f1
-      ? pushAndMedian(f1SmoothRef, formants.f1, FORMANT_SMOOTH_LEN)
+      ? pushAndMedianGated(f1SmoothRef, formants.f1, FORMANT_SMOOTH_LEN, FORMANT_OUTLIER_HZ)
       : median(f1SmoothRef.current);
     const f2 = formants?.f2
-      ? pushAndMedian(f2SmoothRef, formants.f2, FORMANT_SMOOTH_LEN)
+      ? pushAndMedianGated(f2SmoothRef, formants.f2, FORMANT_SMOOTH_LEN, FORMANT_OUTLIER_HZ)
       : median(f2SmoothRef.current);
     const f3 = formants?.f3
-      ? pushAndMedian(f3SmoothRef, formants.f3, FORMANT_SMOOTH_LEN)
+      ? pushAndMedianGated(f3SmoothRef, formants.f3, FORMANT_SMOOTH_LEN, FORMANT_OUTLIER_HZ)
       : median(f3SmoothRef.current);
 
     const noteInfo = hzToNote(smoothedPitch);
@@ -353,6 +357,17 @@ export function useAudioPipeline() {
 }
 
 function pushAndMedian(ref, value, maxLen) {
+  ref.current.push(value);
+  if (ref.current.length > maxLen) ref.current.shift();
+  return median(ref.current);
+}
+
+function pushAndMedianGated(ref, value, maxLen, maxJump) {
+  const current = median(ref.current);
+  // Accept the value if the buffer is empty or within the jump threshold
+  if (current !== null && Math.abs(value - current) > maxJump) {
+    return current; // discard outlier, return existing median
+  }
   ref.current.push(value);
   if (ref.current.length > maxLen) ref.current.shift();
   return median(ref.current);
