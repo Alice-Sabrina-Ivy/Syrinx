@@ -11,6 +11,9 @@ let targetSR = 12000;
 // LPC order 10 models up to 5 formants (2 poles per formant) — sufficient for
 // F1-F4 extraction from speech downsampled to ~12 kHz.
 const LPC_ORDER = 10;
+// Pre-computed FIR anti-alias filter for decimation (re-computed on 'init' message).
+// Initialize with default decimation factor so the worker is ready before 'init'.
+let antiAliasFilter = null; // populated below after designLowPassFIR is defined
 
 // Pre-allocated ring buffer to avoid GC pressure from repeated allocations.
 // Uses a fixed-size buffer with a write position; oldest data is overwritten.
@@ -74,6 +77,7 @@ self.onmessage = (e) => {
     windowSize = Math.floor(sampleRate * WINDOW_MS / 1000);
     decimationFactor = Math.max(1, Math.round(sampleRate / 11000));
     targetSR = sampleRate / decimationFactor;
+    antiAliasFilter = designLowPassFIR(0.4 / decimationFactor, decimationFactor * 16 + 1);
     ringCapacity = windowSize * 2;
     ringBuffer = new Float32Array(ringCapacity);
     ringLen = 0;
@@ -212,8 +216,8 @@ function extractFormants(buffer) {
     windowed[i] = preEmph[i] * (0.54 - 0.46 * Math.cos((2 * Math.PI * i) / (n - 1)));
   }
 
-  // Downsample
-  const downsampled = decimateWithAvg(windowed, decimationFactor);
+  // Downsample with anti-alias FIR filter to prevent aliasing artifacts
+  const downsampled = decimateWithFilter(windowed, decimationFactor);
 
   // Burg LPC
   const { coefficients } = burgLPC(downsampled, LPC_ORDER);
@@ -246,16 +250,55 @@ function extractFormants(buffer) {
   };
 }
 
-// Downsample by averaging groups of `factor` samples
-function decimateWithAvg(buffer, factor) {
+// Design a Blackman-windowed sinc low-pass FIR filter.
+// cutoffNormalized: cutoff as fraction of sample rate (0.5 = Nyquist)
+// numTaps: filter length (odd for symmetric, linear-phase)
+function designLowPassFIR(cutoffNormalized, numTaps) {
+  const coeffs = new Float64Array(numTaps);
+  const mid = (numTaps - 1) / 2;
+  for (let i = 0; i < numTaps; i++) {
+    const x = i - mid;
+    // Windowed sinc: sinc provides ideal low-pass, Blackman window gives
+    // ~74 dB stopband attenuation (vs ~13 dB for box-car averaging).
+    let sinc;
+    if (Math.abs(x) < 1e-10) {
+      sinc = 2 * cutoffNormalized;
+    } else {
+      sinc = Math.sin(2 * Math.PI * cutoffNormalized * x) / (Math.PI * x);
+    }
+    const win = 0.42 - 0.5 * Math.cos((2 * Math.PI * i) / (numTaps - 1))
+                     + 0.08 * Math.cos((4 * Math.PI * i) / (numTaps - 1));
+    coeffs[i] = sinc * win;
+  }
+  // Normalize to unity DC gain
+  let sum = 0;
+  for (let i = 0; i < numTaps; i++) sum += coeffs[i];
+  for (let i = 0; i < numTaps; i++) coeffs[i] /= sum;
+  return coeffs;
+}
+
+// Initialize default anti-alias filter (matches default decimationFactor = 4)
+antiAliasFilter = designLowPassFIR(0.4 / decimationFactor, decimationFactor * 16 + 1);
+
+// Downsample with FIR anti-alias filtering to prevent aliasing artifacts.
+// Applies the pre-computed low-pass filter before decimation.
+function decimateWithFilter(buffer, factor) {
   if (factor <= 1) return buffer;
+  const taps = antiAliasFilter;
+  const numTaps = taps.length;
+  const halfTaps = numTaps >> 1;
   const newLen = Math.floor(buffer.length / factor);
   const result = new Float64Array(newLen);
   for (let i = 0; i < newLen; i++) {
     let sum = 0;
-    const base = i * factor;
-    for (let j = 0; j < factor; j++) sum += buffer[base + j];
-    result[i] = sum / factor;
+    const center = i * factor;
+    for (let j = 0; j < numTaps; j++) {
+      const idx = center - halfTaps + j;
+      if (idx >= 0 && idx < buffer.length) {
+        sum += buffer[idx] * taps[j];
+      }
+    }
+    result[i] = sum;
   }
   return result;
 }
