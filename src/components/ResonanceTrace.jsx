@@ -139,19 +139,28 @@ export function ResonanceTrace({ formantTrailRef, voiced, holding, formants, com
       ctx.lineJoin = "round";
       ctx.lineCap = "round";
 
+      // Gap threshold: if two consecutive formant points are more than
+      // 150ms apart, silence occurred between them — break the line.
+      const GAP_MS = 150;
+
       let inSegment = false;
+      let prevTime = 0;
       for (let i = 0; i < data.length; i++) {
         const pt = data[i];
         const x = timeToX(pt.time, now);
 
-        if (x < plotLeft) continue;
+        if (x < plotLeft) { prevTime = pt.time; continue; }
 
-        if (!pt.voiced || pt.f2 === null || pt.f2 === undefined) {
+        // Break on unvoiced, missing data, or time gap (silence)
+        if (!pt.voiced || pt.f2 === null || pt.f2 === undefined ||
+            (inSegment && pt.time - prevTime > GAP_MS)) {
           if (inSegment) {
             ctx.stroke();
             inSegment = false;
           }
-          continue;
+          prevTime = pt.time;
+          if (!pt.voiced || pt.f2 == null) continue;
+          // Time-gap with valid data: start a new segment at this point
         }
 
         const y = hzToY(pt.f2);
@@ -180,6 +189,7 @@ export function ResonanceTrace({ formantTrailRef, voiced, holding, formants, com
             ctx.lineTo(x, y);
           }
         }
+        prevTime = pt.time;
       }
       if (inSegment) ctx.stroke();
 
