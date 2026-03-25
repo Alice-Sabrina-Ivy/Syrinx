@@ -1,26 +1,22 @@
-// CombinedDashboard.jsx — Default practice view: compact visualizations + live stats + session controls
-// Layout: pitch 60% width, resonance 40% (stacked on mobile). Two-row stats. Distinct buttons.
+// CombinedDashboard.jsx — Default practice view: two scrolling traces + stats + session controls
+// Layout: pitch trace + resonance trace side by side (stacked on mobile). Two-row stats.
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { PitchTrace } from "./PitchTrace";
-import { VowelSpacePlot } from "./VowelSpacePlot";
+import { ResonanceTrace } from "./ResonanceTrace";
 import { SpectralTiltGauge } from "./SpectralTiltGauge";
-import { DEFAULT_PITCH_TARGET } from "../utils/constants";
+import { ResonanceGauge } from "./ResonanceGauge";
+import { DEFAULT_PITCH_TARGET, DEFAULT_F2_TARGET } from "../utils/constants";
 
 export function CombinedDashboard({
   voiced,
   holding,
   pitch,
-  intensity,
-  noteName,
   formants,
   spectralTilt,
   hnr,
   pitchTraceRef,
   formantTrailRef,
-  start,
-  stop,
-  status,
 }) {
   const [recording, setRecording] = useState(false);
   const [elapsed, setElapsed] = useState(0);
@@ -30,12 +26,10 @@ export function CombinedDashboard({
 
   const toggleRecording = useCallback(() => {
     if (recording) {
-      // Stop recording
       clearInterval(timerRef.current);
       timerRef.current = null;
       setRecording(false);
     } else {
-      // Start recording
       setElapsed(0);
       startTimeRef.current = Date.now();
       timerRef.current = setInterval(() => {
@@ -62,14 +56,19 @@ export function CombinedDashboard({
     pitch >= DEFAULT_PITCH_TARGET.low &&
     pitch <= DEFAULT_PITCH_TARGET.high;
 
+  const inF2Target =
+    formants?.f2 != null &&
+    formants.f2 >= DEFAULT_F2_TARGET.low &&
+    formants.f2 <= DEFAULT_F2_TARGET.high;
+
   const statOpacity = !voiced && !holding ? "opacity-40" : holding ? "opacity-50" : "";
 
   return (
     <div className="flex-1 flex flex-col w-full max-w-6xl min-h-0">
-      {/* Compact visualizations: 60% pitch / 40% resonance (stacked on mobile) */}
+      {/* Two scrolling traces: pitch (left) + resonance (right), stacked on mobile */}
       <div className="lg:flex-1 flex flex-col lg:flex-row gap-3 min-h-0">
-        {/* Pitch trace — 60% */}
-        <div className="lg:w-[60%] min-h-[180px] lg:min-h-0">
+        {/* Pitch trace — 50% */}
+        <div className="lg:w-1/2 min-h-[180px] lg:min-h-0">
           <PitchTrace
             pitchTraceRef={pitchTraceRef}
             voiced={voiced}
@@ -79,9 +78,9 @@ export function CombinedDashboard({
           />
         </div>
 
-        {/* Vowel space — 40% */}
-        <div className="lg:w-[40%] min-h-[180px] lg:min-h-0">
-          <VowelSpacePlot
+        {/* Resonance trace — 50% */}
+        <div className="lg:w-1/2 min-h-[180px] lg:min-h-0">
+          <ResonanceTrace
             formantTrailRef={formantTrailRef}
             voiced={voiced}
             holding={holding}
@@ -93,7 +92,7 @@ export function CombinedDashboard({
 
       {/* Live stats — two rows */}
       <div className="flex-shrink-0 mt-3 px-2">
-        {/* Row 1: Primary metrics (F0 + F2) — larger */}
+        {/* Row 1: Primary metrics (F0 + F2) */}
         <div className="flex items-center justify-center gap-x-8 gap-y-1">
           {/* F0 */}
           <div className={`text-center ${statOpacity} transition-opacity duration-300`}>
@@ -109,7 +108,7 @@ export function CombinedDashboard({
                   : "text-neutral-600"
               }`}
             >
-              {pitch !== null ? `${Math.round(pitch)}` : "—"}
+              {pitch !== null ? `${Math.round(pitch)}` : "\u2014"}
               <span className="text-xs text-neutral-500 ml-0.5">Hz</span>
             </span>
           </div>
@@ -119,16 +118,33 @@ export function CombinedDashboard({
             <span className="text-[10px] text-neutral-500 uppercase tracking-wider block">
               F2
             </span>
-            <span className="text-xl sm:text-2xl font-light tabular-nums text-neutral-300">
-              {formants?.f2 != null ? `${Math.round(formants.f2)}` : "—"}
+            <span
+              className={`text-xl sm:text-2xl font-light tabular-nums ${
+                formants?.f2 != null
+                  ? inF2Target
+                    ? "text-blue-400"
+                    : "text-orange-400"
+                  : "text-neutral-600"
+              }`}
+            >
+              {formants?.f2 != null ? `${Math.round(formants.f2)}` : "\u2014"}
               <span className="text-xs text-neutral-500 ml-0.5">Hz</span>
             </span>
           </div>
         </div>
 
-        {/* Row 2: Secondary metrics (Vocal Weight + HNR) */}
+        {/* Row 2: Resonance gauge + Vocal weight gauge + HNR */}
         <div className="flex items-center justify-center gap-x-6 gap-y-1 mt-1.5">
-          {/* Spectral Tilt gauge */}
+          {/* Resonance brightness gauge */}
+          <div className="w-36 sm:w-44">
+            <ResonanceGauge
+              formants={formants}
+              voiced={voiced}
+              holding={holding}
+            />
+          </div>
+
+          {/* Vocal weight gauge */}
           <div className="w-36 sm:w-44">
             <SpectralTiltGauge
               spectralTilt={spectralTilt}
@@ -143,7 +159,7 @@ export function CombinedDashboard({
               HNR
             </span>
             <span className="text-sm font-light tabular-nums text-neutral-300">
-              {hnr !== null ? `${hnr.toFixed(1)}` : "—"}
+              {hnr !== null ? `${hnr.toFixed(1)}` : "\u2014"}
               <span className="text-xs text-neutral-500 ml-0.5">dB</span>
             </span>
           </div>
@@ -153,7 +169,6 @@ export function CombinedDashboard({
       {/* Session controls */}
       <div className="flex-shrink-0 mt-3 pb-2">
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-          {/* Save session recording — visually distinct */}
           <button
             onClick={toggleRecording}
             className={`flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-medium transition-colors cursor-pointer border ${
@@ -170,12 +185,10 @@ export function CombinedDashboard({
             {recording ? "Stop Recording" : "Save Session"}
           </button>
 
-          {/* Session timer */}
           <span className="text-sm tabular-nums text-neutral-400 font-mono">
             {formatTime(elapsed)}
           </span>
 
-          {/* Session notes */}
           <input
             type="text"
             placeholder="Session notes..."
