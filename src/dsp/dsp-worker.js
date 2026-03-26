@@ -40,6 +40,7 @@ let _yinRe = new Float64Array(_yinFftLen);
 let _yinIm = new Float64Array(_yinFftLen);
 let _yinDiff = new Float32Array(windowSize);
 let _yinCmnd = new Float32Array(windowSize);
+let _yinCumSq = new Float64Array(windowSize + 1); // prefix sum of x[i]^2 for YIN
 
 // Spectral tilt: 2048-point FFT (fixed size, independent of sample rate)
 const _tiltRe = new Float64Array(2048);
@@ -53,6 +54,7 @@ const _hnrIm = new Float64Array(4096);
 let _burgEf = new Float64Array(Math.floor(windowSize / decimationFactor));
 let _burgEb = new Float64Array(Math.floor(windowSize / decimationFactor));
 let _burgEfTmp = new Float64Array(Math.floor(windowSize / decimationFactor));
+let _burgEbTmp = new Float64Array(Math.floor(windowSize / decimationFactor));
 let _burgA = new Float64Array(LPC_ORDER + 1);
 let _burgANew = new Float64Array(LPC_ORDER + 1);
 
@@ -129,6 +131,7 @@ self.onmessage = (e) => {
     _burgEf = new Float64Array(decLen);
     _burgEb = new Float64Array(decLen);
     _burgEfTmp = new Float64Array(decLen);
+    _burgEbTmp = new Float64Array(decLen);
     _burgA = new Float64Array(LPC_ORDER + 1);
     _burgANew = new Float64Array(LPC_ORDER + 1);
     _rootsRe = new Float64Array(LPC_ORDER);
@@ -141,6 +144,7 @@ self.onmessage = (e) => {
     _yinIm = new Float64Array(_yinFftLen);
     _yinDiff = new Float32Array(windowSize);
     _yinCmnd = new Float32Array(windowSize);
+    _yinCumSq = new Float64Array(windowSize + 1);
     return;
   }
 
@@ -229,30 +233,27 @@ function detectPitch(buffer, sr) {
   fft(re, im);
   // re[tau] / fftLen = autocorrelation at lag tau
 
-  // Compute cumulative energy for the difference function:
-  // d(tau) = cumEnergy[tau] + cumEnergy[tau] - 2 * autocorr(tau)
-  // More precisely: d(tau) = sum_{i=0}^{halfLen-1} (x[i] - x[i+tau])^2
-  //   = sum x[i]^2 (for i in [0,halfLen)) + sum x[i+tau]^2 (for i in [0,halfLen)) - 2*crosscorr(tau)
-  // We precompute prefix sums for the squared signal to get these partial sums in O(1).
+  // Compute the YIN difference function using FFT autocorrelation.
+  // The FFT gives r(tau) = sum_{i=0}^{N-1-tau} x[i]*x[i+tau] (linear correlation).
+  // The difference function over the matching range is:
+  //   d(tau) = sum_{i=0}^{N-1-tau} x[i]^2 + sum_{i=tau}^{N-1} x[i]^2 - 2*r(tau)
+  // We use a prefix sum of x[i]^2 to compute both energy terms in O(1) per tau.
 
   const diff = _yinDiff;
-  // Energy of first half: sum_{i=0}^{halfLen-1} x[i]^2
-  let leftEnergy = 0;
-  for (let i = 0; i < halfLen; i++) leftEnergy += buffer[i] * buffer[i];
 
-  // For each tau, right energy = sum_{i=tau}^{tau+halfLen-1} x[i]^2
-  // We can compute this incrementally
-  let rightEnergy = leftEnergy; // tau=0: same as left
+  // Prefix sum: cumSq[k] = sum_{i=0}^{k-1} x[i]^2
+  const cumSq = _yinCumSq;
+  cumSq[0] = 0;
+  for (let i = 0; i < N; i++) {
+    cumSq[i + 1] = cumSq[i] + buffer[i] * buffer[i];
+  }
+
   diff[0] = 0;
-
   for (let tau = 1; tau < searchLen; tau++) {
-    // Update right energy: remove x[tau-1]^2, add x[tau+halfLen-1]^2
-    rightEnergy -= buffer[tau - 1] * buffer[tau - 1];
-    if (tau + halfLen - 1 < N) {
-      rightEnergy += buffer[tau + halfLen - 1] * buffer[tau + halfLen - 1];
-    }
+    // leftEnergy(tau) = sum_{i=0}^{N-1-tau} x[i]^2 = cumSq[N - tau]
+    // rightEnergy(tau) = sum_{i=tau}^{N-1} x[i]^2 = cumSq[N] - cumSq[tau]
     const autocorr = re[tau] / fftLen;
-    diff[tau] = leftEnergy + rightEnergy - 2 * autocorr;
+    diff[tau] = cumSq[N - tau] + (cumSq[N] - cumSq[tau]) - 2 * autocorr;
   }
 
   // Step 2: Cumulative mean normalized difference
@@ -421,6 +422,7 @@ function burgLPC(samples, order) {
   const ef = _burgEf;
   const eb = _burgEb;
   const efTmp = _burgEfTmp;
+  const ebTmp = _burgEbTmp;
 
   a.fill(0);
   a[0] = 1;
@@ -448,13 +450,17 @@ function burgLPC(samples, order) {
     aNew[m] = k;
     for (let i = 0; i <= m; i++) a[i] = aNew[i];
 
-    // Update prediction errors in-place: use efTmp as scratch for ef
+    // Update prediction errors into scratch buffers to avoid read-after-write
+    // corruption (eb[i] must not be overwritten before eb[i-1] is read next iter)
     for (let i = m; i < n; i++) {
       efTmp[i] = ef[i] + k * eb[i - 1];
-      eb[i] = eb[i - 1] + k * ef[i];
+      ebTmp[i] = eb[i - 1] + k * ef[i];
     }
-    // Copy efTmp back to ef
-    for (let i = m; i < n; i++) ef[i] = efTmp[i];
+    // Swap scratch back
+    for (let i = m; i < n; i++) {
+      ef[i] = efTmp[i];
+      eb[i] = ebTmp[i];
+    }
   }
 
   return a;

@@ -57,6 +57,7 @@ const _yinRe = new Float64Array(_yinFftLen);
 const _yinIm = new Float64Array(_yinFftLen);
 const _yinDiff = new Float32Array(WINDOW_SIZE);
 const _yinCmnd = new Float32Array(WINDOW_SIZE);
+const _yinCumSq = new Float64Array(WINDOW_SIZE + 1);
 
 // Spectral tilt FFT buffers
 const _tiltRe = new Float64Array(2048);
@@ -71,6 +72,7 @@ const decLen = Math.floor(WINDOW_SIZE / DECIMATION_FACTOR);
 const _burgEf = new Float64Array(decLen);
 const _burgEb = new Float64Array(decLen);
 const _burgEfTmp = new Float64Array(decLen);
+const _burgEbTmp = new Float64Array(decLen);
 const _burgA = new Float64Array(LPC_ORDER + 1);
 const _burgANew = new Float64Array(LPC_ORDER + 1);
 
@@ -176,19 +178,18 @@ function detectPitch(buffer, sr) {
   fft(re, im);
 
   const diff = _yinDiff;
-  let leftEnergy = 0;
-  for (let i = 0; i < halfLen; i++) leftEnergy += buffer[i] * buffer[i];
 
-  let rightEnergy = leftEnergy;
+  // Prefix sum of x[i]^2 — matches FFT autocorrelation's summation range
+  const cumSq = _yinCumSq;
+  cumSq[0] = 0;
+  for (let i = 0; i < N; i++) {
+    cumSq[i + 1] = cumSq[i] + buffer[i] * buffer[i];
+  }
+
   diff[0] = 0;
-
   for (let tau = 1; tau < searchLen; tau++) {
-    rightEnergy -= buffer[tau - 1] * buffer[tau - 1];
-    if (tau + halfLen - 1 < N) {
-      rightEnergy += buffer[tau + halfLen - 1] * buffer[tau + halfLen - 1];
-    }
     const autocorr = re[tau] / fftLenVal;
-    diff[tau] = leftEnergy + rightEnergy - 2 * autocorr;
+    diff[tau] = cumSq[N - tau] + (cumSq[N] - cumSq[tau]) - 2 * autocorr;
   }
 
   const cmnd = _yinCmnd;
@@ -269,6 +270,7 @@ function burgLPC(samples, order) {
   const ef = _burgEf;
   const eb = _burgEb;
   const efTmp = _burgEfTmp;
+  const ebTmp = _burgEbTmp;
 
   a.fill(0);
   a[0] = 1;
@@ -277,10 +279,6 @@ function burgLPC(samples, order) {
     ef[i] = samples[i];
     eb[i] = samples[i];
   }
-
-  let errorPower = 0;
-  for (let i = 0; i < n; i++) errorPower += samples[i] * samples[i];
-  errorPower /= n;
 
   for (let m = 1; m <= order; m++) {
     let num = 0, den = 0;
@@ -300,11 +298,12 @@ function burgLPC(samples, order) {
 
     for (let i = m; i < n; i++) {
       efTmp[i] = ef[i] + k * eb[i - 1];
-      eb[i] = eb[i - 1] + k * ef[i];
+      ebTmp[i] = eb[i - 1] + k * ef[i];
     }
-    for (let i = m; i < n; i++) ef[i] = efTmp[i];
-
-    errorPower *= 1 - k * k;
+    for (let i = m; i < n; i++) {
+      ef[i] = efTmp[i];
+      eb[i] = ebTmp[i];
+    }
   }
   return a;
 }
