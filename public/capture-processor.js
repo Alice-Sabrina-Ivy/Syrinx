@@ -1,13 +1,13 @@
 // capture-processor.js — AudioWorklet processor that runs in the audio thread
-// Collects mic audio samples into ~50ms chunks and posts them to the main thread.
+// Collects mic audio samples into ~25ms chunks and posts them to the main thread.
 // Uses a pre-allocated ring buffer to avoid GC pauses on the audio thread.
 
 class CaptureProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
-    // ~30ms at sample rate (e.g. 1440 samples at 48kHz)
+    // ~25ms at sample rate (e.g. 1200 samples at 48kHz)
     // Smaller chunks = more frequent analysis = faster pitch change detection
-    this.chunkSize = Math.floor(sampleRate * 0.03);
+    this.chunkSize = Math.floor(sampleRate * 0.025);
     // Pre-allocate buffer large enough for 2 chunks + headroom for input frames
     // (avoids creating new Float32Array objects in process(), reducing GC pressure)
     this.bufferSize = this.chunkSize * 3;
