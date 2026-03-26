@@ -63,6 +63,9 @@ export function useAudioPipeline() {
   const pitchTraceRef = useRef([]);
   const formantTrailRef = useRef([]);
 
+  // Optional callback for session recording — called with every analysis frame
+  const frameCallbackRef = useRef(null);
+
   useEffect(() => {
     return () => stop();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -270,6 +273,13 @@ export function useAudioPipeline() {
           hnr: null,
         }));
       }
+      // Notify frame callback (session recording) even during silence
+      if (frameCallbackRef.current) {
+        frameCallbackRef.current({
+          voiced: false, f0: null, f1: null, f2: null, f3: null,
+          intensity, spectralTilt: null, hnr: null,
+        });
+      }
       return;
     }
 
@@ -339,6 +349,20 @@ export function useAudioPipeline() {
       hnr: currentHnr,
     };
 
+    // Notify frame callback (session recording) with smoothed values
+    if (frameCallbackRef.current) {
+      frameCallbackRef.current({
+        voiced: true,
+        f0: smoothedPitch,
+        f1: f1,
+        f2: f2,
+        f3: f3,
+        intensity,
+        spectralTilt: currentTilt,
+        hnr: currentHnr,
+      });
+    }
+
     // Throttled: only update React state for text readouts at ~5fps
     throttledSetState((s) => ({
       ...s,
@@ -359,6 +383,8 @@ export function useAudioPipeline() {
     stop,
     pitchTraceRef,
     formantTrailRef,
+    frameCallbackRef,
+    streamRef,
   };
 }
 
