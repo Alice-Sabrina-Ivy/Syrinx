@@ -231,53 +231,28 @@ export function CombinedDashboard({
         </div>
       </div>
 
-      {/* Live stats — two rows */}
+      {/* Live stats — columnar layout: F0+Resonance | F2+VocalWeight | HNR */}
       <div className="flex-shrink-0 mt-3 px-2">
-        {/* Row 1: Primary metrics (F0 + F2) */}
-        <div className="flex items-center justify-center gap-x-8 gap-y-1">
-          {/* F0 */}
-          <div className={`text-center ${statOpacity} transition-opacity duration-300`}>
-            <span className="text-[10px] text-neutral-500 uppercase tracking-wider block">
-              F0
-            </span>
-            <span
-              className={`text-xl sm:text-2xl font-light tabular-nums ${
-                pitch !== null
-                  ? inPitchTarget
-                    ? "text-green-400"
-                    : "text-red-400"
-                  : "text-neutral-600"
-              }`}
-            >
-              {pitch !== null ? `${Math.round(pitch)}` : "\u2014"}
-              <span className="text-xs text-neutral-500 ml-0.5">Hz</span>
-            </span>
-          </div>
-
-          {/* F2 */}
-          <div className={`text-center ${statOpacity} transition-opacity duration-300`}>
-            <span className="text-[10px] text-neutral-500 uppercase tracking-wider block">
-              F2
-            </span>
-            <span
-              className={`text-xl sm:text-2xl font-light tabular-nums ${
-                formants?.f2 !== null && formants?.f2 !== undefined
-                  ? inF2Target
-                    ? "text-blue-400"
-                    : "text-orange-400"
-                  : "text-neutral-600"
-              }`}
-            >
-              {formants?.f2 !== null && formants?.f2 !== undefined ? `${Math.round(formants.f2)}` : "\u2014"}
-              <span className="text-xs text-neutral-500 ml-0.5">Hz</span>
-            </span>
-          </div>
-        </div>
-
-        {/* Row 2: Resonance gauge + Vocal weight gauge + HNR */}
-        <div className="flex items-center justify-center gap-x-6 gap-y-1 mt-1.5">
-          {/* Resonance brightness gauge */}
-          <div className="w-36 sm:w-44">
+        <div className="flex items-end justify-center gap-x-3 sm:gap-x-6">
+          {/* Column 1: F0 value + Resonance gauge */}
+          <div className="flex-1 max-w-40 sm:max-w-44">
+            <div className={`text-center mb-1.5 ${statOpacity} transition-opacity duration-300`}>
+              <span className="text-[10px] text-neutral-500 uppercase tracking-wider block">
+                F0
+              </span>
+              <span
+                className={`text-xl sm:text-2xl font-light tabular-nums ${
+                  pitch !== null
+                    ? inPitchTarget
+                      ? "text-green-400"
+                      : "text-red-400"
+                    : "text-neutral-600"
+                }`}
+              >
+                {pitch !== null ? `${Math.round(pitch)}` : "\u2014"}
+                <span className="text-xs text-neutral-500 ml-0.5">Hz</span>
+              </span>
+            </div>
             <ResonanceGauge
               formants={formants}
               voiced={voiced}
@@ -285,8 +260,25 @@ export function CombinedDashboard({
             />
           </div>
 
-          {/* Vocal weight gauge */}
-          <div className="w-36 sm:w-44">
+          {/* Column 2: F2 value + Vocal weight gauge */}
+          <div className="flex-1 max-w-40 sm:max-w-44">
+            <div className={`text-center mb-1.5 ${statOpacity} transition-opacity duration-300`}>
+              <span className="text-[10px] text-neutral-500 uppercase tracking-wider block">
+                F2
+              </span>
+              <span
+                className={`text-xl sm:text-2xl font-light tabular-nums ${
+                  formants?.f2 !== null && formants?.f2 !== undefined
+                    ? inF2Target
+                      ? "text-blue-400"
+                      : "text-orange-400"
+                    : "text-neutral-600"
+                }`}
+              >
+                {formants?.f2 !== null && formants?.f2 !== undefined ? `${Math.round(formants.f2)}` : "\u2014"}
+                <span className="text-xs text-neutral-500 ml-0.5">Hz</span>
+              </span>
+            </div>
             <SpectralTiltGauge
               spectralTilt={spectralTilt}
               voiced={voiced}
@@ -294,8 +286,8 @@ export function CombinedDashboard({
             />
           </div>
 
-          {/* HNR */}
-          <div className={`text-center ${statOpacity} transition-opacity duration-300`}>
+          {/* Column 3: HNR */}
+          <div className={`text-center shrink-0 pb-3 ${statOpacity} transition-opacity duration-300`}>
             <span className="text-[10px] text-neutral-500 uppercase tracking-wider block">
               HNR
             </span>
