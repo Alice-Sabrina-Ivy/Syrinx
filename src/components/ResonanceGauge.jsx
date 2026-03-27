@@ -61,14 +61,14 @@ export function ResonanceGauge({ formants, voiced, holding }) {
   return (
     <div className="w-full" style={{ opacity }}>
       {/* Labels */}
-      <div className="flex justify-between items-baseline mb-1.5">
-        <span className="text-[10px] text-neutral-500 uppercase tracking-wider">
+      <div className="flex justify-between items-baseline mb-1.5 whitespace-nowrap">
+        <span className="text-[9px] sm:text-[10px] text-neutral-500 uppercase tracking-normal sm:tracking-wider">
           Darker
         </span>
-        <span className="text-xs text-neutral-400 font-medium">
+        <span className="text-[11px] sm:text-xs text-neutral-400 font-medium px-1">
           Resonance
         </span>
-        <span className="text-[10px] text-neutral-500 uppercase tracking-wider">
+        <span className="text-[9px] sm:text-[10px] text-neutral-500 uppercase tracking-normal sm:tracking-wider">
           Brighter
         </span>
       </div>
