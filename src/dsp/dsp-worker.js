@@ -311,7 +311,11 @@ function detectPitch(buffer, sr) {
   // correction doesn't cascade into a 6× or 8× shift.
   const baseTau = bestTau;
   const bestFreq = sr / baseTau;
-  const maxMult = (bestFreq > 300 && cmnd[baseTau] > 0.05) ? 4 : 2;
+  // Skip all sub-harmonic correction when CMND is very low (< 0.01):
+  // near-perfect periodicity means the initial detection is already confident.
+  // Real speech always has CMND > 0.01 due to noise and formant modulation.
+  const maxMult = cmnd[baseTau] < 0.01 ? 1
+    : (bestFreq > 300 && cmnd[baseTau] > 0.05) ? 4 : 2;
   for (let mult = 2; mult <= maxMult; mult++) {
     const multiTau = baseTau * mult;
     if (multiTau + 1 >= searchLen || multiTau >= maxLag) break;
