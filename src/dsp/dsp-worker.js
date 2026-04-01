@@ -5,12 +5,24 @@ const WINDOW_MS = 50;
 let sampleRate = 48000;
 let windowSize = Math.floor(sampleRate * WINDOW_MS / 1000);
 
-// Formant extraction parameters — computed on init
+// Formant extraction parameters — computed on init.
+// Target effective sample rate for formant analysis: ~10 kHz.  Praat uses
+// 2× the maximum formant ceiling (default 5500 Hz → 11 kHz for female, 5000 Hz
+// → 10 kHz for male).  We target 10 kHz as a compromise and adapt LPC order
+// based on detected pitch.
+// Maximum effective sample rate for formant analysis.  Decimation factor is
+// chosen so that targetSR = sampleRate / factor ≤ MAX_FORMANT_SR.
+// Praat uses 2× maxFormant (default 5500 → 11 kHz).  We cap at 12 kHz which
+// ensures factor ≥ 2 at 16 kHz and factor = 4 at 48 kHz.
+const MAX_FORMANT_SR = 12000;
 let decimationFactor = 4;
 let targetSR = 12000;
-// LPC order 10 models up to 5 formants (2 poles per formant) — sufficient for
-// F1-F4 extraction from speech downsampled to ~12 kHz.
-const LPC_ORDER = 10;
+// Base LPC order — may be adjusted per-frame based on detected pitch.
+// Order 10 at 10 kHz = 5 poles = ~5 formants up to 5 kHz (suitable for male).
+// Order 12 at 10 kHz = 6 poles = ~6 formants (suitable for female, higher ceiling).
+const LPC_ORDER_MALE = 10;
+const LPC_ORDER_FEMALE = 12;
+let LPC_ORDER = 10;
 // Pre-computed FIR anti-alias filter for decimation (re-computed on 'init' message).
 // Initialize with default decimation factor so the worker is ready before 'init'.
 let antiAliasFilter = null; // populated below after designLowPassFIR is defined
@@ -30,7 +42,8 @@ let lastContextTime = 0; // AudioContext time when latest chunk was captured
 // These are sized for the default 48 kHz sample rate and re-allocated on 'init'.
 let _preEmph = new Float64Array(windowSize);
 let _windowed = new Float64Array(windowSize);
-let _decimated = new Float64Array(Math.floor(windowSize / decimationFactor));
+// Sized for factor=1 (no decimation) to support pitch-adaptive decimation
+let _decimated = new Float64Array(windowSize);
 
 // YIN pitch: FFT-based autocorrelation buffers.
 // FFT size must be >= 2*windowSize and a power of 2.
@@ -50,21 +63,24 @@ const _tiltIm = new Float64Array(2048);
 const _hnrRe = new Float64Array(4096);
 const _hnrIm = new Float64Array(4096);
 
-// Burg LPC: pre-allocated prediction error buffers (sized for decimated length)
-let _burgEf = new Float64Array(Math.floor(windowSize / decimationFactor));
-let _burgEb = new Float64Array(Math.floor(windowSize / decimationFactor));
-let _burgEfTmp = new Float64Array(Math.floor(windowSize / decimationFactor));
-let _burgEbTmp = new Float64Array(Math.floor(windowSize / decimationFactor));
-let _burgA = new Float64Array(LPC_ORDER + 1);
-let _burgANew = new Float64Array(LPC_ORDER + 1);
+// Burg LPC: pre-allocated prediction error buffers (sized for full window to
+// support factor=1 decimation for female voice analysis)
+let _burgEf = new Float64Array(windowSize);
+let _burgEb = new Float64Array(windowSize);
+let _burgEfTmp = new Float64Array(windowSize);
+let _burgEbTmp = new Float64Array(windowSize);
+// Maximum possible LPC order: up to 16 for female voices at high sample rates
+const MAX_LPC_ORDER = 16;
+let _burgA = new Float64Array(MAX_LPC_ORDER + 1);
+let _burgANew = new Float64Array(MAX_LPC_ORDER + 1);
 
 // Root finding: flat typed arrays instead of object arrays (2 doubles per root)
-let _rootsRe = new Float64Array(LPC_ORDER);
-let _rootsIm = new Float64Array(LPC_ORDER);
+let _rootsRe = new Float64Array(MAX_LPC_ORDER);
+let _rootsIm = new Float64Array(MAX_LPC_ORDER);
 
-// Formant selection scratch arrays (max LPC_ORDER/2 = 5 formants)
-const _formantFreqs = new Float64Array(LPC_ORDER);
-const _formantBws = new Float64Array(LPC_ORDER);
+// Formant selection scratch arrays (max MAX_LPC_ORDER/2 formants)
+const _formantFreqs = new Float64Array(MAX_LPC_ORDER);
+const _formantBws = new Float64Array(MAX_LPC_ORDER);
 
 function processChunk(buffer, contextTime) {
   const chunkReceiveTime = performance.now();
@@ -87,7 +103,7 @@ function processChunk(buffer, contextTime) {
   // (LPC + root finding + FFT) while still being responsive enough for training.
   let formants = null, spectralTilt = null, hnr = null;
   if (analysisCount % 6 === 0) {
-    formants = extractFormants(window);
+    formants = extractFormants(window, pitch);
     spectralTilt = computeSpectralTilt(window, sampleRate);
     hnr = computeHNR(window, sampleRate);
   }
@@ -115,27 +131,33 @@ self.onmessage = (e) => {
   if (type === "init") {
     sampleRate = e.data.sampleRate;
     windowSize = Math.floor(sampleRate * WINDOW_MS / 1000);
-    decimationFactor = Math.max(1, Math.round(sampleRate / 11000));
+    // Use ceil to ensure targetSR ≤ MAX_FORMANT_SR.  At 16 kHz input,
+    // ceil(16000/12000)=2 → targetSR=8000; at 48 kHz, ceil(48000/12000)=4 → 12000.
+    // The key fix: Math.round(16000/11000)=1 gave NO downsampling at 16 kHz.
+    decimationFactor = Math.max(1, Math.ceil(sampleRate / MAX_FORMANT_SR));
     targetSR = sampleRate / decimationFactor;
-    antiAliasFilter = designLowPassFIR(0.4 / decimationFactor, decimationFactor * 16 + 1);
+    // Anti-alias cutoff: 0.45/factor gives 90% of target Nyquist.
+    // Previous 0.4/factor was too aggressive at low decimation factors (e.g.
+    // at 16kHz/factor=2, cutoff was 3200 Hz, truncating female F2/F3).
+    antiAliasFilter = designLowPassFIR(0.45 / decimationFactor, decimationFactor * 16 + 1);
     ringCapacity = windowSize * 2;
     ringBuffer = new Float32Array(ringCapacity);
     ringLen = 0;
     analysisCount = 0;
 
     // Re-allocate pre-sized buffers for new sample rate
-    const decLen = Math.floor(windowSize / decimationFactor);
     _preEmph = new Float64Array(windowSize);
     _windowed = new Float64Array(windowSize);
-    _decimated = new Float64Array(decLen);
-    _burgEf = new Float64Array(decLen);
-    _burgEb = new Float64Array(decLen);
-    _burgEfTmp = new Float64Array(decLen);
-    _burgEbTmp = new Float64Array(decLen);
-    _burgA = new Float64Array(LPC_ORDER + 1);
-    _burgANew = new Float64Array(LPC_ORDER + 1);
-    _rootsRe = new Float64Array(LPC_ORDER);
-    _rootsIm = new Float64Array(LPC_ORDER);
+    // Sized for factor=1 to support pitch-adaptive decimation for female voices
+    _decimated = new Float64Array(windowSize);
+    _burgEf = new Float64Array(windowSize);
+    _burgEb = new Float64Array(windowSize);
+    _burgEfTmp = new Float64Array(windowSize);
+    _burgEbTmp = new Float64Array(windowSize);
+    _burgA = new Float64Array(MAX_LPC_ORDER + 1);
+    _burgANew = new Float64Array(MAX_LPC_ORDER + 1);
+    _rootsRe = new Float64Array(MAX_LPC_ORDER);
+    _rootsIm = new Float64Array(MAX_LPC_ORDER);
 
     // YIN FFT buffers
     _yinFftLen = 1;
@@ -265,7 +287,10 @@ function detectPitch(buffer, sr) {
     cmnd[tau] = diff[tau] / (runningSum / tau);
   }
 
-  // Step 3: Absolute threshold
+  // Step 3: Absolute threshold — collect all dips below threshold, then
+  // pick the best one (preferring the first/lowest-frequency dip to avoid
+  // octave errors, but allowing a deeper dip at 2× lag if it is significantly
+  // better — indicating the first dip was a sub-harmonic artifact).
   let bestTau = -1;
   for (let tau = minLag; tau < Math.min(maxLag, searchLen); tau++) {
     if (cmnd[tau] < threshold) {
@@ -276,6 +301,36 @@ function detectPitch(buffer, sr) {
   }
 
   if (bestTau === -1) return null;
+
+  // Octave/harmonic error check.  Always check 2× (octave errors).
+  // For high detected frequencies (> 300 Hz) with non-trivial CMND (indicating
+  // imperfect periodicity, i.e. real speech), also check 3×/4× — YIN can lock
+  // onto upper harmonics on short windows.  Skip higher checks when CMND is
+  // near zero (perfectly periodic signals) to avoid false sub-harmonic detection.
+  // Use an immutable base lag for all multiplier checks so that accepting a 2×
+  // correction doesn't cascade into a 6× or 8× shift.
+  const baseTau = bestTau;
+  const bestFreq = sr / baseTau;
+  const maxMult = (bestFreq > 300 && cmnd[baseTau] > 0.05) ? 4 : 2;
+  for (let mult = 2; mult <= maxMult; mult++) {
+    const multiTau = baseTau * mult;
+    if (multiTau + 1 >= searchLen || multiTau >= maxLag) break;
+    const searchStart = Math.max(minLag, Math.floor(multiTau * 0.9));
+    const searchEnd = Math.min(Math.ceil(multiTau * 1.1), searchLen - 1, maxLag);
+    let minCmndVal = cmnd[baseTau];
+    let minTau = -1;
+    for (let tau = searchStart; tau <= searchEnd; tau++) {
+      if (cmnd[tau] < minCmndVal) {
+        minCmndVal = cmnd[tau];
+        minTau = tau;
+      }
+    }
+    const relThresh = mult === 2 ? 0.65 : 0.4;
+    const absOk = mult === 2 || minCmndVal < threshold * 0.5;
+    if (minTau !== -1 && minCmndVal < cmnd[baseTau] * relThresh && absOk) {
+      bestTau = minTau;
+    }
+  }
 
   // Step 4: Parabolic interpolation
   const s0 = bestTau > 0 ? cmnd[bestTau - 1] : cmnd[bestTau];
@@ -292,9 +347,53 @@ function detectPitch(buffer, sr) {
 }
 
 // --- Formant Extraction (Burg LPC) ---
+// Accepts optional detectedPitch to adapt LPC order and formant ceiling.
+// Praat's "To Formant (burg)" uses maxFormant=5500 for female, 5000 for male,
+// and nFormant=5 (LPC order = 2*nFormant = 10 for male, or +2 for female at
+// higher effective SR).  We follow the same approach.
 
-function extractFormants(buffer) {
+function extractFormants(buffer, detectedPitch) {
   const n = buffer.length;
+
+  // Adapt parameters based on pitch (Praat-style gender detection).
+  // Praat's "To Formant (burg)" uses:
+  //   Male:   maxFormant=5000, nFormant=5 → LPC order=10, effective SR=10000
+  //   Female: maxFormant=5500, nFormant=5 → LPC order=10, effective SR=11000
+  // We follow the same principle: choose decimation + LPC order so that
+  // the effective analysis bandwidth matches the expected formant range.
+  let lpcOrder, maxFormant, effectiveDecFactor, effectiveTargetSR, effectiveFilter;
+
+  const isFemale = detectedPitch === null || detectedPitch >= 160;
+  const isMale = detectedPitch !== null && detectedPitch < 140;
+
+  if (isMale) {
+    // Male: formant ceiling ~5000 Hz, targetSR ~10 kHz
+    maxFormant = 5000;
+    effectiveDecFactor = decimationFactor;
+    effectiveTargetSR = targetSR;
+    effectiveFilter = antiAliasFilter;
+    lpcOrder = LPC_ORDER_MALE;
+  } else {
+    // Female (or unknown): formant ceiling ~5500 Hz, targetSR ~11 kHz
+    // If the default decimation gives targetSR < 11000, reduce the factor.
+    maxFormant = 5500;
+    const minTargetSR = 11000;
+    effectiveDecFactor = decimationFactor;
+    effectiveTargetSR = targetSR;
+    effectiveFilter = antiAliasFilter;
+    while (effectiveDecFactor > 1 && sampleRate / effectiveDecFactor < minTargetSR) {
+      effectiveDecFactor--;
+    }
+    if (effectiveDecFactor !== decimationFactor) {
+      effectiveTargetSR = sampleRate / effectiveDecFactor;
+      effectiveFilter = designLowPassFIR(0.45 / effectiveDecFactor, effectiveDecFactor * 16 + 1);
+    }
+    // At 16 kHz with factor=1, targetSR=16000 → need higher LPC order to model
+    // the wider bandwidth (up to 8 kHz). Praat uses nFormant=5 at 11 kHz,
+    // so at 16 kHz we need proportionally more: ceil(5 * 16000/11000) * 2 = 16.
+    // But we cap at a reasonable value to avoid over-fitting.
+    lpcOrder = Math.min(16, Math.max(LPC_ORDER_FEMALE, Math.ceil(5 * effectiveTargetSR / 11000) * 2));
+  }
 
   // Pre-emphasis into pre-allocated buffer
   _preEmph[0] = buffer[0];
@@ -308,13 +407,13 @@ function extractFormants(buffer) {
   }
 
   // Downsample with anti-alias FIR filter (writes into _decimated)
-  const decLen = decimateWithFilter(_windowed, decimationFactor);
+  const decLen = decimateWithFilter(_windowed, effectiveDecFactor, effectiveFilter);
 
   // Burg LPC (uses pre-allocated buffers internally)
-  const coefficients = burgLPC(_decimated.subarray(0, decLen), LPC_ORDER);
+  const coefficients = burgLPC(_decimated.subarray(0, decLen), lpcOrder);
 
   // Find polynomial roots (uses pre-allocated flat arrays)
-  const rootCount = findPolynomialRoots(coefficients);
+  const rootCount = findPolynomialRoots(coefficients, lpcOrder);
 
   // Convert roots to formant frequencies + bandwidths
   // Use a small fixed-size scratch array to avoid allocations
@@ -324,18 +423,18 @@ function extractFormants(buffer) {
   for (let i = 0; i < rootCount; i++) {
     if (_rootsIm[i] <= 0) continue;
 
-    const freq = (Math.atan2(_rootsIm[i], _rootsRe[i]) * targetSR) / (2 * Math.PI);
+    const freq = (Math.atan2(_rootsIm[i], _rootsRe[i]) * effectiveTargetSR) / (2 * Math.PI);
     const mag = Math.sqrt(_rootsRe[i] * _rootsRe[i] + _rootsIm[i] * _rootsIm[i]);
-    const bw = mag > 0 ? (-Math.log(mag) * targetSR) / Math.PI : Infinity;
+    const bw = mag > 0 ? (-Math.log(mag) * effectiveTargetSR) / Math.PI : Infinity;
 
-    if (freq > 90 && freq < 5500 && bw > 0 && bw < 600) {
+    if (freq > 90 && freq < maxFormant && bw > 0 && bw < 600) {
       fFreqs[fCount] = freq;
       fBws[fCount] = bw;
       fCount++;
     }
   }
 
-  // Sort by frequency (insertion sort — at most 5 elements)
+  // Sort by frequency (insertion sort — at most ~6 elements)
   for (let i = 1; i < fCount; i++) {
     const kf = fFreqs[i], kb = fBws[i];
     let j = i - 1;
@@ -383,17 +482,17 @@ function designLowPassFIR(cutoffNormalized, numTaps) {
 }
 
 // Initialize default anti-alias filter (matches default decimationFactor = 4)
-antiAliasFilter = designLowPassFIR(0.4 / decimationFactor, decimationFactor * 16 + 1);
+antiAliasFilter = designLowPassFIR(0.45 / decimationFactor, decimationFactor * 16 + 1);
 
 // Downsample with FIR anti-alias filtering to prevent aliasing artifacts.
 // Writes result into pre-allocated _decimated buffer. Returns the decimated length.
-function decimateWithFilter(buffer, factor) {
+function decimateWithFilter(buffer, factor, filterTaps) {
   if (factor <= 1) {
     // Copy into _decimated for consistency
     for (let i = 0; i < buffer.length; i++) _decimated[i] = buffer[i];
     return buffer.length;
   }
-  const taps = antiAliasFilter;
+  const taps = filterTaps || antiAliasFilter;
   const numTaps = taps.length;
   const halfTaps = numTaps >> 1;
   const bufLen = buffer.length;
@@ -469,8 +568,8 @@ function burgLPC(samples, order) {
 // Durand-Kerner method for finding all roots of a polynomial.
 // Uses pre-allocated flat arrays _rootsRe/_rootsIm. Returns the root count (n).
 // coefficients[0..n] where poly = c[0]*z^n + c[1]*z^(n-1) + ... + c[n]
-function findPolynomialRoots(coefficients) {
-  const n = coefficients.length - 1;
+function findPolynomialRoots(coefficients, order) {
+  const n = order !== undefined ? order : coefficients.length - 1;
   if (n <= 0) return 0;
 
   const rRe = _rootsRe;
