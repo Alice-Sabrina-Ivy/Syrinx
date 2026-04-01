@@ -144,7 +144,8 @@ function detectPitch(buffer, sr) {
   // Octave/harmonic error check
   const baseTau = bestTau;
   const bestFreq = sr / baseTau;
-  const maxMult = (bestFreq > 300 && cmnd[baseTau] > 0.05) ? 4 : 2;
+  const maxMult = cmnd[baseTau] < 0.01 ? 1
+    : (bestFreq > 300 && cmnd[baseTau] > 0.05) ? 4 : 2;
   for (let mult = 2; mult <= maxMult; mult++) {
     const multiTau = baseTau * mult;
     if (multiTau + 1 >= searchLen || multiTau >= maxLag) break;
