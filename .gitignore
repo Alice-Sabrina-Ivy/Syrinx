@@ -21,3 +21,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Test data (large WAV files from Hillenbrand dataset)
+tests/dsp/data/
