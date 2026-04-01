@@ -302,23 +302,22 @@ function detectPitch(buffer, sr) {
 
   if (bestTau === -1) return null;
 
-  // Octave/harmonic error check: look for deeper dips at multiples of bestTau.
-  // Only apply 3× and 4× checks when the initial detected frequency is high
-  // (> 250 Hz), since multi-octave errors only occur when YIN locks onto
-  // upper harmonics. The 2× check always applies (standard octave error).
   // Octave/harmonic error check.  Always check 2× (octave errors).
   // For high detected frequencies (> 300 Hz) with non-trivial CMND (indicating
-  // imperfect periodicity, i.e. real speech), also check 3× — YIN can lock
-  // onto upper harmonics on short windows.  Skip 3× when CMND is near zero
-  // (perfectly periodic signals) to avoid false sub-harmonic detection.
-  const bestFreq = sr / bestTau;
-  const maxMult = (bestFreq > 300 && cmnd[bestTau] > 0.05) ? 4 : 2;
+  // imperfect periodicity, i.e. real speech), also check 3×/4× — YIN can lock
+  // onto upper harmonics on short windows.  Skip higher checks when CMND is
+  // near zero (perfectly periodic signals) to avoid false sub-harmonic detection.
+  // Use an immutable base lag for all multiplier checks so that accepting a 2×
+  // correction doesn't cascade into a 6× or 8× shift.
+  const baseTau = bestTau;
+  const bestFreq = sr / baseTau;
+  const maxMult = (bestFreq > 300 && cmnd[baseTau] > 0.05) ? 4 : 2;
   for (let mult = 2; mult <= maxMult; mult++) {
-    const multiTau = bestTau * mult;
+    const multiTau = baseTau * mult;
     if (multiTau + 1 >= searchLen || multiTau >= maxLag) break;
     const searchStart = Math.max(minLag, Math.floor(multiTau * 0.9));
     const searchEnd = Math.min(Math.ceil(multiTau * 1.1), searchLen - 1, maxLag);
-    let minCmndVal = cmnd[bestTau];
+    let minCmndVal = cmnd[baseTau];
     let minTau = -1;
     for (let tau = searchStart; tau <= searchEnd; tau++) {
       if (cmnd[tau] < minCmndVal) {
@@ -326,13 +325,9 @@ function detectPitch(buffer, sr) {
         minTau = tau;
       }
     }
-    // Relative threshold: sub-harmonic dip must be significantly deeper.
-    // Also require the sub-harmonic CMND to be below an absolute threshold
-    // for mult > 2, since clean signals can have spuriously low CMND at
-    // integer multiples of the period.
     const relThresh = mult === 2 ? 0.65 : 0.4;
     const absOk = mult === 2 || minCmndVal < threshold * 0.5;
-    if (minTau !== -1 && minCmndVal < cmnd[bestTau] * relThresh && absOk) {
+    if (minTau !== -1 && minCmndVal < cmnd[baseTau] * relThresh && absOk) {
       bestTau = minTau;
     }
   }
@@ -573,8 +568,8 @@ function burgLPC(samples, order) {
 // Durand-Kerner method for finding all roots of a polynomial.
 // Uses pre-allocated flat arrays _rootsRe/_rootsIm. Returns the root count (n).
 // coefficients[0..n] where poly = c[0]*z^n + c[1]*z^(n-1) + ... + c[n]
-function findPolynomialRoots(coefficients) {
-  const n = coefficients.length - 1;
+function findPolynomialRoots(coefficients, order) {
+  const n = order !== undefined ? order : coefficients.length - 1;
   if (n <= 0) return 0;
 
   const rRe = _rootsRe;
