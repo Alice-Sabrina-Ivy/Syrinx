@@ -311,11 +311,14 @@ function detectPitch(buffer, sr) {
   // correction doesn't cascade into a 6× or 8× shift.
   const baseTau = bestTau;
   const bestFreq = sr / baseTau;
-  // Skip all sub-harmonic correction when CMND is very low (< 0.01):
-  // near-perfect periodicity means the initial detection is already confident.
-  // Real speech always has CMND > 0.01 due to noise and formant modulation.
-  const maxMult = cmnd[baseTau] < 0.01 ? 1
-    : (bestFreq > 300 && cmnd[baseTau] > 0.05) ? 4 : 2;
+  // Sub-harmonic correction: only when initial detection is > 300 Hz,
+  // indicating YIN may have locked onto an upper harmonic.  Below 300 Hz
+  // the 2× correction causes false octave-halving on back vowels (/oa/,
+  // /oo/, /uw/) where CMND at 2×tau is spuriously lower.  For near-perfect
+  // periodicity (CMND < 0.01, i.e. synthetic tones), skip entirely.
+  // The loop breaks on the first qualifying correction to avoid
+  // over-shooting (e.g. 4× when 2× is already correct).
+  const maxMult = cmnd[baseTau] < 0.01 ? 1 : bestFreq > 300 ? 4 : 1;
   for (let mult = 2; mult <= maxMult; mult++) {
     const multiTau = baseTau * mult;
     if (multiTau + 1 >= searchLen || multiTau >= maxLag) break;
@@ -333,6 +336,7 @@ function detectPitch(buffer, sr) {
     const absOk = mult === 2 || minCmndVal < threshold * 0.5;
     if (minTau !== -1 && minCmndVal < cmnd[baseTau] * relThresh && absOk) {
       bestTau = minTau;
+      break; // Accept first (least aggressive) qualifying sub-harmonic
     }
   }
 
