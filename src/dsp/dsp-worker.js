@@ -302,42 +302,57 @@ function detectPitch(buffer, sr) {
 
   if (bestTau === -1) return null;
 
-  // Octave/harmonic error check.  Always check 2× (octave errors).
-  // For high detected frequencies (> 300 Hz) with non-trivial CMND (indicating
-  // imperfect periodicity, i.e. real speech), also check 3×/4× — YIN can lock
-  // onto upper harmonics on short windows.  Skip higher checks when CMND is
-  // near zero (perfectly periodic signals) to avoid false sub-harmonic detection.
-  // Use an immutable base lag for all multiplier checks so that accepting a 2×
-  // correction doesn't cascade into a 6× or 8× shift.
+  // Octave/harmonic error check.  YIN can lock onto an upper harmonic
+  // (returning 2·f0, 3·f0, 4·f0) when the fundamental is weak, a formant
+  // coincides with an upper harmonic, or the analysis window is short.
+  // Detect this by checking whether CMND has a *significantly deeper* dip
+  // at 2×, 3×, or 4× the initial lag.
+  //
+  // Guards against false halving on back vowels (/oa/, /oo/, /uw/) where
+  // CMND at 2×tau can be marginally lower due to noise/formant structure:
+  //   1. Skip entirely when CMND[baseTau] < 0.01 — near-perfect periodicity
+  //      (clean/synthetic signals) means the initial detection is already
+  //      rock-solid, so any 2× dip is spurious.
+  //   2. Require both (a) the candidate CMND to be genuinely deep in
+  //      absolute terms (< 0.15, i.e. a real periodicity, not a shallow
+  //      noise minimum) and (b) the ratio to baseTau CMND to be well below
+  //      the old 0.65 threshold (now 0.5 at 2×, 0.4 at 3×/4×).
+  //   3. Pick the globally best candidate across all multiples rather than
+  //      breaking on the first qualifying one, so an intermediate 2× dip
+  //      cannot mask a deeper 3×/4× correction.
+  // baseTau is captured immutably so multi-mult offsets aren't compounded.
   const baseTau = bestTau;
   const bestFreq = sr / baseTau;
-  // Sub-harmonic correction: only when initial detection is > 300 Hz,
-  // indicating YIN may have locked onto an upper harmonic.  Below 300 Hz
-  // the 2× correction causes false octave-halving on back vowels (/oa/,
-  // /oo/, /uw/) where CMND at 2×tau is spuriously lower.  For near-perfect
-  // periodicity (CMND < 0.01, i.e. synthetic tones), skip entirely.
-  // The loop breaks on the first qualifying correction to avoid
-  // over-shooting (e.g. 4× when 2× is already correct).
-  const maxMult = cmnd[baseTau] < 0.01 ? 1 : bestFreq > 300 ? 4 : 1;
-  for (let mult = 2; mult <= maxMult; mult++) {
-    const multiTau = baseTau * mult;
-    if (multiTau + 1 >= searchLen || multiTau >= maxLag) break;
-    const searchStart = Math.max(minLag, Math.floor(multiTau * 0.9));
-    const searchEnd = Math.min(Math.ceil(multiTau * 1.1), searchLen - 1, maxLag);
-    let minCmndVal = cmnd[baseTau];
-    let minTau = -1;
-    for (let tau = searchStart; tau <= searchEnd; tau++) {
-      if (cmnd[tau] < minCmndVal) {
-        minCmndVal = cmnd[tau];
-        minTau = tau;
+  if (cmnd[baseTau] >= 0.01) {
+    // 3×/4× checks only help when the initial detection is already above
+    // the normal voice fundamental range — avoid them at low f0 where they
+    // can only introduce sub-75 Hz errors.
+    const maxMult = bestFreq > 300 ? 4 : 2;
+    let correctedTau = -1;
+    let correctedCmnd = Infinity;
+    for (let mult = 2; mult <= maxMult; mult++) {
+      const multiTau = baseTau * mult;
+      if (multiTau + 1 >= searchLen || multiTau >= maxLag) break;
+      const searchStart = Math.max(minLag, Math.floor(multiTau * 0.9));
+      const searchEnd = Math.min(Math.ceil(multiTau * 1.1), searchLen - 1, maxLag);
+      let minCmndVal = Infinity;
+      let minTau = -1;
+      for (let tau = searchStart; tau <= searchEnd; tau++) {
+        if (cmnd[tau] < minCmndVal) {
+          minCmndVal = cmnd[tau];
+          minTau = tau;
+        }
+      }
+      if (minTau === -1) continue;
+      const relThresh = mult === 2 ? 0.5 : 0.4;
+      const relOk = minCmndVal < cmnd[baseTau] * relThresh;
+      const absOk = minCmndVal < 0.15;
+      if (relOk && absOk && minCmndVal < correctedCmnd) {
+        correctedTau = minTau;
+        correctedCmnd = minCmndVal;
       }
     }
-    const relThresh = mult === 2 ? 0.65 : 0.4;
-    const absOk = mult === 2 || minCmndVal < threshold * 0.5;
-    if (minTau !== -1 && minCmndVal < cmnd[baseTau] * relThresh && absOk) {
-      bestTau = minTau;
-      break; // Accept first (least aggressive) qualifying sub-harmonic
-    }
+    if (correctedTau !== -1) bestTau = correctedTau;
   }
 
   // Step 4: Parabolic interpolation
