@@ -144,26 +144,33 @@ function detectPitch(buffer, sr) {
   // Octave/harmonic error check
   const baseTau = bestTau;
   const bestFreq = sr / baseTau;
-  const maxMult = cmnd[baseTau] < 0.01 ? 1 : bestFreq > 300 ? 4 : 1;
-  for (let mult = 2; mult <= maxMult; mult++) {
-    const multiTau = baseTau * mult;
-    if (multiTau + 1 >= searchLen || multiTau >= maxLag) break;
-    const searchStart = Math.max(minLag, Math.floor(multiTau * 0.9));
-    const searchEnd = Math.min(Math.ceil(multiTau * 1.1), searchLen - 1, maxLag);
-    let minCmndVal = cmnd[baseTau];
-    let minTau = -1;
-    for (let tau = searchStart; tau <= searchEnd; tau++) {
-      if (cmnd[tau] < minCmndVal) {
-        minCmndVal = cmnd[tau];
-        minTau = tau;
+  if (cmnd[baseTau] >= 0.01) {
+    const maxMult = bestFreq > 300 ? 4 : 2;
+    let correctedTau = -1;
+    let correctedCmnd = Infinity;
+    for (let mult = 2; mult <= maxMult; mult++) {
+      const multiTau = baseTau * mult;
+      if (multiTau + 1 >= searchLen || multiTau >= maxLag) break;
+      const searchStart = Math.max(minLag, Math.floor(multiTau * 0.9));
+      const searchEnd = Math.min(Math.ceil(multiTau * 1.1), searchLen - 1, maxLag);
+      let minCmndVal = Infinity;
+      let minTau = -1;
+      for (let tau = searchStart; tau <= searchEnd; tau++) {
+        if (cmnd[tau] < minCmndVal) {
+          minCmndVal = cmnd[tau];
+          minTau = tau;
+        }
+      }
+      if (minTau === -1) continue;
+      const relThresh = mult === 2 ? 0.5 : 0.4;
+      const relOk = minCmndVal < cmnd[baseTau] * relThresh;
+      const absOk = minCmndVal < 0.15;
+      if (relOk && absOk && minCmndVal < correctedCmnd) {
+        correctedTau = minTau;
+        correctedCmnd = minCmndVal;
       }
     }
-    const relThresh = mult === 2 ? 0.65 : 0.4;
-    const absOk = mult === 2 || minCmndVal < threshold * 0.5;
-    if (minTau !== -1 && minCmndVal < cmnd[baseTau] * relThresh && absOk) {
-      bestTau = minTau;
-      break;
-    }
+    if (correctedTau !== -1) bestTau = correctedTau;
   }
 
   const s0 = bestTau > 0 ? cmnd[bestTau - 1] : cmnd[bestTau];
@@ -455,6 +462,35 @@ function generateComplexTone(freq, sampleRate, durationMs) {
   return signal;
 }
 
+// Regression fixture: impulse train at f0 filtered by a narrow resonator at
+// 2*f0. This is the realistic failure mode flagged in PR #55 review — a
+// formant that happens to sit on the 2nd harmonic amplifies it so strongly
+// that YIN's first CMND dip lands at τ = period/2 (reporting 2*f0). The
+// octave-correction step must recognise the deep CMND dip at the true
+// period and pull the estimate back down.
+function generateFormantDoubledF0(f0, sampleRate, durationMs, f1Bw) {
+  const n = Math.floor(sampleRate * durationMs / 1000);
+  const impulses = new Float64Array(n);
+  const period = sampleRate / f0;
+  for (let i = 0; i < n; i++) if ((i % period) < 1) impulses[i] = 1.0;
+  const fc = 2 * f0;
+  const r = Math.exp(-Math.PI * f1Bw / sampleRate);
+  const a1 = 2 * r * Math.cos(2 * Math.PI * fc / sampleRate);
+  const a2 = -r * r;
+  const resonated = new Float64Array(n);
+  let y1 = 0, y2 = 0;
+  for (let i = 0; i < n; i++) {
+    resonated[i] = impulses[i] + a1 * y1 + a2 * y2;
+    y2 = y1; y1 = resonated[i];
+  }
+  const radiated = new Float64Array(n);
+  for (let i = 1; i < n; i++) radiated[i] = resonated[i] - resonated[i - 1];
+  let maxAbs = 0;
+  for (let i = 0; i < n; i++) if (Math.abs(radiated[i]) > maxAbs) maxAbs = Math.abs(radiated[i]);
+  if (maxAbs > 0) for (let i = 0; i < n; i++) radiated[i] *= 0.6 / maxAbs;
+  return radiated;
+}
+
 // ============================================================
 //  STATISTICS HELPERS
 // ============================================================
@@ -526,6 +562,26 @@ function testSyntheticPitch() {
     );
   }
 
+  // Octave-doubling regression: narrow F1 coincident with 2*f0.
+  // Guards against re-introducing the PR #55 regression where sub-harmonic
+  // correction was gated to freq > 300 Hz, leaving 2nd-harmonic lock
+  // uncorrected for normal speaking pitches.
+  console.log("\n--- Octave-Doubling (formant at 2·f0, target: < 5 Hz error) ---");
+  const octaveErrors = [];
+  for (const freq of [90, 100, 110, 120, 140, 160, 180, 220]) {
+    for (const bw of [60, 100, 150]) {
+      const signal = generateFormantDoubledF0(freq, sampleRate, windowMs, bw);
+      const detected = detectPitch(signal, sampleRate);
+      const error = detected ? Math.abs(detected - freq) : Infinity;
+      octaveErrors.push(error);
+      const pass = error < 5;
+      console.log(
+        `  ${pass ? "PASS" : "FAIL"}  f0=${String(freq).padStart(3)} Hz F1bw=${bw} -> ` +
+        `detected ${detected ? detected.toFixed(1) : "null"} Hz, error ${error.toFixed(2)} Hz`
+      );
+    }
+  }
+
   // Also test at 16 kHz (Hillenbrand sample rate)
   console.log("\n--- Complex Tones at 16 kHz sample rate ---");
   const complexErrors16k = [];
@@ -544,12 +600,15 @@ function testSyntheticPitch() {
   const pureStats = stats(pureErrors.filter(e => isFinite(e)));
   const complexStats = stats(complexErrors.filter(e => isFinite(e)));
   const complex16kStats = stats(complexErrors16k.filter(e => isFinite(e)));
+  const octaveStats = stats(octaveErrors.filter(e => isFinite(e)));
 
   console.log(`\nPure tone errors:      ${fmtStat(pureStats)}`);
   console.log(`Complex tone errors:   ${fmtStat(complexStats)}`);
   console.log(`Complex 16kHz errors:  ${fmtStat(complex16kStats)}`);
+  console.log(`Octave-doubling errors: ${fmtStat(octaveStats)}`);
 
-  return { pureErrors, complexErrors, complexErrors16k, pureStats, complexStats, complex16kStats };
+  return { pureErrors, complexErrors, complexErrors16k, octaveErrors,
+    pureStats, complexStats, complex16kStats, octaveStats };
 }
 
 // ============================================================
@@ -755,8 +814,10 @@ console.log("================================================================\n"
 // Pitch targets
 const pureFail = pitchResults.pureErrors.filter(e => e >= 3).length;
 const complexFail = pitchResults.complexErrors.filter(e => e >= 5).length;
+const octaveFail = pitchResults.octaveErrors.filter(e => e >= 5).length;
 console.log(`Synthetic pitch (pure):    ${pureFail === 0 ? "PASS" : "FAIL"} (${pureFail}/${pitchResults.pureErrors.length} over 3 Hz)`);
 console.log(`Synthetic pitch (complex): ${complexFail === 0 ? "PASS" : "FAIL"} (${complexFail}/${pitchResults.complexErrors.length} over 5 Hz)`);
+console.log(`Octave-doubling (2·f0):    ${octaveFail === 0 ? "PASS" : "FAIL"} (${octaveFail}/${pitchResults.octaveErrors.length} over 5 Hz)`);
 
 if (voiceResults) {
   const { allErrors } = voiceResults;
