@@ -1,13 +1,33 @@
 // ResonanceScoreTrace.jsx — 15-second scrolling trace of vowel-normalized
 // resonance score (0-100). Replaces the older raw-F2 trace.
 //
-// For each voiced frame, the score projects the current (F1,F2) onto the
-// male→female line of the nearest reference vowel, producing a vowel-invariant
-// "how feminine is this resonance" scalar. See utils/resonanceScore.js.
+// For each voiced frame, the score picks the nearest Hillenbrand reference
+// anchor (male or female) and returns 100·d_male / (d_male + d_female), then
+// gates out frames where the nearest anchor is > GATE_DISTANCE_HZ away.
+// Rendered scores are rolling-median-smoothed over 3 points (~150 ms) to
+// absorb single-sample noise from vowel transitions.
 
 import { useRef, useEffect } from "react";
 import { RESONANCE_TRACE_SECONDS, COLORS } from "../utils/constants";
-import { vowelResonanceScore, RESONANCE_SCORE_TARGET } from "../utils/resonanceScore";
+import {
+  vowelResonanceScore,
+  RESONANCE_SCORE_TARGET,
+  RESONANCE_MALE_CEILING,
+} from "../utils/resonanceScore";
+
+// Window (# of points) for rolling-median smoothing of scores.
+const SCORE_SMOOTH_WINDOW = 3;
+
+// Color tokens for the male-range band. Inlined here since nothing else
+// consumes them.
+const MALE_BAND_FILL = "rgba(251, 146, 60, 0.06)";
+const MALE_BAND_BORDER = "rgba(251, 146, 60, 0.25)";
+
+function medianOf(values) {
+  if (values.length === 0) return null;
+  const sorted = values.slice().sort((a, b) => a - b);
+  return sorted[Math.floor(sorted.length / 2)];
+}
 
 export function ResonanceScoreTrace({ formantTrailRef, voiced, holding, formants, compact = false }) {
   const canvasRef = useRef(null);
@@ -41,6 +61,7 @@ export function ResonanceScoreTrace({ formantTrailRef, voiced, holding, formants
     const displayLow = 0;
     const displayHigh = 100;
     const target = RESONANCE_SCORE_TARGET;
+    const maleCeiling = RESONANCE_MALE_CEILING;
 
     const pad = { left: 40, right: 28, top: 8, bottom: 24 };
 
@@ -76,7 +97,7 @@ export function ResonanceScoreTrace({ formantTrailRef, voiced, holding, formants
       ctx.fillStyle = "rgba(10, 10, 10, 0.95)";
       ctx.fillRect(0, 0, w, h);
 
-      // Y-axis grid + labels (0, 25, 50, 75, 100)
+      // Y-axis grid + labels
       ctx.textAlign = "right";
       ctx.textBaseline = "middle";
       ctx.font = `${11 * dpr}px system-ui`;
@@ -103,29 +124,63 @@ export function ResonanceScoreTrace({ formantTrailRef, voiced, holding, formants
         ctx.fillText(sec === 0 ? "now" : `-${sec}s`, x, plotBottom + 4 * dpr);
       }
 
-      // Target band (score >= target)
+      // Male-range band (0 to maleCeiling)
+      const maleTop = scoreToY(maleCeiling);
+      const maleBottom = scoreToY(0);
+      ctx.fillStyle = MALE_BAND_FILL;
+      ctx.fillRect(plotLeft, maleTop, plotRight - plotLeft, maleBottom - maleTop);
+      ctx.strokeStyle = MALE_BAND_BORDER;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4 * dpr, 4 * dpr]);
+      ctx.beginPath();
+      ctx.moveTo(plotLeft, maleTop);
+      ctx.lineTo(plotRight, maleTop);
+      ctx.stroke();
+
+      // Target band (>= target)
       const bandTop = scoreToY(100);
       const bandBottom = scoreToY(target);
       ctx.fillStyle = COLORS.resTargetBand;
       ctx.fillRect(plotLeft, bandTop, plotRight - plotLeft, bandBottom - bandTop);
-
       ctx.strokeStyle = COLORS.resTargetBandBorder;
-      ctx.lineWidth = 1;
-      ctx.setLineDash([4 * dpr, 4 * dpr]);
       ctx.beginPath();
       ctx.moveTo(plotLeft, bandBottom);
       ctx.lineTo(plotRight, bandBottom);
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // Score trace — compute per-point score from formant history, draw
-      // blue segments above target and orange segments below.
+      // Compute + smooth per-point scores, then render the trace.
       const data = formantTrailRef.current;
       if (data.length < 2) {
         animId = requestAnimationFrame(draw);
         return;
       }
 
+      // Pass 1: raw scores
+      const raw = new Array(data.length);
+      for (let i = 0; i < data.length; i++) {
+        const pt = data[i];
+        raw[i] = pt.voiced && pt.f1 != null && pt.f2 != null
+          ? vowelResonanceScore(pt.f1, pt.f2)
+          : null;
+      }
+
+      // Pass 2: rolling median smoothing across nearby non-null scores.
+      // Uses neighbors i-1 .. i+1 (window of 3 → ~150 ms at formant rate).
+      const half = Math.floor(SCORE_SMOOTH_WINDOW / 2);
+      const smoothed = new Array(data.length);
+      for (let i = 0; i < data.length; i++) {
+        if (!raw[i]) { smoothed[i] = null; continue; }
+        const vals = [];
+        for (let j = Math.max(0, i - half); j <= Math.min(data.length - 1, i + half); j++) {
+          if (raw[j]) vals.push(raw[j].score);
+        }
+        const med = medianOf(vals);
+        smoothed[i] = med !== null ? { score: med, vowel: raw[i].vowel } : null;
+      }
+
+      // Pass 3: draw the line, splitting on null-score gaps, large time gaps,
+      // and target/non-target color transitions.
       ctx.lineWidth = 2.5 * dpr;
       ctx.lineJoin = "round";
       ctx.lineCap = "round";
@@ -140,11 +195,7 @@ export function ResonanceScoreTrace({ formantTrailRef, voiced, holding, formants
         const x = timeToX(pt.time, now);
         if (x < plotLeft) { prevTime = pt.time; continue; }
 
-        const scored = pt.voiced && pt.f1 != null && pt.f2 != null
-          ? vowelResonanceScore(pt.f1, pt.f2)
-          : null;
-
-        // Break on unvoiced, missing data, or time gap (silence)
+        const scored = smoothed[i];
         if (!scored || (inSegment && pt.time - prevTime > GAP_MS)) {
           if (inSegment) {
             ctx.stroke();
@@ -176,14 +227,11 @@ export function ResonanceScoreTrace({ formantTrailRef, voiced, holding, formants
       }
       if (inSegment) ctx.stroke();
 
-      // Current position glow dot
+      // Current position glow dot — use the smoothed score so the dot
+      // aligns with the line.
       let lastScored = null;
       for (let i = data.length - 1; i >= 0; i--) {
-        const pt = data[i];
-        if (pt.voiced && pt.f1 != null && pt.f2 != null) {
-          const s = vowelResonanceScore(pt.f1, pt.f2);
-          if (s) { lastScored = { pt, ...s }; break; }
-        }
+        if (smoothed[i]) { lastScored = { pt: data[i], ...smoothed[i] }; break; }
       }
       if (lastScored && now - lastScored.pt.time < 500) {
         const x = timeToX(lastScored.pt.time, now);
@@ -212,7 +260,6 @@ export function ResonanceScoreTrace({ formantTrailRef, voiced, holding, formants
     return () => cancelAnimationFrame(animId);
   }, [formantTrailRef]);
 
-  // Readout: current score + detected vowel
   const live = formants?.f1 != null && formants?.f2 != null
     ? vowelResonanceScore(formants.f1, formants.f2)
     : null;

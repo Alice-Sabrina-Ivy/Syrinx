@@ -96,6 +96,9 @@ export function ResonanceGauge({ formants, voiced, holding }) {
           }`}
         >
           {score !== null ? `${Math.round(score)}` : "—"}
+          {result?.vowel ? (
+            <span className="text-neutral-500 ml-1">· {result.vowel.label}</span>
+          ) : null}
         </span>
       </div>
     </div>
