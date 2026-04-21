@@ -4,7 +4,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { PitchTrace } from "./PitchTrace";
-import { VowelSpaceScatter } from "./VowelSpaceScatter";
+import { ResonanceScoreTrace } from "./ResonanceScoreTrace";
 import { SpectralTiltGauge } from "./SpectralTiltGauge";
 import { ResonanceGauge } from "./ResonanceGauge";
 import { DEFAULT_PITCH_TARGET, DEFAULT_F2_TARGET } from "../utils/constants";
@@ -219,13 +219,14 @@ export function CombinedDashboard({
           />
         </div>
 
-        {/* Vowel-space scatter — 50% */}
-        <div className="lg:w-1/2 min-h-[240px] lg:min-h-0">
-          <VowelSpaceScatter
+        {/* Resonance score trace — 50% */}
+        <div className="lg:w-1/2 min-h-[180px] lg:min-h-0">
+          <ResonanceScoreTrace
             formantTrailRef={formantTrailRef}
-            formants={formants}
             voiced={voiced}
             holding={holding}
+            formants={formants}
+            compact
           />
         </div>
       </div>

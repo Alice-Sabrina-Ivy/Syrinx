@@ -1,19 +1,18 @@
-// ResonanceTrace.jsx — Scrolling canvas F2 resonance trace (last 15 seconds)
-// Blue line when in target range, orange when outside. Gaps during silence.
+// ResonanceScoreTrace.jsx — 15-second scrolling trace of vowel-normalized
+// resonance score (0-100). Replaces the older raw-F2 trace.
+//
+// For each voiced frame, the score projects the current (F1,F2) onto the
+// male→female line of the nearest reference vowel, producing a vowel-invariant
+// "how feminine is this resonance" scalar. See utils/resonanceScore.js.
 
 import { useRef, useEffect } from "react";
-import {
-  DEFAULT_F2_TARGET,
-  F2_DISPLAY_RANGE,
-  RESONANCE_TRACE_SECONDS,
-  COLORS,
-} from "../utils/constants";
+import { RESONANCE_TRACE_SECONDS, COLORS } from "../utils/constants";
+import { vowelResonanceScore, RESONANCE_SCORE_TARGET } from "../utils/resonanceScore";
 
-export function ResonanceTrace({ formantTrailRef, voiced, holding, formants, compact = false }) {
+export function ResonanceScoreTrace({ formantTrailRef, voiced, holding, formants, compact = false }) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
 
-  // Handle canvas sizing with ResizeObserver
   useEffect(() => {
     const canvas = canvasRef.current;
     const container = containerRef.current;
@@ -33,25 +32,23 @@ export function ResonanceTrace({ formantTrailRef, voiced, holding, formants, com
     return () => observer.disconnect();
   }, []);
 
-  // Animation loop
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     let animId;
 
-    const targetLow = DEFAULT_F2_TARGET.low;
-    const targetHigh = DEFAULT_F2_TARGET.high;
-    const displayLow = F2_DISPLAY_RANGE.low;
-    const displayHigh = F2_DISPLAY_RANGE.high;
+    const displayLow = 0;
+    const displayHigh = 100;
+    const target = RESONANCE_SCORE_TARGET;
 
-    const pad = { left: 48, right: 28, top: 8, bottom: 24 };
+    const pad = { left: 40, right: 28, top: 8, bottom: 24 };
 
-    function hzToY(hz) {
+    function scoreToY(score) {
       const dpr = window.devicePixelRatio || 1;
       const plotTop = pad.top * dpr;
       const plotBottom = canvas.height - pad.bottom * dpr;
-      const frac = (hz - displayLow) / (displayHigh - displayLow);
+      const frac = (score - displayLow) / (displayHigh - displayLow);
       return plotBottom - frac * (plotBottom - plotTop);
     }
 
@@ -79,27 +76,23 @@ export function ResonanceTrace({ formantTrailRef, voiced, holding, formants, com
       ctx.fillStyle = "rgba(10, 10, 10, 0.95)";
       ctx.fillRect(0, 0, w, h);
 
-      // Grid lines + labels
-      const gridHz = [1000, 1500, 2000, 2500, 3000, 3500];
+      // Y-axis grid + labels (0, 25, 50, 75, 100)
       ctx.textAlign = "right";
       ctx.textBaseline = "middle";
       ctx.font = `${11 * dpr}px system-ui`;
-
-      for (const hz of gridHz) {
-        if (hz < displayLow || hz > displayHigh) continue;
-        const y = hzToY(hz);
+      for (const score of [0, 25, 50, 75, 100]) {
+        const y = scoreToY(score);
         ctx.strokeStyle = COLORS.grid;
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(plotLeft, y);
         ctx.lineTo(plotRight, y);
         ctx.stroke();
-
         ctx.fillStyle = COLORS.gridLabel;
-        ctx.fillText(`${hz}`, plotLeft - 6 * dpr, y);
+        ctx.fillText(`${score}`, plotLeft - 6 * dpr, y);
       }
 
-      // Time labels
+      // X-axis time labels
       ctx.textAlign = "center";
       ctx.textBaseline = "top";
       const now = Math.round(performance.timeOrigin + performance.now());
@@ -110,25 +103,23 @@ export function ResonanceTrace({ formantTrailRef, voiced, holding, formants, com
         ctx.fillText(sec === 0 ? "now" : `-${sec}s`, x, plotBottom + 4 * dpr);
       }
 
-      // Target band
-      const bandTop = hzToY(targetHigh);
-      const bandBottom = hzToY(targetLow);
+      // Target band (score >= target)
+      const bandTop = scoreToY(100);
+      const bandBottom = scoreToY(target);
       ctx.fillStyle = COLORS.resTargetBand;
       ctx.fillRect(plotLeft, bandTop, plotRight - plotLeft, bandBottom - bandTop);
 
-      // Target band borders
       ctx.strokeStyle = COLORS.resTargetBandBorder;
       ctx.lineWidth = 1;
       ctx.setLineDash([4 * dpr, 4 * dpr]);
       ctx.beginPath();
-      ctx.moveTo(plotLeft, bandTop);
-      ctx.lineTo(plotRight, bandTop);
       ctx.moveTo(plotLeft, bandBottom);
       ctx.lineTo(plotRight, bandBottom);
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // F2 trace line
+      // Score trace — compute per-point score from formant history, draw
+      // blue segments above target and orange segments below.
       const data = formantTrailRef.current;
       if (data.length < 2) {
         animId = requestAnimationFrame(draw);
@@ -139,68 +130,65 @@ export function ResonanceTrace({ formantTrailRef, voiced, holding, formants, com
       ctx.lineJoin = "round";
       ctx.lineCap = "round";
 
-      // Gap threshold: if two consecutive formant points are more than
-      // 150ms apart, silence occurred between them — break the line.
       const GAP_MS = 150;
-
       let inSegment = false;
       let prevTime = 0;
+      let prevInTarget = null;
+
       for (let i = 0; i < data.length; i++) {
         const pt = data[i];
         const x = timeToX(pt.time, now);
-
         if (x < plotLeft) { prevTime = pt.time; continue; }
 
+        const scored = pt.voiced && pt.f1 != null && pt.f2 != null
+          ? vowelResonanceScore(pt.f1, pt.f2)
+          : null;
+
         // Break on unvoiced, missing data, or time gap (silence)
-        if (!pt.voiced || pt.f2 === null || pt.f2 === undefined ||
-            (inSegment && pt.time - prevTime > GAP_MS)) {
+        if (!scored || (inSegment && pt.time - prevTime > GAP_MS)) {
           if (inSegment) {
             ctx.stroke();
             inSegment = false;
           }
           prevTime = pt.time;
-          if (!pt.voiced || pt.f2 === null || pt.f2 === undefined) continue;
-          // Time-gap with valid data: start a new segment at this point
+          if (!scored) continue;
         }
 
-        const y = hzToY(pt.f2);
-        const inTarget = pt.f2 >= targetLow;
+        const y = scoreToY(scored.score);
+        const inTarget = scored.score >= target;
 
         if (!inSegment) {
           ctx.beginPath();
           ctx.strokeStyle = inTarget ? COLORS.resInTarget : COLORS.resOutOfTarget;
           ctx.moveTo(x, y);
           inSegment = true;
+        } else if (inTarget !== prevInTarget) {
+          ctx.lineTo(x, y);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.strokeStyle = inTarget ? COLORS.resInTarget : COLORS.resOutOfTarget;
+          ctx.moveTo(x, y);
         } else {
-          const prevPt = data[i - 1];
-          const prevInTarget =
-            prevPt?.voiced &&
-            prevPt.f2 !== null && prevPt.f2 !== undefined &&
-            prevPt.f2 >= targetLow;
-
-          if (inTarget !== prevInTarget) {
-            ctx.lineTo(x, y);
-            ctx.stroke();
-            ctx.beginPath();
-            ctx.strokeStyle = inTarget ? COLORS.resInTarget : COLORS.resOutOfTarget;
-            ctx.moveTo(x, y);
-          } else {
-            ctx.lineTo(x, y);
-          }
+          ctx.lineTo(x, y);
         }
+        prevInTarget = inTarget;
         prevTime = pt.time;
       }
       if (inSegment) ctx.stroke();
 
       // Current position glow dot
-      let lastVoiced = null;
+      let lastScored = null;
       for (let i = data.length - 1; i >= 0; i--) {
-        if (data[i].voiced && data[i].f2 !== null && data[i].f2 !== undefined) { lastVoiced = data[i]; break; }
+        const pt = data[i];
+        if (pt.voiced && pt.f1 != null && pt.f2 != null) {
+          const s = vowelResonanceScore(pt.f1, pt.f2);
+          if (s) { lastScored = { pt, ...s }; break; }
+        }
       }
-      if (lastVoiced && now - lastVoiced.time < 500) {
-        const x = timeToX(lastVoiced.time, now);
-        const y = hzToY(lastVoiced.f2);
-        const inTarget = lastVoiced.f2 >= targetLow;
+      if (lastScored && now - lastScored.pt.time < 500) {
+        const x = timeToX(lastScored.pt.time, now);
+        const y = scoreToY(lastScored.score);
+        const inTarget = lastScored.score >= target;
         const color = inTarget ? COLORS.resInTarget : COLORS.resOutOfTarget;
 
         ctx.beginPath();
@@ -208,7 +196,6 @@ export function ResonanceTrace({ formantTrailRef, voiced, holding, formants, com
         ctx.fillStyle = color;
         ctx.fill();
 
-        // Glow
         ctx.beginPath();
         ctx.arc(x, y, 10 * dpr, 0, Math.PI * 2);
         const grad = ctx.createRadialGradient(x, y, 2 * dpr, x, y, 10 * dpr);
@@ -225,11 +212,11 @@ export function ResonanceTrace({ formantTrailRef, voiced, holding, formants, com
     return () => cancelAnimationFrame(animId);
   }, [formantTrailRef]);
 
-  // Readout
-  const f2 = formants?.f2;
-  const inTarget =
-    f2 !== null && f2 !== undefined &&
-    f2 >= DEFAULT_F2_TARGET.low;
+  // Readout: current score + detected vowel
+  const live = formants?.f1 != null && formants?.f2 != null
+    ? vowelResonanceScore(formants.f1, formants.f2)
+    : null;
+  const inTarget = live && live.score >= RESONANCE_SCORE_TARGET;
 
   return (
     <div className="flex flex-col h-full">
@@ -240,7 +227,6 @@ export function ResonanceTrace({ formantTrailRef, voiced, holding, formants, com
         <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
       </div>
 
-      {/* Hz readout (hidden in compact mode) */}
       {!compact && (
         <div className="mt-3 flex items-baseline justify-center gap-3">
           <span
@@ -254,9 +240,11 @@ export function ResonanceTrace({ formantTrailRef, voiced, holding, formants, com
                     : "text-orange-400"
             }`}
           >
-            {f2 !== null && f2 !== undefined ? `${Math.round(f2)} Hz` : "\u2014 Hz"}
+            {live ? Math.round(live.score) : "—"}
           </span>
-          <span className="text-sm text-neutral-500">F2</span>
+          <span className="text-sm text-neutral-500">
+            resonance{live ? ` · ${live.vowel.label}` : ""}
+          </span>
         </div>
       )}
     </div>
