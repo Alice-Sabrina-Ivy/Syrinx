@@ -42,9 +42,9 @@ React 19 + Vite 7 + Tailwind CSS 4 (via `@tailwindcss/vite` plugin). Dexie for I
 History arrays are stored in Refs (not React state) and read directly by `requestAnimationFrame` loops in canvas components. This avoids React re-renders and keeps rendering smooth. All canvases use ResizeObserver for responsive sizing and device pixel ratio scaling.
 
 - **PitchTrace** — 15-second scrolling pitch waveform with target band
-- **ResonanceTrace** — 15-second scrolling F2 resonance plot
+- **ResonanceScoreTrace** — 15-second scrolling trace of a vowel-normalized resonance score (0–100). See `src/utils/resonanceScore.js`: each frame's (F1,F2) is projected onto the male→female reference vector of the nearest Hillenbrand 1995 vowel, yielding a vowel-invariant scalar. The older raw-F2 trace was replaced because F2 is dominated by vowel identity.
 - **SpectralTiltGauge** — horizontal gauge for vocal weight
-- **ResonanceGauge** — horizontal gauge for resonance brightness (F1/F2/F3 composite)
+- **ResonanceGauge** — horizontal gauge sharing the same vowel-normalized score as ResonanceScoreTrace (so the two always agree)
 - **CombinedDashboard** — main practice view composing the above, plus session recording logic
 
 ### Data Persistence
