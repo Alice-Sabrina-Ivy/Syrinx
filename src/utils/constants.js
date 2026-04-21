@@ -15,18 +15,6 @@ export const DEFAULT_F2_TARGET = { low: 1400, high: 2800 };
 // Y-axis display range for resonance trace (Hz)
 export const F2_DISPLAY_RANGE = { low: 800, high: 3500 };
 
-// Resonance brightness target — composite score threshold (0-100 scale)
-// where 0 = male baseline, 100 = female target. 70+ indicates "bright" resonance.
-export const RESONANCE_BRIGHTNESS_TARGET = 70;
-
-// Resonance brightness baseline/target for normalization (Hz)
-// Male baseline and female target for each formant
-export const RESONANCE_BASELINES = {
-  f1: { male: 450, female: 580 },
-  f2: { male: 1200, female: 2200 },
-  f3: { male: 2500, female: 3100 },
-};
-
 // Time windows
 export const PITCH_TRACE_SECONDS = 15;
 export const RESONANCE_TRACE_SECONDS = 15;
