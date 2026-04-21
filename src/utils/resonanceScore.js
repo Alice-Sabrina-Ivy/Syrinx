@@ -4,11 +4,11 @@
 // ≈ 800 Hz for the same speaker. A single target band over F2 therefore
 // conflates "which vowel are you saying" with "how feminine is your voice."
 //
-// Fix: classify which vowel is being produced (nearest reference midpoint in
-// F1/F2 space), then project the point onto the male→female vector *for that
-// specific vowel* and report a 0-100 scalar along that axis. The score is
-// vowel-invariant: 80 means "for whatever vowel you're on, you're 80% of the
-// way from the male reference to the female reference."
+// Approach: classify to the nearest reference point (male or female anchor
+// of any Hillenbrand 1995 vowel), then score as the normalized distance
+// between the two anchors for that vowel. Points that aren't close to *any*
+// reference (consonant transitions, noise, non-vowel frames) are gated out
+// and return null instead of producing a spurious score.
 //
 // References: Hillenbrand et al. 1995 adult means, General American English.
 
@@ -25,51 +25,48 @@ const REFERENCE_VOWELS = [
   { label: "UH", word: "but",    maleF1: 623, maleF2: 1200, femaleF1: 753, femaleF2: 1426 },
 ];
 
-// Precompute per-vowel midpoints and male→female vectors.
-const VOWELS = REFERENCE_VOWELS.map((v) => {
-  const vecF1 = v.femaleF1 - v.maleF1;
-  const vecF2 = v.femaleF2 - v.maleF2;
-  return {
-    ...v,
-    midF1: (v.maleF1 + v.femaleF1) / 2,
-    midF2: (v.maleF2 + v.femaleF2) / 2,
-    vecF1,
-    vecF2,
-    vecMagSq: vecF1 * vecF1 + vecF2 * vecF2,
-  };
-});
+export const VOWELS = REFERENCE_VOWELS;
 
-// Score ≥ this is considered "in target" for feminine resonance.
-export const RESONANCE_SCORE_TARGET = 70;
+// Score thresholds
+export const RESONANCE_SCORE_TARGET = 70; // ≥ this = in feminine target
+export const RESONANCE_MALE_CEILING = 30; // ≤ this = solidly male range
 
-// Classify by nearest midpoint. Using the midpoint (vs. male or female alone)
-// keeps classification stable for learners in transition — the anchor is
-// equidistant from both references.
-function nearestVowel(f1, f2) {
-  let best = null;
-  let bestDist = Infinity;
-  for (const v of VOWELS) {
-    const df1 = f1 - v.midF1;
-    const df2 = f2 - v.midF2;
-    const d = df1 * df1 + df2 * df2;
-    if (d < bestDist) {
-      bestDist = d;
-      best = v;
-    }
-  }
-  return best;
-}
+// Gating: if the nearest reference point (male or female anchor of any vowel)
+// is farther than this in (F1,F2) Euclidean space, the frame isn't reliably
+// on any vowel — emit null so the trace can gap instead of inventing a score.
+export const GATE_DISTANCE_HZ = 300;
 
-// Returns { score: 0-100, vowel: {label, word, ...} } or null if inputs invalid.
-// Score is the clamped projection of (f1,f2) onto the male→female line for
-// the nearest reference vowel: 0 = at male ref, 100 = at female ref.
+// Compute the score for a given (f1, f2):
+//   - pick the vowel whose nearest anchor (male or female) is closest
+//   - score = 100 * d_male / (d_male + d_female), so
+//       at male anchor → 0, at female anchor → 100, off-axis → ~50
+//   - gate: if the nearest anchor is > GATE_DISTANCE_HZ away, return null
+//
+// Returns { score, vowel } or null.
 export function vowelResonanceScore(f1, f2) {
   if (f1 == null || f2 == null) return null;
-  const v = nearestVowel(f1, f2);
-  if (!v) return null;
-  const df1 = f1 - v.maleF1;
-  const df2 = f2 - v.maleF2;
-  const t = (df1 * v.vecF1 + df2 * v.vecF2) / v.vecMagSq;
-  const score = Math.max(0, Math.min(100, t * 100));
-  return { score, vowel: v };
+
+  let bestVowel = null;
+  let bestScore = 0;
+  let bestNearest = Infinity;
+
+  for (const v of VOWELS) {
+    const dmSq = (f1 - v.maleF1) ** 2 + (f2 - v.maleF2) ** 2;
+    const dfSq = (f1 - v.femaleF1) ** 2 + (f2 - v.femaleF2) ** 2;
+    const nearestSq = Math.min(dmSq, dfSq);
+    if (nearestSq < bestNearest) {
+      bestNearest = nearestSq;
+      const dm = Math.sqrt(dmSq);
+      const df = Math.sqrt(dfSq);
+      // Guard against both distances being ~0 (same point).
+      const denom = dm + df;
+      bestScore = denom > 0 ? (dm / denom) * 100 : 50;
+      bestVowel = v;
+    }
+  }
+
+  if (bestVowel === null) return null;
+  if (Math.sqrt(bestNearest) > GATE_DISTANCE_HZ) return null;
+
+  return { score: bestScore, vowel: bestVowel };
 }
