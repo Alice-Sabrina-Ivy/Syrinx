@@ -13,6 +13,13 @@
 //
 // The score arrives at 4 Hz; the rAF loop tweens displayScore toward the
 // latest sample with an exponential lerp so the indicator slides smoothly.
+//
+// Animation source: we read the most recent entry from `genderTraceRef`
+// every frame, NOT React state. The ML worker pushes to that ref
+// unconditionally, while the corresponding `genderScore` React state
+// goes through a 200 ms throttle that's shared with the high-rate DSP
+// path — DSP saturates the gate, so most ML state updates get dropped.
+// Reading the ref directly bypasses that staleness.
 
 import { useRef, useEffect } from "react";
 import { COLORS } from "../utils/constants";
@@ -35,8 +42,6 @@ export function ResonanceMeter({
   genderTraceRef,
   voiced,
   holding,
-  genderScore,
-  genderConfidence,
   modelStatus,
   modelProgress,
   modelError,
@@ -160,17 +165,23 @@ export function ResonanceMeter({
       ctx.stroke();
       ctx.setLineDash([]);
 
+      // Read the latest score/confidence directly from the trace ref so
+      // we're not at the mercy of the throttledSetState gate (see header
+      // comment for why this matters).
+      const data = genderTraceRef?.current ?? [];
+      const latest = data.length > 0 ? data[data.length - 1] : null;
+      const targetScore = latest?.score ?? null;
+      const targetConf = latest?.confidence ?? 0;
+
       // Tween animation for the displayed score
-      const target = genderScore;
-      if (target == null) {
+      if (targetScore == null) {
         displayScoreRef.current = null;
       } else if (displayScoreRef.current == null) {
-        displayScoreRef.current = target;
+        displayScoreRef.current = targetScore;
       } else {
-        displayScoreRef.current += (target - displayScoreRef.current) * LERP_RATE;
+        displayScoreRef.current += (targetScore - displayScoreRef.current) * LERP_RATE;
       }
-      const displayConf = genderConfidence == null ? 0 : genderConfidence;
-      displayConfRef.current += (displayConf - displayConfRef.current) * LERP_RATE;
+      displayConfRef.current += (targetConf - displayConfRef.current) * LERP_RATE;
 
       const dispScore = displayScoreRef.current;
 
@@ -214,7 +225,6 @@ export function ResonanceMeter({
       ctx.strokeRect(barLeft + 0.5, plotTop + 0.5, barWidth - 1, plotHeight - 1);
 
       // History strip — last HISTORY_DOTS recent inferences
-      const data = genderTraceRef?.current ?? [];
       const now = Math.round(performance.timeOrigin + performance.now());
       const colCx = barRight + 8 * dpr + historyColW / 2;
 
@@ -275,12 +285,26 @@ export function ResonanceMeter({
         inTarget ? "in target" : "below target";
       ctx.fillText(subtitle, barCx, readoutY + 14 * dpr);
 
+      // "Speak for ~2 sec" hint, drawn on canvas so it reflects the ref
+      // (which is always current) rather than stale React state.
+      if (modelStatus === "ready" && data.length === 0) {
+        ctx.fillStyle = "rgba(180, 180, 180, 0.65)";
+        ctx.font = `${11 * dpr}px system-ui`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(
+          "Speak for ~2 sec to see your first score",
+          (plotLeft + plotRight) / 2,
+          (plotTop + plotBottom) / 2,
+        );
+      }
+
       animId = requestAnimationFrame(draw);
     }
 
     draw();
     return () => cancelAnimationFrame(animId);
-  }, [genderTraceRef, genderScore, genderConfidence, modelStatus, voiced, holding]);
+  }, [genderTraceRef, modelStatus, voiced, holding]);
 
   // Overlays for loading and error states (HTML, sits above the canvas)
   let overlay = null;
@@ -307,13 +331,10 @@ export function ResonanceMeter({
         )}
       </div>
     );
-  } else if (modelStatus === "ready" && genderScore == null) {
-    overlay = (
-      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-        <div className="text-xs text-neutral-500">Speak for ~2 sec to see your first score</div>
-      </div>
-    );
   }
+  // The "Speak for ~2 sec…" hint is drawn on the canvas itself (see the
+  // rAF loop) so it can react to genderTraceRef updates without needing
+  // a React re-render.
 
   return (
     <div className="flex flex-col h-full">
