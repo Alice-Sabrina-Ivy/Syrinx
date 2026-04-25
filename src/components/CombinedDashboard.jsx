@@ -1,12 +1,12 @@
-// CombinedDashboard.jsx — Default practice view: two scrolling traces + stats + session controls
-// Layout: pitch trace + resonance trace side by side (stacked on mobile). Two-row stats.
-// Handles session recording: buffers frames and writes to IndexedDB every ~1s.
+// CombinedDashboard.jsx — Default practice view: pitch trace + resonance
+// thermometer side by side (stacked on mobile), with vocal-weight + HNR
+// stats + session controls below. Handles session recording: buffers
+// frames and writes to IndexedDB every ~1s.
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { PitchTrace } from "./PitchTrace";
-import { ResonanceScoreTrace } from "./ResonanceScoreTrace";
+import { ResonanceMeter } from "./ResonanceMeter";
 import { SpectralTiltGauge } from "./SpectralTiltGauge";
-import { ResonanceGauge } from "./ResonanceGauge";
 import { DEFAULT_PITCH_TARGET, DEFAULT_F2_TARGET } from "../utils/constants";
 import db from "../db";
 
@@ -224,9 +224,9 @@ export function CombinedDashboard({
           />
         </div>
 
-        {/* Resonance score trace — 50% */}
-        <div className="lg:w-1/2 min-h-[180px] lg:min-h-0">
-          <ResonanceScoreTrace
+        {/* Resonance meter (vertical thermometer) — 50% */}
+        <div className="lg:w-1/2 min-h-[260px] lg:min-h-0">
+          <ResonanceMeter
             genderTraceRef={genderTraceRef}
             voiced={voiced}
             holding={holding}
@@ -235,40 +235,31 @@ export function CombinedDashboard({
             modelStatus={modelStatus}
             modelProgress={modelProgress}
             modelError={modelError}
-            compact
           />
         </div>
       </div>
 
-      {/* Live stats — columnar layout: F0+Resonance | F2+VocalWeight | HNR */}
+      {/* Live stats — columnar layout: F0 | F2 + VocalWeight | HNR.
+          Resonance score is shown by the thermometer above. */}
       <div className="flex-shrink-0 mt-3 px-2">
         <div className="flex items-end justify-center gap-x-3 sm:gap-x-6">
-          {/* Column 1: F0 value + Resonance gauge */}
-          <div className="flex-1 max-w-40 sm:max-w-44">
-            <div className={`text-center mb-1.5 ${statOpacity} transition-opacity duration-300`}>
-              <span className="text-[10px] text-neutral-500 uppercase tracking-wider block">
-                F0
-              </span>
-              <span
-                className={`text-xl sm:text-2xl font-light tabular-nums ${
-                  pitch !== null
-                    ? inPitchTarget
-                      ? "text-green-400"
-                      : "text-red-400"
-                    : "text-neutral-600"
-                }`}
-              >
-                {pitch !== null ? `${Math.round(pitch)}` : "\u2014"}
-                <span className="text-xs text-neutral-500 ml-0.5">Hz</span>
-              </span>
-            </div>
-            <ResonanceGauge
-              genderScore={genderScore}
-              genderConfidence={genderConfidence}
-              modelStatus={modelStatus}
-              voiced={voiced}
-              holding={holding}
-            />
+          {/* Column 1: F0 value */}
+          <div className={`text-center shrink-0 pb-3 ${statOpacity} transition-opacity duration-300`}>
+            <span className="text-[10px] text-neutral-500 uppercase tracking-wider block">
+              F0
+            </span>
+            <span
+              className={`text-xl sm:text-2xl font-light tabular-nums ${
+                pitch !== null
+                  ? inPitchTarget
+                    ? "text-green-400"
+                    : "text-red-400"
+                  : "text-neutral-600"
+              }`}
+            >
+              {pitch !== null ? `${Math.round(pitch)}` : "\u2014"}
+              <span className="text-xs text-neutral-500 ml-0.5">Hz</span>
+            </span>
           </div>
 
           {/* Column 2: F2 value + Vocal weight gauge */}

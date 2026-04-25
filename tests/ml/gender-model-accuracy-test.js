@@ -1,8 +1,8 @@
 // gender-model-accuracy-test.js — End-to-end accuracy check for the
 // production gender classifier. Simulates the worker's pipeline (rolling
-// 4-sec window, 500 ms hop / 2 Hz, VAD gating, EMA smoothing) on real
-// speech samples and reports per-file predictions + aggregate accuracy
-// where ground truth is known.
+// 2-sec window, 250 ms hop / 4 Hz, peak-VAD gating, EMA smoothing) on
+// real speech samples and reports per-file predictions + aggregate
+// accuracy where ground truth is known.
 //
 // Usage: node tests/ml/gender-model-accuracy-test.js
 //
@@ -31,9 +31,9 @@ const MODEL_ID = "Xenova/wav2vec2-large-xlsr-53-gender-recognition-librispeech";
 
 // These match src/ml/gender-worker.js. If the worker constants change,
 // update here too.
-const WINDOW_SECONDS = 4;
+const WINDOW_SECONDS = 2;
 const WINDOW_SAMPLES = TARGET_SAMPLE_RATE * WINDOW_SECONDS;
-const HOP_MS = 500;
+const HOP_MS = 250;
 const HOP_SAMPLES = Math.floor(TARGET_SAMPLE_RATE * HOP_MS / 1000);
 const EMA_ALPHA = 0.4;
 
