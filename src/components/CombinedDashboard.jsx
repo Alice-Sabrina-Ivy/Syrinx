@@ -19,8 +19,13 @@ export function CombinedDashboard({
   formants,
   spectralTilt,
   hnr,
+  genderScore,
+  genderConfidence,
+  modelStatus,
+  modelError,
+  modelProgress,
   pitchTraceRef,
-  formantTrailRef,
+  genderTraceRef,
   sessionRef,
   frameCallbackRef,
   streamRef,
@@ -222,10 +227,14 @@ export function CombinedDashboard({
         {/* Resonance score trace — 50% */}
         <div className="lg:w-1/2 min-h-[180px] lg:min-h-0">
           <ResonanceScoreTrace
-            formantTrailRef={formantTrailRef}
+            genderTraceRef={genderTraceRef}
             voiced={voiced}
             holding={holding}
-            formants={formants}
+            genderScore={genderScore}
+            genderConfidence={genderConfidence}
+            modelStatus={modelStatus}
+            modelProgress={modelProgress}
+            modelError={modelError}
             compact
           />
         </div>
@@ -254,7 +263,8 @@ export function CombinedDashboard({
               </span>
             </div>
             <ResonanceGauge
-              formants={formants}
+              genderScore={genderScore}
+              modelStatus={modelStatus}
               voiced={voiced}
               holding={holding}
             />
