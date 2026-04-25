@@ -14,6 +14,7 @@ import {
   PITCH_HARMONIC_KS,
   PITCH_VALID_MIN_HZ,
   PITCH_VALID_MAX_HZ,
+  RECONCILE_AFTER_FRAMES,
 } from "../../src/audio/pitchSmoothing.js";
 
 let passed = 0;
@@ -197,11 +198,63 @@ console.log("\npushAndMedianPitch — genuine pitch glide should pass through");
   );
 }
 
+console.log("\npushAndMedianPitch — post-silence contamination recovery");
+
+// The bug we're fixing: silence empties the buffer, then the FIRST
+// reading after silence happens to be a 3× harmonic spike. Without the
+// warmup guard, the buffer becomes [380] and reconcileHarmonic uses 380
+// as the reference — every subsequent correct 130 reading gets falsely
+// multiplied to 390 to match the contaminated reference, locking the
+// trace at the wrong harmonic forever.
+{
+  const buf = [];
+  const outputs = [];
+  // First reading is bad (false 3× lock from a transient onset)
+  outputs.push(pushAndMedianPitch(buf, 380));
+  // Subsequent readings are correct — should converge back to ~130 fast
+  for (const v of [130, 130, 130, 130, 130]) outputs.push(pushAndMedianPitch(buf, v));
+  const finalOutput = outputs[outputs.length - 1];
+  check(
+    `bad first reading → correct readings recover (final=${finalOutput.toFixed(0)}; trail=${outputs.map((x) => x.toFixed(0)).join(",")})`,
+    Math.abs(finalOutput - 130) < 5,
+  );
+}
+
+// Same setup but with an even-longer string of correct readings — the
+// median should be locked at ~130, not at ~390.
+{
+  const buf = [];
+  pushAndMedianPitch(buf, 380);
+  for (const v of [128, 128, 130, 132, 130, 128, 130, 128]) pushAndMedianPitch(buf, v);
+  const final = median(buf);
+  check(
+    `extended recovery: median settles near 130 (got ${final.toFixed(0)}, buf=${buf.map((x) => x.toFixed(0))})`,
+    Math.abs(final - 130) < 5,
+  );
+}
+
+// Inverted case: the FIRST reading is correct, and the SECOND is a
+// harmonic spike. Once the buffer has the correct reference, the spike
+// should still be reconciled away by the existing logic.
+{
+  const buf = [];
+  for (const v of [130, 130, 130]) pushAndMedianPitch(buf, v); // builds reference
+  const out = pushAndMedianPitch(buf, 390); // should reconcile
+  check(
+    `harmonic spike AFTER reference is established → reconciled (got ${out.toFixed(0)})`,
+    Math.abs(out - 130) < 5,
+  );
+}
+
 console.log("\nconstants");
 
 check(
   `PITCH_SMOOTH_LEN > 1`,
   PITCH_SMOOTH_LEN > 1,
+);
+check(
+  `RECONCILE_AFTER_FRAMES in (1, PITCH_SMOOTH_LEN)`,
+  RECONCILE_AFTER_FRAMES > 1 && RECONCILE_AFTER_FRAMES < PITCH_SMOOTH_LEN,
 );
 check(
   `PITCH_HARMONIC_TOLERANCE in (0, 0.3)`,
