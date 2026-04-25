@@ -1,9 +1,12 @@
 // gender-worker.js — On-device perceived-gender classifier.
 //
 // Hosts a Wav2Vec2 audio-classification pipeline (Transformers.js) and
-// produces a 0-100 "femininity" score from a rolling 2-second window of
-// microphone audio. Replaces the older hand-crafted vowel-normalized
-// resonance score.
+// produces a 0-100 "femininity" score from a rolling 4-second window of
+// microphone audio. Inference runs at 2 Hz (every 500 ms), gated by a
+// VAD threshold to skip silent windows and EMA-smoothed across inferences.
+// After a sustained run of silent inferences the EMA resets so a new
+// utterance doesn't blend with a stale pre-pause value. Replaces the
+// older hand-crafted vowel-normalized resonance score.
 //
 // Protocol:
 //   main → worker: { type: "init", inputSampleRate, modelId? }
@@ -17,6 +20,7 @@ import { pipeline, env } from "@huggingface/transformers";
 import {
   resampleLinear,
   RingWindow,
+  SilenceTracker,
   femaleScoreFromResult,
   windowRMS,
   ema,
@@ -46,6 +50,7 @@ const ring = new RingWindow(WINDOW_SAMPLES);
 let inferenceInProgress = false;
 let lastInferenceMs = 0;
 let smoothedFemale = null;              // EMA over recent inferences
+const silenceTracker = new SilenceTracker();
 
 function status(s, message) {
   modelStatus = s;
@@ -64,11 +69,15 @@ async function maybeInfer() {
   // Voice-activity gate: skip inference when the window is mostly silence.
   // Wav2Vec2 produces erratic predictions on near-silent input, and we'd
   // rather emit no score (gap in the trace) than a bogus 50/50.
+  // After a sustained run of silence, drop the EMA so the next utterance
+  // doesn't get blended with a stale pre-pause score.
   const rms = windowRMS(windowCopy);
   if (rms < VAD_RMS_THRESHOLD) {
+    if (silenceTracker.noteSilent()) smoothedFemale = null;
     lastInferenceMs = now;
     return;
   }
+  silenceTracker.noteActive();
 
   inferenceInProgress = true;
   try {
@@ -162,6 +171,7 @@ self.onmessage = (e) => {
       ring.reset();
       inferenceInProgress = false;
       smoothedFemale = null;
+      silenceTracker.noteActive();   // resets the silent-run counter
       break;
   }
 };

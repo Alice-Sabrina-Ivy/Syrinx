@@ -82,6 +82,36 @@ export function ema(prev, curr, alpha = 0.4) {
   return prev * (1 - alpha) + curr * alpha;
 }
 
+// Number of consecutive silent (VAD-gated) inferences before we treat the
+// EMA-smoothed score as stale and reset it. At 2 Hz inference rate, 4
+// inferences = ~2 seconds of silence — long enough to mean the user paused
+// rather than just took a breath.
+export const RESET_AFTER_SILENT_INFERENCES = 4;
+
+// Counts consecutive silent (VAD-gated) inferences and reports when the
+// smoothed score should be considered stale. Used by gender-worker.js to
+// avoid carrying yesterday's score into today's utterance.
+export class SilenceTracker {
+  constructor(threshold = RESET_AFTER_SILENT_INFERENCES) {
+    this._count = 0;
+    this.threshold = threshold;
+  }
+
+  // Record a silent inference. Returns true the moment the run of silence
+  // crosses the reset threshold (caller should clear smoothed state).
+  noteSilent() {
+    this._count++;
+    return this._count === this.threshold;
+  }
+
+  // Record a non-silent inference; resets the run.
+  noteActive() {
+    this._count = 0;
+  }
+
+  get silentCount() { return this._count; }
+}
+
 // Parse a Transformers.js audio-classification result into a 0-1 femininity
 // score. Handles label-casing variation across community models, falls
 // back to index 1 = female if labels are unrecognizable.

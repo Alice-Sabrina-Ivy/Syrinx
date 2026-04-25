@@ -9,10 +9,12 @@
 import {
   resampleLinear,
   RingWindow,
+  SilenceTracker,
   femaleScoreFromResult,
   windowRMS,
   ema,
   VAD_RMS_THRESHOLD,
+  RESET_AFTER_SILENT_INFERENCES,
   TARGET_SAMPLE_RATE,
 } from "../../src/ml/audio-utils.js";
 
@@ -238,11 +240,63 @@ check(
 check("alpha=1 takes new value", ema(0.5, 0.9, 1) === 0.9);
 check("alpha=0 keeps previous", ema(0.5, 0.9, 0) === 0.5);
 
+console.log("\nSilenceTracker");
+
+{
+  const t = new SilenceTracker(4);
+  check("initial silentCount is 0", t.silentCount === 0);
+}
+
+{
+  // Three silent runs below threshold → no reset signal yet
+  const t = new SilenceTracker(4);
+  const r1 = t.noteSilent(); // 1
+  const r2 = t.noteSilent(); // 2
+  const r3 = t.noteSilent(); // 3
+  check("noteSilent returns false before threshold", !r1 && !r2 && !r3);
+  check("silentCount after 3 silents is 3", t.silentCount === 3);
+}
+
+{
+  // Crossing the threshold returns true exactly once
+  const t = new SilenceTracker(4);
+  t.noteSilent(); t.noteSilent(); t.noteSilent();
+  const crossing = t.noteSilent();   // 4 → exactly threshold
+  const beyond = t.noteSilent();     // 5 → past threshold; shouldn't fire again
+  check("noteSilent returns true at the threshold", crossing === true);
+  check("noteSilent does NOT fire repeatedly past threshold", beyond === false);
+}
+
+{
+  // noteActive resets the run
+  const t = new SilenceTracker(4);
+  t.noteSilent(); t.noteSilent(); t.noteSilent();
+  t.noteActive();
+  check("noteActive resets silentCount", t.silentCount === 0);
+  check("noteSilent after reset starts the run over", t.noteSilent() === false);
+}
+
+{
+  // Default threshold = RESET_AFTER_SILENT_INFERENCES
+  const t = new SilenceTracker();
+  for (let i = 1; i < RESET_AFTER_SILENT_INFERENCES; i++) {
+    if (t.noteSilent() !== false) { check("default threshold premature fire", false); break; }
+  }
+  check(
+    "default threshold === RESET_AFTER_SILENT_INFERENCES",
+    t.noteSilent() === true,
+  );
+}
+
 console.log("\nconstants");
 
 check(
   `TARGET_SAMPLE_RATE === 16000`,
   TARGET_SAMPLE_RATE === 16000,
+);
+check(
+  `RESET_AFTER_SILENT_INFERENCES is a positive integer`,
+  Number.isInteger(RESET_AFTER_SILENT_INFERENCES) && RESET_AFTER_SILENT_INFERENCES > 0,
 );
 
 console.log(`\n${passed} passed, ${failed} failed`);
