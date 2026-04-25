@@ -19,8 +19,6 @@ export function CombinedDashboard({
   formants,
   spectralTilt,
   hnr,
-  genderScore,
-  genderConfidence,
   modelStatus,
   modelError,
   modelProgress,
@@ -224,14 +222,16 @@ export function CombinedDashboard({
           />
         </div>
 
-        {/* Resonance meter (vertical thermometer) — 50% */}
+        {/* Resonance meter (vertical thermometer) — 50%.
+            The meter reads its score directly from genderTraceRef each
+            frame, so we don't pass genderScore/genderConfidence as
+            props (those go through useAudioPipeline's throttledSetState
+            and would lag — see the meter's header comment). */}
         <div className="lg:w-1/2 min-h-[260px] lg:min-h-0">
           <ResonanceMeter
             genderTraceRef={genderTraceRef}
             voiced={voiced}
             holding={holding}
-            genderScore={genderScore}
-            genderConfidence={genderConfidence}
             modelStatus={modelStatus}
             modelProgress={modelProgress}
             modelError={modelError}
