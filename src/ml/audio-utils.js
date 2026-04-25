@@ -62,8 +62,10 @@ export class RingWindow {
   }
 }
 
-// RMS of a window. Used to gate inference: silent / very-quiet windows
-// produce unstable predictions, so we skip them.
+// RMS of a window. Used for tracking signal level. NOT the primary VAD
+// signal anymore — RMS is an average, so a 4-sec window that's half
+// speech and half silence reports a much lower number than continuous
+// speech, which would falsely gate. See `windowPeak` below.
 export function windowRMS(samples) {
   if (!samples || samples.length === 0) return 0;
   let sum = 0;
@@ -71,8 +73,28 @@ export function windowRMS(samples) {
   return Math.sqrt(sum / samples.length);
 }
 
-// RMS threshold below which we consider a window non-speech. Tuned to
-// admit normal indoor speech amplitude while rejecting quiet rooms.
+// Peak absolute amplitude over a window. Used as the VAD signal because
+// speech peaks are reliably ≥ 0.05 even in 4-sec windows where the user
+// is between phrases (e.g., saying "testing 1 2 3" with pauses). RMS over
+// the same window can dip below the silence threshold even when there's
+// clearly-voiced content in part of it.
+export function windowPeak(samples) {
+  if (!samples || samples.length === 0) return 0;
+  let peak = 0;
+  for (let i = 0; i < samples.length; i++) {
+    const a = samples[i] >= 0 ? samples[i] : -samples[i];
+    if (a > peak) peak = a;
+  }
+  return peak;
+}
+
+// Peak threshold below which we consider a window non-speech. Calibrated
+// to admit normal indoor speech (peaks 0.1-0.5) while rejecting quiet
+// rooms and breath sounds (peaks ≤ 0.02).
+export const VAD_PEAK_THRESHOLD = 0.05;
+
+// Legacy RMS threshold — kept exported because tests reference it, but
+// the worker now gates on `windowPeak` against `VAD_PEAK_THRESHOLD`.
 export const VAD_RMS_THRESHOLD = 0.01;
 
 // Exponential moving average for score smoothing across inferences.

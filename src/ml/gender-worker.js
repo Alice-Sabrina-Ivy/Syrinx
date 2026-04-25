@@ -22,9 +22,9 @@ import {
   RingWindow,
   SilenceTracker,
   femaleScoreFromResult,
-  windowRMS,
+  windowPeak,
   ema,
-  VAD_RMS_THRESHOLD,
+  VAD_PEAK_THRESHOLD,
   TARGET_SAMPLE_RATE,
 } from "./audio-utils.js";
 
@@ -66,13 +66,14 @@ async function maybeInfer() {
 
   const windowCopy = ring.snapshot();
 
-  // Voice-activity gate: skip inference when the window is mostly silence.
-  // Wav2Vec2 produces erratic predictions on near-silent input, and we'd
-  // rather emit no score (gap in the trace) than a bogus 50/50.
-  // After a sustained run of silence, drop the EMA so the next utterance
-  // doesn't get blended with a stale pre-pause score.
-  const rms = windowRMS(windowCopy);
-  if (rms < VAD_RMS_THRESHOLD) {
+  // Voice-activity gate: skip inference when the window contains no
+  // speech-level peaks. Peak (not RMS) is used because at this window
+  // size (4 sec) a speaker between phrases produces a low average even
+  // though the speech portion is clearly voiced — RMS would falsely
+  // gate. After a sustained run of silent windows, drop the EMA so a
+  // resumed utterance doesn't blend with a stale pre-pause score.
+  const peak = windowPeak(windowCopy);
+  if (peak < VAD_PEAK_THRESHOLD) {
     if (silenceTracker.noteSilent()) smoothedFemale = null;
     lastInferenceMs = now;
     return;
