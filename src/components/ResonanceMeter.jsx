@@ -29,10 +29,11 @@ const SCORE_MALE_CEILING = 30;
 const LOW_CONFIDENCE = 0.3;
 
 // How quickly the displayed score chases the latest sample, per rAF tick.
-// 0.18 → ~95% of the way to the target after 16 frames (~270 ms at 60 fps),
-// matching the 250 ms inter-sample interval. Bigger = snappier, smaller =
-// silkier but laggier.
-const LERP_RATE = 0.18;
+// 0.3 → ~95% of the way to the target after ~9 frames (~150 ms at 60 fps),
+// settling comfortably inside the 200 ms inter-sample interval so the
+// indicator is locked to the latest score before the next one arrives.
+// Bigger = snappier, smaller = silkier but laggier.
+const LERP_RATE = 0.3;
 
 // History strip
 const HISTORY_DOTS = 10;
