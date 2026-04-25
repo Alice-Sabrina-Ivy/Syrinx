@@ -1,6 +1,6 @@
 // gender-model-accuracy-test.js — End-to-end accuracy check for the
 // production gender classifier. Simulates the worker's pipeline (rolling
-// 2-sec window, 250 ms hop / 4 Hz, peak-VAD gating, EMA smoothing) on
+// 1.5-sec window, 200 ms hop / 5 Hz, peak-VAD gating, EMA smoothing) on
 // real speech samples and reports per-file predictions + aggregate
 // accuracy where ground truth is known.
 //
@@ -31,11 +31,11 @@ const MODEL_ID = "Xenova/wav2vec2-large-xlsr-53-gender-recognition-librispeech";
 
 // These match src/ml/gender-worker.js. If the worker constants change,
 // update here too.
-const WINDOW_SECONDS = 2;
-const WINDOW_SAMPLES = TARGET_SAMPLE_RATE * WINDOW_SECONDS;
-const HOP_MS = 250;
+const WINDOW_SECONDS = 1.5;
+const WINDOW_SAMPLES = Math.floor(TARGET_SAMPLE_RATE * WINDOW_SECONDS);
+const HOP_MS = 200;
 const HOP_SAMPLES = Math.floor(TARGET_SAMPLE_RATE * HOP_MS / 1000);
-const EMA_ALPHA = 0.4;
+const EMA_ALPHA = 0.55;
 
 // Ground truth. Files marked "unknown" still get classified — their
 // results print for inspection but don't count toward labeled accuracy.

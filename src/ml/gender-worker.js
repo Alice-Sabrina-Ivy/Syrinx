@@ -1,9 +1,9 @@
 // gender-worker.js — On-device perceived-gender classifier.
 //
 // Hosts a Wav2Vec2 audio-classification pipeline (Transformers.js) and
-// produces a 0-100 "femininity" score from a rolling 2-second window of
-// microphone audio. Inference runs at 4 Hz (every 250 ms), gated by a
-// peak-amplitude VAD to skip silent windows and EMA-smoothed across
+// produces a 0-100 "femininity" score from a rolling 1.5-second window
+// of microphone audio. Inference runs at 5 Hz (every 200 ms), gated by
+// a peak-amplitude VAD to skip silent windows and EMA-smoothed across
 // inferences. After a sustained run of silent inferences the EMA resets
 // so a new utterance doesn't blend with a stale pre-pause value.
 // Replaces the older hand-crafted vowel-normalized resonance score.
@@ -32,14 +32,20 @@ import {
 env.allowRemoteModels = true;
 env.allowLocalModels = false;
 
-// 2-sec window at 4 Hz cadence. The Q8 model takes ~140 ms median to
-// classify a 2-sec window in CPU/WASM, leaving headroom under the 250 ms
-// hop budget. EMA smoothing absorbs the per-window noise that a shorter
-// window introduces relative to the older 4-sec setup.
-const WINDOW_SECONDS = 2;
-const WINDOW_SAMPLES = TARGET_SAMPLE_RATE * WINDOW_SECONDS;
-const INFERENCE_INTERVAL_MS = 250;        // 4 Hz emit rate
-const EMA_ALPHA = 0.4;                     // score smoothing
+// 1.5-sec window at 5 Hz cadence. Inference cost on Wav2Vec2 scales
+// roughly linearly with input length, so a 1.5-sec window runs ~25%
+// faster than the 2-sec config it replaces — that headroom is what
+// lets us bump the hop from 250 ms (4 Hz) to 200 ms (5 Hz) and still
+// stay under budget on a Pixel-8-class mobile CPU. The shorter window
+// also halves the worst-case time between a vocal change and the
+// model "seeing" the new content. EMA smoothing absorbs the per-window
+// noise that a shorter window introduces. If a device can't sustain
+// 5 Hz the maybeInfer() loop drops on `inferenceInProgress` so we
+// degrade gracefully to whatever rate the hardware supports.
+const WINDOW_SECONDS = 1.5;
+const WINDOW_SAMPLES = Math.floor(TARGET_SAMPLE_RATE * WINDOW_SECONDS);
+const INFERENCE_INTERVAL_MS = 200;        // 5 Hz emit rate
+const EMA_ALPHA = 0.55;                    // score smoothing
 const DEFAULT_MODEL_ID = "Xenova/wav2vec2-large-xlsr-53-gender-recognition-librispeech";
 
 let inputSampleRate = 48000;
@@ -68,11 +74,12 @@ async function maybeInfer() {
   const windowCopy = ring.snapshot();
 
   // Voice-activity gate: skip inference when the window contains no
-  // speech-level peaks. Peak (not RMS) is used because at this window
-  // size (4 sec) a speaker between phrases produces a low average even
-  // though the speech portion is clearly voiced — RMS would falsely
-  // gate. After a sustained run of silent windows, drop the EMA so a
-  // resumed utterance doesn't blend with a stale pre-pause score.
+  // speech-level peaks. Peak (not RMS) is used because in any window
+  // that mixes speech with brief pauses a speaker between phrases
+  // produces a low average even though the speech portion is clearly
+  // voiced — RMS would falsely gate. After a sustained run of silent
+  // windows, drop the EMA so a resumed utterance doesn't blend with a
+  // stale pre-pause score.
   const peak = windowPeak(windowCopy);
   if (peak < VAD_PEAK_THRESHOLD) {
     if (silenceTracker.noteSilent()) smoothedFemale = null;

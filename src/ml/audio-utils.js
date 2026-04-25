@@ -63,9 +63,9 @@ export class RingWindow {
 }
 
 // RMS of a window. Used for tracking signal level. NOT the primary VAD
-// signal anymore — RMS is an average, so a 4-sec window that's half
-// speech and half silence reports a much lower number than continuous
-// speech, which would falsely gate. See `windowPeak` below.
+// signal anymore — RMS is an average, so a window that's half speech
+// and half silence reports a much lower number than continuous speech,
+// which would falsely gate. See `windowPeak` below.
 export function windowRMS(samples) {
   if (!samples || samples.length === 0) return 0;
   let sum = 0;
@@ -74,10 +74,10 @@ export function windowRMS(samples) {
 }
 
 // Peak absolute amplitude over a window. Used as the VAD signal because
-// speech peaks are reliably ≥ 0.05 even in 4-sec windows where the user
-// is between phrases (e.g., saying "testing 1 2 3" with pauses). RMS over
-// the same window can dip below the silence threshold even when there's
-// clearly-voiced content in part of it.
+// speech peaks are reliably ≥ 0.05 in any window long enough to span a
+// phrase plus a pause (e.g., saying "testing 1 2 3" with brief gaps).
+// RMS over the same window can dip below the silence threshold even
+// when there's clearly-voiced content in part of it.
 export function windowPeak(samples) {
   if (!samples || samples.length === 0) return 0;
   let peak = 0;
@@ -105,10 +105,10 @@ export function ema(prev, curr, alpha = 0.4) {
 }
 
 // Number of consecutive silent (VAD-gated) inferences before we treat the
-// EMA-smoothed score as stale and reset it. At 4 Hz inference rate, 8
+// EMA-smoothed score as stale and reset it. At 5 Hz inference rate, 10
 // inferences = ~2 seconds of silence — long enough to mean the user paused
 // rather than just took a breath.
-export const RESET_AFTER_SILENT_INFERENCES = 8;
+export const RESET_AFTER_SILENT_INFERENCES = 10;
 
 // Counts consecutive silent (VAD-gated) inferences and reports when the
 // smoothed score should be considered stale. Used by gender-worker.js to
