@@ -16,9 +16,9 @@ import {
   resampleLinear,
   RingWindow,
   femaleScoreFromResult,
-  windowRMS,
+  windowPeak,
   ema,
-  VAD_RMS_THRESHOLD,
+  VAD_PEAK_THRESHOLD,
   TARGET_SAMPLE_RATE,
 } from "../../src/ml/audio-utils.js";
 
@@ -139,8 +139,8 @@ async function simulatePipeline(classifier, samples) {
     lastInferAt = tMs;
 
     const win = ring.snapshot();
-    const rms = windowRMS(win);
-    if (rms < VAD_RMS_THRESHOLD) continue;   // VAD: skip near-silence
+    const peak = windowPeak(win);
+    if (peak < VAD_PEAK_THRESHOLD) continue;   // VAD: skip windows with no speech peaks
 
     const result = await classifier(win, { sampling_rate: TARGET_SAMPLE_RATE });
     const female = femaleScoreFromResult(result);
@@ -182,7 +182,7 @@ async function main() {
   const classifier = await pipeline("audio-classification", MODEL_ID, { dtype: "q8" });
   console.log(`Model loaded in ${fmt((performance.now() - t0) / 1000)}s\n`);
 
-  console.log(`Pipeline: window=${WINDOW_SECONDS}s, hop=${HOP_MS}ms (${1000 / HOP_MS} Hz), EMA α=${EMA_ALPHA}, VAD rms<${VAD_RMS_THRESHOLD}\n`);
+  console.log(`Pipeline: window=${WINDOW_SECONDS}s, hop=${HOP_MS}ms (${1000 / HOP_MS} Hz), EMA α=${EMA_ALPHA}, VAD peak<${VAD_PEAK_THRESHOLD}\n`);
 
   const rows = [];
   for (const name of orderedFiles) {
