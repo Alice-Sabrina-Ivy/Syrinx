@@ -141,37 +141,38 @@ function detectPitch(buffer, sr) {
 
   if (bestTau === -1) return null;
 
-  // Octave/harmonic error check
+  // Octave/harmonic error check — mirror dsp-worker.js's absolute+relative guard.
+  const HARMONIC_IMPROVEMENT_MIN = 0.003;
+  const HARMONIC_RELATIVE_K2 = 0.5;
   const baseTau = bestTau;
   const bestFreq = sr / baseTau;
-  if (cmnd[baseTau] >= 0.01) {
-    const maxMult = bestFreq > 300 ? 4 : 2;
-    let correctedTau = -1;
-    let correctedCmnd = Infinity;
-    for (let mult = 2; mult <= maxMult; mult++) {
-      const multiTau = baseTau * mult;
-      if (multiTau + 1 >= searchLen || multiTau >= maxLag) break;
-      const searchStart = Math.max(minLag, Math.floor(multiTau * 0.9));
-      const searchEnd = Math.min(Math.ceil(multiTau * 1.1), searchLen - 1, maxLag);
-      let minCmndVal = Infinity;
-      let minTau = -1;
-      for (let tau = searchStart; tau <= searchEnd; tau++) {
-        if (cmnd[tau] < minCmndVal) {
-          minCmndVal = cmnd[tau];
-          minTau = tau;
-        }
-      }
-      if (minTau === -1) continue;
-      const relThresh = mult === 2 ? 0.5 : 0.4;
-      const relOk = minCmndVal < cmnd[baseTau] * relThresh;
-      const absOk = minCmndVal < 0.15;
-      if (relOk && absOk && minCmndVal < correctedCmnd) {
-        correctedTau = minTau;
-        correctedCmnd = minCmndVal;
+  const maxMult = bestFreq > 300 ? 4 : 2;
+  let correctedTau = -1;
+  let correctedCmnd = Infinity;
+  for (let mult = 2; mult <= maxMult; mult++) {
+    const multiTau = baseTau * mult;
+    if (multiTau + 1 >= searchLen || multiTau >= maxLag) break;
+    const searchStart = Math.max(minLag, Math.floor(multiTau * 0.9));
+    const searchEnd = Math.min(Math.ceil(multiTau * 1.1), searchLen - 1, maxLag);
+    let minCmndVal = Infinity;
+    let minTau = -1;
+    for (let tau = searchStart; tau <= searchEnd; tau++) {
+      if (cmnd[tau] < minCmndVal) {
+        minCmndVal = cmnd[tau];
+        minTau = tau;
       }
     }
-    if (correctedTau !== -1) bestTau = correctedTau;
+    if (minTau === -1) continue;
+    const absOk = minCmndVal < 0.15;
+    const absImprovementOk = (cmnd[baseTau] - minCmndVal) >= HARMONIC_IMPROVEMENT_MIN;
+    const relImprovementOk =
+      mult !== 2 || minCmndVal < cmnd[baseTau] * HARMONIC_RELATIVE_K2;
+    if (absOk && absImprovementOk && relImprovementOk && minCmndVal < correctedCmnd) {
+      correctedTau = minTau;
+      correctedCmnd = minCmndVal;
+    }
   }
+  if (correctedTau !== -1) bestTau = correctedTau;
 
   const s0 = bestTau > 0 ? cmnd[bestTau - 1] : cmnd[bestTau];
   const s1 = cmnd[bestTau];

@@ -129,6 +129,7 @@ function detectPitch(buffer, sr) {
 
   // Harmonic guard — mirror of the dsp-worker.js logic.
   const HARMONIC_IMPROVEMENT_MIN = 0.003;
+  const HARMONIC_RELATIVE_K2 = 0.5;
   const baseTau = bestTau;
   const bestFreq = sr / baseTau;
   const maxMult = bestFreq > 300 ? 4 : 2;
@@ -149,8 +150,10 @@ function detectPitch(buffer, sr) {
     }
     if (minTau === -1) continue;
     const absOk = minCmndVal < 0.15;
-    const improvementOk = (cmnd[baseTau] - minCmndVal) >= HARMONIC_IMPROVEMENT_MIN;
-    if (absOk && improvementOk && minCmndVal < correctedCmnd) {
+    const absImprovementOk = (cmnd[baseTau] - minCmndVal) >= HARMONIC_IMPROVEMENT_MIN;
+    const relImprovementOk =
+      mult !== 2 || minCmndVal < cmnd[baseTau] * HARMONIC_RELATIVE_K2;
+    if (absOk && absImprovementOk && relImprovementOk && minCmndVal < correctedCmnd) {
       correctedTau = minTau;
       correctedCmnd = minCmndVal;
     }
