@@ -233,7 +233,7 @@ export function ResonanceScoreTrace({
   } else if (modelStatus === "ready" && genderScore == null) {
     overlay = (
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-        <div className="text-xs text-neutral-500">Speak for ~2 sec to see your first score</div>
+        <div className="text-xs text-neutral-500">Speak for ~4 sec to see your first score</div>
       </div>
     );
   }
