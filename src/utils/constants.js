@@ -40,6 +40,8 @@ export const COLORS = {
   resOutOfTarget: "#fb923c",
   resTargetBand: "rgba(96, 165, 250, 0.08)",
   resTargetBandBorder: "rgba(96, 165, 250, 0.25)",
+  resMaleBand: "rgba(251, 146, 60, 0.06)",
+  resMaleBandBorder: "rgba(251, 146, 60, 0.25)",
   // Shared
   grid: "rgba(255, 255, 255, 0.06)",
   gridLabel: "rgba(255, 255, 255, 0.3)",

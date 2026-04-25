@@ -303,57 +303,61 @@ function detectPitch(buffer, sr) {
   if (bestTau === -1) return null;
 
   // Octave/harmonic error check.  YIN can lock onto an upper harmonic
-  // (returning 2·f0, 3·f0, 4·f0) when the fundamental is weak, a formant
-  // coincides with an upper harmonic, or the analysis window is short.
-  // Detect this by checking whether CMND has a *significantly deeper* dip
+  // (returning 2·f0, 3·f0, 4·f0) when a formant happens to amplify that
+  // harmonic — e.g. a male speaker around 128 Hz where F1 sits near
+  // 380 Hz amplifies the 3rd harmonic and YIN locks at tau ≈ T/3.
+  // Detect this by checking whether CMND has a meaningfully deeper dip
   // at 2×, 3×, or 4× the initial lag.
   //
-  // Guards against false halving on back vowels (/oa/, /oo/, /uw/) where
-  // CMND at 2×tau can be marginally lower due to noise/formant structure:
-  //   1. Skip entirely when CMND[baseTau] < 0.01 — near-perfect periodicity
-  //      (clean/synthetic signals) means the initial detection is already
-  //      rock-solid, so any 2× dip is spurious.
-  //   2. Require both (a) the candidate CMND to be genuinely deep in
-  //      absolute terms (< 0.15, i.e. a real periodicity, not a shallow
-  //      noise minimum) and (b) the ratio to baseTau CMND to be well below
-  //      the old 0.65 threshold (now 0.5 at 2×, 0.4 at 3×/4×).
-  //   3. Pick the globally best candidate across all multiples rather than
-  //      breaking on the first qualifying one, so an intermediate 2× dip
-  //      cannot mask a deeper 3×/4× correction.
+  // Earlier versions skipped this guard entirely when CMND[baseTau]
+  // was already very small (< 0.01), on the theory that "near-perfect
+  // periodicity" meant the initial detection was rock-solid. That's
+  // wrong: a strong harmonic produces equally-deep CMND at the wrong
+  // tau, so the guard needs to compare DEPTHS rather than skip on the
+  // base depth alone.
+  //
+  // Conditions for accepting the multiple as the true tau:
+  //   1. Candidate CMND must be genuinely deep in absolute terms
+  //      (< 0.15) — a real periodicity, not a shallow noise minimum.
+  //   2. Candidate CMND must beat the base CMND by an absolute margin
+  //      of at least HARMONIC_IMPROVEMENT_MIN. Using an absolute
+  //      threshold (instead of a ratio) means clean/synthetic signals
+  //      where both dips are near zero won't trigger spurious halving:
+  //      0.0001 - 0.00005 = 0.00005, well below the threshold.
+  //   3. Pick the globally best candidate across all checked multiples
+  //      so an intermediate 2× dip cannot mask a deeper 3×/4× correction.
   // baseTau is captured immutably so multi-mult offsets aren't compounded.
+  const HARMONIC_IMPROVEMENT_MIN = 0.003;
   const baseTau = bestTau;
   const bestFreq = sr / baseTau;
-  if (cmnd[baseTau] >= 0.01) {
-    // 3×/4× checks only help when the initial detection is already above
-    // the normal voice fundamental range — avoid them at low f0 where they
-    // can only introduce sub-75 Hz errors.
-    const maxMult = bestFreq > 300 ? 4 : 2;
-    let correctedTau = -1;
-    let correctedCmnd = Infinity;
-    for (let mult = 2; mult <= maxMult; mult++) {
-      const multiTau = baseTau * mult;
-      if (multiTau + 1 >= searchLen || multiTau >= maxLag) break;
-      const searchStart = Math.max(minLag, Math.floor(multiTau * 0.9));
-      const searchEnd = Math.min(Math.ceil(multiTau * 1.1), searchLen - 1, maxLag);
-      let minCmndVal = Infinity;
-      let minTau = -1;
-      for (let tau = searchStart; tau <= searchEnd; tau++) {
-        if (cmnd[tau] < minCmndVal) {
-          minCmndVal = cmnd[tau];
-          minTau = tau;
-        }
-      }
-      if (minTau === -1) continue;
-      const relThresh = mult === 2 ? 0.5 : 0.4;
-      const relOk = minCmndVal < cmnd[baseTau] * relThresh;
-      const absOk = minCmndVal < 0.15;
-      if (relOk && absOk && minCmndVal < correctedCmnd) {
-        correctedTau = minTau;
-        correctedCmnd = minCmndVal;
+  // 3×/4× checks only help when the initial detection is already above
+  // the normal voice fundamental range — avoid them at low f0 where they
+  // can only introduce sub-75 Hz errors.
+  const maxMult = bestFreq > 300 ? 4 : 2;
+  let correctedTau = -1;
+  let correctedCmnd = Infinity;
+  for (let mult = 2; mult <= maxMult; mult++) {
+    const multiTau = baseTau * mult;
+    if (multiTau + 1 >= searchLen || multiTau >= maxLag) break;
+    const searchStart = Math.max(minLag, Math.floor(multiTau * 0.9));
+    const searchEnd = Math.min(Math.ceil(multiTau * 1.1), searchLen - 1, maxLag);
+    let minCmndVal = Infinity;
+    let minTau = -1;
+    for (let tau = searchStart; tau <= searchEnd; tau++) {
+      if (cmnd[tau] < minCmndVal) {
+        minCmndVal = cmnd[tau];
+        minTau = tau;
       }
     }
-    if (correctedTau !== -1) bestTau = correctedTau;
+    if (minTau === -1) continue;
+    const absOk = minCmndVal < 0.15;
+    const improvementOk = (cmnd[baseTau] - minCmndVal) >= HARMONIC_IMPROVEMENT_MIN;
+    if (absOk && improvementOk && minCmndVal < correctedCmnd) {
+      correctedTau = minTau;
+      correctedCmnd = minCmndVal;
+    }
   }
+  if (correctedTau !== -1) bestTau = correctedTau;
 
   // Step 4: Parabolic interpolation
   const s0 = bestTau > 0 ? cmnd[bestTau - 1] : cmnd[bestTau];

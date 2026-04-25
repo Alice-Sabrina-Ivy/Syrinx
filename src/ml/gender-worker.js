@@ -1,12 +1,12 @@
 // gender-worker.js — On-device perceived-gender classifier.
 //
 // Hosts a Wav2Vec2 audio-classification pipeline (Transformers.js) and
-// produces a 0-100 "femininity" score from a rolling 4-second window of
-// microphone audio. Inference runs at 2 Hz (every 500 ms), gated by a
-// VAD threshold to skip silent windows and EMA-smoothed across inferences.
-// After a sustained run of silent inferences the EMA resets so a new
-// utterance doesn't blend with a stale pre-pause value. Replaces the
-// older hand-crafted vowel-normalized resonance score.
+// produces a 0-100 "femininity" score from a rolling 2-second window of
+// microphone audio. Inference runs at 4 Hz (every 250 ms), gated by a
+// peak-amplitude VAD to skip silent windows and EMA-smoothed across
+// inferences. After a sustained run of silent inferences the EMA resets
+// so a new utterance doesn't blend with a stale pre-pause value.
+// Replaces the older hand-crafted vowel-normalized resonance score.
 //
 // Protocol:
 //   main → worker: { type: "init", inputSampleRate, modelId? }
@@ -32,12 +32,13 @@ import {
 env.allowRemoteModels = true;
 env.allowLocalModels = false;
 
-// 4-sec window: empirically the model is markedly more stable on >=4 sec
-// of speech than on 2 sec. Combined with a 500 ms hop (overlapping
-// windows) we get 2 Hz score updates with high per-frame stability.
-const WINDOW_SECONDS = 4;
+// 2-sec window at 4 Hz cadence. The Q8 model takes ~140 ms median to
+// classify a 2-sec window in CPU/WASM, leaving headroom under the 250 ms
+// hop budget. EMA smoothing absorbs the per-window noise that a shorter
+// window introduces relative to the older 4-sec setup.
+const WINDOW_SECONDS = 2;
 const WINDOW_SAMPLES = TARGET_SAMPLE_RATE * WINDOW_SECONDS;
-const INFERENCE_INTERVAL_MS = 500;        // 2 Hz emit rate
+const INFERENCE_INTERVAL_MS = 250;        // 4 Hz emit rate
 const EMA_ALPHA = 0.4;                     // score smoothing
 const DEFAULT_MODEL_ID = "Xenova/wav2vec2-large-xlsr-53-gender-recognition-librispeech";
 
