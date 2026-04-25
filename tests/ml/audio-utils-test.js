@@ -194,11 +194,11 @@ check(
 );
 
 check(
-  "unknown labels → fallback to index 1",
-  Math.abs(femaleScoreFromResult([
+  "unknown labels → null (no positional guessing, models disagree on ordering)",
+  femaleScoreFromResult([
     { label: "label_0", score: 0.4 },
     { label: "label_1", score: 0.6 },
-  ]) - 0.6) < 1e-6,
+  ]) === null,
 );
 
 check(

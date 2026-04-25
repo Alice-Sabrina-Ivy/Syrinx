@@ -105,10 +105,10 @@ export function ema(prev, curr, alpha = 0.4) {
 }
 
 // Number of consecutive silent (VAD-gated) inferences before we treat the
-// EMA-smoothed score as stale and reset it. At 5 Hz inference rate, 10
-// inferences = ~2 seconds of silence — long enough to mean the user paused
-// rather than just took a breath.
-export const RESET_AFTER_SILENT_INFERENCES = 10;
+// EMA-smoothed score as stale and reset it. At ~6.7 Hz inference rate, 14
+// inferences = ~2.1 seconds of silence — long enough to mean the user
+// paused rather than just took a breath.
+export const RESET_AFTER_SILENT_INFERENCES = 14;
 
 // Counts consecutive silent (VAD-gated) inferences and reports when the
 // smoothed score should be considered stale. Used by gender-worker.js to
@@ -135,8 +135,11 @@ export class SilenceTracker {
 }
 
 // Parse a Transformers.js audio-classification result into a 0-1 femininity
-// score. Handles label-casing variation across community models, falls
-// back to index 1 = female if labels are unrecognizable.
+// score. Handles label-casing variation across community models. Returns
+// null if no recognizable female/male label is found — different gender
+// models disagree on positional ordering (the current model is
+// {0:female, 1:male}, the previous one was the opposite), so guessing
+// from index would silently invert the meter on a model swap.
 export function femaleScoreFromResult(result) {
   if (!Array.isArray(result) || result.length === 0) return null;
   let female = null, male = null;
@@ -147,6 +150,6 @@ export function femaleScoreFromResult(result) {
     else if (label.includes("male") || label === "m") male = r.score;
   }
   if (female == null && male != null) female = 1 - male;
-  if (female == null) female = result[1]?.score ?? 0.5;
+  if (female == null) return null;
   return Math.max(0, Math.min(1, female));
 }
