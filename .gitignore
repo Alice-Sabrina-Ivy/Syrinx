@@ -23,5 +23,7 @@ dist-ssr
 *.sw?
 
 # Test data (large WAV files; auto-downloaded by the relevant test)
-tests/dsp/data/
+# tests/dsp/data/ holds the Hillenbrand vowel corpus and IS committed
+# (~19 MB total; well under GitHub's 50 MB warning threshold) so the
+# real-speech accuracy tests run out of the box.
 tests/ml/data/
