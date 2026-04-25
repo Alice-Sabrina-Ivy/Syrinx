@@ -9,10 +9,13 @@ import {
   PITCH_TRACE_SECONDS,
   RESONANCE_TRACE_SECONDS,
 } from "../utils/constants";
+import {
+  pushAndMedianPitch,
+  PITCH_SMOOTH_LEN,
+} from "./pitchSmoothing";
 
 const SILENCE_THRESHOLD_DB = -50;
 const SILENCE_DEBOUNCE_FRAMES = 3; // require 3 consecutive quiet frames before gating
-const PITCH_SMOOTH_LEN = 2;
 const FORMANT_SMOOTH_LEN = 7;
 const FORMANT_OUTLIER_HZ = 500; // max plausible frame-to-frame formant jump
 
@@ -370,9 +373,14 @@ export function useAudioPipeline() {
       return;
     }
 
-    // Smooth pitch with rolling median (only push new detections, not held values)
+    // Smooth pitch with a harmonic-aware rolling median: when YIN briefly
+    // locks on 2·f0 or 3·f0 (typically when a strong formant amplifies a
+    // higher harmonic), reconcile the value back to the fundamental
+    // before the median pass. Only new detections are pushed — held
+    // values (when YIN returned null but audio is still loud enough)
+    // don't enter the buffer so they can't stale-shift the median.
     const smoothedPitch = hasPitch
-      ? pushAndMedian(pitchSmoothRef, pitch, PITCH_SMOOTH_LEN)
+      ? pushAndMedianPitch(pitchSmoothRef.current, pitch, PITCH_SMOOTH_LEN)
       : median(pitchSmoothRef.current);
 
     // Smooth formants with rolling median + outlier rejection.
@@ -457,12 +465,6 @@ export function useAudioPipeline() {
     frameCallbackRef,
     streamRef,
   };
-}
-
-function pushAndMedian(ref, value, maxLen) {
-  ref.current.push(value);
-  if (ref.current.length > maxLen) ref.current.shift();
-  return median(ref.current);
 }
 
 function pushAndMedianGated(ref, value, maxLen, maxJump) {
