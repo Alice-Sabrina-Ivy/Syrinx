@@ -12,8 +12,10 @@ import {
   SilenceTracker,
   femaleScoreFromResult,
   windowRMS,
+  windowPeak,
   ema,
   VAD_RMS_THRESHOLD,
+  VAD_PEAK_THRESHOLD,
   RESET_AFTER_SILENT_INFERENCES,
   TARGET_SAMPLE_RATE,
 } from "../../src/ml/audio-utils.js";
@@ -229,6 +231,44 @@ check("RMS of silence is 0", windowRMS(new Float32Array(100)) === 0);
 }
 
 check("VAD threshold > 0", VAD_RMS_THRESHOLD > 0);
+
+console.log("\nwindowPeak");
+
+check("peak of silence is 0", windowPeak(new Float32Array(100)) === 0);
+
+{
+  // Mostly silent with one loud sample → peak picks up the loud sample.
+  // Note: Float32Array storage rounds 0.4 to ~0.40000000596, so use
+  // approximate equality.
+  const buf = new Float32Array(64000);
+  buf[12345] = 0.4;
+  buf[40000] = -0.3;
+  const peak = windowPeak(buf);
+  check(`peak finds loudest absolute sample (got ${peak})`, Math.abs(peak - 0.4) < 1e-6);
+}
+
+{
+  // Half-silent, half-speech (sine) — peak should still report the sine peak
+  const buf = new Float32Array(64000);
+  for (let i = 0; i < 32000; i++) buf[i] = 0.3 * Math.sin(2 * Math.PI * 200 * i / 16000);
+  // Second half is silence (zeros)
+  const peak = windowPeak(buf);
+  check(`peak of 50% speech survives (got ${peak.toFixed(3)})`, peak > 0.25);
+}
+
+{
+  // The same half-speech buffer's RMS would be artificially low
+  const buf = new Float32Array(64000);
+  for (let i = 0; i < 32000; i++) buf[i] = 0.3 * Math.sin(2 * Math.PI * 200 * i / 16000);
+  const rms = windowRMS(buf);
+  const peak = windowPeak(buf);
+  check(
+    `peak >> RMS for mixed silent/voiced windows (peak=${peak.toFixed(3)} rms=${rms.toFixed(3)})`,
+    peak > rms * 2,
+  );
+}
+
+check("VAD_PEAK_THRESHOLD in (0, 1)", VAD_PEAK_THRESHOLD > 0 && VAD_PEAK_THRESHOLD < 1);
 
 console.log("\nema");
 

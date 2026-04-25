@@ -469,11 +469,20 @@ function generateComplexTone(freq, sampleRate, durationMs) {
 // octave-correction step must recognise the deep CMND dip at the true
 // period and pull the estimate back down.
 function generateFormantDoubledF0(f0, sampleRate, durationMs, f1Bw) {
+  return generateFormantOnHarmonic(f0, 2, sampleRate, durationMs, f1Bw);
+}
+
+// Generalised version: place a narrow formant on any harmonic of f0.
+// Used to test octave-doubling (k=2) AND octave-tripling (k=3) regressions.
+// The "tripling" failure mode is real — it happens when a male speaker says
+// "two" (vowel /u/, F1 ≈ 380 Hz) at f0 ≈ 130 Hz, putting F1 right on the
+// 3rd harmonic and amplifying it enough that YIN locks on period/3.
+function generateFormantOnHarmonic(f0, harmonic, sampleRate, durationMs, f1Bw) {
   const n = Math.floor(sampleRate * durationMs / 1000);
   const impulses = new Float64Array(n);
   const period = sampleRate / f0;
   for (let i = 0; i < n; i++) if ((i % period) < 1) impulses[i] = 1.0;
-  const fc = 2 * f0;
+  const fc = harmonic * f0;
   const r = Math.exp(-Math.PI * f1Bw / sampleRate);
   const a1 = 2 * r * Math.cos(2 * Math.PI * fc / sampleRate);
   const a2 = -r * r;
@@ -574,6 +583,27 @@ function testSyntheticPitch() {
       const detected = detectPitch(signal, sampleRate);
       const error = detected ? Math.abs(detected - freq) : Infinity;
       octaveErrors.push(error);
+      const pass = error < 5;
+      console.log(
+        `  ${pass ? "PASS" : "FAIL"}  f0=${String(freq).padStart(3)} Hz F1bw=${bw} -> ` +
+        `detected ${detected ? detected.toFixed(1) : "null"} Hz, error ${error.toFixed(2)} Hz`
+      );
+    }
+  }
+
+  // Octave-tripling regression: narrow F1 coincident with 3*f0.
+  // This is the failure mode the user observed when speaking "testing 1 2 3"
+  // in a male voice (~130 Hz) — the /u/ in "two" has F1 ≈ 380 Hz, right on
+  // the 3rd harmonic, amplifying period/3 enough that YIN locks on it and
+  // reports ~390 Hz. F0 range covers typical male speech.
+  console.log("\n--- Octave-Tripling (formant at 3·f0, target: < 5 Hz error) ---");
+  const triplingErrors = [];
+  for (const freq of [110, 120, 130, 140, 160]) {
+    for (const bw of [60, 100, 150]) {
+      const signal = generateFormantOnHarmonic(freq, 3, sampleRate, windowMs, bw);
+      const detected = detectPitch(signal, sampleRate);
+      const error = detected ? Math.abs(detected - freq) : Infinity;
+      triplingErrors.push(error);
       const pass = error < 5;
       console.log(
         `  ${pass ? "PASS" : "FAIL"}  f0=${String(freq).padStart(3)} Hz F1bw=${bw} -> ` +
