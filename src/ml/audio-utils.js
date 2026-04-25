@@ -62,6 +62,26 @@ export class RingWindow {
   }
 }
 
+// RMS of a window. Used to gate inference: silent / very-quiet windows
+// produce unstable predictions, so we skip them.
+export function windowRMS(samples) {
+  if (!samples || samples.length === 0) return 0;
+  let sum = 0;
+  for (let i = 0; i < samples.length; i++) sum += samples[i] * samples[i];
+  return Math.sqrt(sum / samples.length);
+}
+
+// RMS threshold below which we consider a window non-speech. Tuned to
+// admit normal indoor speech amplitude while rejecting quiet rooms.
+export const VAD_RMS_THRESHOLD = 0.01;
+
+// Exponential moving average for score smoothing across inferences.
+// Returns the new EMA value. `prev` may be null (first sample → curr).
+export function ema(prev, curr, alpha = 0.4) {
+  if (prev == null) return curr;
+  return prev * (1 - alpha) + curr * alpha;
+}
+
 // Parse a Transformers.js audio-classification result into a 0-1 femininity
 // score. Handles label-casing variation across community models, falls
 // back to index 1 = female if labels are unrecognizable.

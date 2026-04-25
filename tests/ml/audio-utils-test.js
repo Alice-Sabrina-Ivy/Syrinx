@@ -10,6 +10,9 @@ import {
   resampleLinear,
   RingWindow,
   femaleScoreFromResult,
+  windowRMS,
+  ema,
+  VAD_RMS_THRESHOLD,
   TARGET_SAMPLE_RATE,
 } from "../../src/ml/audio-utils.js";
 
@@ -203,6 +206,37 @@ check(
   "non-array input → null",
   femaleScoreFromResult(null) === null,
 );
+
+console.log("\nwindowRMS");
+
+check("RMS of silence is 0", windowRMS(new Float32Array(100)) === 0);
+
+{
+  // Constant 0.5 → RMS = 0.5
+  const buf = new Float32Array(100);
+  buf.fill(0.5);
+  check("RMS of constant 0.5 ≈ 0.5", Math.abs(windowRMS(buf) - 0.5) < 1e-6);
+}
+
+{
+  // Sine wave: RMS = amplitude / sqrt(2) ≈ 0.707
+  const buf = new Float32Array(1600);
+  for (let i = 0; i < buf.length; i++) buf[i] = Math.sin(2 * Math.PI * 100 * i / 16000);
+  const rms = windowRMS(buf);
+  check(`RMS of unit sine ≈ 0.707 (got ${rms.toFixed(4)})`, Math.abs(rms - Math.SQRT1_2) < 0.01);
+}
+
+check("VAD threshold > 0", VAD_RMS_THRESHOLD > 0);
+
+console.log("\nema");
+
+check("first sample equals input", ema(null, 0.7) === 0.7);
+check(
+  "subsequent EMA mixes 60/40 with default alpha",
+  Math.abs(ema(0.5, 1.0, 0.4) - 0.7) < 1e-6,
+);
+check("alpha=1 takes new value", ema(0.5, 0.9, 1) === 0.9);
+check("alpha=0 keeps previous", ema(0.5, 0.9, 0) === 0.5);
 
 console.log("\nconstants");
 

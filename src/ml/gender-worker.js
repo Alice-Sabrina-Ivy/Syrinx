@@ -14,15 +14,27 @@
 //                  { type: "score", score, confidence, ts }
 
 import { pipeline, env } from "@huggingface/transformers";
-import { resampleLinear, RingWindow, femaleScoreFromResult, TARGET_SAMPLE_RATE } from "./audio-utils.js";
+import {
+  resampleLinear,
+  RingWindow,
+  femaleScoreFromResult,
+  windowRMS,
+  ema,
+  VAD_RMS_THRESHOLD,
+  TARGET_SAMPLE_RATE,
+} from "./audio-utils.js";
 
 // We don't ship the model in the bundle — fetch from the Hub at runtime.
 env.allowRemoteModels = true;
 env.allowLocalModels = false;
 
-const WINDOW_SECONDS = 2;
+// 4-sec window: empirically the model is markedly more stable on >=4 sec
+// of speech than on 2 sec. Combined with a 500 ms hop (overlapping
+// windows) we get 2 Hz score updates with high per-frame stability.
+const WINDOW_SECONDS = 4;
 const WINDOW_SAMPLES = TARGET_SAMPLE_RATE * WINDOW_SECONDS;
-const INFERENCE_INTERVAL_MS = 750;        // emit a score this often
+const INFERENCE_INTERVAL_MS = 500;        // 2 Hz emit rate
+const EMA_ALPHA = 0.4;                     // score smoothing
 const DEFAULT_MODEL_ID = "Xenova/wav2vec2-large-xlsr-53-gender-recognition-librispeech";
 
 let inputSampleRate = 48000;
@@ -33,6 +45,7 @@ const ring = new RingWindow(WINDOW_SAMPLES);
 
 let inferenceInProgress = false;
 let lastInferenceMs = 0;
+let smoothedFemale = null;              // EMA over recent inferences
 
 function status(s, message) {
   modelStatus = s;
@@ -46,14 +59,25 @@ async function maybeInfer() {
   const now = performance.now();
   if (now - lastInferenceMs < INFERENCE_INTERVAL_MS) return;
 
-  inferenceInProgress = true;
   const windowCopy = ring.snapshot();
+
+  // Voice-activity gate: skip inference when the window is mostly silence.
+  // Wav2Vec2 produces erratic predictions on near-silent input, and we'd
+  // rather emit no score (gap in the trace) than a bogus 50/50.
+  const rms = windowRMS(windowCopy);
+  if (rms < VAD_RMS_THRESHOLD) {
+    lastInferenceMs = now;
+    return;
+  }
+
+  inferenceInProgress = true;
   try {
     const result = await classifier(windowCopy, { sampling_rate: TARGET_SAMPLE_RATE });
     const female = femaleScoreFromResult(result);
     if (female == null) throw new Error("classifier returned no usable label");
-    const score = Math.max(0, Math.min(100, female * 100));
-    const confidence = Math.abs(female - 0.5) * 2; // 0 at 50/50, 1 at extremes
+    smoothedFemale = ema(smoothedFemale, female, EMA_ALPHA);
+    const score = Math.max(0, Math.min(100, smoothedFemale * 100));
+    const confidence = Math.abs(smoothedFemale - 0.5) * 2; // 0 at 50/50, 1 at extremes
     self.postMessage({
       type: "score",
       score,
@@ -137,6 +161,7 @@ self.onmessage = (e) => {
     case "stop":
       ring.reset();
       inferenceInProgress = false;
+      smoothedFemale = null;
       break;
   }
 };
