@@ -22,5 +22,6 @@ dist-ssr
 *.sln
 *.sw?
 
-# Test data (large WAV files from Hillenbrand dataset)
+# Test data (large WAV files; auto-downloaded by the relevant test)
 tests/dsp/data/
+tests/ml/data/
