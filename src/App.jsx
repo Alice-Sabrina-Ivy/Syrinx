@@ -50,8 +50,6 @@ function App() {
     formants,
     spectralTilt,
     hnr,
-    genderScore,
-    genderConfidence,
     modelStatus,
     modelError,
     modelProgress,
@@ -208,8 +206,6 @@ function App() {
                   formants={formants}
                   spectralTilt={spectralTilt}
                   hnr={hnr}
-                  genderScore={genderScore}
-                  genderConfidence={genderConfidence}
                   modelStatus={modelStatus}
                   modelError={modelError}
                   modelProgress={modelProgress}

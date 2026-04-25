@@ -105,10 +105,10 @@ export function ema(prev, curr, alpha = 0.4) {
 }
 
 // Number of consecutive silent (VAD-gated) inferences before we treat the
-// EMA-smoothed score as stale and reset it. At 2 Hz inference rate, 4
+// EMA-smoothed score as stale and reset it. At 4 Hz inference rate, 8
 // inferences = ~2 seconds of silence — long enough to mean the user paused
 // rather than just took a breath.
-export const RESET_AFTER_SILENT_INFERENCES = 4;
+export const RESET_AFTER_SILENT_INFERENCES = 8;
 
 // Counts consecutive silent (VAD-gated) inferences and reports when the
 // smoothed score should be considered stale. Used by gender-worker.js to
