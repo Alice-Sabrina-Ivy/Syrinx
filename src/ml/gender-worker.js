@@ -1,9 +1,12 @@
 // gender-worker.js — On-device perceived-gender classifier.
 //
 // Hosts a Wav2Vec2 audio-classification pipeline (Transformers.js) and
-// produces a 0-100 "femininity" score from a rolling 2-second window of
-// microphone audio. Replaces the older hand-crafted vowel-normalized
-// resonance score.
+// produces a 0-100 "femininity" score from a rolling 4-second window of
+// microphone audio. Inference runs at 2 Hz (every 500 ms), gated by a
+// VAD threshold to skip silent windows and EMA-smoothed across inferences.
+// After a sustained run of silent inferences the EMA resets so a new
+// utterance doesn't blend with a stale pre-pause value. Replaces the
+// older hand-crafted vowel-normalized resonance score.
 //
 // Protocol:
 //   main → worker: { type: "init", inputSampleRate, modelId? }
@@ -14,15 +17,28 @@
 //                  { type: "score", score, confidence, ts }
 
 import { pipeline, env } from "@huggingface/transformers";
-import { resampleLinear, RingWindow, femaleScoreFromResult, TARGET_SAMPLE_RATE } from "./audio-utils.js";
+import {
+  resampleLinear,
+  RingWindow,
+  SilenceTracker,
+  femaleScoreFromResult,
+  windowRMS,
+  ema,
+  VAD_RMS_THRESHOLD,
+  TARGET_SAMPLE_RATE,
+} from "./audio-utils.js";
 
 // We don't ship the model in the bundle — fetch from the Hub at runtime.
 env.allowRemoteModels = true;
 env.allowLocalModels = false;
 
-const WINDOW_SECONDS = 2;
+// 4-sec window: empirically the model is markedly more stable on >=4 sec
+// of speech than on 2 sec. Combined with a 500 ms hop (overlapping
+// windows) we get 2 Hz score updates with high per-frame stability.
+const WINDOW_SECONDS = 4;
 const WINDOW_SAMPLES = TARGET_SAMPLE_RATE * WINDOW_SECONDS;
-const INFERENCE_INTERVAL_MS = 750;        // emit a score this often
+const INFERENCE_INTERVAL_MS = 500;        // 2 Hz emit rate
+const EMA_ALPHA = 0.4;                     // score smoothing
 const DEFAULT_MODEL_ID = "Xenova/wav2vec2-large-xlsr-53-gender-recognition-librispeech";
 
 let inputSampleRate = 48000;
@@ -33,6 +49,8 @@ const ring = new RingWindow(WINDOW_SAMPLES);
 
 let inferenceInProgress = false;
 let lastInferenceMs = 0;
+let smoothedFemale = null;              // EMA over recent inferences
+const silenceTracker = new SilenceTracker();
 
 function status(s, message) {
   modelStatus = s;
@@ -46,14 +64,29 @@ async function maybeInfer() {
   const now = performance.now();
   if (now - lastInferenceMs < INFERENCE_INTERVAL_MS) return;
 
-  inferenceInProgress = true;
   const windowCopy = ring.snapshot();
+
+  // Voice-activity gate: skip inference when the window is mostly silence.
+  // Wav2Vec2 produces erratic predictions on near-silent input, and we'd
+  // rather emit no score (gap in the trace) than a bogus 50/50.
+  // After a sustained run of silence, drop the EMA so the next utterance
+  // doesn't get blended with a stale pre-pause score.
+  const rms = windowRMS(windowCopy);
+  if (rms < VAD_RMS_THRESHOLD) {
+    if (silenceTracker.noteSilent()) smoothedFemale = null;
+    lastInferenceMs = now;
+    return;
+  }
+  silenceTracker.noteActive();
+
+  inferenceInProgress = true;
   try {
     const result = await classifier(windowCopy, { sampling_rate: TARGET_SAMPLE_RATE });
     const female = femaleScoreFromResult(result);
     if (female == null) throw new Error("classifier returned no usable label");
-    const score = Math.max(0, Math.min(100, female * 100));
-    const confidence = Math.abs(female - 0.5) * 2; // 0 at 50/50, 1 at extremes
+    smoothedFemale = ema(smoothedFemale, female, EMA_ALPHA);
+    const score = Math.max(0, Math.min(100, smoothedFemale * 100));
+    const confidence = Math.abs(smoothedFemale - 0.5) * 2; // 0 at 50/50, 1 at extremes
     self.postMessage({
       type: "score",
       score,
@@ -137,6 +170,8 @@ self.onmessage = (e) => {
     case "stop":
       ring.reset();
       inferenceInProgress = false;
+      smoothedFemale = null;
+      silenceTracker.noteActive();   // resets the silent-run counter
       break;
   }
 };
