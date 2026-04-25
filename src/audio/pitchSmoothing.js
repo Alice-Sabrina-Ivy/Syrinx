@@ -8,6 +8,15 @@
 // octave-doubling and octave-tripling spikes that YIN can produce when a
 // formant coincidentally amplifies a higher harmonic — e.g. a male
 // speaker's /u/ in "two" putting F1 right on the 3rd harmonic.
+//
+// The reconciliation is only safe when the rolling-median "current" value
+// is itself trustworthy. Right after a silence reset (buffer empty), a
+// single bad first reading would BECOME the reference, and every
+// subsequent correct reading at 1/k of that bad value would get falsely
+// multiplied back up to match — locking the trace at the wrong harmonic.
+// `pushAndMedianPitch` therefore skips reconciliation until the buffer
+// has accumulated `RECONCILE_AFTER_FRAMES` raw samples, letting the
+// median resolve any post-silence spike on its own first.
 
 // Number of recent pitch samples kept for the rolling median.
 // 5 frames at ~50 ms each = ~250 ms — long enough to outvote a 2-3 frame
@@ -29,6 +38,12 @@ export const PITCH_HARMONIC_KS = [2, 3];
 // outside the band is itself probably the artefact.
 export const PITCH_VALID_MIN_HZ = 75;
 export const PITCH_VALID_MAX_HZ = 600;
+
+// Skip harmonic reconciliation until the buffer has at least this many
+// raw samples. Without this, a buffer freshly cleared by a silence gap
+// can be permanently contaminated by a single bad first detection (every
+// subsequent correct reading gets reconciled back UP to match it).
+export const RECONCILE_AFTER_FRAMES = 3;
 
 // If `value` is k·current or current/k for some k in PITCH_HARMONIC_KS
 // (within PITCH_HARMONIC_TOLERANCE), return the corrected value.
@@ -64,10 +79,21 @@ export function median(arr) {
 // Push a new pitch sample into the rolling history (after harmonic
 // reconciliation against the current median), drop the oldest if we're
 // over capacity, and return the new median. Mutates `historyArr`.
+//
+// While the buffer is still warming up (< RECONCILE_AFTER_FRAMES entries)
+// we deliberately push raw values without harmonic reconciliation: the
+// median is only as trustworthy as the data behind it, and a contaminated
+// 1-entry "median" causes harmonic reconciliation to lock the buffer at
+// the wrong frequency on subsequent correct readings.
 export function pushAndMedianPitch(historyArr, value, maxLen = PITCH_SMOOTH_LEN) {
-  const current = median(historyArr);
-  const reconciled = reconcileHarmonic(value, current);
-  historyArr.push(reconciled);
+  let pushValue;
+  if (historyArr.length < RECONCILE_AFTER_FRAMES) {
+    pushValue = value;
+  } else {
+    const current = median(historyArr);
+    pushValue = reconcileHarmonic(value, current);
+  }
+  historyArr.push(pushValue);
   if (historyArr.length > maxLen) historyArr.shift();
   return median(historyArr);
 }
