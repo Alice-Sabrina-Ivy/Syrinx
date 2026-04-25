@@ -15,7 +15,7 @@ Live demo: https://alice-sabrina-ivy.github.io/Syrinx/
 - **Lint:** `npm run lint`
 - **Preview production build:** `npm run preview`
 
-No test framework is currently set up. Stub test files exist in `tests/dsp/` but are not wired into any test runner.
+No test framework is currently set up. Test files are runnable Node scripts (e.g. `node tests/ml/audio-utils-test.js`, `node tests/dsp/accuracy-test.js`) that print `pass/fail` and exit non-zero on failure.
 
 ## Tech Stack
 
@@ -23,9 +23,9 @@ React 19 + Vite 7 + Tailwind CSS 4 (via `@tailwindcss/vite` plugin). Dexie for I
 
 ## Architecture
 
-### Audio Pipeline (three layers, each on a separate thread)
+### Audio Pipeline (four layers, each on a separate thread)
 
-1. **AudioWorklet** (`public/capture-processor.js`) — runs on the audio thread, collects mic samples into ~25ms chunks, forwards to DSP Worker via MessagePort (bypasses main thread). Uses pre-allocated buffers to avoid GC pauses.
+1. **AudioWorklet** (`public/capture-processor.js`) — runs on the audio thread, collects mic samples into ~25ms chunks, broadcasts each chunk to *all* registered consumer worker MessagePorts (currently DSP + ML). Uses pre-allocated buffers to avoid GC pauses. Each consumer gets an independent copy because `postMessage` with a transferable detaches the buffer.
 
 2. **DSP Worker** (`src/dsp/dsp-worker.js`) — runs in a Web Worker, maintains a ring buffer (~200ms), computes all analysis metrics:
    - Pitch: YIN-based autocorrelation, FFT-accelerated (75–600 Hz)
@@ -35,16 +35,18 @@ React 19 + Vite 7 + Tailwind CSS 4 (via `@tailwindcss/vite` plugin). Dexie for I
    - Intensity: RMS in dB
    - All pre-allocated buffers for zero-GC hot path
 
-3. **Main thread** (`src/audio/useAudioPipeline.js`) — custom React hook that manages AudioContext/Worker lifecycle, applies result smoothing (rolling median: 2 samples for pitch, 7 for formants), outlier rejection (gates formant jumps > 500 Hz), silence gating (5-second hold), and exposes history via Refs for canvas rendering. Throttles setState to ~5fps for text readouts only.
+3. **ML Worker** (`src/ml/gender-worker.js`) — separate Web Worker hosting a Transformers.js audio-classification pipeline (default model: `Xenova/wav2vec2-large-xlsr-53-gender-recognition-librispeech`). Resamples incoming chunks to 16 kHz via simple linear interpolation (`src/ml/audio-utils.js`), maintains a 2-second rolling window, runs inference at ~1.3 Hz, and posts back `{ score: 0–100, confidence: 0–1, ts }`. Pure helpers (`resampleLinear`, `RingWindow`, `femaleScoreFromResult`) live in `src/ml/audio-utils.js` so they can be unit-tested without booting the worker.
+
+4. **Main thread** (`src/audio/useAudioPipeline.js`) — custom React hook that manages AudioContext/DSP-Worker/ML-Worker lifecycle, applies DSP result smoothing (rolling median: 2 samples for pitch, 7 for formants), outlier rejection (gates formant jumps > 500 Hz), silence gating (5-second hold), and exposes history via Refs for canvas rendering. Throttles setState to ~5fps for text readouts only.
 
 ### Canvas Visualization Strategy
 
 History arrays are stored in Refs (not React state) and read directly by `requestAnimationFrame` loops in canvas components. This avoids React re-renders and keeps rendering smooth. All canvases use ResizeObserver for responsive sizing and device pixel ratio scaling.
 
 - **PitchTrace** — 15-second scrolling pitch waveform with target band
-- **ResonanceScoreTrace** — 15-second scrolling trace of a vowel-normalized resonance score (0–100). See `src/utils/resonanceScore.js`: each frame's (F1,F2) is projected onto the male→female reference vector of the nearest Hillenbrand 1995 vowel, yielding a vowel-invariant scalar. The older raw-F2 trace was replaced because F2 is dominated by vowel identity.
+- **ResonanceScoreTrace** — 15-second scrolling trace of the ML perceived-gender score (0–100). Reads `genderTraceRef` (entries `{ time, score, confidence }` posted by the ML Worker). Orange band 0–30 (male range), blue band 70–100 (target). Shows a "loading model…" overlay with download progress while Transformers.js fetches the model. An earlier hand-crafted vowel-normalized formula (`src/utils/resonanceScore.js`) was tried and replaced because raw-formant geometry doesn't reliably model perceived gender.
 - **SpectralTiltGauge** — horizontal gauge for vocal weight
-- **ResonanceGauge** — horizontal gauge sharing the same vowel-normalized score as ResonanceScoreTrace (so the two always agree)
+- **ResonanceGauge** — horizontal gauge sharing the same ML score as ResonanceScoreTrace, so the two always agree
 - **CombinedDashboard** — main practice view composing the above, plus session recording logic
 
 ### Data Persistence
@@ -71,8 +73,10 @@ History arrays are stored in Refs (not React state) and read directly by `reques
 
 ### Key Design Decisions
 
-- Direct AudioWorklet→Worker MessagePort communication for zero main-thread audio relay
+- Direct AudioWorklet→Worker MessagePort communication for zero main-thread audio relay; AudioWorklet broadcasts to a list of consumer ports so DSP and ML can both receive raw audio
 - LPC formant extraction throttled to every 6th frame (~200ms) to save CPU
+- ML gender inference throttled to ~1.3 Hz (every 750 ms) over a rolling 2-second 16 kHz window; runs in a dedicated worker so it doesn't block DSP
+- Resampling for the ML worker uses simple linear interpolation rather than a polyphase FIR — speech energy above 8 kHz is minimal and the browser already low-passes mic input
 - Rolling median smoothing for outlier robustness
 - Silence gating holds last voiced values for 5 seconds, then resets
 - Target ranges currently hardcoded in `src/utils/constants.js`

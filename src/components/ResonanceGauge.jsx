@@ -1,8 +1,8 @@
-// ResonanceGauge.jsx — Horizontal bar showing vowel-normalized resonance score.
-// "Darker" on the left, "Brighter" on the right. Shares its metric with
-// ResonanceScoreTrace so the live trace and the gauge always agree.
+// ResonanceGauge.jsx — Horizontal bar showing the ML perceived-gender score.
+// "Darker" on the left, "Brighter" on the right. Reads the same score the
+// trace does so the two views stay consistent.
 
-import { vowelResonanceScore, RESONANCE_SCORE_TARGET } from "../utils/resonanceScore";
+const SCORE_TARGET = 70;
 
 function scoreColor(score) {
   if (score <= 50) {
@@ -19,17 +19,20 @@ function scoreColor(score) {
   return `rgb(${r}, ${g}, ${b})`;
 }
 
-export function ResonanceGauge({ formants, voiced, holding }) {
-  const result = formants ? vowelResonanceScore(formants.f1, formants.f2) : null;
-  const score = result?.score ?? null;
-  const clamped = score !== null ? Math.max(0, Math.min(100, score)) : null;
-
-  const inTarget = score !== null && score >= RESONANCE_SCORE_TARGET;
+export function ResonanceGauge({ genderScore, modelStatus, voiced, holding }) {
+  const score = genderScore;
+  const clamped = score != null ? Math.max(0, Math.min(100, score)) : null;
+  const inTarget = score != null && score >= SCORE_TARGET;
   const opacity = !voiced && !holding ? 0.3 : holding ? 0.5 : 1;
+
+  const subtitle =
+    modelStatus === "loading" ? "loading…" :
+    modelStatus === "error" ? "unavailable" :
+    score == null ? "warming up" :
+    inTarget ? "in target" : "below target";
 
   return (
     <div className="w-full" style={{ opacity }}>
-      {/* Labels */}
       <div className="flex justify-between items-baseline mb-1.5 whitespace-nowrap">
         <span className="text-[9px] sm:text-[10px] text-neutral-500 uppercase tracking-normal sm:tracking-wider">
           Darker
@@ -42,14 +45,12 @@ export function ResonanceGauge({ formants, voiced, holding }) {
         </span>
       </div>
 
-      {/* Gauge track */}
       <div className="relative h-3 rounded-full bg-neutral-800 overflow-hidden">
-        {/* Target zone highlight */}
         <div
           className="absolute top-0 h-full rounded-full"
           style={{
-            left: `${RESONANCE_SCORE_TARGET}%`,
-            width: `${100 - RESONANCE_SCORE_TARGET}%`,
+            left: `${SCORE_TARGET}%`,
+            width: `${100 - SCORE_TARGET}%`,
             background:
               "linear-gradient(90deg, rgba(96,165,250,0.08), rgba(96,165,250,0.15), rgba(96,165,250,0.08))",
             borderTop: "1px solid rgba(96,165,250,0.25)",
@@ -57,7 +58,6 @@ export function ResonanceGauge({ formants, voiced, holding }) {
           }}
         />
 
-        {/* Filled portion with gradient color */}
         {clamped !== null && (
           <div
             className="absolute top-0 h-full rounded-full transition-all duration-100"
@@ -70,10 +70,9 @@ export function ResonanceGauge({ formants, voiced, holding }) {
           />
         )}
 
-        {/* Marker */}
         {clamped !== null && (
           <div
-            className="absolute top-1/2 -translate-y-1/2 transition-all duration-100"
+            className="absolute top-1/2 -translate-y-1/2 transition-all duration-200"
             style={{ left: `${clamped}%` }}
           >
             <div
@@ -88,17 +87,14 @@ export function ResonanceGauge({ formants, voiced, holding }) {
         )}
       </div>
 
-      {/* Value readout */}
       <div className="mt-1 text-center">
         <span
           className={`text-xs tabular-nums ${
             inTarget ? "text-blue-400" : "text-neutral-400"
           }`}
         >
-          {score !== null ? `${Math.round(score)}` : "—"}
-          {result?.vowel ? (
-            <span className="text-neutral-500 ml-1">· {result.vowel.label}</span>
-          ) : null}
+          {score != null ? `${Math.round(score)}` : "—"}
+          <span className="text-neutral-500 ml-1">· {subtitle}</span>
         </span>
       </div>
     </div>
