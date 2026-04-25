@@ -264,6 +264,7 @@ export function CombinedDashboard({
             </div>
             <ResonanceGauge
               genderScore={genderScore}
+              genderConfidence={genderConfidence}
               modelStatus={modelStatus}
               voiced={voiced}
               holding={holding}

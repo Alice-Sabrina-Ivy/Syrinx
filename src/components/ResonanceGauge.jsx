@@ -3,6 +3,7 @@
 // trace does so the two views stay consistent.
 
 const SCORE_TARGET = 70;
+const LOW_CONFIDENCE = 0.3;
 
 function scoreColor(score) {
   if (score <= 50) {
@@ -19,16 +20,18 @@ function scoreColor(score) {
   return `rgb(${r}, ${g}, ${b})`;
 }
 
-export function ResonanceGauge({ genderScore, modelStatus, voiced, holding }) {
+export function ResonanceGauge({ genderScore, genderConfidence, modelStatus, voiced, holding }) {
   const score = genderScore;
   const clamped = score != null ? Math.max(0, Math.min(100, score)) : null;
   const inTarget = score != null && score >= SCORE_TARGET;
+  const lowConfidence = genderConfidence != null && genderConfidence < LOW_CONFIDENCE;
   const opacity = !voiced && !holding ? 0.3 : holding ? 0.5 : 1;
 
   const subtitle =
     modelStatus === "loading" ? "loading…" :
     modelStatus === "error" ? "unavailable" :
     score == null ? "warming up" :
+    lowConfidence ? "uncertain" :
     inTarget ? "in target" : "below target";
 
   return (

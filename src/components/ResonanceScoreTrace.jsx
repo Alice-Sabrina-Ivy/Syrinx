@@ -12,6 +12,11 @@ import { RESONANCE_TRACE_SECONDS, COLORS } from "../utils/constants";
 const SCORE_TARGET = 70;        // ≥ this = "perceived feminine"
 const SCORE_MALE_CEILING = 30;  // ≤ this = "perceived male"
 
+// Time gap (between consecutive trace points) that should break the line.
+// At 2 Hz cadence, > 1.5 sec without a new score = the worker was VAD-gating
+// or busy; better to gap visibly than to draw a line through dead air.
+const TRACE_GAP_MS = 1500;
+
 const MALE_BAND_FILL = "rgba(251, 146, 60, 0.06)";
 const MALE_BAND_BORDER = "rgba(251, 146, 60, 0.25)";
 
@@ -140,7 +145,8 @@ export function ResonanceScoreTrace({
 
       const data = genderTraceRef?.current ?? [];
 
-      // Render trace: connect points, switch color at the SCORE_TARGET line.
+      // Render trace: connect points, switch color at the SCORE_TARGET line,
+      // and break the line on time gaps (silence / VAD-gated periods).
       if (data.length >= 2 && modelStatus === "ready") {
         ctx.lineWidth = 2.5 * dpr;
         ctx.lineJoin = "round";
@@ -148,11 +154,18 @@ export function ResonanceScoreTrace({
 
         let inSegment = false;
         let prevInTarget = null;
+        let prevTime = null;
 
         for (let i = 0; i < data.length; i++) {
           const pt = data[i];
           const x = timeToX(pt.time, now);
-          if (x < plotLeft) continue;
+          if (x < plotLeft) { prevTime = pt.time; continue; }
+
+          // Break on a long gap between successive points
+          if (inSegment && prevTime !== null && pt.time - prevTime > TRACE_GAP_MS) {
+            ctx.stroke();
+            inSegment = false;
+          }
 
           const y = scoreToY(pt.score);
           const inTarget = pt.score >= SCORE_TARGET;
@@ -172,17 +185,25 @@ export function ResonanceScoreTrace({
             ctx.lineTo(x, y);
           }
           prevInTarget = inTarget;
+          prevTime = pt.time;
         }
         if (inSegment) ctx.stroke();
       }
 
-      // Latest position glow dot
+      // Latest position glow dot. Opacity scales with confidence so the
+      // user can see at a glance when the model is uncertain (~50/50).
       const last = data[data.length - 1];
       if (last && now - last.time < 3000 && modelStatus === "ready") {
         const x = timeToX(last.time, now);
         const y = scoreToY(last.score);
         const inTarget = last.score >= SCORE_TARGET;
         const color = inTarget ? COLORS.resInTarget : COLORS.resOutOfTarget;
+        const conf = Math.max(0, Math.min(1, last.confidence ?? 1));
+        // Ease into a minimum visible alpha so the dot doesn't disappear
+        const alpha = 0.35 + 0.65 * conf;
+
+        ctx.save();
+        ctx.globalAlpha = alpha;
 
         ctx.beginPath();
         ctx.arc(x, y, 5 * dpr, 0, Math.PI * 2);
@@ -196,6 +217,8 @@ export function ResonanceScoreTrace({
         grad.addColorStop(1, "transparent");
         ctx.fillStyle = grad;
         ctx.fill();
+
+        ctx.restore();
       }
 
       animId = requestAnimationFrame(draw);
@@ -233,7 +256,7 @@ export function ResonanceScoreTrace({
   } else if (modelStatus === "ready" && genderScore == null) {
     overlay = (
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-        <div className="text-xs text-neutral-500">Speak for ~2 sec to see your first score</div>
+        <div className="text-xs text-neutral-500">Speak for ~4 sec to see your first score</div>
       </div>
     );
   }

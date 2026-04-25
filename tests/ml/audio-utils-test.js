@@ -9,7 +9,12 @@
 import {
   resampleLinear,
   RingWindow,
+  SilenceTracker,
   femaleScoreFromResult,
+  windowRMS,
+  ema,
+  VAD_RMS_THRESHOLD,
+  RESET_AFTER_SILENT_INFERENCES,
   TARGET_SAMPLE_RATE,
 } from "../../src/ml/audio-utils.js";
 
@@ -204,11 +209,94 @@ check(
   femaleScoreFromResult(null) === null,
 );
 
+console.log("\nwindowRMS");
+
+check("RMS of silence is 0", windowRMS(new Float32Array(100)) === 0);
+
+{
+  // Constant 0.5 → RMS = 0.5
+  const buf = new Float32Array(100);
+  buf.fill(0.5);
+  check("RMS of constant 0.5 ≈ 0.5", Math.abs(windowRMS(buf) - 0.5) < 1e-6);
+}
+
+{
+  // Sine wave: RMS = amplitude / sqrt(2) ≈ 0.707
+  const buf = new Float32Array(1600);
+  for (let i = 0; i < buf.length; i++) buf[i] = Math.sin(2 * Math.PI * 100 * i / 16000);
+  const rms = windowRMS(buf);
+  check(`RMS of unit sine ≈ 0.707 (got ${rms.toFixed(4)})`, Math.abs(rms - Math.SQRT1_2) < 0.01);
+}
+
+check("VAD threshold > 0", VAD_RMS_THRESHOLD > 0);
+
+console.log("\nema");
+
+check("first sample equals input", ema(null, 0.7) === 0.7);
+check(
+  "subsequent EMA mixes 60/40 with default alpha",
+  Math.abs(ema(0.5, 1.0, 0.4) - 0.7) < 1e-6,
+);
+check("alpha=1 takes new value", ema(0.5, 0.9, 1) === 0.9);
+check("alpha=0 keeps previous", ema(0.5, 0.9, 0) === 0.5);
+
+console.log("\nSilenceTracker");
+
+{
+  const t = new SilenceTracker(4);
+  check("initial silentCount is 0", t.silentCount === 0);
+}
+
+{
+  // Three silent runs below threshold → no reset signal yet
+  const t = new SilenceTracker(4);
+  const r1 = t.noteSilent(); // 1
+  const r2 = t.noteSilent(); // 2
+  const r3 = t.noteSilent(); // 3
+  check("noteSilent returns false before threshold", !r1 && !r2 && !r3);
+  check("silentCount after 3 silents is 3", t.silentCount === 3);
+}
+
+{
+  // Crossing the threshold returns true exactly once
+  const t = new SilenceTracker(4);
+  t.noteSilent(); t.noteSilent(); t.noteSilent();
+  const crossing = t.noteSilent();   // 4 → exactly threshold
+  const beyond = t.noteSilent();     // 5 → past threshold; shouldn't fire again
+  check("noteSilent returns true at the threshold", crossing === true);
+  check("noteSilent does NOT fire repeatedly past threshold", beyond === false);
+}
+
+{
+  // noteActive resets the run
+  const t = new SilenceTracker(4);
+  t.noteSilent(); t.noteSilent(); t.noteSilent();
+  t.noteActive();
+  check("noteActive resets silentCount", t.silentCount === 0);
+  check("noteSilent after reset starts the run over", t.noteSilent() === false);
+}
+
+{
+  // Default threshold = RESET_AFTER_SILENT_INFERENCES
+  const t = new SilenceTracker();
+  for (let i = 1; i < RESET_AFTER_SILENT_INFERENCES; i++) {
+    if (t.noteSilent() !== false) { check("default threshold premature fire", false); break; }
+  }
+  check(
+    "default threshold === RESET_AFTER_SILENT_INFERENCES",
+    t.noteSilent() === true,
+  );
+}
+
 console.log("\nconstants");
 
 check(
   `TARGET_SAMPLE_RATE === 16000`,
   TARGET_SAMPLE_RATE === 16000,
+);
+check(
+  `RESET_AFTER_SILENT_INFERENCES is a positive integer`,
+  Number.isInteger(RESET_AFTER_SILENT_INFERENCES) && RESET_AFTER_SILENT_INFERENCES > 0,
 );
 
 console.log(`\n${passed} passed, ${failed} failed`);
