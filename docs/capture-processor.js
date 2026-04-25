@@ -16,11 +16,13 @@ class CaptureProcessor extends AudioWorkletProcessor {
     // Reusable chunk for sending (avoids allocation per send)
     this.chunk = new Float32Array(this.chunkSize);
 
-    // Direct MessagePort to DSP Worker (bypasses main thread)
-    this.workerPort = null;
+    // Direct MessagePorts to downstream consumer Workers (DSP + ML).
+    // Each consumer that wants audio sends a `{ type: "port", port }`
+    // message; the worklet then broadcasts every chunk to all of them.
+    this.workerPorts = [];
     this.port.onmessage = (e) => {
       if (e.data.type === "port") {
-        this.workerPort = e.data.port;
+        this.workerPorts.push(e.data.port);
       }
     };
   }
@@ -48,17 +50,31 @@ class CaptureProcessor extends AudioWorkletProcessor {
 
     // Send complete chunks
     while (this.writePos >= this.chunkSize) {
-      // Copy chunk data into a new transferable buffer
-      // (must be a fresh ArrayBuffer since transfer detaches it)
-      const out = new Float32Array(this.chunkSize);
-      out.set(this.buffer.subarray(0, this.chunkSize));
       // Shift remaining data left
+      const chunkStart = 0;
+      // Build a transferable buffer per consumer (transfer detaches the
+      // ArrayBuffer, so it can't be reused across postMessage calls).
+      if (this.workerPorts.length > 0) {
+        for (let i = 0; i < this.workerPorts.length; i++) {
+          const out = new Float32Array(this.chunkSize);
+          out.set(this.buffer.subarray(chunkStart, chunkStart + this.chunkSize));
+          this.workerPorts[i].postMessage(
+            { buffer: out.buffer, contextTime: currentTime },
+            [out.buffer],
+          );
+        }
+      } else {
+        // Fallback: relay through the main-thread port if no direct
+        // consumers are registered yet.
+        const out = new Float32Array(this.chunkSize);
+        out.set(this.buffer.subarray(chunkStart, chunkStart + this.chunkSize));
+        this.port.postMessage(
+          { buffer: out.buffer, contextTime: currentTime },
+          [out.buffer],
+        );
+      }
       this.buffer.copyWithin(0, this.chunkSize, this.writePos);
       this.writePos -= this.chunkSize;
-      // Send directly to DSP Worker (or fall back to main-thread relay)
-      // Include audio context time so downstream can measure audio age
-      const target = this.workerPort || this.port;
-      target.postMessage({ buffer: out.buffer, contextTime: currentTime }, [out.buffer]);
     }
 
     return true; // Keep processor alive
