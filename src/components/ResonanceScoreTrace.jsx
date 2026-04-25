@@ -1,35 +1,31 @@
-// ResonanceScoreTrace.jsx — 15-second scrolling trace of vowel-normalized
-// resonance score (0-100). Replaces the older raw-F2 trace.
+// ResonanceScoreTrace.jsx — 15-second scrolling trace of the ML perceived-
+// gender score (0-100). Backed by a Transformers.js Wav2Vec2 classifier in a
+// dedicated worker; see src/ml/gender-worker.js.
 //
-// For each voiced frame, the score picks the nearest Hillenbrand reference
-// anchor (male or female) and returns 100·d_male / (d_male + d_female), then
-// gates out frames where the nearest anchor is > GATE_DISTANCE_HZ away.
-// Rendered scores are rolling-median-smoothed over 3 points (~150 ms) to
-// absorb single-sample noise from vowel transitions.
+// Each genderTraceRef entry is { time, score, confidence }. Scores arrive at
+// ~1.3 Hz (the model integrates over 2-sec windows), so the trace is sparser
+// than the old formant-derived one and we connect points with simple lines.
 
 import { useRef, useEffect } from "react";
 import { RESONANCE_TRACE_SECONDS, COLORS } from "../utils/constants";
-import {
-  vowelResonanceScore,
-  RESONANCE_SCORE_TARGET,
-  RESONANCE_MALE_CEILING,
-} from "../utils/resonanceScore";
 
-// Window (# of points) for rolling-median smoothing of scores.
-const SCORE_SMOOTH_WINDOW = 3;
+const SCORE_TARGET = 70;        // ≥ this = "perceived feminine"
+const SCORE_MALE_CEILING = 30;  // ≤ this = "perceived male"
 
-// Color tokens for the male-range band. Inlined here since nothing else
-// consumes them.
 const MALE_BAND_FILL = "rgba(251, 146, 60, 0.06)";
 const MALE_BAND_BORDER = "rgba(251, 146, 60, 0.25)";
 
-function medianOf(values) {
-  if (values.length === 0) return null;
-  const sorted = values.slice().sort((a, b) => a - b);
-  return sorted[Math.floor(sorted.length / 2)];
-}
-
-export function ResonanceScoreTrace({ formantTrailRef, voiced, holding, formants, compact = false }) {
+export function ResonanceScoreTrace({
+  genderTraceRef,
+  voiced,
+  holding,
+  genderScore,
+  genderConfidence,
+  modelStatus,
+  modelProgress,
+  modelError,
+  compact = false,
+}) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
 
@@ -44,11 +40,9 @@ export function ResonanceScoreTrace({ formantTrailRef, voiced, holding, formants
       canvas.width = rect.width * dpr;
       canvas.height = rect.height * dpr;
     }
-
     const observer = new ResizeObserver(resize);
     observer.observe(container);
     resize();
-
     return () => observer.disconnect();
   }, []);
 
@@ -58,18 +52,13 @@ export function ResonanceScoreTrace({ formantTrailRef, voiced, holding, formants
     const ctx = canvas.getContext("2d");
     let animId;
 
-    const displayLow = 0;
-    const displayHigh = 100;
-    const target = RESONANCE_SCORE_TARGET;
-    const maleCeiling = RESONANCE_MALE_CEILING;
-
     const pad = { left: 40, right: 28, top: 8, bottom: 24 };
 
     function scoreToY(score) {
       const dpr = window.devicePixelRatio || 1;
       const plotTop = pad.top * dpr;
       const plotBottom = canvas.height - pad.bottom * dpr;
-      const frac = (score - displayLow) / (displayHigh - displayLow);
+      const frac = score / 100;
       return plotBottom - frac * (plotBottom - plotTop);
     }
 
@@ -101,8 +90,8 @@ export function ResonanceScoreTrace({ formantTrailRef, voiced, holding, formants
       ctx.textAlign = "right";
       ctx.textBaseline = "middle";
       ctx.font = `${11 * dpr}px system-ui`;
-      for (const score of [0, 25, 50, 75, 100]) {
-        const y = scoreToY(score);
+      for (const v of [0, 25, 50, 75, 100]) {
+        const y = scoreToY(v);
         ctx.strokeStyle = COLORS.grid;
         ctx.lineWidth = 1;
         ctx.beginPath();
@@ -110,7 +99,7 @@ export function ResonanceScoreTrace({ formantTrailRef, voiced, holding, formants
         ctx.lineTo(plotRight, y);
         ctx.stroke();
         ctx.fillStyle = COLORS.gridLabel;
-        ctx.fillText(`${score}`, plotLeft - 6 * dpr, y);
+        ctx.fillText(`${v}`, plotLeft - 6 * dpr, y);
       }
 
       // X-axis time labels
@@ -124,8 +113,8 @@ export function ResonanceScoreTrace({ formantTrailRef, voiced, holding, formants
         ctx.fillText(sec === 0 ? "now" : `-${sec}s`, x, plotBottom + 4 * dpr);
       }
 
-      // Male-range band (0 to maleCeiling)
-      const maleTop = scoreToY(maleCeiling);
+      // Male-range band (0 to SCORE_MALE_CEILING)
+      const maleTop = scoreToY(SCORE_MALE_CEILING);
       const maleBottom = scoreToY(0);
       ctx.fillStyle = MALE_BAND_FILL;
       ctx.fillRect(plotLeft, maleTop, plotRight - plotLeft, maleBottom - maleTop);
@@ -137,106 +126,62 @@ export function ResonanceScoreTrace({ formantTrailRef, voiced, holding, formants
       ctx.lineTo(plotRight, maleTop);
       ctx.stroke();
 
-      // Target band (>= target)
-      const bandTop = scoreToY(100);
-      const bandBottom = scoreToY(target);
+      // Target band (>= SCORE_TARGET)
+      const tgtTop = scoreToY(100);
+      const tgtBottom = scoreToY(SCORE_TARGET);
       ctx.fillStyle = COLORS.resTargetBand;
-      ctx.fillRect(plotLeft, bandTop, plotRight - plotLeft, bandBottom - bandTop);
+      ctx.fillRect(plotLeft, tgtTop, plotRight - plotLeft, tgtBottom - tgtTop);
       ctx.strokeStyle = COLORS.resTargetBandBorder;
       ctx.beginPath();
-      ctx.moveTo(plotLeft, bandBottom);
-      ctx.lineTo(plotRight, bandBottom);
+      ctx.moveTo(plotLeft, tgtBottom);
+      ctx.lineTo(plotRight, tgtBottom);
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // Compute + smooth per-point scores, then render the trace.
-      const data = formantTrailRef.current;
-      if (data.length < 2) {
-        animId = requestAnimationFrame(draw);
-        return;
-      }
+      const data = genderTraceRef?.current ?? [];
 
-      // Pass 1: raw scores
-      const raw = new Array(data.length);
-      for (let i = 0; i < data.length; i++) {
-        const pt = data[i];
-        raw[i] = pt.voiced && pt.f1 != null && pt.f2 != null
-          ? vowelResonanceScore(pt.f1, pt.f2)
-          : null;
-      }
+      // Render trace: connect points, switch color at the SCORE_TARGET line.
+      if (data.length >= 2 && modelStatus === "ready") {
+        ctx.lineWidth = 2.5 * dpr;
+        ctx.lineJoin = "round";
+        ctx.lineCap = "round";
 
-      // Pass 2: rolling median smoothing across nearby non-null scores.
-      // Uses neighbors i-1 .. i+1 (window of 3 → ~150 ms at formant rate).
-      const half = Math.floor(SCORE_SMOOTH_WINDOW / 2);
-      const smoothed = new Array(data.length);
-      for (let i = 0; i < data.length; i++) {
-        if (!raw[i]) { smoothed[i] = null; continue; }
-        const vals = [];
-        for (let j = Math.max(0, i - half); j <= Math.min(data.length - 1, i + half); j++) {
-          if (raw[j]) vals.push(raw[j].score);
-        }
-        const med = medianOf(vals);
-        smoothed[i] = med !== null ? { score: med, vowel: raw[i].vowel } : null;
-      }
+        let inSegment = false;
+        let prevInTarget = null;
 
-      // Pass 3: draw the line, splitting on null-score gaps, large time gaps,
-      // and target/non-target color transitions.
-      ctx.lineWidth = 2.5 * dpr;
-      ctx.lineJoin = "round";
-      ctx.lineCap = "round";
+        for (let i = 0; i < data.length; i++) {
+          const pt = data[i];
+          const x = timeToX(pt.time, now);
+          if (x < plotLeft) continue;
 
-      const GAP_MS = 150;
-      let inSegment = false;
-      let prevTime = 0;
-      let prevInTarget = null;
+          const y = scoreToY(pt.score);
+          const inTarget = pt.score >= SCORE_TARGET;
 
-      for (let i = 0; i < data.length; i++) {
-        const pt = data[i];
-        const x = timeToX(pt.time, now);
-        if (x < plotLeft) { prevTime = pt.time; continue; }
-
-        const scored = smoothed[i];
-        if (!scored || (inSegment && pt.time - prevTime > GAP_MS)) {
-          if (inSegment) {
+          if (!inSegment) {
+            ctx.beginPath();
+            ctx.strokeStyle = inTarget ? COLORS.resInTarget : COLORS.resOutOfTarget;
+            ctx.moveTo(x, y);
+            inSegment = true;
+          } else if (inTarget !== prevInTarget) {
+            ctx.lineTo(x, y);
             ctx.stroke();
-            inSegment = false;
+            ctx.beginPath();
+            ctx.strokeStyle = inTarget ? COLORS.resInTarget : COLORS.resOutOfTarget;
+            ctx.moveTo(x, y);
+          } else {
+            ctx.lineTo(x, y);
           }
-          prevTime = pt.time;
-          if (!scored) continue;
+          prevInTarget = inTarget;
         }
-
-        const y = scoreToY(scored.score);
-        const inTarget = scored.score >= target;
-
-        if (!inSegment) {
-          ctx.beginPath();
-          ctx.strokeStyle = inTarget ? COLORS.resInTarget : COLORS.resOutOfTarget;
-          ctx.moveTo(x, y);
-          inSegment = true;
-        } else if (inTarget !== prevInTarget) {
-          ctx.lineTo(x, y);
-          ctx.stroke();
-          ctx.beginPath();
-          ctx.strokeStyle = inTarget ? COLORS.resInTarget : COLORS.resOutOfTarget;
-          ctx.moveTo(x, y);
-        } else {
-          ctx.lineTo(x, y);
-        }
-        prevInTarget = inTarget;
-        prevTime = pt.time;
+        if (inSegment) ctx.stroke();
       }
-      if (inSegment) ctx.stroke();
 
-      // Current position glow dot — use the smoothed score so the dot
-      // aligns with the line.
-      let lastScored = null;
-      for (let i = data.length - 1; i >= 0; i--) {
-        if (smoothed[i]) { lastScored = { pt: data[i], ...smoothed[i] }; break; }
-      }
-      if (lastScored && now - lastScored.pt.time < 500) {
-        const x = timeToX(lastScored.pt.time, now);
-        const y = scoreToY(lastScored.score);
-        const inTarget = lastScored.score >= target;
+      // Latest position glow dot
+      const last = data[data.length - 1];
+      if (last && now - last.time < 3000 && modelStatus === "ready") {
+        const x = timeToX(last.time, now);
+        const y = scoreToY(last.score);
+        const inTarget = last.score >= SCORE_TARGET;
         const color = inTarget ? COLORS.resInTarget : COLORS.resOutOfTarget;
 
         ctx.beginPath();
@@ -258,12 +203,42 @@ export function ResonanceScoreTrace({ formantTrailRef, voiced, holding, formants
 
     draw();
     return () => cancelAnimationFrame(animId);
-  }, [formantTrailRef]);
+  }, [genderTraceRef, modelStatus]);
 
-  const live = formants?.f1 != null && formants?.f2 != null
-    ? vowelResonanceScore(formants.f1, formants.f2)
-    : null;
-  const inTarget = live && live.score >= RESONANCE_SCORE_TARGET;
+  // Overlay text for the various model states
+  let overlay = null;
+  if (modelStatus === "loading") {
+    const pct = modelProgress?.total
+      ? Math.round((modelProgress.loaded / modelProgress.total) * 100)
+      : null;
+    overlay = (
+      <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm pointer-events-none">
+        <div className="text-sm text-neutral-300">Loading voice-perception model…</div>
+        {pct !== null && (
+          <div className="mt-2 text-xs text-neutral-500 tabular-nums">
+            {pct}%{modelProgress?.file ? ` · ${modelProgress.file.split("/").pop()}` : ""}
+          </div>
+        )}
+      </div>
+    );
+  } else if (modelStatus === "error") {
+    overlay = (
+      <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 pointer-events-none px-4 text-center">
+        <div className="text-sm text-red-400">Model failed to load</div>
+        {modelError && (
+          <div className="mt-1 text-xs text-neutral-500 max-w-md">{modelError}</div>
+        )}
+      </div>
+    );
+  } else if (modelStatus === "ready" && genderScore == null) {
+    overlay = (
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+        <div className="text-xs text-neutral-500">Speak for ~2 sec to see your first score</div>
+      </div>
+    );
+  }
+
+  const inTarget = genderScore != null && genderScore >= SCORE_TARGET;
 
   return (
     <div className="flex flex-col h-full">
@@ -272,6 +247,7 @@ export function ResonanceScoreTrace({ formantTrailRef, voiced, holding, formants
         className="relative flex-1 min-h-0 rounded-xl overflow-hidden border border-neutral-800"
       >
         <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
+        {overlay}
       </div>
 
       {!compact && (
@@ -287,10 +263,10 @@ export function ResonanceScoreTrace({ formantTrailRef, voiced, holding, formants
                     : "text-orange-400"
             }`}
           >
-            {live ? Math.round(live.score) : "—"}
+            {genderScore != null ? Math.round(genderScore) : "—"}
           </span>
           <span className="text-sm text-neutral-500">
-            resonance{live ? ` · ${live.vowel.label}` : ""}
+            resonance{genderConfidence != null ? ` · ${Math.round(genderConfidence * 100)}% conf` : ""}
           </span>
         </div>
       )}

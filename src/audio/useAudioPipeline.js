@@ -28,6 +28,11 @@ export function useAudioPipeline() {
     formants: { f1: null, f2: null, f3: null },
     spectralTilt: null,
     hnr: null,
+    genderScore: null,        // 0-100 from ML worker, null until first inference
+    genderConfidence: null,
+    modelStatus: "idle",       // idle | loading | ready | error
+    modelError: null,
+    modelProgress: null,       // { loaded, total, file } during download
   });
 
   // Throttle setState to reduce React renders on mobile.
@@ -38,9 +43,15 @@ export function useAudioPipeline() {
 
   const audioCtxRef = useRef(null);
   const workerRef = useRef(null);
+  const mlWorkerRef = useRef(null);
   const streamRef = useRef(null);
   const workletNodeRef = useRef(null);
   const sourceNodeRef = useRef(null);
+
+  // Gender-score history for the trace canvas. Each entry:
+  // { time: <ms epoch>, score: 0-100, confidence: 0-1 }
+  // Trimmed to the last RESONANCE_TRACE_SECONDS.
+  const genderTraceRef = useRef([]);
 
   // Smoothing buffers
   const pitchSmoothRef = useRef([]);
@@ -120,6 +131,55 @@ export function useAudioPipeline() {
         [channel.port2],
       );
 
+      // ML inference worker. Hosts a Transformers.js pipeline that emits
+      // a perceived-gender score (0-100) on a rolling 2-sec audio window.
+      // Audio is forked from the same AudioWorklet via a second MessagePort.
+      const mlWorker = new Worker(
+        new URL("../ml/gender-worker.js", import.meta.url),
+        { type: "module" },
+      );
+      mlWorkerRef.current = mlWorker;
+      mlWorker.postMessage({
+        type: "init",
+        inputSampleRate: audioCtx.sampleRate,
+      });
+
+      const mlChannel = new MessageChannel();
+      workletNode.port.postMessage(
+        { type: "port", port: mlChannel.port1 },
+        [mlChannel.port1],
+      );
+      mlWorker.postMessage(
+        { type: "audioPort", port: mlChannel.port2 },
+        [mlChannel.port2],
+      );
+
+      mlWorker.onmessage = (e) => {
+        const msg = e.data;
+        if (!msg || !msg.type) return;
+        if (msg.type === "score") {
+          const entry = { time: Math.round(msg.ts), score: msg.score, confidence: msg.confidence };
+          genderTraceRef.current.push(entry);
+          trimHistory(genderTraceRef.current, RESONANCE_TRACE_SECONDS * 1000, entry.time);
+          throttledSetState((s) => ({
+            ...s,
+            genderScore: msg.score,
+            genderConfidence: msg.confidence,
+          }));
+        } else if (msg.type === "status") {
+          setState((s) => ({
+            ...s,
+            modelStatus: msg.status,
+            modelError: msg.message ?? null,
+          }));
+        } else if (msg.type === "progress") {
+          setState((s) => ({
+            ...s,
+            modelProgress: { loaded: msg.loaded, total: msg.total, file: msg.file },
+          }));
+        }
+      };
+
       worker.onmessage = (e) => {
         if (e.data.type === "analysis") {
           const data = e.data.data;
@@ -166,6 +226,10 @@ export function useAudioPipeline() {
       workerRef.current.terminate();
       workerRef.current = null;
     }
+    if (mlWorkerRef.current) {
+      mlWorkerRef.current.terminate();
+      mlWorkerRef.current = null;
+    }
     if (audioCtxRef.current) {
       audioCtxRef.current.close();
       audioCtxRef.current = null;
@@ -182,6 +246,7 @@ export function useAudioPipeline() {
     quietFrameCountRef.current = 0;
     pitchTraceRef.current = [];
     formantTrailRef.current = [];
+    genderTraceRef.current = [];
     setState({
       status: "idle",
       error: null,
@@ -193,6 +258,11 @@ export function useAudioPipeline() {
       formants: { f1: null, f2: null, f3: null },
       spectralTilt: null,
       hnr: null,
+      genderScore: null,
+      genderConfidence: null,
+      modelStatus: "idle",
+      modelError: null,
+      modelProgress: null,
     });
   }, []);
 
@@ -383,6 +453,7 @@ export function useAudioPipeline() {
     stop,
     pitchTraceRef,
     formantTrailRef,
+    genderTraceRef,
     frameCallbackRef,
     streamRef,
   };

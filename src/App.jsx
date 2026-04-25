@@ -50,10 +50,16 @@ function App() {
     formants,
     spectralTilt,
     hnr,
+    genderScore,
+    genderConfidence,
+    modelStatus,
+    modelError,
+    modelProgress,
     start,
     stop,
     pitchTraceRef,
     formantTrailRef,
+    genderTraceRef,
     frameCallbackRef,
     streamRef,
   } = useAudioPipeline();
@@ -202,8 +208,14 @@ function App() {
                   formants={formants}
                   spectralTilt={spectralTilt}
                   hnr={hnr}
+                  genderScore={genderScore}
+                  genderConfidence={genderConfidence}
+                  modelStatus={modelStatus}
+                  modelError={modelError}
+                  modelProgress={modelProgress}
                   pitchTraceRef={pitchTraceRef}
                   formantTrailRef={formantTrailRef}
+                  genderTraceRef={genderTraceRef}
                   sessionRef={sessionRef}
                   frameCallbackRef={frameCallbackRef}
                   streamRef={streamRef}
