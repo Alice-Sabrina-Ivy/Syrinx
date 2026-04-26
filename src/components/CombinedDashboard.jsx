@@ -240,7 +240,7 @@ export function CombinedDashboard({
       </div>
 
       {/* Live stats — columnar layout: F0 | F2 + VocalWeight | HNR.
-          Resonance score is shown by the thermometer above. */}
+          Perceived voice is shown by the thermometer above. */}
       <div className="flex-shrink-0 mt-3 px-2">
         <div className="flex items-end justify-center gap-x-3 sm:gap-x-6">
           {/* Column 1: F0 value */}
