@@ -1,6 +1,7 @@
 // inference-latency-benchmark.js — How long does one inference take with
-// the current production model on a 2-sec window? Determines whether 4 Hz
-// (250 ms hop) is achievable without swapping models.
+// the current production model? The pipeline runs 0.75-sec windows at a
+// 150 ms hop (~6.7 Hz), so per-window inference must finish under 150 ms
+// on the slowest target device (Pixel-8-class mobile CPU/WASM).
 //
 // Usage: node tests/ml/inference-latency-benchmark.js
 
@@ -9,15 +10,16 @@ import { pipeline, env } from "@huggingface/transformers";
 env.allowRemoteModels = true;
 env.allowLocalModels = false;
 
-const MODEL_ID = "Xenova/wav2vec2-large-xlsr-53-gender-recognition-librispeech";
+const MODEL_ID = "prithivMLmods/Common-Voice-Gender-Detection-ONNX";
 const SR = 16000;
+const HOP_MS = 150;
 
 async function main() {
   console.log(`Loading ${MODEL_ID} (q8)…`);
   const classifier = await pipeline("audio-classification", MODEL_ID, { dtype: "q8" });
   console.log("loaded.\n");
 
-  for (const winSec of [4, 3, 2, 1.5]) {
+  for (const winSec of [1.5, 1.0, 0.75, 0.5]) {
     const samples = new Float32Array(Math.floor(SR * winSec));
     // Sine + noise so the model has something to chew on
     for (let i = 0; i < samples.length; i++) {
@@ -39,7 +41,7 @@ async function main() {
     const median = ms[Math.floor(N / 2)];
     const p90 = ms[Math.floor(N * 0.9)];
     console.log(`  ${winSec}s window: median=${median.toFixed(1)}ms  p90=${p90.toFixed(1)}ms  (raw: ${ms.map((m) => m.toFixed(0)).join(", ")})`);
-    console.log(`             at 250ms hop (4 Hz): ${(median / 250 * 100).toFixed(0)}% busy`);
+    console.log(`             at ${HOP_MS}ms hop (${(1000 / HOP_MS).toFixed(1)} Hz): ${(median / HOP_MS * 100).toFixed(0)}% busy`);
   }
 
   process.exit(0);

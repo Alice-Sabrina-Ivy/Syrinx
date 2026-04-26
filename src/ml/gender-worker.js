@@ -1,9 +1,9 @@
 // gender-worker.js — On-device perceived-gender classifier.
 //
 // Hosts a Wav2Vec2 audio-classification pipeline (Transformers.js) and
-// produces a 0-100 "femininity" score from a rolling 1.5-second window
-// of microphone audio. Inference runs at 5 Hz (every 200 ms), gated by
-// a peak-amplitude VAD to skip silent windows and EMA-smoothed across
+// produces a 0-100 "femininity" score from a rolling 0.75-second window
+// of microphone audio. Inference runs at ~6.7 Hz (every 150 ms), gated
+// by a peak-amplitude VAD to skip silent windows and EMA-smoothed across
 // inferences. After a sustained run of silent inferences the EMA resets
 // so a new utterance doesn't blend with a stale pre-pause value.
 // Replaces the older hand-crafted vowel-normalized resonance score.
@@ -32,21 +32,29 @@ import {
 env.allowRemoteModels = true;
 env.allowLocalModels = false;
 
-// 1.5-sec window at 5 Hz cadence. Inference cost on Wav2Vec2 scales
-// roughly linearly with input length, so a 1.5-sec window runs ~25%
-// faster than the 2-sec config it replaces — that headroom is what
-// lets us bump the hop from 250 ms (4 Hz) to 200 ms (5 Hz) and still
-// stay under budget on a Pixel-8-class mobile CPU. The shorter window
-// also halves the worst-case time between a vocal change and the
-// model "seeing" the new content. EMA smoothing absorbs the per-window
-// noise that a shorter window introduces. If a device can't sustain
-// 5 Hz the maybeInfer() loop drops on `inferenceInProgress` so we
-// degrade gracefully to whatever rate the hardware supports.
-const WINDOW_SECONDS = 1.5;
+// 0.75-sec window at ~6.7 Hz cadence. The wav2vec2-base backbone is
+// roughly 3-4× cheaper than the older wav2vec2-large-xlsr-53 backbone
+// at the same input length, and inference cost on Wav2Vec2 scales
+// roughly linearly with input length, so cutting the window in half
+// (1.5 s → 0.75 s) on top of the smaller model gives ~6-8× faster
+// inference than the previous config. That budget is what lets us
+// halve the perceptual lag (the meter "sees" a vocal change in
+// ≤0.75 s instead of ≤1.5 s) and bump the hop from 200 ms to 150 ms.
+// EMA smoothing absorbs the per-window noise that a shorter window
+// introduces. If a device can't sustain ~6.7 Hz the maybeInfer() loop
+// drops on `inferenceInProgress` so we degrade to whatever rate the
+// hardware supports.
+const WINDOW_SECONDS = 0.75;
 const WINDOW_SAMPLES = Math.floor(TARGET_SAMPLE_RATE * WINDOW_SECONDS);
-const INFERENCE_INTERVAL_MS = 200;        // 5 Hz emit rate
+const INFERENCE_INTERVAL_MS = 150;        // ~6.7 Hz emit rate
 const EMA_ALPHA = 0.55;                    // score smoothing
-const DEFAULT_MODEL_ID = "Xenova/wav2vec2-large-xlsr-53-gender-recognition-librispeech";
+// wav2vec2-base fine-tuned on Common Voice for gender recognition.
+// ~95M params (vs ~317M for the previous xlsr-53-large), reports
+// 98.46% accuracy on the Common Voice test split. Labels are
+// "female"/"male" with id2label {0:female, 1:male} — note this is the
+// OPPOSITE ordering to the previous model, so we rely strictly on
+// label-name parsing in `femaleScoreFromResult`.
+const DEFAULT_MODEL_ID = "prithivMLmods/Common-Voice-Gender-Detection-ONNX";
 
 let inputSampleRate = 48000;
 let classifier = null;
