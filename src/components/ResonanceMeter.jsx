@@ -2,17 +2,28 @@
 // score. Replaces the older ResonanceScoreTrace + ResonanceGauge pair.
 //
 // Layout:
-//   - main vertical bar fills from 0 (bottom) to current score (top) with a
-//     warm→cool gradient, target band shaded faint blue at 70-100, male band
-//     faint orange at 0-30
+//   - "Perceived voice" caption above the canvas (matches the styling of
+//     SpectralTiltGauge's "Vocal Weight" title)
+//   - main vertical bar fills from 0 (bottom, "Masculine") to current
+//     score (top, "Feminine") with a warm→cool gradient; faint blue
+//     band marks the feminine range at 70-100, faint orange band marks
+//     the masculine range at 0-30, with a neutral uncertain band in
+//     between (30-70)
 //   - glowing horizontal indicator rides at the current score; opacity scales
-//     with confidence so "uncertain" reads dim
+//     with confidence so low-confidence predictions read dim
 //   - thin history strip on the right shows the last ~10 inferences fading
 //     by age
-//   - big score readout below the bar, color-coded
+//   - big score readout below the bar with a three-way subtitle
+//     ("in feminine range" / "in uncertain range" / "in masculine range")
 //
-// The score arrives at 4 Hz; the rAF loop tweens displayScore toward the
-// latest sample with an exponential lerp so the indicator slides smoothly.
+// The middle 30-70 score band is treated as the uncertain region rather
+// than a separate confidence threshold: classifier confidence is by
+// construction |score - 0.5| × 2, so "score in [30, 70]" and "confidence
+// below ~0.4" describe the same windows.
+//
+// The score arrives at ~6.7 Hz; the rAF loop tweens displayScore toward
+// the latest sample with an exponential lerp so the indicator slides
+// smoothly.
 //
 // Animation source: we read the most recent entry from `genderTraceRef`
 // every frame, NOT React state. The ML worker pushes to that ref
@@ -24,9 +35,10 @@
 import { useRef, useEffect } from "react";
 import { COLORS } from "../utils/constants";
 
-const SCORE_TARGET = 70;
-const SCORE_MALE_CEILING = 30;
-const LOW_CONFIDENCE = 0.3;
+// Score range thresholds. Feminine ≥ 70, Masculine ≤ 30, Uncertain in
+// between. Kept aligned with the visual band shading on the meter.
+const SCORE_FEMININE_FLOOR = 70;
+const SCORE_MASCULINE_CEILING = 30;
 
 // How quickly the displayed score chases the latest sample, per rAF tick.
 // 0.3 → ~95% of the way to the target after ~9 frames (~150 ms at 60 fps),
@@ -127,42 +139,42 @@ export function ResonanceMeter({
       ctx.fillStyle = "rgba(10, 10, 10, 0.95)";
       ctx.fillRect(0, 0, w, h);
 
-      // Top "Brighter" / bottom "Darker" labels (will sit just above and
-      // below the plot region inside the padding area).
+      // Top "Feminine" / bottom "Masculine" labels (will sit just above
+      // and below the plot region inside the padding area).
       ctx.fillStyle = COLORS.gridLabel;
       ctx.font = `${10 * dpr}px system-ui`;
       ctx.textBaseline = "alphabetic";
       ctx.textAlign = "center";
-      ctx.fillText("Brighter", barCx, plotTop - 8 * dpr);
+      ctx.fillText("Feminine", barCx, plotTop - 8 * dpr);
       ctx.textBaseline = "top";
-      ctx.fillText("Darker", barCx, plotBottom + 6 * dpr);
+      ctx.fillText("Masculine", barCx, plotBottom + 6 * dpr);
 
       // Bar background
       ctx.fillStyle = "rgba(255, 255, 255, 0.04)";
       ctx.fillRect(barLeft, plotTop, barWidth, plotHeight);
 
-      // Male band 0-30
-      const maleTop = scoreToY(SCORE_MALE_CEILING, plotTop, plotBottom);
-      const maleBottom = scoreToY(0, plotTop, plotBottom);
+      // Masculine range band 0-30
+      const mascTop = scoreToY(SCORE_MASCULINE_CEILING, plotTop, plotBottom);
+      const mascBottom = scoreToY(0, plotTop, plotBottom);
       ctx.fillStyle = COLORS.resMaleBand;
-      ctx.fillRect(barLeft, maleTop, barWidth, maleBottom - maleTop);
+      ctx.fillRect(barLeft, mascTop, barWidth, mascBottom - mascTop);
       ctx.strokeStyle = COLORS.resMaleBandBorder;
       ctx.lineWidth = 1;
       ctx.setLineDash([4 * dpr, 4 * dpr]);
       ctx.beginPath();
-      ctx.moveTo(barLeft, maleTop);
-      ctx.lineTo(barRight, maleTop);
+      ctx.moveTo(barLeft, mascTop);
+      ctx.lineTo(barRight, mascTop);
       ctx.stroke();
 
-      // Target band 70-100
-      const tgtTop = scoreToY(100, plotTop, plotBottom);
-      const tgtBottom = scoreToY(SCORE_TARGET, plotTop, plotBottom);
+      // Feminine range band 70-100
+      const femTop = scoreToY(100, plotTop, plotBottom);
+      const femBottom = scoreToY(SCORE_FEMININE_FLOOR, plotTop, plotBottom);
       ctx.fillStyle = COLORS.resTargetBand;
-      ctx.fillRect(barLeft, tgtTop, barWidth, tgtBottom - tgtTop);
+      ctx.fillRect(barLeft, femTop, barWidth, femBottom - femTop);
       ctx.strokeStyle = COLORS.resTargetBandBorder;
       ctx.beginPath();
-      ctx.moveTo(barLeft, tgtBottom);
-      ctx.lineTo(barRight, tgtBottom);
+      ctx.moveTo(barLeft, femBottom);
+      ctx.lineTo(barRight, femBottom);
       ctx.stroke();
       ctx.setLineDash([]);
 
@@ -250,9 +262,12 @@ export function ResonanceMeter({
       }
       ctx.globalAlpha = 1;
 
-      // Number readout below the bar
-      const inTarget = dispScore != null && dispScore >= SCORE_TARGET;
-      const lowConf = displayConfRef.current < LOW_CONFIDENCE;
+      // Three-way classification by score range. The middle band is the
+      // uncertain region (see file header for why this collapses with
+      // low classifier confidence).
+      const inFeminineRange = dispScore != null && dispScore >= SCORE_FEMININE_FLOOR;
+      const inMasculineRange = dispScore != null && dispScore <= SCORE_MASCULINE_CEILING;
+      const inUncertainRange = dispScore != null && !inFeminineRange && !inMasculineRange;
       const idle = !voiced && !holding;
       const readoutColor =
         modelStatus === "loading" || modelStatus === "error" || dispScore == null
@@ -261,9 +276,9 @@ export function ResonanceMeter({
             ? "rgba(120, 120, 120, 0.5)"
             : holding
               ? "rgba(220, 220, 220, 0.5)"
-              : lowConf
+              : inUncertainRange
                 ? "rgba(220, 220, 220, 0.7)"
-                : inTarget
+                : inFeminineRange
                   ? COLORS.resInTarget
                   : COLORS.resOutOfTarget;
 
@@ -282,19 +297,23 @@ export function ResonanceMeter({
         modelStatus === "loading" ? "loading…" :
         modelStatus === "error" ? "unavailable" :
         dispScore == null ? "warming up" :
-        lowConf ? "uncertain" :
-        inTarget ? "in target" : "below target";
+        inFeminineRange ? "in feminine range" :
+        inMasculineRange ? "in masculine range" :
+        "in uncertain range";
       ctx.fillText(subtitle, barCx, readoutY + 14 * dpr);
 
-      // "Speak for ~2 sec" hint, drawn on canvas so it reflects the ref
-      // (which is always current) rather than stale React state.
+      // First-score hint, drawn on canvas so it reflects the ref (which
+      // is always current) rather than stale React state. The window
+      // is 0.75 s so the first inference lands ~1 s after the user
+      // starts speaking; "briefly" reads more naturally than a precise
+      // duration that would need updating whenever the window changes.
       if (modelStatus === "ready" && data.length === 0) {
         ctx.fillStyle = "rgba(180, 180, 180, 0.65)";
         ctx.font = `${11 * dpr}px system-ui`;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.fillText(
-          "Speak for ~2 sec to see your first score",
+          "Speak briefly to see your first score",
           (plotLeft + plotRight) / 2,
           (plotTop + plotBottom) / 2,
         );
@@ -333,12 +352,15 @@ export function ResonanceMeter({
       </div>
     );
   }
-  // The "Speak for ~2 sec…" hint is drawn on the canvas itself (see the
-  // rAF loop) so it can react to genderTraceRef updates without needing
-  // a React re-render.
+  // The first-score hint is drawn on the canvas itself (see the rAF
+  // loop) so it can react to genderTraceRef updates without needing a
+  // React re-render.
 
   return (
     <div className="flex flex-col h-full">
+      <div className="text-[11px] sm:text-xs text-neutral-400 font-medium text-center mb-1.5">
+        Perceived voice
+      </div>
       <div
         ref={containerRef}
         className="relative flex-1 min-h-0 rounded-xl overflow-hidden border border-neutral-800"
