@@ -1,0 +1,112 @@
+Loaded 1668 ground-truth entries.
+
+[1] Single-window raw detector vs. Hillenbrand ground truth
+
+  Tested 1116 files (33 returned null)
+  Male F0 error:    mean=9.8 median=2.5 p95=17.5 max=480.0 (n=519)
+  Female F0 error:  mean=15.4 median=4.8 p95=110.2 max=255.6 (n=564)
+
+  Octave-bucket census (raw detector):
+    MALE   (n=540): exact=436 halved=3 thirded=0 quartered=0 2x=0 3x=0 4x=0 miss=21 wild=80
+    FEMALE (n=576): exact=442 halved=33 thirded=0 quartered=0 2x=3 3x=0 4x=0 miss=12 wild=86
+
+  Sub-harmonic-lock cases (36):
+    w13ah /ah/ truth=226 → 112 (halved)
+    w24ah /ah/ truth=259 → 128 (halved)
+    w03aw /aw/ truth=186 → 89 (halved)
+    w34aw /aw/ truth=210 → 99 (halved)
+    w12eh /eh/ truth=210 → 105 (halved)
+    w10ei /ei/ truth=220 → 106 (halved)
+    w16ei /ei/ truth=207 → 99 (halved)
+    w25ei /ei/ truth=212 → 104 (halved)
+    w41ei /ei/ truth=214 → 110 (halved)
+    m32er /er/ truth=151 → 75 (halved)
+    w14er /er/ truth=225 → 114 (halved)
+    w19ih /ih/ truth=252 → 120 (halved)
+    w24ih /ih/ truth=256 → 126 (halved)
+    w27ih /ih/ truth=251 → 122 (halved)
+    m10iy /iy/ truth=163 → 82 (halved)
+    m32iy /iy/ truth=166 → 82 (halved)
+    w06iy /iy/ truth=221 → 110 (halved)
+    w26iy /iy/ truth=177 → 86 (halved)
+    w37iy /iy/ truth=201 → 101 (halved)
+    w05oa /oa/ truth=224 → 112 (halved)
+    w34oa /oa/ truth=219 → 109 (halved)
+    w05oo /oo/ truth=244 → 124 (halved)
+    w21oo /oo/ truth=242 → 118 (halved)
+    w23uh /uh/ truth=211 → 105 (halved)
+    w24uh /uh/ truth=239 → 116 (halved)
+    w01uw /uw/ truth=260 → 130 (halved)
+    w04uw /uw/ truth=216 → 109 (halved)
+    w10uw /uw/ truth=238 → 117 (halved)
+    w19uw /uw/ truth=257 → 128 (halved)
+    w23uw /uw/ truth=210 → 104 (halved)
+    w27uw /uw/ truth=256 → 128 (halved)
+    w34uw /uw/ truth=242 → 120 (halved)
+    w35uw /uw/ truth=232 → 117 (halved)
+    w36uw /uw/ truth=219 → 104 (halved)
+    w37uw /uw/ truth=220 → 109 (halved)
+    w48uw /uw/ truth=234 → 117 (halved)
+
+  Per-vowel raw F0 error stats:
+    /ae/  mean=17.1 median=4.9 p95=19.4 max=472.8 (n=88)
+    /ah/  mean=6.8 median=2.4 p95=17.5 max=130.8 (n=87)
+    /aw/  mean=7.1 median=2.6 p95=18.2 max=110.8 (n=89)
+    /eh/  mean=4.6 median=1.8 p95=11.6 max=105.3 (n=90)
+    /ei/  mean=21.6 median=6.1 p95=113.9 max=255.6 (n=92)
+    /er/  mean=7.8 median=2.7 p95=19.3 max=110.8 (n=93)
+    /ih/  mean=19.2 median=6.1 p95=128.6 max=374.0 (n=90)
+    /iy/  mean=13.9 median=2.2 p95=91.4 max=200.3 (n=89)
+    /oa/  mean=8.5 median=3.1 p95=31.2 max=112.2 (n=93)
+    /oo/  mean=10.2 median=4.2 p95=33.9 max=123.6 (n=91)
+    /uh/  mean=12.9 median=4.7 p95=23.4 max=480.0 (n=90)
+    /uw/  mean=22.9 median=3.6 p95=127.8 max=172.6 (n=91)
+  ✓ male F0 median error < 5 Hz
+  ✓ female F0 median error < 10 Hz
+  ✓ male F0 p95 error < 20 Hz
+  ✓ sub-harmonic lock rate < 8 % across the corpus
+
+[2] Smoothing layer recovery on sub-harmonic-lock files
+
+  file    truth  single smoothed bucket      raw-sequence
+  w13ah     226     112      220 halved      [241, 236, 231, 228, 225, 112, 223, 221, 220, 220, 220, 223]  ✓
+  w24ah     259     128      259 halved      [271, 265, 261, 259, 258, 257, 128, 128, 128, 257, 259, 262]  ✓
+  w03aw     186      89      167 halved      [188, 184, 179, 88, 86, 85, 168, 167, 169]  ✗
+  w34aw     210      99      202 halved      [218, 213, 207, 202, 100, 99, 99, 200, 202, 204, 205]  ✓
+  w12eh     210     105      212 halved      [236, 213, 210, 210, 105, 210, 211, 212, 212, 212, 205]  ✓
+  w10ei     220     106      226 halved      [465, 221, 219, 217, 216, 107, 213, 106, 213, 431, 220, 223]  ✓
+  w16ei     207      99      220 halved      [225, 216, 212, 208, 204, 201, 199, 99, 99, 200, 204, 209]  ✓
+  w25ei     212     104      209 halved      [233, 229, 226, 222, 218, 217, 215, 211, 208, 104, 105, 209]  ✓
+  w41ei     214     110      222 halved      [226, 219, 213, 208, 207, 208, 211, 219, 110, 110, 110, 220]  ✓
+  m32er     151      75      153 halved      [150, 151, 152, 151, 151, 153, 155, 157]  ✓
+  w14er     225     114      193 halved      [245, 241, 234, 116, 114, 111, 203, 198, 193, 190]  ✗
+  w19ih     252     120      249 halved      [271, 255, 253, 250, 246, 242, 241, 120, 120, 121, 120, 476]  ✓
+  w24ih     256     126      253 halved      [280, 271, 266, 261, 257, 255, 253, 251, 251, 126, 253, 253]  ✓
+  w27ih     251     122      243 halved      [255, 250, 247, 247, 245, 245, 245, 243, 242, 241, 246, 255]  ✓
+  m10iy     163      82      187 halved      [168, 165, 163, 163, 82, 82, 82, 84, 84, 342, 169, 187]  ✗
+  m32iy     166      82      171 halved      [166, 164, 163, 165, 82, 166, 171, 173, 173, 165]  ✓
+  w06iy     221     110      229 halved      [234, 231, 229, 226, 223, 221, 110, 110, 110, 222, 225, 229]  ✓
+  w26iy     177      86      163 halved      [235, 197, 372, 176, 84, 167, 163, 83, 334, 150]  ✓
+  w37iy     201     101      203 halved      [227, 220, 213, 209, 206, 205, 203, 201, 201, 201, 200, 199]  ✓
+  w05oa     224     112      224 halved      [227, 225, 224, 224, 223, 223, 223, 112, 223, 223, 224, 224]  ✓
+  w34oa     219     109      236 halved      [270, 227, 222, 220, 218, 218, 220, 224, 461, 236, 478]  ✗
+  w05oo     244     124      253 halved      [249, 241, 242, 244, 245, 247, 248, 249, 250, 252, 254, 255]  ✓
+  w21oo     242     118      240 halved      [245, 243, 242, 240, 237, 236, 236, 236, 238, 240, 239, 239]  ✓
+  w23uh     211     105      215 halved      [222, 217, 215, 211, 207, 105, 106, 212, 215, 213, 233, 238]  ✓
+  w24uh     239     116      232 halved      [255, 247, 243, 239, 237, 117, 116, 116, 116, 232, 233, 232]  ✓
+  w01uw     260     130      264 halved      [264, 264, 262, 260, 259, 260, 130, 261, 262, 264, 265, 265]  ✓
+  w04uw     216     109      215 halved      [235, 232, 115, 228, 225, 222, 220, 219, 109, 109, 216, 108]  ✓
+  w10uw     238     117      238 halved      [125, 245, 243, 121, 120, 119, 118, 117, 234, 235, 236, 238]  ✓
+  w19uw     257     128      255 halved      [268, 265, 262, 130, 259, 258, 128, 128, 255, 255, 254, 255]  ✓
+  w23uw     210     104      217 halved      [459, 222, 219, 216, 213, 210, 209, 208, 104, 208, 211, 214]  ✓
+  w27uw     256     128      258 halved      [269, 261, 257, 128, 128, 128, 128, 128, 258, 259, 258]  ✓
+  w34uw     242     120      244 halved      [261, 254, 251, 247, 243, 241, 120, 241, 241, 244, 247, 250]  ✓
+  w35uw     232     117      239 halved      [233, 230, 228, 230, 232, 233, 117, 234, 234, 236, 239, 246]  ✓
+  w36uw     219     104      211 halved      [222, 223, 220, 109, 216, 213, 210, 105, 105, 209, 208, 209]  ✓
+  w37uw     220     109      224 halved      [235, 234, 230, 224, 221, 219, 219, 218, 217, 109, 217, 217]  ✓
+  w48uw     234     117      117 halved      [247, 243, 239, 236, 235, 117, 117, 117, 117, 236, 237]  ✗
+
+  Recovered 31/36 sub-harmonic-lock cases via smoothing.
+  ✓ smoothing recovers ≥ 50 % of single-window sub-harmonic locks
+
+5 passed, 0 failed

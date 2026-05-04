@@ -1,0 +1,37 @@
+Baseline cell (default constants):
+  relK2=0.5 impMin=0.003 absOk=0.15
+    femaleMean=15.38  maleMean=9.84
+    2nd=5/5  3rd=4/4
+    subLocks=36
+
+Pareto frontier (1 cells, sorted by femaleMean):
+  relK2  impMin  absOk        F      M  2nd  3rd  subL   notes
+  0.5    0.01    0.15     14.15   9.84  5/5  4/4    30   ★ dominates baseline
+
+Strict improvements over baseline: 2
+  relK2=0.5 impMin=0.01 absOk=0.15  F=14.15 (Δ-1.22)  M=9.84 (Δ0.00)  subLocks=30 (Δ-6)  2nd=5 3rd=4
+  relK2=0.45 impMin=0.01 absOk=0.15  F=14.71 (Δ-0.66)  M=9.84 (Δ0.00)  subLocks=29 (Δ-7)  2nd=5 3rd=4
+
+Top 10 cells by lowest femaleMean (any tradeoff):
+  relK2=0.5 impMin=0.01 absOk=0.15  F=14.15  M=9.84  2nd=5/5 3rd=4/4  subL=30
+  relK2=0.5 impMin=0.01 absOk=0.1  F=14.31  M=13.15  2nd=5/5 3rd=4/4  subL=29
+  relK2=0.5 impMin=0.01 absOk=0.05  F=14.43  M=24.21  2nd=5/5 3rd=4/4  subL=28
+  relK2=0.45 impMin=0.01 absOk=0.15  F=14.71  M=9.84  2nd=5/5 3rd=4/4  subL=29
+  relK2=0.45 impMin=0.01 absOk=0.1  F=14.88  M=13.15  2nd=5/5 3rd=4/4  subL=28
+  relK2=0.4 impMin=0.01 absOk=0.15  F=14.96  M=9.99  2nd=5/5 3rd=4/4  subL=29
+  relK2=0.45 impMin=0.01 absOk=0.05  F=14.99  M=24.21  2nd=5/5 3rd=4/4  subL=27
+  relK2=0.4 impMin=0.01 absOk=0.1  F=15.13  M=13.42  2nd=5/5 3rd=4/4  subL=27
+  relK2=0.4 impMin=0.01 absOk=0.05  F=15.24  M=24.21  2nd=5/5 3rd=4/4  subL=26
+  relK2=0.5 impMin=0.001 absOk=0.15  F=15.38  M=9.84  2nd=5/5 3rd=4/4  subL=36
+
+Best femaleMean in grid: 14.15 Hz (target is < 10 Hz; gap = 4.15 Hz)
+
+Grid summary — femaleMean by (relK2, absOk) at impMin=0.010 (best impMin):
+  relK2    absOk=0.05   absOk=0.10   absOk=0.15
+  0.2      F=17.58 M=24.68   F=16.96 M=13.53   F=16.79 M=10.10
+  0.25     F=17.04 M=24.68   F=16.42 M=13.53   F=16.26 M=10.10
+  0.3      F=16.78 M=24.54   F=16.16 M=13.53   F=16.00 M=10.10
+  0.35     F=16.58 M=24.21   F=16.17 M=13.42   F=16.01 M=9.99
+  0.4      F=15.24 M=24.21   F=15.13 M=13.42   F=14.96 M=9.99
+  0.45     F=14.99 M=24.21   F=14.88 M=13.15   F=14.71 M=9.84
+  0.5      F=14.43 M=24.21   F=14.31 M=13.15   F=14.15 M=9.84

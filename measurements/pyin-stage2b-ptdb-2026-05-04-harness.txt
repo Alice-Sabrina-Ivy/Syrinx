@@ -1,0 +1,205 @@
+Loading PTDB-TUG corpus subset…
+  180 files (90 M, 90 F)
+
+Running sweep (Stage 0 first to build co-detect masks)…
+  [25.0s] Stage 0       F per-frame: mean=6.64 median=3.53 p95=18.71 (n=3808)    M per-frame: mean=3.84 median=2.39 p95=11.26 (n=2496)    null=3027/9331 (32.4%)
+  [44.1s] Stage 2 L=2   F per-frame: mean=27.52 median=4.71 p95=157.16 (n=4667)    M per-frame: mean=11.86 median=3.46 p95=46.65 (n=4664)    null=0/9331 (0.0%)
+  [43.9s] Stage 2 L=5   F per-frame: mean=19.28 median=4.34 p95=118.81 (n=4667)    M per-frame: mean=9.48 median=3.27 p95=36.50 (n=4664)    null=0/9331 (0.0%)
+
+========== Per-frame F0 error mean by stage ==========
+  cell             F mean   M mean    F med    M med    null rate
+  Stage 0            6.64     3.84     3.53     2.39    32.4%
+  Stage 2 L=2       27.52    11.86     4.71     3.46    0.0%
+  Stage 2 L=5       19.28     9.48     4.34     3.27    0.0%
+
+========== Per-FILE mean F0 error (averaged within file, then across files) ==========
+  cell             F mean   M mean    F med    M med
+  Stage 0            6.75     3.96     6.11     3.43
+  Stage 2 L=2       29.65    13.12    27.01     9.61
+  Stage 2 L=5       21.06    10.26    17.52     7.86
+
+========== Δ vs Stage 0 (negative = improvement) ==========
+  Stage 2 L=2    per-frame F:   20.89 Hz    per-frame M:    8.02 Hz    per-file F:   22.89 Hz
+  Stage 2 L=5    per-frame F:   12.64 Hz    per-frame M:    5.64 Hz    per-file F:   14.31 Hz
+
+========== Co-detected fair comparison (frames where Stage 0 also detected) ==========
+  cell             F mean   M mean    F med    M med    Δ vs S0
+  Stage 0            6.64     3.84     3.53     2.39    +0.00
+  Stage 2 L=2       22.52     8.07     4.10     2.51    +15.89
+  Stage 2 L=5       15.15     6.34     3.83     2.48    +8.51
+
+--- BEGIN-JSON ---
+[
+  {
+    "label": "Stage 0",
+    "stage": 0,
+    "lookback": null,
+    "fPerFrame": {
+      "mean": 6.636695724577373,
+      "median": 3.53253746407691,
+      "p95": 18.712897465782305,
+      "n": 3808
+    },
+    "mPerFrame": {
+      "mean": 3.8382983663739765,
+      "median": 2.394374410274864,
+      "p95": 11.256033967774869,
+      "n": 2496
+    },
+    "fPerFile": {
+      "mean": 6.753332550425456,
+      "median": 6.113994802432807,
+      "p95": 13.201792908918941,
+      "n": 90
+    },
+    "mPerFile": {
+      "mean": 3.96220323194834,
+      "median": 3.425955892772358,
+      "p95": 7.5291866118757635,
+      "n": 90
+    },
+    "fPerFrameCodet": {
+      "mean": null,
+      "median": null,
+      "p95": null,
+      "n": 0
+    },
+    "mPerFrameCodet": {
+      "mean": null,
+      "median": null,
+      "p95": null,
+      "n": 0
+    },
+    "fPerFileCodet": {
+      "mean": null,
+      "median": null,
+      "p95": null,
+      "n": 0
+    },
+    "mPerFileCodet": {
+      "mean": null,
+      "median": null,
+      "p95": null,
+      "n": 0
+    },
+    "workerNullRate": 0.32440252920372953,
+    "totalRefVoiced": 9331,
+    "totalWorkerNull": 3027,
+    "elapsed": "25.0"
+  },
+  {
+    "label": "Stage 2 L=2",
+    "stage": 2,
+    "lookback": 2,
+    "fPerFrame": {
+      "mean": 27.524322272505913,
+      "median": 4.710173696935641,
+      "p95": 157.15921020507812,
+      "n": 4667
+    },
+    "mPerFrame": {
+      "mean": 11.8602266470485,
+      "median": 3.4626216442504187,
+      "p95": 46.654258728027344,
+      "n": 4664
+    },
+    "fPerFile": {
+      "mean": 29.64770641155074,
+      "median": 27.005531562555994,
+      "p95": 54.15260280822196,
+      "n": 90
+    },
+    "mPerFile": {
+      "mean": 13.118776548965162,
+      "median": 9.610764823933936,
+      "p95": 41.878732487493004,
+      "n": 90
+    },
+    "fPerFrameCodet": {
+      "mean": 22.522853306230953,
+      "median": 4.096822764240272,
+      "p95": 145.5006561279297,
+      "n": 3808
+    },
+    "mPerFrameCodet": {
+      "mean": 8.0721169694136,
+      "median": 2.5104378915224714,
+      "p95": 37.688071999402254,
+      "n": 2496
+    },
+    "fPerFileCodet": {
+      "mean": 24.55801194053235,
+      "median": 22.0113489734585,
+      "p95": 55.552731238331866,
+      "n": 90
+    },
+    "mPerFileCodet": {
+      "mean": 9.040255363594229,
+      "median": 5.568287499531397,
+      "p95": 25.557584390290696,
+      "n": 90
+    },
+    "workerNullRate": 0,
+    "totalRefVoiced": 9331,
+    "totalWorkerNull": 0,
+    "elapsed": "44.1"
+  },
+  {
+    "label": "Stage 2 L=5",
+    "stage": 2,
+    "lookback": 5,
+    "fPerFrame": {
+      "mean": 19.2768644966306,
+      "median": 4.341958103901419,
+      "p95": 118.80715942382812,
+      "n": 4667
+    },
+    "mPerFrame": {
+      "mean": 9.48107574873583,
+      "median": 3.272634833471855,
+      "p95": 36.498928582872054,
+      "n": 4664
+    },
+    "fPerFile": {
+      "mean": 21.05968651599408,
+      "median": 17.524548861813983,
+      "p95": 45.08043303600023,
+      "n": 90
+    },
+    "mPerFile": {
+      "mean": 10.25873706660483,
+      "median": 7.855772874478887,
+      "p95": 26.39346784658546,
+      "n": 90
+    },
+    "fPerFrameCodet": {
+      "mean": 15.145165334826238,
+      "median": 3.8335475475707312,
+      "p95": 92.37400752567362,
+      "n": 3808
+    },
+    "mPerFrameCodet": {
+      "mean": 6.335248629011973,
+      "median": 2.4775675828227577,
+      "p95": 25.821319823672766,
+      "n": 2496
+    },
+    "fPerFileCodet": {
+      "mean": 17.009361808979577,
+      "median": 13.046196244180146,
+      "p95": 39.93859565770333,
+      "n": 90
+    },
+    "mPerFileCodet": {
+      "mean": 7.451534464669935,
+      "median": 4.760798271036561,
+      "p95": 19.057873220762566,
+      "n": 90
+    },
+    "workerNullRate": 0,
+    "totalRefVoiced": 9331,
+    "totalWorkerNull": 0,
+    "elapsed": "43.9"
+  }
+]
+--- END-JSON ---
