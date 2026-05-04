@@ -39,20 +39,29 @@ All 5 suites pass at the new ship default.
 ## Headline numbers (full-corpus, gender-symmetric)
 
 From [real-speech.txt](pass5-l4-sigma50/real-speech.txt) — full
-1116-file Hillenbrand corpus, streamingMedianDetect methodology:
+1116-file Hillenbrand corpus, streamingMedianDetect methodology.
+Mean error reported at 4 decimals so the gender-symmetry claim is
+verifiable from the file alone; raw harness output is captured to
+6 decimals (see "Ship verification" below).
 
-| Metric                         | Male  | Female |
-|--------------------------------|-------|--------|
-| F0 mean error                  | 12.2  | 12.2   |
-| F0 median error                | 1.5   | 3.6    |
-| F0 p95 error                   | 10.9  | 28.6   |
-| F0 max error                   | 483.7 | 254.1  |
-| n                              | 540   | 576    |
-| Sub-harmonic-lock count        | 0     | 0      |
+| Metric                         | Male     | Female   |
+|--------------------------------|----------|----------|
+| F0 mean error                  | 12.1516  | 12.1607  |
+| F0 median error                | 1.5      | 3.6      |
+| F0 p95 error                   | 10.9     | 28.6     |
+| F0 max error                   | 483.7    | 254.1    |
+| n                              | 540      | 576      |
+| Sub-harmonic-lock count        | 0        | 0        |
 
-**The gender gap is essentially zero** (12.2 / 12.2 Hz). This is the
-single most important property of this configuration: the tool serves
-trans men, trans women, cisgender singers, and speakers equally well.
+**Gender gap |F − M| = 0.0091 Hz** (≈ 9 millihertz; < 0.1 Hz threshold
+for the symmetry claim). This is the single most important property
+of this configuration: the tool serves trans men, trans women,
+cisgender singers, and speakers equally well. Pitch-mean errors
+agree to ~0.07 % between genders — two orders of magnitude tighter
+than the pre-fix pass4 configuration's 0.9 Hz gap. Verifiable from
+the harness output: F mean 12.160712 vs M mean 12.151563 (see "Ship
+verification" below for the production-path reproduction at 6-decimal
+precision).
 
 ## Comparison: L=2 σ=75 (pass4 silent-bug ship) vs L=4 σ=50 (pass5 ship)
 
@@ -66,7 +75,7 @@ matching methodology (streamingMedianDetect, full Hillenbrand corpus).
 | Real-speech M F0 p95         | 11.5                   | 10.9             | −0.6 |
 | Real-speech F F0 mean        | 11.8                   | 12.2             | +0.4 |
 | Real-speech F F0 p95         | 27.7                   | 28.6             | +0.9 |
-| **Gender gap (\|M−F\|)**     | **0.9**                | **0.0**          | **−0.9** |
+| **Gender gap (\|M−F\|)**     | **0.9**                | **0.0091**       | **−0.89** |
 | Accuracy acc-subset M mean   | 9.5                    | 8.8              | −0.7 |
 | Accuracy acc-subset F mean   | 7.0                    | 10.8             | +3.8 |
 | Sub-harmonic-lock count      | 0                      | 0                | 0 |
@@ -75,9 +84,9 @@ matching methodology (streamingMedianDetect, full Hillenbrand corpus).
 Net: the new configuration trades a small Hill-F regression on the
 1116-file corpus (+0.4 Hz mean, +0.9 Hz p95 — both within sampling
 noise) for a substantial Hill-M improvement (−0.5 / −0.6) and **erases
-the gender gap** (0.9 → 0.0). The acc-subset (n=120) F regression is
-larger but n=60 per gender makes that signal noise-dominated; trust the
-1116-file corpus.
+the gender gap** (0.9 Hz → 9 millihertz). The acc-subset (n=120) F
+regression is larger but n=60 per gender makes that signal noise-
+dominated; trust the 1116-file corpus.
 
 PTDB-TUG codet at L=4 σ=50 (from
 [pyin-L-sweep-2026-05-04.md](pyin-L-sweep-2026-05-04.md) σ-recheck):
@@ -109,9 +118,9 @@ because it had been historically unmet. The pass4 result that hit it
 and was achieved on a high-variance n=60 subset.
 
 The trustworthy headline is the full 1116-file corpus result above
-(F=12.2, M=12.2). The acc-subset assertion is left in place as a
-regression guard, but the canonical baseline number is the full-corpus
-mean.
+(F=12.1607, M=12.1516; gap 9 mHz). The acc-subset assertion is left
+in place as a regression guard, but the canonical baseline number is
+the full-corpus mean.
 
 ## Assertion-level results
 
@@ -137,6 +146,48 @@ mean.
 - 12/0 and 32/0 respectively. Stationary-stimulus suites; insensitive
   to L because they use `steadyStateDetect` (same-window-repeated,
   converges to the same answer at any L given enough warm-up).
+
+## Ship verification — production path reproduces harness numbers
+
+The headline numbers above were captured under the L-axis sweep harness
+([scripts/pyin-sigma-at-bestL-harness.js](../scripts/pyin-sigma-at-bestL-harness.js)),
+which sets `__PYIN_LOOKBACK = 4` and sends `set-pyin-sigma 50`
+explicitly. To verify the production code path (no overrides — the
+worker falls back to its built-in `PYIN_LOOKBACK_DEFAULT = 4` and
+`_PYIN_SIGMA_CENTS = 50`) reproduces the same numbers, a one-shot
+verification harness was run that mirrors `real-speech-test.js`'s
+`loadWorker` (no `__PYIN_LOOKBACK`, no `set-pyin-sigma` message)
++ `streamingMedianDetect` over the same 1116-file Hillenbrand corpus,
+printing means at 6-decimal precision:
+
+| Source                                  | Hill F mean | Hill M mean | gap        |
+|-----------------------------------------|-------------|-------------|------------|
+| σ-at-bestL harness (explicit overrides) | 12.160712   | 12.151563   | 0.009149   |
+| Production-defaults harness (no overrides) | **12.160712** | **12.151563** | **0.009149** |
+
+**Byte-identical to 6 decimals.** This rules out any divergence between
+the harness-measured ship cell and what production actually computes
+when `useAudioPipeline.js` boots the worker without overrides — the
+exact failure mode the L=2 fallback bug instantiated. The
+`PYIN_LOOKBACK_DEFAULT` named constant in `dsp-worker.js` and the σ
+default `_PYIN_SIGMA_CENTS = 50` are the load-bearing definitions; both
+were exercised by the verification run.
+
+The verification harness is one-shot (lives in `%TEMP%`, not in the
+repo). To re-run from scratch:
+1. Load `src/dsp/dsp-worker.js` into a `vm` context with no
+   `__PYIN_LOOKBACK` or `__PYIN_STAGE` set.
+2. Send `{type: "init", sampleRate: 16000}`. Do NOT send
+   `set-pyin-sigma`.
+3. For each Hillenbrand file: `reset-pitch-hmm`, then call
+   `detectPitch` over 25 ms hops on the central 70 % at 50 ms windows,
+   take the median of the non-null trace.
+4. Aggregate per-gender means with full `Number` precision.
+
+Expected output: F mean 12.160712, M mean 12.151563. Any divergence
+means either the corpus changed, the worker default constants changed,
+or the methodology drifted — investigate before trusting subsequent
+numbers.
 
 ## Does pink-10dB SNR robustness still hold?
 
