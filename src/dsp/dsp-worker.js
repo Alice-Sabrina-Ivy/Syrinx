@@ -38,6 +38,12 @@ let analysisCount = 0;
 let pendingChunks = 0;
 let lastContextTime = 0; // AudioContext time when latest chunk was captured
 
+// Diagnostic-mode toggle, set via the `init` message from the main thread
+// when the URL has ?diag=1. When off, the additional timing/voicedness
+// fields are NOT computed or sent — only the existing production fields.
+// When on, processChunk emits extra fields the overlay uses.
+let _diag = false;
+
 // --- Pre-allocated buffers for zero-GC-pressure hot path ---
 // These are sized for the default 48 kHz sample rate and re-allocated on 'init'.
 let _preEmph = new Float64Array(windowSize);
@@ -279,7 +285,7 @@ function _pyinResetState() {
   _pyinLastVoicednessObs = null;
 }
 
-function processChunk(buffer, contextTime) {
+function processChunk(buffer, contextTime, postedAt) {
   const chunkReceiveTime = performance.now();
   pendingChunks--;
   if (contextTime !== null && contextTime !== undefined) lastContextTime = contextTime;
@@ -293,7 +299,14 @@ function processChunk(buffer, contextTime) {
   const windowStart = ringLen - windowSize;
   const window = ringBuffer.subarray(windowStart, ringLen);
   const intensity = computeIntensity(window);
+
+  // Pitch detection — timed separately from formant/tilt/HNR when diag is on
+  // so the overlay can isolate pYIN cost from the heavier every-6th-frame
+  // analysis. Cost when diag is off: one extra performance.now() call,
+  // negligible compared to detectPitch itself (~1 ms).
+  const pitchStart = _diag ? performance.now() : 0;
   const pitch = detectPitch(window, sampleRate);
+  const pitchEnd = _diag ? performance.now() : 0;
 
   // Formants, spectral tilt, HNR are heavier — run every 6th analysis frame.
   // At ~30 fps DSP rate, this fires every ~200ms, saving significant CPU
@@ -308,6 +321,32 @@ function processChunk(buffer, contextTime) {
 
   const analysisEndTime = performance.now();
 
+  // Diagnostic-only fields. inputRms is computed cheaply from the window
+  // we already have. When diag is off, none of this is computed or sent.
+  let diagFields = null;
+  if (_diag) {
+    let sumSq = 0;
+    for (let i = 0; i < window.length; i++) sumSq += window[i] * window[i];
+    const inputRms = Math.sqrt(sumSq / window.length);
+    diagFields = {
+      voicednessObs: _pyinLastVoicednessObs,
+      pitchDetectMs: pitchEnd - pitchStart,
+      inputRms,
+      // Capture-processor → DSP worker handoff. The two contexts have
+      // different performance.timeOrigin so this delta carries a small
+      // (typically < 1 ms) systematic bias; useful for relative
+      // comparison rather than absolute attribution.
+      chunkArrivalMs:
+        typeof postedAt === "number" && postedAt > 0
+          ? chunkReceiveTime - postedAt
+          : null,
+      // The worker's epoch-ms timestamp at the moment of postMessage.
+      // Pairs with the main thread's onmessage-entry timestamp (logged
+      // in useAudioPipeline.js) to measure DSP→main handoff latency.
+      postedAtEpochMs: performance.timeOrigin + performance.now(),
+    };
+  }
+
   self.postMessage({
     type: "analysis",
     data: {
@@ -320,10 +359,12 @@ function processChunk(buffer, contextTime) {
       voicedness: _pyinLastVoicedness,
       // Absolute timestamp comparable across threads
       absoluteTime: performance.timeOrigin + performance.now(),
-      // Diagnostic fields
+      // Diagnostic fields (always present so the main-thread shape doesn't
+      // change; the heavy ones nest under `diag` when diag is on, null otherwise)
       workerProcessingMs: analysisEndTime - chunkReceiveTime,
       pendingChunks,
       contextTime: lastContextTime, // AudioContext time when audio was captured
+      diag: diagFields,
     },
   });
 }
@@ -333,6 +374,7 @@ self.onmessage = (e) => {
 
   if (type === "init") {
     sampleRate = e.data.sampleRate;
+    if (e.data.diag) _diag = true;
     windowSize = Math.floor(sampleRate * WINDOW_MS / 1000);
     // Use ceil to ensure targetSR ≤ MAX_FORMANT_SR.  At 16 kHz input,
     // ceil(16000/12000)=2 → targetSR=8000; at 48 kHz, ceil(48000/12000)=4 → 12000.
@@ -378,10 +420,10 @@ self.onmessage = (e) => {
     const port = e.data.port;
     port.onmessage = (ev) => {
       pendingChunks++;
-      // Worklet sends {buffer, contextTime} — extract both
+      // Worklet sends {buffer, contextTime, postedAt} — extract all
       const msg = ev.data;
       if (msg && msg.buffer) {
-        processChunk(msg.buffer, msg.contextTime);
+        processChunk(msg.buffer, msg.contextTime, msg.postedAt);
       } else {
         // Fallback: raw ArrayBuffer (shouldn't happen with updated worklet)
         processChunk(msg);

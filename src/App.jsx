@@ -1,9 +1,18 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, lazy, Suspense } from "react";
 import { useAudioPipeline } from "./audio/useAudioPipeline";
 import { PitchTrace } from "./components/PitchTrace";
 import { CombinedDashboard } from "./components/CombinedDashboard";
 import { SessionHistory } from "./components/SessionHistory";
 import { DataManagement } from "./components/DataManagement";
+import { DIAG_ENABLED } from "./diag/diag";
+
+// Diagnostic overlay is dynamically imported and only rendered when the
+// ?diag=1 URL flag is present. Production users get zero bundle impact —
+// Vite code-splits the lazy import into its own chunk that's never loaded
+// without the flag.
+const DiagnosticOverlay = DIAG_ENABLED
+  ? lazy(() => import("./diag/DiagnosticOverlay.jsx"))
+  : null;
 
 const TABS = [
   { id: "dashboard", label: "Dashboard" },
@@ -77,6 +86,13 @@ function App() {
 
   return (
     <div className="h-screen flex flex-col px-4 py-4 overflow-hidden">
+      {/* Diagnostic overlay (only when ?diag=1) */}
+      {DiagnosticOverlay && (
+        <Suspense fallback={null}>
+          <DiagnosticOverlay />
+        </Suspense>
+      )}
+
       {/* Welcome overlay (first visit only) */}
       {showWelcome && <WelcomeOverlay onDismiss={dismissWelcome} />}
 
