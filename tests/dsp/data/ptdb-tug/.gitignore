@@ -1,0 +1,6 @@
+# PTDB-TUG audio + reference files are not committed (~140 MB subset,
+# license requires Open Database License attribution if redistributed).
+# Re-fetch via: bash scripts/fetch-ptdb-tug-subset.sh
+*.wav
+*.f0
+*.lar

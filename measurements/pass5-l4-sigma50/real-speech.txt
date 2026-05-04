@@ -1,0 +1,40 @@
+Loaded 1668 ground-truth entries.
+
+[1] Single-window raw detector vs. Hillenbrand ground truth
+
+  Tested 1116 files (0 returned null)
+  Male F0 error:    mean=12.2 median=1.5 p95=10.9 max=483.7 (n=540)
+  Female F0 error:  mean=12.2 median=3.6 p95=28.6 max=254.1 (n=576)
+
+  Octave-bucket census (raw detector):
+    MALE   (n=540): exact=506 halved=0 thirded=0 quartered=0 2x=3 3x=6 4x=2 miss=0 wild=23
+    FEMALE (n=576): exact=504 halved=0 thirded=0 quartered=0 2x=16 3x=0 4x=0 miss=0 wild=56
+
+  Sub-harmonic-lock cases (0):
+
+  Per-vowel raw F0 error stats:
+    /ae/  mean=9.1 median=2.6 p95=12.4 max=483.7 (n=93)
+    /ah/  mean=2.8 median=1.7 p95=10.5 max=19.1 (n=93)
+    /aw/  mean=3.1 median=2.2 p95=10.1 max=20.2 (n=93)
+    /eh/  mean=4.2 median=2.5 p95=14.9 max=33.4 (n=93)
+    /ei/  mean=9.8 median=3.0 p95=14.2 max=301.9 (n=93)
+    /er/  mean=6.2 median=2.0 p95=13.0 max=230.8 (n=93)
+    /ih/  mean=30.1 median=3.3 p95=248.1 max=363.1 (n=93)
+    /iy/  mean=10.3 median=2.8 p95=29.4 max=214.8 (n=93)
+    /oa/  mean=12.4 median=1.9 p95=22.9 max=406.3 (n=93)
+    /oo/  mean=21.9 median=2.7 p95=279.3 max=343.1 (n=93)
+    /uh/  mean=3.2 median=2.4 p95=8.6 max=20.1 (n=93)
+    /uw/  mean=32.7 median=3.0 p95=217.2 max=248.9 (n=93)
+  ✓ male F0 median error < 5 Hz
+  ✓ female F0 median error < 10 Hz
+  ✓ male F0 p95 error < 20 Hz
+  ✓ sub-harmonic lock rate < 8 % across the corpus
+
+[2] Smoothing layer recovery on sub-harmonic-lock files
+
+  file    truth  single smoothed bucket      raw-sequence
+
+  Recovered 0/0 sub-harmonic-lock cases via smoothing.
+  ✓ smoothing recovers ≥ 50 % of single-window sub-harmonic locks
+
+5 passed, 0 failed

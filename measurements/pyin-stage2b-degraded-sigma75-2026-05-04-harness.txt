@@ -1,0 +1,556 @@
+Loading Hillenbrand corpus…
+  corpus: 1116 files (540 M, 576 F)
+
+Generating degraded variants in memory…
+  clean          done (0.0s)
+  pink_40dB      done (0.2s)
+  pink_20dB      done (0.4s)
+  pink_10dB      done (0.6s)
+  reverb_short   done (7.2s)
+  reverb_med     done (22.3s)
+  agc            done (22.4s)
+  soft_clip      done (22.5s)
+
+Running sweep (variants × stages)…
+  [1.8s] clean          Stage 0       F: mean=30.65 (null=0/576)  M: mean=26.16 (null=0/540)
+  [8.3s] clean          Stage 2 L=2   F: mean=19.64 (null=0/576)  M: mean=18.11 (null=0/540)
+  [8.8s] clean          Stage 2 L=5   F: mean=13.73 (null=0/576)  M: mean=14.47 (null=0/540)
+  [1.8s] pink_40dB      Stage 0       F: mean=30.60 (null=0/576)  M: mean=26.15 (null=0/540)
+  [8.5s] pink_40dB      Stage 2 L=2   F: mean=19.61 (null=0/576)  M: mean=18.08 (null=0/540)
+  [8.6s] pink_40dB      Stage 2 L=5   F: mean=13.73 (null=0/576)  M: mean=14.47 (null=0/540)
+  [1.7s] pink_20dB      Stage 0       F: mean=43.35 (null=0/576)  M: mean=32.18 (null=0/540)
+  [9.1s] pink_20dB      Stage 2 L=2   F: mean=17.68 (null=0/576)  M: mean=18.19 (null=0/540)
+  [8.4s] pink_20dB      Stage 2 L=5   F: mean=11.82 (null=0/576)  M: mean=14.71 (null=0/540)
+  [1.6s] pink_10dB      Stage 0       F: mean=50.24 (null=0/576)  M: mean=30.15 (null=1/540)
+  [8.5s] pink_10dB      Stage 2 L=2   F: mean=20.67 (null=0/576)  M: mean=23.38 (null=0/540)
+  [9.0s] pink_10dB      Stage 2 L=5   F: mean=15.07 (null=0/576)  M: mean=20.59 (null=0/540)
+  [1.7s] reverb_short   Stage 0       F: mean=28.54 (null=0/576)  M: mean=41.53 (null=1/540)
+  [8.5s] reverb_short   Stage 2 L=2   F: mean=18.06 (null=0/576)  M: mean=27.12 (null=0/540)
+  [8.5s] reverb_short   Stage 2 L=5   F: mean=12.64 (null=0/576)  M: mean=23.13 (null=0/540)
+  [1.7s] reverb_med     Stage 0       F: mean=36.18 (null=1/576)  M: mean=32.57 (null=3/540)
+  [8.5s] reverb_med     Stage 2 L=2   F: mean=19.00 (null=0/576)  M: mean=25.50 (null=0/540)
+  [8.3s] reverb_med     Stage 2 L=5   F: mean=14.48 (null=0/576)  M: mean=23.44 (null=0/540)
+  [1.7s] agc            Stage 0       F: mean=29.72 (null=0/576)  M: mean=26.18 (null=0/540)
+  [8.7s] agc            Stage 2 L=2   F: mean=19.64 (null=0/576)  M: mean=17.22 (null=0/540)
+  [8.7s] agc            Stage 2 L=5   F: mean=13.66 (null=0/576)  M: mean=13.43 (null=0/540)
+  [1.8s] soft_clip      Stage 0       F: mean=34.71 (null=0/576)  M: mean=29.83 (null=1/540)
+  [8.4s] soft_clip      Stage 2 L=2   F: mean=22.92 (null=0/576)  M: mean=32.86 (null=0/540)
+  [8.4s] soft_clip      Stage 2 L=5   F: mean=17.32 (null=0/576)  M: mean=30.67 (null=0/540)
+
+========== Per-variant Pareto: F mean by stage ==========
+  variant          Stage 0      L=2      L=5    Δ vs Stage 0 (L=2 / L=5)
+  clean              30.65    19.64    13.73     -11.01  /   -16.93
+  pink_40dB          30.60    19.61    13.73     -10.99  /   -16.87
+  pink_20dB          43.35    17.68    11.82     -25.67  /   -31.53
+  pink_10dB          50.24    20.67    15.07     -29.57  /   -35.17
+  reverb_short       28.54    18.06    12.64     -10.49  /   -15.91
+  reverb_med         36.18    19.00    14.48     -17.18  /   -21.70
+  agc                29.72    19.64    13.66     -10.08  /   -16.06
+  soft_clip          34.71    22.92    17.32     -11.80  /   -17.40
+
+========== Per-variant: M mean by stage ==========
+  variant          Stage 0      L=2      L=5    Δ vs Stage 0 (L=2 / L=5)
+  clean              26.16    18.11    14.47      -8.05  /   -11.69
+  pink_40dB          26.15    18.08    14.47      -8.07  /   -11.68
+  pink_20dB          32.18    18.19    14.71     -14.00  /   -17.48
+  pink_10dB          30.15    23.38    20.59      -6.77  /    -9.56
+  reverb_short       41.53    27.12    23.13     -14.40  /   -18.40
+  reverb_med         32.57    25.50    23.44      -7.07  /    -9.13
+  agc                26.18    17.22    13.43      -8.96  /   -12.75
+  soft_clip          29.83    32.86    30.67       3.03  /     0.83
+
+========== Per-variant: F null rate (out of 576) ==========
+  variant          Stage 0      L=2      L=5
+  clean                  0        0        0
+  pink_40dB              0        0        0
+  pink_20dB              0        0        0
+  pink_10dB              0        0        0
+  reverb_short           0        0        0
+  reverb_med             1        0        0
+  agc                    0        0        0
+  soft_clip              0        0        0
+
+--- BEGIN-JSON ---
+[
+  {
+    "variant": "clean",
+    "stage": 0,
+    "lookback": null,
+    "label": "Stage 0",
+    "f": {
+      "mean": 30.65430021430414,
+      "median": 13.087465297607196,
+      "p95": 169.57945233405496,
+      "n": 576
+    },
+    "m": {
+      "mean": 26.155608249212257,
+      "median": 7.631224018679887,
+      "p95": 207.380375322325,
+      "n": 540
+    },
+    "fNull": 0,
+    "mNull": 0
+  },
+  {
+    "variant": "clean",
+    "stage": 2,
+    "lookback": 2,
+    "label": "Stage 2 L=2",
+    "f": {
+      "mean": 19.63958005932766,
+      "median": 10.134749031358467,
+      "p95": 61.90607803149564,
+      "n": 576
+    },
+    "m": {
+      "mean": 18.106305814657546,
+      "median": 6.934905674003886,
+      "p95": 36.42980870316741,
+      "n": 540
+    },
+    "fNull": 0,
+    "mNull": 0
+  },
+  {
+    "variant": "clean",
+    "stage": 2,
+    "lookback": 5,
+    "label": "Stage 2 L=5",
+    "f": {
+      "mean": 13.727902010970318,
+      "median": 5.339054873524418,
+      "p95": 44.074757615218175,
+      "n": 576
+    },
+    "m": {
+      "mean": 14.469434766520896,
+      "median": 3.0450512694788756,
+      "p95": 22.86553771194282,
+      "n": 540
+    },
+    "fNull": 0,
+    "mNull": 0
+  },
+  {
+    "variant": "pink_40dB",
+    "stage": 0,
+    "lookback": null,
+    "label": "Stage 0",
+    "f": {
+      "mean": 30.59903356570009,
+      "median": 13.095840072158438,
+      "p95": 168.2540162609826,
+      "n": 576
+    },
+    "m": {
+      "mean": 26.152262519017018,
+      "median": 7.570250281757723,
+      "p95": 207.37047187225272,
+      "n": 540
+    },
+    "fNull": 0,
+    "mNull": 0
+  },
+  {
+    "variant": "pink_40dB",
+    "stage": 2,
+    "lookback": 2,
+    "label": "Stage 2 L=2",
+    "f": {
+      "mean": 19.613457019709074,
+      "median": 10.134749031358467,
+      "p95": 61.90607803149564,
+      "n": 576
+    },
+    "m": {
+      "mean": 18.078902773225558,
+      "median": 6.913044638039025,
+      "p95": 36.42980870316741,
+      "n": 540
+    },
+    "fNull": 0,
+    "mNull": 0
+  },
+  {
+    "variant": "pink_40dB",
+    "stage": 2,
+    "lookback": 5,
+    "label": "Stage 2 L=5",
+    "f": {
+      "mean": 13.731691667147468,
+      "median": 5.339054873524418,
+      "p95": 44.074757615218175,
+      "n": 576
+    },
+    "m": {
+      "mean": 14.469434766520896,
+      "median": 3.0450512694788756,
+      "p95": 22.86553771194282,
+      "n": 540
+    },
+    "fNull": 0,
+    "mNull": 0
+  },
+  {
+    "variant": "pink_20dB",
+    "stage": 0,
+    "lookback": null,
+    "label": "Stage 0",
+    "f": {
+      "mean": 43.35115098626784,
+      "median": 14.120949823032163,
+      "p95": 232.07829923301364,
+      "n": 576
+    },
+    "m": {
+      "mean": 32.184176734088524,
+      "median": 7.217497837470688,
+      "p95": 284.18252221496164,
+      "n": 540
+    },
+    "fNull": 0,
+    "mNull": 0
+  },
+  {
+    "variant": "pink_20dB",
+    "stage": 2,
+    "lookback": 2,
+    "label": "Stage 2 L=2",
+    "f": {
+      "mean": 17.682671008828912,
+      "median": 10.074757615218175,
+      "p95": 57.11576452433593,
+      "n": 576
+    },
+    "m": {
+      "mean": 18.185972710145883,
+      "median": 6.9264622978119235,
+      "p95": 36.42980870316741,
+      "n": 540
+    },
+    "fNull": 0,
+    "mNull": 0
+  },
+  {
+    "variant": "pink_20dB",
+    "stage": 2,
+    "lookback": 5,
+    "label": "Stage 2 L=5",
+    "f": {
+      "mean": 11.82122030796842,
+      "median": 5.136510904458021,
+      "p95": 39.43036906867388,
+      "n": 576
+    },
+    "m": {
+      "mean": 14.70515576852442,
+      "median": 3.0479387990232993,
+      "p95": 22.86553771194282,
+      "n": 540
+    },
+    "fNull": 0,
+    "mNull": 0
+  },
+  {
+    "variant": "pink_10dB",
+    "stage": 0,
+    "lookback": null,
+    "label": "Stage 0",
+    "f": {
+      "mean": 50.23885661196803,
+      "median": 13.099504416745361,
+      "p95": 246.5808829134254,
+      "n": 576
+    },
+    "m": {
+      "mean": 30.15278985908275,
+      "median": 5.864611205952841,
+      "p95": 249.6307108550467,
+      "n": 539
+    },
+    "fNull": 0,
+    "mNull": 1
+  },
+  {
+    "variant": "pink_10dB",
+    "stage": 2,
+    "lookback": 2,
+    "label": "Stage 2 L=2",
+    "f": {
+      "mean": 20.67261463044147,
+      "median": 10.370617567334335,
+      "p95": 70.06741720563022,
+      "n": 576
+    },
+    "m": {
+      "mean": 23.384786530370473,
+      "median": 6.602068127833746,
+      "p95": 82.93398282201787,
+      "n": 540
+    },
+    "fNull": 0,
+    "mNull": 0
+  },
+  {
+    "variant": "pink_10dB",
+    "stage": 2,
+    "lookback": 5,
+    "label": "Stage 2 L=5",
+    "f": {
+      "mean": 15.073559478137152,
+      "median": 5.339054873524418,
+      "p95": 52.23357978336131,
+      "n": 576
+    },
+    "m": {
+      "mean": 20.59103422847483,
+      "median": 3.0747175344100697,
+      "p95": 75.32125751172015,
+      "n": 540
+    },
+    "fNull": 0,
+    "mNull": 0
+  },
+  {
+    "variant": "reverb_short",
+    "stage": 0,
+    "lookback": null,
+    "label": "Stage 0",
+    "f": {
+      "mean": 28.544356611081646,
+      "median": 12.205534613531768,
+      "p95": 134.04021018222153,
+      "n": 576
+    },
+    "m": {
+      "mean": 41.527090203579085,
+      "median": 8.287896117452334,
+      "p95": 288.2549750535725,
+      "n": 539
+    },
+    "fNull": 0,
+    "mNull": 1
+  },
+  {
+    "variant": "reverb_short",
+    "stage": 2,
+    "lookback": 2,
+    "label": "Stage 2 L=2",
+    "f": {
+      "mean": 18.05697059402615,
+      "median": 9.766420216638693,
+      "p95": 63.85961740633482,
+      "n": 576
+    },
+    "m": {
+      "mean": 27.123425748643104,
+      "median": 6.913044638039025,
+      "p95": 268.87776268816765,
+      "n": 540
+    },
+    "fNull": 0,
+    "mNull": 0
+  },
+  {
+    "variant": "reverb_short",
+    "stage": 2,
+    "lookback": 5,
+    "label": "Stage 2 L=5",
+    "f": {
+      "mean": 12.635781796287992,
+      "median": 5.3332686393004,
+      "p95": 40.378194307160726,
+      "n": 576
+    },
+    "m": {
+      "mean": 23.128365379556424,
+      "median": 3.065094325996114,
+      "p95": 276.33346272139926,
+      "n": 540
+    },
+    "fNull": 0,
+    "mNull": 0
+  },
+  {
+    "variant": "reverb_med",
+    "stage": 0,
+    "lookback": null,
+    "label": "Stage 0",
+    "f": {
+      "mean": 36.18228639488829,
+      "median": 11.085276318368102,
+      "p95": 231.1605679042637,
+      "n": 575
+    },
+    "m": {
+      "mean": 32.56881434763032,
+      "median": 4.99226325085823,
+      "p95": 308.0437365837951,
+      "n": 537
+    },
+    "fNull": 1,
+    "mNull": 3
+  },
+  {
+    "variant": "reverb_med",
+    "stage": 2,
+    "lookback": 2,
+    "label": "Stage 2 L=2",
+    "f": {
+      "mean": 19.004776817276962,
+      "median": 8.3332686393004,
+      "p95": 56.56457918982326,
+      "n": 576
+    },
+    "m": {
+      "mean": 25.498567999238333,
+      "median": 5.04251826492677,
+      "p95": 245.3782664358336,
+      "n": 540
+    },
+    "fNull": 0,
+    "mNull": 0
+  },
+  {
+    "variant": "reverb_med",
+    "stage": 2,
+    "lookback": 5,
+    "label": "Stage 2 L=5",
+    "f": {
+      "mean": 14.483401406701436,
+      "median": 5.134749031358467,
+      "p95": 40.378194307160726,
+      "n": 576
+    },
+    "m": {
+      "mean": 23.443697569120825,
+      "median": 2.812430608375479,
+      "p95": 243.40255663258,
+      "n": 540
+    },
+    "fNull": 0,
+    "mNull": 0
+  },
+  {
+    "variant": "agc",
+    "stage": 0,
+    "lookback": null,
+    "label": "Stage 0",
+    "f": {
+      "mean": 29.71827928053514,
+      "median": 13.067059242694086,
+      "p95": 134.1405725558813,
+      "n": 576
+    },
+    "m": {
+      "mean": 26.177204488405774,
+      "median": 7.796999884358158,
+      "p95": 207.6916245458388,
+      "n": 540
+    },
+    "fNull": 0,
+    "mNull": 0
+  },
+  {
+    "variant": "agc",
+    "stage": 2,
+    "lookback": 2,
+    "label": "Stage 2 L=2",
+    "f": {
+      "mean": 19.641532750728583,
+      "median": 10.3960416538103,
+      "p95": 61.90607803149564,
+      "n": 576
+    },
+    "m": {
+      "mean": 17.216331335673765,
+      "median": 6.913044638039025,
+      "p95": 35.381067250408165,
+      "n": 540
+    },
+    "fNull": 0,
+    "mNull": 0
+  },
+  {
+    "variant": "agc",
+    "stage": 2,
+    "lookback": 5,
+    "label": "Stage 2 L=5",
+    "f": {
+      "mean": 13.655890977248784,
+      "median": 5.339054873524418,
+      "p95": 44.06741720563022,
+      "n": 576
+    },
+    "m": {
+      "mean": 13.43100686372326,
+      "median": 2.9962638833189317,
+      "p95": 22.602068127833746,
+      "n": 540
+    },
+    "fNull": 0,
+    "mNull": 0
+  },
+  {
+    "variant": "soft_clip",
+    "stage": 0,
+    "lookback": null,
+    "label": "Stage 0",
+    "f": {
+      "mean": 34.711309656240715,
+      "median": 13.631258395233033,
+      "p95": 216.768897079106,
+      "n": 576
+    },
+    "m": {
+      "mean": 29.830889836669712,
+      "median": 7.631224018679887,
+      "p95": 250.28795220057202,
+      "n": 539
+    },
+    "fNull": 0,
+    "mNull": 1
+  },
+  {
+    "variant": "soft_clip",
+    "stage": 2,
+    "lookback": 2,
+    "label": "Stage 2 L=2",
+    "f": {
+      "mean": 22.915750941791277,
+      "median": 10.06111865591609,
+      "p95": 87.75041766475823,
+      "n": 576
+    },
+    "m": {
+      "mean": 32.863494665670075,
+      "median": 7.301979173094864,
+      "p95": 294.40255663258,
+      "n": 540
+    },
+    "fNull": 0,
+    "mNull": 0
+  },
+  {
+    "variant": "soft_clip",
+    "stage": 2,
+    "lookback": 5,
+    "label": "Stage 2 L=5",
+    "f": {
+      "mean": 17.315432275159182,
+      "median": 5.473624171489206,
+      "p95": 56.241227296678574,
+      "n": 576
+    },
+    "m": {
+      "mean": 30.665339480306574,
+      "median": 3.2151845343369416,
+      "p95": 314.33346272139926,
+      "n": 540
+    },
+    "fNull": 0,
+    "mNull": 0
+  }
+]
+--- END-JSON ---

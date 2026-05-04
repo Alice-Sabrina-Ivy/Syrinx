@@ -1,0 +1,243 @@
+Syrinx DSP Accuracy Test Suite
+Data source: Hillenbrand et al. (1995) vowel dataset
+WAV files: 16 kHz, 16-bit PCM mono
+Ground truth: Professional formant measurements (vowdata.dat)
+
+================================================================
+  TEST 1: Synthetic Pitch Accuracy
+================================================================
+
+--- Pure Tones (target: < 3 Hz error) ---
+  PASS  100 Hz -> detected 100.3 Hz, error 0.34 Hz
+  PASS  120 Hz -> detected 120.2 Hz, error 0.16 Hz
+  PASS  150 Hz -> detected 150.0 Hz, error 0.00 Hz
+  PASS  180 Hz -> detected 179.6 Hz, error 0.38 Hz
+  PASS  200 Hz -> detected 200.7 Hz, error 0.69 Hz
+  PASS  220 Hz -> detected 219.6 Hz, error 0.39 Hz
+  PASS  250 Hz -> detected 250.5 Hz, error 0.53 Hz
+  PASS  300 Hz -> detected 300.0 Hz, error 0.00 Hz
+  PASS  350 Hz -> detected 349.4 Hz, error 0.58 Hz
+  PASS  400 Hz -> detected 401.4 Hz, error 1.38 Hz
+
+--- Complex Tones (fundamental + harmonics, target: < 5 Hz error) ---
+  PASS  100 Hz -> detected 100.3 Hz, error 0.34 Hz
+  PASS  120 Hz -> detected 120.2 Hz, error 0.16 Hz
+  PASS  150 Hz -> detected 150.0 Hz, error 0.00 Hz
+  PASS  180 Hz -> detected 179.6 Hz, error 0.38 Hz
+  PASS  200 Hz -> detected 200.7 Hz, error 0.69 Hz
+  PASS  220 Hz -> detected 219.6 Hz, error 0.39 Hz
+  PASS  250 Hz -> detected 250.5 Hz, error 0.53 Hz
+  PASS  300 Hz -> detected 300.0 Hz, error 0.00 Hz
+  PASS  350 Hz -> detected 349.4 Hz, error 0.58 Hz
+  PASS  400 Hz -> detected 401.4 Hz, error 1.38 Hz
+
+--- Octave-Doubling (formant at 2·f0, target: < 5 Hz error) ---
+  PASS  f0= 90 Hz F1bw=60 -> detected 89.8 Hz, error 0.19 Hz
+  PASS  f0= 90 Hz F1bw=100 -> detected 89.8 Hz, error 0.19 Hz
+  PASS  f0= 90 Hz F1bw=150 -> detected 89.8 Hz, error 0.19 Hz
+  PASS  f0=100 Hz F1bw=60 -> detected 100.3 Hz, error 0.34 Hz
+  PASS  f0=100 Hz F1bw=100 -> detected 100.3 Hz, error 0.34 Hz
+  PASS  f0=100 Hz F1bw=150 -> detected 100.3 Hz, error 0.34 Hz
+  PASS  f0=110 Hz F1bw=60 -> detected 109.8 Hz, error 0.19 Hz
+  PASS  f0=110 Hz F1bw=100 -> detected 109.8 Hz, error 0.19 Hz
+  PASS  f0=110 Hz F1bw=150 -> detected 109.8 Hz, error 0.19 Hz
+  PASS  f0=120 Hz F1bw=60 -> detected 120.2 Hz, error 0.16 Hz
+  PASS  f0=120 Hz F1bw=100 -> detected 120.2 Hz, error 0.16 Hz
+  PASS  f0=120 Hz F1bw=150 -> detected 120.2 Hz, error 0.16 Hz
+  PASS  f0=140 Hz F1bw=60 -> detected 140.0 Hz, error 0.05 Hz
+  PASS  f0=140 Hz F1bw=100 -> detected 140.0 Hz, error 0.05 Hz
+  PASS  f0=140 Hz F1bw=150 -> detected 140.0 Hz, error 0.05 Hz
+  PASS  f0=160 Hz F1bw=60 -> detected 159.7 Hz, error 0.34 Hz
+  PASS  f0=160 Hz F1bw=100 -> detected 159.7 Hz, error 0.34 Hz
+  PASS  f0=160 Hz F1bw=150 -> detected 159.7 Hz, error 0.34 Hz
+  PASS  f0=180 Hz F1bw=60 -> detected 179.6 Hz, error 0.38 Hz
+  PASS  f0=180 Hz F1bw=100 -> detected 179.6 Hz, error 0.38 Hz
+  PASS  f0=180 Hz F1bw=150 -> detected 179.6 Hz, error 0.38 Hz
+  PASS  f0=220 Hz F1bw=60 -> detected 219.6 Hz, error 0.39 Hz
+  PASS  f0=220 Hz F1bw=100 -> detected 219.6 Hz, error 0.39 Hz
+  PASS  f0=220 Hz F1bw=150 -> detected 219.6 Hz, error 0.39 Hz
+
+--- Octave-Tripling (formant at 3·f0, target: < 5 Hz error) ---
+  PASS  f0=110 Hz F1bw=60 -> detected 109.8 Hz, error 0.19 Hz
+  PASS  f0=110 Hz F1bw=100 -> detected 109.8 Hz, error 0.19 Hz
+  PASS  f0=110 Hz F1bw=150 -> detected 109.8 Hz, error 0.19 Hz
+  PASS  f0=120 Hz F1bw=60 -> detected 120.2 Hz, error 0.16 Hz
+  PASS  f0=120 Hz F1bw=100 -> detected 120.2 Hz, error 0.16 Hz
+  PASS  f0=120 Hz F1bw=150 -> detected 120.2 Hz, error 0.16 Hz
+  PASS  f0=130 Hz F1bw=60 -> detected 129.7 Hz, error 0.32 Hz
+  PASS  f0=130 Hz F1bw=100 -> detected 129.7 Hz, error 0.32 Hz
+  PASS  f0=130 Hz F1bw=150 -> detected 129.7 Hz, error 0.32 Hz
+  PASS  f0=140 Hz F1bw=60 -> detected 140.0 Hz, error 0.05 Hz
+  PASS  f0=140 Hz F1bw=100 -> detected 140.0 Hz, error 0.05 Hz
+  PASS  f0=140 Hz F1bw=150 -> detected 140.0 Hz, error 0.05 Hz
+  PASS  f0=160 Hz F1bw=60 -> detected 159.7 Hz, error 0.34 Hz
+  PASS  f0=160 Hz F1bw=100 -> detected 159.7 Hz, error 0.34 Hz
+  PASS  f0=160 Hz F1bw=150 -> detected 159.7 Hz, error 0.34 Hz
+
+--- Complex Tones at 16 kHz sample rate ---
+  PASS  100 Hz -> detected 100.3 Hz, error 0.34 Hz
+  PASS  120 Hz -> detected 120.2 Hz, error 0.16 Hz
+  PASS  150 Hz -> detected 150.0 Hz, error 0.00 Hz
+  PASS  180 Hz -> detected 179.6 Hz, error 0.38 Hz
+  PASS  200 Hz -> detected 200.7 Hz, error 0.69 Hz
+  PASS  220 Hz -> detected 219.6 Hz, error 0.39 Hz
+  PASS  250 Hz -> detected 250.5 Hz, error 0.53 Hz
+  PASS  300 Hz -> detected 302.1 Hz, error 2.09 Hz
+  PASS  350 Hz -> detected 347.0 Hz, error 2.99 Hz
+  PASS  400 Hz -> detected 401.4 Hz, error 1.38 Hz
+
+Pure tone errors:      mean=0.4 median=0.4 max=1.4 std=0.4 (n=10)
+Complex tone errors:   mean=0.4 median=0.4 max=1.4 std=0.4 (n=10)
+Complex 16kHz errors:  mean=0.9 median=0.5 max=3.0 std=0.9 (n=10)
+Octave-doubling errors: mean=0.3 median=0.3 max=0.4 std=0.1 (n=24)
+
+================================================================
+  TEST 2: Real Voice Accuracy (Hillenbrand 1995)
+================================================================
+
+Loaded 1668 ground truth entries from vowdata.dat
+Males: 540, Females: 576
+
+Selected 120 samples for testing (5 per vowel × gender)
+
+Tested: 116, Skipped: 4
+
+--- Sample Detail (first 3 per vowel-gender) ---
+
+  MALE:
+    m01ae  F0: 174->166 (8)  F1: 663->665 (2)  F2: 2012->1957 (55)  F3: 2659->2684 (25)
+    m02ae  F0: 102->102 (0)  F1: 628->645 (17)  F2: 1871->1832 (39)  F3: 2477->2470 (7)
+    m03ae  F0: 99->92 (7)  F1: 605->630 (25)  F2: 1812->1790 (22)  F3: 2570->2634 (64)
+    m01ah  F0: 159->162 (3)  F1: 813->790 (23)  F2: 1283->1268 (15)  F3: 2687->2693 (6)
+    m02ah  F0: 101->100 (1)  F1: 749->733 (16)  F2: 1060->1156 (96)  F3: 2842->2802 (40)
+    m03ah  F0: 97->97 (0)  F1: 755->712 (43)  F2: 1133->1134 (1)  F3: 2695->2717 (22)
+    m01aw  F0: 177->176 (1)  F1: 699->691 (8)  F2: 996->1045 (49)  F3: 2548->2533 (15)
+    m02aw  F0: 106->105 (1)  F1: 644->602 (42)  F2: 856->907 (51)  F3: 2627->2657 (30)
+    m03aw  F0: 93->90 (3)  F1: 647->648 (1)  F2: 926->1014 (88)  F3: 2785->2752 (33)
+    m01eh  F0: 171->170 (1)  F1: 609->634 (25)  F2: 1980->1847 (133)  F3: 2678->2670 (8)
+    m02eh  F0: 103->103 (0)  F1: 517->555 (38)  F2: 1917->1800 (117)  F3: 2438->2430 (8)
+    m03eh  F0: 95->95 (0)  F1: 559->560 (1)  F2: 1695->1688 (7)  F3: 2413->2432 (19)
+    m01ei  F0: 166->166 (0)  F1: 494->453 (41)  F2: 2113->2210 (97)  F3: 2700->2700 (0)
+    m02ei  F0: 105->114 (9)  F1: 438->431 (7)  F2: 2196->2104 (92)  F3: 2480->2615 (135)
+    m03ei  F0: 91->90 (1)  F1: 438->414 (24)  F2: 2026->2058 (32)  F3: 2476->2482 (6)
+    m01er  F0: 175->174 (1)  F1: 506->507 (1)  F2: 1418->1415 (3)  F3: 1849->1843 (6)
+    m03er  F0: 94->93 (1)  F1: 479->452 (27)  F2: 1252->1216 (36)  F3: 1621->1616 (5)
+    m06er  F0: 117->122 (5)  F1: 489->470 (19)  F2: 1338->1315 (23)  F3: 1747->1734 (13)
+    m01ih  F0: 179->176 (3)  F1: 370->437 (67)  F2: 2161->2029 (132)  F3: 2757->2661 (96)
+    m02ih  F0: 111->122 (11)  F1: 384->417 (33)  F2: 2039->1886 (153)  F3: 2523->2419 (104)
+    m03ih  F0: 101->100 (1)  F1: 411->428 (17)  F2: 1932->1808 (124)  F3: 2569->2523 (46)
+    m01iy  F0: 172->174 (2)  F1: 328->346 (18)  F2: 2418->2428 (10)  F3: 2939->2849 (90)
+    m02iy  F0: 108->109 (1)  F1: 305->321 (16)  F2: 2320->2269 (51)  F3: 3072->2987 (85)
+    m03iy  F0: 96->93 (3)  F1: 331->362 (31)  F2: 2311->2253 (58)  F3: 2865->2593 (272)
+    m01oa  F0: 169->169 (0)  F1: 509->504 (5)  F2: 989->974 (15)  F3: 2561->2553 (8)
+    m02oa  F0: 105->103 (2)  F1: 519->445 (74)  F2: 891->880 (11)  F3: 2532->2440 (92)
+    m03oa  F0: 96->95 (1)  F1: 496->460 (36)  F2: 863->865 (2)  F3: 2548->2508 (40)
+    m01oo  F0: 169->170 (1)  F1: 450->511 (61)  F2: 995->1160 (165)  F3: 2519->2515 (4)
+    m02oo  F0: 112->108 (4)  F1: 424->435 (11)  F2: 992->1053 (61)  F3: 2249->2240 (9)
+    m03oo  F0: 96->94 (2)  F1: 489->480 (9)  F2: 1059->1106 (47)  F3: 2567->2488 (79)
+    m01uh  F0: 171->172 (1)  F1: 670->661 (9)  F2: 1178->1331 (153)  F3: 2566->2551 (15)
+    m02uh  F0: 105->98 (7)  F1: 642->635 (7)  F2: 998->1069 (71)  F3: 2682->2668 (14)
+    m03uh  F0: 96->96 (0)  F1: 622->612 (10)  F2: 1075->1087 (12)  F3: 2622->2621 (1)
+    m01uw  F0: 184->186 (2)  F1: 374->366 (8)  F2: 931->913 (18)  F3: 2433->2497 (64)
+    m02uw  F0: 114->111 (3)  F1: 319->336 (17)  F2: 938->939 (1)  F3: 2091->2105 (14)
+    m03uw  F0: 101->100 (1)  F1: 360->382 (22)  F2: 953->998 (45)  F3: 2505->2338 (167)
+
+  FEMALE:
+    w01ae  F0: 225->226 (1)  F1: 678->759 (81)  F2: 2293->2039 (254)  F3: 2861->2905 (44)
+    w02ae  F0: 214->211 (3)  F1: 624->768 (144)  F2: 2442->2187 (255)  F3: 3091->3054 (37)
+    w03ae  F0: 192->183 (9)  F1: 666->802 (136)  F2: 2370->2073 (297)  F3: 2814->2647 (167)
+    w01ah  F0: 211->214 (3)  F1: 1012->1024 (12)  F2: 1603->1741 (138)  F3: 2767->2843 (76)
+    w02ah  F0: 209->208 (1)  F1: 883->893 (10)  F2: 1682->1771 (89)  F3: 2962->3062 (100)
+    w03ah  F0: 192->198 (6)  F1: 1025->998 (27)  F2: 1548->1632 (84)  F3: 2748->2763 (15)
+    w01aw  F0: 218->220 (2)  F1: 815->845 (30)  F2: 1200->1301 (101)  F3: 2783->2854 (71)
+    w02aw  F0: 211->208 (3)  F1: 760->826 (66)  F2: 1225->1459 (234)  F3: 2796->2832 (36)
+    w03aw  F0: 186->195 (9)  F1: 772->788 (16)  F2: 1051->1102 (51)  F3: 2870->2742 (128)
+    w01eh  F0: 228->229 (1)  F1: 734->653 (81)  F2: 1893->2064 (171)  F3: 2820->2946 (126)
+    w02eh  F0: 197->201 (4)  F1: 740->705 (35)  F2: 2186->2169 (17)  F3: 3086->3121 (35)
+    w03eh  F0: 218->232 (14)  F1: 707->724 (17)  F2: 2110->2126 (16)  F3: 3028->2965 (63)
+    w01ei  F0: 227->229 (2)  F1: 539->484 (55)  F2: 2476->2668 (192)  F3: 2868->3012 (144)
+    w03ei  F0: 208->198 (10)  F1: 672->480 (192)  F2: 2457->2610 (153)  F3: 3190->2998 (192)
+    w04ei  F0: 226->214 (12)  F1: 601->522 (79)  F2: 2577->2543 (34)  F3: 3091->3147 (56)
+    w01er  F0: 224->226 (2)  F1: 470->472 (2)  F2: 1437->1409 (28)  F3: 1672->1858 (186)
+    w02er  F0: 218->211 (7)  F1: 500->483 (17)  F2: 1441->1644 (203)  F3: 1914->2050 (136)
+    w04er  F0: 216->217 (1)  F1: 619->607 (12)  F2: 1716->1753 (37)  F3: 2138->2137 (1)
+    w01ih  F0: 246->251 (5)  F1: 496->505 (9)  F2: 2260->2295 (35)  F3: 3027->3083 (56)
+    w02ih  F0: 219->214 (5)  F1: 446->497 (51)  F2: 2444->2338 (106)  F3: 2956->3038 (82)
+    w03ih  F0: 188->198 (10)  F1: 486->570 (84)  F2: 2332->2187 (145)  F3: 2925->2923 (2)
+    w01iy  F0: 234->235 (1)  F1: 441->453 (12)  F2: 2806->2806 (0)  F3: 3260->3315 (55)
+    w02iy  F0: 222->223 (1)  F1: 435->439 (4)  F2: 2890->2861 (29)  F3: 3667->3754 (87)
+    w03iy  F0: 192->220 (28)  F1: 380->394 (14)  F2: 2703->2707 (4)  F3: 3087->3094 (7)
+    w01oa  F0: 234->232 (2)  F1: 557->476 (81)  F2: 1135->1038 (97)  F3: 2961->3019 (58)
+    w02oa  F0: 212->214 (2)  F1: 432->430 (2)  F2: 1013->1045 (32)  F3: 2690->2651 (39)
+    w03oa  F0: 176->214 (38)  F1: 624->530 (94)  F2: 1130->927 (203)  F3: 2881->2850 (31)
+    w01oo  F0: 228->235 (7)  F1: 489->495 (6)  F2: 1357->1433 (76)  F3: 2937->3069 (132)
+    w02oo  F0: 225->232 (7)  F1: 503->550 (47)  F2: 1332->1369 (37)  F3: 2903->2899 (4)
+    w03oo  F0: 215->217 (2)  F1: 494->580 (86)  F2: 1102->1224 (122)  F3: 2863->2881 (18)
+    w01uh  F0: 222->226 (4)  F1: 803->671 (132)  F2: 1501->1662 (161)  F3: 2989->2967 (22)
+    w02uh  F0: 226->223 (3)  F1: 788->777 (11)  F2: 1547->1803 (256)  F3: 2917->2946 (29)
+    w03uh  F0: 182->214 (32)  F1: 789->818 (29)  F2: 1291->1464 (173)  F3: 2877->2844 (33)
+    w01uw  F0: 260->263 (3)  F1: 503->504 (1)  F2: 1068->1096 (28)  F3: 2810->2815 (5)
+    w02uw  F0: 218->223 (5)  F1: 435->433 (2)  F2: 1384->1499 (115)  F3: 2804->2819 (15)
+    w03uw  F0: 211->251 (40)  F1: 431->432 (1)  F2: 788->885 (97)  F3: 2717->2680 (37)
+
+--- Aggregate Error Stats by Gender ---
+
+  MALE:
+    F0: mean=9.5 median=1.3 max=419.3 std=54.3 (n=58)
+    F1: mean=30.0 median=22.3 max=167.9 std=30.6 (n=58)
+    F2: mean=105.3 median=51.0 max=1290.9 std=181.2 (n=58)
+    F3: mean=76.5 median=30.4 max=1258.8 std=178.7 (n=58)
+
+  FEMALE:
+    F0: mean=7.0 median=3.8 max=39.5 std=8.9 (n=58)
+    F1: mean=40.8 median=27.0 max=192.1 std=43.1 (n=58)
+    F2: mean=110.4 median=96.9 max=328.6 std=89.0 (n=58)
+    F3: mean=65.8 median=50.5 max=221.7 std=54.9 (n=58)
+
+--- Aggregate Error Stats by Vowel ---
+  /ae/  F1: mean=73 median=85  F2: mean=179 median=254  (n=10)
+  /ah/  F1: mean=41 median=23  F2: mean=95 median=89  (n=10)
+  /aw/  F1: mean=31 median=30  F2: mean=76 median=74  (n=10)
+  /eh/  F1: mean=27 median=28  F2: mean=62 median=51  (n=10)
+  /ei/  F1: mean=59 median=45  F2: mean=225 median=92  (n=9)
+  /er/  F1: mean=13 median=13  F2: mean=52 median=33  (n=7)
+  /ih/  F1: mean=47 median=51  F2: mean=146 median=145  (n=10)
+  /iy/  F1: mean=17 median=16  F2: mean=25 median=19  (n=10)
+  /oa/  F1: mean=35 median=29  F2: mean=46 median=32  (n=10)
+  /oo/  F1: mean=36 median=38  F2: mean=151 median=165  (n=10)
+  /uh/  F1: mean=31 median=16  F2: mean=174 median=173  (n=10)
+  /uw/  F1: mean=9 median=3  F2: mean=59 median=28  (n=10)
+
+--- Signed Bias Analysis (positive = detected too high) ---
+
+  MALE:
+    F0: mean bias=7.5 Hz (TOO HIGH), std=54.6
+    F1: mean bias=-4.4 Hz (TOO LOW), std=42.6
+    F2: mean bias=-26.3 Hz (TOO LOW), std=208.0
+    F3: mean bias=-44.1 Hz (TOO LOW), std=189.3
+
+  FEMALE:
+    F0: mean bias=3.7 Hz (TOO HIGH), std=10.7
+    F1: mean bias=7.7 Hz (TOO HIGH), std=58.8
+    F2: mean bias=26.6 Hz (TOO HIGH), std=139.3
+    F3: mean bias=16.1 Hz (TOO HIGH), std=84.1
+
+================================================================
+  ACCURACY SUMMARY
+================================================================
+
+Synthetic pitch (pure):    PASS (0/10 over 3 Hz)
+Synthetic pitch (complex): PASS (0/10 over 5 Hz)
+Octave-doubling (2·f0):    PASS (0/24 over 5 Hz)
+
+MALE voices:
+  F0: mean=9.5 Hz  (target: < 10 Hz)  PASS
+  F1: mean=30.0 Hz  (target: < 80 Hz)  PASS
+  F2: mean=105.3 Hz  (target: < 120 Hz) PASS
+  F3: mean=76.5 Hz  (n/a)
+
+FEMALE voices:
+  F0: mean=7.0 Hz  (target: < 10 Hz)  PASS
+  F1: mean=40.8 Hz  (target: < 80 Hz)  PASS
+  F2: mean=110.4 Hz  (target: < 120 Hz) PASS
+  F3: mean=65.8 Hz  (n/a)

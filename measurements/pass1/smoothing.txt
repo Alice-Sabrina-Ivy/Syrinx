@@ -1,0 +1,55 @@
+reconcileHarmonic — passthrough cases
+  ✓ null current → passthrough
+  ✓ null value → null
+  ✓ current=0 → passthrough (avoid div-by-zero)
+  ✓ continuous pitch change passes through
+
+reconcileHarmonic — harmonic-up correction
+  ✓ 260 ≈ 2·130 → 130 (got 130)
+  ✓ 255 ≈ 2·130 (within tol) → 127.5 (got 127.5)
+  ✓ 390 ≈ 3·130 → 130 (got 130)
+  ✓ 380 ≈ 3·130 (within tol) → ~126.7 (got 126.66666666666667)
+
+reconcileHarmonic — sub-harmonic correction
+  ✓ 110 ≈ 220/2 → 220 (got 220)
+  ✓ 75 ≈ 220/3 → 225 (got 225)
+
+reconcileHarmonic — guards
+  ✓ value 1.7× current is NOT a harmonic — passthrough
+  ✓ 700 ≈ 2·350 → 350 (got 350)
+  ✓ harmonic correction below voice range is suppressed (got 90)
+
+median
+  ✓ empty array → null
+  ✓ single element → that element
+  ✓ odd-length sorted middle
+  ✓ even-length avg of mids
+  ✓ unsorted — still picks middle
+
+pushAndMedianPitch — empty buffer
+  ✓ first push returns the value
+  ✓ buffer has the value
+
+pushAndMedianPitch — sustained 3·f0 spike
+  ✓ stable 130 Hz → output ~130 (got 130)
+  ✓ no spike above 200 during 4-frame 3·f0 input (got 130,130,130,130)
+
+pushAndMedianPitch — sustained 2·f0 spike
+  ✓ no spike above 200 during 4-frame 2·f0 input (got 130,130,130,130)
+
+pushAndMedianPitch — genuine pitch glide should pass through
+  ✓ pitch glide 130 → 180 tracks (final=160)
+
+pushAndMedianPitch — post-silence contamination recovery
+  ✓ bad first reading → correct readings recover (final=130; trail=380,255,130,130,130,130)
+  ✓ extended recovery: median settles near 130 (got 130, buf=132,130,128,130,128)
+  ✓ harmonic spike AFTER reference is established → reconciled (got 130)
+
+constants
+  ✓ PITCH_SMOOTH_LEN > 1
+  ✓ RECONCILE_AFTER_FRAMES in (1, PITCH_SMOOTH_LEN)
+  ✓ PITCH_HARMONIC_TOLERANCE in (0, 0.3)
+  ✓ PITCH_HARMONIC_KS includes 2 and 3
+  ✓ PITCH_VALID range is sensible
+
+32 passed, 0 failed
