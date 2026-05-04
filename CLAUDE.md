@@ -10,12 +10,34 @@ Live demo: https://alice-sabrina-ivy.github.io/Syrinx/
 
 ## Commands
 
-- **Dev server:** `npm run dev`
+- **Dev server:** `npm run dev` (HTTP localhost only)
+- **Dev server (LAN-accessible HTTPS, for phone testing):** `npm run dev:mobile` — see "Mobile testing" below
 - **Production build:** `npm run build` (outputs to `docs/`)
 - **Lint:** `npm run lint`
 - **Preview production build:** `npm run preview`
 
 No test framework is currently set up. Test files are runnable Node scripts (e.g. `node tests/ml/audio-utils-test.js`, `node tests/dsp/accuracy-test.js`) that print `pass/fail` and exit non-zero on failure.
+
+### Mobile testing
+
+`npm run dev:mobile` runs Vite with `--mode mobile --host`, which binds to all network interfaces and enables a self-signed HTTPS cert via `@vitejs/plugin-basic-ssl` (gated to `mode === 'mobile'` in [vite.config.js](vite.config.js) so default `npm run dev` is unchanged). HTTPS is required because mic capture (`getUserMedia`) refuses non-localhost origins over HTTP.
+
+Vite prints both URLs at startup, e.g.:
+```
+  ➜  Local:   https://localhost:5173/Syrinx/
+  ➜  Network: https://10.0.0.41:5173/Syrinx/
+```
+
+**Phone workflow** (same Wi-Fi as the PC):
+1. Open the Network URL on the phone.
+2. Click through the self-signed cert warning. (Chrome on Android: tap "Advanced" → "Proceed to <ip> (unsafe)". Safari on iOS: similar — there's a "visit this website" link buried under the warning.) The warning is expected; the cert is generated on the fly and not signed by a trusted CA.
+3. Grant mic permission when the page asks.
+
+**If the phone can't reach the LAN URL**, Windows Firewall is almost certainly blocking inbound connections to port 5173. Vite fails silently — it'll happily bind and print the URL, but the firewall drops incoming packets at the OS layer. To allow it (run once, in an admin PowerShell):
+```powershell
+New-NetFirewallRule -DisplayName "Vite dev (5173)" -Direction Inbound -LocalPort 5173 -Protocol TCP -Action Allow -Profile Private
+```
+The `-Profile Private` scope confines the rule to the home/private Wi-Fi profile so port 5173 isn't exposed when on public networks. To revoke later: `Remove-NetFirewallRule -DisplayName "Vite dev (5173)"`.
 
 ## Tech Stack
 
