@@ -1,0 +1,124 @@
+
+[1] Pure-tone accuracy across 75–600 Hz at 48000 Hz
+  ✓ pure 75 Hz → ~75
+  ✓ pure 80 Hz → ~80
+  ✓ pure 100 Hz → ~100
+  ✓ pure 130 Hz → ~130
+  ✓ pure 165 Hz → ~165
+  ✓ pure 200 Hz → ~200
+  ✓ pure 250 Hz → ~250
+  ✓ pure 330 Hz → ~330
+  ✓ pure 400 Hz → ~400
+  ✓ pure 500 Hz → ~500
+  ✓ pure 580 Hz → ~580
+  ✓ pure 600 Hz → ~600
+
+[2] Pure-tone accuracy at multiple sample rates
+  ✓ sr=8000 f=100 → ~100
+  ✓ sr=8000 f=200 → ~200
+  ✓ sr=8000 f=400 → ~400
+  ✓ sr=16000 f=100 → ~100
+  ✓ sr=16000 f=200 → ~200
+  ✓ sr=16000 f=400 → ~400
+  ✓ sr=22050 f=100 → ~100
+  ✓ sr=22050 f=200 → ~200
+  ✓ sr=22050 f=400 → ~400
+  ✓ sr=44100 f=100 → ~100
+  ✓ sr=44100 f=200 → ~200
+  ✓ sr=44100 f=400 → ~400
+  ✓ sr=48000 f=100 → ~100
+  ✓ sr=48000 f=200 → ~200
+  ✓ sr=48000 f=400 → ~400
+  ✓ sr=96000 f=100 → ~100
+  ✓ sr=96000 f=200 → ~200
+  ✓ sr=96000 f=400 → ~400
+
+[3] Boundary handling outside the 75–600 Hz range
+  ✓ sub-range 50 Hz → null OR ≥75 Hz harmonic (got=null)
+  ✓ super-range 800 Hz → null OR ≤600 Hz harmonic (got=400.0123943583193)
+
+[4] Silence, DC, constant, and noise rejection
+  ✓ silence → null
+  ✓ pure DC → null
+  ✓ white noise → null or unstable
+  ✓ noise locks scatter (or mostly null) — n=0, σ=Infinity
+
+[5] DC-offset robustness
+  ✓ 150 Hz with DC=0 → ~150
+  ✓ 150 Hz with DC=0.1 → ~150
+  ✓ 150 Hz with DC=0.3 → ~150
+  ✓ 150 Hz with DC=0.5 → ~150
+
+[6] Amplitude robustness
+  ✓ 180 Hz amp=1 → ~180
+  ✓ 180 Hz amp=0.1 → ~180
+  ✓ 180 Hz amp=0.01 → ~180
+  ✓ 180 Hz amp=0.001 → ~180
+  ✓ 180 Hz amp=0.00001 → ~180
+
+[7] Determinism (same input → same output)
+  ✓ 160 Hz harmonic — three calls match
+
+[8] Vibrato (4 Hz, ±50 cents) within one 50 ms window
+  ✓ vibrato around 120 Hz → ~120
+  ✓ vibrato around 200 Hz → ~200
+  ✓ vibrato around 300 Hz → ~300
+
+[9] Phase-shift invariance
+  ✓ 220 Hz phase=0.79 matches baseline
+  ✓ 220 Hz phase=1.57 matches baseline
+  ✓ 220 Hz phase=3.14 matches baseline
+  ✓ 220 Hz phase=5.34 matches baseline
+
+[10] Linear pitch glide (instantaneous detector ≈ midpoint)
+  ✓ glide 150→170 → ~155–170
+
+[11] Octave-doubling/tripling stress (formant-like resonator)
+  ✓ 2nd-harmonic-dominant f0=85 → ~85
+  ✓ 2nd-harmonic-dominant f0=100 → ~100
+  ✓ 2nd-harmonic-dominant f0=130 → ~130
+  ✓ 2nd-harmonic-dominant f0=175 → ~175
+  ✓ 2nd-harmonic-dominant f0=220 → ~220
+  ✓ 3rd-harmonic-dominant f0=110 → ~110
+  ✓ 3rd-harmonic-dominant f0=128 → ~128
+  ✓ 3rd-harmonic-dominant f0=140 → ~140
+  ✓ 3rd-harmonic-dominant f0=160 → ~160
+
+[12] Pitch detection vs. additive noise (raw detector)
+  ✓ f=110 SNR=40dB → ok (got=110.0, octK=1)
+  ✓ f=110 SNR=20dB → ok (got=110.0, octK=1)
+  ✓ f=110 SNR=10dB → ok (got=111.4, octK=1)
+  ✓ f=110 SNR=0dB → ok (got=null, octK=null)
+  ✓ f=200 SNR=40dB → ok (got=200.0, octK=1)
+  ✓ f=200 SNR=20dB → ok (got=200.1, octK=1)
+  ✓ f=200 SNR=10dB → ok (got=200.8, octK=1)
+  ✓ f=200 SNR=0dB → ok (got=null, octK=null)
+  ✓ f=350 SNR=40dB → ok (got=350.0, octK=1)
+  ✓ f=350 SNR=20dB → ok (got=349.9, octK=1)
+  ✓ f=350 SNR=10dB → ok (got=116.5, octK=0.3333333333333333)
+  ✓ f=350 SNR=0dB → ok (got=null, octK=null)
+
+[12b] End-to-end: raw worker + pushAndMedianPitch at clean SNR
+  ✓ f=110 (20 dB SNR) after smoothing → ~110 (final=110.0)
+  ✓ f=200 (20 dB SNR) after smoothing → ~200 (final=200.0)
+  ✓ f=350 (20 dB SNR) after smoothing → ~350 (final=350.1)
+
+[12c] Known gap: k=4 sub-harmonic at SNR ≈ 15 dB (documents finding)
+  ✓ [characterization] k=4 not in PITCH_HARMONIC_KS → smoothing cannot recover f=350 at 15 dB (final=350.0, recovered=true)
+
+[13] Buffer-length edge cases
+  ✓ window=50ms (2400 samples) → ~200
+  ✓ window=30ms (1440 samples) → ~200
+  ✓ window=28ms (1344 samples) → ~200
+  ✓ window=27ms (1296 samples) → ~200
+  ✓ window too short (n=1000) → null
+
+[14] Performance: detectPitch should complete in < 5 ms at 48 kHz
+  ✓ mean 0.386 ms / call < 5 ms
+
+[15] Inline-copy audit: tests/dsp/accuracy-test.js
+  ✓ worker uses HARMONIC_IMPROVEMENT_MIN gate
+  ✓ accuracy-test.js mirrors HARMONIC_IMPROVEMENT_MIN gate
+  ✓ accuracy-test.js has no stale 'cmnd[baseTau] >= 0.01' gate
+
+88 passed, 0 failed

@@ -28,11 +28,12 @@ React 19 + Vite 7 + Tailwind CSS 4 (via `@tailwindcss/vite` plugin). Dexie for I
 1. **AudioWorklet** (`public/capture-processor.js`) — runs on the audio thread, collects mic samples into ~25ms chunks, broadcasts each chunk to *all* registered consumer worker MessagePorts (currently DSP + ML). Uses pre-allocated buffers to avoid GC pauses. Each consumer gets an independent copy because `postMessage` with a transferable detaches the buffer.
 
 2. **DSP Worker** (`src/dsp/dsp-worker.js`) — runs in a Web Worker, maintains a ring buffer (~200ms), computes all analysis metrics:
-   - Pitch: YIN-based autocorrelation, FFT-accelerated (75–600 Hz)
+   - Pitch: pYIN Stage 2.B (Mauch & Dixon 2014 §2.1–2.3, librosa-style voicing-duplicated state space) with bounded-history Viterbi, σ=75 cents transition prior, lookback L=2 (50 ms latency at 25 ms hop). FFT-accelerated YIN CMND feeds into Beta(2,18) threshold integration → 600-state HMM (300 voiced + 300 unvoiced twins) → Viterbi decode. Stateful: HMM forward variables persist across `detectPitch` calls; tests treating stimuli as independent reset state via the `{type: "reset-pitch-hmm"}` worker message. Three harness-only overrides: `globalThis.__PYIN_STAGE` for algorithm version (0 = vanilla YIN baseline, 1 = Beta-threshold + naive argmax, 2 = production), `globalThis.__PYIN_LOOKBACK` for Viterbi history length L (default 2), and the `set-pyin-sigma` worker message for the transition prior σ in cents (default 75). All three were used during the σ-sweep and shouldn't be touched in production.
    - Formants: Burg LPC with polynomial root finding (downsampled to ~12kHz, runs every 6th frame ~200ms)
    - Spectral tilt: FFT low/high band energy ratio
    - HNR: harmonics-to-noise ratio via autocorrelation
    - Intensity: RMS in dB
+   - Voicing: TWO signals exposed by Stage 2.B — `voicedness` (HMM-smoothed posterior, surfaced on the postMessage payload as a UI-confidence indicator; structurally ~0.5 on silence/no-evidence input due to uniform Bayesian fallback) and `voicednessObs` (raw per-frame Beta-CDF candidate mass; 0 on silence/DC, > 0 on signals containing pitch evidence). The two answer different questions and aren't interchangeable. See the worker's module-level comment block on `_pyinLastVoicedness` / `_pyinLastVoicednessObs` for the architectural distinction.
    - All pre-allocated buffers for zero-GC hot path
 
 3. **ML Worker** (`src/ml/gender-worker.js`) — separate Web Worker hosting a Transformers.js audio-classification pipeline (default model: `prithivMLmods/Common-Voice-Gender-Detection-ONNX`, a `wav2vec2-base-960h` fine-tune for binary gender classification, Q8). Resamples incoming chunks to 16 kHz via simple linear interpolation (`src/ml/audio-utils.js`), maintains a 0.75-second rolling window, runs inference at ~6.7 Hz (every 150 ms), peak-VAD gates windows with no speech-level peaks (`windowPeak < VAD_PEAK_THRESHOLD`), EMA-smooths the score (α=0.55), and resets the smoothed value after a sustained silent run. Posts back `{ score: 0–100, confidence: 0–1, ts }`. Pure helpers (`resampleLinear`, `RingWindow`, `SilenceTracker`, `femaleScoreFromResult`, `windowPeak`, `windowRMS`, `ema`) live in `src/ml/audio-utils.js` so they can be unit-tested without booting the worker.
@@ -80,6 +81,24 @@ History arrays are stored in Refs (not React state) and read directly by `reques
 - Silence gating holds last voiced values for 5 seconds, then resets
 - Target ranges currently hardcoded in `src/utils/constants.js`
 - Session frames buffered in memory and flushed to IndexedDB every 1 second
+
+## Measurements & empirical results
+
+Tuning sweeps, latency benchmarks, and other measurement artifacts live in `measurements/` at the repo root (not `docs/`, which is the Vite build output and gets overwritten on deploy).
+
+- **Naming:** `<topic>-<kind>-<YYYY-MM-DD>.{md,csv,txt}` — e.g. `pitch-baseline-2026-05-04.txt`, `harmonic-gate-sweep-2026-05-04.csv`, `ml-latency-2026-05-04.md`
+- **Belongs here:** baseline test outputs captured before tuning work, parameter sweep results, latency/throughput measurements, before/after comparisons for any change driven by empirical evidence
+- **Does NOT belong here:** ad-hoc debugging logs, test fixtures (those stay in `tests/`), production code
+
+Convention: any optimization or tuning work on `dsp-worker.js`, `gender-worker.js`, or `pitchSmoothing.js` should produce a measurement file in `measurements/` *before* code changes are proposed — changes in these files are grounded in numbers, not intuition.
+
+**Pitch-detector tuning oracles:** `tests/dsp/yin-harmonic-test.js` is a regression guard, not a tuning oracle — it uses very strong synthetic stimuli (deep CMND dips at the true period) and was insensitive across the entire 84-cell sweep on 2026-05-04, so it cannot drive parameter selection. `tests/dsp/accuracy-test.js` and `tests/dsp/real-speech-test.js` (Hillenbrand et al. 1995 vowel corpus) are the tuning oracles for any future change to `detectPitch` constants — they're the only signals that distinguish good from bad gate settings on real speech.
+
+**Multi-frame methodology is canonical.** The `accuracy-test.js` and `real-speech-test.js` Pass-1 measurements use multi-frame stepping (25 ms hops over the central 70 % of each recording, take the median of the non-null trace via `streamingMedianDetect`). This mirrors production hop cadence and is the only methodology that exercises Stage 2.B's HMM as it runs in production. Single-window-per-file (the legacy methodology from before pYIN) doesn't satisfy the HMM's lookback warm-up and produces noise-dominated numbers; it's preserved only as historical context in the session-1 measurement files (`pitch-baseline-pre-impMin-*` etc.). Any future pitch-evaluation work should default to multi-frame.
+
+**Stage 2.B σ=75 L=2 is the deployed pitch detection algorithm.** Selected via the σ-sweep at [measurements/pyin-stage2b-sigma-sweep-2026-05-04.md](measurements/pyin-stage2b-sigma-sweep-2026-05-04.md) — it's the only Pareto cell that strictly dominates Stage 0 on both Hillenbrand AND PTDB-TUG simultaneously (Hillenbrand female F0 mean 11.8 Hz, PTDB codet F mean 6.03 Hz, p95 16.6 Hz vs Stage 0's 145 Hz on the same metric). Canonical post-ship baseline numbers in [measurements/pass4-stage2b-final-baseline-2026-05-04.md](measurements/pass4-stage2b-final-baseline-2026-05-04.md). The σ-rate-scaling argument is the durable reasoning: paper σ=20 cents at 10 ms hop ≈ rate-equivalent σ=50 cents at our 25 ms hop, with empirical optimum at σ=75 (the Pareto sweep showed σ=50 just missed the codet-mean threshold).
+
+**Test helper-choice contract.** Two helpers, two regimes — keep them distinct. `steadyStateDetect` (in `pitch-detection-comprehensive.js`, `accuracy-test.js`, `yin-harmonic-test.js`, `real-speech-test.js`) for stationary stimuli where same-window-repeated equals sequential-frames-of-same-signal: pure tones, harmonic stress, vibrato within a single window. `streamingMedianDetect` (in `accuracy-test.js`, `real-speech-test.js`) for non-stationary recordings where adjacent windows differ. Mixing them up produces measurement artifacts that don't obviously fail — see [measurements/pass1-helper-diagnostic-2026-05-04.md](measurements/pass1-helper-diagnostic-2026-05-04.md) for the failure mode (F p95 = 210 Hz with the wrong helper vs ~28 Hz with the right one, a 7× difference on the Hillenbrand corpus).
 
 ## Deployment
 
