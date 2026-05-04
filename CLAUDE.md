@@ -39,6 +39,28 @@ New-NetFirewallRule -DisplayName "Vite dev (5173)" -Direction Inbound -LocalPort
 ```
 The `-Profile Private` scope confines the rule to the home/private Wi-Fi profile so port 5173 isn't exposed when on public networks. To revoke later: `Remove-NetFirewallRule -DisplayName "Vite dev (5173)"`.
 
+### Diagnostic mode
+
+Append `?diag=1` to the URL (`https://10.0.0.41:5173/Syrinx/?diag=1` for mobile testing, `http://localhost:5173/Syrinx/?diag=1` for plain dev) to surface a fixed top-right diagnostic overlay. Without the flag the app is byte-identical to production: the overlay component is `lazy`-loaded so its chunk isn't even fetched, and the hot-path instrumentation (extra timing fields, RMS, voicednessObs) is gated behind a `_diag` flag in the DSP worker and a `this.diag` flag in the AudioWorklet — both off by default.
+
+The overlay surfaces:
+
+- **Per-frame timings** (current value + p95 over last 5 s):
+  - `audio→worker` — capture-processor `postedAt` → DSP worker arrival. Cross-context so carries a small bias from differing `performance.timeOrigin`.
+  - `detectPitch` — pYIN call only.
+  - `worker total` — `detectPitch` + (every 6th frame) formants/tilt/HNR.
+  - `worker→main` — DSP `postMessage` → main `onmessage` handler entry.
+  - `main handler` — `handleAnalysisResult` duration.
+  - `end-to-end` — audio captured (AudioContext time → epoch via `ctxCreatedAtEpochMs`) to display update.
+- **Last-5-seconds sparkline**: pitch (amber, 60–400 Hz scale), `voicedness` (HMM-smoothed posterior, cyan), `voicednessObs` (raw Beta-CDF candidate mass, purple), `inputRms ×4` (orange).
+- **Audio context introspection** captured once at start: `AudioContext.sampleRate` (highlights amber if < 44.1 kHz — mobile silent downsampling), `baseLatency`, `outputLatency`, AudioWorklet vs ScriptProcessor confirmation, requested-vs-granted `getUserMedia` constraints (echoCancellation / noiseSuppression / autoGainControl). Mobile browsers may silently override these.
+- **Lifecycle**: pointer-event tap age (for tap-to-display latency), `document.visibilityState`, frames-while-hidden tally.
+- **Snapshot last 5s ↓**: downloads a JSON file with the full ring buffer + audio info + user agent + tap timestamps. Useful for capturing a specific reproduction (e.g. "phantom 70 Hz pitch from fan noise") and attaching to an investigation file under `measurements/`.
+
+The overlay refreshes at 10 Hz from the diag ring buffer (which itself updates at the worker's analysis cadence ~40 fps). Reading the buffer is O(1); the overlay does not observe the audio pipeline directly.
+
+**Investigating phantom pitch / mobile-specific behaviour**: open `?diag=1` on the phone, exercise the issue (let the fan noise generate the phantom), tap "Snapshot last 5s ↓", and stash the JSON in `measurements/<date>-<topic>.json` next to a `.md` file describing the repro. The snapshot includes `inputRms`, `voicednessObs`, and `voicedness` per frame so the failure mode (e.g. "voicedness saturates while inputRms is at noise floor") is reconstructable later.
+
 ## Tech Stack
 
 React 19 + Vite 7 + Tailwind CSS 4 (via `@tailwindcss/vite` plugin). Dexie for IndexedDB persistence. Visualizations use HTML Canvas directly (not a charting library). Audio capture and DSP use native Web Audio API (AudioWorklet + Web Worker). ES modules throughout.

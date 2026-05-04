@@ -13,6 +13,7 @@ import {
   pushAndMedianPitch,
   PITCH_SMOOTH_LEN,
 } from "./pitchSmoothing";
+import { DIAG_ENABLED, setAudioInfo, pushFrame } from "../diag/diag";
 
 const SILENCE_THRESHOLD_DB = -50;
 const SILENCE_DEBOUNCE_FRAMES = 3; // require 3 consecutive quiet frames before gating
@@ -108,9 +109,42 @@ export function useAudioPipeline() {
 
       const audioCtx = new AudioContext({ latencyHint: "interactive" });
       audioCtxRef.current = audioCtx;
+      const ctxCreatedAtEpochMs = performance.timeOrigin + performance.now();
       await audioCtx.audioWorklet.addModule("capture-processor.js");
       const workletNode = new AudioWorkletNode(audioCtx, "capture-processor");
       workletNodeRef.current = workletNode;
+
+      // Diagnostic snapshot of the audio context, captured once at start.
+      // Read here rather than later because some browsers may not let us
+      // re-introspect granted constraints after the track has been used.
+      if (DIAG_ENABLED) {
+        const trackSettings = stream.getAudioTracks()[0]?.getSettings?.() ?? null;
+        setAudioInfo({
+          sampleRate: audioCtx.sampleRate,
+          baseLatencySec: audioCtx.baseLatency ?? null,
+          outputLatencySec: audioCtx.outputLatency ?? null,
+          ctxCreatedAtEpochMs,
+          // AudioWorklet support is the modern path. If addModule above
+          // succeeded we got it; if not we'd have thrown earlier. Surface
+          // the explicit confirmation so a failed-fallback case (some old
+          // mobile browsers) is visible in the snapshot.
+          audioWorkletSupported: typeof AudioWorkletNode !== "undefined",
+          // Track settings reflect what the platform actually granted vs
+          // what we requested in getUserMedia (echoCancellation: false etc.).
+          // Mobile browsers may silently override these.
+          requestedConstraints: {
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
+          },
+          grantedConstraints: trackSettings,
+          userAgent: navigator.userAgent,
+        });
+        // Tell the AudioWorklet to attach postedAt timestamps. Sent
+        // before the port message so the worklet's diag flag is set
+        // before any chunk leaves it.
+        workletNode.port.postMessage({ type: "init", diag: true });
+      }
 
       const worker = new Worker(
         new URL("../dsp/dsp-worker.js", import.meta.url),
@@ -118,7 +152,11 @@ export function useAudioPipeline() {
       );
       workerRef.current = worker;
 
-      worker.postMessage({ type: "init", sampleRate: audioCtx.sampleRate });
+      worker.postMessage({
+        type: "init",
+        sampleRate: audioCtx.sampleRate,
+        ...(DIAG_ENABLED ? { diag: true } : {}),
+      });
 
       // Create a direct MessagePort between the AudioWorklet and the DSP
       // Worker so audio chunks bypass the main thread entirely.  Without
@@ -186,8 +224,46 @@ export function useAudioPipeline() {
       worker.onmessage = (e) => {
         if (e.data.type === "analysis") {
           const data = e.data.data;
-          // Always update refs immediately (canvas reads these at full rAF rate)
-          handleAnalysisResult(data);
+          // Diagnostic mode: capture timing breakpoints around the
+          // analysis-handler call. handoffToMainMs is DSP postMessage
+          // (postedAtEpochMs) → main onmessage entry (now). mainHandlerMs
+          // is the time inside handleAnalysisResult. totalMs is the
+          // wall-clock from "audio captured" (ctx time → epoch via
+          // ctxCreatedAtEpochMs) to display update completion.
+          if (DIAG_ENABLED && data.diag) {
+            const handlerStart = performance.timeOrigin + performance.now();
+            const handoffToMainMs =
+              typeof data.diag.postedAtEpochMs === "number"
+                ? handlerStart - data.diag.postedAtEpochMs
+                : null;
+            handleAnalysisResult(data);
+            const handlerEnd = performance.timeOrigin + performance.now();
+            const audioCapturedEpochMs =
+              typeof data.contextTime === "number" && ctxCreatedAtEpochMs
+                ? ctxCreatedAtEpochMs + data.contextTime * 1000
+                : null;
+            pushFrame({
+              tEpochMs: data.absoluteTime,
+              pitch: data.pitch,
+              intensity: data.intensity,
+              inputRms: data.diag.inputRms,
+              voicedness: data.voicedness,
+              voicednessObs: data.diag.voicednessObs,
+              pendingChunks: data.pendingChunks,
+              timings: {
+                chunkArrivalMs: data.diag.chunkArrivalMs,
+                pitchDetectMs: data.diag.pitchDetectMs,
+                workerProcessingMs: data.workerProcessingMs,
+                handoffToMainMs,
+                mainHandlerMs: handlerEnd - handlerStart,
+                totalMs: audioCapturedEpochMs
+                  ? handlerEnd - audioCapturedEpochMs
+                  : null,
+              },
+            });
+          } else {
+            handleAnalysisResult(data);
+          }
         }
       };
 
