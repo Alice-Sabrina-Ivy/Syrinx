@@ -16,12 +16,20 @@ class CaptureProcessor extends AudioWorkletProcessor {
     // Reusable chunk for sending (avoids allocation per send)
     this.chunk = new Float32Array(this.chunkSize);
 
+    // Diagnostic mode: when enabled by an `init` message from the main
+    // thread (?diag=1 URL flag), each chunk message carries a postedAt
+    // timestamp used to measure capture-processor → DSP worker handoff
+    // latency. Off by default; the only cost is a property read per chunk.
+    this.diag = false;
+
     // Direct MessagePorts to downstream consumer Workers (DSP + ML).
     // Each consumer that wants audio sends a `{ type: "port", port }`
     // message; the worklet then broadcasts every chunk to all of them.
     this.workerPorts = [];
     this.port.onmessage = (e) => {
-      if (e.data.type === "port") {
+      if (e.data.type === "init") {
+        if (e.data.diag) this.diag = true;
+      } else if (e.data.type === "port") {
         this.workerPorts.push(e.data.port);
       }
     };
@@ -54,12 +62,19 @@ class CaptureProcessor extends AudioWorkletProcessor {
       const chunkStart = 0;
       // Build a transferable buffer per consumer (transfer detaches the
       // ArrayBuffer, so it can't be reused across postMessage calls).
+      // postedAt is computed once per outgoing batch and only when diag
+      // is on; the AudioWorkletGlobalScope's performance.now() shares
+      // its origin with other AudioWorklet contexts but can drift from
+      // the main thread by a few ms (no shared timeOrigin guarantee).
+      // For relative-cadence diagnosis (chunk handoff vs detectPitch
+      // cost) the small bias is fine.
+      const postedAt = this.diag ? performance.now() : 0;
       if (this.workerPorts.length > 0) {
         for (let i = 0; i < this.workerPorts.length; i++) {
           const out = new Float32Array(this.chunkSize);
           out.set(this.buffer.subarray(chunkStart, chunkStart + this.chunkSize));
           this.workerPorts[i].postMessage(
-            { buffer: out.buffer, contextTime: currentTime },
+            { buffer: out.buffer, contextTime: currentTime, postedAt },
             [out.buffer],
           );
         }
@@ -69,7 +84,7 @@ class CaptureProcessor extends AudioWorkletProcessor {
         const out = new Float32Array(this.chunkSize);
         out.set(this.buffer.subarray(chunkStart, chunkStart + this.chunkSize));
         this.port.postMessage(
-          { buffer: out.buffer, contextTime: currentTime },
+          { buffer: out.buffer, contextTime: currentTime, postedAt },
           [out.buffer],
         );
       }
