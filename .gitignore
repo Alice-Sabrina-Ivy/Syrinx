@@ -27,3 +27,10 @@ dist-ssr
 # (~19 MB total; well under GitHub's 50 MB warning threshold) so the
 # real-speech accuracy tests run out of the box.
 tests/ml/data/
+
+# PTDB-TUG corpus subset (~117 MB audio + REF). Re-fetched on demand by
+# scripts/fetch-ptdb-tug-subset.sh. The subdirectory's README.md and its
+# local .gitignore (which excludes *.wav/*.f0/*.lar) ARE committed; only
+# the audio + REF data files are excluded here.
+tests/dsp/data/ptdb-tug/FEMALE/
+tests/dsp/data/ptdb-tug/MALE/

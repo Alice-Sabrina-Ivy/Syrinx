@@ -1,0 +1,238 @@
+Loading corpus + synthetic stimuli…
+  corpus: 1116 files (540 M, 576 F)
+  synthetic: 5 2nd-dom, 4 3rd-dom
+
+Evaluating PYIN_STAGE=0 (legacy YIN + multi-mult)…
+  Female F0 error: mean=14.15 median=4.63 p95=105.71 max=255.59 (n=564)
+  Male F0 error:   mean=9.84 median=2.50 p95=17.51 max=480.00 (n=519)
+  Sub-harmonic-lock count: 30
+  Female buckets: {"exact":448,"miss":12,"wild":86,"halved":27,"2x":3}
+  Male   buckets: {"exact":436,"wild":80,"miss":21,"halved":3}
+  Synthetic 2nd-dom: 5/5
+    [ ] 2nd-dom f0=85 → 85.0
+    [ ] 2nd-dom f0=100 → 100.0
+    [ ] 2nd-dom f0=130 → 130.0
+    [ ] 2nd-dom f0=175 → 175.0
+    [ ] 2nd-dom f0=220 → 220.0
+  Synthetic 3rd-dom: 4/4
+    [ ] 3rd-dom f0=110 → 110.0
+    [ ] 3rd-dom f0=128 → 128.0
+    [ ] 3rd-dom f0=140 → 140.0
+    [ ] 3rd-dom f0=160 → 160.0
+
+Evaluating PYIN_STAGE=1 (Beta(2,18) threshold integration, naive argmax)…
+  Female F0 error: mean=23.45 median=4.83 p95=210.26 max=304.54 (n=575)
+  Male F0 error:   mean=17.67 median=2.56 p95=26.03 max=478.57 (n=539)
+  Sub-harmonic-lock count: 7
+  Female buckets: {"exact":440,"wild":94,"halved":6,"2x":35,"miss":1}
+  Male   buckets: {"exact":447,"wild":82,"miss":1,"3x":7,"halved":1,"4x":1,"2x":1}
+  Synthetic 2nd-dom: 5/5
+    [ ] 2nd-dom f0=85 → 85.0
+    [ ] 2nd-dom f0=100 → 100.0
+    [ ] 2nd-dom f0=130 → 130.0
+    [ ] 2nd-dom f0=175 → 175.0
+    [ ] 2nd-dom f0=220 → 220.0
+  Synthetic 3rd-dom: 4/4
+    [ ] 3rd-dom f0=110 → 110.0
+    [ ] 3rd-dom f0=128 → 128.0
+    [ ] 3rd-dom f0=140 → 140.0
+    [ ] 3rd-dom f0=160 → 160.0
+
+Delta (Stage 1 − Stage 0):
+  Female mean: 9.30 Hz
+  Male mean:   7.83 Hz
+  Sub-locks:   -23
+  2nd-dom:     0
+  3rd-dom:     0
+
+--- BEGIN-JSON ---
+{
+  "stage0": {
+    "stage": 0,
+    "f": {
+      "mean": 14.152307524289458,
+      "median": 4.62502637802487,
+      "p95": 105.70883568717751,
+      "max": 255.58844515951813,
+      "n": 564
+    },
+    "m": {
+      "mean": 9.839323925605694,
+      "median": 2.503237522760827,
+      "p95": 17.512948152856296,
+      "max": 480,
+      "n": 519
+    },
+    "subLocks": 30,
+    "buckets": {
+      "m": {
+        "exact": 436,
+        "wild": 80,
+        "miss": 21,
+        "halved": 3
+      },
+      "w": {
+        "exact": 448,
+        "miss": 12,
+        "wild": 86,
+        "halved": 27,
+        "2x": 3
+      }
+    },
+    "nullCount": 33,
+    "second": [
+      {
+        "f0": 85,
+        "label": "2nd-dom f0=85",
+        "detected": 85.00000634520545,
+        "pass": true
+      },
+      {
+        "f0": 100,
+        "label": "2nd-dom f0=100",
+        "detected": 99.99988829338226,
+        "pass": true
+      },
+      {
+        "f0": 130,
+        "label": "2nd-dom f0=130",
+        "detected": 130.00017492610496,
+        "pass": true
+      },
+      {
+        "f0": 175,
+        "label": "2nd-dom f0=175",
+        "detected": 175.00055068548843,
+        "pass": true
+      },
+      {
+        "f0": 220,
+        "label": "2nd-dom f0=220",
+        "detected": 220.00090256444878,
+        "pass": true
+      }
+    ],
+    "third": [
+      {
+        "f0": 110,
+        "label": "3rd-dom f0=110",
+        "detected": 110.00002067663011,
+        "pass": true
+      },
+      {
+        "f0": 128,
+        "label": "3rd-dom f0=128",
+        "detected": 128.00010389815714,
+        "pass": true
+      },
+      {
+        "f0": 140,
+        "label": "3rd-dom f0=140",
+        "detected": 139.99974349230774,
+        "pass": true
+      },
+      {
+        "f0": 160,
+        "label": "3rd-dom f0=160",
+        "detected": 159.9998111455698,
+        "pass": true
+      }
+    ]
+  },
+  "stage1": {
+    "stage": 1,
+    "f": {
+      "mean": 23.453526686645525,
+      "median": 4.827010238354802,
+      "p95": 210.2556606089779,
+      "max": 304.54278643658176,
+      "n": 575
+    },
+    "m": {
+      "mean": 17.669438861449922,
+      "median": 2.5572980976622404,
+      "p95": 26.030861934749453,
+      "max": 478.56813693541824,
+      "n": 539
+    },
+    "subLocks": 7,
+    "buckets": {
+      "m": {
+        "exact": 447,
+        "wild": 82,
+        "miss": 1,
+        "3x": 7,
+        "halved": 1,
+        "4x": 1,
+        "2x": 1
+      },
+      "w": {
+        "exact": 440,
+        "wild": 94,
+        "halved": 6,
+        "2x": 35,
+        "miss": 1
+      }
+    },
+    "nullCount": 2,
+    "second": [
+      {
+        "f0": 85,
+        "label": "2nd-dom f0=85",
+        "detected": 85.00000634520545,
+        "pass": true
+      },
+      {
+        "f0": 100,
+        "label": "2nd-dom f0=100",
+        "detected": 99.99988829338226,
+        "pass": true
+      },
+      {
+        "f0": 130,
+        "label": "2nd-dom f0=130",
+        "detected": 130.00017492610496,
+        "pass": true
+      },
+      {
+        "f0": 175,
+        "label": "2nd-dom f0=175",
+        "detected": 175.00055068548843,
+        "pass": true
+      },
+      {
+        "f0": 220,
+        "label": "2nd-dom f0=220",
+        "detected": 220.00090256444878,
+        "pass": true
+      }
+    ],
+    "third": [
+      {
+        "f0": 110,
+        "label": "3rd-dom f0=110",
+        "detected": 110.00002067663011,
+        "pass": true
+      },
+      {
+        "f0": 128,
+        "label": "3rd-dom f0=128",
+        "detected": 128.00010389815714,
+        "pass": true
+      },
+      {
+        "f0": 140,
+        "label": "3rd-dom f0=140",
+        "detected": 139.99974349230774,
+        "pass": true
+      },
+      {
+        "f0": 160,
+        "label": "3rd-dom f0=160",
+        "detected": 159.9998111455698,
+        "pass": true
+      }
+    ]
+  }
+}
+--- END-JSON ---

@@ -12,55 +12,81 @@
 //   3. Real voice formant accuracy (F1/F2/F3 vs Hillenbrand ground truth)
 //
 // Reports per-sample errors and aggregate stats broken out by gender and vowel.
+//
+// Helper-choice contract (see real-speech-test.js for the full diagnostic
+// rationale, captured in measurements/pass1-helper-diagnostic-2026-05-04.md):
+//   - steadyStateDetect: stationary stimuli (pure tones, complex tones,
+//     harmonic stress). Reset HMM, feed same window (lookback+3) times,
+//     return final result.
+//   - streamingMedianDetect: real recordings (Hillenbrand WAVs). Step
+//     adjacent 25 ms hops over central 70 %, return median of non-null
+//     trace. Robust to onset/trail-off pitch artifacts.
 
 import { readFileSync, readdirSync, existsSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
+import vm from "vm";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = join(__dirname, "data");
+const WORKER_PATH = join(__dirname, "../../src/dsp/dsp-worker.js");
 
 // ============================================================
-//  DSP FUNCTIONS — exact copies from src/dsp/dsp-worker.js
+//  Worker context (pYIN — replaces inline copy of legacy detectPitch)
 // ============================================================
 
-function fft(re, im) {
-  const n = re.length;
-  if (n === 0 || (n & (n - 1)) !== 0) {
-    throw new Error(`FFT length must be a power of 2, got ${n}`);
-  }
-  for (let i = 1, j = 0; i < n; i++) {
-    let bit = n >> 1;
-    for (; j & bit; bit >>= 1) j ^= bit;
-    j ^= bit;
-    if (i < j) {
-      let tmp = re[i]; re[i] = re[j]; re[j] = tmp;
-      tmp = im[i]; im[i] = im[j]; im[j] = tmp;
-    }
-  }
-  for (let len = 2; len <= n; len <<= 1) {
-    const half = len >> 1;
-    const angle = -2 * Math.PI / len;
-    const wRe = Math.cos(angle);
-    const wIm = Math.sin(angle);
-    for (let i = 0; i < n; i += len) {
-      let curRe = 1, curIm = 0;
-      for (let j = 0; j < half; j++) {
-        const a = i + j;
-        const b = a + half;
-        const tRe = curRe * re[b] - curIm * im[b];
-        const tIm = curRe * im[b] + curIm * re[b];
-        re[b] = re[a] - tRe;
-        im[b] = im[a] - tIm;
-        re[a] += tRe;
-        im[a] += tIm;
-        const nextRe = curRe * wRe - curIm * wIm;
-        curIm = curRe * wIm + curIm * wRe;
-        curRe = nextRe;
-      }
-    }
-  }
+function loadWorker(sampleRate) {
+  const src = readFileSync(WORKER_PATH, "utf8");
+  const ctx = {
+    self: { postMessage() {}, onmessage: null },
+    performance: { now: () => 0, timeOrigin: 0 },
+    console,
+  };
+  vm.createContext(ctx);
+  vm.runInContext(src, ctx, { filename: "dsp-worker.js" });
+  ctx.self.onmessage({ data: { type: "init", sampleRate } });
+  return {
+    ctx,
+    detectPitch: ctx.detectPitch,
+    sampleRate,
+  };
 }
+
+function steadyStateDetect(w, sig, sr) {
+  const lookback = (typeof w.ctx.__PYIN_LOOKBACK === "number" && w.ctx.__PYIN_LOOKBACK >= 1)
+    ? w.ctx.__PYIN_LOOKBACK : 4;
+  const frames = lookback + 3;
+  w.ctx.self.onmessage({ data: { type: "reset-pitch-hmm" } });
+  let result = null;
+  for (let i = 0; i < frames; i++) result = w.detectPitch(sig, sr);
+  return result;
+}
+
+function streamingMedianDetect(w, samples, sr) {
+  w.ctx.self.onmessage({ data: { type: "reset-pitch-hmm" } });
+  const winN = Math.floor(sr * 50 / 1000);
+  const hopN = Math.floor(sr * 25 / 1000);
+  const startN = Math.floor(samples.length * 0.15);
+  const endN = Math.floor(samples.length * 0.85);
+  const trace = [];
+  for (let i = startN; i + winN <= endN; i += hopN) {
+    const r = w.detectPitch(samples.subarray(i, i + winN), sr);
+    if (r !== null) trace.push(r);
+  }
+  if (trace.length === 0) return null;
+  const sorted = [...trace].sort((a, b) => a - b);
+  return sorted[Math.floor(sorted.length / 2)];
+}
+
+// Pre-load worker contexts at the two sample rates this test uses.
+// 48 kHz for synthetic stimuli, 16 kHz for Hillenbrand WAVs.
+const w48 = loadWorker(48000);
+const w16 = loadWorker(16000);
+
+// ============================================================
+//  DSP FUNCTIONS — formant extraction stays inline (separate concern
+//  from pYIN; not within scope of the pYIN test-conversion pass).
+// ============================================================
 
 function designLowPassFIR(cutoffNormalized, numTaps) {
   const coeffs = new Float64Array(numTaps);
@@ -81,110 +107,6 @@ function designLowPassFIR(cutoffNormalized, numTaps) {
   for (let i = 0; i < numTaps; i++) sum += coeffs[i];
   for (let i = 0; i < numTaps; i++) coeffs[i] /= sum;
   return coeffs;
-}
-
-function detectPitch(buffer, sr) {
-  const threshold = 0.20;
-  const minF0 = 75;
-  const maxF0 = 600;
-  const minLag = Math.floor(sr / maxF0);
-  const maxLag = Math.floor(sr / minF0);
-  const halfLen = Math.floor(buffer.length / 2);
-  const searchLen = Math.min(maxLag + 2, halfLen);
-
-  if (maxLag >= halfLen) return null;
-
-  const N = buffer.length;
-  let fftLen = 1;
-  while (fftLen < N * 2) fftLen <<= 1;
-  const re = new Float64Array(fftLen);
-  const im = new Float64Array(fftLen);
-
-  for (let i = 0; i < N; i++) re[i] = buffer[i];
-
-  fft(re, im);
-  for (let i = 0; i < fftLen; i++) {
-    re[i] = re[i] * re[i] + im[i] * im[i];
-    im[i] = 0;
-  }
-  fft(re, im);
-
-  const diff = new Float32Array(searchLen);
-  const cumSq = new Float64Array(N + 1);
-  cumSq[0] = 0;
-  for (let i = 0; i < N; i++) {
-    cumSq[i + 1] = cumSq[i] + buffer[i] * buffer[i];
-  }
-
-  diff[0] = 0;
-  for (let tau = 1; tau < searchLen; tau++) {
-    const autocorr = re[tau] / fftLen;
-    diff[tau] = cumSq[N - tau] + (cumSq[N] - cumSq[tau]) - 2 * autocorr;
-  }
-
-  const cmnd = new Float32Array(searchLen);
-  cmnd[0] = 1;
-  let runningSum = 0;
-  for (let tau = 1; tau < searchLen; tau++) {
-    runningSum += diff[tau];
-    cmnd[tau] = diff[tau] / (runningSum / tau);
-  }
-
-  let bestTau = -1;
-  for (let tau = minLag; tau < Math.min(maxLag, searchLen); tau++) {
-    if (cmnd[tau] < threshold) {
-      while (tau + 1 < searchLen && cmnd[tau + 1] < cmnd[tau]) tau++;
-      bestTau = tau;
-      break;
-    }
-  }
-
-  if (bestTau === -1) return null;
-
-  // Octave/harmonic error check — mirror dsp-worker.js's absolute+relative guard.
-  const HARMONIC_IMPROVEMENT_MIN = 0.003;
-  const HARMONIC_RELATIVE_K2 = 0.5;
-  const baseTau = bestTau;
-  const bestFreq = sr / baseTau;
-  const maxMult = bestFreq > 300 ? 4 : 2;
-  let correctedTau = -1;
-  let correctedCmnd = Infinity;
-  for (let mult = 2; mult <= maxMult; mult++) {
-    const multiTau = baseTau * mult;
-    if (multiTau + 1 >= searchLen || multiTau >= maxLag) break;
-    const searchStart = Math.max(minLag, Math.floor(multiTau * 0.9));
-    const searchEnd = Math.min(Math.ceil(multiTau * 1.1), searchLen - 1, maxLag);
-    let minCmndVal = Infinity;
-    let minTau = -1;
-    for (let tau = searchStart; tau <= searchEnd; tau++) {
-      if (cmnd[tau] < minCmndVal) {
-        minCmndVal = cmnd[tau];
-        minTau = tau;
-      }
-    }
-    if (minTau === -1) continue;
-    const absOk = minCmndVal < 0.15;
-    const absImprovementOk = (cmnd[baseTau] - minCmndVal) >= HARMONIC_IMPROVEMENT_MIN;
-    const relImprovementOk =
-      mult !== 2 || minCmndVal < cmnd[baseTau] * HARMONIC_RELATIVE_K2;
-    if (absOk && absImprovementOk && relImprovementOk && minCmndVal < correctedCmnd) {
-      correctedTau = minTau;
-      correctedCmnd = minCmndVal;
-    }
-  }
-  if (correctedTau !== -1) bestTau = correctedTau;
-
-  const s0 = bestTau > 0 ? cmnd[bestTau - 1] : cmnd[bestTau];
-  const s1 = cmnd[bestTau];
-  const s2 = bestTau + 1 < searchLen ? cmnd[bestTau + 1] : cmnd[bestTau];
-  const denom = 2 * (s0 - 2 * s1 + s2);
-  let refinedTau = denom !== 0 ? bestTau + (s0 - s2) / denom : bestTau;
-
-  const minTauVal = sr / maxF0;
-  const maxTauVal = sr / minF0;
-  refinedTau = Math.max(minTauVal, Math.min(maxTauVal, refinedTau));
-
-  return sr / refinedTau;
 }
 
 const MAX_FORMANT_SR = 12000;
@@ -548,7 +470,7 @@ function testSyntheticPitch() {
   const pureErrors = [];
   for (const freq of frequencies) {
     const signal = generatePureTone(freq, sampleRate, windowMs);
-    const detected = detectPitch(signal, sampleRate);
+    const detected = steadyStateDetect(w48, signal, sampleRate);
     const error = detected ? Math.abs(detected - freq) : Infinity;
     pureErrors.push(error);
     const pass = error < 3;
@@ -562,7 +484,7 @@ function testSyntheticPitch() {
   const complexErrors = [];
   for (const freq of frequencies) {
     const signal = generateComplexTone(freq, sampleRate, windowMs);
-    const detected = detectPitch(signal, sampleRate);
+    const detected = steadyStateDetect(w48, signal, sampleRate);
     const error = detected ? Math.abs(detected - freq) : Infinity;
     complexErrors.push(error);
     const pass = error < 5;
@@ -581,7 +503,7 @@ function testSyntheticPitch() {
   for (const freq of [90, 100, 110, 120, 140, 160, 180, 220]) {
     for (const bw of [60, 100, 150]) {
       const signal = generateFormantDoubledF0(freq, sampleRate, windowMs, bw);
-      const detected = detectPitch(signal, sampleRate);
+      const detected = steadyStateDetect(w48, signal, sampleRate);
       const error = detected ? Math.abs(detected - freq) : Infinity;
       octaveErrors.push(error);
       const pass = error < 5;
@@ -602,7 +524,7 @@ function testSyntheticPitch() {
   for (const freq of [110, 120, 130, 140, 160]) {
     for (const bw of [60, 100, 150]) {
       const signal = generateFormantOnHarmonic(freq, 3, sampleRate, windowMs, bw);
-      const detected = detectPitch(signal, sampleRate);
+      const detected = steadyStateDetect(w48, signal, sampleRate);
       const error = detected ? Math.abs(detected - freq) : Infinity;
       triplingErrors.push(error);
       const pass = error < 5;
@@ -618,7 +540,7 @@ function testSyntheticPitch() {
   const complexErrors16k = [];
   for (const freq of frequencies) {
     const signal = generateComplexTone(freq, 16000, windowMs);
-    const detected = detectPitch(signal, 16000);
+    const detected = steadyStateDetect(w16, signal, 16000);
     const error = detected ? Math.abs(detected - freq) : Infinity;
     complexErrors16k.push(error);
     const pass = error < 5;
@@ -703,13 +625,17 @@ function testRealVoices() {
 
     const { samples, sampleRate } = readWav(wavPath);
 
-    // Use a 50ms window from the middle of the vowel (steady state)
+    // Pitch: stream the central 70 % of the recording through the
+    // stateful HMM, take the median of the non-null trace. See
+    // streamingMedianDetect's header in real-speech-test.js for the
+    // helper-choice rationale.
+    const detectedF0 = streamingMedianDetect(w16, samples, sampleRate);
+
+    // Formants: still extract from a 50 ms steady-state window. The
+    // formant code is a separate concern from pYIN and stays inline
+    // for now (would convert to vm-context if/when the formant code
+    // gets a stateful refactor of its own).
     const window = extractMiddleWindow(samples, sampleRate, 50);
-
-    // Detect pitch
-    const detectedF0 = detectPitch(window, sampleRate);
-
-    // Detect formants (pass pitch for adaptive LPC order)
     const formants = extractFormants(window, sampleRate, detectedF0);
 
     const genderKey = entry.gender === "m" ? "male" : "female";

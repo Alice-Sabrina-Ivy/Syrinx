@@ -6,6 +6,14 @@
 // Usage:
 //   node tests/dsp/real-speech-test.js
 //
+// State-contract note: detectPitch maintains HMM state across calls under
+// PYIN_STAGE=2 (the production default). Pass 1 below treats each file as
+// independent, so it uses `steadyStateDetect` to reset HMM state and feed
+// enough warm-up frames to satisfy the lookback. Pass 2 deliberately does
+// NOT reset between hops within the same file — it mirrors production's
+// continuous-stream behavior and lets state persist for the smoother to
+// observe.
+//
 // Required fixtures (downloaded once, gitignored):
 //   tests/dsp/data/vowdata.dat
 //   tests/dsp/data/men/*.wav
@@ -51,10 +59,77 @@ function loadWorker(sampleRate) {
   vm.runInContext(src, ctx, { filename: "dsp-worker.js" });
   ctx.self.onmessage({ data: { type: "init", sampleRate } });
   return {
+    ctx,
     detectPitch: ctx.detectPitch,
     sampleRate,
     windowSize: Math.floor((sampleRate * 50) / 1000),
   };
+}
+
+// ---------------------------------------------------------------------------
+//  Helper-choice contract — DO NOT mix these up.
+// ---------------------------------------------------------------------------
+//
+// steadyStateDetect:    for stationary stimuli where same-window-repeated
+//                       equals sequential-frames-of-same-signal (pure tones,
+//                       synthetic harmonic stress, vibrato-within-window).
+//
+// streamingMedianDetect: for real recordings where adjacent windows differ.
+//                       Same-window-repeated produces measurement artifacts
+//                       on these — see pass1-helper-diagnostic-2026-05-04.md
+//                       for the failure mode and corpus-level evidence.
+//
+// Mixing these up produces wrong numbers without obviously failing — both
+// helpers return plausible-looking pitches. The diagnostic that surfaced
+// the issue measured F p95 = 210 Hz with the wrong helper vs F p95 ≈ 30 Hz
+// with the right one (a 7× difference).
+
+// Steady-state evaluation for an independent stationary stimulus under
+// stateful Stage 2.B. Resets HMM, feeds the same stimulus through
+// (lookback + 3) frames to satisfy warm-up plus convergence margin, then
+// returns the final call's result (whether null or not — masking nulls
+// would hide real failures). Stage 0 / Stage 1 ignore the repeats and
+// produce the same result every call.
+function steadyStateDetect(w, sig, sr) {
+  const lookback = (typeof w.ctx.__PYIN_LOOKBACK === "number" && w.ctx.__PYIN_LOOKBACK >= 1)
+    ? w.ctx.__PYIN_LOOKBACK : 4;
+  const frames = lookback + 3;
+  w.ctx.self.onmessage({ data: { type: "reset-pitch-hmm" } });
+  let result = null;
+  for (let i = 0; i < frames; i++) {
+    result = w.detectPitch(sig, sr);
+  }
+  return result;
+}
+
+// Streaming median evaluation for a real (non-stationary) recording.
+// Resets HMM at the start of the file, then steps adjacent 50 ms windows
+// at 25 ms hops over the central 70 % of the recording — exactly the
+// hop cadence production runs at. NO reset within the file; the HMM is
+// supposed to track pitch across hops, just like in production. Returns
+// the MEDIAN of non-null pitch values from the trace.
+//
+// Median (not last-non-null) because real recordings have onset and
+// trail-off pitch artifacts (formant transitions at vowel boundaries,
+// low-energy frames at the start/end). last-non-null inherits whatever
+// happened at the end of the file; median picks the steady-state pitch
+// the HMM was tracking through most of the recording. The
+// pass1-helper-diagnostic-2026-05-04.md measurement showed median was
+// 7× lower p95 than last-non-null on the Hillenbrand corpus — keep this.
+function streamingMedianDetect(w, samples, sr) {
+  w.ctx.self.onmessage({ data: { type: "reset-pitch-hmm" } });
+  const winN = Math.floor(sr * 50 / 1000);
+  const hopN = Math.floor(sr * 25 / 1000);
+  const startN = Math.floor(samples.length * 0.15);
+  const endN = Math.floor(samples.length * 0.85);
+  const trace = [];
+  for (let i = startN; i + winN <= endN; i += hopN) {
+    const r = w.detectPitch(samples.subarray(i, i + winN), sr);
+    if (r !== null) trace.push(r);
+  }
+  if (trace.length === 0) return null;
+  const sorted = [...trace].sort((a, b) => a - b);
+  return sorted[Math.floor(sorted.length / 2)];
 }
 
 // ---------------------------------------------------------------------------
@@ -204,12 +279,11 @@ for (const e of entries) {
   const { samples, sampleRate } = readWav(wavPath);
   if (sampleRate !== 16000) continue;
 
-  // Steady-state 50 ms window from the middle of the recording
-  const winN = w16.windowSize;
-  const start = Math.max(0, Math.floor((samples.length - winN) / 2));
-  const window = samples.subarray(start, start + winN);
-
-  const got = w16.detectPitch(window, 16000);
+  // Stream the central 70 % of the recording through the stateful HMM,
+  // taking the median of the non-null pitch trace. This is the
+  // production-equivalent measurement — see streamingMedianDetect's
+  // header for why median rather than last-non-null.
+  const got = streamingMedianDetect(w16, samples, 16000);
   const bucket = octaveBucket(got, e.f0);
   bucketsByGender[e.gender][bucket] = (bucketsByGender[e.gender][bucket] || 0) + 1;
 

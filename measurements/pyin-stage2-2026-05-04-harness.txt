@@ -1,0 +1,514 @@
+Loading corpus + synthetic stimuli…
+  corpus: 1116 files (540 M, 576 F)
+  synthetic: 5 2nd-dom + 4 3rd-dom @ 48000 Hz, 800 ms each
+
+Stage 0 (legacy YIN + multi-mult)
+  Female F0 error: mean=30.65 median=13.09 p95=169.58 max=291.28 (n=576)   [2.0s]
+  Male F0 error:   mean=26.16 median=7.63 p95=207.38 max=388.99 (n=540)
+  Sub-locks: 6    Female buckets: {"exact":293,"wild":257,"halved":6,"2x":20}
+  Synthetic 2nd-dom: 5/5    3rd-dom: 4/4
+
+Stage 1 (Beta(2,18) + naive argmax)
+  Female F0 error: mean=39.39 median=15.95 p95=202.83 max=331.19 (n=576)   [2.0s]
+  Male F0 error:   mean=53.02 median=11.52 p95=327.94 max=456.64 (n=540)
+  Sub-locks: 31    Female buckets: {"exact":254,"wild":278,"halved":17,"thirded":6,"3x":3,"2x":18}
+  Synthetic 2nd-dom: 5/5    3rd-dom: 4/4
+
+Stage 2 + L=2  (50 ms latency)
+  Female F0 error: mean=13.42 median=4.38 p95=25.91 max=261.05 (n=385)   [5.7s]
+  Male F0 error:   mean=4.82 median=1.95 p95=8.71 max=353.75 (n=179)
+  Sub-locks: 0    Female buckets: {"exact":314,"miss":191,"wild":59,"2x":12}
+  Synthetic 2nd-dom: 5/5    3rd-dom: 4/4
+
+Stage 2 + L=5  (125 ms latency)
+  Female F0 error: mean=12.80 median=3.33 p95=23.31 max=254.05 (n=368)   [5.2s]
+  Male F0 error:   mean=4.04 median=1.25 p95=7.71 max=281.33 (n=155)
+  Sub-locks: 0    Female buckets: {"exact":322,"miss":208,"wild":34,"2x":12}
+  Synthetic 2nd-dom: 5/5    3rd-dom: 4/4
+
+Stage 2 + L=10 (250 ms latency)
+  Female F0 error: mean=10.57 median=2.34 p95=15.04 max=254.05 (n=284)   [5.4s]
+  Male F0 error:   mean=5.40 median=1.30 p95=6.91 max=281.33 (n=80)
+  Sub-locks: 0    Female buckets: {"exact":267,"miss":292,"wild":8,"2x":9}
+  Synthetic 2nd-dom: 5/5    3rd-dom: 4/4
+
+--- Pareto table (accuracy vs latency) ---
+  cell                                       F mean   M mean   2nd  3rd  subL  latency
+  Stage 0 (legacy YIN + multi-mult)           30.65    26.16   5/5  4/4     6  n/a
+  Stage 1 (Beta(2,18) + naive argmax)         39.39    53.02   5/5  4/4    31  n/a
+  Stage 2 + L=2  (50 ms latency)              13.42     4.82   5/5  4/4     0  50 ms
+  Stage 2 + L=5  (125 ms latency)             12.80     4.04   5/5  4/4     0  125 ms
+  Stage 2 + L=10 (250 ms latency)             10.57     5.40   5/5  4/4     0  250 ms
+
+--- BEGIN-JSON ---
+[
+  {
+    "label": "Stage 0 (legacy YIN + multi-mult)",
+    "stage": 0,
+    "lookback": null,
+    "f": {
+      "mean": 30.65430021430414,
+      "median": 13.087465297607196,
+      "p95": 169.57945233405496,
+      "max": 291.27956400985795,
+      "n": 576
+    },
+    "m": {
+      "mean": 26.155608249212257,
+      "median": 7.631224018679887,
+      "p95": 207.380375322325,
+      "max": 388.9898497730503,
+      "n": 540
+    },
+    "subLocks": 6,
+    "buckets": {
+      "m": {
+        "exact": 285,
+        "wild": 238,
+        "4x": 10,
+        "3x": 7
+      },
+      "w": {
+        "exact": 293,
+        "wild": 257,
+        "halved": 6,
+        "2x": 20
+      }
+    },
+    "nullCount": 0,
+    "second": [
+      {
+        "f0": 85,
+        "label": "2nd-dom f0=85",
+        "detected": 85.00006048638178,
+        "pass": true
+      },
+      {
+        "f0": 100,
+        "label": "2nd-dom f0=100",
+        "detected": 99.99988829338226,
+        "pass": true
+      },
+      {
+        "f0": 130,
+        "label": "2nd-dom f0=130",
+        "detected": 130.00041052403577,
+        "pass": true
+      },
+      {
+        "f0": 175,
+        "label": "2nd-dom f0=175",
+        "detected": 175.0008775032801,
+        "pass": true
+      },
+      {
+        "f0": 220,
+        "label": "2nd-dom f0=220",
+        "detected": 220.00216400501753,
+        "pass": true
+      }
+    ],
+    "third": [
+      {
+        "f0": 110,
+        "label": "3rd-dom f0=110",
+        "detected": 110.000184222925,
+        "pass": true
+      },
+      {
+        "f0": 128,
+        "label": "3rd-dom f0=128",
+        "detected": 128.00044322158146,
+        "pass": true
+      },
+      {
+        "f0": 140,
+        "label": "3rd-dom f0=140",
+        "detected": 140.0005330577904,
+        "pass": true
+      },
+      {
+        "f0": 160,
+        "label": "3rd-dom f0=160",
+        "detected": 160.00088741009603,
+        "pass": true
+      }
+    ]
+  },
+  {
+    "label": "Stage 1 (Beta(2,18) + naive argmax)",
+    "stage": 1,
+    "lookback": null,
+    "f": {
+      "mean": 39.38592682555165,
+      "median": 15.947258416180432,
+      "p95": 202.82982995382173,
+      "max": 331.1928458159703,
+      "n": 576
+    },
+    "m": {
+      "mean": 53.01997468216088,
+      "median": 11.521476271888872,
+      "p95": 327.9368566835693,
+      "max": 456.6353806190557,
+      "n": 540
+    },
+    "subLocks": 31,
+    "buckets": {
+      "m": {
+        "exact": 218,
+        "wild": 281,
+        "4x": 15,
+        "halved": 8,
+        "3x": 17,
+        "2x": 1
+      },
+      "w": {
+        "exact": 254,
+        "wild": 278,
+        "halved": 17,
+        "thirded": 6,
+        "3x": 3,
+        "2x": 18
+      }
+    },
+    "nullCount": 0,
+    "second": [
+      {
+        "f0": 85,
+        "label": "2nd-dom f0=85",
+        "detected": 85.00006048638178,
+        "pass": true
+      },
+      {
+        "f0": 100,
+        "label": "2nd-dom f0=100",
+        "detected": 99.99988829338226,
+        "pass": true
+      },
+      {
+        "f0": 130,
+        "label": "2nd-dom f0=130",
+        "detected": 130.00041052403577,
+        "pass": true
+      },
+      {
+        "f0": 175,
+        "label": "2nd-dom f0=175",
+        "detected": 175.0008775032801,
+        "pass": true
+      },
+      {
+        "f0": 220,
+        "label": "2nd-dom f0=220",
+        "detected": 220.00216400501753,
+        "pass": true
+      }
+    ],
+    "third": [
+      {
+        "f0": 110,
+        "label": "3rd-dom f0=110",
+        "detected": 110.000184222925,
+        "pass": true
+      },
+      {
+        "f0": 128,
+        "label": "3rd-dom f0=128",
+        "detected": 128.00044322158146,
+        "pass": true
+      },
+      {
+        "f0": 140,
+        "label": "3rd-dom f0=140",
+        "detected": 140.0005330577904,
+        "pass": true
+      },
+      {
+        "f0": 160,
+        "label": "3rd-dom f0=160",
+        "detected": 160.00088741009603,
+        "pass": true
+      }
+    ]
+  },
+  {
+    "label": "Stage 2 + L=2  (50 ms latency)",
+    "stage": 2,
+    "lookback": 2,
+    "f": {
+      "mean": 13.417107048465589,
+      "median": 4.375229369025192,
+      "p95": 25.91496347014646,
+      "max": 261.0527516570217,
+      "n": 385
+    },
+    "m": {
+      "mean": 4.8227174460978395,
+      "median": 1.9549487305211244,
+      "p95": 8.71423261850839,
+      "max": 353.7504587380504,
+      "n": 179
+    },
+    "subLocks": 0,
+    "buckets": {
+      "m": {
+        "exact": 171,
+        "miss": 361,
+        "wild": 7,
+        "4x": 1
+      },
+      "w": {
+        "exact": 314,
+        "miss": 191,
+        "wild": 59,
+        "2x": 12
+      }
+    },
+    "nullCount": 552,
+    "second": [
+      {
+        "f0": 85,
+        "label": "2nd-dom f0=85",
+        "detected": 84.96629139718489,
+        "pass": true
+      },
+      {
+        "f0": 100,
+        "label": "2nd-dom f0=100",
+        "detected": 100.3445666089584,
+        "pass": true
+      },
+      {
+        "f0": 130,
+        "label": "2nd-dom f0=130",
+        "detected": 129.68058469617978,
+        "pass": true
+      },
+      {
+        "f0": 175,
+        "label": "2nd-dom f0=175",
+        "detected": 174.71003797026836,
+        "pass": true
+      },
+      {
+        "f0": 220,
+        "label": "2nd-dom f0=220",
+        "detected": 219.61285439184383,
+        "pass": true
+      }
+    ],
+    "third": [
+      {
+        "f0": 110,
+        "label": "3rd-dom f0=110",
+        "detected": 109.80642719592191,
+        "pass": true
+      },
+      {
+        "f0": 128,
+        "label": "3rd-dom f0=128",
+        "detected": 127.89523376519351,
+        "pass": true
+      },
+      {
+        "f0": 140,
+        "label": "3rd-dom f0=140",
+        "detected": 139.95494873052112,
+        "pass": true
+      },
+      {
+        "f0": 160,
+        "label": "3rd-dom f0=160",
+        "detected": 159.65552736800402,
+        "pass": true
+      }
+    ]
+  },
+  {
+    "label": "Stage 2 + L=5  (125 ms latency)",
+    "stage": 2,
+    "lookback": 5,
+    "f": {
+      "mean": 12.804913242892264,
+      "median": 3.3332686393003996,
+      "p95": 23.310866782083195,
+      "max": 254.0527516570217,
+      "n": 368
+    },
+    "m": {
+      "mean": 4.040343383471991,
+      "median": 1.2537606391958604,
+      "p95": 7.710261423793355,
+      "max": 281.33346272139926,
+      "n": 155
+    },
+    "subLocks": 0,
+    "buckets": {
+      "m": {
+        "exact": 148,
+        "miss": 385,
+        "wild": 6,
+        "3x": 1
+      },
+      "w": {
+        "exact": 322,
+        "miss": 208,
+        "wild": 34,
+        "2x": 12
+      }
+    },
+    "nullCount": 593,
+    "second": [
+      {
+        "f0": 85,
+        "label": "2nd-dom f0=85",
+        "detected": 84.96629139718489,
+        "pass": true
+      },
+      {
+        "f0": 100,
+        "label": "2nd-dom f0=100",
+        "detected": 100.3445666089584,
+        "pass": true
+      },
+      {
+        "f0": 130,
+        "label": "2nd-dom f0=130",
+        "detected": 129.68058469617978,
+        "pass": true
+      },
+      {
+        "f0": 175,
+        "label": "2nd-dom f0=175",
+        "detected": 174.71003797026836,
+        "pass": true
+      },
+      {
+        "f0": 220,
+        "label": "2nd-dom f0=220",
+        "detected": 219.61285439184383,
+        "pass": true
+      }
+    ],
+    "third": [
+      {
+        "f0": 110,
+        "label": "3rd-dom f0=110",
+        "detected": 109.80642719592191,
+        "pass": true
+      },
+      {
+        "f0": 128,
+        "label": "3rd-dom f0=128",
+        "detected": 127.89523376519351,
+        "pass": true
+      },
+      {
+        "f0": 140,
+        "label": "3rd-dom f0=140",
+        "detected": 139.95494873052112,
+        "pass": true
+      },
+      {
+        "f0": 160,
+        "label": "3rd-dom f0=160",
+        "detected": 159.65552736800402,
+        "pass": true
+      }
+    ]
+  },
+  {
+    "label": "Stage 2 + L=10 (250 ms latency)",
+    "stage": 2,
+    "lookback": 10,
+    "f": {
+      "mean": 10.57351877407117,
+      "median": 2.339054873524418,
+      "p95": 15.043845009151994,
+      "max": 254.0527516570217,
+      "n": 284
+    },
+    "m": {
+      "mean": 5.399340080714052,
+      "median": 1.3047532495552332,
+      "p95": 6.913044638039025,
+      "max": 281.33346272139926,
+      "n": 80
+    },
+    "subLocks": 0,
+    "buckets": {
+      "m": {
+        "miss": 460,
+        "exact": 79,
+        "3x": 1
+      },
+      "w": {
+        "exact": 267,
+        "miss": 292,
+        "wild": 8,
+        "2x": 9
+      }
+    },
+    "nullCount": 752,
+    "second": [
+      {
+        "f0": 85,
+        "label": "2nd-dom f0=85",
+        "detected": 84.96629139718489,
+        "pass": true
+      },
+      {
+        "f0": 100,
+        "label": "2nd-dom f0=100",
+        "detected": 100.3445666089584,
+        "pass": true
+      },
+      {
+        "f0": 130,
+        "label": "2nd-dom f0=130",
+        "detected": 129.68058469617978,
+        "pass": true
+      },
+      {
+        "f0": 175,
+        "label": "2nd-dom f0=175",
+        "detected": 174.71003797026836,
+        "pass": true
+      },
+      {
+        "f0": 220,
+        "label": "2nd-dom f0=220",
+        "detected": 219.61285439184383,
+        "pass": true
+      }
+    ],
+    "third": [
+      {
+        "f0": 110,
+        "label": "3rd-dom f0=110",
+        "detected": 109.80642719592191,
+        "pass": true
+      },
+      {
+        "f0": 128,
+        "label": "3rd-dom f0=128",
+        "detected": 127.89523376519351,
+        "pass": true
+      },
+      {
+        "f0": 140,
+        "label": "3rd-dom f0=140",
+        "detected": 139.95494873052112,
+        "pass": true
+      },
+      {
+        "f0": 160,
+        "label": "3rd-dom f0=160",
+        "detected": 159.65552736800402,
+        "pass": true
+      }
+    ]
+  }
+]
+--- END-JSON ---

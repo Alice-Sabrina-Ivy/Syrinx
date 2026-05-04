@@ -1,0 +1,67 @@
+Post-change measurements — 2026-05-04
+======================================
+
+Change shipped: src/dsp/dsp-worker.js HARMONIC_IMPROVEMENT_MIN: 0.003 -> 0.010
+(plus inline-copy sync in tests/dsp/{accuracy,yin-harmonic}-test.js and
+the audit regex in tests/dsp/pitch-detection-comprehensive.js).
+
+Per-test files in this directory:
+  pitch-after-impMin-tighten-2026-05-04-accuracy.txt
+  pitch-after-impMin-tighten-2026-05-04-yin-harmonic.txt
+  pitch-after-impMin-tighten-2026-05-04-real-speech.txt
+  pitch-after-impMin-tighten-2026-05-04-pitch-smoothing.txt
+  pitch-after-impMin-tighten-2026-05-04-comprehensive.txt
+
+Headline deltas vs baseline (docs/pitch-baseline-2026-05-04-*.txt):
+
+  Test suite                            Baseline    After    Delta
+  -----------------------------------   --------    -----    -----
+  accuracy-test female F0 mean (Hz)        19.4     15.0     -4.4
+  accuracy-test male F0 mean (Hz)           3.1      3.1      0
+  real-speech female F0 mean (Hz)          15.4     14.2     -1.2  *prediction met
+  real-speech female F0 median (Hz)         4.8      4.6     -0.2
+  real-speech female F0 p95 (Hz)          110.2    105.7     -4.5
+  real-speech male F0 mean (Hz)             9.8      9.8      0    *prediction met
+  real-speech sub-harmonic-lock cases        36       30     -6    *prediction met
+  real-speech smoothing recovery          34/36    28/30     (consistent)
+  real-speech bucket: female halved          33       27     -6
+  real-speech bucket: female 2x               3        3      0
+  real-speech bucket: female miss/wild   12/86    12/86      0/0
+
+Assertion counts (all suites pass clean):
+
+  yin-harmonic-test.js                  12 / 0
+  pitch-smoothing-test.js               32 / 0
+  pitch-detection-comprehensive.js      88 / 0
+  real-speech-test.js                    5 / 0
+  accuracy-test.js                      no formal asserts; targets:
+                                          male F0 < 10 Hz   PASS  (3.1)
+                                          female F0 < 10 Hz FAIL  (15.0)  -- known
+                                          formant targets   all PASS
+
+Key observations:
+
+  1. The Pareto-prediction held quantitatively: real-speech female mean
+     -1.2 Hz, male unchanged, sub-locks -6. This was exactly what the
+     sweep at cell (relK2=0.50, impMin=0.010, absOk=0.15) reported.
+
+  2. The accuracy-test female F0 mean dropped much more than the
+     real-speech full-corpus number (-4.4 vs -1.2). That's because the
+     accuracy-test subset (5 per vowel x 12 vowels = 60 women) includes
+     proportionally more vowels with halving-prone characteristics, so
+     it benefits more from the same change. The full-corpus number is
+     the more statistically robust signal.
+
+  3. Female F0 still FAILS the < 10 Hz target in accuracy-test. That
+     was anticipated by the sweep analysis -- the Pareto frontier maxes
+     out at ~14 Hz on the full corpus, ~15 on this subset. Closing the
+     gap requires an algorithmic upgrade (pYIN / MPM / SWIPE'),
+     not further constant tuning. See
+     measurements/harmonic-gate-analysis-2026-05-04.md.
+
+  4. All synthetic stress tests (2nd harmonic, 3rd harmonic, octave-
+     doubling, octave-tripling) pass without a single regression --
+     consistent with the sweep showing 5/5 + 4/4 across all 84 cells.
+
+  5. No regression in any other test suite. Smoothing-test still 32/32,
+     comprehensive still 88/88, yin-harmonic still 12/12.

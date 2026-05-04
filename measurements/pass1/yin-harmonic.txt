@@ -1,0 +1,21 @@
+YIN — clean fundamentals (regression: nothing should regress)
+  ✓ clean 100 Hz with geometric harmonics → detected ~100 Hz (got 100.0)
+  ✓ clean 130 Hz with geometric harmonics → detected ~130 Hz (got 130.0)
+  ✓ clean 200 Hz with geometric harmonics → detected ~200 Hz (got 200.0)
+  ✓ clean 250 Hz with geometric harmonics → detected ~250 Hz (got 250.0)
+  ✓ clean 300 Hz with geometric harmonics → detected ~300 Hz (got 300.0)
+  ✓ clean 440 Hz with geometric harmonics → detected ~440 Hz (got 440.0)
+
+YIN — formant-amplified 3rd harmonic (the user's bug)
+  ✓ 128 Hz with strong 3rd harmonic → detected ~128 Hz (got 128.0)
+  ✓ …and definitely NOT ~384 Hz (got 128.0)
+  ✓ 130 Hz with strong 2nd harmonic → detected ~130 Hz (got 130.0)
+
+YIN — clean signals must NOT be falsely halved
+  ✓ pure 200 Hz sine → detected ~200 Hz (got 200.0)
+  ✓ pure 250 Hz + noise → detected ~250 Hz (got 250.0)
+
+YIN — back-vowel-like signal (was the regression test for halving)
+  ✓ /u/-like 110 Hz → detected ~110 Hz, not 55 Hz (got 110.0)
+
+12 passed, 0 failed
