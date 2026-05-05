@@ -195,34 +195,66 @@ const PYIN_LOOKBACK_DEFAULT = 4;
 // with naive argmax), or 2.
 const _PYIN_STAGE_DEFAULT = 2;
 
-// Pitch transition log-probabilities — Gaussian over cents distance,
+// Pitch transition log-probabilities — mixture prior over cents distance,
 // independent of voicing. Transposed layout: [to_pitch·N_PITCH + from_pitch]
 // = log P(from_pitch → to_pitch). ~360 KB Float32. Used for both
 // voiced→voiced and unvoiced→unvoiced and voicing-flip transitions —
 // pitch transition factor is the same regardless of voicing change.
 //
-// Built at module load with the default σ; the {type: "set-pyin-sigma"}
-// message rebuilds it with a different σ. Harness-only API: production
-// runs the default. The matrix is sample-rate-independent (cents are
-// log-frequency), so a single rebuild covers all worker contexts.
+// Mixture form:
+//   P(from → to) = (1 − α) · Gaussian_norm(d, σ) + α · (1 / N_pitch)
+//
+// Where Gaussian_norm is the σ-Gaussian over cents distance, normalized
+// to sum to 1 over destinations. The α-uniform component creates a finite
+// transition probability between any two states regardless of distance,
+// which prevents permanent octave-lock states the pure Gaussian admits
+// (a 1200-cent jump in σ=50 has cost exp(−288), effectively infinite).
+//
+// α=0 reproduces the previous Stage 2.B behavior exactly. α=0 is the
+// shipped default until the octave-lock investigation selects a value.
+//
+// Built at module load with the default (σ, α). The {type: "set-pyin-sigma"}
+// and {type: "set-pyin-alpha"} messages rebuild with different values.
+// Harness-only API: production runs the default. The matrix is sample-
+// rate-independent (cents are log-frequency), so a single rebuild covers
+// all worker contexts.
+// α=0.0001 — the smallest mixture weight that achieves the recovery
+// improvement (recovery floor at α≥0.0001 is L=4 lookback ≈ 4–6 frames;
+// α=0 leaves cross-octave transitions at exp(−288) which traps the HMM
+// for ≥10 frames after octave-lock). Larger α (≥0.001) gives identical
+// recovery on the synthetic stimuli but introduces accuracy drift on
+// female voices in the Hillenbrand corpus. α=0.0001 strictly improves
+// over α=0 on full corpus: M 12.2→9.6 Hz, F 12.2→11.3 Hz mean F0 error,
+// gender-symmetric max metric improves 12.2→11.3. See
+// measurements/octave-lock-investigation-2026-05-05.md.
+const _PYIN_ALPHA_DEFAULT = 0.0001;
 const _PYIN_LOG_PITCH_TRANS = new Float32Array(_PYIN_N_PITCH * _PYIN_N_PITCH);
-function _pyinBuildPitchTrans(sigma) {
+function _pyinBuildPitchTrans(sigma, alpha) {
   const cps = _PYIN_CENTS_PER_STATE;
-  const w = new Float64Array(_PYIN_N_PITCH);
-  for (let from = 0; from < _PYIN_N_PITCH; from++) {
+  const N = _PYIN_N_PITCH;
+  const w = new Float64Array(N);
+  const uniformPerState = 1 / N;
+  for (let from = 0; from < N; from++) {
+    // Gaussian weights, then normalize to sum-to-1 across destinations.
     let sum = 0;
-    for (let to = 0; to < _PYIN_N_PITCH; to++) {
+    for (let to = 0; to < N; to++) {
       const dCents = cps * (to - from);
       w[to] = Math.exp(-(dCents * dCents) / (2 * sigma * sigma));
       sum += w[to];
     }
-    const inv = 1 / sum;
-    for (let to = 0; to < _PYIN_N_PITCH; to++) {
-      _PYIN_LOG_PITCH_TRANS[to * _PYIN_N_PITCH + from] = Math.log(w[to] * inv);
+    const gaussInv = 1 / sum;
+    for (let to = 0; to < N; to++) {
+      const gaussNorm = w[to] * gaussInv;
+      const mixed = (1 - alpha) * gaussNorm + alpha * uniformPerState;
+      _PYIN_LOG_PITCH_TRANS[to * N + from] = Math.log(mixed);
     }
   }
 }
-_pyinBuildPitchTrans(_PYIN_SIGMA_CENTS);
+// Track current σ and α so single-axis updates (set-pyin-sigma /
+// set-pyin-alpha) can rebuild against the unchanged other axis.
+let _pyinCurSigma = _PYIN_SIGMA_CENTS;
+let _pyinCurAlpha = _PYIN_ALPHA_DEFAULT;
+_pyinBuildPitchTrans(_pyinCurSigma, _pyinCurAlpha);
 
 // Voicing flip log-probabilities — 2×2 table indexed by [from_voiced][to_voiced]
 // with 1 = voiced, 0 = unvoiced. switch_prob = 0.01 either direction.
@@ -452,11 +484,22 @@ self.onmessage = (e) => {
 
   // pYIN σ override — harness-only message used by the σ-sweep harness
   // to test transition-prior sensitivity. Rebuilds the pitch transition
-  // matrix with the new σ; existing α-buffers are unaffected so a reset
-  // typically follows. Production never sends this; default σ stays at
-  // _PYIN_SIGMA_CENTS = 20 cents (paper default).
+  // matrix with the new σ; α stays at its current value. Existing α-
+  // buffers (forward variables) are unaffected so a reset typically
+  // follows. Production never sends this; default σ stays at
+  // _PYIN_SIGMA_CENTS.
   if (type === "set-pyin-sigma") {
-    _pyinBuildPitchTrans(e.data.sigma);
+    _pyinCurSigma = e.data.sigma;
+    _pyinBuildPitchTrans(_pyinCurSigma, _pyinCurAlpha);
+    return;
+  }
+  // pYIN α override — harness-only message used by the α-sweep harness
+  // for the octave-lock fix investigation. α is the uniform-mixture weight
+  // in the transition prior (see _pyinBuildPitchTrans). Rebuilds the
+  // transition matrix; σ unchanged.
+  if (type === "set-pyin-alpha") {
+    _pyinCurAlpha = e.data.alpha;
+    _pyinBuildPitchTrans(_pyinCurSigma, _pyinCurAlpha);
     return;
   }
  } catch (err) {
