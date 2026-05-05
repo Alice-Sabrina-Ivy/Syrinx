@@ -61,6 +61,41 @@ The overlay refreshes at 10 Hz from the diag ring buffer (which itself updates a
 
 **Investigating phantom pitch / mobile-specific behaviour**: open `?diag=1` on the phone, exercise the issue (let the fan noise generate the phantom), tap "Snapshot last 5s ↓", and stash the JSON in `measurements/<date>-<topic>.json` next to a `.md` file describing the repro. The snapshot includes `inputRms`, `voicednessObs`, and `voicedness` per frame so the failure mode (e.g. "voicedness saturates while inputRms is at noise floor") is reconstructable later.
 
+### Mobile audio platform floor (Pixel 8 Pro / Chrome 147, characterized 2026-05-05)
+
+The mobile audio capture pipeline has a measured floor on this platform that's relevant for any future latency work. Sweep data: [measurements/mobile-latency-sweep-2026-05-05.md](measurements/mobile-latency-sweep-2026-05-05.md) and the platform-floor section below.
+
+**The chunkArrival metric on mobile bottoms out around 100–120 ms** at the production config (`latencyHint: "balanced"`, default 25 ms chunkSize). Decomposed:
+
+| Component | ms |
+|---|---|
+| Hardware mic buffer (granted `latency: 0.04`, immutable on this device) | 40 |
+| AudioWorklet chunk-aggregation (chunkSize default) | 25 |
+| AudioContext output-buffer offset (baseLatency at `lat=balanced`) | 20 |
+| Worker handoff + main-thread handler | ~5 |
+| **Theoretical floor** | **~90** |
+| Measured median | ~110 |
+| Unexplained AudioContext-internal overhead | ~20 |
+
+**Levers tested and ruled out:**
+
+- **`channelCount: 1` constraint**: already granted by default — no change.
+- **Smaller `chunkSize` (10 ms via `?chunk=10`)**: doesn't move the metric. The metric tracks *latest sample* arrival, not earliest. Smaller chunks reduce *first-sample* latency at start of utterance (perceptually noticeable for transients) but don't change the steady-state median.
+- **Strict latency constraint (`latency: { exact: 0.01 }` via `?latexact=0.01`)**: rejected by `getUserMedia` (`OverconstrainedError`). `exact: 0.02` accepted but the platform still grants `0.04`. The platform floor for hardware buffer is ~40 ms regardless of the constraint.
+- **Sample-rate reduction (16 kHz)**: increases buffer time per sample (Android allocates buffers in samples, not time). Worse on this metric.
+
+**Path that DID emerge (deferred, not shipped):**
+
+`MediaStreamTrackProcessor` (Insertable Streams API, Chrome-only) delivers `AudioData` frames directly from the `MediaStreamTrack` without going through `AudioContext`. A 10 s probe on the same Pixel 8 Pro showed:
+
+- Frames arrive every 40 ms (matches the hardware buffer exactly)
+- Drift between wall clock and audio time: 0.8 ms median, 21 ms p95 over 10 s — essentially zero
+- No AudioContext-internal overhead
+
+Switching the capture path from `AudioContext + AudioWorklet` to `MediaStreamTrackProcessor + Worker` would lower the mobile latency floor from ~110 ms to ~50 ms. The trade-off is Chrome-only (Firefox lacks support, Safari historically lagged), so this is a separate architectural decision rather than a drop-in fix. Filed as a known followup in case the latency complaint resurfaces. The diag harness's `?capture=mstp` flag is reserved for measuring this path when it's implemented.
+
+**Diagnostic flags relevant to this:** `?chunk=N` (5–50 ms), `?latexact=N` (strict latency), `?lat=N|interactive|balanced|playback` (latencyHint override), `?nolatconstraint=1`, `?sr=N`. All measurement-only. See [src/diag/diag.js](src/diag/diag.js) for the full list.
+
 ### Mobile diag capture harness
 
 [scripts/mobile-diag-capture.js](scripts/mobile-diag-capture.js) drives Chrome on a USB-attached Android phone via ADB + Chrome DevTools Protocol, runs a configurable capture window, pulls the snapshot JSON straight out of the page, prints a summary, and saves the full snapshot to `measurements/mobile-diag-runs/<ISO-timestamp>.json`. Iterates on mobile latency fixes without manual phone interaction.

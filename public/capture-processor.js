@@ -13,16 +13,14 @@
 class CaptureProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
-    // ~25ms at sample rate (e.g. 1200 samples at 48kHz)
-    // Smaller chunks = more frequent analysis = faster pitch change detection
-    this.chunkSize = Math.floor(sampleRate * 0.025);
-    // Pre-allocate buffer large enough for 2 chunks + headroom for input frames
-    // (avoids creating new Float32Array objects in process(), reducing GC pressure)
-    this.bufferSize = this.chunkSize * 3;
-    this.buffer = new Float32Array(this.bufferSize);
-    this.writePos = 0;
-    // Reusable chunk for sending (avoids allocation per send)
-    this.chunk = new Float32Array(this.chunkSize);
+    // Default chunk: 25 ms (e.g. 1200 samples at 48 kHz). The init
+    // message from the main thread can override via { chunkMs: N }
+    // (diag-mode-only — see DIAG_CHUNK_MS_OVERRIDE in src/diag/diag.js).
+    // Smaller chunks reduce start-of-utterance latency (the time a
+    // sample waits for the chunk to fill before being sent) at the
+    // cost of more frequent DSP-worker analysis cycles.
+    this.chunkMs = 25;
+    this._reallocBuffers();
 
     // Diagnostic mode: when enabled by an `init` message from the main thread
     // (?diag=1 URL flag), this.diag flips to true and the worklet posts an
@@ -34,16 +32,32 @@ class CaptureProcessor extends AudioWorkletProcessor {
     // Each consumer that wants audio sends a `{ type: "port", port }`
     // message; the worklet then broadcasts every chunk to all of them.
     this.workerPorts = [];
+  }
+
+  // Re-allocate the chunk-aggregation buffers when chunkMs changes
+  // (init message). Called from the constructor with the default and
+  // again on init if an override is provided.
+  _reallocBuffers() {
+    this.chunkSize = Math.floor(sampleRate * (this.chunkMs / 1000));
+    this.bufferSize = this.chunkSize * 3;
+    this.buffer = new Float32Array(this.bufferSize);
+    this.writePos = 0;
+    this.chunk = new Float32Array(this.chunkSize);
     this.port.onmessage = (e) => {
       try {
         if (e.data.type === "init") {
           if (e.data.diag) this.diag = true;
+          if (typeof e.data.chunkMs === "number" && e.data.chunkMs >= 5 && e.data.chunkMs <= 50) {
+            this.chunkMs = e.data.chunkMs;
+            this._reallocBuffers();
+          }
           // Ack so the main thread can confirm init landed and the diag
           // flag was honored. Always sent regardless of diag value.
           this.port.postMessage({
             type: "worklet-init-ack",
             diag: this.diag,
             chunkSize: this.chunkSize,
+            chunkMs: this.chunkMs,
             sampleRate,
           });
         } else if (e.data.type === "port") {
