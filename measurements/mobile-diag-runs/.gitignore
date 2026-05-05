@@ -1,0 +1,7 @@
+# Captured snapshots from scripts/mobile-diag-capture.js — each ~600KB,
+# generated per harness run, only useful as transient debugging output.
+# Worth-keeping captures should be promoted into a permanent measurement
+# file under measurements/<topic>-<date>.json with a .md describing the
+# repro. See CLAUDE.md "Mobile diag capture harness".
+*.json
+!.gitignore

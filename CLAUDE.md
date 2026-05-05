@@ -61,6 +61,47 @@ The overlay refreshes at 10 Hz from the diag ring buffer (which itself updates a
 
 **Investigating phantom pitch / mobile-specific behaviour**: open `?diag=1` on the phone, exercise the issue (let the fan noise generate the phantom), tap "Snapshot last 5s ↓", and stash the JSON in `measurements/<date>-<topic>.json` next to a `.md` file describing the repro. The snapshot includes `inputRms`, `voicednessObs`, and `voicedness` per frame so the failure mode (e.g. "voicedness saturates while inputRms is at noise floor") is reconstructable later.
 
+### Mobile diag capture harness
+
+[scripts/mobile-diag-capture.js](scripts/mobile-diag-capture.js) drives Chrome on a USB-attached Android phone via ADB + Chrome DevTools Protocol, runs a configurable capture window, pulls the snapshot JSON straight out of the page, prints a summary, and saves the full snapshot to `measurements/mobile-diag-runs/<ISO-timestamp>.json`. Iterates on mobile latency fixes without manual phone interaction.
+
+**One-time setup:**
+
+1. Install Android Platform Tools so `adb` is on `PATH`. Either `winget install Google.PlatformTools` or download the standalone bundle from <https://developer.android.com/studio/releases/platform-tools> and add the extracted folder to `PATH`. Confirmed working with `adb 1.0.41 / 34.0.5-10900879` at `C:\adb\adb.exe`.
+2. On the phone, enable Developer options (Settings → About → tap Build number 7×) and turn on USB debugging.
+3. Plug the phone into the PC via USB. The USB mode must allow data (e.g. "File transfer / Android Auto"); "Charging only" leaves the data lines off and ADB will see no device.
+4. The first time, `adb devices` shows the phone as `unauthorized` and a prompt appears on the device asking to trust this computer's RSA key. Tap "Always allow from this computer" → "OK". The harness detects this state and prints a recovery hint.
+5. The first time the dev server URL is opened on the phone, accept the self-signed cert warning (Chrome on Android: Advanced → Proceed to <ip> (unsafe)). Subsequent loads are remembered.
+
+**Run:**
+```
+node scripts/mobile-diag-capture.js [--duration=30] [--url=https://10.0.0.41:5173/Syrinx/?diag=1]
+```
+
+The harness:
+1. Verifies ADB sees exactly one authorized device with Chrome installed.
+2. Dispatches an `am start … VIEW` intent so Chrome navigates to the diag URL.
+3. Runs `adb forward tcp:9222 localabstract:chrome_devtools_remote` and polls `http://localhost:9222/json/version` until CDP comes up (typically <1 s after Chrome foregrounds).
+4. Connects Puppeteer to the remote browser, finds the Syrinx tab by origin, and waits for `window.__syrinxDiag` to attach.
+5. Clicks the "Get Started" / "Start Listening" button if the welcome overlay or idle state is showing. Bails after 8 s if no frames arrive (mic permission, AudioWorklet error, etc.).
+6. Sleeps for the configured duration with a 5 s heartbeat showing live frame count + last `chunkArrivalMs` + status-error count.
+7. Reads the snapshot JSON directly out of the page (avoids the Android download-manager path, which is sandboxed differently per OEM). Saves to `measurements/mobile-diag-runs/<timestamp>.json` and prints a summary.
+
+**Summary fields:** session duration, frame count, audio context (sampleRate, baseLatency, outputLatency, granted `latency`), `chunkArrivalMs` and `totalMs` distribution stats, drift slope (ms/s) for both, plus a coarse phase-change detector (split-half mean ratio) that flags bimodal sessions like the t≈22 s discontinuity Alice captured manually.
+
+**Audio source for deterministic captures:** the phone's mic picks up ambient sound, which is non-reproducible across runs. For now, play a known reference signal (sustained vowel WAV) from PC speakers into the phone's mic during capture — manual but simple. A fully-automated alternative (push test audio to the phone, play through phone speaker, capture from phone mic) is a followup if iteration count justifies it.
+
+**Phone state to leave between runs:** USB plugged in, screen unlocked, Chrome running. The harness re-uses the existing tab and re-clicks start as needed; no need to close anything between iterations.
+
+**Failure modes the harness detects and prints recovery hints for:**
+- No device attached / unauthorized / multiple devices.
+- Chrome not installed (`com.android.chrome` not in `pm list packages`).
+- CDP doesn't come up (Chrome not foregrounded, or some Chrome variants need the `chrome://flags` "Enable USB debugging" flag).
+- No matching tab (cert warning still showing, or Chrome opened a different URL).
+- No frames within 8 s (mic permission, AudioWorklet error — surfaces `status.errors` from diag state).
+
+If the harness exits with a hint that says "tap something on the device", do that and re-run. Anything else, capture the error and investigate.
+
 ## Tech Stack
 
 React 19 + Vite 7 + Tailwind CSS 4 (via `@tailwindcss/vite` plugin). Dexie for IndexedDB persistence. Visualizations use HTML Canvas directly (not a charting library). Audio capture and DSP use native Web Audio API (AudioWorklet + Web Worker). ES modules throughout.
