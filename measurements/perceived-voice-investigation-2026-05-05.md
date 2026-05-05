@@ -325,3 +325,42 @@ to claw back.
    ship α=0.1 and pursue (3) afterward to claw back response time.
 3. **Different model:** worth a separate investigation (try alternative
    gender classifiers from HF), or focus on the median-filter approach?
+
+## Ship decision (added post-greenlight)
+
+User selected α=0.2 (responsiveness budget = 750 ms settling). Tradeoff
+captured: +19 percentage points female accuracy (62.5 → 81.3 %) at the
+cost of a ~480 ms increase in settling time relative to α=0.55. Voicedness
+gating ships independently. Alternative-model investigation runs in
+parallel as a separate workstream — if it finds a candidate with lower
+per-window noise on female voices, we revisit the α-vs-responsiveness
+frontier on the new model.
+
+**Validation pass at α=0.2 default** (same Hillenbrand per-speaker
+methodology, 93 speakers):
+
+```
+male    n=45  acc=45/45 (100.0 %)  final_score: mean=0.004 std=0.012
+female  n=48  acc=39/48 ( 81.3 %)  final_score: mean=0.689 std=0.210
+smoothing reduction:               82.0 %
+```
+
+9 misclassified females (was 18 at α=0.55). The remaining failures fall
+into two buckets:
+
+- 5 speakers (w15, w23, w37, w45, w47-class) where rawMean > 0.6 but the
+  model's per-window noise drives the EMA below 0.5. These would benefit
+  from a quieter model or longer EMA history.
+- 4 speakers (w21, w26, w31, w46) where rawMean < 0.5 — the model
+  genuinely thinks they're male on average. No α value fixes those;
+  they're model-limit cases.
+
+**Existing 3-file guardrail** ([tests/ml/gender-model-accuracy-test.js](../tests/ml/gender-model-accuracy-test.js))
+exposed Hopper as a third class of failure: rawMean=0.08, the model is
+unambiguously wrong on her voice. At α=0.55 the test was passing on
+lucky EMA-tail behaviour rather than model skill; α=0.2 reveals the
+underlying limitation. Marked `expectedToFail: true` in GROUND_TRUTH so
+the regression guardrail still gates JFK/MLK without requiring model
+correctness on a known-fail input. The model's coverage of
+contralto/baritone-female voices is a known gap and the next investigation
+workstream targets exactly that.
