@@ -8,7 +8,7 @@
 //   t, true_input_freq, returned_pitch, voicedness, top-3 voiced-state
 //   alpha values (with their corresponding Hz).
 //
-// Usage: node tests/dsp/octave-lock-diagnostic.js [path-to-wav]
+// Usage: node tests/dsp/octave-lock-diagnostic.js [path-to-wav] [--alpha=N]
 
 import vm from "node:vm";
 import { readFileSync } from "node:fs";
@@ -17,8 +17,15 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const WORKER_PATH = join(__dirname, "../../src/dsp/dsp-worker.js");
-const WAV_PATH = process.argv[2] ??
-  join(__dirname, "../../tests/audio/fixtures/chirp-100-400hz-then-steady.wav");
+
+const positional = [];
+let alpha = 0;
+for (const a of process.argv.slice(2)) {
+  if (a.startsWith("--alpha=")) alpha = parseFloat(a.slice("--alpha=".length));
+  else positional.push(a);
+}
+const WAV_PATH = positional[0] ??
+  join(__dirname, "../../tests/audio/fixtures/octave-step-200-then-400.wav");
 
 function loadWorker(sampleRate) {
   // Worker uses const/let at script top level, which don't bind to
@@ -74,9 +81,12 @@ function stateToHz(s) {
 const ctx = loadWorker(16000);
 const { samples, sr } = readWav(WAV_PATH);
 console.log(`# Loaded ${samples.length} samples @ ${sr} Hz, ${(samples.length / sr).toFixed(2)} s`);
-console.log(`# Worker config: PYIN_STAGE=2 σ=50 cents L=4`);
+console.log(`# Worker config: PYIN_STAGE=2 σ=50 cents L=4 α=${alpha}`);
 
-// Reset HMM state.
+// Apply α if non-zero, then reset HMM state.
+if (alpha !== 0) {
+  ctx.self.onmessage({ data: { type: "set-pyin-alpha", alpha } });
+}
 ctx.self.onmessage({ data: { type: "reset-pitch-hmm" } });
 
 const winN = Math.floor(sr * 50 / 1000);   // 50 ms window

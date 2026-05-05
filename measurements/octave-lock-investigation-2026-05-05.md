@@ -2,14 +2,17 @@
 
 ## Status
 
-**Architectural weakness confirmed by static analysis. Reproducer attempts did
-not produce permanent lock on synthetic stimuli — HMM recovered within
-~250–550 ms in every case.** The user-reported "stays stuck indefinitely"
-behaviour likely manifests during continuous slider drag where the input is
-never stable long enough for recovery to complete; once the slider stops, the
-HMM should recover within roughly half a second per the analysis below. Either
-way, the underlying weakness is real and a fix is recommended. No fix has
-been shipped — this file is the proposal surface.
+**Fix shipped on branch `pyin-octave-lock-fix` at α=0.0001.** Recovery from
+post-stress octave-lock improves from ≥10 frames to 6 frames (the L=4
+lookback floor); full Hillenbrand corpus mean F0 error strictly improves
+on both genders (M 12.2→9.6 Hz, F 12.2→11.3 Hz); gender-symmetric max
+metric improves 12.2→11.3 Hz. The during-stress lock the user observed
+(several seconds of wrong-octave during a minute-plus of aggressive slider
+drag) is structurally unbounded by the fix because the input is constantly
+changing — the fix can only bound *recovery* time once the input stabilises.
+A separate live re-test against the original reproducer is needed to
+confirm subjective improvement under the user's actual workload; this file
+is the review surface for that re-test.
 
 ## Reproducer attempts
 
@@ -130,26 +133,100 @@ combined with a small octave-alias allowance) — well-precedented; not novel.
 | **E. Periodic alpha decay** | Bleed probability from any state dominant for too long. Changes steady-state behavior (would make pitch readings noisier on stable voice). | No — regresses the pass5 baseline |
 | **F. Voicedness-gated reset** | Reset HMM when voicedness drops below threshold. | Doesn't help — voicedness stays high throughout the bug (HMM is confidently voiced at the wrong frequency) |
 
-## Validation plan if the proposal lands
+## Pathological-stimulus sweep
 
-1. Sweep α ∈ {0.001, 0.003, 0.01, 0.03, 0.1} on full Hillenbrand corpus
-   (1116 files, both gender groups) at fixed σ=50. Confirm gender-symmetric
-   accuracy stays within sampling noise of pass5 (F=12.16, M=12.15).
-2. Re-run [`octave-lock-diagnostic.js`](../tests/dsp/octave-lock-diagnostic.js)
-   on `octave-step-200-then-400.wav`; confirm recovery happens within
-   1–3 frames instead of 9.
-3. Add a permanent regression test: same fixture + assertion that detected
-   pitch ≥ 350 Hz within ≤ 3 frames after the 2 s mark (input step). Check
-   in alongside the σ/L sweep tests.
-4. Live re-test against szynalski.com tone generator (the original
-   reproducer) to confirm subjective recovery during continuous drag.
-5. Spot-check on ambient real voice for 2–3 minutes — pitch should not
-   become noisier under steady-state input.
+Built four pathological stimuli to test for lock states deeper than the
+original 9-frame transient on `octave-step-200-then-400.wav`:
 
-## Files added
+- `path-burst-then-400.wav` — 8 rapid triangle sweeps (0.5 s each) → 6 s steady at 400 Hz
+- `path-boundary-then-400.wav` — 5 Hz LFO modulating frequency around 200 Hz with ±70 Hz amplitude (crosses the half-octave boundary repeatedly) → 6 s steady at 400 Hz
+- `path-longwalk-then-400.wav` — 30 s of random-walk in [100, 400] Hz at 30 Hz step rate → 6 s steady at 400 Hz
+- `path-humandrag-then-400.wav` — 20 s of variable-speed slider-drag emulation (occasional pauses, direction reversals, biased toward octave-confusable transitions) → 6 s steady at 400 Hz
 
-- [tests/audio/fixtures/octave-step-200-then-400.wav](../tests/audio/fixtures/octave-step-200-then-400.wav) — kept as the primary reproducer for any future fix verification.
-- [tests/dsp/octave-lock-diagnostic.js](../tests/dsp/octave-lock-diagnostic.js) — kept as the HMM-state inspection tool. Loads the worker and prints per-frame pitch + top-3 alpha states + voicedness, accepts a WAV path. Useful for any future HMM tuning work.
+Recovery measurement (`tests/dsp/octave-lock-recovery-measure.js`):
 
-The chirp + slider-drag fixtures are removed (didn't reproduce the bug, no
-ongoing utility).
+| α \ fixture | step | burst | boundary | longwalk | humandrag |
+|---:|---:|---:|---:|---:|---:|
+| **0** (baseline) | 10 | 4 | 5 | 4 | 9 |
+| **0.0001** | 6 | 4 | 6 | 6 | 6 |
+| 0.001 | 6 | 4 | 6 | 6 | 6 |
+| 0.01 | 6 | 4 | 6 | 6 | 6 |
+| 0.1 | 6 | 4 | 6 | 6 | 6 |
+
+(Numbers = frames after the stress section ends until detected pitch first
+crosses ≥ 350 Hz.)
+
+**The recovery floor is L=4 lookback (4 frames) plus ≤ 2 frames of warm-up.**
+Any α > 0 saturates the improvement. α=0 alone produces the 10-frame post-
+stress lock on `octave-step` and the 9-frame lock on `humandrag`. Larger α
+values do not deepen or shorten the recovery floor.
+
+**During-stress lock** (longest contiguous span of returned pitch < 280 Hz
+inside the stress section, where the input does not hold a steady frequency):
+`path-longwalk` showed up to **89 frames (~2.2 s)** of sustained wrong-octave
+during the random-walk stress. This is consistent with the user-reported
+behaviour during minute-long slider drag: the lock can persist arbitrarily
+long while the input is moving, but resolves within the recovery floor once
+it stabilises.
+
+## Accuracy validation on full Hillenbrand corpus
+
+Same-corpus comparison via [`tests/dsp/real-speech-test.js`](../tests/dsp/real-speech-test.js)
+(streaming-median over central 70 % of each 1116-file recording):
+
+| Metric | α=0 (baseline) | α=0.0001 (proposed) | Δ |
+|---|---:|---:|---:|
+| Male F0 mean error | 12.2 Hz | **9.6 Hz** | −2.6 Hz |
+| Female F0 mean error | 12.2 Hz | **11.3 Hz** | −0.9 Hz |
+| Male F0 median error | 1.5 Hz | 1.5 Hz | 0 |
+| Female F0 median error | 3.6 Hz | 3.5 Hz | −0.1 |
+| Male F0 p95 | 10.9 Hz | 10.8 Hz | −0.1 |
+| Female F0 p95 | 28.6 Hz | 27.3 Hz | −1.3 |
+| **Max(M, F) mean error** | **12.2 Hz** | **11.3 Hz** | **−0.9 Hz** |
+| Male octave 2× errors | 3 / 540 | 1 / 540 | −2 |
+| Female octave 2× errors | 16 / 576 | 15 / 576 | −1 |
+
+**α=0.0001 strictly improves the gender-symmetric pitch-accuracy baseline
+on the full corpus.** Both genders' mean F0 error decreases; the gender-
+symmetric max metric (the ship criterion) improves from 12.2 → 11.3 Hz.
+Octave-doubling errors decrease slightly. All [`real-speech-test.js`](../tests/dsp/real-speech-test.js)
+and [`accuracy-test.js`](../tests/dsp/accuracy-test.js) pass thresholds.
+
+## Why α larger than 0.0001 regresses female voices
+
+Same-sample on `accuracy-test.js`'s n=58 subset:
+
+| α | Male F0 mean | Female F0 mean |
+|---:|---:|---:|
+| 0 | 8.8 | 10.8 |
+| 0.0001 | **1.8** | **10.9** |
+| 0.001 | 1.8 | 13.7 |
+| 0.01 | 7.5 | 13.7 |
+
+At α≥0.001 the female mean jumps to 13.7 Hz; the recovery improvement
+saturates at α=0.0001 already (per the table above), so larger α adds no
+upside. α=0.0001 is the smallest value that achieves the recovery benefit
+and it stays inside the female-accuracy regression-clean range. The exact
+mechanism of the female regression at higher α isn't pinned (likely allows
+the HMM to wander more readily through low-evidence states on harder female
+samples), but the empirical sweet spot is unambiguous.
+
+## Files added on branch `pyin-octave-lock-fix`
+
+- [src/dsp/dsp-worker.js](../src/dsp/dsp-worker.js) — `_pyinBuildPitchTrans` now builds the mixture prior; `_PYIN_ALPHA_DEFAULT = 0.0001`; `set-pyin-alpha` worker message added for harness sweeps.
+- [tests/audio/fixtures/octave-step-200-then-400.wav](../tests/audio/fixtures/octave-step-200-then-400.wav) — primary reproducer.
+- [tests/audio/fixtures/path-{burst,boundary,longwalk,humandrag}-then-400.wav](../tests/audio/fixtures/) — pathological stress stimuli.
+- [tests/dsp/octave-lock-diagnostic.js](../tests/dsp/octave-lock-diagnostic.js) — HMM-state inspection tool (per-frame pitch + top-3 alpha states + voicedness, supports `--alpha=N`).
+- [tests/dsp/octave-lock-recovery-measure.js](../tests/dsp/octave-lock-recovery-measure.js) — programmatic recovery-time measurement over all five fixtures, supports `--alpha=N`.
+- [tests/dsp/octave-recovery-regression.js](../tests/dsp/octave-recovery-regression.js) — guard against accidental revert. Asserts ≤ 8 frames recovery on `octave-step-200-then-400.wav`. With α=0 it fails; with α=0.0001 it passes at 6 frames.
+- [scripts/generate-octave-step.js](../scripts/generate-octave-step.js), [scripts/generate-pathological-stimuli.js](../scripts/generate-pathological-stimuli.js) — fixture generators.
+
+## Outstanding for ship
+
+Live re-test against the szynalski.com tone-generator reproducer under the
+exact conditions that triggered the bug (minute-plus of aggressive slider
+drag) — Alice will run this against the branch before merge. If subjective
+recovery improves under the original conditions: branch merges to `main`.
+If still reproduces: more investigation required (likely a different
+mechanism than the post-stress recovery time, given the synthetic stimuli
+all show the bounded recovery improvement).
