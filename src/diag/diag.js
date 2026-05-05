@@ -11,14 +11,49 @@
 // NOT import this — they receive a `diag: true` flag in their init messages
 // and stash it locally.
 
-export const DIAG_ENABLED = (() => {
-  if (typeof window === "undefined") return false;
-  try {
-    return new URLSearchParams(window.location.search).get("diag") === "1";
-  } catch {
-    return false;
-  }
+function _readQuery() {
+  if (typeof window === "undefined") return new URLSearchParams("");
+  try { return new URLSearchParams(window.location.search); }
+  catch { return new URLSearchParams(""); }
+}
+const _query = _readQuery();
+
+export const DIAG_ENABLED = _query.get("diag") === "1";
+
+// Sample-rate override — `?sr=N` URL param. Used by useAudioPipeline.js to
+// request a specific sample rate from getUserMedia and the AudioContext.
+// MEASUREMENT-ONLY: at non-48kHz the formant pipeline will run at its
+// fallback decimation but produce slightly different formant numbers.
+// pYIN is unaffected (time-domain). Used to test the hypothesis that the
+// 48 kHz hardware-buffer floor is a load-bearing latency constraint on
+// mobile. Must NOT be relied on for production behavior. Returns null
+// when the flag is absent.
+export const DIAG_SR_OVERRIDE = (() => {
+  const v = _query.get("sr");
+  if (v == null) return null;
+  const n = parseInt(v, 10);
+  if (!Number.isFinite(n) || n < 4000 || n > 96000) return null;
+  return n;
 })();
+
+// Latency-hint override — `?lat=N` URL param (a numeric value passed to
+// the AudioContext constructor) or `?lat=interactive|balanced|playback`.
+// MEASUREMENT-ONLY. Used to compare the platform's response to different
+// hint values without recompiling. Default behavior unchanged (current
+// production hint is "interactive").
+export const DIAG_LATENCY_HINT = (() => {
+  const v = _query.get("lat");
+  if (v == null) return null;
+  if (v === "interactive" || v === "balanced" || v === "playback") return v;
+  const n = parseFloat(v);
+  if (Number.isFinite(n) && n >= 0 && n < 1) return n;
+  return null;
+})();
+
+// Disable the explicit `latency: { ideal: 0.01, max: 0.05 }` constraint —
+// `?nolatconstraint=1`. Used to A/B-test whether the constraint is actually
+// helping or hurting on a given platform. Default behavior unchanged.
+export const DIAG_NO_LATENCY_CONSTRAINT = _query.get("nolatconstraint") === "1";
 
 // ~30 seconds at the worker's analysis cadence (~25 ms hop = 40 fps).
 // Sized so a single snapshot covers enough session time to make slow
@@ -26,6 +61,16 @@ export const DIAG_ENABLED = (() => {
 // 1200 frames × ~150 B per frame ≈ 180 KB — negligible for a
 // diag-mode-only allocation. Plain array with index-wrap for O(1) push.
 const RING_CAP = 1200;
+
+// Long-history low-res buffer: one entry per second, 600 entries = 10 min.
+// Each entry is sampled from the most recent high-res frame plus
+// audio-context introspection (state, baseLatency, outputLatency,
+// visibility) so a single snapshot covers a full long session timeline
+// even after the high-res ring scrolls out the early portion. Sized so
+// drift onset, phase changes, and long-session behavior are visible
+// from the captured JSON without scrolling out of context.
+// 600 × ~120 B ≈ 72 KB.
+const LOW_RES_CAP = 600;
 
 class RingBuffer {
   constructor(cap) {
@@ -93,6 +138,15 @@ function _createState() {
     //   pendingChunks,      // worker queue depth at handoff
     // }
     frames: new RingBuffer(RING_CAP),
+    // Long-history low-res ring. One entry per second, ≤ LOW_RES_CAP
+    // entries (10 min). Populated by pushFrame (which dedups to ≤ 1
+    // entry/sec) and supplemented by setAudioCtxSample for periodic
+    // AudioContext state samples (state, baseLatency, outputLatency,
+    // visibility). This is the buffer to use for drift-onset and
+    // long-session analysis — the high-res `frames` ring above only
+    // covers the most recent ~30 s.
+    lowRes: new RingBuffer(LOW_RES_CAP),
+    _lowResLastTEpochMs: 0,
     // Recent tap/click event timestamps for tap-to-display latency.
     taps: new RingBuffer(20),
     // Frames-while-hidden tally (visibility/lifecycle).
@@ -160,6 +214,68 @@ export function pushFrame(frame) {
   if (typeof document !== "undefined" && document.visibilityState === "hidden") {
     diagState.framesWhileHidden++;
   }
+  // Sample into the long-history low-res ring at most once per second.
+  // The most recent frame's data is what matters for drift analysis;
+  // the AudioContext state fields are filled in lazily by
+  // setAudioCtxSample, which is called by useAudioPipeline.js's
+  // periodic interval.
+  const t = frame.tEpochMs;
+  if (typeof t === "number" && t - diagState._lowResLastTEpochMs >= 1000) {
+    diagState._lowResLastTEpochMs = t;
+    diagState.lowRes.push({
+      tEpochMs: t,
+      pitch: frame.pitch,
+      voicedness: frame.voicedness,
+      voicednessObs: frame.voicednessObs,
+      inputRms: frame.inputRms,
+      chunkArrivalMs: frame.timings?.chunkArrivalMs ?? null,
+      totalMs: frame.timings?.totalMs ?? null,
+      pendingChunks: frame.pendingChunks ?? null,
+      // AudioContext state fields filled in by the next
+      // setAudioCtxSample call; null if useAudioPipeline.js's
+      // periodic interval hasn't run yet.
+      ctxState: null,
+      ctxBaseLatencyMs: null,
+      ctxOutputLatencyMs: null,
+      ctxCurrentTime: null,
+      visibilityState: typeof document !== "undefined" ? document.visibilityState : null,
+      memoryUsedMB: null,
+    });
+  }
+}
+
+// Called periodically (target ~1 Hz) by useAudioPipeline.js with the
+// current AudioContext + memory state. Backfills the most recent
+// lowRes entry's ctx* fields. Decoupled from pushFrame because the
+// AudioWorklet may stop producing frames (e.g., processor disconnected
+// by an error, or audio paused) but we still want to capture what
+// the AudioContext is doing.
+export function setAudioCtxSample(s) {
+  if (!diagState) return;
+  const arr = diagState.lowRes.arr;
+  if (arr.length === 0) {
+    // No frame-driven entry yet — push a context-only entry so the
+    // sample isn't lost. Useful for diagnosing "no frames at all"
+    // states where the worklet died before producing anything.
+    diagState.lowRes.push({
+      tEpochMs: performance.timeOrigin + performance.now(),
+      pitch: null, voicedness: null, voicednessObs: null,
+      inputRms: null, chunkArrivalMs: null, totalMs: null,
+      pendingChunks: null,
+      ...s,
+    });
+    diagState._lowResLastTEpochMs = performance.timeOrigin + performance.now();
+    return;
+  }
+  // Backfill onto the latest entry. Note: with index-wrap, the
+  // "latest" entry is at idx-1 (mod cap) once we've wrapped, else at
+  // arr.length-1.
+  const lr = diagState.lowRes;
+  const latestIdx = lr.arr.length < lr.cap
+    ? lr.arr.length - 1
+    : (lr.idx - 1 + lr.cap) % lr.cap;
+  const latest = lr.arr[latestIdx];
+  Object.assign(latest, s);
 }
 
 export function pushTap(tap) {
@@ -251,7 +367,9 @@ export function getTimingStats() {
 }
 
 // Snapshot the entire ring buffer + audio info as a JSON-serializable blob.
-// Used by the "Snapshot last 5s" button in the overlay.
+// Used by the "Snapshot last 5s" button in the overlay AND the mobile
+// diag harness. The lowRes array carries the long-session timeline;
+// the high-res frames array carries the last ~30 s.
 export function snapshot() {
   if (!diagState) return null;
   return {
@@ -259,12 +377,16 @@ export function snapshot() {
     capturedAtIso: new Date().toISOString(),
     enabledAtEpochMs: diagState.enabledAtEpochMs,
     userAgent: typeof navigator !== "undefined" ? navigator.userAgent : null,
+    diagFlags: {
+      DIAG_ENABLED, DIAG_SR_OVERRIDE, DIAG_LATENCY_HINT, DIAG_NO_LATENCY_CONSTRAINT,
+    },
     audio: diagState.audio,
     status: diagState.status,
     framesWhileHidden: diagState.framesWhileHidden,
     visibilityState: typeof document !== "undefined" ? document.visibilityState : null,
     taps: diagState.taps.toArray(),
     frames: diagState.frames.toArray(),
+    lowRes: diagState.lowRes.toArray(),
   };
 }
 
