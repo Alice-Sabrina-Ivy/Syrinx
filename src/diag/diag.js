@@ -106,10 +106,18 @@ export const diagState = DIAG_ENABLED ? _createState() : null;
 
 // Pin a stable handle on `window` when diag is on so external tooling
 // (puppeteer probes, browser devtools, snapshot scripts) can read the
-// same module-instance state the React app is writing to. Not exposed
+// same module-instance state the React app is writing to. Also exposes
+// snapshot() because dynamic `import("/Syrinx/src/diag/diag.js")` in a
+// puppeteer evaluate context can resolve to a different module instance
+// than the one Vite served eagerly via React's import graph — so calling
+// snapshot via the dynamic import returns an empty fresh state. Always
+// route through `window.__syrinxDiag.snapshot` for tooling. Not exposed
 // in production: DIAG_ENABLED is false without ?diag=1.
 if (DIAG_ENABLED && typeof window !== "undefined") {
-  window.__syrinxDiag = { state: diagState };
+  window.__syrinxDiag = {
+    get state() { return diagState; },
+    snapshot,
+  };
 }
 
 export function setAudioInfo(info) {
