@@ -229,10 +229,10 @@ export default function DiagnosticOverlay() {
         <div className="text-[10px] uppercase text-neutral-500 mb-1 tracking-wider">Pipeline status</div>
         <div className="space-y-0.5 text-[10px] font-mono">
           <div className="flex justify-between">
-            <span className="text-neutral-400">worklet init:</span>
-            <span className={status?.worklet ? "text-green-400" : "text-amber-400"}>
-              {status?.worklet
-                ? `✓ diag=${String(status.worklet.diag)} chunk=${status.worklet.chunkSize} sr=${status.worklet.sampleRate}`
+            <span className="text-neutral-400">capture init:</span>
+            <span className={status?.capture ? "text-green-400" : "text-amber-400"}>
+              {status?.capture
+                ? `✓ ${status.capture.kind} diag=${String(status.capture.diag)} chunk=${status.capture.chunkSize} sr=${status.capture.sampleRate}`
                 : "no ack"}
             </span>
           </div>
@@ -309,9 +309,12 @@ export default function DiagnosticOverlay() {
         <div className="text-[10px] uppercase text-neutral-500 mb-1 tracking-wider">Audio context</div>
         {audio ? (
           <div className="space-y-0.5 text-[10px] text-neutral-300 font-mono">
+            <div>captureSource: <span className={audio.captureKind === "mstp" ? "text-cyan-400" : "text-neutral-200"}>{audio.captureKind ?? "—"}</span>{audio.captureKindOverride ? <span className="text-amber-400"> (forced)</span> : null}</div>
             <div>sampleRate: <span className={audio.sampleRate < 44100 ? "text-amber-400" : "text-neutral-200"}>{audio.sampleRate} Hz</span></div>
-            <div>baseLatency: {fmtMs(audio.baseLatencySec * 1000)} · outputLatency: {fmtMs(audio.outputLatencySec * 1000)}</div>
-            <div>worklet: <span className={audio.audioWorkletSupported ? "text-green-400" : "text-red-400"}>{audio.audioWorkletSupported ? "✓ AudioWorklet" : "✗ ScriptProcessor fallback"}</span></div>
+            <div>baseLatency: {audio.baseLatencySec != null ? fmtMs(audio.baseLatencySec * 1000) : "—"} · outputLatency: {audio.outputLatencySec != null ? fmtMs(audio.outputLatencySec * 1000) : "—"}</div>
+            {audio.audioWorkletSupported !== undefined && (
+              <div>worklet: <span className={audio.audioWorkletSupported ? "text-green-400" : "text-red-400"}>{audio.audioWorkletSupported ? "✓ AudioWorklet" : "✗ ScriptProcessor fallback"}</span></div>
+            )}
             {audio.grantedConstraints && (
               <div className="text-[9px] text-neutral-400 leading-tight">
                 granted: ec={String(audio.grantedConstraints.echoCancellation)} ns={String(audio.grantedConstraints.noiseSuppression)} agc={String(audio.grantedConstraints.autoGainControl)}
