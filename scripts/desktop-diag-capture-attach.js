@@ -55,9 +55,33 @@ const RUNS_DIR = join(REPO_ROOT, "measurements", "desktop-diag-runs");
 const args = parseArgs(process.argv.slice(2));
 const KIND = args.kind ?? "mstp";
 const DURATION = parseInt(args.duration ?? "120", 10);
-const URL = args.url ?? `https://localhost:5173/Syrinx/?diag=1&capture=${KIND}`;
 const PORT = parseInt(args.port ?? "9223", 10);
 const PLAY_WAV = args["play-wav"] ? pathResolve(args["play-wav"]) : null;
+// URL detected at runtime: `npm run dev` serves HTTP, `npm run dev:mobile`
+// serves HTTPS. --url override skips detection.
+const URL_OVERRIDE = args.url ?? null;
+
+// dev:mobile uses @vitejs/plugin-basic-ssl's self-signed cert. Node's fetch
+// rejects it by default; this scoped env var lets fetch ignore the cert for
+// the local-only dev-server probe. Harness is dev tooling, not production.
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+
+async function detectDevServerUrl() {
+  if (URL_OVERRIDE) return URL_OVERRIDE;
+  const path = `localhost:5173/Syrinx/?diag=1&capture=${KIND}`;
+  for (const proto of ["https", "http"]) {
+    try {
+      const url = `${proto}://${path}`;
+      const r = await fetch(url, { signal: AbortSignal.timeout(2000) });
+      if (r.ok) return url;
+    } catch { /* try next */ }
+  }
+  throw new Error(
+    "Dev server not reachable at https://localhost:5173/Syrinx/ or http://localhost:5173/Syrinx/.\n" +
+    "Start one of: `npm run dev` (HTTP) or `npm run dev:mobile` (HTTPS).\n" +
+    "Or pass --url=<full URL> to override detection."
+  );
+}
 
 // Track the audio-playback PowerShell PID so we can tree-kill it on exit.
 // PID-scoped only — never pattern-match. Same rule as the rest of the
@@ -164,6 +188,10 @@ class CdpClient {
 // ---------------------------------------------------------------------------
 
 (async () => {
+  // 0. Detect dev server URL.
+  const URL = await detectDevServerUrl();
+  console.log(`[0/5] Dev server: ${URL}`);
+
   // 1. Verify Chrome is up on the debug port. If not, print a launch hint.
   console.log(`[1/5] Checking for Chrome on port ${PORT}…`);
   let ver = null;
@@ -260,6 +288,24 @@ class CdpClient {
     await sleep(250);
   }
   console.log("      diag attached ✓");
+
+  // Without focus emulation, the new window can sit behind the user's
+  // foreground app with document.visibilityState reading "hidden"; in that
+  // state React onClick handlers get throttled in ways that look like the
+  // click silently no-ops (page loads, click hits the right element,
+  // welcome-overlay onClick never runs). Empirically observed 2026-05-05 on
+  // the sister isolated-spawn harness. Emulation.setFocusEmulationEnabled
+  // tells Chrome to treat the page as focused regardless of OS window
+  // state; Page.bringToFront moves the new window forward where it can.
+  try {
+    await cdp.send("Emulation.setFocusEmulationEnabled", { enabled: true });
+    await cdp.send("Page.bringToFront", {});
+    await sleep(300);
+    const vis = await cdp.eval("document.visibilityState");
+    console.log(`      focus emulation on, page brought to front, vis=${vis}`);
+  } catch (err) {
+    console.log(`      focus/bringToFront failed: ${err.message}`);
+  }
 
   // Start speaker playback BEFORE the click so the first capture frames see
   // signal rather than silence. Player loops the WAV for capture duration

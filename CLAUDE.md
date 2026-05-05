@@ -175,6 +175,10 @@ node scripts/desktop-diag-capture-attach.js [--kind=mstp|audiocontext] [--durati
 
 `--play-wav` works on this harness too, with the same semantics as on the isolated harness.
 
+#### Focus / visibility emulation (load-bearing for both harnesses)
+
+Both harnesses call `Emulation.setFocusEmulationEnabled({enabled:true})` and `Page.bringToFront` after attaching. Without this, when the test window sits behind the user's foreground app (a common situation for an unattended harness run), `document.visibilityState` reads `"hidden"` and React's onClick handlers get throttled enough that programmatic clicks via `Input.dispatchMouseEvent` appear to no-op — the click coordinate lands on the correct element, but `dismissWelcome`'s onClick never runs, the audio pipeline never starts, and `audio: null` / `frames: 0` / no errors propagate to the diag snapshot. Empirically observed 2026-05-05; both harnesses ship with the workaround. Diagnostic if the harness ever stalls again with this signature: check the page-state probe output for `vis: hidden`.
+
 #### Why not spawn a debug-port-enabled Chrome that shares the user's profile?
 
 We explored sharing the user's profile via Node spawn (which would have given a debug-enabled instance with the user's real mic preference, no `--play-wav` fixture proxy needed) and concluded it's not achievable through Node's `child_process` API. Five spawn variants tested 2026-05-05 (`detached:false/true`, `stdio:'inherit'/'ignore'`, `cmd /c start chrome`, `powershell -Command Start-Process chrome`, `windowsHide:false`) all caused Chrome to single-instance-merge into the user's running Chrome — even though manually typing `chrome.exe --remote-debugging-port=9223` in PowerShell does produce a new debug-enabled instance for the user. The difference between interactive-PowerShell and Node-launched-PowerShell isn't pinned, but the empirical conclusion is solid. The isolated-spawn harness with `--play-wav` sidesteps the issue entirely: deterministic test signal regardless of which mic the fresh profile picks. **Future sessions: do not redo this exploration.**
