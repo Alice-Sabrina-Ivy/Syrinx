@@ -262,11 +262,20 @@ export function ResonanceMeter({
       const now = Math.round(performance.timeOrigin + performance.now());
       const colCx = barRight + 8 * dpr + historyColW / 2;
 
-      // Collect up to HISTORY_DOTS most recent points within HISTORY_AGE_MS
+      // Collect up to HISTORY_DOTS most recent points within HISTORY_AGE_MS,
+      // skipping any whose `voiced` tag is false. The tag (added by
+      // useAudioPipeline at emission time) records the DSP gate's state
+      // when the ML score arrived. Without this filter, the strip's 6 s
+      // retention overlaps the 5 s silence-hold and produces a 1 s window
+      // of stale colored dots after the bar/indicator have blanked —
+      // exactly the ambient-noise scenario this gate is supposed to fix.
+      // Entries without the field (older sessions, HMR transitions) default
+      // to voiced=true for backward compatibility.
       const recent = [];
       for (let i = data.length - 1; i >= 0 && recent.length < HISTORY_DOTS; i--) {
         const pt = data[i];
         if (now - pt.time > HISTORY_AGE_MS) break;
+        if (pt.voiced === false) continue;
         recent.push(pt);
       }
       // recent[0] is newest, recent[recent.length-1] is oldest
