@@ -28,6 +28,17 @@ import {
 
 const SILENCE_THRESHOLD_DB = -50;
 const SILENCE_DEBOUNCE_FRAMES = 3; // require 3 consecutive quiet frames before gating
+// Voicedness gate for the UI. The DSP worker's HMM-smoothed posterior
+// (data.voicedness ∈ [0, 1]) is ~0.5 on silence (uniform Bayesian
+// fallback), > 0.5 on real voiced speech, < 0.5 on unvoiced loud noise
+// (AC, fans). The intensity gate alone passes broadband loud noise, so
+// the UI rendered phantom pitch readings while ambient noise was loud
+// but not voiced — this gate filters those out. 0.5 is the prior, so
+// frames at-or-below the prior have NO net evidence of voicing and we
+// treat them as quiet. Stage 0 / Stage 1 of pYIN don't compute
+// voicedness (data.voicedness is null) — the typeof check keeps those
+// stages on intensity-only gating, preserving harness compatibility.
+const VOICEDNESS_THRESHOLD = 0.5;
 const FORMANT_SMOOTH_LEN = 7;
 const FORMANT_OUTLIER_HZ = 500; // max plausible frame-to-frame formant jump
 
@@ -491,10 +502,17 @@ export function useAudioPipeline() {
     // and clockOffset between worker and main thread is ~0ms.
     const now = Math.round(absoluteTime);
 
-    // Silence = intensity below threshold for multiple consecutive frames.
-    // Single-frame dips (from GC pauses or audio glitches) are bridged.
-    // Pitch detection failure during loud audio is NOT silence.
-    const frameQuiet = intensity < SILENCE_THRESHOLD_DB;
+    // Silence = below intensity threshold OR voicedness threshold, for
+    // multiple consecutive frames. Single-frame dips (from GC pauses or
+    // audio glitches) are bridged by the SILENCE_DEBOUNCE_FRAMES count.
+    // The voicedness arm of this OR is what filters loud-but-unvoiced
+    // ambient noise (AC, fans, computer hum) from displaying phantom
+    // pitches — without it, broadband noise that exceeds the −50 dB
+    // intensity gate would render as if voiced. See VOICEDNESS_THRESHOLD
+    // comment above for the threshold rationale.
+    const frameQuiet =
+      intensity < SILENCE_THRESHOLD_DB ||
+      (typeof data.voicedness === "number" && data.voicedness < VOICEDNESS_THRESHOLD);
     const hasPitch = pitch !== null;
 
     if (frameQuiet) {
