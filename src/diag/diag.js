@@ -55,6 +55,32 @@ export const DIAG_LATENCY_HINT = (() => {
 // helping or hurting on a given platform. Default behavior unchanged.
 export const DIAG_NO_LATENCY_CONSTRAINT = _query.get("nolatconstraint") === "1";
 
+// Override the AudioWorklet chunk size from the default 25 ms — `?chunk=N`
+// where N is in milliseconds. Smaller chunks = sub-chunkSize start-of-
+// utterance latency improvement, but more frequent DSP-worker analysis
+// calls (the worker analyzes on every chunk arrival once the 50 ms
+// window is full, so chunk=10 means analysis at 10 ms cadence vs 25 ms).
+// MEASUREMENT-ONLY. Range 5–50 ms. Returns null when absent.
+export const DIAG_CHUNK_MS_OVERRIDE = (() => {
+  const v = _query.get("chunk");
+  if (v == null) return null;
+  const n = parseInt(v, 10);
+  if (!Number.isFinite(n) || n < 5 || n > 50) return null;
+  return n;
+})();
+
+// Use `latency: { exact: N }` instead of `{ ideal: 0.01, max: 0.05 }`
+// — `?latexact=N`. `exact` forces getUserMedia to fail if the platform
+// can't deliver, so this is a strict probe of the platform floor.
+// Range 0.001–0.1 (1–100 ms).
+export const DIAG_LATENCY_EXACT = (() => {
+  const v = _query.get("latexact");
+  if (v == null) return null;
+  const n = parseFloat(v);
+  if (!Number.isFinite(n) || n < 0.001 || n > 0.1) return null;
+  return n;
+})();
+
 // ~30 seconds at the worker's analysis cadence (~25 ms hop = 40 fps).
 // Sized so a single snapshot covers enough session time to make slow
 // drift (e.g. mobile audio-clock skew) visible by linear regression.

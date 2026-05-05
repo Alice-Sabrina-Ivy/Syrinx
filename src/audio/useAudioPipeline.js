@@ -18,6 +18,8 @@ import {
   DIAG_SR_OVERRIDE,
   DIAG_LATENCY_HINT,
   DIAG_NO_LATENCY_CONSTRAINT,
+  DIAG_CHUNK_MS_OVERRIDE,
+  DIAG_LATENCY_EXACT,
   setAudioInfo,
   setAudioCtxSample,
   pushFrame,
@@ -132,7 +134,12 @@ export function useAudioPipeline() {
         noiseSuppression: false,
         autoGainControl: false,
       };
-      if (!DIAG_NO_LATENCY_CONSTRAINT) {
+      if (DIAG_LATENCY_EXACT != null) {
+        // `exact` is a strict constraint — getUserMedia rejects if the
+        // platform can't deliver the requested value. Used to probe
+        // whether the granted-0.04 floor on Pixel/Chrome is movable.
+        audioConstraints.latency = { exact: DIAG_LATENCY_EXACT };
+      } else if (!DIAG_NO_LATENCY_CONSTRAINT) {
         audioConstraints.latency = { ideal: 0.01, max: 0.05 };
       }
       // ?sr=N — request a specific capture sample rate. Mobile Chrome
@@ -222,7 +229,17 @@ export function useAudioPipeline() {
           }
         });
         workletNode.port.start();
-        workletNode.port.postMessage({ type: "init", diag: true });
+        workletNode.port.postMessage({
+          type: "init",
+          diag: true,
+          ...(DIAG_CHUNK_MS_OVERRIDE != null ? { chunkMs: DIAG_CHUNK_MS_OVERRIDE } : {}),
+        });
+      } else if (DIAG_CHUNK_MS_OVERRIDE != null) {
+        // chunk override outside diag mode is unusual but supported —
+        // measurement-only. The flag itself only reads when DIAG_ENABLED
+        // (URL has ?diag=1), so this branch is unreachable today; left
+        // for future symmetry if we lift that gate.
+        workletNode.port.postMessage({ type: "init", chunkMs: DIAG_CHUNK_MS_OVERRIDE });
       }
 
       const worker = new Worker(

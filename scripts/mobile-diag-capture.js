@@ -110,13 +110,28 @@ function phaseDeviceCheck() {
     process.exit(3);
   }
 
+  // ANDROID_SERIAL pins all adb shell commands to a specific device.
+  // Helpful when wireless-debug or extra emulator devices show up
+  // alongside the USB-connected phone.
+  const pin = process.env.ANDROID_SERIAL;
+  let dev;
   if (devices.length > 1) {
-    console.error(`✗ ${devices.length} devices attached. Disconnect one or set ANDROID_SERIAL.`);
-    devices.forEach((d) => console.error(`    ${d.serial}  ${d.state}`));
-    process.exit(3);
+    if (pin) {
+      const m = devices.find((d) => d.serial === pin);
+      if (!m) {
+        console.error(`✗ ANDROID_SERIAL=${pin} but no matching device. Attached:`);
+        devices.forEach((d) => console.error(`    ${d.serial}  ${d.state}`));
+        process.exit(3);
+      }
+      dev = m;
+    } else {
+      console.error(`✗ ${devices.length} devices attached. Set ANDROID_SERIAL or disconnect extras.`);
+      devices.forEach((d) => console.error(`    ${d.serial}  ${d.state}`));
+      process.exit(3);
+    }
+  } else {
+    dev = devices[0];
   }
-
-  const dev = devices[0];
   if (dev.state === "unauthorized") {
     console.error("");
     console.error(`✗ Device ${dev.serial} is unauthorized.`);
@@ -318,24 +333,29 @@ async function phaseConnectCdp(targetUrl) {
   }
   console.log(`      CDP up: ${cdpInfo.Browser} (${cdpInfo["Protocol-Version"]})`);
 
-  // Find the diag tab via /json/list. Each `am start ... VIEW` intent
-  // creates a new tab on Android Chrome — so on subsequent runs there
-  // may be multiple matching tabs from prior harness invocations.
-  // Close all but the most recent (highest target id, last-launched)
-  // and use that one. Keeps the tab count from drifting upward across
-  // many harness runs.
+  // Find the diag tab via /json/list, with a poll-for-tab grace window.
+  // Each `am start ... VIEW` intent creates a tab on Android Chrome —
+  // there can be a 1-3s gap between intent dispatch and the tab
+  // showing up in /json/list. Without the poll, the harness races
+  // ahead and reports "0 matching tabs" even though the URL is loading.
   console.log("[4/6] Locating Syrinx tab among all open tabs…");
   const targetOrigin = new URL(targetUrl).origin;
-  const listRes = await fetch(`http://localhost:${CDP_PORT}/json/list`);
-  const list = await listRes.json();
+  let list = [];
+  let matches = [];
+  const pollUntil = Date.now() + 10000;
+  while (Date.now() < pollUntil) {
+    const listRes = await fetch(`http://localhost:${CDP_PORT}/json/list`);
+    list = await listRes.json();
+    matches = list.filter((t) => t.type === "page" && t.url && originSafe(t.url) === targetOrigin);
+    if (matches.length > 0) break;
+    await sleep(500);
+  }
   const total = list.length;
-  const matches = list
-    .filter((t) => t.type === "page" && t.url && originSafe(t.url) === targetOrigin);
   console.log(`      ${total} total tabs on phone, ${matches.length} match origin ${targetOrigin}`);
 
   if (matches.length === 0) {
     throw new Error(
-      `No tab matched origin ${targetOrigin}.\n` +
+      `No tab matched origin ${targetOrigin} after 10s polling.\n` +
       `  - Open ${targetUrl} on the phone manually first (accept cert warning if needed).\n` +
       `  - Then re-run this script.`
     );
