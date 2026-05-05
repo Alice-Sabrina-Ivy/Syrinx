@@ -141,31 +141,43 @@ If the harness exits with a hint that says "tap something on the device", do tha
 
 ### Desktop diag capture harness
 
-The desktop analogue of the mobile harness — runs a configurable capture window, snapshots and saves the JSON to `measurements/desktop-diag-runs/<kind>-<ISO-timestamp>.json`. Used to compare MSTP vs AudioContext capture-source latency on desktop alongside the mobile harness's mobile measurements.
+The desktop analogue of the mobile harness — runs a configurable capture window, snapshots and saves the JSON to `measurements/desktop-diag-runs/<kind>-<ISO-timestamp>.json`. Used to compare MSTP vs AudioContext capture-source latency on desktop alongside the mobile harness's mobile measurements. Two harnesses, parallel use cases:
 
-**Default (Pattern A): attach to your existing Chrome.** [scripts/desktop-diag-capture-attach.js](scripts/desktop-diag-capture-attach.js) connects via CDP to a Chrome already running with `--remote-debugging-port`, opens the test page in a NEW WINDOW (not a tab — separate window so it doesn't hijack focus in your active session), runs the capture against your real microphone with your persisted permissions, then closes only the window it opened. Other tabs and windows are never touched.
+#### Isolated spawn (autonomous, synthetic-injection only)
 
-Prerequisite — launch your Chrome with the debug port enabled (one-time, with all current Chrome windows closed first):
+[scripts/desktop-diag-capture.js](scripts/desktop-diag-capture.js) spawns a fresh Chrome with `--user-data-dir=<temp>`, runs the capture in that isolated profile, and tree-kills only the spawned PID on exit. No setup required from the user. Use `--voice-file=PATH` for autonomous regression runs against synthetic audio:
+
+```
+node scripts/desktop-diag-capture.js [--kind=mstp|audiocontext] [--duration=120] [--url=...] [--voice-file=PATH] [--play-wav=PATH]
+```
+
+**`--voice-file=PATH`** uses Chrome's `--use-file-for-fake-audio-capture` to replace the mic wholesale with the WAV's bytes (no real audio stack involved). Bit-exact reproducibility — the recommended mode for this harness.
+
+**`--play-wav=PATH`** ATTEMPTS speaker-loopback through the spawned Chrome's default mic (via PowerShell `System.Media.SoundPlayer.PlayLooping`). **Does not work in Alice's environment as of 2026-05-05** — the spawned isolated Chrome's default mic delivers `inputRms=0` across all captured frames regardless of speaker output, suggesting the fresh profile selects a non-physical or muted device distinct from the user's actual default mic. Code path retained because it works on the Pattern A harness (which inherits the user's real-mic config) and may work in other environments. **For real-mic testing on this dev environment, use Pattern A.**
+
+The flags are mutually exclusive — `--voice-file` takes priority.
+
+#### Attach to existing Chrome (for tests that need real session state)
+
+[scripts/desktop-diag-capture-attach.js](scripts/desktop-diag-capture-attach.js) connects via CDP to a Chrome already running with `--remote-debugging-port`, opens the test page in a NEW WINDOW (not a tab — separate window so it doesn't hijack focus in the active session), runs the capture against the user's real Chrome session (real cookies, persisted permissions, real-profile mic preference), then closes only the window it opened via `Target.closeTarget({targetId})`. Other tabs and windows are unreachable by construction — CDP addresses targets by id, not pattern.
+
+Use when the test needs the user's actual browser state, not just real audio. Prerequisite — the user must launch their Chrome with the debug port enabled first (one-time, with all current Chrome windows closed):
 
 ```powershell
 & "C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9223
 ```
 
-Or modify the Chrome shortcut's Target field to append `--remote-debugging-port=9223`. The flag only takes effect on a fresh launch — if Chrome was already running, the second invocation is absorbed into the existing instance and the flag is silently ignored.
-
-Then:
+Or modify the Chrome shortcut's Target field to append `--remote-debugging-port=9223`. The flag only takes effect on a fresh launch — a second invocation while Chrome is already running gets absorbed into the existing instance and the flag is silently ignored.
 
 ```
 node scripts/desktop-diag-capture-attach.js [--kind=mstp|audiocontext] [--duration=120] [--url=...] [--port=9223] [--play-wav=PATH]
 ```
 
-The harness uses `Target.createTarget({newWindow: true})` to open a separate window, and `Target.closeTarget({targetId})` to close only that target on exit. The CDP API addresses targets by id, so it cannot affect other tabs or windows by construction.
+`--play-wav` works on this harness too, with the same semantics as on the isolated harness.
 
-**`--play-wav=PATH`** — optional. Plays a WAV file through the system speakers during capture (looping, via PowerShell `System.Media.SoundPlayer`). The user's real microphone picks it up, providing a known-frequency reference signal for end-to-end real-mic regression testing — e.g. `--play-wav=tests/audio/fixtures/voice-200hz-10s.wav` lets the harness confirm pitch detection ≈ 200 Hz on the real-mic real-MSTP path. The PowerShell child is tracked by PID and tree-killed on exit per the spawned-process cleanup rule below. Speakers must be the active output device for the played signal to reach the mic — common-sense precondition for acoustic loopback testing.
+#### Why not spawn a debug-port-enabled Chrome that shares the user's profile?
 
-**Fallback (deprecated, retained): spawn a fresh isolated Chrome.** [scripts/desktop-diag-capture.js](scripts/desktop-diag-capture.js) launches its own Chrome with `--user-data-dir=<temp>` and runs the capture in that isolated profile. Limitation: the fresh profile picks Chrome's notion of "default mic" which often isn't the user's actual preferred device, so real-mic measurements are unreliable on this path. It still works for synthetic-audio testing via `--voice-file=PATH` (Chrome's `--use-file-for-fake-audio-capture`). Use this when (1) attaching to an existing Chrome isn't an option, or (2) deterministic synthetic audio is required for path-comparison work where ambient room audio would dominate the variance.
-
-**Why not just spawn a debug-port-enabled Chrome that shares the user's profile?** Empirically, a manually-typed `chrome.exe --remote-debugging-port=9223` from PowerShell can produce a new debug-enabled Chrome instance even while the user's primary Chrome is running. But Node's `child_process.spawn` cannot reproduce this — five spawn variants tested 2026-05-05 (`detached:false/true`, `stdio:'inherit'/'ignore'`, `cmd /c start chrome`, `powershell -Command Start-Process chrome`, `windowsHide:false`) all caused Chrome to single-instance-merge into the user's running Chrome and forward args (visibly, in one variant Chrome printed `Opening in existing browser session.` to stdout). The difference between manual-PowerShell and Node-spawn isn't pinned, but the empirical conclusion is that the harness cannot rely on this approach. Pattern A (attach to a Chrome the user has already launched with the debug port) is the working alternative; the deprecated `--user-data-dir` spawn path is the fallback for synthetic-audio-only scenarios. **Future sessions: do not redo this exploration.**
+We explored sharing the user's profile via Node spawn (which would have given a debug-enabled instance with the user's real mic preference, no `--play-wav` fixture proxy needed) and concluded it's not achievable through Node's `child_process` API. Five spawn variants tested 2026-05-05 (`detached:false/true`, `stdio:'inherit'/'ignore'`, `cmd /c start chrome`, `powershell -Command Start-Process chrome`, `windowsHide:false`) all caused Chrome to single-instance-merge into the user's running Chrome — even though manually typing `chrome.exe --remote-debugging-port=9223` in PowerShell does produce a new debug-enabled instance for the user. The difference between interactive-PowerShell and Node-launched-PowerShell isn't pinned, but the empirical conclusion is solid. The isolated-spawn harness with `--play-wav` sidesteps the issue entirely: deterministic test signal regardless of which mic the fresh profile picks. **Future sessions: do not redo this exploration.**
 
 ### Spawned-process cleanup rule (load-bearing — DO NOT VIOLATE)
 

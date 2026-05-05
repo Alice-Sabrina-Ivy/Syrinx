@@ -1,16 +1,44 @@
-// desktop-diag-capture.js — Drive a freshly-spawned local Chrome instance
-// to capture a `?diag=1` snapshot from the dev server. Mirror of
-// scripts/mobile-diag-capture.js but for desktop measurement.
+// desktop-diag-capture.js — Spawn a fresh isolated Chrome via --user-data-dir
+// and run a `?diag=1` capture against the dev server.
 //
-// DEPRECATED — prefer [scripts/desktop-diag-capture-attach.js](./desktop-diag-capture-attach.js)
-// (Pattern A) for routine measurement. This script remains as a fallback
-// for environments where the user can't or doesn't want to launch their
-// primary Chrome with --remote-debugging-port. Limitation that motivated
-// the move: the spawned-Chrome flow can't reliably address the user's
-// real preferred microphone — its fresh profile picks Chrome's notion
-// of "default device" which often isn't the right one. Testing real-mic
-// behavior here therefore relies on the synthetic --voice-file fixture
-// rather than the actual capture stack.
+//   --voice-file=PATH  : Synthetic-injection via Chrome's
+//                        --use-file-for-fake-audio-capture. The mic is
+//                        replaced wholesale by the WAV's bytes — no real
+//                        audio stack involved. Bit-exact reproducibility
+//                        for path-comparison work. Recommended mode for
+//                        autonomous regression testing on this harness.
+//
+//   (default)          : Chrome's synthetic 1 kHz beep mono source via
+//                        --use-fake-device-for-media-stream. Smoke test
+//                        only.
+//
+//   --play-wav=PATH    : ATTEMPTS speaker-loopback through the spawned
+//                        Chrome's default mic (PowerShell SoundPlayer.
+//                        PlayLooping during capture). DOES NOT WORK on the
+//                        development environment as of 2026-05-05 — the
+//                        spawned isolated Chrome's default mic delivers
+//                        digital silence (inputRms=0 across all captured
+//                        frames, with or without speaker output). Cause not
+//                        pinned: the fresh profile may be selecting a non-
+//                        physical or muted device, distinct from the user's
+//                        actual default mic. Code path retained because it
+//                        works on Pattern A (the attach harness inherits
+//                        the user's real-mic configuration) and may work on
+//                        a different environment. For real-mic testing on
+//                        this environment, use Pattern A.
+//
+// Sister harness: scripts/desktop-diag-capture-attach.js (Pattern A) is the
+// real-mic test path. It attaches to a Chrome the user has launched with
+// --remote-debugging-port=9223, inheriting their persisted permissions and
+// real-mic preference. Use it when the test signal must reach a working mic.
+//
+// Note: a Node-spawned Chrome cannot share the user's default profile.
+// Testing 2026-05-05 of five spawn variants (detached:false/true,
+// stdio:'inherit'/'ignore', cmd /c start, powershell Start-Process,
+// windowsHide:false) all caused single-instance merge into the user's
+// running Chrome. The isolated --user-data-dir approach used here sidesteps
+// the merge entirely; the trade-off is the silent-default-mic limitation
+// on --play-wav described above.
 //
 // IMPORTANT — process-management contract:
 //
@@ -37,7 +65,7 @@
 
 import { spawn, spawnSync } from "node:child_process";
 import { writeFileSync, mkdirSync, existsSync, rmSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { join, dirname, resolve as pathResolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { WebSocket } from "ws";
@@ -77,11 +105,20 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // makes "did we already clean up?" a single boolean check.
 let cleanedUp = false;
 let spawnedPid = null;
+let playerPid = null;
 let profileDir = null;
 
 function cleanup() {
   if (cleanedUp) return;
   cleanedUp = true;
+
+  // Kill the audio-playback PowerShell PID we spawned (if still alive).
+  // PID-scoped, same rule as the Chrome spawn.
+  if (playerPid != null) {
+    try {
+      spawnSync("taskkill", ["/pid", String(playerPid), "/T", "/F"], { stdio: "ignore" });
+    } catch { /* best effort */ }
+  }
 
   // Tree-kill the spawned Chrome PID specifically. /T = include the
   // process tree (Chrome forks renderers, GPU process, network service,
@@ -102,6 +139,22 @@ function cleanup() {
       rmSync(profileDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
     } catch { /* best effort */ }
   }
+}
+
+function startAudioPlayback(wavPath, durationSec) {
+  if (!existsSync(wavPath)) {
+    throw new Error(`--play-wav: file not found: ${wavPath}`);
+  }
+  const psPath = wavPath.replace(/'/g, "''");
+  const psCommand =
+    `$p = New-Object Media.SoundPlayer '${psPath}'; ` +
+    `$p.PlayLooping(); Start-Sleep -Seconds ${durationSec + 5}; $p.Stop()`;
+  const child = spawn("powershell", ["-NoProfile", "-Command", psCommand], {
+    stdio: "ignore",
+    detached: true,
+  });
+  child.unref();
+  return child.pid;
 }
 
 // Cleanup on any process exit path.
@@ -202,21 +255,28 @@ class CdpClient {
     // tab to any other Chrome instance Alice has running.
     "--new-window",
   ];
-  // Audio source priority (highest first):
-  //   --voice-file=PATH  : play a WAV through Chrome's fake mic. Chrome
-  //                        loops it indefinitely. Used as the ground-
-  //                        truth reference for path-comparison testing
-  //                        (MSTP vs AudioContext should produce
-  //                        equivalent pitch readings on the same WAV).
-  //   --no-fake-device   : real-mic capture (host's default device).
-  //                        Useful for surfacing real-mic-only bugs.
-  //   (default)          : Chrome's synthetic 1 kHz beep mono source.
+  // Audio source mode (see file header for the full description):
+  //   --play-wav=PATH    : real mic + speakers loopback. NO fake device.
+  //   --voice-file=PATH  : Chrome fake-device + WAV injection.
+  //   --no-fake-device   : real mic, no test signal (ambient only).
+  //   (default)          : Chrome's synthetic 1 kHz beep.
+  const realMicMode = args["play-wav"] || args["no-fake-device"] === "true";
   if (args["voice-file"]) {
     // The voice file flag REQUIRES --use-fake-device-for-media-stream;
     // without it Chrome ignores the file flag.
     chromeArgs.push("--use-fake-device-for-media-stream");
     chromeArgs.push(`--use-file-for-fake-audio-capture=${args["voice-file"]}`);
-  } else if (args["no-fake-device"] !== "true") {
+  } else if (realMicMode) {
+    // Real mic — speakers will provide the test signal. No fake device flag.
+    // Need --use-fake-ui-for-media-stream though: on a fresh --user-data-dir
+    // profile, Browser.grantPermissions(audioCapture) via CDP grants Chrome's
+    // permission, but the spawned Chrome's getUserMedia still hangs without
+    // the cmdline flag — empirically observed 2026-05-05. The flag bypasses
+    // Chrome's permission UI by auto-accepting; with no UI to interact with,
+    // gUM resolves immediately on the granted permission. Safe because
+    // --user-data-dir guarantees this Chrome instance is ours and isolated.
+    chromeArgs.push("--use-fake-ui-for-media-stream");
+  } else {
     chromeArgs.push("--use-fake-device-for-media-stream");
   }
   // Note: no URL on the command line. Chrome opens its default new-tab page;
@@ -294,6 +354,21 @@ class CdpClient {
   }
   console.log("      diag attached ✓");
 
+  // Start speaker playback BEFORE the click so the first capture frames see
+  // signal rather than silence. PowerShell child loops the WAV for capture
+  // duration + 5 s safety margin and then exits on its own. Tracked by PID
+  // for cleanup() so an aborted run doesn't leave audio playing.
+  if (args["play-wav"]) {
+    const wavPath = pathResolve(args["play-wav"]);
+    console.log(`      starting playback: ${wavPath}`);
+    playerPid = startAudioPlayback(wavPath, DURATION);
+    console.log(`      powershell pid=${playerPid} (PID-tracked for cleanup)`);
+    // Brief settle so the OS audio stack is actually emitting before the
+    // capture pipeline starts; otherwise the first frames see digital
+    // silence between SoundPlayer init and audio out.
+    await sleep(300);
+  }
+
   // Click the start button. Use mouse events so user-activation
   // is granted (programmatic .click() doesn't count).
   const btn = await cdp.eval(`
@@ -362,6 +437,7 @@ class CdpClient {
           return {
             n: frames.length,
             lastChunkArrivalMs: last?.timings?.chunkArrivalMs ?? null,
+            lastPitch: last?.pitch ?? null,
             captureKind: d?.audio?.captureKind,
             errors: d?.status?.errors?.length ?? 0,
           };
@@ -369,7 +445,8 @@ class CdpClient {
       `, 10000);
       console.log(
         `      ${elapsed}s/${DURATION}s n=${live.n} kind=${live.captureKind} ` +
-        `last=${live.lastChunkArrivalMs?.toFixed(1) ?? "—"}ms` +
+        `last=${live.lastChunkArrivalMs?.toFixed(1) ?? "—"}ms ` +
+        `pitch=${live.lastPitch?.toFixed(1) ?? "—"}Hz` +
         (live.errors > 0 ? ` errors=${live.errors}` : "")
       );
     } catch (err) {
@@ -392,14 +469,19 @@ class CdpClient {
   const frames = snap.frames || [];
   const arr = frames.map(f => f.timings?.chunkArrivalMs).filter(v => typeof v === "number" && Number.isFinite(v)).sort((a,b)=>a-b);
   const pct = (p) => arr[Math.floor(arr.length * p)];
+  const pitches = frames.map(f => f.pitch).filter(p => typeof p === "number" && Number.isFinite(p) && p > 0).sort((a,b)=>a-b);
+  const pp = (p) => pitches[Math.floor(pitches.length * p)];
   console.log("");
   console.log("─".repeat(72));
   console.log(` SUMMARY — kind=${snap.audio?.captureKind} ${snap.userAgent}`);
   console.log("─".repeat(72));
   console.log(`  saved: ${path}`);
-  console.log(`  frames: ${frames.length}, lowRes: ${(snap.lowRes || []).length}`);
+  console.log(`  frames: ${frames.length}, lowRes: ${(snap.lowRes || []).length}, voiced: ${pitches.length}`);
   if (arr.length > 0) {
     console.log(`  chunkArrival ms: median=${pct(0.5).toFixed(2)} p95=${pct(0.95).toFixed(2)} p99=${pct(0.99).toFixed(2)} max=${arr[arr.length-1].toFixed(2)}`);
+  }
+  if (pitches.length > 0) {
+    console.log(`  pitch Hz:        median=${pp(0.5).toFixed(2)} p5=${pp(0.05).toFixed(2)} p95=${pp(0.95).toFixed(2)}`);
   }
   console.log(`  baseLat: ${snap.audio?.baseLatencySec ? (snap.audio.baseLatencySec*1000).toFixed(1)+"ms" : "—"}, granted.latency: ${snap.audio?.grantedConstraints?.latency ?? "—"}`);
   console.log(`  status.errors: ${snap.status?.errors?.length ?? 0}`);
