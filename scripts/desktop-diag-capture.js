@@ -77,8 +77,12 @@ const RUNS_DIR = join(REPO_ROOT, "measurements", "desktop-diag-runs");
 const args = parseArgs(process.argv.slice(2));
 const KIND = args.kind ?? "mstp";
 const DURATION = parseInt(args.duration ?? "120", 10);
-const URL = args.url ?? `https://localhost:5173/Syrinx/?diag=1&capture=${KIND}`;
 const PORT = parseInt(args.port ?? "9223", 10);
+// URL is detected at runtime: `npm run dev` serves HTTP, `npm run dev:mobile`
+// serves HTTPS via @vitejs/plugin-basic-ssl. The harness probes both before
+// launching Chrome so it doesn't matter which dev mode the user is running.
+// --url override skips detection.
+const URL_OVERRIDE = args.url ?? null;
 
 const CHROME_PATHS = [
   "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
@@ -224,7 +228,39 @@ class CdpClient {
 //  Main flow
 // ---------------------------------------------------------------------------
 
+// dev:mobile uses @vitejs/plugin-basic-ssl's self-signed cert. Node's fetch
+// rejects it by default; this scoped env var lets fetch ignore the cert for
+// the local-only dev-server probe and the CDP /json/version + /json/list
+// calls. Harness is dev tooling, not production. Chrome itself sees the same
+// cert and we ignore it via Security.setIgnoreCertificateErrors after attach.
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+
+async function detectDevServerUrl() {
+  if (URL_OVERRIDE) return URL_OVERRIDE;
+  const path = `localhost:5173/Syrinx/?diag=1&capture=${KIND}`;
+  for (const proto of ["https", "http"]) {
+    try {
+      const url = `${proto}://${path}`;
+      const r = await fetch(url, { signal: AbortSignal.timeout(2000) });
+      if (r.ok) return url;
+    } catch { /* try next */ }
+  }
+  throw new Error(
+    "Dev server not reachable at https://localhost:5173/Syrinx/ or http://localhost:5173/Syrinx/.\n" +
+    "Start one of:\n" +
+    "  npm run dev          (HTTP on localhost)\n" +
+    "  npm run dev:mobile   (HTTPS on localhost + LAN)\n" +
+    "Or pass --url=<full URL> to override detection."
+  );
+}
+
 (async () => {
+  // Probe the dev server before spawning anything so we don't kill a Chrome
+  // we just launched for nothing. Auto-detects HTTP vs HTTPS — the project
+  // serves either depending on which `dev` script is running.
+  const URL = await detectDevServerUrl();
+  console.log(`[0/5] Dev server: ${URL}`);
+
   // Per-run profile dir: guarantees a fresh process tree (Chrome will
   // not merge with any pre-existing instance because the profile is
   // unique). Cleanup removes the dir after kill.
@@ -260,22 +296,25 @@ class CdpClient {
   //   --voice-file=PATH  : Chrome fake-device + WAV injection.
   //   --no-fake-device   : real mic, no test signal (ambient only).
   //   (default)          : Chrome's synthetic 1 kHz beep.
-  const realMicMode = args["play-wav"] || args["no-fake-device"] === "true";
+  // --use-fake-ui-for-media-stream is needed on the spawned isolated profile
+  // for getUserMedia to resolve. Browser.grantPermissions(audioCapture) via
+  // CDP grants Chrome's permission, but in practice the spawned Chrome's gUM
+  // still hangs without the cmdline flag — empirically observed 2026-05-05.
+  // The flag bypasses Chrome's permission UI by auto-accepting; with no UI
+  // to interact with, gUM resolves immediately on the granted permission.
+  // Safe because --user-data-dir guarantees this Chrome instance is ours and
+  // isolated. Applies regardless of audio-source mode.
+  chromeArgs.push("--use-fake-ui-for-media-stream");
   if (args["voice-file"]) {
     // The voice file flag REQUIRES --use-fake-device-for-media-stream;
-    // without it Chrome ignores the file flag.
+    // without it Chrome ignores the file flag. Path must be absolute —
+    // Chrome resolves it against its own CWD, not the harness's, and
+    // silently no-ops with a "fake-audio-device" (digital silence) if
+    // the file isn't found at the resolved path.
     chromeArgs.push("--use-fake-device-for-media-stream");
-    chromeArgs.push(`--use-file-for-fake-audio-capture=${args["voice-file"]}`);
-  } else if (realMicMode) {
+    chromeArgs.push(`--use-file-for-fake-audio-capture=${pathResolve(args["voice-file"])}`);
+  } else if (args["play-wav"] || args["no-fake-device"] === "true") {
     // Real mic — speakers will provide the test signal. No fake device flag.
-    // Need --use-fake-ui-for-media-stream though: on a fresh --user-data-dir
-    // profile, Browser.grantPermissions(audioCapture) via CDP grants Chrome's
-    // permission, but the spawned Chrome's getUserMedia still hangs without
-    // the cmdline flag — empirically observed 2026-05-05. The flag bypasses
-    // Chrome's permission UI by auto-accepting; with no UI to interact with,
-    // gUM resolves immediately on the granted permission. Safe because
-    // --user-data-dir guarantees this Chrome instance is ours and isolated.
-    chromeArgs.push("--use-fake-ui-for-media-stream");
   } else {
     chromeArgs.push("--use-fake-device-for-media-stream");
   }
@@ -354,6 +393,26 @@ class CdpClient {
   }
   console.log("      diag attached ✓");
 
+  // Without focus emulation, the spawned window can sit behind the user's
+  // primary Chrome with document.visibilityState reading "hidden"; in that
+  // state React onClick handlers can be queued/throttled in ways that look
+  // like the click silently no-ops (page loads, click hits the right
+  // element, welcome overlay onClick never runs). Empirically observed
+  // 2026-05-05. Emulation.setFocusEmulationEnabled tells Chrome to treat
+  // the page as focused regardless of OS window state — independent of
+  // whether the user has another app in the foreground. Page.bringToFront
+  // is also tried as belt-and-braces (works on some configs where focus
+  // emulation alone doesn't move visibilityState).
+  try {
+    await cdp.send("Emulation.setFocusEmulationEnabled", { enabled: true });
+    await cdp.send("Page.bringToFront", {});
+    await sleep(300);
+    const vis = await cdp.eval("document.visibilityState");
+    console.log(`      focus emulation on, page brought to front, vis=${vis}`);
+  } catch (err) {
+    console.log(`      focus/bringToFront failed: ${err.message}`);
+  }
+
   // Start speaker playback BEFORE the click so the first capture frames see
   // signal rather than silence. PowerShell child loops the WAV for capture
   // duration + 5 s safety margin and then exits on its own. Tracked by PID
@@ -381,6 +440,23 @@ class CdpClient {
     })()
   `);
   if (btn) {
+    // Diagnostic: show window dims + actual element at click coord. If
+    // viewport is smaller than the button's getBoundingClientRect would
+    // suggest (e.g. --new-window opens a small window), the click can land
+    // off-button without an obvious failure signal.
+    const dims = await cdp.eval(`
+      (() => {
+        const target = document.elementFromPoint(${btn.x}, ${btn.y});
+        return {
+          innerWidth: window.innerWidth,
+          innerHeight: window.innerHeight,
+          targetTag: target?.tagName,
+          targetText: target?.textContent?.trim().slice(0, 40),
+          targetIsButton: target?.tagName === "BUTTON",
+        };
+      })()
+    `);
+    console.log(`      viewport=${dims.innerWidth}x${dims.innerHeight} elementAt(${btn.x},${btn.y})=<${dims.targetTag}>"${dims.targetText}"`);
     await cdp.clickAt(btn.x, btn.y);
     console.log(`      clicked: ${btn.text} @ ${btn.x},${btn.y}`);
   }
@@ -418,6 +494,24 @@ class CdpClient {
       console.log(`      gUM probe → ${probe}`);
     } catch (err) {
       console.log(`      gUM probe failed: ${err.message}`);
+    }
+    // Also surface what the page's own state thinks is happening — helps
+    // distinguish "click never fired start()" from "start() ran but
+    // gUM/MSTP/AudioWorklet downstream stalled".
+    try {
+      const pageState = await cdp.eval(`
+        (() => {
+          const bodyText = document.body.innerText.slice(0, 500);
+          const visibleButtons = [...document.querySelectorAll("button")]
+            .filter(b => b.offsetWidth > 0)
+            .map(b => b.textContent.trim().slice(0, 50));
+          return { bodyText, visibleButtons };
+        })()
+      `, 5000);
+      console.log(`      visible buttons: ${JSON.stringify(pageState.visibleButtons)}`);
+      console.log(`      body.innerText (first 500): ${JSON.stringify(pageState.bodyText)}`);
+    } catch (err) {
+      console.log(`      page-state probe failed: ${err.message}`);
     }
   }
 
