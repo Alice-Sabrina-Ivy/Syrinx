@@ -13,6 +13,7 @@ import {
   pushAndMedianPitch,
   PITCH_SMOOTH_LEN,
 } from "./pitchSmoothing";
+import { createCaptureSource } from "./captureSource";
 import {
   DIAG_ENABLED,
   DIAG_SR_OVERRIDE,
@@ -20,10 +21,11 @@ import {
   DIAG_NO_LATENCY_CONSTRAINT,
   DIAG_CHUNK_MS_OVERRIDE,
   DIAG_LATENCY_EXACT,
+  DIAG_CAPTURE_KIND,
   setAudioInfo,
   setAudioCtxSample,
   pushFrame,
-  setWorkletStatus,
+  setCaptureStatus,
   setWorkerStatus,
   pushError,
 } from "../diag/diag";
@@ -69,12 +71,11 @@ export function useAudioPipeline() {
   const lastStateUpdateRef = useRef(0);
   const STATE_UPDATE_INTERVAL = 200; // ms (~5fps for text readouts)
 
-  const audioCtxRef = useRef(null);
+  const audioCtxRef = useRef(null);          // null on MSTP path
+  const captureSrcRef = useRef(null);        // unified handle from captureSource factory
   const workerRef = useRef(null);
   const mlWorkerRef = useRef(null);
   const streamRef = useRef(null);
-  const workletNodeRef = useRef(null);
-  const sourceNodeRef = useRef(null);
   // Periodic AudioContext state sampler interval — set up in start(),
   // cleared in stop(). Diag-mode-only; the ref stays null in production.
   const ctxSamplerRef = useRef(null);
@@ -156,90 +157,52 @@ export function useAudioPipeline() {
       });
       streamRef.current = stream;
 
+      // Capture-source factory. Returns either an audiocontext-based or
+      // mstp-based source depending on factory routing (see
+      // captureSource.js). Production default is "audiocontext"; the
+      // ?capture=mstp / ?capture=audiocontext diag flags override for
+      // measurement.
+      //
       // latencyHint = "balanced" (NOT "interactive"). On Pixel-class
       // Android Chrome, "interactive" allocates a tight ~5 ms output
-      // buffer that leaves the audio thread no headroom for
-      // scheduling jitter; ~30 s into a session, the buffer drift
-      // accumulates and chunk arrival latency grows monotonically at
-      // +5–8 ms/s, reaching multi-second user-perceived latency over
-      // 5 min. "balanced" allocates ~20 ms baseLatency (same headroom
-      // ballpark as desktop's "interactive"), absorbs the jitter, and
-      // drift collapses to ~0 ms/s. Sweep data:
-      //   measurements/mobile-latency-sweep-2026-05-05.md
-      // ?lat=N URL param still overrides for diagnostic comparison
-      // (used during the sweep), but production default is now
-      // "balanced".
-      const ctxOpts = {
+      // buffer that leaves the audio thread no headroom for scheduling
+      // jitter; drift accumulates at +5-8 ms/s. "balanced" allocates
+      // ~20 ms baseLatency and the drift collapses to ~0. Sweep data:
+      // measurements/mobile-latency-sweep-2026-05-05.md.
+      const captureSrc = await createCaptureSource(stream, {
+        diag: DIAG_ENABLED,
+        chunkMs: DIAG_CHUNK_MS_OVERRIDE,
         latencyHint: DIAG_LATENCY_HINT ?? "balanced",
-      };
-      if (DIAG_SR_OVERRIDE) ctxOpts.sampleRate = DIAG_SR_OVERRIDE;
-      const audioCtx = new AudioContext(ctxOpts);
-      audioCtxRef.current = audioCtx;
-      const ctxCreatedAtEpochMs = performance.timeOrigin + performance.now();
-      await audioCtx.audioWorklet.addModule("capture-processor.js");
-      const workletNode = new AudioWorkletNode(audioCtx, "capture-processor");
-      workletNodeRef.current = workletNode;
+        sampleRate: DIAG_SR_OVERRIDE,
+        forceKind: DIAG_CAPTURE_KIND,
+        onInitAck: (ack) => setCaptureStatus(ack),
+        onError: (err) => pushError({ source: "capture", ...err }),
+      });
+      captureSrcRef.current = captureSrc;
+      audioCtxRef.current = captureSrc.audioCtx; // null on mstp path
 
-      // Diagnostic snapshot of the audio context, captured once at start.
-      // Read here rather than later because some browsers may not let us
-      // re-introspect granted constraints after the track has been used.
+      // Diagnostic snapshot — captured once at start. Path-specific
+      // fields (baseLatency / outputLatency / ctxCreatedAtEpochMs)
+      // come from captureSrc.audioInfoExtra(); mstp path returns
+      // nulls for the fields that don't apply.
       if (DIAG_ENABLED) {
         const trackSettings = stream.getAudioTracks()[0]?.getSettings?.() ?? null;
         setAudioInfo({
-          sampleRate: audioCtx.sampleRate,
-          baseLatencySec: audioCtx.baseLatency ?? null,
-          outputLatencySec: audioCtx.outputLatency ?? null,
-          ctxCreatedAtEpochMs,
+          captureKind: captureSrc.kind,
+          sampleRate: captureSrc.sampleRate,
+          ...captureSrc.audioInfoExtra(),
           // Echo of which override flags were active for this session,
-          // so the snapshot is self-describing and we don't have to
-          // cross-reference URL-bar state in the captured JSON.
+          // so the snapshot is self-describing.
           srOverride: DIAG_SR_OVERRIDE,
           latencyHintOverride: DIAG_LATENCY_HINT,
           noLatencyConstraint: DIAG_NO_LATENCY_CONSTRAINT,
-          ctxLatencyHint: ctxOpts.latencyHint,
-          // AudioWorklet support is the modern path. If addModule above
-          // succeeded we got it; if not we'd have thrown earlier. Surface
-          // the explicit confirmation so a failed-fallback case (some old
-          // mobile browsers) is visible in the snapshot.
-          audioWorkletSupported: typeof AudioWorkletNode !== "undefined",
-          // Track settings reflect what the platform actually granted vs
-          // what we requested in getUserMedia (echoCancellation: false etc.).
-          // Mobile browsers may silently override these.
+          captureKindOverride: DIAG_CAPTURE_KIND,
+          // Track settings reflect what the platform granted vs
+          // requested. Mobile browsers may silently override.
           requestedConstraints: { ...audioConstraints },
           grantedConstraints: trackSettings,
           userAgent: navigator.userAgent,
         });
-        // Listen for worklet init-ack and process()-thrown errors before
-        // sending init, so the ack lands wherever it lands. The worklet
-        // and DSP-worker init-acks are how the overlay confirms diag
-        // propagation. Errors thrown in process() permanently disconnect
-        // the AudioWorklet from the audio graph, so even a single one is
-        // pipeline-fatal — surface them visibly.
-        workletNode.port.addEventListener("message", (e) => {
-          const msg = e.data;
-          if (!msg || !msg.type) return;
-          if (msg.type === "worklet-init-ack") {
-            setWorkletStatus({
-              diag: msg.diag,
-              chunkSize: msg.chunkSize,
-              sampleRate: msg.sampleRate,
-            });
-          } else if (msg.type === "worklet-error") {
-            pushError({ source: "worklet", where: msg.where, message: msg.message, stack: msg.stack });
-          }
-        });
-        workletNode.port.start();
-        workletNode.port.postMessage({
-          type: "init",
-          diag: true,
-          ...(DIAG_CHUNK_MS_OVERRIDE != null ? { chunkMs: DIAG_CHUNK_MS_OVERRIDE } : {}),
-        });
-      } else if (DIAG_CHUNK_MS_OVERRIDE != null) {
-        // chunk override outside diag mode is unusual but supported —
-        // measurement-only. The flag itself only reads when DIAG_ENABLED
-        // (URL has ?diag=1), so this branch is unreachable today; left
-        // for future symmetry if we lift that gate.
-        workletNode.port.postMessage({ type: "init", chunkMs: DIAG_CHUNK_MS_OVERRIDE });
       }
 
       const worker = new Worker(
@@ -250,22 +213,17 @@ export function useAudioPipeline() {
 
       worker.postMessage({
         type: "init",
-        sampleRate: audioCtx.sampleRate,
+        sampleRate: captureSrc.sampleRate,
         ...(DIAG_ENABLED ? { diag: true } : {}),
       });
 
-      // Create a direct MessagePort between the AudioWorklet and the DSP
-      // Worker so audio chunks bypass the main thread entirely.  Without
-      // this, every chunk relays through the main-thread event loop, which
-      // stalls when React renders saturate it (especially at steady pitch).
-      const channel = new MessageChannel();
-      workletNode.port.postMessage(
-        { type: "port", port: channel.port1 },
-        [channel.port1],
-      );
+      // Direct MessagePort from the capture source to the DSP worker.
+      // The factory hands us the consumer end of a MessageChannel
+      // already plumbed into the worklet (or MSTP worker, on that path).
+      const dspPort = captureSrc.connectConsumer();
       worker.postMessage(
-        { type: "port", port: channel.port2 },
-        [channel.port2],
+        { type: "port", port: dspPort },
+        [dspPort],
       );
 
       // ML inference worker. Hosts a Transformers.js pipeline that emits
@@ -278,17 +236,13 @@ export function useAudioPipeline() {
       mlWorkerRef.current = mlWorker;
       mlWorker.postMessage({
         type: "init",
-        inputSampleRate: audioCtx.sampleRate,
+        inputSampleRate: captureSrc.sampleRate,
       });
 
-      const mlChannel = new MessageChannel();
-      workletNode.port.postMessage(
-        { type: "port", port: mlChannel.port1 },
-        [mlChannel.port1],
-      );
+      const mlPort = captureSrc.connectConsumer();
       mlWorker.postMessage(
-        { type: "audioPort", port: mlChannel.port2 },
-        [mlChannel.port2],
+        { type: "audioPort", port: mlPort },
+        [mlPort],
       );
 
       mlWorker.onmessage = (e) => {
@@ -345,16 +299,17 @@ export function useAudioPipeline() {
         // Diagnostic mode: capture timing breakpoints around the
         // analysis-handler call.
         //   chunkArrivalMs   = DSP receipt epoch - audio capture epoch
-        //                      (audio capture epoch = ctxCreatedAtEpochMs
+        //                      (audio capture epoch = audioOriginEpochMs
         //                       + contextTime*1000 from the worklet)
         //   handoffToMainMs  = main onmessage entry - DSP postMessage epoch
         //   mainHandlerMs    = handleAnalysisResult duration
         //   totalMs          = display update time - audio capture epoch
         if (DIAG_ENABLED && data.diag) {
           const handlerStart = performance.timeOrigin + performance.now();
+          const audioOriginEpochMs = captureSrcRef.current?.audioOriginEpochMs;
           const audioCapturedEpochMs =
-            typeof data.contextTime === "number" && ctxCreatedAtEpochMs
-              ? ctxCreatedAtEpochMs + data.contextTime * 1000
+            typeof data.contextTime === "number" && typeof audioOriginEpochMs === "number"
+              ? audioOriginEpochMs + data.contextTime * 1000
               : null;
           const chunkArrivalMs =
             audioCapturedEpochMs && typeof data.diag.chunkReceiveEpochMs === "number"
@@ -393,41 +348,30 @@ export function useAudioPipeline() {
         }
       };
 
-      // Connect worklet to destination via a muted gain node.
-      // Without this, the browser may stop calling process() on the
-      // AudioWorklet because its output "isn't consumed" (no path to
-      // destination). This is per spec — the UA may skip processing
-      // for nodes whose output isn't reachable from the destination.
-      const muteNode = audioCtx.createGain();
-      muteNode.gain.value = 0;
-      workletNode.connect(muteNode);
-      muteNode.connect(audioCtx.destination);
-
-      const source = audioCtx.createMediaStreamSource(stream);
-      source.connect(workletNode);
-      sourceNodeRef.current = source;
-
       // Periodic AudioContext state sampler (diag mode only). 1 Hz —
       // matches the low-res buffer cadence so each lowRes entry can be
       // backfilled with one fresh ctx-state read. Cheap (a handful of
-      // property reads); does nothing in production.
+      // property reads); does nothing in production. On the MSTP path,
+      // captureSrc.audioCtx is null and the ctx-* fields write null —
+      // signals that AudioContext-internal state isn't observable on
+      // that path (which is itself useful diagnostic info).
       if (DIAG_ENABLED) {
+        const ac = captureSrc.audioCtx;
         ctxSamplerRef.current = setInterval(() => {
           try {
-            // performance.memory is Chrome-only; guard.
             const mem = performance && performance.memory
               ? performance.memory.usedJSHeapSize / (1024 * 1024)
               : null;
             setAudioCtxSample({
-              ctxState: audioCtx.state,
-              ctxBaseLatencyMs: (audioCtx.baseLatency ?? 0) * 1000,
-              ctxOutputLatencyMs: (audioCtx.outputLatency ?? 0) * 1000,
-              ctxCurrentTime: audioCtx.currentTime,
+              ctxState: ac ? ac.state : null,
+              ctxBaseLatencyMs: ac ? (ac.baseLatency ?? 0) * 1000 : null,
+              ctxOutputLatencyMs: ac ? (ac.outputLatency ?? 0) * 1000 : null,
+              ctxCurrentTime: ac ? ac.currentTime : null,
               visibilityState: typeof document !== "undefined" ? document.visibilityState : null,
               memoryUsedMB: mem,
             });
           } catch {
-            // AudioContext may be in a weird state during shutdown — ignore.
+            // ignore; ctx may be closing
           }
         }, 1000);
       }
@@ -443,19 +387,15 @@ export function useAudioPipeline() {
   }, []);
 
   const stop = useCallback(() => {
-    // Disconnect audio nodes before closing context
     if (ctxSamplerRef.current) {
       clearInterval(ctxSamplerRef.current);
       ctxSamplerRef.current = null;
     }
-    if (sourceNodeRef.current) {
-      sourceNodeRef.current.disconnect();
-      sourceNodeRef.current = null;
+    if (captureSrcRef.current) {
+      captureSrcRef.current.close();
+      captureSrcRef.current = null;
     }
-    if (workletNodeRef.current) {
-      workletNodeRef.current.disconnect();
-      workletNodeRef.current = null;
-    }
+    audioCtxRef.current = null; // owned by captureSrc; just drop the alias
     if (workerRef.current) {
       workerRef.current.terminate();
       workerRef.current = null;
@@ -463,10 +403,6 @@ export function useAudioPipeline() {
     if (mlWorkerRef.current) {
       mlWorkerRef.current.terminate();
       mlWorkerRef.current = null;
-    }
-    if (audioCtxRef.current) {
-      audioCtxRef.current.close();
-      audioCtxRef.current = null;
     }
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop());

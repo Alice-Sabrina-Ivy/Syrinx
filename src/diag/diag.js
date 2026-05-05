@@ -81,6 +81,16 @@ export const DIAG_LATENCY_EXACT = (() => {
   return n;
 })();
 
+// Force a specific capture-source kind — `?capture=mstp` or
+// `?capture=audiocontext`. Default behavior (when absent) follows the
+// production routing in captureSource.js. Used to A/B-test MSTP vs
+// AudioContext on the same device for latency and accuracy comparisons.
+export const DIAG_CAPTURE_KIND = (() => {
+  const v = _query.get("capture");
+  if (v === "mstp" || v === "audiocontext") return v;
+  return null;
+})();
+
 // ~30 seconds at the worker's analysis cadence (~25 ms hop = 40 fps).
 // Sized so a single snapshot covers enough session time to make slow
 // drift (e.g. mobile audio-clock skew) visible by linear regression.
@@ -141,9 +151,9 @@ function _createState() {
     // like "everything's fine, just no audio" — it shows whether init
     // messages landed and whether anything threw.
     status: {
-      worklet: null,    // { diag, chunkSize, sampleRate } from worklet-init-ack
+      capture: null,    // { kind: "audiocontext"|"mstp", diag, chunkSize, sampleRate, ... }
       worker: null,     // { diag, sampleRate, windowSize } from worker-init-ack
-      errors: [],       // { source: "worklet" | "worker", where, message, stack }
+      errors: [],       // { source: "capture" | "worker" | "main", where, message, stack }
     },
     // Per-frame ring buffer. Each entry:
     // {
@@ -205,9 +215,9 @@ export function setAudioInfo(info) {
   diagState.audio = info;
 }
 
-export function setWorkletStatus(s) {
+export function setCaptureStatus(s) {
   if (!diagState) return;
-  diagState.status.worklet = s;
+  diagState.status.capture = s;
 }
 
 export function setWorkerStatus(s) {
@@ -405,6 +415,7 @@ export function snapshot() {
     userAgent: typeof navigator !== "undefined" ? navigator.userAgent : null,
     diagFlags: {
       DIAG_ENABLED, DIAG_SR_OVERRIDE, DIAG_LATENCY_HINT, DIAG_NO_LATENCY_CONSTRAINT,
+      DIAG_CHUNK_MS_OVERRIDE, DIAG_LATENCY_EXACT, DIAG_CAPTURE_KIND,
     },
     audio: diagState.audio,
     status: diagState.status,
