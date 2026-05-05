@@ -93,6 +93,8 @@ The harness:
 
 **Phone state to leave between runs:** USB plugged in, screen unlocked, Chrome running. The harness re-uses the existing tab and re-clicks start as needed; no need to close anything between iterations.
 
+**Strongly recommended: enable "Stay awake while charging"** in Settings → System → Developer options. Without it, the phone dozes after the screen-off timeout and Android suspends AudioWorklet processing — captures longer than a few seconds will randomly stop producing frames depending on whether the phone happened to still be awake from recent user interaction. The harness wakes the screen and sets `svc power stayon usb` at startup, which mitigates this for the duration of the run on most Android builds, but the developer-option toggle is the durable fix.
+
 **Failure modes the harness detects and prints recovery hints for:**
 - No device attached / unauthorized / multiple devices.
 - Chrome not installed (`com.android.chrome` not in `pm list packages`).

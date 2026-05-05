@@ -142,6 +142,33 @@ function phaseDeviceCheck() {
     process.exit(3);
   }
   console.log("      Chrome present ✓");
+
+  // Wake the device and keep it awake while plugged in. AudioWorklet
+  // processing is suspended by Android when the device dozes; without
+  // this, captures spanning more than a few seconds randomly fail
+  // (depending on whether the phone happens to still be awake from
+  // recent user interaction). `svc power stayon usb` requires no
+  // special permissions on user-level Android and is reversible.
+  adb("shell", "input", "keyevent", "KEYCODE_WAKEUP");
+  adb("shell", "svc", "power", "stayon", "usb");
+  const wakefulness = adb("shell", "dumpsys", "power").stdout
+    .split("\n")
+    .find((l) => l.includes("mWakefulness="))
+    ?.trim();
+  if (wakefulness) console.log(`      wake: ${wakefulness}, stay-on: usb`);
+
+  // Detect lock screen — if present, we can wake the screen via keyevent
+  // but can't dismiss the keyguard from ADB without keystone passcode
+  // automation. Tell the user to unlock and try again.
+  const win = adb("shell", "dumpsys", "window").stdout;
+  if (/mDreamingLockscreen=true|isStatusBarKeyguard=true|KeyguardServiceDelegate.*showing.*true/.test(win)) {
+    console.error("");
+    console.error("✗ Phone appears to be on the lock screen.");
+    console.error("  Unlock the phone (face/fingerprint/PIN) and re-run.");
+    console.error("  Tip: 'Stay awake while charging' (Settings → System →");
+    console.error("  Developer options) avoids this on subsequent runs.");
+    process.exit(3);
+  }
 }
 
 // ---------------------------------------------------------------------------
