@@ -156,12 +156,16 @@ Or modify the Chrome shortcut's Target field to append `--remote-debugging-port=
 Then:
 
 ```
-node scripts/desktop-diag-capture-attach.js [--kind=mstp|audiocontext] [--duration=120] [--url=...] [--port=9223]
+node scripts/desktop-diag-capture-attach.js [--kind=mstp|audiocontext] [--duration=120] [--url=...] [--port=9223] [--play-wav=PATH]
 ```
 
 The harness uses `Target.createTarget({newWindow: true})` to open a separate window, and `Target.closeTarget({targetId})` to close only that target on exit. The CDP API addresses targets by id, so it cannot affect other tabs or windows by construction.
 
+**`--play-wav=PATH`** — optional. Plays a WAV file through the system speakers during capture (looping, via PowerShell `System.Media.SoundPlayer`). The user's real microphone picks it up, providing a known-frequency reference signal for end-to-end real-mic regression testing — e.g. `--play-wav=tests/audio/fixtures/voice-200hz-10s.wav` lets the harness confirm pitch detection ≈ 200 Hz on the real-mic real-MSTP path. The PowerShell child is tracked by PID and tree-killed on exit per the spawned-process cleanup rule below. Speakers must be the active output device for the played signal to reach the mic — common-sense precondition for acoustic loopback testing.
+
 **Fallback (deprecated, retained): spawn a fresh isolated Chrome.** [scripts/desktop-diag-capture.js](scripts/desktop-diag-capture.js) launches its own Chrome with `--user-data-dir=<temp>` and runs the capture in that isolated profile. Limitation: the fresh profile picks Chrome's notion of "default mic" which often isn't the user's actual preferred device, so real-mic measurements are unreliable on this path. It still works for synthetic-audio testing via `--voice-file=PATH` (Chrome's `--use-file-for-fake-audio-capture`). Use this when (1) attaching to an existing Chrome isn't an option, or (2) deterministic synthetic audio is required for path-comparison work where ambient room audio would dominate the variance.
+
+**Why not just spawn a debug-port-enabled Chrome that shares the user's profile?** Empirically, a manually-typed `chrome.exe --remote-debugging-port=9223` from PowerShell can produce a new debug-enabled Chrome instance even while the user's primary Chrome is running. But Node's `child_process.spawn` cannot reproduce this — five spawn variants tested 2026-05-05 (`detached:false/true`, `stdio:'inherit'/'ignore'`, `cmd /c start chrome`, `powershell -Command Start-Process chrome`, `windowsHide:false`) all caused Chrome to single-instance-merge into the user's running Chrome and forward args (visibly, in one variant Chrome printed `Opening in existing browser session.` to stdout). The difference between manual-PowerShell and Node-spawn isn't pinned, but the empirical conclusion is that the harness cannot rely on this approach. Pattern A (attach to a Chrome the user has already launched with the debug port) is the working alternative; the deprecated `--user-data-dir` spawn path is the fallback for synthetic-audio-only scenarios. **Future sessions: do not redo this exploration.**
 
 ### Spawned-process cleanup rule (load-bearing — DO NOT VIOLATE)
 
