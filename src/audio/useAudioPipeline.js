@@ -15,7 +15,11 @@ import {
 } from "./pitchSmoothing";
 import {
   DIAG_ENABLED,
+  DIAG_SR_OVERRIDE,
+  DIAG_LATENCY_HINT,
+  DIAG_NO_LATENCY_CONSTRAINT,
   setAudioInfo,
+  setAudioCtxSample,
   pushFrame,
   setWorkletStatus,
   setWorkerStatus,
@@ -58,6 +62,9 @@ export function useAudioPipeline() {
   const streamRef = useRef(null);
   const workletNodeRef = useRef(null);
   const sourceNodeRef = useRef(null);
+  // Periodic AudioContext state sampler interval — set up in start(),
+  // cleared in stop(). Diag-mode-only; the ref stays null in production.
+  const ctxSamplerRef = useRef(null);
 
   // Gender-score history for the trace canvas. Each entry:
   // { time: <ms epoch>, score: 0-100, confidence: 0-1 }
@@ -106,30 +113,49 @@ export function useAudioPipeline() {
 
     try {
       // `latency` is a hint to the platform — Chrome on Android takes it
-      // seriously and will pick the smallest hardware buffer that still
-      // satisfies `max`. Without it, Android Chrome 147 grants
-      // latency: 0.04 (40 ms) by default, which combined with mobile
-      // audio-stack clock skew accumulates into the monotonic
-      // chunkArrivalMs drift observed by Alice (+11.5 ms/s on Pixel-class
-      // Android, growing to ~810 ms by 95 s of session).
-      //
-      // Deferred (cascade effects on formant extraction): requesting
-      // `sampleRate: 16000` would shrink per-quantum sample counts and
-      // potentially reduce buffer accumulation further, but the worker's
-      // formant pipeline is parameterized for 48 kHz capture (decimation
-      // factor, anti-alias FIR length). Try this if the latency hint
-      // alone doesn't tame the drift.
+      // seriously on some configurations. Default constraint is
+      // { ideal: 0.01, max: 0.05 }; the diag overrides at the top let us
+      // measurement-test alternates without rebuilding.
+      const audioConstraints = {
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+      };
+      if (!DIAG_NO_LATENCY_CONSTRAINT) {
+        audioConstraints.latency = { ideal: 0.01, max: 0.05 };
+      }
+      // ?sr=N — request a specific capture sample rate. Mobile Chrome
+      // sometimes allocates smaller hardware buffers at lower sample
+      // rates (16 kHz / 22.05 kHz are commonly fast-path on Android).
+      // MEASUREMENT-ONLY in this commit: the formant pipeline runs at
+      // its fallback decimation at non-48 kHz and produces slightly
+      // different formant numbers; pYIN is unaffected.
+      if (DIAG_SR_OVERRIDE) {
+        audioConstraints.sampleRate = DIAG_SR_OVERRIDE;
+      }
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: false,
-          noiseSuppression: false,
-          autoGainControl: false,
-          latency: { ideal: 0.01, max: 0.05 },
-        },
+        audio: audioConstraints,
       });
       streamRef.current = stream;
 
-      const audioCtx = new AudioContext({ latencyHint: "interactive" });
+      // latencyHint = "balanced" (NOT "interactive"). On Pixel-class
+      // Android Chrome, "interactive" allocates a tight ~5 ms output
+      // buffer that leaves the audio thread no headroom for
+      // scheduling jitter; ~30 s into a session, the buffer drift
+      // accumulates and chunk arrival latency grows monotonically at
+      // +5–8 ms/s, reaching multi-second user-perceived latency over
+      // 5 min. "balanced" allocates ~20 ms baseLatency (same headroom
+      // ballpark as desktop's "interactive"), absorbs the jitter, and
+      // drift collapses to ~0 ms/s. Sweep data:
+      //   measurements/mobile-latency-sweep-2026-05-05.md
+      // ?lat=N URL param still overrides for diagnostic comparison
+      // (used during the sweep), but production default is now
+      // "balanced".
+      const ctxOpts = {
+        latencyHint: DIAG_LATENCY_HINT ?? "balanced",
+      };
+      if (DIAG_SR_OVERRIDE) ctxOpts.sampleRate = DIAG_SR_OVERRIDE;
+      const audioCtx = new AudioContext(ctxOpts);
       audioCtxRef.current = audioCtx;
       const ctxCreatedAtEpochMs = performance.timeOrigin + performance.now();
       await audioCtx.audioWorklet.addModule("capture-processor.js");
@@ -146,6 +172,13 @@ export function useAudioPipeline() {
           baseLatencySec: audioCtx.baseLatency ?? null,
           outputLatencySec: audioCtx.outputLatency ?? null,
           ctxCreatedAtEpochMs,
+          // Echo of which override flags were active for this session,
+          // so the snapshot is self-describing and we don't have to
+          // cross-reference URL-bar state in the captured JSON.
+          srOverride: DIAG_SR_OVERRIDE,
+          latencyHintOverride: DIAG_LATENCY_HINT,
+          noLatencyConstraint: DIAG_NO_LATENCY_CONSTRAINT,
+          ctxLatencyHint: ctxOpts.latencyHint,
           // AudioWorklet support is the modern path. If addModule above
           // succeeded we got it; if not we'd have thrown earlier. Surface
           // the explicit confirmation so a failed-fallback case (some old
@@ -154,11 +187,7 @@ export function useAudioPipeline() {
           // Track settings reflect what the platform actually granted vs
           // what we requested in getUserMedia (echoCancellation: false etc.).
           // Mobile browsers may silently override these.
-          requestedConstraints: {
-            echoCancellation: false,
-            noiseSuppression: false,
-            autoGainControl: false,
-          },
+          requestedConstraints: { ...audioConstraints },
           grantedConstraints: trackSettings,
           userAgent: navigator.userAgent,
         });
@@ -350,6 +379,31 @@ export function useAudioPipeline() {
       source.connect(workletNode);
       sourceNodeRef.current = source;
 
+      // Periodic AudioContext state sampler (diag mode only). 1 Hz —
+      // matches the low-res buffer cadence so each lowRes entry can be
+      // backfilled with one fresh ctx-state read. Cheap (a handful of
+      // property reads); does nothing in production.
+      if (DIAG_ENABLED) {
+        ctxSamplerRef.current = setInterval(() => {
+          try {
+            // performance.memory is Chrome-only; guard.
+            const mem = performance && performance.memory
+              ? performance.memory.usedJSHeapSize / (1024 * 1024)
+              : null;
+            setAudioCtxSample({
+              ctxState: audioCtx.state,
+              ctxBaseLatencyMs: (audioCtx.baseLatency ?? 0) * 1000,
+              ctxOutputLatencyMs: (audioCtx.outputLatency ?? 0) * 1000,
+              ctxCurrentTime: audioCtx.currentTime,
+              visibilityState: typeof document !== "undefined" ? document.visibilityState : null,
+              memoryUsedMB: mem,
+            });
+          } catch {
+            // AudioContext may be in a weird state during shutdown — ignore.
+          }
+        }, 1000);
+      }
+
       setState((s) => ({ ...s, status: "running" }));
     } catch (err) {
       setState((s) => ({
@@ -362,6 +416,10 @@ export function useAudioPipeline() {
 
   const stop = useCallback(() => {
     // Disconnect audio nodes before closing context
+    if (ctxSamplerRef.current) {
+      clearInterval(ctxSamplerRef.current);
+      ctxSamplerRef.current = null;
+    }
     if (sourceNodeRef.current) {
       sourceNodeRef.current.disconnect();
       sourceNodeRef.current = null;

@@ -17,11 +17,11 @@
 //   - measurements/mobile-diag-runs/<ISO-timestamp>.json — full snapshot
 //     for diff'ing across iterations.
 
-import { execFileSync, spawnSync } from "node:child_process";
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import puppeteer from "puppeteer-core";
+import { WebSocket } from "ws";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, "..");
@@ -177,19 +177,19 @@ function phaseDeviceCheck() {
 
 function phaseLaunchChrome(targetUrl) {
   console.log("[2/6] Launching Chrome on device…");
-  // Set the URL via the standard browser intent. Android's Chrome accepts
-  // this even if it's not the default browser, and brings the relevant
-  // tab to foreground if the URL matches. Adding a cache-buster query
-  // would force a fresh load but breaks the diag flag — keep as-is and
-  // accept that hot-reload may serve a stale page if the URL was open
-  // before. (Vite dev's HMR usually fixes this, but if you change schema
-  // mid-iteration, manually close Chrome's tab on the phone first.)
-  const r = adb(
-    "shell", "am", "start",
-    "-a", "android.intent.action.VIEW",
-    "-d", targetUrl,
-    "com.android.chrome",
-  );
+  // Build the entire shell command as one string and let adb shell pass
+  // it through. If the URL is provided as a separate argv element, adb
+  // concatenates with spaces on the device side and the device shell
+  // re-tokenizes — `&` in query strings becomes a job-control separator,
+  // truncating the URL to everything before the first `&`. Wrapping the
+  // URL in single quotes preserves it intact across the adb-shell
+  // re-tokenization step. The URL itself shouldn't contain single
+  // quotes (would need escaping); reject if it does.
+  if (targetUrl.includes("'")) {
+    throw new Error(`URL contains single quote, refusing to inject: ${targetUrl}`);
+  }
+  const cmd = `am start -a android.intent.action.VIEW -d '${targetUrl}' com.android.chrome`;
+  const r = adb("shell", cmd);
   if (r.status !== 0) {
     throw new Error(`am start failed: ${r.stderr || r.stdout}`);
   }
@@ -197,17 +197,107 @@ function phaseLaunchChrome(targetUrl) {
 }
 
 // ---------------------------------------------------------------------------
-//  Phase 3: forward CDP socket and connect via Puppeteer
+//  Minimal CDP client over a single page's WebSocket
+// ---------------------------------------------------------------------------
+//
+// Why not Puppeteer: puppeteer.connect() attaches to every target in the
+// browser (including unrelated user tabs) and issues Network.enable on
+// each. On a phone with a dozen+ tabs, this trips the protocolTimeout
+// even with `targetFilter` set. We only need three CDP commands —
+// Runtime.evaluate, Input.dispatchMouseEvent, Page.reload — so a tiny
+// hand-rolled client over the page's webSocketDebuggerUrl is faster
+// and much more reliable than wrapping Puppeteer.
+
+class CdpClient {
+  constructor(wsUrl) {
+    this.wsUrl = wsUrl;
+    this.ws = null;
+    this.nextId = 1;
+    this.pending = new Map();
+  }
+
+  async connect() {
+    this.ws = new WebSocket(this.wsUrl);
+    await new Promise((resolve, reject) => {
+      this.ws.once("open", resolve);
+      this.ws.once("error", reject);
+    });
+    this.ws.on("message", (data) => {
+      try {
+        const msg = JSON.parse(data.toString());
+        if (msg.id != null && this.pending.has(msg.id)) {
+          const { resolve, reject } = this.pending.get(msg.id);
+          this.pending.delete(msg.id);
+          if (msg.error) reject(new Error(`${msg.error.code}: ${msg.error.message}`));
+          else resolve(msg.result);
+        }
+        // Events (msg.method without msg.id) ignored — we don't need them.
+      } catch { /* malformed frame; ignore */ }
+    });
+  }
+
+  async send(method, params, timeoutMs = 30000) {
+    const id = this.nextId++;
+    let timeoutHandle = null;
+    const promise = new Promise((resolve, reject) => {
+      const wrappedResolve = (v) => { clearTimeout(timeoutHandle); resolve(v); };
+      const wrappedReject = (e) => { clearTimeout(timeoutHandle); reject(e); };
+      this.pending.set(id, { resolve: wrappedResolve, reject: wrappedReject });
+      timeoutHandle = setTimeout(() => {
+        if (this.pending.has(id)) {
+          this.pending.delete(id);
+          reject(new Error(`CDP ${method} timed out after ${timeoutMs}ms`));
+        }
+      }, timeoutMs);
+    });
+    this.ws.send(JSON.stringify({ id, method, params }));
+    return promise;
+  }
+
+  // Run JS in the page, return its value. Awaits promises automatically.
+  async eval(expression) {
+    const r = await this.send("Runtime.evaluate", {
+      expression,
+      awaitPromise: true,
+      returnByValue: true,
+    });
+    if (r.exceptionDetails) {
+      throw new Error(
+        `page eval threw: ${r.exceptionDetails.exception?.description || r.exceptionDetails.text}`
+      );
+    }
+    return r.result?.value;
+  }
+
+  async clickAt(x, y) {
+    await this.send("Input.dispatchMouseEvent", {
+      type: "mousePressed",
+      x, y, button: "left", clickCount: 1, buttons: 1,
+    });
+    await this.send("Input.dispatchMouseEvent", {
+      type: "mouseReleased",
+      x, y, button: "left", clickCount: 1, buttons: 0,
+    });
+  }
+
+  async reload() {
+    await this.send("Page.reload", { ignoreCache: true });
+  }
+
+  close() {
+    try { this.ws?.close(); } catch { /* ignore */ }
+  }
+}
+
+// ---------------------------------------------------------------------------
+//  Phase 3: forward CDP socket + locate the right target
 // ---------------------------------------------------------------------------
 
-async function phaseConnectCdp() {
+async function phaseConnectCdp(targetUrl) {
   console.log("[3/6] Setting up CDP forward (localhost:9222 → device chrome_devtools_remote)…");
-  // Tear down any prior forward to avoid "address already in use" weirdness.
   adb("forward", "--remove", `tcp:${CDP_PORT}`); // ignore failure
   adbCheckOk("adb forward", "forward", `tcp:${CDP_PORT}`, "localabstract:chrome_devtools_remote");
 
-  // CDP can take a beat to come up after Chrome launches. Poll the
-  // /json/version endpoint until it responds or we time out.
   const startedAt = Date.now();
   const timeoutMs = 15000;
   let cdpInfo = null;
@@ -215,7 +305,7 @@ async function phaseConnectCdp() {
     try {
       const res = await fetch(`http://localhost:${CDP_PORT}/json/version`);
       if (res.ok) { cdpInfo = await res.json(); break; }
-    } catch { /* CDP not ready yet */ }
+    } catch { /* not ready */ }
     await sleep(500);
   }
   if (!cdpInfo) {
@@ -228,154 +318,136 @@ async function phaseConnectCdp() {
   }
   console.log(`      CDP up: ${cdpInfo.Browser} (${cdpInfo["Protocol-Version"]})`);
 
-  console.log("[4/6] Connecting Puppeteer to remote browser…");
-  const browser = await puppeteer.connect({
-    browserURL: `http://localhost:${CDP_PORT}`,
-    defaultViewport: null,
-  });
-  return browser;
+  // Find the diag tab via /json/list. Each `am start ... VIEW` intent
+  // creates a new tab on Android Chrome — so on subsequent runs there
+  // may be multiple matching tabs from prior harness invocations.
+  // Close all but the most recent (highest target id, last-launched)
+  // and use that one. Keeps the tab count from drifting upward across
+  // many harness runs.
+  console.log("[4/6] Locating Syrinx tab among all open tabs…");
+  const targetOrigin = new URL(targetUrl).origin;
+  const listRes = await fetch(`http://localhost:${CDP_PORT}/json/list`);
+  const list = await listRes.json();
+  const total = list.length;
+  const matches = list
+    .filter((t) => t.type === "page" && t.url && originSafe(t.url) === targetOrigin);
+  console.log(`      ${total} total tabs on phone, ${matches.length} match origin ${targetOrigin}`);
+
+  if (matches.length === 0) {
+    throw new Error(
+      `No tab matched origin ${targetOrigin}.\n` +
+      `  - Open ${targetUrl} on the phone manually first (accept cert warning if needed).\n` +
+      `  - Then re-run this script.`
+    );
+  }
+
+  // Pick the most-recently-created (lexicographic id is a safe proxy on
+  // Android Chrome; ids monotonically increase). Close the rest.
+  matches.sort((a, b) => (a.id < b.id ? 1 : -1));
+  const target = matches[0];
+  for (const dup of matches.slice(1)) {
+    try {
+      await fetch(`http://localhost:${CDP_PORT}/json/close/${dup.id}`);
+    } catch { /* best-effort */ }
+  }
+  if (matches.length > 1) {
+    console.log(`      closed ${matches.length - 1} duplicate Syrinx tab(s); keeping id=${target.id}`);
+  }
+
+  return { target, total };
 }
 
 // ---------------------------------------------------------------------------
-//  Phase 4: find the diag tab and run the capture window
+//  Phase 5: capture
 // ---------------------------------------------------------------------------
 
-async function phaseCapture(browser, targetUrl, durationSec) {
-  // The intent above asks Chrome to navigate. Find the tab whose URL
-  // matches our origin (case-insensitive) — Chrome may add a fragment
-  // or normalize trailing slashes.
-  const targetOrigin = new URL(targetUrl).origin;
-  console.log(`[5/6] Locating Syrinx tab (origin=${targetOrigin})…`);
+async function phaseCapture(target, targetUrl, durationSec) {
+  console.log(`[5/6] Attaching directly to target id=${target.id} via WebSocket…`);
+  const cdp = new CdpClient(target.webSocketDebuggerUrl);
+  await cdp.connect();
+  console.log(`      ws connected`);
 
-  let page = null;
-  const startedAt = Date.now();
-  while (Date.now() - startedAt < 20000) {
-    const pages = await browser.pages();
-    page = pages.find((p) => {
-      try { return new URL(p.url()).origin === targetOrigin; }
-      catch { return false; }
-    });
-    if (page) break;
-    await sleep(500);
-  }
-  if (!page) {
-    const known = (await browser.pages()).map((p) => p.url()).join("\n        ");
-    throw new Error(
-      `No tab matched origin ${targetOrigin}. Open tabs:\n        ${known || "(none)"}\n` +
-      `  - Make sure the cert warning was accepted on the phone the first time.\n` +
-      `  - If "Your connection is not private" is showing, tap Advanced → Proceed.\n`
-    );
-  }
-  console.log(`      tab url: ${page.url()}`);
-
-  // Force a fresh page load. Without this, the harness inherits whatever
-  // state the previous run left behind: stale workers, an HMR'd diag.js
-  // module instance pointing at empty state, etc. Reloading is the only
-  // reliable way to ensure window.__syrinxDiag and the React app share
-  // the same module instance.
+  // Force a fresh page load. Without this, the harness inherits the
+  // previous run's audio pipeline + stale module instance.
   console.log("      reloading page for fresh state…");
-  await page.reload({ waitUntil: "domcontentloaded", timeout: 15000 });
-
-  // Wait for the React app + diag overlay to mount. We poll for the
-  // window.__syrinxDiag handle that diag.js attaches when DIAG_ENABLED.
-  // This is more reliable than DOM polling because the Welcome overlay
-  // can defer the audio pipeline until the user taps "Get Started",
-  // but __syrinxDiag is attached at module load regardless.
-  const ready = await waitFor(page, () => !!window.__syrinxDiag, 10000);
+  await cdp.reload();
+  const ready = await waitForEval(cdp, "!!window.__syrinxDiag", 15000);
   if (!ready) {
     throw new Error(
       `window.__syrinxDiag never attached. The page didn't load with ?diag=1, or\n` +
-      `the JS failed to evaluate. Check the device for an error overlay.`
+      `the JS failed to evaluate.`
     );
   }
   console.log("      diag module attached ✓");
 
-  // Click "Get Started" or "Start Listening" if either is present —
-  // dismisses the welcome overlay and triggers start() which kicks
-  // off the audio pipeline.
-  //
-  // Must use CDP mouse-driven click (page.mouse.click on element coords),
-  // NOT page.evaluate(() => btn.click()). Programmatic .click() does not
-  // count as user activation in modern Chromium, so getUserMedia silently
-  // fails on mobile (the permission gate requires a user gesture).
-  // Symptom of getting this wrong: status.worklet/worker stay null,
-  // status.errors stays empty (no throw — just permission denied with
-  // no surface signal).
-  const targetText = await page.evaluate(() => {
-    const btn = [...document.querySelectorAll("button")].find((b) =>
-      b.textContent.includes("Get Started") ||
-      b.textContent.includes("Start Listening"));
-    if (!btn) return null;
-    const r = btn.getBoundingClientRect();
-    return { text: btn.textContent.trim(), x: r.x + r.width / 2, y: r.y + r.height / 2 };
-  });
-  if (targetText) {
-    await page.mouse.click(targetText.x, targetText.y);
-    console.log(`      clicked: ${targetText.text} (mouse @ ${Math.round(targetText.x)},${Math.round(targetText.y)})`);
+  // Click via Input.dispatchMouseEvent (NOT element.click()). Programmatic
+  // .click() doesn't grant user activation, so getUserMedia silently fails
+  // — symptom: status.worklet/worker stay null, no error logged.
+  const btn = await cdp.eval(`
+    (() => {
+      const el = [...document.querySelectorAll("button")].find((b) =>
+        b.textContent.includes("Get Started") ||
+        b.textContent.includes("Start Listening"));
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { text: el.textContent.trim(), x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    })()
+  `);
+  if (btn) {
+    await cdp.clickAt(btn.x, btn.y);
+    console.log(`      clicked: ${btn.text} (mouse @ ${Math.round(btn.x)},${Math.round(btn.y)})`);
   } else {
     console.log(`      no start button visible (audio likely already running)`);
   }
 
-  // Wait for at least one frame so we know the pipeline is alive before
-  // committing to the full duration. If frames don't appear in 5s, bail
-  // — cuts down debugging time when something's broken upstream.
-  const firstFrameOk = await waitFor(
-    page,
-    () => (window.__syrinxDiag.state.frames.toArray().length ?? 0) > 0,
+  const firstFrameOk = await waitForEval(
+    cdp,
+    "(window.__syrinxDiag?.state.frames.toArray().length ?? 0) > 0",
     8000,
   );
   if (!firstFrameOk) {
-    const status = await page.evaluate(() => window.__syrinxDiag.state.status);
+    const status = await cdp.eval("JSON.stringify(window.__syrinxDiag.state.status)");
     throw new Error(
-      `No frames within 8s of clicking start. Status:\n${JSON.stringify(status, null, 2)}\n` +
+      `No frames within 8s of clicking start. Status:\n${status}\n` +
       `  - Mic permission may not be granted on the phone.\n` +
       `  - Or the AudioWorklet is throwing — check status.errors above.`
     );
   }
 
-  // Capture window with periodic heartbeat
   console.log(`[6/6] Collecting for ${durationSec}s…`);
   const tCapStart = Date.now();
   const heartbeatMs = 5000;
   while (Date.now() - tCapStart < durationSec * 1000) {
     await sleep(Math.min(heartbeatMs, durationSec * 1000 - (Date.now() - tCapStart)));
     const elapsed = Math.round((Date.now() - tCapStart) / 1000);
-    const liveStats = await page.evaluate(() => {
-      const d = window.__syrinxDiag?.state;
-      const frames = d?.frames.toArray() ?? [];
-      const last = frames[frames.length - 1];
-      return {
-        nFrames: frames.length,
-        lastChunkArrivalMs: last?.timings?.chunkArrivalMs ?? null,
-        nErrors: d?.status?.errors?.length ?? 0,
-      };
-    });
+    const live = await cdp.eval(`
+      (() => {
+        const d = window.__syrinxDiag?.state;
+        const frames = d?.frames.toArray() ?? [];
+        const last = frames[frames.length - 1];
+        return {
+          nFrames: frames.length,
+          nLowRes: d?.lowRes.toArray().length ?? 0,
+          lastChunkArrivalMs: last?.timings?.chunkArrivalMs ?? null,
+          nErrors: d?.status?.errors?.length ?? 0,
+        };
+      })()
+    `);
     console.log(
       `      collecting… ${elapsed}s/${durationSec}s ` +
-      `(n=${liveStats.nFrames}, last chunkArrival=${
-        liveStats.lastChunkArrivalMs == null ? "—" : liveStats.lastChunkArrivalMs.toFixed(1) + "ms"
-      }${liveStats.nErrors > 0 ? `, errors=${liveStats.nErrors}` : ""})`
+      `(n=${live.nFrames} lowRes=${live.nLowRes}, last chunkArrival=${
+        live.lastChunkArrivalMs == null ? "—" : live.lastChunkArrivalMs.toFixed(1) + "ms"
+      }${live.nErrors > 0 ? `, errors=${live.nErrors}` : ""})`
     );
   }
 
-  // Pull the snapshot via the same path the overlay button uses, but
-  // skip the download dance (which depends on Chrome's download-manager
-  // on Android being able to write to /sdcard/Download — sometimes
-  // sandboxed). Read the snapshot object directly out of the page.
-  //
-  // Uses window.__syrinxDiag.snapshot rather than `await import(...)` of
-  // diag.js because Vite serves the module differently between eager
-  // imports (React graph) and ad-hoc dynamic imports — the dynamic
-  // import resolves to a fresh module instance with empty state. The
-  // window handle always points at the React app's actual state.
-  console.log("      reading snapshot directly from page (avoids Android download path)…");
-  const snapshot = await page.evaluate(() => {
-    const d = window.__syrinxDiag;
-    if (!d) throw new Error("window.__syrinxDiag not attached — page didn't load with ?diag=1");
-    return d.snapshot();
-  });
-
-  return snapshot;
+  console.log("      reading snapshot directly from page…");
+  // The snapshot can be large enough that bouncing it through
+  // Runtime.evaluate's returnByValue path is slow. Stringify on the
+  // page side and parse here.
+  const snapJson = await cdp.eval("JSON.stringify(window.__syrinxDiag.snapshot())");
+  cdp.close();
+  return JSON.parse(snapJson);
 }
 
 // ---------------------------------------------------------------------------
@@ -384,18 +456,32 @@ async function phaseCapture(browser, targetUrl, durationSec) {
 
 function summarize(snap) {
   const frames = snap.frames ?? [];
+  const lowRes = snap.lowRes ?? [];
   if (frames.length === 0) {
     return { error: "no frames in snapshot" };
   }
-  const t0 = frames[0].tEpochMs;
-  const t1 = frames[frames.length - 1].tEpochMs;
+  // Use lowRes for full-session timeline; frames cap at ~30 s.
+  // Fall back to frames if lowRes is empty (older snapshot).
+  const longSession = lowRes.length > 0 ? lowRes : frames;
+  const t0 = longSession[0].tEpochMs;
+  const t1 = longSession[longSession.length - 1].tEpochMs;
   const sessionDurSec = (t1 - t0) / 1000;
 
+  // High-res stats from frames (last ~30 s)
   const arrivalSeries = frames
     .map((f) => f.timings?.chunkArrivalMs)
     .filter((v) => typeof v === "number" && Number.isFinite(v));
   const totalSeries = frames
     .map((f) => f.timings?.totalMs)
+    .filter((v) => typeof v === "number" && Number.isFinite(v));
+  // Long-session series from lowRes — survives the high-res ring scrolling.
+  // lowRes entries store chunkArrivalMs/totalMs as direct fields (not nested
+  // under timings), since the structure is intentionally flat for tooling.
+  const longArrival = lowRes
+    .map((f) => f.chunkArrivalMs)
+    .filter((v) => typeof v === "number" && Number.isFinite(v));
+  const longTotal = lowRes
+    .map((f) => f.totalMs)
     .filter((v) => typeof v === "number" && Number.isFinite(v));
 
   const stats = (a) => {
@@ -411,12 +497,15 @@ function summarize(snap) {
     };
   };
 
-  const drift = (field) => {
+  // Linear-fit slope of `field` vs tEpochMs, in ms-per-second-of-session.
+  // `source` is "frames" (high-res, last ~30 s) or "lowRes" (long-session).
+  const drift = (source, getY) => {
+    const arr = source === "frames" ? frames : lowRes;
     let n = 0, sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
     let tBase = null;
-    for (const f of frames) {
+    for (const f of arr) {
       const t = f.tEpochMs;
-      const y = f.timings?.[field];
+      const y = getY(f);
       if (typeof t !== "number" || typeof y !== "number") continue;
       if (!Number.isFinite(t) || !Number.isFinite(y)) continue;
       if (tBase === null) tBase = t;
@@ -448,13 +537,40 @@ function summarize(snap) {
     }
   }
 
+  // Drift-onset detection from lowRes — find the first second where
+  // chunkArrivalMs jumps > 50 ms above the median of the first 10
+  // entries. Useful for catching the bimodal kick-in pattern.
+  let driftOnsetSec = null;
+  if (lowRes.length >= 12) {
+    const baseline = [...lowRes.slice(0, 10).map((e) => e.chunkArrivalMs).filter((v) => typeof v === "number")];
+    if (baseline.length > 0) {
+      const m = [...baseline].sort((a, b) => a - b)[Math.floor(baseline.length / 2)];
+      for (let i = 10; i < lowRes.length; i++) {
+        const v = lowRes[i].chunkArrivalMs;
+        if (typeof v === "number" && v > m + 50) {
+          driftOnsetSec = (lowRes[i].tEpochMs - lowRes[0].tEpochMs) / 1000;
+          break;
+        }
+      }
+    }
+  }
+
   return {
     sessionDurSec,
     nFrames: frames.length,
+    nLowRes: lowRes.length,
+    diagFlags: snap.diagFlags ?? null,
     chunkArrivalMs: stats(arrivalSeries),
     totalMs: stats(totalSeries),
-    chunkArrivalDriftMsPerSec: drift("chunkArrivalMs"),
-    totalDriftMsPerSec: drift("totalMs"),
+    longSession: {
+      chunkArrivalMs: stats(longArrival),
+      totalMs: stats(longTotal),
+    },
+    chunkArrivalDriftMsPerSec_recent: drift("frames", (f) => f.timings?.chunkArrivalMs),
+    chunkArrivalDriftMsPerSec_long: drift("lowRes", (f) => f.chunkArrivalMs),
+    totalDriftMsPerSec_recent: drift("frames", (f) => f.timings?.totalMs),
+    totalDriftMsPerSec_long: drift("lowRes", (f) => f.totalMs),
+    driftOnsetSec,
     bimodal,
     audio: snap.audio,
     statusErrors: snap.status?.errors?.length ?? 0,
@@ -464,13 +580,24 @@ function summarize(snap) {
 
 function printSummary(s) {
   console.log("");
-  console.log("─".repeat(72));
+  console.log("─".repeat(78));
   console.log(" SUMMARY");
-  console.log("─".repeat(72));
-  console.log(`  session: ${s.sessionDurSec.toFixed(1)}s, ${s.nFrames} frames`);
+  console.log("─".repeat(78));
+  console.log(`  session: ${s.sessionDurSec.toFixed(1)}s, ${s.nFrames} frames (high-res), ${s.nLowRes} low-res samples`);
+  if (s.diagFlags) {
+    const f = s.diagFlags;
+    const overrides = [];
+    if (f.DIAG_SR_OVERRIDE) overrides.push(`sr=${f.DIAG_SR_OVERRIDE}`);
+    if (f.DIAG_LATENCY_HINT != null) overrides.push(`lat=${f.DIAG_LATENCY_HINT}`);
+    if (f.DIAG_NO_LATENCY_CONSTRAINT) overrides.push("nolatconstraint=1");
+    if (overrides.length) console.log(`  flags:   ${overrides.join(" ")}`);
+  }
   if (s.audio) {
     const granted = s.audio.grantedConstraints ?? {};
-    console.log(`  audio:   sampleRate=${s.audio.sampleRate}Hz baseLat=${
+    const reqSr = s.audio.requestedConstraints?.sampleRate;
+    console.log(`  audio:   sampleRate=${s.audio.sampleRate}Hz${
+      reqSr ? ` (requested ${reqSr})` : ""
+    } baseLat=${
       ((s.audio.baseLatencySec ?? 0) * 1000).toFixed(1)
     }ms outputLat=${
       ((s.audio.outputLatencySec ?? 0) * 1000).toFixed(1)
@@ -482,38 +609,51 @@ function printSummary(s) {
   if (s.framesWhileHidden > 0) {
     console.log(`  ⚠ frames while page hidden: ${s.framesWhileHidden}`);
   }
+  // High-res window (last ~30 s) — shows worst-case latency state.
   if (s.chunkArrivalMs) {
     const c = s.chunkArrivalMs;
     console.log(
-      `  chunkArrival: median=${c.median.toFixed(1)}ms ` +
+      `  chunkArrival (last ~30s): median=${c.median.toFixed(1)}ms ` +
       `p95=${c.p95.toFixed(1)}ms max=${c.max.toFixed(1)}ms (n=${c.n})`,
     );
   }
   if (s.totalMs) {
     const t = s.totalMs;
     console.log(
-      `  end-to-end:   median=${t.median.toFixed(1)}ms ` +
+      `  end-to-end   (last ~30s): median=${t.median.toFixed(1)}ms ` +
       `p95=${t.p95.toFixed(1)}ms max=${t.max.toFixed(1)}ms`,
     );
   }
-  if (s.chunkArrivalDriftMsPerSec != null) {
-    const d = s.chunkArrivalDriftMsPerSec;
-    const flag = Math.abs(d) > 1 ? " ⚠ HIGH" : Math.abs(d) > 0.2 ? " (elevated)" : "";
-    console.log(`  drift (chunkArrival): ${d >= 0 ? "+" : ""}${d.toFixed(2)}ms/s${flag}`);
+  // Long session — covers the full capture, drift slope is the load-bearing
+  // signal here.
+  if (s.longSession?.chunkArrivalMs) {
+    const c = s.longSession.chunkArrivalMs;
+    console.log(
+      `  chunkArrival (full ${s.sessionDurSec.toFixed(0)}s): median=${c.median.toFixed(1)}ms ` +
+      `p95=${c.p95.toFixed(1)}ms min=${c.min.toFixed(1)}ms max=${c.max.toFixed(1)}ms`,
+    );
   }
-  if (s.totalDriftMsPerSec != null) {
-    const d = s.totalDriftMsPerSec;
-    console.log(`  drift (total):        ${d >= 0 ? "+" : ""}${d.toFixed(2)}ms/s`);
+  const driftFlag = (d) => Math.abs(d) > 1 ? " ⚠ HIGH" : Math.abs(d) > 0.2 ? " (elevated)" : " ✓";
+  if (s.chunkArrivalDriftMsPerSec_long != null) {
+    const d = s.chunkArrivalDriftMsPerSec_long;
+    console.log(`  drift (chunkArrival, full session): ${d >= 0 ? "+" : ""}${d.toFixed(2)}ms/s${driftFlag(d)}`);
+  }
+  if (s.chunkArrivalDriftMsPerSec_recent != null) {
+    const d = s.chunkArrivalDriftMsPerSec_recent;
+    console.log(`  drift (chunkArrival, last ~30s):    ${d >= 0 ? "+" : ""}${d.toFixed(2)}ms/s${driftFlag(d)}`);
+  }
+  if (s.driftOnsetSec != null) {
+    console.log(`  drift onset: t≈${s.driftOnsetSec.toFixed(1)}s (first +50ms above baseline)`);
   }
   if (s.bimodal) {
     const b = s.bimodal;
     console.log(
-      `  ⚠ phase change at t≈${b.splitTimeSec.toFixed(1)}s: ` +
+      `  ⚠ phase change in last ~30s at t≈${b.splitTimeSec.toFixed(1)}s: ` +
       `first-half ${b.firstHalfMean.toFixed(1)}ms → ` +
       `second-half ${b.secondHalfMean.toFixed(1)}ms`,
     );
   }
-  console.log("─".repeat(72));
+  console.log("─".repeat(78));
 }
 
 function persist(snap, summary) {
@@ -530,10 +670,14 @@ function persist(snap, summary) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function waitFor(page, predicate, timeoutMs) {
+function originSafe(u) {
+  try { return new URL(u).origin; } catch { return null; }
+}
+
+async function waitForEval(cdp, expression, timeoutMs) {
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
-    const ok = await page.evaluate(predicate).catch(() => false);
+    const ok = await cdp.eval(expression).catch(() => false);
     if (ok) return true;
     await sleep(250);
   }
@@ -545,12 +689,11 @@ async function waitFor(page, predicate, timeoutMs) {
 // ---------------------------------------------------------------------------
 
 (async () => {
-  let browser = null;
   try {
     phaseDeviceCheck();
     phaseLaunchChrome(url);
-    browser = await phaseConnectCdp();
-    const snap = await phaseCapture(browser, url, durationSec);
+    const { target } = await phaseConnectCdp(url);
+    const snap = await phaseCapture(target, url, durationSec);
     if (!snap) throw new Error("snapshot() returned null — diag not enabled?");
     const summary = summarize(snap);
     printSummary(summary);
@@ -562,11 +705,5 @@ async function waitFor(page, predicate, timeoutMs) {
     console.error(`✗ ${err.message}`);
     if (process.env.DEBUG && err.stack) console.error(err.stack);
     process.exit(1);
-  } finally {
-    // Disconnect Puppeteer (don't close the browser — it's the user's
-    // running Chrome instance on the phone, not ours).
-    if (browser) {
-      try { await browser.disconnect(); } catch { /* ignore */ }
-    }
   }
 })();
