@@ -8,9 +8,14 @@
 //       getUserMedia stream → MediaStreamAudioSourceNode → AudioWorkletNode
 //       → MessageChannel → consumer (DSP / ML worker)
 //
-//   - "mstp" (Stage 2; not yet implemented in this commit):
-//       getUserMedia stream → MediaStreamTrackProcessor (in worker)
-//       → ReadableStream of AudioData → MessageChannel → consumer
+//   - "mstp" (Stage 2 — Chrome main-thread only):
+//       getUserMedia stream → MediaStreamTrackProcessor on main thread
+//       → ReadableStream of AudioData → Float32Array → MessageChannel
+//       → consumer (DSP / ML worker)
+//       Worker-side MSTP isn't available on Chrome mobile (verified
+//       Chrome 147 — typeof MediaStreamTrackProcessor === "undefined" in
+//       worker globalScope). Firefox/Safari worker-MSTP support is
+//       deferred (build-when-we-can-test work).
 //
 // The downstream message protocol is identical for both:
 //   { buffer: ArrayBuffer (Float32 samples), contextTime: number (seconds) }
@@ -19,8 +24,8 @@
 //   - audiocontext: AudioContext.currentTime at the chunk's quantum,
 //     converted to wall-clock via ctxCreatedAtEpochMs + contextTime*1000.
 //   - mstp: track-time-of-latest-sample in seconds, converted via
-//     trackStartedEpochMs + contextTime*1000 (the MSTP worker derives
-//     trackStartedEpochMs from the first AudioData timestamp).
+//     trackStartedEpochMs + contextTime*1000 (derived from the first
+//     AudioData's timestamp + duration vs wall arrival).
 //
 // Either way, the caller treats `audioOriginEpochMs` (returned from this
 // factory) and `contextTime` (in chunk messages) the same way to compute
@@ -174,14 +179,195 @@ async function _createAudioContextSource(stream, opts) {
 }
 
 // ---------------------------------------------------------------------------
-//  MediaStreamTrackProcessor + Worker path (Stage 2 — implemented separately)
+//  MediaStreamTrackProcessor + main-thread reader path
 // ---------------------------------------------------------------------------
+//
+// Reads AudioData frames from the MSTP's ReadableStream on the main
+// thread, copies channel-0 samples into a Float32 ring, emits chunkMs-
+// sized chunks via MessageChannel to each consumer port. The DSP / ML
+// workers are unaffected — they receive the same {buffer, contextTime}
+// message shape as on the AudioWorklet path.
+//
+// Why main-thread (not worker): Chrome 147 mobile doesn't expose
+// MediaStreamTrackProcessor in worker globalScope. The user-plan's
+// "single worker code path" assumed otherwise; verified false at
+// runtime. Long-session drift behavior under main-thread MSTP is a
+// known unknown — measured at Stage 2.5.
 
-async function _createMstpSource(_stream, _opts) {
-  // Stage 2 lands the worker-based MSTP implementation. Until then, the
-  // factory rejects forceKind='mstp' and the default falls back to
-  // audiocontext (because Stage 1 is the abstraction-only commit).
-  throw new Error(
-    "MSTP capture path not yet implemented. Use forceKind='audiocontext' or omit forceKind."
-  );
+async function _createMstpSource(stream, opts) {
+  const tracks = stream.getAudioTracks();
+  if (tracks.length === 0) throw new Error("MSTP path: stream has no audio track");
+  const track = tracks[0];
+
+  const processor = new MediaStreamTrackProcessor({ track });
+  const reader = processor.readable.getReader();
+
+  const chunkMs = opts.chunkMs ?? 25;
+  const consumerPorts = [];
+  let chunkSize = 0;
+  let pendingBuffer = null;
+  let pendingFill = 0;
+  let trackStartedEpochMs = null;
+  let lastFrameEndUs = 0;
+  let lastFrameSampleRate = 0;
+  let stopped = false;
+
+  // Resolved by the read loop on first frame, with the values the
+  // factory needs (sampleRate, audioOriginEpochMs, etc.). The factory's
+  // outer await blocks on this so the caller gets a fully-initialized
+  // source handle.
+  let resolveReady, rejectReady;
+  const readyPromise = new Promise((res, rej) => { resolveReady = res; rejectReady = rej; });
+
+  // Read loop — async IIFE so it doesn't block the factory's resolution.
+  // Each `await reader.read()` yields to the event loop, so React renders
+  // and other main-thread work can interleave between frames.
+  (async () => {
+    try {
+      while (!stopped) {
+        const { value: frame, done } = await reader.read();
+        if (done) return;
+        const wallMs = performance.timeOrigin + performance.now();
+
+        if (trackStartedEpochMs === null) {
+          // First frame: derive the audio-time origin and chunk geometry.
+          // trackStartedEpochMs ≈ wall when audio time = 0, computed as
+          // wall_now − end-of-frame audio time. The end of THIS frame is
+          // the most recently captured sample, ~now in wall time.
+          trackStartedEpochMs = wallMs - (frame.timestamp + frame.duration) / 1000;
+          chunkSize = Math.floor((frame.sampleRate * chunkMs) / 1000);
+          // 3× chunkSize headroom — a single AudioData frame can be
+          // larger than chunkSize (40 ms hw frame vs 25 ms chunk default).
+          const headroom = Math.max(chunkSize * 3, frame.numberOfFrames * 2);
+          pendingBuffer = new Float32Array(headroom);
+
+          resolveReady({
+            sampleRate: frame.sampleRate,
+            chunkSize,
+            chunkMs,
+            trackStartedEpochMs,
+            frameDurationMs: frame.duration / 1000,
+            channels: frame.numberOfChannels,
+            format: frame.format,
+          });
+
+          opts.onInitAck?.({
+            kind: "mstp",
+            diag: !!opts.diag,
+            chunkSize,
+            chunkMs,
+            sampleRate: frame.sampleRate,
+            frameDurationMs: frame.duration / 1000,
+            channels: frame.numberOfChannels,
+            format: frame.format,
+          });
+        }
+
+        // Copy plane 0 (channel 0) as f32-planar. AudioData converts
+        // formats on the fly; source could be s16/u8/etc.
+        const frames = frame.numberOfFrames;
+        if (pendingFill + frames > pendingBuffer.length) {
+          const newBuf = new Float32Array((pendingFill + frames) * 2);
+          newBuf.set(pendingBuffer.subarray(0, pendingFill));
+          pendingBuffer = newBuf;
+        }
+        try {
+          frame.copyTo(pendingBuffer.subarray(pendingFill, pendingFill + frames), {
+            planeIndex: 0,
+            format: "f32-planar",
+          });
+        } catch (err) {
+          opts.onError?.({
+            where: "audioData.copyTo",
+            message: err && err.message ? err.message : String(err),
+            stack: err && err.stack ? err.stack : null,
+          });
+          try { frame.close(); } catch { /* ignore */ }
+          return;
+        }
+        pendingFill += frames;
+        lastFrameEndUs = frame.timestamp + frame.duration;
+        lastFrameSampleRate = frame.sampleRate;
+        try { frame.close(); } catch { /* ignore */ }
+
+        // Emit chunks while the buffer has at least chunkSize samples
+        // AND there's a consumer to send to. If consumerPorts is empty
+        // (e.g. caller hasn't called connectConsumer yet), accumulate
+        // and let the next frame's emission catch up.
+        while (pendingFill >= chunkSize && consumerPorts.length > 0) {
+          const remainingAfterEmit = pendingFill - chunkSize;
+          const remainingDurationUs = (remainingAfterEmit / lastFrameSampleRate) * 1e6;
+          const contextTimeSec = (lastFrameEndUs - remainingDurationUs) / 1e6;
+
+          // Each consumer needs its own ArrayBuffer (transfer detaches),
+          // so allocate per consumer per chunk.
+          for (let i = 0; i < consumerPorts.length; i++) {
+            const out = new Float32Array(chunkSize);
+            out.set(pendingBuffer.subarray(0, chunkSize));
+            try {
+              consumerPorts[i].postMessage(
+                { buffer: out.buffer, contextTime: contextTimeSec },
+                [out.buffer],
+              );
+            } catch {
+              // Port may have been closed; ignore. Cleanup of dead
+              // ports happens in close() (terminating workers releases
+              // their port refs).
+            }
+          }
+          pendingBuffer.copyWithin(0, chunkSize, pendingFill);
+          pendingFill -= chunkSize;
+        }
+      }
+    } catch (err) {
+      opts.onError?.({
+        where: "mstp-read-loop",
+        message: err && err.message ? err.message : String(err),
+        stack: err && err.stack ? err.stack : null,
+      });
+      try { rejectReady(err); } catch { /* already-resolved is fine */ }
+    }
+  })();
+
+  // Wait for first AudioData → readyPromise resolves with metadata. 5 s
+  // timeout in case the track silently fails to produce data.
+  const ready = await Promise.race([
+    readyPromise,
+    new Promise((_, rej) =>
+      setTimeout(() => rej(new Error("MSTP first-frame timeout (5s)")), 5000)),
+  ]);
+
+  return {
+    kind: "mstp",
+    sampleRate: ready.sampleRate,
+    audioOriginEpochMs: ready.trackStartedEpochMs,
+    audioCtx: null,
+    audioInfoExtra() {
+      return {
+        baseLatencySec: null,
+        outputLatencySec: null,
+        ctxCreatedAtEpochMs: ready.trackStartedEpochMs,
+        ctxLatencyHint: null,
+        // audioWorkletSupported intentionally omitted on this path;
+        // overlay guards on `!== undefined`.
+        mstpFrameDurationMs: ready.frameDurationMs,
+        mstpFormat: ready.format,
+        mstpChannels: ready.channels,
+      };
+    },
+    connectConsumer() {
+      // Reader runs on this thread, so we just keep port1 in our
+      // consumerPorts array and post outbound. Port2 goes to the worker
+      // (caller transfers via worker.postMessage(..., [port2])).
+      const channel = new MessageChannel();
+      consumerPorts.push(channel.port1);
+      return channel.port2;
+    },
+    close() {
+      stopped = true;
+      try { reader.cancel(); } catch { /* ignore */ }
+      try { track.stop(); } catch { /* ignore */ }
+      consumerPorts.length = 0;
+    },
+  };
 }
