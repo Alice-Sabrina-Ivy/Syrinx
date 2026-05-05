@@ -33,12 +33,39 @@ function fmtNum(v, digits = 2) {
   return v.toFixed(digits);
 }
 
-function TimingRow({ label, stats, hint }) {
+// Color the drift number by magnitude — green near 0, amber for slow
+// growth, red for fast. The threshold "fast" is set against the mobile
+// regression baseline (+11.5 ms/s); anything > 1 ms/s after the fix
+// should already be a yellow flag.
+function driftClass(driftMsPerSec) {
+  if (driftMsPerSec == null || !Number.isFinite(driftMsPerSec)) return "text-neutral-500";
+  const a = Math.abs(driftMsPerSec);
+  if (a < 0.2) return "text-neutral-400";
+  if (a < 1) return "text-amber-400";
+  return "text-red-400";
+}
+
+function fmtDrift(d) {
+  if (d == null || !Number.isFinite(d)) return "—";
+  const sign = d >= 0 ? "+" : "−";
+  return `${sign}${Math.abs(d).toFixed(2)}ms/s`;
+}
+
+function TimingRow({ label, stats, hint, showDrift }) {
   return (
     <div className="flex items-baseline justify-between text-[10px] gap-2">
       <span className="text-neutral-400 truncate" title={hint}>{label}</span>
       <span className="font-mono text-neutral-200 tabular-nums whitespace-nowrap">
-        {fmtMs(stats?.current)} <span className="text-neutral-500">p95 {fmtMs(stats?.p95)}</span>
+        {fmtMs(stats?.current)}{" "}
+        <span className="text-neutral-500">p95 {fmtMs(stats?.p95)}</span>
+        {showDrift && (
+          <>
+            {" "}
+            <span className={driftClass(stats?.driftMsPerSec)} title="linear-fit slope of this metric vs session time over the diag ring">
+              {fmtDrift(stats?.driftMsPerSec)}
+            </span>
+          </>
+        )}
       </span>
     </div>
   );
@@ -238,15 +265,20 @@ export default function DiagnosticOverlay() {
 
       {/* Timings */}
       <div className="mb-3">
-        <div className="text-[10px] uppercase text-neutral-500 mb-1 tracking-wider">Timings (current / p95)</div>
+        <div className="flex justify-between items-baseline mb-1">
+          <span className="text-[10px] uppercase text-neutral-500 tracking-wider">Timings (cur / p95 / drift)</span>
+          <span className="text-[9px] text-neutral-500 font-mono">
+            window {stats ? stats._windowSec.toFixed(1) : "0.0"}s
+          </span>
+        </div>
         {stats ? (
           <div className="space-y-0.5">
-            <TimingRow label="audio→worker" stats={stats.chunkArrivalMs} hint="capture-processor postedAt → DSP worker arrival" />
+            <TimingRow label="audio→worker" stats={stats.chunkArrivalMs} hint="capture-processor → DSP worker arrival; growing drift here = mobile audio-clock skew or buffer accumulation" showDrift />
             <TimingRow label="detectPitch" stats={stats.pitchDetectMs} hint="time inside detectPitch only" />
             <TimingRow label="worker total" stats={stats.workerProcessingMs} hint="detectPitch + formants/tilt/HNR (every 6th frame)" />
             <TimingRow label="worker→main" stats={stats.handoffToMainMs} hint="DSP postMessage → main onmessage" />
             <TimingRow label="main handler" stats={stats.mainHandlerMs} hint="handleAnalysisResult duration" />
-            <TimingRow label="end-to-end" stats={stats.totalMs} hint="audio captured (ctx time → epoch) → display update" />
+            <TimingRow label="end-to-end" stats={stats.totalMs} hint="audio captured (ctx time → epoch) → display update" showDrift />
           </div>
         ) : (
           <div className="text-neutral-500 text-[10px]">waiting for first frame…</div>
