@@ -27,14 +27,24 @@
 // instance is already running and absorbs the launch).
 //
 // Usage:
-//   node scripts/desktop-diag-capture-attach.js [--kind=mstp] [--duration=120] [--url=...] [--port=9223]
+//   node scripts/desktop-diag-capture-attach.js [--kind=mstp] [--duration=120]
+//                                               [--url=...] [--port=9223]
+//                                               [--play-wav=PATH]
+//
+// --play-wav: optional. Plays a WAV file through the system speakers during
+// capture (looping, via PowerShell System.Media.SoundPlayer). The user's real
+// microphone picks it up, providing a known reference signal for end-to-end
+// verification — e.g. --play-wav=tests/audio/fixtures/voice-200hz-10s.wav
+// lets the harness confirm pitch detection ≈ 200 Hz on the real-mic real-MSTP
+// path. The PowerShell child is tracked by PID and tree-killed on exit.
 //
 // Output:
 //   measurements/desktop-diag-runs/<kind>-<ISO-timestamp>.json — same shape as
 //   the spawned-harness output, so existing analysis scripts work unchanged.
 
+import { spawn, spawnSync } from "node:child_process";
 import { writeFileSync, mkdirSync, existsSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { join, dirname, resolve as pathResolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocket } from "ws";
 
@@ -47,6 +57,40 @@ const KIND = args.kind ?? "mstp";
 const DURATION = parseInt(args.duration ?? "120", 10);
 const URL = args.url ?? `https://localhost:5173/Syrinx/?diag=1&capture=${KIND}`;
 const PORT = parseInt(args.port ?? "9223", 10);
+const PLAY_WAV = args["play-wav"] ? pathResolve(args["play-wav"]) : null;
+
+// Track the audio-playback PowerShell PID so we can tree-kill it on exit.
+// PID-scoped only — never pattern-match. Same rule as the rest of the
+// harness ecosystem.
+let playerPid = null;
+let playerCleanedUp = false;
+function killPlayer() {
+  if (playerCleanedUp || playerPid == null) return;
+  playerCleanedUp = true;
+  try {
+    spawnSync("taskkill", ["/pid", String(playerPid), "/T", "/F"], { stdio: "ignore" });
+  } catch { /* best effort */ }
+}
+process.on("exit", killPlayer);
+process.on("SIGINT", () => { killPlayer(); process.exit(130); });
+process.on("SIGTERM", () => { killPlayer(); process.exit(143); });
+
+function startAudioPlayback(wavPath, durationSec) {
+  if (!existsSync(wavPath)) {
+    throw new Error(`--play-wav: file not found: ${wavPath}`);
+  }
+  // Single-quoted PS string; double any embedded apostrophes.
+  const psPath = wavPath.replace(/'/g, "''");
+  const psCommand =
+    `$p = New-Object Media.SoundPlayer '${psPath}'; ` +
+    `$p.PlayLooping(); Start-Sleep -Seconds ${durationSec + 5}; $p.Stop()`;
+  const child = spawn("powershell", ["-NoProfile", "-Command", psCommand], {
+    stdio: "ignore",
+    detached: true,
+  });
+  child.unref();
+  return child.pid;
+}
 
 function parseArgs(argv) {
   const out = {};
@@ -217,6 +261,18 @@ class CdpClient {
   }
   console.log("      diag attached ✓");
 
+  // Start speaker playback BEFORE the click so the first capture frames see
+  // signal rather than silence. Player loops the WAV for capture duration
+  // + 5 s safety margin and then exits on its own.
+  if (PLAY_WAV) {
+    console.log(`      starting playback: ${PLAY_WAV}`);
+    playerPid = startAudioPlayback(PLAY_WAV, DURATION);
+    console.log(`      powershell pid=${playerPid} (tracked for PID-scoped kill on exit)`);
+    // Brief settle — give the OS audio stack a moment so the mic isn't
+    // capturing the trailing silence between SoundPlayer init and audio out.
+    await sleep(300);
+  }
+
   // Click start. Fall through (no error) if neither button is visible —
   // user may have left the dev session in a state where audio is already
   // running.
@@ -256,6 +312,7 @@ class CdpClient {
           return {
             n: frames.length,
             lastChunkArrivalMs: last?.timings?.chunkArrivalMs ?? null,
+            lastPitch: last?.pitch ?? null,
             captureKind: d?.audio?.captureKind,
             errors: d?.status?.errors?.length ?? 0,
           };
@@ -263,7 +320,8 @@ class CdpClient {
       `, 10000);
       console.log(
         `      ${elapsed}s/${DURATION}s n=${live.n} kind=${live.captureKind} ` +
-        `last=${live.lastChunkArrivalMs?.toFixed(1) ?? "—"}ms` +
+        `last=${live.lastChunkArrivalMs?.toFixed(1) ?? "—"}ms ` +
+        `pitch=${live.lastPitch?.toFixed(1) ?? "—"}Hz` +
         (live.errors > 0 ? ` errors=${live.errors}` : "")
       );
     } catch (err) {
@@ -285,14 +343,19 @@ class CdpClient {
   const frames = snap.frames || [];
   const arr = frames.map(f => f.timings?.chunkArrivalMs).filter(v => typeof v === "number" && Number.isFinite(v)).sort((a,b)=>a-b);
   const pct = (p) => arr[Math.floor(arr.length * p)];
+  const pitches = frames.map(f => f.pitch).filter(p => typeof p === "number" && Number.isFinite(p) && p > 0).sort((a,b)=>a-b);
+  const pp = (p) => pitches[Math.floor(pitches.length * p)];
   console.log("");
   console.log("─".repeat(72));
   console.log(` SUMMARY — kind=${snap.audio?.captureKind} ${snap.userAgent}`);
   console.log("─".repeat(72));
   console.log(`  saved: ${path}`);
-  console.log(`  frames: ${frames.length}, lowRes: ${(snap.lowRes || []).length}`);
+  console.log(`  frames: ${frames.length}, lowRes: ${(snap.lowRes || []).length}, voiced: ${pitches.length}`);
   if (arr.length > 0) {
     console.log(`  chunkArrival ms: median=${pct(0.5).toFixed(2)} p95=${pct(0.95).toFixed(2)} p99=${pct(0.99).toFixed(2)} max=${arr[arr.length-1].toFixed(2)}`);
+  }
+  if (pitches.length > 0) {
+    console.log(`  pitch Hz:        median=${pp(0.5).toFixed(2)} p5=${pp(0.05).toFixed(2)} p95=${pp(0.95).toFixed(2)}`);
   }
   console.log(`  baseLat: ${snap.audio?.baseLatencySec ? (snap.audio.baseLatencySec*1000).toFixed(1)+"ms" : "—"}, granted.latency: ${snap.audio?.grantedConstraints?.latency ?? "—"}`);
   console.log(`  status.errors: ${snap.status?.errors?.length ?? 0}`);
