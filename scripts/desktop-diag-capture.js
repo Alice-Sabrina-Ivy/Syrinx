@@ -170,14 +170,27 @@ class CdpClient {
   console.log(`[1/5] Launching Chrome (port=${PORT}, profile=${profileDir})…`);
 
   const chromeExe = findChrome();
+  // Minimum-viable launch flag set. Three former flags were removed in favour
+  // of CDP equivalents that apply per-target AFTER attach but BEFORE the dev-
+  // server URL is loaded — so the security/permission profile that lets the
+  // capture path run only ever applies to our page, not the whole browser:
+  //   --ignore-certificate-errors    → Security.setIgnoreCertificateErrors
+  //   --use-fake-ui-for-media-stream → Browser.grantPermissions(audioCapture)
+  //   --autoplay-policy=...          → unneeded; AudioContext is created after
+  //                                    our programmatic Input.dispatchMouseEvent
+  //                                    click, which counts as user activation.
+  // The audio-source flags below are not security-related — they pick which
+  // signal Chrome's fake mic exposes — and are kept on the command line.
   const chromeArgs = [
     `--remote-debugging-port=${PORT}`,
     `--user-data-dir=${profileDir}`,
-    "--ignore-certificate-errors",
-    "--use-fake-ui-for-media-stream",      // auto-grant mic permission
     "--no-first-run",
     "--no-default-browser-check",
-    "--autoplay-policy=no-user-gesture-required",
+    // Belt-and-braces: even with a fresh --user-data-dir (which already
+    // forces a separate process tree), --new-window guarantees the spawn
+    // is its own visibly-distinct top-level window, never appended as a
+    // tab to any other Chrome instance Alice has running.
+    "--new-window",
   ];
   // Audio source priority (highest first):
   //   --voice-file=PATH  : play a WAV through Chrome's fake mic. Chrome
@@ -196,7 +209,12 @@ class CdpClient {
   } else if (args["no-fake-device"] !== "true") {
     chromeArgs.push("--use-fake-device-for-media-stream");
   }
-  chromeArgs.push(URL);
+  // Note: no URL on the command line. Chrome opens its default new-tab page;
+  // we attach, install the per-target CDP overrides, then Page.navigate to URL.
+  // Log the exact spawn command so any future "did the flags actually
+  // apply" question can be answered by reading back the harness output.
+  console.log(`      command: "${chromeExe}"`);
+  for (const a of chromeArgs) console.log(`               ${a}`);
   const child = spawn(chromeExe, chromeArgs, { detached: true, stdio: "ignore" });
   spawnedPid = child.pid;
   child.unref();
@@ -216,27 +234,52 @@ class CdpClient {
   if (!ver) throw new Error("CDP didn't come up within 30s");
   console.log(`      ${ver.Browser}`);
 
-  // Find the Syrinx tab.
-  console.log(`[3/5] Locating Syrinx tab…`);
+  // Find the initial page target. Chrome was launched without a URL, so this
+  // is the default new-tab page. We attach to it, install the cert/permission
+  // overrides, then navigate to the diag URL — the dev-server origin is never
+  // visited until after the security setup is in place.
+  console.log(`[3/5] Locating initial page target…`);
   let target = null;
   const tabDeadline = Date.now() + 15000;
   while (Date.now() < tabDeadline) {
     const list = await (await fetch(`http://localhost:${PORT}/json/list`)).json();
-    target = list.find((t) => t.type === "page" && t.url?.includes("localhost:5173/Syrinx"));
+    target = list.find((t) => t.type === "page");
     if (target) break;
     await sleep(500);
   }
-  if (!target) throw new Error("Syrinx tab not found within 15s");
-  console.log(`      ${target.url}`);
+  if (!target) throw new Error("No page target found within 15s");
+  console.log(`      ${target.url || "(blank)"}`);
 
-  // Attach via CDP.
-  console.log(`[4/5] Attaching to target…`);
+  // Attach via CDP, install per-target cert override and per-origin mic grant,
+  // THEN navigate. Order matters: setIgnoreCertificateErrors must be in place
+  // before the page loads or Chrome shows the interstitial.
+  console.log(`[4/5] Attaching to target and installing CDP overrides…`);
   const cdp = new CdpClient(target.webSocketDebuggerUrl);
   await cdp.connect();
-  await cdp.reload();
+
+  // Replaces --ignore-certificate-errors. Per-target scope.
+  await cdp.send("Security.enable", {});
+  await cdp.send("Security.setIgnoreCertificateErrors", { ignore: true });
+
+  // Replaces --use-fake-ui-for-media-stream. Browser-level, scoped to origin.
+  // (globalThis.URL — the file-level `URL` constant shadows the global ctor.)
+  const origin = new globalThis.URL(URL).origin;
+  const browserCdp = new CdpClient(ver.webSocketDebuggerUrl);
+  await browserCdp.connect();
+  await browserCdp.send("Browser.grantPermissions", {
+    origin,
+    permissions: ["audioCapture"],
+  });
+  browserCdp.close();
+  console.log(`      grantPermissions(audioCapture) for ${origin} ✓`);
+
+  // Now navigate. Cert interstitial is suppressed by setIgnoreCertificateErrors.
+  await cdp.send("Page.navigate", { url: URL });
 
   for (let i = 0; i < 60; i++) {
-    if (await cdp.eval("!!window.__syrinxDiag")) break;
+    try {
+      if (await cdp.eval("!!window.__syrinxDiag")) break;
+    } catch { /* page may still be navigating */ }
     await sleep(250);
   }
   console.log("      diag attached ✓");
@@ -257,10 +300,40 @@ class CdpClient {
     console.log(`      clicked: ${btn.text} @ ${btn.x},${btn.y}`);
   }
 
+  // Permission probe — confirms Browser.grantPermissions actually took.
+  // "granted" → permission applied, any 0-frames issue is downstream.
+  // "prompt"  → grant didn't apply (wrong name? wrong origin?).
+  // "denied"  → grant was rejected.
+  try {
+    const permState = await cdp.eval(
+      `navigator.permissions.query({name:"microphone"}).then(r => r.state).catch(e => "query-error:"+e.message)`
+    );
+    console.log(`      permissions.query(microphone) → ${permState}`);
+  } catch (err) {
+    console.log(`      permission probe failed: ${err.message}`);
+  }
+
   // Wait for first frame.
   for (let i = 0; i < 40; i++) {
     if (await cdp.eval("(window.__syrinxDiag?.state?.frames?.toArray()?.length ?? 0) > 0")) break;
     await sleep(250);
+  }
+
+  // If still no frames, run a parallel getUserMedia from CDP to surface
+  // the actual error the app's call is hitting (the app's error goes to
+  // React state, not the diag snapshot, so it's invisible otherwise).
+  const haveFrames = await cdp.eval("(window.__syrinxDiag?.state?.frames?.toArray()?.length ?? 0) > 0");
+  if (!haveFrames) {
+    try {
+      const probe = await cdp.eval(`
+        navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}})
+          .then(s => { s.getTracks().forEach(t => t.stop()); return "ok"; })
+          .catch(e => "err:" + e.name + ":" + e.message)
+      `, 15000);
+      console.log(`      gUM probe → ${probe}`);
+    } catch (err) {
+      console.log(`      gUM probe failed: ${err.message}`);
+    }
   }
 
   console.log(`[5/5] Capturing for ${DURATION}s…`);
