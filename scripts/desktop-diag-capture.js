@@ -1,6 +1,44 @@
-// desktop-diag-capture.js — Drive a freshly-spawned local Chrome instance
-// to capture a `?diag=1` snapshot from the dev server. Mirror of
-// scripts/mobile-diag-capture.js but for desktop measurement.
+// desktop-diag-capture.js — Spawn a fresh isolated Chrome via --user-data-dir
+// and run a `?diag=1` capture against the dev server.
+//
+//   --voice-file=PATH  : Synthetic-injection via Chrome's
+//                        --use-file-for-fake-audio-capture. The mic is
+//                        replaced wholesale by the WAV's bytes — no real
+//                        audio stack involved. Bit-exact reproducibility
+//                        for path-comparison work. Recommended mode for
+//                        autonomous regression testing on this harness.
+//
+//   (default)          : Chrome's synthetic 1 kHz beep mono source via
+//                        --use-fake-device-for-media-stream. Smoke test
+//                        only.
+//
+//   --play-wav=PATH    : ATTEMPTS speaker-loopback through the spawned
+//                        Chrome's default mic (PowerShell SoundPlayer.
+//                        PlayLooping during capture). DOES NOT WORK on the
+//                        development environment as of 2026-05-05 — the
+//                        spawned isolated Chrome's default mic delivers
+//                        digital silence (inputRms=0 across all captured
+//                        frames, with or without speaker output). Cause not
+//                        pinned: the fresh profile may be selecting a non-
+//                        physical or muted device, distinct from the user's
+//                        actual default mic. Code path retained because it
+//                        works on Pattern A (the attach harness inherits
+//                        the user's real-mic configuration) and may work on
+//                        a different environment. For real-mic testing on
+//                        this environment, use Pattern A.
+//
+// Sister harness: scripts/desktop-diag-capture-attach.js (Pattern A) is the
+// real-mic test path. It attaches to a Chrome the user has launched with
+// --remote-debugging-port=9223, inheriting their persisted permissions and
+// real-mic preference. Use it when the test signal must reach a working mic.
+//
+// Note: a Node-spawned Chrome cannot share the user's default profile.
+// Testing 2026-05-05 of five spawn variants (detached:false/true,
+// stdio:'inherit'/'ignore', cmd /c start, powershell Start-Process,
+// windowsHide:false) all caused single-instance merge into the user's
+// running Chrome. The isolated --user-data-dir approach used here sidesteps
+// the merge entirely; the trade-off is the silent-default-mic limitation
+// on --play-wav described above.
 //
 // IMPORTANT — process-management contract:
 //
@@ -27,7 +65,7 @@
 
 import { spawn, spawnSync } from "node:child_process";
 import { writeFileSync, mkdirSync, existsSync, rmSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { join, dirname, resolve as pathResolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { WebSocket } from "ws";
@@ -39,8 +77,12 @@ const RUNS_DIR = join(REPO_ROOT, "measurements", "desktop-diag-runs");
 const args = parseArgs(process.argv.slice(2));
 const KIND = args.kind ?? "mstp";
 const DURATION = parseInt(args.duration ?? "120", 10);
-const URL = args.url ?? `https://localhost:5173/Syrinx/?diag=1&capture=${KIND}`;
 const PORT = parseInt(args.port ?? "9223", 10);
+// URL is detected at runtime: `npm run dev` serves HTTP, `npm run dev:mobile`
+// serves HTTPS via @vitejs/plugin-basic-ssl. The harness probes both before
+// launching Chrome so it doesn't matter which dev mode the user is running.
+// --url override skips detection.
+const URL_OVERRIDE = args.url ?? null;
 
 const CHROME_PATHS = [
   "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
@@ -67,11 +109,20 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // makes "did we already clean up?" a single boolean check.
 let cleanedUp = false;
 let spawnedPid = null;
+let playerPid = null;
 let profileDir = null;
 
 function cleanup() {
   if (cleanedUp) return;
   cleanedUp = true;
+
+  // Kill the audio-playback PowerShell PID we spawned (if still alive).
+  // PID-scoped, same rule as the Chrome spawn.
+  if (playerPid != null) {
+    try {
+      spawnSync("taskkill", ["/pid", String(playerPid), "/T", "/F"], { stdio: "ignore" });
+    } catch { /* best effort */ }
+  }
 
   // Tree-kill the spawned Chrome PID specifically. /T = include the
   // process tree (Chrome forks renderers, GPU process, network service,
@@ -92,6 +143,22 @@ function cleanup() {
       rmSync(profileDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
     } catch { /* best effort */ }
   }
+}
+
+function startAudioPlayback(wavPath, durationSec) {
+  if (!existsSync(wavPath)) {
+    throw new Error(`--play-wav: file not found: ${wavPath}`);
+  }
+  const psPath = wavPath.replace(/'/g, "''");
+  const psCommand =
+    `$p = New-Object Media.SoundPlayer '${psPath}'; ` +
+    `$p.PlayLooping(); Start-Sleep -Seconds ${durationSec + 5}; $p.Stop()`;
+  const child = spawn("powershell", ["-NoProfile", "-Command", psCommand], {
+    stdio: "ignore",
+    detached: true,
+  });
+  child.unref();
+  return child.pid;
 }
 
 // Cleanup on any process exit path.
@@ -161,7 +228,39 @@ class CdpClient {
 //  Main flow
 // ---------------------------------------------------------------------------
 
+// dev:mobile uses @vitejs/plugin-basic-ssl's self-signed cert. Node's fetch
+// rejects it by default; this scoped env var lets fetch ignore the cert for
+// the local-only dev-server probe and the CDP /json/version + /json/list
+// calls. Harness is dev tooling, not production. Chrome itself sees the same
+// cert and we ignore it via Security.setIgnoreCertificateErrors after attach.
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+
+async function detectDevServerUrl() {
+  if (URL_OVERRIDE) return URL_OVERRIDE;
+  const path = `localhost:5173/Syrinx/?diag=1&capture=${KIND}`;
+  for (const proto of ["https", "http"]) {
+    try {
+      const url = `${proto}://${path}`;
+      const r = await fetch(url, { signal: AbortSignal.timeout(2000) });
+      if (r.ok) return url;
+    } catch { /* try next */ }
+  }
+  throw new Error(
+    "Dev server not reachable at https://localhost:5173/Syrinx/ or http://localhost:5173/Syrinx/.\n" +
+    "Start one of:\n" +
+    "  npm run dev          (HTTP on localhost)\n" +
+    "  npm run dev:mobile   (HTTPS on localhost + LAN)\n" +
+    "Or pass --url=<full URL> to override detection."
+  );
+}
+
 (async () => {
+  // Probe the dev server before spawning anything so we don't kill a Chrome
+  // we just launched for nothing. Auto-detects HTTP vs HTTPS — the project
+  // serves either depending on which `dev` script is running.
+  const URL = await detectDevServerUrl();
+  console.log(`[0/5] Dev server: ${URL}`);
+
   // Per-run profile dir: guarantees a fresh process tree (Chrome will
   // not merge with any pre-existing instance because the profile is
   // unique). Cleanup removes the dir after kill.
@@ -170,33 +269,61 @@ class CdpClient {
   console.log(`[1/5] Launching Chrome (port=${PORT}, profile=${profileDir})…`);
 
   const chromeExe = findChrome();
+  // Minimum-viable launch flag set. Three former flags were removed in favour
+  // of CDP equivalents that apply per-target AFTER attach but BEFORE the dev-
+  // server URL is loaded — so the security/permission profile that lets the
+  // capture path run only ever applies to our page, not the whole browser:
+  //   --ignore-certificate-errors    → Security.setIgnoreCertificateErrors
+  //   --use-fake-ui-for-media-stream → Browser.grantPermissions(audioCapture)
+  //   --autoplay-policy=...          → unneeded; AudioContext is created after
+  //                                    our programmatic Input.dispatchMouseEvent
+  //                                    click, which counts as user activation.
+  // The audio-source flags below are not security-related — they pick which
+  // signal Chrome's fake mic exposes — and are kept on the command line.
   const chromeArgs = [
     `--remote-debugging-port=${PORT}`,
     `--user-data-dir=${profileDir}`,
-    "--ignore-certificate-errors",
-    "--use-fake-ui-for-media-stream",      // auto-grant mic permission
     "--no-first-run",
     "--no-default-browser-check",
-    "--autoplay-policy=no-user-gesture-required",
+    // Belt-and-braces: even with a fresh --user-data-dir (which already
+    // forces a separate process tree), --new-window guarantees the spawn
+    // is its own visibly-distinct top-level window, never appended as a
+    // tab to any other Chrome instance Alice has running.
+    "--new-window",
   ];
-  // Audio source priority (highest first):
-  //   --voice-file=PATH  : play a WAV through Chrome's fake mic. Chrome
-  //                        loops it indefinitely. Used as the ground-
-  //                        truth reference for path-comparison testing
-  //                        (MSTP vs AudioContext should produce
-  //                        equivalent pitch readings on the same WAV).
-  //   --no-fake-device   : real-mic capture (host's default device).
-  //                        Useful for surfacing real-mic-only bugs.
-  //   (default)          : Chrome's synthetic 1 kHz beep mono source.
+  // Audio source mode (see file header for the full description):
+  //   --play-wav=PATH    : real mic + speakers loopback. NO fake device.
+  //   --voice-file=PATH  : Chrome fake-device + WAV injection.
+  //   --no-fake-device   : real mic, no test signal (ambient only).
+  //   (default)          : Chrome's synthetic 1 kHz beep.
+  // --use-fake-ui-for-media-stream is needed on the spawned isolated profile
+  // for getUserMedia to resolve. Browser.grantPermissions(audioCapture) via
+  // CDP grants Chrome's permission, but in practice the spawned Chrome's gUM
+  // still hangs without the cmdline flag — empirically observed 2026-05-05.
+  // The flag bypasses Chrome's permission UI by auto-accepting; with no UI
+  // to interact with, gUM resolves immediately on the granted permission.
+  // Safe because --user-data-dir guarantees this Chrome instance is ours and
+  // isolated. Applies regardless of audio-source mode.
+  chromeArgs.push("--use-fake-ui-for-media-stream");
   if (args["voice-file"]) {
     // The voice file flag REQUIRES --use-fake-device-for-media-stream;
-    // without it Chrome ignores the file flag.
+    // without it Chrome ignores the file flag. Path must be absolute —
+    // Chrome resolves it against its own CWD, not the harness's, and
+    // silently no-ops with a "fake-audio-device" (digital silence) if
+    // the file isn't found at the resolved path.
     chromeArgs.push("--use-fake-device-for-media-stream");
-    chromeArgs.push(`--use-file-for-fake-audio-capture=${args["voice-file"]}`);
-  } else if (args["no-fake-device"] !== "true") {
+    chromeArgs.push(`--use-file-for-fake-audio-capture=${pathResolve(args["voice-file"])}`);
+  } else if (args["play-wav"] || args["no-fake-device"] === "true") {
+    // Real mic — speakers will provide the test signal. No fake device flag.
+  } else {
     chromeArgs.push("--use-fake-device-for-media-stream");
   }
-  chromeArgs.push(URL);
+  // Note: no URL on the command line. Chrome opens its default new-tab page;
+  // we attach, install the per-target CDP overrides, then Page.navigate to URL.
+  // Log the exact spawn command so any future "did the flags actually
+  // apply" question can be answered by reading back the harness output.
+  console.log(`      command: "${chromeExe}"`);
+  for (const a of chromeArgs) console.log(`               ${a}`);
   const child = spawn(chromeExe, chromeArgs, { detached: true, stdio: "ignore" });
   spawnedPid = child.pid;
   child.unref();
@@ -216,30 +343,90 @@ class CdpClient {
   if (!ver) throw new Error("CDP didn't come up within 30s");
   console.log(`      ${ver.Browser}`);
 
-  // Find the Syrinx tab.
-  console.log(`[3/5] Locating Syrinx tab…`);
+  // Find the initial page target. Chrome was launched without a URL, so this
+  // is the default new-tab page. We attach to it, install the cert/permission
+  // overrides, then navigate to the diag URL — the dev-server origin is never
+  // visited until after the security setup is in place.
+  console.log(`[3/5] Locating initial page target…`);
   let target = null;
   const tabDeadline = Date.now() + 15000;
   while (Date.now() < tabDeadline) {
     const list = await (await fetch(`http://localhost:${PORT}/json/list`)).json();
-    target = list.find((t) => t.type === "page" && t.url?.includes("localhost:5173/Syrinx"));
+    target = list.find((t) => t.type === "page");
     if (target) break;
     await sleep(500);
   }
-  if (!target) throw new Error("Syrinx tab not found within 15s");
-  console.log(`      ${target.url}`);
+  if (!target) throw new Error("No page target found within 15s");
+  console.log(`      ${target.url || "(blank)"}`);
 
-  // Attach via CDP.
-  console.log(`[4/5] Attaching to target…`);
+  // Attach via CDP, install per-target cert override and per-origin mic grant,
+  // THEN navigate. Order matters: setIgnoreCertificateErrors must be in place
+  // before the page loads or Chrome shows the interstitial.
+  console.log(`[4/5] Attaching to target and installing CDP overrides…`);
   const cdp = new CdpClient(target.webSocketDebuggerUrl);
   await cdp.connect();
-  await cdp.reload();
+
+  // Replaces --ignore-certificate-errors. Per-target scope.
+  await cdp.send("Security.enable", {});
+  await cdp.send("Security.setIgnoreCertificateErrors", { ignore: true });
+
+  // Replaces --use-fake-ui-for-media-stream. Browser-level, scoped to origin.
+  // (globalThis.URL — the file-level `URL` constant shadows the global ctor.)
+  const origin = new globalThis.URL(URL).origin;
+  const browserCdp = new CdpClient(ver.webSocketDebuggerUrl);
+  await browserCdp.connect();
+  await browserCdp.send("Browser.grantPermissions", {
+    origin,
+    permissions: ["audioCapture"],
+  });
+  browserCdp.close();
+  console.log(`      grantPermissions(audioCapture) for ${origin} ✓`);
+
+  // Now navigate. Cert interstitial is suppressed by setIgnoreCertificateErrors.
+  await cdp.send("Page.navigate", { url: URL });
 
   for (let i = 0; i < 60; i++) {
-    if (await cdp.eval("!!window.__syrinxDiag")) break;
+    try {
+      if (await cdp.eval("!!window.__syrinxDiag")) break;
+    } catch { /* page may still be navigating */ }
     await sleep(250);
   }
   console.log("      diag attached ✓");
+
+  // Without focus emulation, the spawned window can sit behind the user's
+  // primary Chrome with document.visibilityState reading "hidden"; in that
+  // state React onClick handlers can be queued/throttled in ways that look
+  // like the click silently no-ops (page loads, click hits the right
+  // element, welcome overlay onClick never runs). Empirically observed
+  // 2026-05-05. Emulation.setFocusEmulationEnabled tells Chrome to treat
+  // the page as focused regardless of OS window state — independent of
+  // whether the user has another app in the foreground. Page.bringToFront
+  // is also tried as belt-and-braces (works on some configs where focus
+  // emulation alone doesn't move visibilityState).
+  try {
+    await cdp.send("Emulation.setFocusEmulationEnabled", { enabled: true });
+    await cdp.send("Page.bringToFront", {});
+    await sleep(300);
+    const vis = await cdp.eval("document.visibilityState");
+    console.log(`      focus emulation on, page brought to front, vis=${vis}`);
+  } catch (err) {
+    console.log(`      focus/bringToFront failed: ${err.message}`);
+  }
+
+  // Start speaker playback BEFORE the click so the first capture frames see
+  // signal rather than silence. PowerShell child loops the WAV for capture
+  // duration + 5 s safety margin and then exits on its own. Tracked by PID
+  // for cleanup() so an aborted run doesn't leave audio playing.
+  if (args["play-wav"]) {
+    const wavPath = pathResolve(args["play-wav"]);
+    console.log(`      starting playback: ${wavPath}`);
+    playerPid = startAudioPlayback(wavPath, DURATION);
+    console.log(`      powershell pid=${playerPid} (PID-tracked for cleanup)`);
+    // Brief settle so the OS audio stack is actually emitting before the
+    // capture pipeline starts; otherwise the first frames see digital
+    // silence between SoundPlayer init and audio out.
+    await sleep(300);
+  }
 
   // Click the start button. Use mouse events so user-activation
   // is granted (programmatic .click() doesn't count).
@@ -253,14 +440,79 @@ class CdpClient {
     })()
   `);
   if (btn) {
+    // Diagnostic: show window dims + actual element at click coord. If
+    // viewport is smaller than the button's getBoundingClientRect would
+    // suggest (e.g. --new-window opens a small window), the click can land
+    // off-button without an obvious failure signal.
+    const dims = await cdp.eval(`
+      (() => {
+        const target = document.elementFromPoint(${btn.x}, ${btn.y});
+        return {
+          innerWidth: window.innerWidth,
+          innerHeight: window.innerHeight,
+          targetTag: target?.tagName,
+          targetText: target?.textContent?.trim().slice(0, 40),
+          targetIsButton: target?.tagName === "BUTTON",
+        };
+      })()
+    `);
+    console.log(`      viewport=${dims.innerWidth}x${dims.innerHeight} elementAt(${btn.x},${btn.y})=<${dims.targetTag}>"${dims.targetText}"`);
     await cdp.clickAt(btn.x, btn.y);
     console.log(`      clicked: ${btn.text} @ ${btn.x},${btn.y}`);
+  }
+
+  // Permission probe — confirms Browser.grantPermissions actually took.
+  // "granted" → permission applied, any 0-frames issue is downstream.
+  // "prompt"  → grant didn't apply (wrong name? wrong origin?).
+  // "denied"  → grant was rejected.
+  try {
+    const permState = await cdp.eval(
+      `navigator.permissions.query({name:"microphone"}).then(r => r.state).catch(e => "query-error:"+e.message)`
+    );
+    console.log(`      permissions.query(microphone) → ${permState}`);
+  } catch (err) {
+    console.log(`      permission probe failed: ${err.message}`);
   }
 
   // Wait for first frame.
   for (let i = 0; i < 40; i++) {
     if (await cdp.eval("(window.__syrinxDiag?.state?.frames?.toArray()?.length ?? 0) > 0")) break;
     await sleep(250);
+  }
+
+  // If still no frames, run a parallel getUserMedia from CDP to surface
+  // the actual error the app's call is hitting (the app's error goes to
+  // React state, not the diag snapshot, so it's invisible otherwise).
+  const haveFrames = await cdp.eval("(window.__syrinxDiag?.state?.frames?.toArray()?.length ?? 0) > 0");
+  if (!haveFrames) {
+    try {
+      const probe = await cdp.eval(`
+        navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}})
+          .then(s => { s.getTracks().forEach(t => t.stop()); return "ok"; })
+          .catch(e => "err:" + e.name + ":" + e.message)
+      `, 15000);
+      console.log(`      gUM probe → ${probe}`);
+    } catch (err) {
+      console.log(`      gUM probe failed: ${err.message}`);
+    }
+    // Also surface what the page's own state thinks is happening — helps
+    // distinguish "click never fired start()" from "start() ran but
+    // gUM/MSTP/AudioWorklet downstream stalled".
+    try {
+      const pageState = await cdp.eval(`
+        (() => {
+          const bodyText = document.body.innerText.slice(0, 500);
+          const visibleButtons = [...document.querySelectorAll("button")]
+            .filter(b => b.offsetWidth > 0)
+            .map(b => b.textContent.trim().slice(0, 50));
+          return { bodyText, visibleButtons };
+        })()
+      `, 5000);
+      console.log(`      visible buttons: ${JSON.stringify(pageState.visibleButtons)}`);
+      console.log(`      body.innerText (first 500): ${JSON.stringify(pageState.bodyText)}`);
+    } catch (err) {
+      console.log(`      page-state probe failed: ${err.message}`);
+    }
   }
 
   console.log(`[5/5] Capturing for ${DURATION}s…`);
@@ -279,6 +531,7 @@ class CdpClient {
           return {
             n: frames.length,
             lastChunkArrivalMs: last?.timings?.chunkArrivalMs ?? null,
+            lastPitch: last?.pitch ?? null,
             captureKind: d?.audio?.captureKind,
             errors: d?.status?.errors?.length ?? 0,
           };
@@ -286,7 +539,8 @@ class CdpClient {
       `, 10000);
       console.log(
         `      ${elapsed}s/${DURATION}s n=${live.n} kind=${live.captureKind} ` +
-        `last=${live.lastChunkArrivalMs?.toFixed(1) ?? "—"}ms` +
+        `last=${live.lastChunkArrivalMs?.toFixed(1) ?? "—"}ms ` +
+        `pitch=${live.lastPitch?.toFixed(1) ?? "—"}Hz` +
         (live.errors > 0 ? ` errors=${live.errors}` : "")
       );
     } catch (err) {
@@ -309,14 +563,19 @@ class CdpClient {
   const frames = snap.frames || [];
   const arr = frames.map(f => f.timings?.chunkArrivalMs).filter(v => typeof v === "number" && Number.isFinite(v)).sort((a,b)=>a-b);
   const pct = (p) => arr[Math.floor(arr.length * p)];
+  const pitches = frames.map(f => f.pitch).filter(p => typeof p === "number" && Number.isFinite(p) && p > 0).sort((a,b)=>a-b);
+  const pp = (p) => pitches[Math.floor(pitches.length * p)];
   console.log("");
   console.log("─".repeat(72));
   console.log(` SUMMARY — kind=${snap.audio?.captureKind} ${snap.userAgent}`);
   console.log("─".repeat(72));
   console.log(`  saved: ${path}`);
-  console.log(`  frames: ${frames.length}, lowRes: ${(snap.lowRes || []).length}`);
+  console.log(`  frames: ${frames.length}, lowRes: ${(snap.lowRes || []).length}, voiced: ${pitches.length}`);
   if (arr.length > 0) {
     console.log(`  chunkArrival ms: median=${pct(0.5).toFixed(2)} p95=${pct(0.95).toFixed(2)} p99=${pct(0.99).toFixed(2)} max=${arr[arr.length-1].toFixed(2)}`);
+  }
+  if (pitches.length > 0) {
+    console.log(`  pitch Hz:        median=${pp(0.5).toFixed(2)} p5=${pp(0.05).toFixed(2)} p95=${pp(0.95).toFixed(2)}`);
   }
   console.log(`  baseLat: ${snap.audio?.baseLatencySec ? (snap.audio.baseLatencySec*1000).toFixed(1)+"ms" : "—"}, granted.latency: ${snap.audio?.grantedConstraints?.latency ?? "—"}`);
   console.log(`  status.errors: ${snap.status?.errors?.length ?? 0}`);

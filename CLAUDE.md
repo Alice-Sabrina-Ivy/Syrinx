@@ -141,11 +141,47 @@ If the harness exits with a hint that says "tap something on the device", do tha
 
 ### Desktop diag capture harness
 
-[scripts/desktop-diag-capture.js](scripts/desktop-diag-capture.js) is the desktop analogue of the mobile harness — spawns a fresh local Chrome with `--remote-debugging-port`, navigates to the diag URL, runs a configurable capture window, snapshots and saves the JSON to `measurements/desktop-diag-runs/<kind>-<ISO-timestamp>.json`. Used to compare MSTP vs AudioContext capture-source latency on desktop alongside the mobile harness's mobile measurements.
+The desktop analogue of the mobile harness — runs a configurable capture window, snapshots and saves the JSON to `measurements/desktop-diag-runs/<kind>-<ISO-timestamp>.json`. Used to compare MSTP vs AudioContext capture-source latency on desktop alongside the mobile harness's mobile measurements. Two harnesses, parallel use cases:
+
+#### Isolated spawn (autonomous, synthetic-injection only)
+
+[scripts/desktop-diag-capture.js](scripts/desktop-diag-capture.js) spawns a fresh Chrome with `--user-data-dir=<temp>`, runs the capture in that isolated profile, and tree-kills only the spawned PID on exit. No setup required from the user. Use `--voice-file=PATH` for autonomous regression runs against synthetic audio:
 
 ```
-node scripts/desktop-diag-capture.js [--kind=mstp|audiocontext] [--duration=120] [--url=...]
+node scripts/desktop-diag-capture.js [--kind=mstp|audiocontext] [--duration=120] [--url=...] [--voice-file=PATH] [--play-wav=PATH]
 ```
+
+**`--voice-file=PATH`** uses Chrome's `--use-file-for-fake-audio-capture` to replace the mic wholesale with the WAV's bytes (no real audio stack involved). Bit-exact reproducibility — the recommended mode for this harness.
+
+**`--play-wav=PATH`** ATTEMPTS speaker-loopback through the spawned Chrome's default mic (via PowerShell `System.Media.SoundPlayer.PlayLooping`). **Does not work in Alice's environment as of 2026-05-05** — the spawned isolated Chrome's default mic delivers `inputRms=0` across all captured frames regardless of speaker output, suggesting the fresh profile selects a non-physical or muted device distinct from the user's actual default mic. Code path retained because it works on the Pattern A harness (which inherits the user's real-mic config) and may work in other environments. **For real-mic testing on this dev environment, use Pattern A.**
+
+The flags are mutually exclusive — `--voice-file` takes priority.
+
+#### Attach to existing Chrome (for tests that need real session state)
+
+[scripts/desktop-diag-capture-attach.js](scripts/desktop-diag-capture-attach.js) connects via CDP to a Chrome already running with `--remote-debugging-port`, opens the test page in a NEW WINDOW (not a tab — separate window so it doesn't hijack focus in the active session), runs the capture against the user's real Chrome session (real cookies, persisted permissions, real-profile mic preference), then closes only the window it opened via `Target.closeTarget({targetId})`. Other tabs and windows are unreachable by construction — CDP addresses targets by id, not pattern.
+
+Use when the test needs the user's actual browser state, not just real audio. Prerequisite — the user must launch their Chrome with the debug port enabled first (one-time, with all current Chrome windows closed):
+
+```powershell
+& "C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9223
+```
+
+Or modify the Chrome shortcut's Target field to append `--remote-debugging-port=9223`. The flag only takes effect on a fresh launch — a second invocation while Chrome is already running gets absorbed into the existing instance and the flag is silently ignored.
+
+```
+node scripts/desktop-diag-capture-attach.js [--kind=mstp|audiocontext] [--duration=120] [--url=...] [--port=9223] [--play-wav=PATH]
+```
+
+`--play-wav` works on this harness too, with the same semantics as on the isolated harness.
+
+#### Focus / visibility emulation (load-bearing for both harnesses)
+
+Both harnesses call `Emulation.setFocusEmulationEnabled({enabled:true})` and `Page.bringToFront` after attaching. Without this, when the test window sits behind the user's foreground app (a common situation for an unattended harness run), `document.visibilityState` reads `"hidden"` and React's onClick handlers get throttled enough that programmatic clicks via `Input.dispatchMouseEvent` appear to no-op — the click coordinate lands on the correct element, but `dismissWelcome`'s onClick never runs, the audio pipeline never starts, and `audio: null` / `frames: 0` / no errors propagate to the diag snapshot. Empirically observed 2026-05-05; both harnesses ship with the workaround. Diagnostic if the harness ever stalls again with this signature: check the page-state probe output for `vis: hidden`.
+
+#### Why not spawn a debug-port-enabled Chrome that shares the user's profile?
+
+We explored sharing the user's profile via Node spawn (which would have given a debug-enabled instance with the user's real mic preference, no `--play-wav` fixture proxy needed) and concluded it's not achievable through Node's `child_process` API. Five spawn variants tested 2026-05-05 (`detached:false/true`, `stdio:'inherit'/'ignore'`, `cmd /c start chrome`, `powershell -Command Start-Process chrome`, `windowsHide:false`) all caused Chrome to single-instance-merge into the user's running Chrome — even though manually typing `chrome.exe --remote-debugging-port=9223` in PowerShell does produce a new debug-enabled instance for the user. The difference between interactive-PowerShell and Node-launched-PowerShell isn't pinned, but the empirical conclusion is solid. The isolated-spawn harness with `--play-wav` sidesteps the issue entirely: deterministic test signal regardless of which mic the fresh profile picks. **Future sessions: do not redo this exploration.**
 
 ### Spawned-process cleanup rule (load-bearing — DO NOT VIOLATE)
 
@@ -164,12 +200,12 @@ If a future session needs to add another spawn-and-cleanup harness, copy this pa
 
 Audio capture goes through [src/audio/captureSource.js](src/audio/captureSource.js)'s `createCaptureSource()` factory, which returns one of two implementations:
 
-- **`audiocontext`** (current production default): `getUserMedia` → `MediaStreamAudioSourceNode` → `AudioWorkletNode` → `MessageChannel` → DSP/ML worker.
-- **`mstp`** (Chrome main-thread only, opt-in via `?capture=mstp`): `getUserMedia` → `MediaStreamTrackProcessor` on the main thread → `ReadableStream` of `AudioData` → `MessageChannel` → DSP/ML worker.
+- **`mstp`** (production default wherever the runtime supports main-thread `MediaStreamTrackProcessor` — Chrome desktop + Chrome Android + Safari ≥26): `getUserMedia` → `MediaStreamTrackProcessor` on the main thread → `ReadableStream` of `AudioData` → `MessageChannel` → DSP/ML worker.
+- **`audiocontext`** (fallback when MSTP isn't available — Firefox in particular until worker-MSTP lands): `getUserMedia` → `MediaStreamAudioSourceNode` → `AudioWorkletNode` → `MessageChannel` → DSP/ML worker.
 
-Production routing is pinned to `audiocontext` until Stage 3 lands the routing decision (after the Stage 2.5 measurement on desktop confirms MSTP holds up there too).
+Stage 3 routing (`captureSource.js`'s `pickKind()`) returns `isMSTPSupported ? "mstp" : "audiocontext"`. The gate is feature detection on `MediaStreamTrackProcessor` + `AudioData` constructor presence — no UA gating. Decision basis: [measurements/capture-path-routing-2026-05-05.md](measurements/capture-path-routing-2026-05-05.md) (MSTP delivers ~5× lower chunkArrival latency on both desktop and mobile Chrome with no DSP-accuracy regression).
 
-`?capture=audiocontext` and `?capture=mstp` URL flags are diag overrides for measurement comparison. Without an explicit override the factory's `DEFAULT_KIND` constant (currently `"audiocontext"`) wins.
+`?capture=audiocontext` and `?capture=mstp` URL flags remain as diag overrides for path-comparison measurement.
 
 **Worker-MSTP path is deferred.** Chrome 147 mobile doesn't expose `MediaStreamTrackProcessor` in worker `globalScope` (verified empirically — `typeof MediaStreamTrackProcessor === "undefined"`), so the spec-conformant Firefox/Safari worker pattern can't be tested there. Firefox mobile is the right target for that work — it's testable on the same Pixel that runs the mobile harness, just under Firefox instead of Chrome. **The Firefox-mobile worker-MSTP path is the next capture-architecture work item after Stage 3 lands**; do not start it before then.
 
@@ -252,13 +288,15 @@ Convention: any optimization or tuning work on `dsp-worker.js`, `gender-worker.j
 
 **Multi-frame methodology is canonical.** The `accuracy-test.js` and `real-speech-test.js` Pass-1 measurements use multi-frame stepping (25 ms hops over the central 70 % of each recording, take the median of the non-null trace via `streamingMedianDetect`). This mirrors production hop cadence and is the only methodology that exercises Stage 2.B's HMM as it runs in production. Single-window-per-file (the legacy methodology from before pYIN) doesn't satisfy the HMM's lookback warm-up and produces noise-dominated numbers; it's preserved only as historical context in the session-1 measurement files (`pitch-baseline-pre-impMin-*` etc.). Any future pitch-evaluation work should default to multi-frame.
 
-**Stage 2.B σ=50 L=4 is the deployed pitch detection algorithm.** L was selected via the L-axis Pareto sweep at [measurements/pyin-L-sweep-2026-05-04.md](measurements/pyin-L-sweep-2026-05-04.md) — L=4 (100 ms latency at the 25 ms hop, exactly the original budget) is the gender-symmetric optimum on the full 1116-file Hillenbrand corpus (F=12.16 Hz, M=12.15 Hz, gender gap < 0.01 Hz). σ was then re-verified at L=4 across {50, 75, 100} in [measurements/pyin-sigma-at-bestL-2026-05-04-harness.txt](measurements/pyin-sigma-at-bestL-2026-05-04-harness.txt): σ=50 strictly dominates σ=75 at L=4 (M=12.15 vs 12.95). PTDB-TUG codet at L=4 σ=50: F mean 6.20 Hz, p95 17.2 Hz (Stage 0 baseline 6.82 / 18.0 — pYIN strictly dominates with the σ-sweep Pareto criteria still satisfied). Canonical post-ship baseline numbers in [measurements/pass5-stage2b-L4-sigma50-final-baseline-2026-05-04.md](measurements/pass5-stage2b-L4-sigma50-final-baseline-2026-05-04.md). The σ-rate-scaling argument resolves cleanly: paper σ=20 cents at 10 ms hop ≈ rate-equivalent σ=50 cents at our 25 ms hop, which the L-axis sweep at L=4 confirms empirically. The earlier L=2-only σ-sweep at [measurements/pyin-stage2b-sigma-sweep-2026-05-04.md](measurements/pyin-stage2b-sigma-sweep-2026-05-04.md) had selected σ=75 — context preserved there for why the prior draft of PR #68 shipped at L=2 σ=75; superseded by the L-axis sweep.
+**Stage 2.B σ=50 L=4 α=0.0001 is the deployed pitch detection algorithm.** L was selected via the L-axis Pareto sweep at [measurements/pyin-L-sweep-2026-05-04.md](measurements/pyin-L-sweep-2026-05-04.md) — L=4 (100 ms latency at the 25 ms hop, exactly the original budget) is the gender-symmetric optimum on the full 1116-file Hillenbrand corpus. σ was re-verified at L=4 across {50, 75, 100} in [measurements/pyin-sigma-at-bestL-2026-05-04-harness.txt](measurements/pyin-sigma-at-bestL-2026-05-04-harness.txt): σ=50 strictly dominates σ=75 at L=4 (M=12.15 vs 12.95). PTDB-TUG codet at L=4 σ=50: F mean 6.20 Hz, p95 17.2 Hz (Stage 0 baseline 6.82 / 18.0 — pYIN strictly dominates with the σ-sweep Pareto criteria still satisfied). The σ-rate-scaling argument resolves cleanly: paper σ=20 cents at 10 ms hop ≈ rate-equivalent σ=50 cents at our 25 ms hop. The earlier L=2-only σ-sweep at [measurements/pyin-stage2b-sigma-sweep-2026-05-04.md](measurements/pyin-stage2b-sigma-sweep-2026-05-04.md) had selected σ=75 — context preserved there for why the prior draft of PR #68 shipped at L=2 σ=75; superseded by the L-axis sweep.
+
+α=0.0001 is the uniform-mixture weight in the transition prior — `P(from→to) = (1−α)·Gaussian_norm(d, σ=50) + α·(1/N_pitch)`. Added to bound HMM recovery time after wrong-octave lock states (the σ=50 Gaussian alone makes single-frame cross-octave transitions cost exp(−288), trapping the HMM until obs-ratio dominance closes the gap over ≥10 frames). α=0.0001 is the smallest value that achieves the recovery improvement; larger values regress female-voice accuracy in the n=58 Hillenbrand subset without further recovery benefit. Investigation, sweep, and decision in [measurements/octave-lock-investigation-2026-05-05.md](measurements/octave-lock-investigation-2026-05-05.md). **Canonical post-ship baseline:** full-corpus Hillenbrand mean F0 error **M=9.6 Hz, F=11.3 Hz** (gender-symmetric max=11.3). Strict improvement over the pre-α baseline (M=12.15, F=12.16) documented in [measurements/pass5-stage2b-L4-sigma50-final-baseline-2026-05-04.md](measurements/pass5-stage2b-L4-sigma50-final-baseline-2026-05-04.md), which remains the canonical pre-α reference. Future PRs reference the new α-shipped baseline when comparing.
 
 **Test helper-choice contract.** Two helpers, two regimes — keep them distinct. `steadyStateDetect` (in `pitch-detection-comprehensive.js`, `accuracy-test.js`, `yin-harmonic-test.js`, `real-speech-test.js`) for stationary stimuli where same-window-repeated equals sequential-frames-of-same-signal: pure tones, harmonic stress, vibrato within a single window. `streamingMedianDetect` (in `accuracy-test.js`, `real-speech-test.js`) for non-stationary recordings where adjacent windows differ. Mixing them up produces measurement artifacts that don't obviously fail — see [measurements/pass1-helper-diagnostic-2026-05-04.md](measurements/pass1-helper-diagnostic-2026-05-04.md) for the failure mode (F p95 = 210 Hz with the wrong helper vs ~28 Hz with the right one, a 7× difference on the Hillenbrand corpus).
 
 **Production paths must be measured, not just harnesses.** Test infrastructure typically sets configuration via `globalThis.__VAR` overrides; production typically does not. The "fallback when override unset" code path is part of the ship surface and needs its own measurement pass — at least one end-to-end run through the actual production initialization sequence (`useAudioPipeline.js` → DSP worker init → `detectPitch`) before any ship claim is written. PR #68's original ship documented L=2 (50 ms latency) based on σ-sweep harness numbers that set `__PYIN_LOOKBACK` explicitly; production never set the override, so the deployed runtime silently fell back to L=5 (~125 ms latency). The harness numbers were correct for L=2 but irrelevant to what shipped. Caught by code review pre-merge; the L-axis sweep that resulted ([measurements/pyin-L-sweep-2026-05-04.md](measurements/pyin-L-sweep-2026-05-04.md)) revealed L=2 was also a sub-optimal cell and the eventual ship was L=4 σ=50. The named `PYIN_LOOKBACK_DEFAULT` constant in `dsp-worker.js` exists so this category of bug can't recur silently.
 
-**Pitch accuracy targets are gender-symmetric.** The tool serves voice training in any direction — transmasculine, transfeminine, cisgender singers and speakers alike. Ship decisions optimize on a gender-symmetric metric (e.g., `max(F_error, M_error)`, or balanced F+M) rather than female accuracy alone. The L-axis sweep produced three defensible Pareto cells (L=2 σ=75, L=4 σ=50, L=5 σ=75); the cell minimizing female F0 error was L=2 σ=75 at F=11.75 Hz, but it had M=15.52 Hz — a 3.77 Hz gender gap that would have given trans men and cis male users substantially worse pitch accuracy than female users. L=4 σ=50 was selected for being gender-symmetric (F=12.16, M=12.15) at a small cost to female accuracy. Voice-training tools must not bake demographic assumptions into ship-criterion math without explicit justification.
+**Pitch accuracy targets are gender-symmetric.** The tool serves voice training in any direction — transmasculine, transfeminine, cisgender singers and speakers alike. Ship decisions optimize on a gender-symmetric metric (e.g., `max(F_error, M_error)`, or balanced F+M) rather than female accuracy alone. The L-axis sweep produced three defensible Pareto cells (L=2 σ=75, L=4 σ=50, L=5 σ=75); the cell minimizing female F0 error was L=2 σ=75 at F=11.75 Hz, but it had M=15.52 Hz — a 3.77 Hz gender gap that would have given trans men and cis male users substantially worse pitch accuracy than female users. L=4 σ=50 was selected for being gender-symmetric at a small cost to female accuracy. The α=0.0001 mixture prior added later improves both genders (M 12.15→9.6, F 12.16→11.3) — male improves more, widening the gender gap to 1.7 Hz, but absolute accuracy improves on both sides and the gender-symmetric max metric still strictly improves. Voice-training tools must not bake demographic assumptions into ship-criterion math without explicit justification.
 
 ## Deployment
 
