@@ -298,6 +298,20 @@ Convention: any optimization or tuning work on `dsp-worker.js`, `gender-worker.j
 
 **Pitch accuracy targets are gender-symmetric.** The tool serves voice training in any direction — transmasculine, transfeminine, cisgender singers and speakers alike. Ship decisions optimize on a gender-symmetric metric (e.g., `max(F_error, M_error)`, or balanced F+M) rather than female accuracy alone. The L-axis sweep produced three defensible Pareto cells (L=2 σ=75, L=4 σ=50, L=5 σ=75); the cell minimizing female F0 error was L=2 σ=75 at F=11.75 Hz, but it had M=15.52 Hz — a 3.77 Hz gender gap that would have given trans men and cis male users substantially worse pitch accuracy than female users. L=4 σ=50 was selected for being gender-symmetric at a small cost to female accuracy. The α=0.0001 mixture prior added later improves both genders (M 12.15→9.6, F 12.16→11.3) — male improves more, widening the gender gap to 1.7 Hz, but absolute accuracy improves on both sides and the gender-symmetric max metric still strictly improves. Voice-training tools must not bake demographic assumptions into ship-criterion math without explicit justification.
 
+## Known issues / future work
+
+### MSTP runtime fallback to AudioContext
+
+`pickKind()` in [src/audio/captureSource.js](src/audio/captureSource.js) routes to MSTP whenever `isMSTPSupported()` returns true. That's feature detection — it checks `MediaStreamTrackProcessor` and `AudioData` constructor presence — not runtime validation that the MSTP capture path actually delivers audio frames. If a browser detects-as-supported but the path fails at runtime (e.g. the `MediaStreamTrackProcessor` constructor exists but `processor.readable.getReader()` errors, or the first AudioData frame never arrives), the audio pipeline hard-fails. There's no fallback to the AudioContext path; `_createMstpSource`'s 5 s first-frame timeout throws and the React error state surfaces a generic "microphone access denied" message that misrepresents the actual failure.
+
+**Practical risk: low.** On the browsers validated in the Stage 2.5 measurement (Chrome desktop 147, Chrome Android 147 / Pixel 8 Pro), MSTP works reliably when detected. No detection-passes-but-runtime-fails reports from the wild. Future Chrome versions, Firefox-mobile (when it gains main-thread MSTP), and Safari (which has MSTP but Syrinx hasn't been validated there) are the candidate failure surfaces.
+
+**Forward-looking soundness gap.** Robust capture-path selection should prefer "MSTP if it actually works on this runtime", not "MSTP if the constructors exist". Worth addressing eventually even though no current breakage is observed.
+
+**Approach when addressed:** wrap the MSTP path's first-frame await in a try/catch inside `createCaptureSource`. On failure (or first-frame timeout), close the MSTP path cleanly and re-attempt via `_createAudioContextSource` against the same `MediaStream`. Surface the fallback event in the diag overlay so future regressions show up in measurement runs.
+
+**Origin:** Codex review on PR #69 (the pYIN octave-lock fix). Out of scope for that PR; documented here for future work.
+
 ## Deployment
 
 GitHub Actions (`.github/workflows/deploy.yml`) builds and deploys to GitHub Pages on push to `main`. Build output goes to `docs/`. Vite base path is `/Syrinx/` (uppercase S). See ARCHITECTURE.md for the full design document and implementation roadmap.
