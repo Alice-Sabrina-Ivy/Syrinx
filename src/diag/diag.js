@@ -62,6 +62,15 @@ function _createState() {
     enabledAtEpochMs: performance.timeOrigin + performance.now(),
     // Audio-context introspection captured once at start().
     audio: null,
+    // Pipeline status — populated by init-ack messages and any errors.
+    // The overlay surfaces this so an empty `frames` buffer doesn't look
+    // like "everything's fine, just no audio" — it shows whether init
+    // messages landed and whether anything threw.
+    status: {
+      worklet: null,    // { diag, chunkSize, sampleRate } from worklet-init-ack
+      worker: null,     // { diag, sampleRate, windowSize } from worker-init-ack
+      errors: [],       // { source: "worklet" | "worker", where, message, stack }
+    },
     // Per-frame ring buffer. Each entry:
     // {
     //   tEpochMs,           // worker-side absoluteTime (when analysis completed)
@@ -71,7 +80,7 @@ function _createState() {
     //   voicedness,         // HMM-smoothed posterior, 0..1 or null
     //   voicednessObs,      // raw Beta-CDF candidate mass, 0..1 or null
     //   timings: {
-    //     chunkArrivalMs,   // capture-processor postedAt → DSP worker arrival
+    //     chunkArrivalMs,   // audio captured (ctx time → epoch) → DSP arrival
     //     pitchDetectMs,    // detectPitch() call only
     //     workerProcessingMs, // detectPitch + formants + tilt + HNR
     //     handoffToMainMs,  // DSP postMessage → main onmessage handler entry
@@ -92,9 +101,46 @@ function _createState() {
 // do so unconditionally; helpers no-op when state is null.
 export const diagState = DIAG_ENABLED ? _createState() : null;
 
+// Pin a stable handle on `window` when diag is on so external tooling
+// (puppeteer probes, browser devtools, snapshot scripts) can read the
+// same module-instance state the React app is writing to. Not exposed
+// in production: DIAG_ENABLED is false without ?diag=1.
+if (DIAG_ENABLED && typeof window !== "undefined") {
+  window.__syrinxDiag = { state: diagState };
+}
+
 export function setAudioInfo(info) {
   if (!diagState) return;
   diagState.audio = info;
+}
+
+export function setWorkletStatus(s) {
+  if (!diagState) return;
+  diagState.status.worklet = s;
+}
+
+export function setWorkerStatus(s) {
+  if (!diagState) return;
+  diagState.status.worker = s;
+}
+
+export function pushError(err) {
+  if (!diagState) return;
+  diagState.status.errors.push({
+    tEpochMs: performance.timeOrigin + performance.now(),
+    ...err,
+  });
+  // Cap errors so a runaway loop doesn't OOM the page.
+  if (diagState.status.errors.length > 50) {
+    diagState.status.errors.splice(0, diagState.status.errors.length - 50);
+  }
+  // Also log to console — diag mode is opt-in so noisy console is fine.
+  // eslint-disable-next-line no-console
+  console.error("[diag]", err.source ?? "unknown", err.where ?? "", err.message ?? "", err.stack ?? "");
+}
+
+export function getStatus() {
+  return diagState ? diagState.status : null;
 }
 
 export function pushFrame(frame) {
@@ -158,6 +204,7 @@ export function snapshot() {
     enabledAtEpochMs: diagState.enabledAtEpochMs,
     userAgent: typeof navigator !== "undefined" ? navigator.userAgent : null,
     audio: diagState.audio,
+    status: diagState.status,
     framesWhileHidden: diagState.framesWhileHidden,
     visibilityState: typeof document !== "undefined" ? document.visibilityState : null,
     taps: diagState.taps.toArray(),
