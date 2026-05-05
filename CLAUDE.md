@@ -2,6 +2,22 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## PR creation requires explicit user approval (load-bearing — DO NOT VIOLATE)
+
+Branches and commits are autonomous on this project; **opening a PR requires the user to explicitly say "open the PR" (or equivalent).** Applies to every PR, including small or seemingly-obvious ones. If a fix has been approved in conversation but the user hasn't explicitly said "open a PR for it," the work goes to a branch and STOPS for approval before any `gh pr create` invocation.
+
+The pattern from PR #68 onward, repeated for clarity:
+
+1. Investigation → measurement file in `measurements/` (autonomous).
+2. Branch + commits with the proposed fix (autonomous).
+3. Push the branch (autonomous).
+4. **STOP. Ask the user to open the PR.** Surface the branch name and a one-paragraph summary of what's in it.
+5. User says "open the PR" → run `gh pr create`.
+
+User approval of the *content* of a fix during investigation/discussion is **not** approval to open the PR. The PR-creation action is a separate gate. If a deliverable description includes phrasing like "PR opened" or "deliverable surfaced," interpret that as "branch ready for review, STOP before `gh pr create`" — even if the prior conversation approved every individual change in it.
+
+This rule was added 2026-05-05 after PRs #70 and #71 were opened out of process (the content was greenlit in conversation, the PR-opening action was not). Out-of-process PRs aren't reverted, but the gate applies on every subsequent PR.
+
 ## Project Overview
 
 Syrinx is a browser-based voice training toolkit providing real-time resonance, pitch, and vocal weight analysis. It runs entirely client-side with no backend — all audio processing happens in the browser. Currently targets voice feminization training.
