@@ -13,7 +13,14 @@ import {
   pushAndMedianPitch,
   PITCH_SMOOTH_LEN,
 } from "./pitchSmoothing";
-import { DIAG_ENABLED, setAudioInfo, pushFrame } from "../diag/diag";
+import {
+  DIAG_ENABLED,
+  setAudioInfo,
+  pushFrame,
+  setWorkletStatus,
+  setWorkerStatus,
+  pushError,
+} from "../diag/diag";
 
 const SILENCE_THRESHOLD_DB = -50;
 const SILENCE_DEBOUNCE_FRAMES = 3; // require 3 consecutive quiet frames before gating
@@ -140,9 +147,26 @@ export function useAudioPipeline() {
           grantedConstraints: trackSettings,
           userAgent: navigator.userAgent,
         });
-        // Tell the AudioWorklet to attach postedAt timestamps. Sent
-        // before the port message so the worklet's diag flag is set
-        // before any chunk leaves it.
+        // Listen for worklet init-ack and process()-thrown errors before
+        // sending init, so the ack lands wherever it lands. The worklet
+        // and DSP-worker init-acks are how the overlay confirms diag
+        // propagation. Errors thrown in process() permanently disconnect
+        // the AudioWorklet from the audio graph, so even a single one is
+        // pipeline-fatal — surface them visibly.
+        workletNode.port.addEventListener("message", (e) => {
+          const msg = e.data;
+          if (!msg || !msg.type) return;
+          if (msg.type === "worklet-init-ack") {
+            setWorkletStatus({
+              diag: msg.diag,
+              chunkSize: msg.chunkSize,
+              sampleRate: msg.sampleRate,
+            });
+          } else if (msg.type === "worklet-error") {
+            pushError({ source: "worklet", where: msg.where, message: msg.message, stack: msg.stack });
+          }
+        });
+        workletNode.port.start();
         workletNode.port.postMessage({ type: "init", diag: true });
       }
 
@@ -222,48 +246,78 @@ export function useAudioPipeline() {
       };
 
       worker.onmessage = (e) => {
-        if (e.data.type === "analysis") {
-          const data = e.data.data;
-          // Diagnostic mode: capture timing breakpoints around the
-          // analysis-handler call. handoffToMainMs is DSP postMessage
-          // (postedAtEpochMs) → main onmessage entry (now). mainHandlerMs
-          // is the time inside handleAnalysisResult. totalMs is the
-          // wall-clock from "audio captured" (ctx time → epoch via
-          // ctxCreatedAtEpochMs) to display update completion.
-          if (DIAG_ENABLED && data.diag) {
-            const handlerStart = performance.timeOrigin + performance.now();
-            const handoffToMainMs =
-              typeof data.diag.postedAtEpochMs === "number"
-                ? handlerStart - data.diag.postedAtEpochMs
-                : null;
+        const msg = e.data;
+        if (!msg || !msg.type) return;
+
+        // Init-ack / error messages from the DSP worker (diag mode only —
+        // production worker doesn't send these; the conditional read on
+        // the diag side keeps production paths untouched).
+        if (msg.type === "worker-init-ack") {
+          if (DIAG_ENABLED) setWorkerStatus({
+            diag: msg.diag,
+            sampleRate: msg.sampleRate,
+            windowSize: msg.windowSize,
+          });
+          return;
+        }
+        if (msg.type === "worker-error") {
+          if (DIAG_ENABLED) pushError({
+            source: "worker", where: msg.where, message: msg.message, stack: msg.stack,
+          });
+          return;
+        }
+
+        if (msg.type !== "analysis") return;
+        const data = msg.data;
+
+        // Diagnostic mode: capture timing breakpoints around the
+        // analysis-handler call.
+        //   chunkArrivalMs   = DSP receipt epoch - audio capture epoch
+        //                      (audio capture epoch = ctxCreatedAtEpochMs
+        //                       + contextTime*1000 from the worklet)
+        //   handoffToMainMs  = main onmessage entry - DSP postMessage epoch
+        //   mainHandlerMs    = handleAnalysisResult duration
+        //   totalMs          = display update time - audio capture epoch
+        if (DIAG_ENABLED && data.diag) {
+          const handlerStart = performance.timeOrigin + performance.now();
+          const audioCapturedEpochMs =
+            typeof data.contextTime === "number" && ctxCreatedAtEpochMs
+              ? ctxCreatedAtEpochMs + data.contextTime * 1000
+              : null;
+          const chunkArrivalMs =
+            audioCapturedEpochMs && typeof data.diag.chunkReceiveEpochMs === "number"
+              ? data.diag.chunkReceiveEpochMs - audioCapturedEpochMs
+              : null;
+          const handoffToMainMs =
+            typeof data.diag.postedAtEpochMs === "number"
+              ? handlerStart - data.diag.postedAtEpochMs
+              : null;
+          try {
             handleAnalysisResult(data);
-            const handlerEnd = performance.timeOrigin + performance.now();
-            const audioCapturedEpochMs =
-              typeof data.contextTime === "number" && ctxCreatedAtEpochMs
-                ? ctxCreatedAtEpochMs + data.contextTime * 1000
-                : null;
-            pushFrame({
-              tEpochMs: data.absoluteTime,
-              pitch: data.pitch,
-              intensity: data.intensity,
-              inputRms: data.diag.inputRms,
-              voicedness: data.voicedness,
-              voicednessObs: data.diag.voicednessObs,
-              pendingChunks: data.pendingChunks,
-              timings: {
-                chunkArrivalMs: data.diag.chunkArrivalMs,
-                pitchDetectMs: data.diag.pitchDetectMs,
-                workerProcessingMs: data.workerProcessingMs,
-                handoffToMainMs,
-                mainHandlerMs: handlerEnd - handlerStart,
-                totalMs: audioCapturedEpochMs
-                  ? handlerEnd - audioCapturedEpochMs
-                  : null,
-              },
-            });
-          } else {
-            handleAnalysisResult(data);
+          } catch (err) {
+            pushError({ source: "main", where: "handleAnalysisResult", message: err.message, stack: err.stack });
+            return;
           }
+          const handlerEnd = performance.timeOrigin + performance.now();
+          pushFrame({
+            tEpochMs: data.absoluteTime,
+            pitch: data.pitch,
+            intensity: data.intensity,
+            inputRms: data.diag.inputRms,
+            voicedness: data.voicedness,
+            voicednessObs: data.diag.voicednessObs,
+            pendingChunks: data.pendingChunks,
+            timings: {
+              chunkArrivalMs,
+              pitchDetectMs: data.diag.pitchDetectMs,
+              workerProcessingMs: data.workerProcessingMs,
+              handoffToMainMs,
+              mainHandlerMs: handlerEnd - handlerStart,
+              totalMs: audioCapturedEpochMs ? handlerEnd - audioCapturedEpochMs : null,
+            },
+          });
+        } else {
+          handleAnalysisResult(data);
         }
       };
 

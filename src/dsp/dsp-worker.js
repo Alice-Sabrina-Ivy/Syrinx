@@ -285,8 +285,12 @@ function _pyinResetState() {
   _pyinLastVoicednessObs = null;
 }
 
-function processChunk(buffer, contextTime, postedAt) {
+function processChunk(buffer, contextTime) {
   const chunkReceiveTime = performance.now();
+  // Wall-clock receipt time, used by the main thread (diag mode) to compute
+  // chunkArrivalMs against the audio-context epoch. Captured even when diag
+  // is off — it's one timestamp call, negligible.
+  const chunkReceiveEpochMs = performance.timeOrigin + performance.now();
   pendingChunks--;
   if (contextTime !== null && contextTime !== undefined) lastContextTime = contextTime;
 
@@ -323,6 +327,10 @@ function processChunk(buffer, contextTime, postedAt) {
 
   // Diagnostic-only fields. inputRms is computed cheaply from the window
   // we already have. When diag is off, none of this is computed or sent.
+  // chunkArrivalMs is NOT computed here — the AudioWorklet can't supply
+  // a comparable wall-clock timestamp (no `performance` in
+  // AudioWorkletGlobalScope). The main thread reconciles
+  // chunkReceiveEpochMs against ctxCreatedAtEpochMs + contextTime.
   let diagFields = null;
   if (_diag) {
     let sumSq = 0;
@@ -332,17 +340,11 @@ function processChunk(buffer, contextTime, postedAt) {
       voicednessObs: _pyinLastVoicednessObs,
       pitchDetectMs: pitchEnd - pitchStart,
       inputRms,
-      // Capture-processor → DSP worker handoff. The two contexts have
-      // different performance.timeOrigin so this delta carries a small
-      // (typically < 1 ms) systematic bias; useful for relative
-      // comparison rather than absolute attribution.
-      chunkArrivalMs:
-        typeof postedAt === "number" && postedAt > 0
-          ? chunkReceiveTime - postedAt
-          : null,
-      // The worker's epoch-ms timestamp at the moment of postMessage.
-      // Pairs with the main thread's onmessage-entry timestamp (logged
-      // in useAudioPipeline.js) to measure DSP→main handoff latency.
+      // Wall-clock epoch-ms at chunk receipt and at postMessage. Main
+      // thread combines these with ctxCreatedAtEpochMs + contextTime to
+      // derive chunkArrivalMs (capture → worker arrival) and
+      // handoffToMainMs (DSP postMessage → main onmessage entry).
+      chunkReceiveEpochMs,
       postedAtEpochMs: performance.timeOrigin + performance.now(),
     };
   }
@@ -370,6 +372,7 @@ function processChunk(buffer, contextTime, postedAt) {
 }
 
 self.onmessage = (e) => {
+ try {
   const { type } = e.data;
 
   if (type === "init") {
@@ -412,6 +415,9 @@ self.onmessage = (e) => {
     _yinDiff = new Float32Array(windowSize);
     _yinCmnd = new Float32Array(windowSize);
     _yinCumSq = new Float64Array(windowSize + 1);
+    // Init-ack so the main thread can confirm the worker received the
+    // diag flag and set up its buffers. Always sent regardless of diag.
+    self.postMessage({ type: "worker-init-ack", diag: _diag, sampleRate, windowSize });
     return;
   }
 
@@ -420,10 +426,9 @@ self.onmessage = (e) => {
     const port = e.data.port;
     port.onmessage = (ev) => {
       pendingChunks++;
-      // Worklet sends {buffer, contextTime, postedAt} — extract all
       const msg = ev.data;
       if (msg && msg.buffer) {
-        processChunk(msg.buffer, msg.contextTime, msg.postedAt);
+        processChunk(msg.buffer, msg.contextTime);
       } else {
         // Fallback: raw ArrayBuffer (shouldn't happen with updated worklet)
         processChunk(msg);
@@ -454,6 +459,17 @@ self.onmessage = (e) => {
     _pyinBuildPitchTrans(e.data.sigma);
     return;
   }
+ } catch (err) {
+   // Surface init / message-handler errors so an empty pipeline doesn't
+   // look like "no audio". Production code paths shouldn't hit this; if
+   // they do, the diag overlay's "Pipeline status" panel will show why.
+   self.postMessage({
+     type: "worker-error",
+     where: "onmessage",
+     message: err && err.message ? err.message : String(err),
+     stack: err && err.stack ? err.stack : null,
+   });
+ }
 };
 
 // --- Ring buffer ---

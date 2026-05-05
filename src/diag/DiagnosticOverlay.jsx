@@ -18,6 +18,7 @@ import {
   getTimingStats,
   pushTap,
   downloadSnapshot,
+  getStatus,
 } from "./diag";
 
 const REFRESH_HZ = 10; // overlay refresh rate; cheap because we read from refs
@@ -164,6 +165,7 @@ export default function DiagnosticOverlay() {
   const frames = diagState?.frames.toArray() ?? [];
   const stats = getTimingStats();
   const audio = diagState?.audio;
+  const status = getStatus();
   const lastTap = lastTapRef.current;
   const tapAgeMs = lastTap ? (performance.timeOrigin + performance.now()) - lastTap : null;
 
@@ -193,6 +195,45 @@ export default function DiagnosticOverlay() {
           className="text-neutral-500 hover:text-white text-[14px] leading-none"
           title="Collapse"
         >×</button>
+      </div>
+
+      {/* Pipeline status — surfaces silent failures */}
+      <div className="mb-3">
+        <div className="text-[10px] uppercase text-neutral-500 mb-1 tracking-wider">Pipeline status</div>
+        <div className="space-y-0.5 text-[10px] font-mono">
+          <div className="flex justify-between">
+            <span className="text-neutral-400">worklet init:</span>
+            <span className={status?.worklet ? "text-green-400" : "text-amber-400"}>
+              {status?.worklet
+                ? `✓ diag=${String(status.worklet.diag)} chunk=${status.worklet.chunkSize} sr=${status.worklet.sampleRate}`
+                : "no ack"}
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-neutral-400">worker init:</span>
+            <span className={status?.worker ? "text-green-400" : "text-amber-400"}>
+              {status?.worker
+                ? `✓ diag=${String(status.worker.diag)} sr=${status.worker.sampleRate}`
+                : "no ack"}
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-neutral-400">errors:</span>
+            <span className={(status?.errors?.length ?? 0) > 0 ? "text-red-400" : "text-neutral-500"}>
+              {status?.errors?.length ?? 0}
+            </span>
+          </div>
+          {status?.errors?.length > 0 && (
+            <div className="mt-1 max-h-24 overflow-y-auto bg-red-950/50 border border-red-900 rounded p-1 text-[9px] text-red-300 leading-tight">
+              {status.errors.slice(-3).map((err, i) => (
+                <div key={i} className="mb-1">
+                  <span className="text-red-400">[{err.source}{err.where ? `/${err.where}` : ""}]</span>{" "}
+                  {err.message}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Timings */}
