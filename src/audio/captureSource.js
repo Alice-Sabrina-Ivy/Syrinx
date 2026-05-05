@@ -41,13 +41,15 @@ export function supportsMSTPAudio() {
   return isMSTPSupported;
 }
 
-// Production default. Stage 1 + Stage 2 keep this at "audiocontext"
-// — MSTP is opt-in via diag flag for measurement only. Stage 3 flips
-// this based on the Stage 2.5 measurement decision (MSTP-everywhere,
-// MSTP-mobile-only, or stay-on-audiocontext).
-const DEFAULT_KIND = "audiocontext";
-
-// Pick the capture kind. forceKind overrides for diagnostic comparison.
+// Pick the capture kind. forceKind overrides for diagnostic comparison
+// (?capture=mstp / ?capture=audiocontext). Without an override, route to
+// MSTP wherever the runtime supports it and fall back to AudioContext
+// otherwise — Stage 3 routing decision per
+// measurements/capture-path-routing-2026-05-05.md (MSTP delivers ~5×
+// lower chunkArrival latency on both desktop and mobile Chrome with no
+// DSP-accuracy regression). MSTP support is feature-detected, not UA-
+// gated, so the routing degrades cleanly on Firefox / older Safari /
+// any browser without main-thread MediaStreamTrackProcessor.
 function pickKind(forceKind) {
   if (forceKind === "mstp") {
     if (!isMSTPSupported) {
@@ -59,7 +61,7 @@ function pickKind(forceKind) {
   if (forceKind != null) {
     throw new Error(`Unknown forceKind: ${forceKind}`);
   }
-  return DEFAULT_KIND;
+  return isMSTPSupported ? "mstp" : "audiocontext";
 }
 
 /**
