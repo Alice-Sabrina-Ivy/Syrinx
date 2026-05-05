@@ -45,13 +45,13 @@ Append `?diag=1` to the URL (`https://10.0.0.41:5173/Syrinx/?diag=1` for mobile 
 
 The overlay surfaces:
 
-- **Per-frame timings** (current value + p95 over last 5 s):
-  - `audio→worker` — capture-processor `postedAt` → DSP worker arrival. Cross-context so carries a small bias from differing `performance.timeOrigin`.
+- **Per-frame timings** (current value + p95 + drift, over the ~30 s ring window):
+  - `audio→worker` — capture-processor → DSP worker arrival. **Drift on this row is the load-bearing signal for mobile audio-clock skew / capture-buffer accumulation** — green = stable, amber = ≥0.2 ms/s, red = ≥1 ms/s. The `?diag=1` instrumentation diagnosed +11.5 ms/s drift on Pixel-class Android Chrome at 48 kHz with the default `latency: 0.04` constraint; the `latency: { ideal: 0.01, max: 0.05 }` getUserMedia hint added in `useAudioPipeline.js` is the first-line fix.
   - `detectPitch` — pYIN call only.
   - `worker total` — `detectPitch` + (every 6th frame) formants/tilt/HNR.
   - `worker→main` — DSP `postMessage` → main `onmessage` handler entry.
   - `main handler` — `handleAnalysisResult` duration.
-  - `end-to-end` — audio captured (AudioContext time → epoch via `ctxCreatedAtEpochMs`) to display update.
+  - `end-to-end` — audio captured (AudioContext time → epoch via `ctxCreatedAtEpochMs`) to display update. Drift here mirrors `audio→worker` since the worker side is constant-cost.
 - **Last-5-seconds sparkline**: pitch (amber, 60–400 Hz scale), `voicedness` (HMM-smoothed posterior, cyan), `voicednessObs` (raw Beta-CDF candidate mass, purple), `inputRms ×4` (orange).
 - **Audio context introspection** captured once at start: `AudioContext.sampleRate` (highlights amber if < 44.1 kHz — mobile silent downsampling), `baseLatency`, `outputLatency`, AudioWorklet vs ScriptProcessor confirmation, requested-vs-granted `getUserMedia` constraints (echoCancellation / noiseSuppression / autoGainControl). Mobile browsers may silently override these.
 - **Lifecycle**: pointer-event tap age (for tap-to-display latency), `document.visibilityState`, frames-while-hidden tally.

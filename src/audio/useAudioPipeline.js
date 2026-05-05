@@ -105,11 +105,26 @@ export function useAudioPipeline() {
     setState((s) => ({ ...s, status: "requesting", error: null }));
 
     try {
+      // `latency` is a hint to the platform — Chrome on Android takes it
+      // seriously and will pick the smallest hardware buffer that still
+      // satisfies `max`. Without it, Android Chrome 147 grants
+      // latency: 0.04 (40 ms) by default, which combined with mobile
+      // audio-stack clock skew accumulates into the monotonic
+      // chunkArrivalMs drift observed by Alice (+11.5 ms/s on Pixel-class
+      // Android, growing to ~810 ms by 95 s of session).
+      //
+      // Deferred (cascade effects on formant extraction): requesting
+      // `sampleRate: 16000` would shrink per-quantum sample counts and
+      // potentially reduce buffer accumulation further, but the worker's
+      // formant pipeline is parameterized for 48 kHz capture (decimation
+      // factor, anti-alias FIR length). Try this if the latency hint
+      // alone doesn't tame the drift.
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: false,
           noiseSuppression: false,
           autoGainControl: false,
+          latency: { ideal: 0.01, max: 0.05 },
         },
       });
       streamRef.current = stream;

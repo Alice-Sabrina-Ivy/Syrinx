@@ -20,9 +20,12 @@ export const DIAG_ENABLED = (() => {
   }
 })();
 
-// 5 seconds at the worker's analysis cadence (~25 ms hop = 40 fps) plus
-// headroom. Plain array with index-wrap for O(1) push.
-const RING_CAP = 250;
+// ~30 seconds at the worker's analysis cadence (~25 ms hop = 40 fps).
+// Sized so a single snapshot covers enough session time to make slow
+// drift (e.g. mobile audio-clock skew) visible by linear regression.
+// 1200 frames × ~150 B per frame ≈ 180 KB — negligible for a
+// diag-mode-only allocation. Plain array with index-wrap for O(1) push.
+const RING_CAP = 1200;
 
 class RingBuffer {
   constructor(cap) {
@@ -164,8 +167,41 @@ export function getTaps() {
   return diagState ? diagState.taps.toArray() : [];
 }
 
+// Linear regression of a per-frame numeric field against tEpochMs.
+// Returns slope in (field-units per millisecond of session time). The
+// intended use is "ms of latency added per second of session": call
+// with field "chunkArrivalMs" and multiply the result by 1000. NaN-safe;
+// returns null if fewer than 2 valid points or if x has no variance.
+export function driftSlopePerMs(field) {
+  if (!diagState) return null;
+  const frames = diagState.frames.toArray();
+  if (frames.length < 2) return null;
+  let n = 0, sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+  let t0 = null;
+  for (const fr of frames) {
+    const t = fr.tEpochMs;
+    const y = fr.timings && fr.timings[field];
+    if (typeof t !== "number" || typeof y !== "number") continue;
+    if (!Number.isFinite(t) || !Number.isFinite(y)) continue;
+    if (t0 === null) t0 = t;
+    const dt = t - t0;
+    n++;
+    sumX += dt;
+    sumY += y;
+    sumXY += dt * y;
+    sumX2 += dt * dt;
+  }
+  if (n < 2) return null;
+  const denom = n * sumX2 - sumX * sumX;
+  if (denom === 0) return null;
+  return (n * sumXY - sumX * sumY) / denom;
+}
+
 // Aggregated stats over the current ring contents — current value of each
-// timing field plus its p95 over the buffer. Returns nulls when no data.
+// timing field plus its p95 and drift (ms per second of session time)
+// over the buffer. Returns nulls when no data. Drift is the load-bearing
+// signal for clock-skew / buffer-accumulation diagnosis: monotonic growth
+// in chunkArrivalMs over session time is the mobile capture issue.
 export function getTimingStats() {
   if (!diagState) return null;
   const frames = diagState.frames.toArray();
@@ -184,13 +220,25 @@ export function getTimingStats() {
     const series = frames
       .map((fr) => fr.timings && fr.timings[f])
       .filter((v) => typeof v === "number" && Number.isFinite(v));
+    const slopePerMs = driftSlopePerMs(f);
     out[f] = {
       current: last.timings ? last.timings[f] : null,
       p95: p95(series),
       mean: mean(series),
+      // Convert slope from (ms per ms) to (ms per second of session
+      // time). Null-safe — multiplying null * 1000 = 0, so guard.
+      driftMsPerSec: slopePerMs == null ? null : slopePerMs * 1000,
       n: series.length,
     };
   }
+  // Window length in seconds — useful in the overlay so a "drift +0.5
+  // ms/s" reading over a 2-second window is appropriately distrustable
+  // vs the same slope over 30 s.
+  const windowSec =
+    frames.length >= 2
+      ? (frames[frames.length - 1].tEpochMs - frames[0].tEpochMs) / 1000
+      : 0;
+  out._windowSec = windowSec;
   return out;
 }
 
