@@ -2,6 +2,16 @@
 // to capture a `?diag=1` snapshot from the dev server. Mirror of
 // scripts/mobile-diag-capture.js but for desktop measurement.
 //
+// DEPRECATED — prefer [scripts/desktop-diag-capture-attach.js](./desktop-diag-capture-attach.js)
+// (Pattern A) for routine measurement. This script remains as a fallback
+// for environments where the user can't or doesn't want to launch their
+// primary Chrome with --remote-debugging-port. Limitation that motivated
+// the move: the spawned-Chrome flow can't reliably address the user's
+// real preferred microphone — its fresh profile picks Chrome's notion
+// of "default device" which often isn't the right one. Testing real-mic
+// behavior here therefore relies on the synthetic --voice-file fixture
+// rather than the actual capture stack.
+//
 // IMPORTANT — process-management contract:
 //
 // This script SPAWNS a Chrome process and is responsible for cleaning up

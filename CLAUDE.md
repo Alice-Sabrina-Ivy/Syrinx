@@ -141,11 +141,27 @@ If the harness exits with a hint that says "tap something on the device", do tha
 
 ### Desktop diag capture harness
 
-[scripts/desktop-diag-capture.js](scripts/desktop-diag-capture.js) is the desktop analogue of the mobile harness — spawns a fresh local Chrome with `--remote-debugging-port`, navigates to the diag URL, runs a configurable capture window, snapshots and saves the JSON to `measurements/desktop-diag-runs/<kind>-<ISO-timestamp>.json`. Used to compare MSTP vs AudioContext capture-source latency on desktop alongside the mobile harness's mobile measurements.
+The desktop analogue of the mobile harness — runs a configurable capture window, snapshots and saves the JSON to `measurements/desktop-diag-runs/<kind>-<ISO-timestamp>.json`. Used to compare MSTP vs AudioContext capture-source latency on desktop alongside the mobile harness's mobile measurements.
+
+**Default (Pattern A): attach to your existing Chrome.** [scripts/desktop-diag-capture-attach.js](scripts/desktop-diag-capture-attach.js) connects via CDP to a Chrome already running with `--remote-debugging-port`, opens the test page in a NEW WINDOW (not a tab — separate window so it doesn't hijack focus in your active session), runs the capture against your real microphone with your persisted permissions, then closes only the window it opened. Other tabs and windows are never touched.
+
+Prerequisite — launch your Chrome with the debug port enabled (one-time, with all current Chrome windows closed first):
+
+```powershell
+& "C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9223
+```
+
+Or modify the Chrome shortcut's Target field to append `--remote-debugging-port=9223`. The flag only takes effect on a fresh launch — if Chrome was already running, the second invocation is absorbed into the existing instance and the flag is silently ignored.
+
+Then:
 
 ```
-node scripts/desktop-diag-capture.js [--kind=mstp|audiocontext] [--duration=120] [--url=...]
+node scripts/desktop-diag-capture-attach.js [--kind=mstp|audiocontext] [--duration=120] [--url=...] [--port=9223]
 ```
+
+The harness uses `Target.createTarget({newWindow: true})` to open a separate window, and `Target.closeTarget({targetId})` to close only that target on exit. The CDP API addresses targets by id, so it cannot affect other tabs or windows by construction.
+
+**Fallback (deprecated, retained): spawn a fresh isolated Chrome.** [scripts/desktop-diag-capture.js](scripts/desktop-diag-capture.js) launches its own Chrome with `--user-data-dir=<temp>` and runs the capture in that isolated profile. Limitation: the fresh profile picks Chrome's notion of "default mic" which often isn't the user's actual preferred device, so real-mic measurements are unreliable on this path. It still works for synthetic-audio testing via `--voice-file=PATH` (Chrome's `--use-file-for-fake-audio-capture`). Use this when (1) attaching to an existing Chrome isn't an option, or (2) deterministic synthetic audio is required for path-comparison work where ambient room audio would dominate the variance.
 
 ### Spawned-process cleanup rule (load-bearing — DO NOT VIOLATE)
 
