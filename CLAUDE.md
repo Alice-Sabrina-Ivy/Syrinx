@@ -139,6 +139,40 @@ The harness:
 
 If the harness exits with a hint that says "tap something on the device", do that and re-run. Anything else, capture the error and investigate.
 
+### Desktop diag capture harness
+
+[scripts/desktop-diag-capture.js](scripts/desktop-diag-capture.js) is the desktop analogue of the mobile harness — spawns a fresh local Chrome with `--remote-debugging-port`, navigates to the diag URL, runs a configurable capture window, snapshots and saves the JSON to `measurements/desktop-diag-runs/<kind>-<ISO-timestamp>.json`. Used to compare MSTP vs AudioContext capture-source latency on desktop alongside the mobile harness's mobile measurements.
+
+```
+node scripts/desktop-diag-capture.js [--kind=mstp|audiocontext] [--duration=120] [--url=...]
+```
+
+### Spawned-process cleanup rule (load-bearing — DO NOT VIOLATE)
+
+**Any harness that spawns a Chrome (or any other) process MUST kill ONLY the PID it spawned, never pattern-match on `chrome.exe` or any similar broad selector.** Alice runs Chrome as her primary browser across multiple monitors with active work; pattern-matched kills (`Get-Process chrome | Stop-Process -Force`, `taskkill /IM chrome.exe`, etc.) terminate her sessions and lose work. This is non-negotiable.
+
+The pattern enforced by [scripts/desktop-diag-capture.js](scripts/desktop-diag-capture.js):
+1. `spawn()` returns a child object with `child.pid` — capture and store this.
+2. Always launch with `--user-data-dir=<unique-temp-dir-per-run>` so Chrome cannot merge into an already-running instance with the same profile (in which case our `--remote-debugging-port` flag would be silently ignored and our spawned PID wouldn't be the actual debug-target process).
+3. At cleanup, run `taskkill /pid <PID> /T /F` — `/T` tree-kills descendants (renderer, GPU process, network service, etc. that Chrome forks under the launched chrome.exe), `/F` forces. **Never** use `/IM chrome.exe`.
+4. Register the cleanup against `process.on("exit")`, `SIGINT`, `SIGTERM`, `uncaughtException` — exit-path coverage means an aborted harness still cleans up its own children.
+5. Remove the per-run profile dir after the kill so leftover cache files don't accumulate in temp.
+
+If a future session needs to add another spawn-and-cleanup harness, copy this pattern verbatim. If something else is spawning Chrome (e.g., Puppeteer's `puppeteer.launch()`), the `browser.close()` API performs equivalent PID-scoped cleanup — that's fine. The only forbidden pattern is broad name-based matching.
+
+### Capture architecture (Stage 2 onwards)
+
+Audio capture goes through [src/audio/captureSource.js](src/audio/captureSource.js)'s `createCaptureSource()` factory, which returns one of two implementations:
+
+- **`audiocontext`** (current production default): `getUserMedia` → `MediaStreamAudioSourceNode` → `AudioWorkletNode` → `MessageChannel` → DSP/ML worker.
+- **`mstp`** (Chrome main-thread only, opt-in via `?capture=mstp`): `getUserMedia` → `MediaStreamTrackProcessor` on the main thread → `ReadableStream` of `AudioData` → `MessageChannel` → DSP/ML worker.
+
+Production routing is pinned to `audiocontext` until Stage 3 lands the routing decision (after the Stage 2.5 measurement on desktop confirms MSTP holds up there too).
+
+`?capture=audiocontext` and `?capture=mstp` URL flags are diag overrides for measurement comparison. Without an explicit override the factory's `DEFAULT_KIND` constant (currently `"audiocontext"`) wins.
+
+**Worker-MSTP path is deferred.** Chrome 147 mobile doesn't expose `MediaStreamTrackProcessor` in worker `globalScope` (verified empirically — `typeof MediaStreamTrackProcessor === "undefined"`), so the spec-conformant Firefox/Safari worker pattern can't be tested there. Firefox mobile is the right target for that work — it's testable on the same Pixel that runs the mobile harness, just under Firefox instead of Chrome. **The Firefox-mobile worker-MSTP path is the next capture-architecture work item after Stage 3 lands**; do not start it before then.
+
 ## Tech Stack
 
 React 19 + Vite 7 + Tailwind CSS 4 (via `@tailwindcss/vite` plugin). Dexie for IndexedDB persistence. Visualizations use HTML Canvas directly (not a charting library). Audio capture and DSP use native Web Audio API (AudioWorklet + Web Worker). ES modules throughout.
