@@ -164,12 +164,12 @@ If a future session needs to add another spawn-and-cleanup harness, copy this pa
 
 Audio capture goes through [src/audio/captureSource.js](src/audio/captureSource.js)'s `createCaptureSource()` factory, which returns one of two implementations:
 
-- **`audiocontext`** (current production default): `getUserMedia` → `MediaStreamAudioSourceNode` → `AudioWorkletNode` → `MessageChannel` → DSP/ML worker.
-- **`mstp`** (Chrome main-thread only, opt-in via `?capture=mstp`): `getUserMedia` → `MediaStreamTrackProcessor` on the main thread → `ReadableStream` of `AudioData` → `MessageChannel` → DSP/ML worker.
+- **`mstp`** (production default wherever the runtime supports main-thread `MediaStreamTrackProcessor` — Chrome desktop + Chrome Android + Safari ≥26): `getUserMedia` → `MediaStreamTrackProcessor` on the main thread → `ReadableStream` of `AudioData` → `MessageChannel` → DSP/ML worker.
+- **`audiocontext`** (fallback when MSTP isn't available — Firefox in particular until worker-MSTP lands): `getUserMedia` → `MediaStreamAudioSourceNode` → `AudioWorkletNode` → `MessageChannel` → DSP/ML worker.
 
-Production routing is pinned to `audiocontext` until Stage 3 lands the routing decision (after the Stage 2.5 measurement on desktop confirms MSTP holds up there too).
+Stage 3 routing (`captureSource.js`'s `pickKind()`) returns `isMSTPSupported ? "mstp" : "audiocontext"`. The gate is feature detection on `MediaStreamTrackProcessor` + `AudioData` constructor presence — no UA gating. Decision basis: [measurements/capture-path-routing-2026-05-05.md](measurements/capture-path-routing-2026-05-05.md) (MSTP delivers ~5× lower chunkArrival latency on both desktop and mobile Chrome with no DSP-accuracy regression).
 
-`?capture=audiocontext` and `?capture=mstp` URL flags are diag overrides for measurement comparison. Without an explicit override the factory's `DEFAULT_KIND` constant (currently `"audiocontext"`) wins.
+`?capture=audiocontext` and `?capture=mstp` URL flags remain as diag overrides for path-comparison measurement.
 
 **Worker-MSTP path is deferred.** Chrome 147 mobile doesn't expose `MediaStreamTrackProcessor` in worker `globalScope` (verified empirically — `typeof MediaStreamTrackProcessor === "undefined"`), so the spec-conformant Firefox/Safari worker pattern can't be tested there. Firefox mobile is the right target for that work — it's testable on the same Pixel that runs the mobile harness, just under Firefox instead of Chrome. **The Firefox-mobile worker-MSTP path is the next capture-architecture work item after Stage 3 lands**; do not start it before then.
 
