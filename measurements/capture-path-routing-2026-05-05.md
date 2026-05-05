@@ -191,5 +191,4 @@ routing decision happens once at `createCaptureSource` invocation.
 
 Routing change in [src/audio/captureSource.js](../src/audio/captureSource.js):
 `pickKind` now returns `isMSTPSupported ? "mstp" : "audiocontext"` instead of
-the hard-coded `DEFAULT_KIND = "audiocontext"`. (Commit SHA fillable after
-ship.)
+the hard-coded `DEFAULT_KIND = "audiocontext"`. Shipped at commit `a3d2ce1`.
