@@ -170,17 +170,34 @@ class CdpClient {
   console.log(`[1/5] Launching Chrome (port=${PORT}, profile=${profileDir})…`);
 
   const chromeExe = findChrome();
-  const child = spawn(chromeExe, [
+  const chromeArgs = [
     `--remote-debugging-port=${PORT}`,
     `--user-data-dir=${profileDir}`,
     "--ignore-certificate-errors",
-    "--use-fake-ui-for-media-stream",
-    "--use-fake-device-for-media-stream",
+    "--use-fake-ui-for-media-stream",      // auto-grant mic permission
     "--no-first-run",
     "--no-default-browser-check",
     "--autoplay-policy=no-user-gesture-required",
-    URL,
-  ], { detached: true, stdio: "ignore" });
+  ];
+  // Audio source priority (highest first):
+  //   --voice-file=PATH  : play a WAV through Chrome's fake mic. Chrome
+  //                        loops it indefinitely. Used as the ground-
+  //                        truth reference for path-comparison testing
+  //                        (MSTP vs AudioContext should produce
+  //                        equivalent pitch readings on the same WAV).
+  //   --no-fake-device   : real-mic capture (host's default device).
+  //                        Useful for surfacing real-mic-only bugs.
+  //   (default)          : Chrome's synthetic 1 kHz beep mono source.
+  if (args["voice-file"]) {
+    // The voice file flag REQUIRES --use-fake-device-for-media-stream;
+    // without it Chrome ignores the file flag.
+    chromeArgs.push("--use-fake-device-for-media-stream");
+    chromeArgs.push(`--use-file-for-fake-audio-capture=${args["voice-file"]}`);
+  } else if (args["no-fake-device"] !== "true") {
+    chromeArgs.push("--use-fake-device-for-media-stream");
+  }
+  chromeArgs.push(URL);
+  const child = spawn(chromeExe, chromeArgs, { detached: true, stdio: "ignore" });
   spawnedPid = child.pid;
   child.unref();
   console.log(`      spawned chrome.exe pid=${spawnedPid}`);
