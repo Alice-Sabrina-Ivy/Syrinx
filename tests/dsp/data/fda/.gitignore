@@ -1,0 +1,7 @@
+*.sig
+*.fx
+*.lar
+UPSTREAM_README
+orthographic.index
+!.gitignore
+!README.md
