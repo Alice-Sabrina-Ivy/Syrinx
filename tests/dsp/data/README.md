@@ -33,6 +33,26 @@ node tests/dsp/vocadito-test.js      # vocadito, low/high pitch coverage (singin
 node tests/dsp/fda-test.js           # CSTR FDA, sub-90 Hz speech (RL male)
 ```
 
+## Cross-corpus pitch-bucket measurement
+
+For an aggregate per-pitch-range × per-corpus accuracy view (median /
+mean F0 error, max F0 error, octave-error rate, frame count), run:
+
+```bash
+node tests/dsp/pitch-bucket-harness.js
+```
+
+The harness loads every corpus that's present, runs the production
+config (Stage 2 L=4) frame-by-frame, and bucketizes each voiced
+ground-truth frame by its TRUTH F0 into eight pitch ranges
+(< 90, 90–120, 120–150, 150–180, 180–220, 220–280, 280–350, > 350 Hz).
+Cells aggregate per-frame errors and an octave-error rate (worker
+output within 5 % of an integer multiple ≥ 2 of truth). Output is the
+durable cross-corpus baseline that fix work measures against. Shared
+loaders for the four corpora live at [data/corpora.js](data/corpora.js)
+to avoid duplicating format-specific parsing across the harness and
+per-corpus tests.
+
 ## Fetch-on-demand corpora
 
 PTDB-TUG and CSTR FDA audio are gitignored. License profiles + size
