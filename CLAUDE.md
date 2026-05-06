@@ -169,7 +169,9 @@ node scripts/desktop-diag-capture.js [--kind=mstp|audiocontext] [--duration=120]
 
 **`--voice-file=PATH`** uses Chrome's `--use-file-for-fake-audio-capture` to replace the mic wholesale with the WAV's bytes (no real audio stack involved). Bit-exact reproducibility — the recommended mode for this harness.
 
-**`--play-wav=PATH`** ATTEMPTS speaker-loopback through the spawned Chrome's default mic (via PowerShell `System.Media.SoundPlayer.PlayLooping`). **Does not work in Alice's environment as of 2026-05-05** — the spawned isolated Chrome's default mic delivers `inputRms=0` across all captured frames regardless of speaker output, suggesting the fresh profile selects a non-physical or muted device distinct from the user's actual default mic. Code path retained because it works on the Pattern A harness (which inherits the user's real-mic config) and may work in other environments. **For real-mic testing on this dev environment, use Pattern A.**
+**`--play-wav=PATH`** ATTEMPTS speaker-loopback through the spawned Chrome's default mic (via PowerShell `System.Media.SoundPlayer.PlayLooping`). **Does not work in Alice's environment** — the spawned isolated Chrome's default mic delivers `inputRms=0` across all captured frames regardless of speaker output. The fresh profile selects a non-physical or muted device distinct from the user's actual default mic. Code path retained because it works on the Pattern A harness (which inherits the user's real-mic config) and may work in other environments. **For real-mic testing on this dev environment, use Pattern A.**
+
+**`--no-fake-device=true`** is also unusable on this dev environment for the same reason — the spawned profile's mic device routes to silence regardless of whether the synthetic-fake-device flag is present. Confirmed empirically 2026-05-06 with a 5 s direct ambient-noise probe (213 frames, all `inputRms = 0.000000`, `voicedness = 0.5` prior). Originally inferred from the `--play-wav` failure in the line above; now confirmed independently. The two probes (speaker→mic loopback AND room-noise mic capture) both produce digital silence on the isolated profile, so the failure is at the device-selection layer in the fresh profile, not at the speaker loudness or audio chain. **Any test that needs real-mic audio must use Pattern A (attach harness).**
 
 The flags are mutually exclusive — `--voice-file` takes priority.
 
@@ -332,17 +334,28 @@ Convention: any optimization or tuning work on `dsp-worker.js`, `gender-worker.j
 
 **Origin:** Codex review on PR #69 (the pYIN octave-lock fix). Out of scope for that PR; documented here for future work.
 
-### Pitch voicedness gate may under-gate on mobile (pending investigation)
+### Pitch voicedness gate fragmentation — resolved 2026-05-06
 
-Observed 2026-05-06 during mobile testing for the gender-model investigation: sustained voiced audio from speaker-to-mic loopback (YouTube playback near phone) registered weaker pitch trace activity than expected. The DSP pipeline ran correctly (chunkArrival, frame counts, drift all healthy) but the pitch trace appeared sparse for what should have been continuously-voiced input.
+Observed during mobile testing for the gender-model investigation, then reproduced on desktop (TED talk via PC speakers): pitch trace fragmented during continuous speech, with significant gaps where a continuously-speaking voice should produce continuous detection. DSP pipeline was fine (chunkArrival, frame counts, drift all healthy) — the gate logic in `handleAnalysisResult` was suppressing real-speech windows.
 
-Three candidate causes, not yet disambiguated:
+**Root cause** (investigation notes preserved on branch [`pitch-voicedness-investigation`](https://github.com/Alice-Sabrina-Ivy/Syrinx/tree/pitch-voicedness-investigation)): the original gate logic was `intensity < SILENCE_THRESHOLD_DB || voicedness < VOICEDNESS_THRESHOLD` (OR). Either arm could solo-suppress a real-speech frame:
 
-1. **`VOICEDNESS_THRESHOLD = 0.5` calibration** ([src/audio/useAudioPipeline.js](src/audio/useAudioPipeline.js)) was set against desktop characteristics. Mobile audio could legitimately have lower voicedness scores due to mic frequency response, AGC, or noise-suppression processing that desktop mics don't apply, in which case the threshold is just too strict for mobile.
-2. **Speaker-to-mic loopback degrades voicedness** below what direct voice would produce — speaker frequency response (typically rolls off below ~150 Hz on consumer speakers) plus room acoustics could attenuate the harmonic structure pYIN's Beta-CDF candidate-mass scoring relies on.
-3. **Both.**
+- **Intensity arm** caught genuine speech during inter-phoneme dips. Real desktop mic speech runs at intensity median ~−38 dB, but speech routinely dips below −50 dB between articulations. The gate was added expecting clearly-voiced bursts at high intensity; real continuous speech has constant up-down dynamics that solo-fail the gate.
+- **Voicedness arm** rejected ~64% of audible-speech frames. pYIN's voicedness signal (HMM-smoothed Beta-CDF candidate mass) measures **clean periodicity**, not voicing. Real speech distributes candidate mass across many τ values (formants, articulation noise, glottal pulses) and scores median voicedness 0.005-0.018 with bursts above 0.7 only on the cleanest phonemes. The 0.5 threshold rejected most of audible voiced speech.
 
-Disambiguation: test with direct voice on the phone (no speaker loopback). If direct voice still under-gates, it's a real threshold calibration bug worth investigating. If direct voice gates correctly, it's a speaker-loopback artifact and no fix needed.
+Validated empirically with two captures via the attach harness (Pattern A required because isolated-spawn harness can't pick up the user's mic — see "Isolated spawn" section above):
+
+- 90 s direct-voice capture, 1200 frames: under OR-(−50, 0.5), 88.1% of frames suppressed despite continuous speech. 64.5% of those failed voicedness-only (intensity above gate, voicedness below). 0% failed intensity-only.
+- 30 s noise-only capture, 1200 frames: intensity range −79 to −64 dB (24 dB below gate), voicedness 0 to 0.01 (well below gate). 100% suppressed by either arm individually.
+
+**Fix**: changed gate to AND — `intensity < SILENCE_THRESHOLD_DB && voicedness < VOICEDNESS_THRESHOLD`. Frame suppressed only when BOTH signals agree it's noise. Validated on the same captures: noise-only 100% suppressed (false-positive rate 0%), direct-voice 76% kept (vs 12% under OR, 6.4× improvement). Stage 0/1 pYIN paths (no voicedness signal) fall back to intensity-only gating via the `typeof` short-circuit, preserving harness compatibility. See the comment block above `frameQuiet` in [src/audio/useAudioPipeline.js](src/audio/useAudioPipeline.js).
+
+**Methodology lesson — synthetic fixture blind spots**: regression tests run against the synthetic 200 Hz fixture (`tests/audio/fixtures/voice-200hz-10s.wav`) miss this class of issue because the fixture has TWO blind spots vs real voice on the mic chain:
+
+1. **inputRms ~10× higher.** Fake-device injection (`--use-file-for-fake-audio-capture`) bypasses the mic chain entirely. Synthetic fixture lands at inputRms ~0.13; real desktop mic capture (attach harness) lands at ~0.013. Threshold tests calibrated against synthetic-fixture levels behave very differently in production.
+2. **Voicedness ~30× higher at identical RMS.** The 200 Hz fixture's clean harmonic structure produces voicedness p75 ≈ 0.78 at inputRms 0.013, while real human speech at the same inputRms produces voicedness p75 ≈ 0.03. pYIN's signal reads "clean periodicity" rather than "voiced speech."
+
+**Followup work** (not landed in the gate-fix PR — file as separate work): real-voice regression suite. Use Hillenbrand recordings attenuated to inputRms ~0.013 (the desktop-mic baseline), injected via `--voice-file`. Test that the gate passes ≥80% of voiced frames and suppresses ≥95% of silence frames. The synthetic 200 Hz fixture stays useful as a "clean-signal upper bound" sanity check but cannot substitute for real-speech testing.
 
 ### Perceived-voice gender model — investigation arc 2026-05-05/06 (resolved)
 
