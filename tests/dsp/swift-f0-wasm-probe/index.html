@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>SwiftF0 WASM probe</title>
+<!-- onnxruntime-web served by the harness's static server from node_modules -->
+<script src="./ort/ort.min.js"></script>
+</head>
+<body>
+<h1>SwiftF0 WASM probe</h1>
+<pre id="status">starting…</pre>
+<script>
+(async function() {
+  const status = document.getElementById("status");
+  const log = (s) => { console.log(s); status.textContent += "\n" + s; };
+  window.__swiftF0WasmProbe = { status: "starting", samples: [], summary: null };
+
+  try {
+    if (typeof ort === "undefined") throw new Error("ort not loaded — check ort.min.js path");
+    // Configure ORT WASM — point at our locally-served wasm assets.
+    // Absolute path so ORT doesn't resolve it relative to the ort.min.js
+    // script location (which is itself under /ort/).
+    ort.env.wasm.wasmPaths = "/ort/";
+    ort.env.wasm.numThreads = 1;
+    log("ort version: " + (ort.env.versions ? JSON.stringify(ort.env.versions) : "unknown"));
+
+    // Fetch the model
+    log("fetching model.onnx…");
+    const t0 = performance.now();
+    const r = await fetch("./model.onnx");
+    if (!r.ok) throw new Error("model fetch failed: " + r.status);
+    const modelBuf = await r.arrayBuffer();
+    log(`fetched ${modelBuf.byteLength} bytes in ${(performance.now() - t0).toFixed(0)} ms`);
+
+    // Create session
+    log("creating ORT session…");
+    const tSess = performance.now();
+    const session = await ort.InferenceSession.create(modelBuf, {
+      executionProviders: ["wasm"],
+      graphOptimizationLevel: "all",
+    });
+    const sessionMs = performance.now() - tSess;
+    log(`session created in ${sessionMs.toFixed(0)} ms`);
+    log("inputs: " + JSON.stringify(session.inputNames));
+    log("outputs: " + JSON.stringify(session.outputNames));
+
+    // Build a 1-second 16 kHz sine tone buffer (pure 200 Hz)
+    const sr = 16000;
+    const n = sr; // 1 second
+    const samples = new Float32Array(n);
+    for (let i = 0; i < n; i++) samples[i] = 0.3 * Math.sin(2 * Math.PI * 200 * i / sr);
+
+    // Build a smaller 64 ms buffer (1024 samples = 1 frame minimum)
+    const samplesShort = new Float32Array(1024);
+    for (let i = 0; i < 1024; i++) samplesShort[i] = 0.3 * Math.sin(2 * Math.PI * 200 * i / sr);
+
+    const inputName = session.inputNames[0];
+
+    // Warmup runs (first few calls have JIT/cache cost)
+    log("warmup (5 calls on 1-second buffer)…");
+    for (let i = 0; i < 5; i++) {
+      const tensor = new ort.Tensor("float32", samples, [1, samples.length]);
+      await session.run({ [inputName]: tensor });
+    }
+
+    // Measure: 100 inferences on 1-second buffer
+    const N1 = 100;
+    const longSamples = [];
+    log(`measuring 1-second buffer × ${N1} inferences…`);
+    for (let i = 0; i < N1; i++) {
+      const tensor = new ort.Tensor("float32", samples, [1, samples.length]);
+      const ts = performance.now();
+      await session.run({ [inputName]: tensor });
+      longSamples.push(performance.now() - ts);
+    }
+
+    // Measure: 200 inferences on 1024-sample buffer (single-frame minimum)
+    const N2 = 200;
+    const shortSamples = [];
+    log(`measuring 1024-sample (single frame) × ${N2} inferences…`);
+    for (let i = 0; i < N2; i++) {
+      const tensor = new ort.Tensor("float32", samplesShort, [1, samplesShort.length]);
+      const ts = performance.now();
+      await session.run({ [inputName]: tensor });
+      shortSamples.push(performance.now() - ts);
+    }
+
+    function stats(arr) {
+      const s = [...arr].sort((a, b) => a - b);
+      return {
+        n: s.length,
+        min: s[0],
+        p50: s[Math.floor(s.length * 0.5)],
+        p95: s[Math.floor(s.length * 0.95)],
+        max: s[s.length - 1],
+        mean: s.reduce((a,b) => a+b, 0) / s.length,
+      };
+    }
+
+    const summary = {
+      ua: navigator.userAgent,
+      sessionLoadMs: sessionMs,
+      modelBytes: modelBuf.byteLength,
+      longBuffer: { sizeSamples: samples.length, ...stats(longSamples) },
+      shortBuffer: { sizeSamples: samplesShort.length, ...stats(shortSamples) },
+    };
+
+    log("\n=== summary ===");
+    log("1-second buffer: median " + summary.longBuffer.p50.toFixed(2) + " ms, p95 " + summary.longBuffer.p95.toFixed(2) + " ms");
+    log("1024-sample buffer: median " + summary.shortBuffer.p50.toFixed(2) + " ms, p95 " + summary.shortBuffer.p95.toFixed(2) + " ms");
+
+    window.__swiftF0WasmProbe = {
+      status: "done",
+      samples: { long: longSamples, short: shortSamples },
+      summary,
+    };
+  } catch (e) {
+    log("ERROR: " + (e && e.stack || e));
+    window.__swiftF0WasmProbe = { status: "error", error: String(e), stack: e && e.stack };
+  }
+})();
+</script>
+</body>
+</html>
