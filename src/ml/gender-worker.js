@@ -9,12 +9,18 @@
 // Replaces the older hand-crafted vowel-normalized resonance score.
 //
 // Protocol:
-//   main → worker: { type: "init", inputSampleRate, modelId? }
+//   main → worker: { type: "init", inputSampleRate, modelId?, diag? }
 //                  { type: "audioPort", port }       MessagePort from AudioWorklet
 //                  { type: "stop" }
 //   worker → main: { type: "status", status, message? }     "loading"|"ready"|"error"
 //                  { type: "progress", loaded, total, file }
-//                  { type: "score", score, confidence, ts }
+//                  { type: "score", score, confidence, ts, inferMs? }
+//
+// `inferMs` is the wall-clock duration of the classifier(...) call only
+// (no VAD gate, no EMA, no postMessage). Always populated when the
+// caller passes diag:true, included in the snapshot via diag.js's
+// genderInferences ring; mobile-diag-capture surfaces median/p95/p99
+// for the 150 ms hop-budget check.
 
 import { pipeline, env } from "@huggingface/transformers";
 import {
@@ -68,6 +74,7 @@ const DEFAULT_MODEL_ID = "prithivMLmods/Common-Voice-Gender-Detection-ONNX";
 let inputSampleRate = 48000;
 let classifier = null;
 let modelStatus = "idle";               // idle | loading | ready | error
+let _diag = false;                      // populated by init.diag, gates inferMs reporting
 
 const ring = new RingWindow(WINDOW_SAMPLES);
 
@@ -107,7 +114,9 @@ async function maybeInfer() {
 
   inferenceInProgress = true;
   try {
+    const inferStart = _diag ? performance.now() : 0;
     const result = await classifier(windowCopy, { sampling_rate: TARGET_SAMPLE_RATE });
+    const inferMs = _diag ? performance.now() - inferStart : null;
     const female = femaleScoreFromResult(result);
     if (female == null) throw new Error("classifier returned no usable label");
     smoothedFemale = ema(smoothedFemale, female, EMA_ALPHA);
@@ -118,6 +127,7 @@ async function maybeInfer() {
       score,
       confidence,
       ts: performance.timeOrigin + performance.now(),
+      ...(_diag ? { inferMs } : {}),
     });
   } catch (err) {
     self.postMessage({ type: "status", status: "error", message: String(err?.message || err) });
@@ -188,6 +198,7 @@ self.onmessage = (e) => {
   switch (msg.type) {
     case "init":
       if (typeof msg.inputSampleRate === "number") inputSampleRate = msg.inputSampleRate;
+      _diag = msg.diag === true;
       loadModel(msg.modelId || DEFAULT_MODEL_ID);
       break;
     case "audioPort":
