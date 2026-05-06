@@ -8,7 +8,8 @@
     "dev:mobile": "vite --mode mobile --host",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:dsp": "node tests/dsp/real-speech-test.js && node tests/dsp/ptdb-tug-test.js && node tests/dsp/vocadito-test.js"
   },
   "dependencies": {
     "@huggingface/transformers": "^4.2.0",
