@@ -29,6 +29,16 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = join(__dirname, "data");
 const MODEL_ID = "prithivMLmods/Common-Voice-Gender-Detection-ONNX";
 
+// Path to the Hillenbrand corpus we already use for the pYIN tests. A
+// few labeled samples here are constructed by concatenating one
+// Hillenbrand speaker's vowels (12 vowels per speaker × ~0.6 s each
+// + 50 ms silences ≈ 8 s of audio per concat). Using existing local
+// data avoids curating new single-file samples and gives both genders
+// multiple non-expectedToFail entries — required by the gender-coverage
+// assertion below.
+const HILLENBRAND_DIR = join(__dirname, "..", "dsp", "data");
+const HILL_INTER_VOWEL_SILENCE_S = 0.05;
+
 // These match src/ml/gender-worker.js. If the worker constants change,
 // update here too.
 const WINDOW_SECONDS = 0.75;
@@ -37,27 +47,48 @@ const HOP_MS = 150;
 const HOP_SAMPLES = Math.floor(TARGET_SAMPLE_RATE * HOP_MS / 1000);
 const EMA_ALPHA = 0.2;
 
-// Ground truth. Files marked "unknown" still get classified — their
-// results print for inspection but don't count toward labeled accuracy.
-// `expectedToFail: true` flags files where the production model has a
+// Ground truth. Three entry types:
+//   - String filename → file lives in tests/ml/data, fetched from a
+//     public HF dataset on first run (URL-fetched).
+//   - `hillenbrandSpeaker: "<id>"` → constructed at test time by
+//     concatenating that Hillenbrand speaker's vowels from
+//     tests/dsp/data. Used to give both genders multiple labeled
+//     non-expectedToFail samples without needing to curate new audio
+//     files.
+//   - `gender: "unknown"` → still classified for inspection but not
+//     counted toward pass/fail.
+//
+// `expectedToFail: true` flags entries where the production model has a
 // known failure mode that's documented in measurements/, not a tuning
-// regression. The test still PRINTS such files' results so any change
-// is visible, but they don't count against pass/fail. Currently:
+// regression. The test still PRINTS these entries so changes are
+// visible, but they don't count against pass/fail. Currently:
 //   - hopper.wav: Grace Hopper's voice (deep contralto) sits outside
 //     the Common-Voice-Gender-Detection model's well-trained
 //     distribution; the model's average per-window opinion (rawMean
 //     ≈ 0.08) is "male" regardless of α. At the previous α=0.55, the
 //     3-file test happened to pass on lucky EMA-tail behaviour rather
 //     than model skill; α=0.2 (which is correct per the Hillenbrand
-//     n=48 corpus) exposes the underlying limitation. Removing the
-//     pass requirement here doesn't lose regression coverage —
-//     JFK/MLK still gate "did the model break catastrophically".
-//     Long-term fix is the alternative-model investigation in
-//     measurements/perceived-voice-investigation-2026-05-05.md.
+//     n=48 corpus) exposes the underlying limitation. Long-term fix is
+//     the alternative-model investigation in
+//     measurements/alt-gender-models-investigation-2026-05-05.md.
+//
+// Gender-coverage assertion (load-bearing — see issue surfaced by
+// Codex on PR #71): the pass/fail gate must contain ≥ 1 non-
+// expectedToFail entry per labeled gender. Without this guard, marking
+// the only female entry expectedToFail would silently turn the test
+// into "male-only accuracy gate," defeating its purpose.
 const GROUND_TRUTH = {
   "jfk.wav":                              { gender: "male",    speaker: "John F. Kennedy" },
   "mlk.wav":                              { gender: "male",    speaker: "Martin Luther King Jr." },
   "hopper.wav":                           { gender: "female",  speaker: "Grace Hopper", expectedToFail: true },
+  // Hillenbrand-derived labeled samples. m01/w01 give one balanced pair
+  // of non-expectedToFail entries per gender, satisfying the coverage
+  // assertion. m20/w20 are a second pair so a single mis-recorded
+  // speaker can't pass the gate alone.
+  "hillenbrand_m01":                      { gender: "male",    speaker: "Hillenbrand m01 (12-vowel concat)", hillenbrandSpeaker: "m01" },
+  "hillenbrand_m20":                      { gender: "male",    speaker: "Hillenbrand m20 (12-vowel concat)", hillenbrandSpeaker: "m20" },
+  "hillenbrand_w01":                      { gender: "female",  speaker: "Hillenbrand w01 (12-vowel concat)", hillenbrandSpeaker: "w01" },
+  "hillenbrand_w20":                      { gender: "female",  speaker: "Hillenbrand w20 (12-vowel concat)", hillenbrandSpeaker: "w20" },
   "librispeech_asr_demo_validation_0.wav":{ gender: "unknown", speaker: "LibriSpeech sample" },
   "sv_speaker-1_1.wav":                   { gender: "unknown", speaker: "SV speaker 1" },
   "sv_speaker-2_1.wav":                   { gender: "unknown", speaker: "SV speaker 2" },
@@ -132,6 +163,40 @@ function loadAudio(path) {
   return resampleLinear(samples, sampleRate, TARGET_SAMPLE_RATE);
 }
 
+// Build audio for a Hillenbrand-derived labeled sample by concatenating
+// all 12 vowels for the given speaker (e.g. "w01"), separated by 50 ms
+// silences. First letter encodes gender so we know which subdir to look
+// in. Returns Float32Array at TARGET_SAMPLE_RATE.
+function loadHillenbrandConcat(speakerId) {
+  const subdir = speakerId.startsWith("m") ? "men" : "women";
+  const dir = join(HILLENBRAND_DIR, subdir);
+  if (!existsSync(dir)) {
+    throw new Error(
+      `Hillenbrand corpus not found at ${dir}. The gender-model accuracy ` +
+      `test now requires the same Hillenbrand WAVs the pYIN tests use ` +
+      `(tests/dsp/data/{men,women}/) for the labeled-female samples that ` +
+      `keep the gender-coverage assertion satisfied. If you don't have ` +
+      `that data locally, see tests/dsp/data/README.txt.`,
+    );
+  }
+  const files = readdirSync(dir).filter((f) => f.startsWith(speakerId) && f.endsWith(".wav")).sort();
+  if (files.length === 0) {
+    throw new Error(`No Hillenbrand vowels found for speaker ${speakerId} under ${dir}.`);
+  }
+  const silenceLen = Math.floor(TARGET_SAMPLE_RATE * HILL_INTER_VOWEL_SILENCE_S);
+  const silence = new Float32Array(silenceLen);
+  const parts = [];
+  for (const f of files) {
+    parts.push(loadAudio(join(dir, f)));
+    parts.push(silence);
+  }
+  const total = parts.reduce((n, p) => n + p.length, 0);
+  const out = new Float32Array(total);
+  let off = 0;
+  for (const p of parts) { out.set(p, off); off += p.length; }
+  return out;
+}
+
 // Simulate the production pipeline on a single audio file: feed it in
 // AudioWorklet-sized chunks (1200 samples at 48 kHz ≈ 400 at 16 kHz),
 // run inference at HOP_MS cadence, gate by VAD, smooth with EMA.
@@ -174,7 +239,10 @@ const DATA_BASE_URL = "https://huggingface.co/datasets/Xenova/transformers.js-do
 
 async function ensureTestData() {
   if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
-  for (const name of Object.keys(GROUND_TRUTH)) {
+  for (const [name, truth] of Object.entries(GROUND_TRUTH)) {
+    // Hillenbrand-derived entries don't fetch — they're built from local
+    // tests/dsp/data on demand.
+    if (truth.hillenbrandSpeaker) continue;
     const path = join(DATA_DIR, name);
     if (existsSync(path)) continue;
     process.stdout.write(`Downloading ${name}…`);
@@ -189,7 +257,14 @@ async function ensureTestData() {
 async function main() {
   await ensureTestData();
   const filesAvailable = readdirSync(DATA_DIR).filter((f) => f.endsWith(".wav"));
-  const orderedFiles = Object.keys(GROUND_TRUTH).filter((f) => filesAvailable.includes(f));
+  // Two entry types are eligible: URL-fetched files that landed in
+  // DATA_DIR, and Hillenbrand-derived synthetic samples (no file —
+  // built from local data). Both go through the same simulation.
+  const orderedNames = Object.keys(GROUND_TRUTH).filter((name) => {
+    const truth = GROUND_TRUTH[name];
+    if (truth.hillenbrandSpeaker) return true;
+    return filesAvailable.includes(name);
+  });
 
   console.log(`Loading model: ${MODEL_ID}`);
   console.log("(first run will download ~80 MB; cached afterward)");
@@ -200,9 +275,11 @@ async function main() {
   console.log(`Pipeline: window=${WINDOW_SECONDS}s, hop=${HOP_MS}ms (${1000 / HOP_MS} Hz), EMA α=${EMA_ALPHA}, VAD peak<${VAD_PEAK_THRESHOLD}\n`);
 
   const rows = [];
-  for (const name of orderedFiles) {
+  for (const name of orderedNames) {
     const truth = GROUND_TRUTH[name];
-    const samples = loadAudio(join(DATA_DIR, name));
+    const samples = truth.hillenbrandSpeaker
+      ? loadHillenbrandConcat(truth.hillenbrandSpeaker)
+      : loadAudio(join(DATA_DIR, name));
     const totalSec = samples.length / TARGET_SAMPLE_RATE;
 
     const { smoothed, scores } = await simulatePipeline(classifier, samples);
@@ -249,7 +326,7 @@ async function main() {
     );
   }
 
-  // Pass/fail uses only files NOT marked expectedToFail. expectedToFail
+  // Pass/fail uses only entries NOT marked expectedToFail. expectedToFail
   // entries print but don't count against the gate (see GROUND_TRUTH
   // header for rationale).
   const judged = rows.filter((r) => r.correct !== null && !GROUND_TRUTH[r.name].expectedToFail);
@@ -259,14 +336,36 @@ async function main() {
   console.log(
     `\nLabeled accuracy: ${correct}/${judged.length}  ` +
     `(${fmt((correct / Math.max(1, judged.length)) * 100, 1)}%)` +
-    (knownFails.length ? `  (${knownFails.length} known-fail file${knownFails.length > 1 ? "s" : ""} excluded)` : ""),
+    (knownFails.length ? `  (${knownFails.length} known-fail entr${knownFails.length > 1 ? "ies" : "y"} excluded)` : ""),
   );
 
-  if (judged.length > 0 && correct < judged.length) {
-    console.log(`\n${judged.length - correct} non-expected labeled file(s) misclassified.`);
+  // Gender-coverage assertion (load-bearing — Codex finding on PR #71).
+  // The expectedToFail mechanism is legitimate (genuinely model-limit
+  // inputs that no α value would fix), but it must not leave a gender
+  // group with zero gated entries. Without this guard, marking the only
+  // labeled female entry expectedToFail would silently turn the test
+  // into "male-only accuracy gate," defeating the entire purpose of
+  // gender-symmetric ship criteria.
+  const REQUIRED_PER_GENDER = 1;
+  const judgedMaleN = judged.filter((r) => r.truth === "male").length;
+  const judgedFemaleN = judged.filter((r) => r.truth === "female").length;
+  if (judgedMaleN < REQUIRED_PER_GENDER || judgedFemaleN < REQUIRED_PER_GENDER) {
+    console.log(`\n✗ Gender-coverage assertion failed: gate requires ≥ ${REQUIRED_PER_GENDER} non-expectedToFail entry per gender.`);
+    console.log(`   gated male:   ${judgedMaleN}`);
+    console.log(`   gated female: ${judgedFemaleN}`);
+    console.log(`\nFix: add more labeled entries (URL-fetched single files OR`);
+    console.log(`Hillenbrand-derived hillenbrandSpeaker concats) to GROUND_TRUTH`);
+    console.log(`for the underrepresented gender, or move expectedToFail entries`);
+    console.log(`to a watch-list reported separately from the gate.`);
     process.exit(1);
   }
-  console.log("\nAll non-expectedToFail labeled files classified correctly.");
+
+  if (judged.length > 0 && correct < judged.length) {
+    console.log(`\n${judged.length - correct} non-expected labeled entr${judged.length - correct > 1 ? "ies" : "y"} misclassified.`);
+    process.exit(1);
+  }
+  console.log("\nAll non-expectedToFail labeled entries classified correctly.");
+  console.log(`Gender coverage in gate: ${judgedMaleN} male, ${judgedFemaleN} female.`);
   process.exit(0);
 }
 
