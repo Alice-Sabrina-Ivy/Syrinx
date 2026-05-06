@@ -12,14 +12,19 @@
 //   main → worker: { type: "init", inputSampleRate, modelId?, diag? }
 //                  { type: "audioPort", port }       MessagePort from AudioWorklet
 //                  { type: "stop" }
-//   worker → main: { type: "status", status, message? }     "loading"|"ready"|"error"
+//   worker → main: { type: "status", status, message?, modelId?, device? }
+//                                                "loading"|"ready"|"error";
+//                                                modelId + device populated on
+//                                                "ready" so the main thread
+//                                                can record which model + ORT
+//                                                backend (webgpu vs wasm) won
 //                  { type: "progress", loaded, total, file }
 //                  { type: "score", score, confidence, ts, inferMs? }
 //
 // `inferMs` is the wall-clock duration of the classifier(...) call only
 // (no VAD gate, no EMA, no postMessage). Always populated when the
 // caller passes diag:true, included in the snapshot via diag.js's
-// genderInferences ring; mobile-diag-capture surfaces median/p95/p99
+// mlInferences ring; mobile-diag-capture surfaces median/p95/p99
 // for the 150 ms hop-budget check.
 
 import { pipeline, env } from "@huggingface/transformers";
@@ -38,38 +43,45 @@ import {
 env.allowRemoteModels = true;
 env.allowLocalModels = false;
 
-// 0.75-sec window at ~6.7 Hz cadence. The wav2vec2-base backbone is
-// roughly 3-4× cheaper than the older wav2vec2-large-xlsr-53 backbone
-// at the same input length, and inference cost on Wav2Vec2 scales
-// roughly linearly with input length, so cutting the window in half
-// (1.5 s → 0.75 s) on top of the smaller model gives ~6-8× faster
-// inference than the previous config. That budget is what lets us
-// halve the perceptual lag (the meter "sees" a vocal change in
-// ≤0.75 s instead of ≤1.5 s) and bump the hop from 200 ms to 150 ms.
-// EMA smoothing absorbs the per-window noise that a shorter window
-// introduces. If a device can't sustain ~6.7 Hz the maybeInfer() loop
-// drops on `inferenceInProgress` so we degrade to whatever rate the
-// hardware supports.
+// 0.75-sec window at ~6.7 Hz cadence. ECAPA-TDNN inference at this
+// window length runs ~190 ms median on desktop browser WebGPU and
+// ~460 ms median on Pixel 8 Pro Chrome 147 (WebGPU). Both exceed the
+// 150 ms hop budget, but the `inferenceInProgress` guard in
+// maybeInfer() drops overruns gracefully — the meter degrades to
+// whatever rate the device supports, ~5 Hz on desktop and ~2 Hz on
+// mobile. EMA smoothing absorbs the per-window noise that a shorter
+// window introduces.
 const WINDOW_SECONDS = 0.75;
 const WINDOW_SAMPLES = Math.floor(TARGET_SAMPLE_RATE * WINDOW_SECONDS);
 const INFERENCE_INTERVAL_MS = 150;        // ~6.7 Hz emit rate
-// EMA α=0.2 selected from the per-speaker Hillenbrand sweep on
-// 2026-05-05. The previous α=0.55 had a ~270 ms time-constant that was
-// too short to average out the model's per-window noise on female
-// voices (within-speaker raw_std median 0.32) — many speakers were
-// misclassified despite the model's average per-window opinion being
-// correct. α=0.2 raises Hillenbrand female accuracy from 62.5 % to
-// 81.3 % at the cost of slower settling (~750 ms vs ~270 ms);
-// male accuracy is 100 % at both. Sweep + decision in
-// measurements/perceived-voice-investigation-2026-05-05.md.
+// EMA α=0.2. The previous model (prithivMLmods wav2vec2-base) had
+// female-voice raw_std median 0.32, which the original α=0.55 (~270 ms
+// time-constant) was too short to average out — caught and fixed in
+// PR #71 with α=0.2 (~750 ms time-constant). JaesungHuh ECAPA-TDNN
+// has lower per-window noise (raw_std median 0.196 female / 0.216
+// male — measured on the Hillenbrand corpus 2026-05-06) so in
+// principle α could be higher, but α=0.2 was empirically the best
+// of {0.2, 0.4, 0.55} on the same corpus (95.6 / 95.8 vs 95.6 / 91.7
+// at α≥0.4 — smoothing artifacts on borderline samples surface at
+// shorter time-constants). Keep α=0.2.
 const EMA_ALPHA = 0.2;                     // score smoothing
-// wav2vec2-base fine-tuned on Common Voice for gender recognition.
-// ~95M params (vs ~317M for the previous xlsr-53-large), reports
-// 98.46% accuracy on the Common Voice test split. Labels are
-// "female"/"male" with id2label {0:female, 1:male} — note this is the
-// OPPOSITE ordering to the previous model, so we rely strictly on
-// label-name parsing in `femaleScoreFromResult`.
-const DEFAULT_MODEL_ID = "prithivMLmods/Common-Voice-Gender-Detection-ONNX";
+// JaesungHuh's voice-gender-classifier (ECAPA-TDNN), q8-quantized
+// ONNX export hosted under the project's HF account. ~15.4 M params
+// (5-6× smaller than the previous wav2vec2-base prithivMLmods),
+// gender-symmetric Hillenbrand accuracy 95.6 % (male) / 95.8 %
+// (female) — vs prithivMLmods's 100 % / 81.3 %, fixing the female-
+// accuracy gap that motivated the 2026-05-05 model-swap arc. Labels
+// are id2label {0:male, 1:female} — opposite ordering from
+// prithivMLmods's {0:female, 1:male}; femaleScoreFromResult parses
+// by label name not index, so this swap is correct without other
+// code changes. Mobile (Pixel 8 Pro / Chrome 147 / WebGPU): ~460 ms
+// per inference, vs prithivMLmods ~2100 ms on the same device — the
+// new model is ALSO faster on mobile, contrary to the platform-
+// split intuition. See measurements/jaesunghuh-q8-results-
+// 2026-05-06.md (investigation outcome) and CLAUDE.md "Perceived-
+// voice gender model — investigation arc 2026-05-05/06" for the
+// full reasoning.
+const DEFAULT_MODEL_ID = "Alice-Sabrina-Ivy/voice-gender-classifier-onnx-q8";
 
 let inputSampleRate = 48000;
 let classifier = null;
@@ -83,9 +95,14 @@ let lastInferenceMs = 0;
 let smoothedFemale = null;              // EMA over recent inferences
 const silenceTracker = new SilenceTracker();
 
-function status(s, message) {
+function status(s, message, extra) {
   modelStatus = s;
-  self.postMessage({ type: "status", status: s, ...(message ? { message } : {}) });
+  self.postMessage({
+    type: "status",
+    status: s,
+    ...(message ? { message } : {}),
+    ...(extra ?? {}),
+  });
 }
 
 async function maybeInfer() {
@@ -141,40 +158,35 @@ async function maybeInfer() {
 async function loadModel(modelId) {
   if (modelStatus === "loading" || modelStatus === "ready") return;
   status("loading");
+  const progressCallback = (info) => {
+    if (info?.status === "progress") {
+      self.postMessage({
+        type: "progress",
+        loaded: info.loaded ?? 0,
+        total: info.total ?? 0,
+        file: info.file ?? "",
+      });
+    }
+  };
   try {
+    // Prefer WebGPU when available. The catch block below retries
+    // without `device:` (WASM CPU fallback) if WebGPU isn't usable
+    // for this model on this device. The "ready" status reports
+    // which path actually succeeded so the main thread can record
+    // the backend in diag for post-hoc verification.
     classifier = await pipeline("audio-classification", modelId, {
-      progress_callback: (info) => {
-        if (info?.status === "progress") {
-          self.postMessage({
-            type: "progress",
-            loaded: info.loaded ?? 0,
-            total: info.total ?? 0,
-            file: info.file ?? "",
-          });
-        }
-      },
-      // Prefer WebGPU when available; the runtime will fall back automatically.
+      progress_callback: progressCallback,
       device: "webgpu",
       dtype: "q8",
     });
-    status("ready");
+    status("ready", null, { modelId, device: "webgpu" });
   } catch {
-    // Retry without WebGPU if that's the failure mode.
     try {
       classifier = await pipeline("audio-classification", modelId, {
-        progress_callback: (info) => {
-          if (info?.status === "progress") {
-            self.postMessage({
-              type: "progress",
-              loaded: info.loaded ?? 0,
-              total: info.total ?? 0,
-              file: info.file ?? "",
-            });
-          }
-        },
+        progress_callback: progressCallback,
         dtype: "q8",
       });
-      status("ready");
+      status("ready", null, { modelId, device: "wasm" });
     } catch (err2) {
       status("error", String(err2?.message || err2));
     }

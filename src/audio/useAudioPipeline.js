@@ -29,6 +29,7 @@ import {
   setWorkerStatus,
   pushError,
   pushMlInference,
+  setMlModel,
 } from "../diag/diag";
 
 const SILENCE_THRESHOLD_DB = -50;
@@ -299,6 +300,17 @@ export function useAudioPipeline() {
             modelStatus: msg.status,
             modelError: msg.message ?? null,
           }));
+          // When the worker reaches "ready", record which modelId
+          // + ORT backend (webgpu vs wasm) actually loaded into
+          // diag state. Useful for snapshot inspection. The fields
+          // are only present on the "ready" status; setMlModel is
+          // a no-op outside diag mode.
+          if (msg.status === "ready" && (msg.modelId || msg.device)) {
+            setMlModel({
+              modelId: msg.modelId ?? null,
+              device: msg.device ?? null,
+            });
+          }
         } else if (msg.type === "progress") {
           setState((s) => ({
             ...s,
