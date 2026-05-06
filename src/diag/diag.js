@@ -190,6 +190,13 @@ function _createState() {
     //   confidence,  // 0..1
     // }
     mlInferences: new RingBuffer(ML_INFERENCES_CAP),
+    // Which model+device the gender worker ended up running. Tracks
+    // the modelId reported by the worker on its "ready" status and
+    // the ORT backend that succeeded ("webgpu" or "wasm"). Useful
+    // for post-hoc snapshot inspection — answers "did the worker
+    // actually load the expected model on this device?" and
+    // "was WebGPU available for it?".
+    mlModel: { modelId: null, device: null },
     // Long-history low-res ring. One entry per second, ≤ LOW_RES_CAP
     // entries (10 min). Populated by pushFrame (which dedups to ≤ 1
     // entry/sec) and supplemented by setAudioCtxSample for periodic
@@ -343,6 +350,14 @@ export function getMlInferences() {
   return diagState ? diagState.mlInferences.toArray() : [];
 }
 
+// Called by useAudioPipeline.js when the gender worker's "ready"
+// status arrives with modelId + device fields populated. Captures
+// both into the snapshot for post-hoc inspection.
+export function setMlModel(info) {
+  if (!diagState) return;
+  diagState.mlModel = { ...diagState.mlModel, ...info };
+}
+
 export function pushTap(tap) {
   if (!diagState) return;
   diagState.taps.push(tap);
@@ -454,6 +469,7 @@ export function snapshot() {
     frames: diagState.frames.toArray(),
     lowRes: diagState.lowRes.toArray(),
     mlInferences: diagState.mlInferences.toArray(),
+    mlModel: { ...diagState.mlModel },
   };
 }
 
