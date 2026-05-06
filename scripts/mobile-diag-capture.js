@@ -575,10 +575,26 @@ function summarize(snap) {
     }
   }
 
+  // ML inference timings (gender worker, only populated when diag is on).
+  // The 150 ms hop budget is the gating constraint for the audeering 6L
+  // swap; a p99 over budget means the inferenceInProgress guard is
+  // dropping windows.
+  const mlInferences = snap.mlInferences ?? [];
+  const inferSeries = mlInferences
+    .map((e) => e.inferMs)
+    .filter((v) => typeof v === "number" && Number.isFinite(v));
+  const statsP99 = (a) => {
+    const base = stats(a);
+    if (!base) return null;
+    const s = [...a].sort((x, y) => x - y);
+    return { ...base, p99: s[Math.floor(s.length * 0.99)] };
+  };
+
   return {
     sessionDurSec,
     nFrames: frames.length,
     nLowRes: lowRes.length,
+    nMlInferences: mlInferences.length,
     diagFlags: snap.diagFlags ?? null,
     chunkArrivalMs: stats(arrivalSeries),
     totalMs: stats(totalSeries),
@@ -586,6 +602,7 @@ function summarize(snap) {
       chunkArrivalMs: stats(longArrival),
       totalMs: stats(longTotal),
     },
+    mlInferenceMs: statsP99(inferSeries),
     chunkArrivalDriftMsPerSec_recent: drift("frames", (f) => f.timings?.chunkArrivalMs),
     chunkArrivalDriftMsPerSec_long: drift("lowRes", (f) => f.chunkArrivalMs),
     totalDriftMsPerSec_recent: drift("frames", (f) => f.timings?.totalMs),
@@ -672,6 +689,20 @@ function printSummary(s) {
       `first-half ${b.firstHalfMean.toFixed(1)}ms → ` +
       `second-half ${b.secondHalfMean.toFixed(1)}ms`,
     );
+  }
+  if (s.mlInferenceMs) {
+    const m = s.mlInferenceMs;
+    const budgetFlag =
+      m.p99 > 200 ? " ⚠ p99 OVER BUDGET" :
+      m.median > 150 ? " ⚠ median OVER 150ms hop" :
+      m.p95 > 150 ? " (p95 over 150ms hop)" : " ✓";
+    console.log(
+      `  ml infer:    median=${m.median.toFixed(1)}ms ` +
+      `p95=${m.p95.toFixed(1)}ms p99=${m.p99.toFixed(1)}ms max=${m.max.toFixed(1)}ms ` +
+      `(n=${m.n})${budgetFlag}`,
+    );
+  } else if (s.nMlInferences === 0) {
+    console.log(`  ml infer:    no inferences captured (model still loading? VAD gating?)`);
   }
   console.log("─".repeat(78));
 }

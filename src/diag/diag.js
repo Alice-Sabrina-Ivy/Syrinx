@@ -98,6 +98,12 @@ export const DIAG_CAPTURE_KIND = (() => {
 // diag-mode-only allocation. Plain array with index-wrap for O(1) push.
 const RING_CAP = 1200;
 
+// ML inference timings ring. ~6.7 Hz cadence × ~90 s ≈ 600 entries.
+// Sized to fit a typical mobile-diag-capture run (60 s configurable, but
+// 90 s of headroom keeps the buffer non-saturated for the longer
+// "eat dinner and capture" runs). ~50 B per entry ≈ 30 KB.
+const ML_INFERENCES_CAP = 600;
+
 // Long-history low-res buffer: one entry per second, 600 entries = 10 min.
 // Each entry is sampled from the most recent high-res frame plus
 // audio-context introspection (state, baseLatency, outputLatency,
@@ -174,6 +180,16 @@ function _createState() {
     //   pendingChunks,      // worker queue depth at handoff
     // }
     frames: new RingBuffer(RING_CAP),
+    // Per-ML-inference timings ring (gender-worker score events, when
+    // diag is on). Each entry:
+    // {
+    //   tEpochMs,    // performance.timeOrigin + now() at score postMessage
+    //   inferMs,     // wall-clock duration of classifier(...) — the only
+    //                // load-bearing number for the 150 ms hop budget
+    //   score,       // 0..100 perceived-femininity score (post-EMA)
+    //   confidence,  // 0..1
+    // }
+    mlInferences: new RingBuffer(ML_INFERENCES_CAP),
     // Long-history low-res ring. One entry per second, ≤ LOW_RES_CAP
     // entries (10 min). Populated by pushFrame (which dedups to ≤ 1
     // entry/sec) and supplemented by setAudioCtxSample for periodic
@@ -314,6 +330,19 @@ export function setAudioCtxSample(s) {
   Object.assign(latest, s);
 }
 
+// Called by useAudioPipeline.js's mlWorker.onmessage when the gender
+// worker emits a score event. Records the per-inference timing so
+// mobile-diag-capture's snapshot summary can compute median/p95/p99
+// against the 150 ms hop budget. No-op when diag isn't enabled.
+export function pushMlInference(entry) {
+  if (!diagState) return;
+  diagState.mlInferences.push(entry);
+}
+
+export function getMlInferences() {
+  return diagState ? diagState.mlInferences.toArray() : [];
+}
+
 export function pushTap(tap) {
   if (!diagState) return;
   diagState.taps.push(tap);
@@ -424,6 +453,7 @@ export function snapshot() {
     taps: diagState.taps.toArray(),
     frames: diagState.frames.toArray(),
     lowRes: diagState.lowRes.toArray(),
+    mlInferences: diagState.mlInferences.toArray(),
   };
 }
 

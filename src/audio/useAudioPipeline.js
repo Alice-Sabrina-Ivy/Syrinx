@@ -28,6 +28,7 @@ import {
   setCaptureStatus,
   setWorkerStatus,
   pushError,
+  pushMlInference,
 } from "../diag/diag";
 
 const SILENCE_THRESHOLD_DB = -50;
@@ -250,6 +251,7 @@ export function useAudioPipeline() {
       mlWorker.postMessage({
         type: "init",
         inputSampleRate: captureSrc.sampleRate,
+        ...(DIAG_ENABLED ? { diag: true } : {}),
       });
 
       const mlPort = captureSrc.connectConsumer();
@@ -279,6 +281,18 @@ export function useAudioPipeline() {
             genderScore: msg.score,
             genderConfidence: msg.confidence,
           }));
+          // Diag-only: capture per-inference timing so mobile-diag-
+          // capture's snapshot summary can compute median/p95/p99
+          // against the 150 ms hop budget. No-op when diag isn't on
+          // (pushMlInference is no-op without diagState).
+          if (DIAG_ENABLED && typeof msg.inferMs === "number") {
+            pushMlInference({
+              tEpochMs: msg.ts,
+              inferMs: msg.inferMs,
+              score: msg.score,
+              confidence: msg.confidence,
+            });
+          }
         } else if (msg.type === "status") {
           setState((s) => ({
             ...s,
