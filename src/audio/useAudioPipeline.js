@@ -34,16 +34,21 @@ import {
 
 const SILENCE_THRESHOLD_DB = -50;
 const SILENCE_DEBOUNCE_FRAMES = 3; // require 3 consecutive quiet frames before gating
-// Voicedness gate for the UI. The DSP worker's HMM-smoothed posterior
-// (data.voicedness ∈ [0, 1]) is ~0.5 on silence (uniform Bayesian
-// fallback), > 0.5 on real voiced speech, < 0.5 on unvoiced loud noise
-// (AC, fans). The intensity gate alone passes broadband loud noise, so
-// the UI rendered phantom pitch readings while ambient noise was loud
-// but not voiced — this gate filters those out. 0.5 is the prior, so
-// frames at-or-below the prior have NO net evidence of voicing and we
-// treat them as quiet. Stage 0 / Stage 1 of pYIN don't compute
-// voicedness (data.voicedness is null) — the typeof check keeps those
-// stages on intensity-only gating, preserving harness compatibility.
+// Voicedness threshold used in the AND-logic noise gate below. The
+// DSP worker's HMM-smoothed posterior (data.voicedness ∈ [0, 1]) is
+// ~0.5 on silence (uniform Bayesian fallback) and < 0.5 on broadband
+// non-periodic noise (AC, fans). It's also < 0.5 on most real voiced
+// speech — pYIN's voicedness signal measures clean periodicity, not
+// voicing, so real speech with formants and articulation noise scores
+// roughly 0.005-0.018 median with bursts above 0.7 only on the cleanest
+// phonemes. The threshold's role here is as one of two AND'd "definitely
+// noise" indicators, not a standalone "is this speech?" classifier.
+//
+// 0.5 is the prior — frames at-or-below the prior have NO net evidence
+// of voicing. Combined with the intensity-quiet gate via AND, only
+// frames that are BOTH low-intensity AND uncertain-or-noise-like get
+// suppressed. Validated 2026-05-06: noise-only baseline 100% suppressed,
+// direct-voice capture 76% kept (vs 12% under prior OR-logic).
 const VOICEDNESS_THRESHOLD = 0.5;
 const FORMANT_SMOOTH_LEN = 7;
 const FORMANT_OUTLIER_HZ = 500; // max plausible frame-to-frame formant jump
@@ -504,17 +509,37 @@ export function useAudioPipeline() {
     // and clockOffset between worker and main thread is ~0ms.
     const now = Math.round(absoluteTime);
 
-    // Silence = below intensity threshold OR voicedness threshold, for
-    // multiple consecutive frames. Single-frame dips (from GC pauses or
-    // audio glitches) are bridged by the SILENCE_DEBOUNCE_FRAMES count.
-    // The voicedness arm of this OR is what filters loud-but-unvoiced
-    // ambient noise (AC, fans, computer hum) from displaying phantom
-    // pitches — without it, broadband noise that exceeds the −50 dB
-    // intensity gate would render as if voiced. See VOICEDNESS_THRESHOLD
-    // comment above for the threshold rationale.
-    const frameQuiet =
-      intensity < SILENCE_THRESHOLD_DB ||
-      (typeof data.voicedness === "number" && data.voicedness < VOICEDNESS_THRESHOLD);
+    // Silence = below intensity threshold AND voicedness threshold, for
+    // multiple consecutive frames. AND-logic (NOT OR) is intentional —
+    // both signals must agree on "noise" before a frame is suppressed.
+    // Either signal alone over-suppresses real speech: the intensity
+    // arm catches genuine speech during inter-phoneme dips (real
+    // desktop mic speech median intensity is ~-38 dB but routinely
+    // crosses -50 between articulations), and the voicedness arm
+    // rejects ~64% of audible-speech frames because pYIN's voicedness
+    // signal measures clean periodicity rather than voiced speech
+    // (real speech distributes Beta-CDF candidate mass across many τ
+    // values from formants and articulation, so even genuinely-voiced
+    // speech median voicedness is ~0.005-0.018 with bursts above 0.7
+    // only on the cleanest phonemes). Under OR-logic either arm could
+    // solo-suppress a real-speech frame; the trace fragmented during
+    // continuous speech as a result. AND-logic requires BOTH gates to
+    // fire — true noise frames have low intensity AND low voicedness
+    // simultaneously (validated 2026-05-06 on a noise-only baseline:
+    // 100% of 1200 frames had intensity below -50 dB AND voicedness
+    // below 0.5, while a separate 90 s direct-voice capture had 76%
+    // of frames pass at least one arm). Single-frame dips (from GC
+    // pauses or audio glitches) are still bridged by SILENCE_DEBOUNCE_FRAMES.
+    //
+    // Stage 0 / Stage 1 of pYIN don't compute voicedness (data.voicedness
+    // is null) — for those harness-only paths, voicednessQuiet defaults
+    // to true so the AND collapses to intensity-only gating, preserving
+    // the pre-Stage-2.B behavior that the original OR also fell back to.
+    const intensityQuiet = intensity < SILENCE_THRESHOLD_DB;
+    const voicednessQuiet =
+      typeof data.voicedness !== "number" ||
+      data.voicedness < VOICEDNESS_THRESHOLD;
+    const frameQuiet = intensityQuiet && voicednessQuiet;
     const hasPitch = pitch !== null;
 
     if (frameQuiet) {
