@@ -37,13 +37,22 @@ env.allowLocalModels = false;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const HILL_DIR = join(__dirname, "../dsp/data");
-const MODEL_ID = "prithivMLmods/Common-Voice-Gender-Detection-ONNX";
 
 const args = process.argv.slice(2);
 const argFloat = (name, def) => {
   const a = args.find((a) => a.startsWith(`--${name}=`));
   return a ? parseFloat(a.split("=")[1]) : def;
 };
+const argString = (name, def) => {
+  const a = args.find((a) => a.startsWith(`--${name}=`));
+  return a ? a.split("=").slice(1).join("=") : def;
+};
+// `--model=<HF_id>` selects which gender model to evaluate. Defaults
+// to current production (JaesungHuh ECAPA-TDNN ONNX q8). Use this
+// flag to compare against a candidate without modifying the worker —
+// e.g. `--model=prithivMLmods/Common-Voice-Gender-Detection-ONNX` to
+// re-measure the previous production model on the same corpus.
+const MODEL_ID = argString("model", "Alice-Sabrina-Ivy/voice-gender-classifier-onnx-q8");
 const ALPHA = argFloat("alpha", 0.2);
 const WINDOW_SEC = argFloat("window", 0.75);
 const HOP_MS = 150;
