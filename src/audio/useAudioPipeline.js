@@ -81,9 +81,22 @@ export function useAudioPipeline() {
   const ctxSamplerRef = useRef(null);
 
   // Gender-score history for the trace canvas. Each entry:
-  // { time: <ms epoch>, score: 0-100, confidence: 0-1 }
-  // Trimmed to the last RESONANCE_TRACE_SECONDS.
+  // { time: <ms epoch>, score: 0-100, confidence: 0-1, voiced: bool }
+  // Trimmed to the last RESONANCE_TRACE_SECONDS. The `voiced` field
+  // captures the DSP voicedness gate's state at the moment the ML score
+  // was emitted — so the history strip can filter out dots produced
+  // during DSP-detected non-voice (ambient noise, breath, etc.). Without
+  // this, the strip's 6 s retention overlaps the 5 s silence-hold,
+  // producing a 1 s window of stale colored dots after the bar/indicator
+  // have blanked. (Codex finding on PR #70.)
   const genderTraceRef = useRef([]);
+
+  // Mirror of the latest DSP gate state, updated each analysis frame.
+  // The mlWorker.onmessage handler runs on a different cadence than DSP
+  // (ML 6.7 Hz, DSP ~40 Hz) and is a closure that doesn't see React
+  // state updates in real time; the ref bridges them so each ML score
+  // can be tagged with the DSP gate's current verdict.
+  const dspGateRef = useRef({ voiced: false, holding: false });
 
   // Smoothing buffers
   const pitchSmoothRef = useRef([]);
@@ -249,7 +262,16 @@ export function useAudioPipeline() {
         const msg = e.data;
         if (!msg || !msg.type) return;
         if (msg.type === "score") {
-          const entry = { time: Math.round(msg.ts), score: msg.score, confidence: msg.confidence };
+          // Tag the entry with the DSP gate's current state so the
+          // history strip can filter out dots emitted during non-voice
+          // (Codex finding on PR #70). dspGateRef is updated by
+          // handleAnalysisResult on every DSP analysis frame.
+          const entry = {
+            time: Math.round(msg.ts),
+            score: msg.score,
+            confidence: msg.confidence,
+            voiced: dspGateRef.current.voiced || dspGateRef.current.holding,
+          };
           genderTraceRef.current.push(entry);
           trimHistory(genderTraceRef.current, RESONANCE_TRACE_SECONDS * 1000, entry.time);
           throttledSetState((s) => ({
@@ -417,6 +439,7 @@ export function useAudioPipeline() {
     pitchTraceRef.current = [];
     formantTrailRef.current = [];
     genderTraceRef.current = [];
+    dspGateRef.current = { voiced: false, holding: false };
     setState({
       status: "idle",
       error: null,
@@ -490,6 +513,7 @@ export function useAudioPipeline() {
 
       if (silenceDuration < SILENCE_HOLD_MS) {
         // Hold last voiced values (display goes to reduced opacity)
+        dspGateRef.current = { voiced: false, holding: true };
         const held = lastVoicedRef.current;
         throttledSetState((s) => ({
           ...s,
@@ -504,6 +528,7 @@ export function useAudioPipeline() {
         }));
       } else {
         // Prolonged silence: clear everything
+        dspGateRef.current = { voiced: false, holding: false };
         pitchSmoothRef.current = [];
         f1SmoothRef.current = [];
         f2SmoothRef.current = [];
@@ -531,6 +556,7 @@ export function useAudioPipeline() {
     }
 
     // Audio is above silence threshold — treat as voiced
+    dspGateRef.current = { voiced: true, holding: false };
     silenceStartRef.current = null;
 
     // Use detected pitch, or hold last smoothed pitch across detection gaps

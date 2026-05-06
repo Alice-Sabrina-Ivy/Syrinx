@@ -31,6 +31,17 @@
 // goes through a 200 ms throttle that's shared with the high-rate DSP
 // path — DSP saturates the gate, so most ML state updates get dropped.
 // Reading the ref directly bypasses that staleness.
+//
+// Voicedness gating: the meter blanks fully (bar, indicator, score
+// number, history dots) when the DSP voicedness gate has determined no
+// voice is present. Mirrors the pitch UI behaviour established in
+// commit 8287b84 — without this, broadband ambient noise (AC, fans)
+// that exceeds the ML worker's peak-amplitude VAD but isn't actually
+// voiced was rendering as a confident perceived-voice score. The gate
+// is the OR of intensity and HMM voicedness in useAudioPipeline; the
+// `voiced` and `holding` props passed in here are the result. Holding
+// state (the 5 s silence-hold after recent voice) keeps the meter at
+// the last value so a brief breath doesn't blank.
 
 import { useRef, useEffect } from "react";
 import { COLORS } from "../utils/constants";
@@ -181,10 +192,20 @@ export function ResonanceMeter({
       // Read the latest score/confidence directly from the trace ref so
       // we're not at the mercy of the throttledSetState gate (see header
       // comment for why this matters).
+      // Voicedness gating: when the DSP-side gate has determined no voice
+      // is present (idle = !voiced && !holding), drive targetScore to
+      // null so the bar/indicator/score-number all blank — same model
+      // the pitch UI uses (commit 8287b84). Holding state (the 5 s
+      // silence-hold after recent voice) keeps showing the last value;
+      // a brief breath shouldn't blank the meter, only sustained silence
+      // should. Without this gate, broadband ambient noise (AC, fans)
+      // that exceeds the ML worker's peak-VAD threshold but isn't actually
+      // voiced renders as a confident-looking score.
+      const idle = !voiced && !holding;
       const data = genderTraceRef?.current ?? [];
       const latest = data.length > 0 ? data[data.length - 1] : null;
-      const targetScore = latest?.score ?? null;
-      const targetConf = latest?.confidence ?? 0;
+      const targetScore = idle ? null : (latest?.score ?? null);
+      const targetConf = idle ? 0 : (latest?.confidence ?? 0);
 
       // Tween animation for the displayed score
       if (targetScore == null) {
@@ -241,11 +262,20 @@ export function ResonanceMeter({
       const now = Math.round(performance.timeOrigin + performance.now());
       const colCx = barRight + 8 * dpr + historyColW / 2;
 
-      // Collect up to HISTORY_DOTS most recent points within HISTORY_AGE_MS
+      // Collect up to HISTORY_DOTS most recent points within HISTORY_AGE_MS,
+      // skipping any whose `voiced` tag is false. The tag (added by
+      // useAudioPipeline at emission time) records the DSP gate's state
+      // when the ML score arrived. Without this filter, the strip's 6 s
+      // retention overlaps the 5 s silence-hold and produces a 1 s window
+      // of stale colored dots after the bar/indicator have blanked —
+      // exactly the ambient-noise scenario this gate is supposed to fix.
+      // Entries without the field (older sessions, HMR transitions) default
+      // to voiced=true for backward compatibility.
       const recent = [];
       for (let i = data.length - 1; i >= 0 && recent.length < HISTORY_DOTS; i--) {
         const pt = data[i];
         if (now - pt.time > HISTORY_AGE_MS) break;
+        if (pt.voiced === false) continue;
         recent.push(pt);
       }
       // recent[0] is newest, recent[recent.length-1] is oldest
@@ -268,7 +298,9 @@ export function ResonanceMeter({
       const inFeminineRange = dispScore != null && dispScore >= SCORE_FEMININE_FLOOR;
       const inMasculineRange = dispScore != null && dispScore <= SCORE_MASCULINE_CEILING;
       const inUncertainRange = dispScore != null && !inFeminineRange && !inMasculineRange;
-      const idle = !voiced && !holding;
+      // `idle` is computed earlier in this draw() — the voicedness gate
+      // for the bar/indicator. Reused here to dim the readout when no
+      // voice is present.
       const readoutColor =
         modelStatus === "loading" || modelStatus === "error" || dispScore == null
           ? "rgba(180, 180, 180, 0.5)"
