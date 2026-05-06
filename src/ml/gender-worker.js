@@ -47,7 +47,16 @@ env.allowLocalModels = false;
 const WINDOW_SECONDS = 0.75;
 const WINDOW_SAMPLES = Math.floor(TARGET_SAMPLE_RATE * WINDOW_SECONDS);
 const INFERENCE_INTERVAL_MS = 150;        // ~6.7 Hz emit rate
-const EMA_ALPHA = 0.55;                    // score smoothing
+// EMA α=0.2 selected from the per-speaker Hillenbrand sweep on
+// 2026-05-05. The previous α=0.55 had a ~270 ms time-constant that was
+// too short to average out the model's per-window noise on female
+// voices (within-speaker raw_std median 0.32) — many speakers were
+// misclassified despite the model's average per-window opinion being
+// correct. α=0.2 raises Hillenbrand female accuracy from 62.5 % to
+// 81.3 % at the cost of slower settling (~750 ms vs ~270 ms);
+// male accuracy is 100 % at both. Sweep + decision in
+// measurements/perceived-voice-investigation-2026-05-05.md.
+const EMA_ALPHA = 0.2;                     // score smoothing
 // wav2vec2-base fine-tuned on Common Voice for gender recognition.
 // ~95M params (vs ~317M for the previous xlsr-53-large), reports
 // 98.46% accuracy on the Common Voice test split. Labels are

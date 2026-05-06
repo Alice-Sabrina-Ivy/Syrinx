@@ -44,7 +44,7 @@ const argFloat = (name, def) => {
   const a = args.find((a) => a.startsWith(`--${name}=`));
   return a ? parseFloat(a.split("=")[1]) : def;
 };
-const ALPHA = argFloat("alpha", 0.55);
+const ALPHA = argFloat("alpha", 0.2);
 const WINDOW_SEC = argFloat("window", 0.75);
 const HOP_MS = 150;
 const WINDOW_SAMPLES = Math.floor(TARGET_SAMPLE_RATE * WINDOW_SEC);
