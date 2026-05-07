@@ -104,6 +104,12 @@ const RING_CAP = 1200;
 // "eat dinner and capture" runs). ~50 B per entry ≈ 30 KB.
 const ML_INFERENCES_CAP = 600;
 
+// Pitch inference timings ring. SwiftF0 runs at the audio chunk cadence
+// (~25 ms hop = ~40 Hz) — so 90 s × 40 = 3600 entries would be too large.
+// Cap at 1500 (≈ 37 s of coverage) and let older entries scroll out.
+// ~40 B per entry ≈ 60 KB.
+const PITCH_INFERENCES_CAP = 1500;
+
 // Long-history low-res buffer: one entry per second, 600 entries = 10 min.
 // Each entry is sampled from the most recent high-res frame plus
 // audio-context introspection (state, baseLatency, outputLatency,
@@ -164,15 +170,20 @@ function _createState() {
     // Per-frame ring buffer. Each entry:
     // {
     //   tEpochMs,           // worker-side absoluteTime (when analysis completed)
-    //   pitch,              // Hz or null
-    //   intensity,          // dB
+    //   pitch,              // Hz or null (from pitch-worker / SwiftF0)
+    //   intensity,          // dB (from dsp-worker)
     //   inputRms,           // linear amplitude RMS (small number, 0..~0.5)
-    //   voicedness,         // HMM-smoothed posterior, 0..1 or null
-    //   voicednessObs,      // raw Beta-CDF candidate mass, 0..1 or null
+    //   confidence,         // SwiftF0 raw confidence 0..1, or null pre-warmup
+    //                       // — the upstream signal that drives the silence
+    //                       // gate's voicedness arm. Replaced pYIN's HMM-
+    //                       // smoothed `voicedness` + raw `voicednessObs`
+    //                       // when SwiftF0 shipped (Stage 4 cutover);
+    //                       // SwiftF0's confidence is the direct semantic
+    //                       // replacement for that pair, with the historical
+    //                       // ~0.5-on-silence quirk gone.
     //   timings: {
     //     chunkArrivalMs,   // audio captured (ctx time → epoch) → DSP arrival
-    //     pitchDetectMs,    // detectPitch() call only
-    //     workerProcessingMs, // detectPitch + formants + tilt + HNR
+    //     workerProcessingMs, // formants + tilt + HNR (every 6th frame)
     //     handoffToMainMs,  // DSP postMessage → main onmessage handler entry
     //     mainHandlerMs,    // time inside handleAnalysisResult
     //     totalMs,          // (capture context-time → display update) wall clock
@@ -190,6 +201,17 @@ function _createState() {
     //   confidence,  // 0..1
     // }
     mlInferences: new RingBuffer(ML_INFERENCES_CAP),
+    // Per-pitch-inference timings ring (pitch-worker / SwiftF0 events,
+    // when diag is on). Each entry:
+    // {
+    //   tEpochMs,    // performance.timeOrigin + now() at pitch postMessage
+    //   inferMs,     // wall-clock duration of session.run() — load-bearing
+    //                // for the 25 ms hop budget on mobile WASM
+    //   pitch,       // Hz or null
+    //   confidence,  // 0..1
+    //   voiced,      // confidence >= threshold (0.5)
+    // }
+    pitchInferences: new RingBuffer(PITCH_INFERENCES_CAP),
     // Which model+device the gender worker ended up running. Tracks
     // the modelId reported by the worker on its "ready" status and
     // the ORT backend that succeeded ("webgpu" or "wasm"). Useful
@@ -197,6 +219,10 @@ function _createState() {
     // actually load the expected model on this device?" and
     // "was WebGPU available for it?".
     mlModel: { modelId: null, device: null },
+    // Which pitch model + device the pitch worker loaded. Mirror of
+    // mlModel for the pitch-worker — currently always SwiftF0 ONNX on
+    // wasm, but recorded for snapshot reproducibility.
+    pitchModel: { modelUrl: null, device: null, threshold: null },
     // Long-history low-res ring. One entry per second, ≤ LOW_RES_CAP
     // entries (10 min). Populated by pushFrame (which dedups to ≤ 1
     // entry/sec) and supplemented by setAudioCtxSample for periodic
@@ -284,8 +310,7 @@ export function pushFrame(frame) {
     diagState.lowRes.push({
       tEpochMs: t,
       pitch: frame.pitch,
-      voicedness: frame.voicedness,
-      voicednessObs: frame.voicednessObs,
+      confidence: frame.confidence,
       inputRms: frame.inputRms,
       chunkArrivalMs: frame.timings?.chunkArrivalMs ?? null,
       totalMs: frame.timings?.totalMs ?? null,
@@ -318,7 +343,7 @@ export function setAudioCtxSample(s) {
     // states where the worklet died before producing anything.
     diagState.lowRes.push({
       tEpochMs: performance.timeOrigin + performance.now(),
-      pitch: null, voicedness: null, voicednessObs: null,
+      pitch: null, confidence: null,
       inputRms: null, chunkArrivalMs: null, totalMs: null,
       pendingChunks: null,
       ...s,
@@ -356,6 +381,26 @@ export function getMlInferences() {
 export function setMlModel(info) {
   if (!diagState) return;
   diagState.mlModel = { ...diagState.mlModel, ...info };
+}
+
+// Called by useAudioPipeline.js's pitchWorker.onmessage when the
+// pitch worker emits a pitch event. Records per-inference timing so
+// mobile-diag-capture's snapshot summary can compute median/p95/p99
+// against the 25 ms hop budget. No-op when diag isn't enabled.
+export function pushPitchInference(entry) {
+  if (!diagState) return;
+  diagState.pitchInferences.push(entry);
+}
+
+export function getPitchInferences() {
+  return diagState ? diagState.pitchInferences.toArray() : [];
+}
+
+// Called by useAudioPipeline.js when the pitch worker's "ready"
+// status arrives with modelUrl + device + threshold fields populated.
+export function setPitchModel(info) {
+  if (!diagState) return;
+  diagState.pitchModel = { ...diagState.pitchModel, ...info };
 }
 
 export function pushTap(tap) {
@@ -413,7 +458,6 @@ export function getTimingStats() {
   const last = frames[frames.length - 1];
   const fields = [
     "chunkArrivalMs",
-    "pitchDetectMs",
     "workerProcessingMs",
     "handoffToMainMs",
     "mainHandlerMs",
@@ -470,6 +514,8 @@ export function snapshot() {
     lowRes: diagState.lowRes.toArray(),
     mlInferences: diagState.mlInferences.toArray(),
     mlModel: { ...diagState.mlModel },
+    pitchInferences: diagState.pitchInferences.toArray(),
+    pitchModel: { ...diagState.pitchModel },
   };
 }
 

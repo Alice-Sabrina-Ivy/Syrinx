@@ -400,6 +400,26 @@ async function phaseCapture(target, targetUrl, durationSec) {
   }
   console.log("      diag module attached ✓");
 
+  // Grant mic permission to this origin via browser-level CDP. Android
+  // Chrome doesn't preserve per-origin grants across fresh URL loads, so
+  // for new origins (e.g., a freshly-served preview port) the mic prompt
+  // would otherwise block the harness silently. Browser.grantPermissions
+  // is a browser-domain method, requiring a connection to the browser-
+  // level WebSocket (separate from the per-page one we already have).
+  try {
+    const origin = new URL(url).origin;
+    const browserCdp = new CdpClient("ws://localhost:9222/devtools/browser");
+    await browserCdp.connect();
+    await browserCdp.send("Browser.grantPermissions", {
+      origin,
+      permissions: ["audioCapture"],
+    });
+    browserCdp.ws.close();
+    console.log(`      granted audioCapture for ${origin}`);
+  } catch (e) {
+    console.log(`      (grant attempt failed, may rely on prior grant: ${e.message})`);
+  }
+
   // Click via Input.dispatchMouseEvent (NOT element.click()). Programmatic
   // .click() doesn't grant user activation, so getUserMedia silently fails
   // — symptom: status.worklet/worker stay null, no error logged.
