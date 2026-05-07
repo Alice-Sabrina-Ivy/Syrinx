@@ -65,6 +65,17 @@ const INFERENCE_INTERVAL_MS = 150;        // ~6.7 Hz emit rate
 // at α≥0.4 — smoothing artifacts on borderline samples surface at
 // shorter time-constants). Keep α=0.2.
 const EMA_ALPHA = 0.2;                     // score smoothing
+// Inference-call timeout. classifier() is normally <500 ms (desktop WebGPU
+// median ~190 ms; mobile WebGPU ~460 ms). 2500 ms gives ~2× headroom over
+// likely mobile p99 — well above any plausible thermal-throttled outlier,
+// so timeout never fires on healthy inference. Defensive measure: when
+// the underlying inference hangs (observed intermittently after the
+// 3-worker concurrent boot from PR #75 — symptoms: stuck "warming up" or
+// stuck on stale score), Promise.race converts the hang into a thrown
+// error so the finally block releases inferenceInProgress and the next
+// maybeInfer call proceeds normally. No effect when classifier() resolves
+// before the timer fires.
+const INFERENCE_TIMEOUT_MS = 2500;
 // JaesungHuh's voice-gender-classifier (ECAPA-TDNN), q8-quantized
 // ONNX export hosted under the project's HF account. ~15.4 M params
 // (5-6× smaller than the previous wav2vec2-base prithivMLmods),
@@ -94,6 +105,34 @@ let inferenceInProgress = false;
 let lastInferenceMs = 0;
 let smoothedFemale = null;              // EMA over recent inferences
 const silenceTracker = new SilenceTracker();
+
+// Sentinel error class so the catch branch can distinguish a hang-induced
+// timeout from a real inference error. Only timeouts get the recover-and-
+// continue treatment; real errors still trip modelStatus = "error".
+class InferenceTimeoutError extends Error {
+  constructor(ms) {
+    super(`classifier hang > ${ms}ms`);
+    this.isTimeout = true;
+  }
+}
+
+async function classifyWithTimeout(windowCopy) {
+  let timeoutHandle;
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutHandle = setTimeout(
+      () => reject(new InferenceTimeoutError(INFERENCE_TIMEOUT_MS)),
+      INFERENCE_TIMEOUT_MS,
+    );
+  });
+  try {
+    return await Promise.race([
+      classifier(windowCopy, { sampling_rate: TARGET_SAMPLE_RATE }),
+      timeoutPromise,
+    ]);
+  } finally {
+    clearTimeout(timeoutHandle);
+  }
+}
 
 function status(s, message, extra) {
   modelStatus = s;
@@ -132,7 +171,7 @@ async function maybeInfer() {
   inferenceInProgress = true;
   try {
     const inferStart = _diag ? performance.now() : 0;
-    const result = await classifier(windowCopy, { sampling_rate: TARGET_SAMPLE_RATE });
+    const result = await classifyWithTimeout(windowCopy);
     const inferMs = _diag ? performance.now() - inferStart : null;
     const female = femaleScoreFromResult(result);
     if (female == null) throw new Error("classifier returned no usable label");
@@ -147,8 +186,22 @@ async function maybeInfer() {
       ...(_diag ? { inferMs } : {}),
     });
   } catch (err) {
-    self.postMessage({ type: "status", status: "error", message: String(err?.message || err) });
-    modelStatus = "error";
+    if (err && err.isTimeout) {
+      // Classifier hung past INFERENCE_TIMEOUT_MS. Don't trip modelStatus —
+      // the worker is still functional; the next chunk will trigger a fresh
+      // maybeInfer that may succeed. Surface the event to diag.errors via
+      // a dedicated message type so snapshots capture hang frequency for
+      // confirming H1 (WebGPU init race) from real-user data.
+      self.postMessage({
+        type: "inference-event",
+        event: "timeout",
+        durationMs: INFERENCE_TIMEOUT_MS,
+        ts: performance.timeOrigin + performance.now(),
+      });
+    } else {
+      self.postMessage({ type: "status", status: "error", message: String(err?.message || err) });
+      modelStatus = "error";
+    }
   } finally {
     inferenceInProgress = false;
     lastInferenceMs = performance.now();
