@@ -30,26 +30,28 @@ import {
   pushError,
   pushMlInference,
   setMlModel,
+  pushPitchInference,
+  setPitchModel,
 } from "../diag/diag";
 
 const SILENCE_THRESHOLD_DB = -50;
 const SILENCE_DEBOUNCE_FRAMES = 3; // require 3 consecutive quiet frames before gating
-// Voicedness threshold used in the AND-logic noise gate below. The
-// DSP worker's HMM-smoothed posterior (data.voicedness ∈ [0, 1]) is
-// ~0.5 on silence (uniform Bayesian fallback) and < 0.5 on broadband
-// non-periodic noise (AC, fans). It's also < 0.5 on most real voiced
-// speech — pYIN's voicedness signal measures clean periodicity, not
-// voicing, so real speech with formants and articulation noise scores
-// roughly 0.005-0.018 median with bursts above 0.7 only on the cleanest
-// phonemes. The threshold's role here is as one of two AND'd "definitely
-// noise" indicators, not a standalone "is this speech?" classifier.
+// Confidence threshold for the AND-logic noise gate below. Reads the
+// latest pitch-worker (SwiftF0) confidence, which is the upstream signal
+// indicating "is this frame voiced with a clear pitch present" — exactly
+// the question the gate's voicedness arm asks. Replaced pYIN's HMM-
+// smoothed posterior at the Stage 4 SwiftF0 cutover (see CLAUDE.md
+// §"Pitch detection — SwiftF0 cutover, 2026-05-06"). 0.5 matches the
+// pitch-reporting threshold inside pitch-worker, so producing a non-null
+// pitch and being "voiced enough for the gate to trust" are the same
+// condition — single threshold value, no ambiguous middle band.
 //
-// 0.5 is the prior — frames at-or-below the prior have NO net evidence
-// of voicing. Combined with the intensity-quiet gate via AND, only
-// frames that are BOTH low-intensity AND uncertain-or-noise-like get
-// suppressed. Validated 2026-05-06: noise-only baseline 100% suppressed,
-// direct-voice capture 76% kept (vs 12% under prior OR-logic).
-const VOICEDNESS_THRESHOLD = 0.5;
+// Validated against the four-corpus pitch-bucket harness in Stage 3.4
+// (measurements/swift-f0-stage3-4-3-5-validation-2026-05-06.md): drops
+// 6.8 % null rate worst-case (PTDB-TUG <90 Hz) while keeping octave-
+// error rate at 1.69 % — better than pYIN's 2.3 % baseline at the same
+// cell.
+const CONFIDENCE_THRESHOLD = 0.5;
 const FORMANT_SMOOTH_LEN = 7;
 const FORMANT_OUTLIER_HZ = 500; // max plausible frame-to-frame formant jump
 
@@ -82,7 +84,21 @@ export function useAudioPipeline() {
   const captureSrcRef = useRef(null);        // unified handle from captureSource factory
   const workerRef = useRef(null);
   const mlWorkerRef = useRef(null);
+  const pitchWorkerRef = useRef(null);
   const streamRef = useRef(null);
+  // Latest pitch from pitch-worker (SwiftF0). The DSP worker no longer
+  // produces pitch since the Stage 4 cutover; each DSP analysis frame
+  // reads the most-recent pitch-worker output via this ref. Nearest-
+  // neighbor temporal alignment is sufficient — DSP and pitch-worker
+  // run on the same chunk cadence, so the lag is at most one chunk
+  // (~25 ms), and pitch trace history is built using DSP's absoluteTime
+  // anyway. confidence is the voicedness gate's input.
+  const latestPitchRef = useRef({
+    pitch: null,
+    confidence: null,
+    voiced: false,
+    ts: 0,
+  });
   // Periodic AudioContext state sampler interval — set up in start(),
   // cleared in stop(). Diag-mode-only; the ref stays null in production.
   const ctxSamplerRef = useRef(null);
@@ -266,6 +282,76 @@ export function useAudioPipeline() {
         [mlPort],
       );
 
+      // Pitch detection worker. Hosts SwiftF0 ONNX inference via
+      // onnxruntime-web; emits {pitch, confidence, voiced} per audio
+      // chunk. Replaces pYIN's pitch + voicedness signals (Stage 4
+      // cutover, 2026-05-06). Audio forked from the same captureSource
+      // via a third MessagePort.
+      const pitchWorker = new Worker(
+        new URL("../dsp/pitch-worker.js", import.meta.url),
+        { type: "module" },
+      );
+      pitchWorkerRef.current = pitchWorker;
+      // Vite serves /Syrinx/swift-f0/model.onnx in both dev and prod;
+      // import.meta.env.BASE_URL resolves to "/Syrinx/" per vite.config.js.
+      const modelUrl = `${import.meta.env.BASE_URL}swift-f0/model.onnx`;
+      pitchWorker.postMessage({
+        type: "init",
+        inputSampleRate: captureSrc.sampleRate,
+        modelUrl,
+        ...(DIAG_ENABLED ? { diag: true } : {}),
+      });
+
+      const pitchPort = captureSrc.connectConsumer();
+      pitchWorker.postMessage(
+        { type: "audioPort", port: pitchPort },
+        [pitchPort],
+      );
+
+      pitchWorker.onmessage = (e) => {
+        const msg = e.data;
+        if (!msg || !msg.type) return;
+        if (msg.type === "pitch") {
+          latestPitchRef.current = {
+            pitch: msg.pitch,
+            confidence: msg.confidence,
+            voiced: msg.voiced,
+            ts: msg.ts,
+          };
+          // Forward pitch hint to the DSP worker so its formant extraction
+          // can pick the right LPC order / formant ceiling. One-frame lag
+          // is acceptable since formants change slowly. We always send
+          // (including null when unvoiced) so the DSP worker can drop the
+          // hint promptly when speech ends.
+          if (workerRef.current) {
+            workerRef.current.postMessage({
+              type: "pitch-hint",
+              pitch: msg.pitch,
+            });
+          }
+          if (DIAG_ENABLED && typeof msg.inferMs === "number") {
+            pushPitchInference({
+              tEpochMs: msg.ts,
+              inferMs: msg.inferMs,
+              pitch: msg.pitch,
+              confidence: msg.confidence,
+              voiced: msg.voiced,
+            });
+          }
+        } else if (msg.type === "status") {
+          if (msg.status === "error") {
+            pushError({ source: "pitch-worker", where: "load", message: msg.message });
+          }
+          if (msg.status === "ready" && DIAG_ENABLED) {
+            setPitchModel({
+              modelUrl: msg.modelUrl ?? null,
+              device: msg.device ?? null,
+              threshold: msg.threshold ?? null,
+            });
+          }
+        }
+      };
+
       mlWorker.onmessage = (e) => {
         const msg = e.data;
         if (!msg || !msg.type) return;
@@ -372,6 +458,10 @@ export function useAudioPipeline() {
             typeof data.diag.postedAtEpochMs === "number"
               ? handlerStart - data.diag.postedAtEpochMs
               : null;
+          // Snapshot latest pitch + confidence at frame-emit time so the
+          // diag entry pairs the DSP frame with the pitch-worker output
+          // visible at this moment.
+          const latest = latestPitchRef.current;
           try {
             handleAnalysisResult(data);
           } catch (err) {
@@ -381,15 +471,13 @@ export function useAudioPipeline() {
           const handlerEnd = performance.timeOrigin + performance.now();
           pushFrame({
             tEpochMs: data.absoluteTime,
-            pitch: data.pitch,
+            pitch: latest.pitch,
             intensity: data.intensity,
             inputRms: data.diag.inputRms,
-            voicedness: data.voicedness,
-            voicednessObs: data.diag.voicednessObs,
+            confidence: latest.confidence,
             pendingChunks: data.pendingChunks,
             timings: {
               chunkArrivalMs,
-              pitchDetectMs: data.diag.pitchDetectMs,
               workerProcessingMs: data.workerProcessingMs,
               handoffToMainMs,
               mainHandlerMs: handlerEnd - handlerStart,
@@ -457,6 +545,11 @@ export function useAudioPipeline() {
       mlWorkerRef.current.terminate();
       mlWorkerRef.current = null;
     }
+    if (pitchWorkerRef.current) {
+      pitchWorkerRef.current.terminate();
+      pitchWorkerRef.current = null;
+    }
+    latestPitchRef.current = { pitch: null, confidence: null, voiced: false, ts: 0 };
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
@@ -502,43 +595,44 @@ export function useAudioPipeline() {
   }
 
   function handleAnalysisResult(data) {
-    const { pitch, intensity, formants, spectralTilt, hnr, absoluteTime } = data;
+    const { intensity, formants, spectralTilt, hnr, absoluteTime } = data;
+    // Pitch + confidence come from pitch-worker (SwiftF0) via latestPitchRef,
+    // not from the DSP analysis message. Each DSP frame consumes the most-
+    // recent pitch-worker output (nearest-neighbor temporal alignment).
+    const latestPitch = latestPitchRef.current;
+    const pitch = latestPitch.pitch;
+    const confidence = latestPitch.confidence;
+
     // Use the worker's absolute timestamp for data points.
     // This reflects when audio was *analyzed* in the worker, which is the
     // true event time.  The draw loop also uses absoluteTime-based clocks,
     // and clockOffset between worker and main thread is ~0ms.
     const now = Math.round(absoluteTime);
 
-    // Silence = below intensity threshold AND voicedness threshold, for
-    // multiple consecutive frames. AND-logic (NOT OR) is intentional —
-    // both signals must agree on "noise" before a frame is suppressed.
-    // Either signal alone over-suppresses real speech: the intensity
-    // arm catches genuine speech during inter-phoneme dips (real
-    // desktop mic speech median intensity is ~-38 dB but routinely
-    // crosses -50 between articulations), and the voicedness arm
-    // rejects ~64% of audible-speech frames because pYIN's voicedness
-    // signal measures clean periodicity rather than voiced speech
-    // (real speech distributes Beta-CDF candidate mass across many τ
-    // values from formants and articulation, so even genuinely-voiced
-    // speech median voicedness is ~0.005-0.018 with bursts above 0.7
-    // only on the cleanest phonemes). Under OR-logic either arm could
-    // solo-suppress a real-speech frame; the trace fragmented during
-    // continuous speech as a result. AND-logic requires BOTH gates to
-    // fire — true noise frames have low intensity AND low voicedness
-    // simultaneously (validated 2026-05-06 on a noise-only baseline:
-    // 100% of 1200 frames had intensity below -50 dB AND voicedness
-    // below 0.5, while a separate 90 s direct-voice capture had 76%
-    // of frames pass at least one arm). Single-frame dips (from GC
-    // pauses or audio glitches) are still bridged by SILENCE_DEBOUNCE_FRAMES.
+    // Silence = below intensity threshold AND below confidence threshold,
+    // for multiple consecutive frames. AND-logic (NOT OR) is intentional
+    // — both signals must agree on "noise" before a frame is suppressed.
+    // Either signal alone over-suppresses real speech: the intensity arm
+    // catches genuine speech during inter-phoneme dips (real desktop mic
+    // speech median intensity is ~-38 dB but routinely crosses -50
+    // between articulations); a low-confidence-only gate would suppress
+    // borderline-voiced frames where pitch is real but uncertain.
     //
-    // Stage 0 / Stage 1 of pYIN don't compute voicedness (data.voicedness
-    // is null) — for those harness-only paths, voicednessQuiet defaults
-    // to true so the AND collapses to intensity-only gating, preserving
-    // the pre-Stage-2.B behavior that the original OR also fell back to.
+    // The confidence signal here is SwiftF0's per-frame voicing probability
+    // (replaced pYIN's HMM-smoothed posterior at the Stage 4 cutover). 0.5
+    // also matches the threshold inside pitch-worker that gates pitch
+    // reporting — so confidence < 0.5 is exactly when pitch is null. The
+    // gate's voicedness arm and the pitch-reporting threshold are the
+    // same condition by design (no ambiguous middle band).
+    //
+    // Pre-warmup frames (pitch-worker has not yet completed its first
+    // inference): confidence is null, voicednessQuiet defaults to true so
+    // the AND collapses to intensity-only gating until SwiftF0 starts
+    // emitting confidence values (~3 chunks ≈ 75 ms after start).
     const intensityQuiet = intensity < SILENCE_THRESHOLD_DB;
     const voicednessQuiet =
-      typeof data.voicedness !== "number" ||
-      data.voicedness < VOICEDNESS_THRESHOLD;
+      typeof confidence !== "number" ||
+      confidence < CONFIDENCE_THRESHOLD;
     const frameQuiet = intensityQuiet && voicednessQuiet;
     const hasPitch = pitch !== null;
 
