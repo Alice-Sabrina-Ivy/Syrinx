@@ -1,5 +1,9 @@
-// dsp-worker.js — Web Worker that performs all DSP analysis off the main thread
-// Pitch detection (YIN), formant extraction (Burg LPC), spectral tilt, HNR, intensity
+// dsp-worker.js — Web Worker that performs DSP analysis off the main thread
+// Formant extraction (Burg LPC), spectral tilt, HNR, intensity. Pitch
+// detection lives in pitch-worker.js (SwiftF0 ONNX) since the Stage 4
+// cutover; the main thread relays the latest pitch back via "pitch-hint"
+// messages so this worker can use it for pitch-adaptive formant analysis
+// (Praat-style male-vs-female LPC order + formant ceiling selection).
 
 const WINDOW_MS = 50;
 let sampleRate = 48000;
@@ -51,15 +55,14 @@ let _windowed = new Float64Array(windowSize);
 // Sized for factor=1 (no decimation) to support pitch-adaptive decimation
 let _decimated = new Float64Array(windowSize);
 
-// YIN pitch: FFT-based autocorrelation buffers.
-// FFT size must be >= 2*windowSize and a power of 2.
-let _yinFftLen = 1;
-{ let _n = windowSize; while (_yinFftLen < _n * 2) _yinFftLen <<= 1; }
-let _yinRe = new Float64Array(_yinFftLen);
-let _yinIm = new Float64Array(_yinFftLen);
-let _yinDiff = new Float32Array(windowSize);
-let _yinCmnd = new Float32Array(windowSize);
-let _yinCumSq = new Float64Array(windowSize + 1); // prefix sum of x[i]^2 for YIN
+// Most-recent pitch from pitch-worker, relayed by the main thread via the
+// "pitch-hint" message. Used by extractFormants for the male-vs-female LPC
+// order + formant-ceiling selection. null means "no pitch known yet" —
+// extractFormants treats null as the female default (see fallback in that
+// function). One-frame lag (a hint arriving at chunk N is used by the
+// formant extraction at chunk N+1) is acceptable since formants change
+// slowly compared to chunk cadence.
+let _lastKnownPitch = null;
 
 // Spectral tilt: 2048-point FFT (fixed size, independent of sample rate)
 const _tiltRe = new Float64Array(2048);
@@ -88,234 +91,7 @@ let _rootsIm = new Float64Array(MAX_LPC_ORDER);
 const _formantFreqs = new Float64Array(MAX_LPC_ORDER);
 const _formantBws = new Float64Array(MAX_LPC_ORDER);
 
-// --- pYIN: probabilistic threshold integration (Mauch & Dixon 2014, §2.1) ---
-// Stage gating via globalThis.__PYIN_STAGE (read per call inside detectPitch).
-// Production default is 2 (set via _PYIN_STAGE_DEFAULT below).
-//   0 = vanilla YIN — first-below-threshold + parabolic interpolation. No
-//       octave correction. Retained as a baseline reference for comparison
-//       harnesses; not the production path.
-//   1 = pYIN step 1 only — Beta(2,18) threshold integration with naive
-//       argmax collapse to a single τ. No HMM. Diagnostic stage.
-//   2 = pYIN Stage 2.B (production) — HMM with bounded-history Viterbi
-//       over the voicing-duplicated 600-state space. σ=50 cents,
-//       L=4 (100 ms latency at 25 ms hop).
-//
-// Beta(α=2, β=18) CDF lookup table built once at module load.
-// PDF: f(x) = 342·x·(1−x)^17 since 1/B(2,18) = 19·18 = 342.
-// Trapezoidal integration into a 1024-entry table, then renormalize so
-// CDF(1) = 1 exactly (cancels accumulated trapezoidal drift). All pYIN
-// per-frame cost is O(nCandidates) lookups against this table.
-const _BETA_CDF_LEN = 1024;
-const _betaCdf = new Float32Array(_BETA_CDF_LEN);
-{
-  const dx = 1 / (_BETA_CDF_LEN - 1);
-  const pdf = (x) => 342 * x * Math.pow(1 - x, 17);
-  let acc = 0;
-  _betaCdf[0] = 0;
-  for (let i = 1; i < _BETA_CDF_LEN; i++) {
-    acc += 0.5 * (pdf((i - 1) * dx) + pdf(i * dx)) * dx;
-    _betaCdf[i] = acc;
-  }
-  const last = _betaCdf[_BETA_CDF_LEN - 1];
-  if (last > 0) for (let i = 0; i < _BETA_CDF_LEN; i++) _betaCdf[i] /= last;
-}
 
-function _betaCdfLookup(x) {
-  if (x <= 0) return 0;
-  if (x >= 1) return 1;
-  const idx = x * (_BETA_CDF_LEN - 1);
-  const lo = idx | 0;
-  const hi = lo + 1 < _BETA_CDF_LEN ? lo + 1 : _BETA_CDF_LEN - 1;
-  const frac = idx - lo;
-  return _betaCdf[lo] * (1 - frac) + _betaCdf[hi] * frac;
-}
-
-// pYIN candidate scratch buffers — caps far above typical (~5–15 candidates
-// per frame in normal speech). Sized at module load; never reallocated.
-const _PYIN_MAX_CANDIDATES = 64;
-const _pyinCandTau = new Int32Array(_PYIN_MAX_CANDIDATES);
-const _pyinCandV = new Float32Array(_PYIN_MAX_CANDIDATES);
-const _pyinCandProb = new Float32Array(_PYIN_MAX_CANDIDATES);
-
-// --- pYIN Stage 2: HMM with bounded-history Viterbi (Mauch & Dixon §2.2–2.3,
-//     librosa-pyin-style voicing-duplicated state space) ---
-//
-// State space: 300 voiced pitch states + 300 unvoiced TWINS, total N = 600.
-//   index s ∈ [0, 300)   → voiced at pitch s   (75 → 600 Hz, 12 cents/state)
-//   index s ∈ [300, 600) → unvoiced at pitch (s − 300)
-//
-// Replaces the earlier single-unvoiced-super-state design (option A) which
-// trapped the HMM in unvoiced state on real-speech frames where individual
-// CMND minima are shallow (~0.10–0.20). See
-// measurements/pyin-stage2-2026-05-04.md for the failure-mode trace.
-//
-// Pitch propagation through marginal frames is the design feature. Both
-// twins of every pitch state share the same Gaussian-over-cents pitch
-// transition prior (σ = 20 cents, paper default); voicing flips
-// (switch_prob = 0.01) factor independently. So unvoiced(s) → voiced(s)
-// is the highest-weight transition out of unvoiced(s) — this is what
-// preserves "the pitch I had a moment ago" through marginal-CMND frames.
-//
-// Mirrors librosa.pyin's HMM structure: pitch transition × voicing flip
-// factorization, uniform unvoiced obs (1 − voicedness)/N_pitch, voiced obs
-// directly from candidate Beta-CDF mass. Diverges from the paper only in
-// observation-noise smoothing (we add ε per state, librosa does similar).
-const _PYIN_N_PITCH = 300;
-const _PYIN_N_STATES = 600;
-const _PYIN_VOICED_OFFSET = 0;
-const _PYIN_UNVOICED_OFFSET = 300;
-// σ = 50 cents (was 20 from the original Mauch & Dixon paper). Set on
-// 2026-05-04 after the L-axis sweep at L=4 (the new ship lookback)
-// showed σ=50 strictly dominates σ=75 on Hillenbrand: full-corpus
-// F=12.16 vs 12.20, M=12.15 vs 12.95 — the M gain is real. PTDB-TUG
-// codet at σ=50 (F=6.20, p95=17.2) is within sampling-noise of σ=75
-// on a 180-file corpus and well inside Stage 0 dominance.
-// The σ-rate-scaling argument now resolves cleanly: paper σ=20 at
-// 10 ms hop ≈ σ=50 at our 25 ms hop, which the L-axis sweep at L=4
-// confirms empirically. See measurements/pyin-L-sweep-2026-05-04.md
-// (and pyin-stage2b-sigma-sweep-2026-05-04.md for the prior L=2-only
-// σ-sweep that selected σ=75 before the L-axis was mapped).
-const _PYIN_SIGMA_CENTS = 50;
-const _PYIN_CENTS_PER_STATE = 12;
-const _PYIN_SWITCH_PROB = 0.01;
-const _PYIN_OBS_FLOOR = 1e-6;
-const _PYIN_L_MAX = 10;
-// Production lookback default. L=4 = 100 ms latency at the 25 ms hop
-// — exactly the original latency budget. Selected by the L-axis Pareto
-// sweep at measurements/pyin-L-sweep-2026-05-04.md: at full-corpus
-// Hillenbrand 1116 files, L=4 σ=50 is the gender-symmetric optimum
-// (F=12.16, M=12.15, gap < 0.01 Hz) — substantially better than
-// L=2 σ=75 on male voices (M=15.52). Harnesses override per call via
-// globalThis.__PYIN_LOOKBACK; production uses this default.
-const PYIN_LOOKBACK_DEFAULT = 4;
-// Production default for the stage-gate dispatch. PYIN_STAGE=2 is pYIN
-// with HMM + bounded-history Viterbi (option B, librosa-style voicing-
-// duplicated state space). Harnesses can override per call by setting
-// globalThis.__PYIN_STAGE to 0 (vanilla YIN), 1 (Beta-threshold
-// with naive argmax), or 2.
-const _PYIN_STAGE_DEFAULT = 2;
-
-// Pitch transition log-probabilities — mixture prior over cents distance,
-// independent of voicing. Transposed layout: [to_pitch·N_PITCH + from_pitch]
-// = log P(from_pitch → to_pitch). ~360 KB Float32. Used for both
-// voiced→voiced and unvoiced→unvoiced and voicing-flip transitions —
-// pitch transition factor is the same regardless of voicing change.
-//
-// Mixture form:
-//   P(from → to) = (1 − α) · Gaussian_norm(d, σ) + α · (1 / N_pitch)
-//
-// Where Gaussian_norm is the σ-Gaussian over cents distance, normalized
-// to sum to 1 over destinations. The α-uniform component creates a finite
-// transition probability between any two states regardless of distance,
-// which prevents permanent octave-lock states the pure Gaussian admits
-// (a 1200-cent jump in σ=50 has cost exp(−288), effectively infinite).
-//
-// α=0 reproduces the previous Stage 2.B behavior exactly. α=0 is the
-// shipped default until the octave-lock investigation selects a value.
-//
-// Built at module load with the default (σ, α). The {type: "set-pyin-sigma"}
-// and {type: "set-pyin-alpha"} messages rebuild with different values.
-// Harness-only API: production runs the default. The matrix is sample-
-// rate-independent (cents are log-frequency), so a single rebuild covers
-// all worker contexts.
-// α=0.0001 — the smallest mixture weight that achieves the recovery
-// improvement (recovery floor at α≥0.0001 is L=4 lookback ≈ 4–6 frames;
-// α=0 leaves cross-octave transitions at exp(−288) which traps the HMM
-// for ≥10 frames after octave-lock). Larger α (≥0.001) gives identical
-// recovery on the synthetic stimuli but introduces accuracy drift on
-// female voices in the Hillenbrand corpus. α=0.0001 strictly improves
-// over α=0 on full corpus: M 12.2→9.6 Hz, F 12.2→11.3 Hz mean F0 error,
-// gender-symmetric max metric improves 12.2→11.3. See
-// measurements/octave-lock-investigation-2026-05-05.md.
-const _PYIN_ALPHA_DEFAULT = 0.0001;
-const _PYIN_LOG_PITCH_TRANS = new Float32Array(_PYIN_N_PITCH * _PYIN_N_PITCH);
-function _pyinBuildPitchTrans(sigma, alpha) {
-  const cps = _PYIN_CENTS_PER_STATE;
-  const N = _PYIN_N_PITCH;
-  const w = new Float64Array(N);
-  const uniformPerState = 1 / N;
-  for (let from = 0; from < N; from++) {
-    // Gaussian weights, then normalize to sum-to-1 across destinations.
-    let sum = 0;
-    for (let to = 0; to < N; to++) {
-      const dCents = cps * (to - from);
-      w[to] = Math.exp(-(dCents * dCents) / (2 * sigma * sigma));
-      sum += w[to];
-    }
-    const gaussInv = 1 / sum;
-    for (let to = 0; to < N; to++) {
-      const gaussNorm = w[to] * gaussInv;
-      const mixed = (1 - alpha) * gaussNorm + alpha * uniformPerState;
-      _PYIN_LOG_PITCH_TRANS[to * N + from] = Math.log(mixed);
-    }
-  }
-}
-// Track current σ and α so single-axis updates (set-pyin-sigma /
-// set-pyin-alpha) can rebuild against the unchanged other axis.
-let _pyinCurSigma = _PYIN_SIGMA_CENTS;
-let _pyinCurAlpha = _PYIN_ALPHA_DEFAULT;
-_pyinBuildPitchTrans(_pyinCurSigma, _pyinCurAlpha);
-
-// Voicing flip log-probabilities — 2×2 table indexed by [from_voiced][to_voiced]
-// with 1 = voiced, 0 = unvoiced. switch_prob = 0.01 either direction.
-const _PYIN_LOG_VOICING_VV = Math.log(1 - _PYIN_SWITCH_PROB);   // voiced → voiced
-const _PYIN_LOG_VOICING_VU = Math.log(_PYIN_SWITCH_PROB);       // voiced → unvoiced
-const _PYIN_LOG_VOICING_UV = Math.log(_PYIN_SWITCH_PROB);       // unvoiced → voiced
-const _PYIN_LOG_VOICING_UU = Math.log(1 - _PYIN_SWITCH_PROB);   // unvoiced → unvoiced
-
-// Forward log-α buffer — 2 frames worth (current + previous). 600 states each.
-const _PYIN_LOG_ALPHA = new Float32Array(2 * _PYIN_N_STATES);
-// Backpointers — circular over L_MAX frames. Int16 holds 0–599 fine.
-const _PYIN_BACKPTRS = new Int16Array(_PYIN_L_MAX * _PYIN_N_STATES);
-// Per-frame observation log-likelihoods scratch (all 600 states).
-const _PYIN_OBS_LOG = new Float32Array(_PYIN_N_STATES);
-
-// Viterbi inner-loop scratch: best previous-voiced and previous-unvoiced
-// path values + argmaxes per to_pitch. Lets us decompose the N²=360k inner
-// loop into 2·N_PITCH² ≈ 180k MACs per frame (factoring out the
-// 4-element voicing flip combinatorics from the inner loop).
-const _PYIN_BEST_VOICED_PATH = new Float32Array(_PYIN_N_PITCH);
-const _PYIN_BEST_UNVOICED_PATH = new Float32Array(_PYIN_N_PITCH);
-const _PYIN_BEST_VOICED_ARG = new Int16Array(_PYIN_N_PITCH);
-const _PYIN_BEST_UNVOICED_ARG = new Int16Array(_PYIN_N_PITCH);
-
-// HMM frame counter — frames-since-last-reset. Module-level state by design;
-// reset via the {type: "reset-pitch-hmm"} message (harness only — production
-// runs continuously and never resets).
-let _pyinFrameIdx = 0;
-
-// Two voicedness signals are exposed by Stage 2.B, addressing two
-// different downstream questions. KEEP THEM DISTINCT — they're not
-// interchangeable.
-//
-// 1. _pyinLastVoicedness  — HMM-smoothed posterior P(voiced | obs_{1..t}).
-//    Combines per-frame Beta-CDF candidate mass with the HMM's
-//    accumulated α via log-sum-exp ratio. In [0, 1]. Used by downstream
-//    UI / smoother as a confidence signal: high → "I'm confident this
-//    frame is voiced". Surfaced on the postMessage payload.
-//    Behavior on silence/DC/no-candidate input: ~0.5 (uniform Bayesian
-//    response to no evidence — the HMM correctly says "I don't know").
-//
-// 2. _pyinLastVoicednessObs — raw per-frame candidate Beta-CDF mass.
-//    The fraction of the threshold distribution that selects ANY
-//    candidate (= 1 − F_β(deepest CMND minimum)). In [0, 1]. Used by
-//    tests that ask "did the signal contain pitch evidence at all" —
-//    silence/DC/noise have ZERO candidate mass and 0 voicednessObs;
-//    real speech (even with shallow CMND) has > 0. NOT used by the
-//    HMM directly (the HMM uses obs distribution, not this scalar).
-//
-// Note: HMM-smoothed voicedness is at frame t, while the returned pitch
-// is the L-back state — there's an L-frame asymmetry (~50–250 ms
-// depending on lookback). Document if a future consumer needs them
-// synchronized.
-let _pyinLastVoicedness = null;
-let _pyinLastVoicednessObs = null;
-
-function _pyinResetState() {
-  _pyinFrameIdx = 0;
-  _pyinLastVoicedness = null;
-  _pyinLastVoicednessObs = null;
-}
 
 function processChunk(buffer, contextTime) {
   const chunkReceiveTime = performance.now();
@@ -336,20 +112,15 @@ function processChunk(buffer, contextTime) {
   const window = ringBuffer.subarray(windowStart, ringLen);
   const intensity = computeIntensity(window);
 
-  // Pitch detection — timed separately from formant/tilt/HNR when diag is on
-  // so the overlay can isolate pYIN cost from the heavier every-6th-frame
-  // analysis. Cost when diag is off: one extra performance.now() call,
-  // negligible compared to detectPitch itself (~1 ms).
-  const pitchStart = _diag ? performance.now() : 0;
-  const pitch = detectPitch(window, sampleRate);
-  const pitchEnd = _diag ? performance.now() : 0;
-
   // Formants, spectral tilt, HNR are heavier — run every 6th analysis frame.
   // At ~30 fps DSP rate, this fires every ~200ms, saving significant CPU
   // (LPC + root finding + FFT) while still being responsive enough for training.
+  // Pitch is provided by pitch-worker via the "pitch-hint" message; the most
+  // recent value is held in _lastKnownPitch. extractFormants accepts null
+  // and falls back to the female-default LPC configuration.
   let formants = null, spectralTilt = null, hnr = null;
   if (analysisCount % 6 === 0) {
-    formants = extractFormants(window, pitch);
+    formants = extractFormants(window, _lastKnownPitch);
     spectralTilt = computeSpectralTilt(window, sampleRate);
     hnr = computeHNR(window, sampleRate);
   }
@@ -369,8 +140,6 @@ function processChunk(buffer, contextTime) {
     for (let i = 0; i < window.length; i++) sumSq += window[i] * window[i];
     const inputRms = Math.sqrt(sumSq / window.length);
     diagFields = {
-      voicednessObs: _pyinLastVoicednessObs,
-      pitchDetectMs: pitchEnd - pitchStart,
       inputRms,
       // Wall-clock epoch-ms at chunk receipt and at postMessage. Main
       // thread combines these with ctxCreatedAtEpochMs + contextTime to
@@ -384,13 +153,13 @@ function processChunk(buffer, contextTime) {
   self.postMessage({
     type: "analysis",
     data: {
-      pitch, intensity, formants, spectralTilt, hnr,
-      // pYIN Stage 2 only: HMM-smoothed voicing posterior at the current
-      // frame, in [0, 1]. null when Stage 2 isn't active (Stage 0/1 don't
-      // compute it). No UI consumer yet — exposed on the protocol so the
-      // smoother / future resonance display can pick it up later without
-      // a worker-API change. See _detectPitchPyinStage2 for derivation.
-      voicedness: _pyinLastVoicedness,
+      // Pitch is no longer produced by this worker (SwiftF0 in pitch-worker.js
+      // produces it). The field is kept on the message for backward
+      // compatibility with consumers that destructure it; it's always null.
+      // useAudioPipeline.js merges the pitch-worker's most-recent pitch into
+      // each analysis frame.
+      pitch: null,
+      intensity, formants, spectralTilt, hnr,
       // Absolute timestamp comparable across threads
       absoluteTime: performance.timeOrigin + performance.now(),
       // Diagnostic fields (always present so the main-thread shape doesn't
@@ -439,14 +208,6 @@ self.onmessage = (e) => {
     _rootsRe = new Float64Array(MAX_LPC_ORDER);
     _rootsIm = new Float64Array(MAX_LPC_ORDER);
 
-    // YIN FFT buffers
-    _yinFftLen = 1;
-    while (_yinFftLen < windowSize * 2) _yinFftLen <<= 1;
-    _yinRe = new Float64Array(_yinFftLen);
-    _yinIm = new Float64Array(_yinFftLen);
-    _yinDiff = new Float32Array(windowSize);
-    _yinCmnd = new Float32Array(windowSize);
-    _yinCumSq = new Float64Array(windowSize + 1);
     // Init-ack so the main thread can confirm the worker received the
     // diag flag and set up its buffers. Always sent regardless of diag.
     self.postMessage({ type: "worker-init-ack", diag: _diag, sampleRate, windowSize });
@@ -474,32 +235,13 @@ self.onmessage = (e) => {
     processChunk(e.data.buffer);
   }
 
-  // pYIN HMM reset — harness-only message used between independent
-  // recordings to clear forward variables. Production runs the worker
-  // continuously across an entire session and never sends this.
-  if (type === "reset-pitch-hmm") {
-    _pyinResetState();
-    return;
-  }
-
-  // pYIN σ override — harness-only message used by the σ-sweep harness
-  // to test transition-prior sensitivity. Rebuilds the pitch transition
-  // matrix with the new σ; α stays at its current value. Existing α-
-  // buffers (forward variables) are unaffected so a reset typically
-  // follows. Production never sends this; default σ stays at
-  // _PYIN_SIGMA_CENTS.
-  if (type === "set-pyin-sigma") {
-    _pyinCurSigma = e.data.sigma;
-    _pyinBuildPitchTrans(_pyinCurSigma, _pyinCurAlpha);
-    return;
-  }
-  // pYIN α override — harness-only message used by the α-sweep harness
-  // for the octave-lock fix investigation. α is the uniform-mixture weight
-  // in the transition prior (see _pyinBuildPitchTrans). Rebuilds the
-  // transition matrix; σ unchanged.
-  if (type === "set-pyin-alpha") {
-    _pyinCurAlpha = e.data.alpha;
-    _pyinBuildPitchTrans(_pyinCurSigma, _pyinCurAlpha);
+  // Pitch hint from the main thread (relayed from pitch-worker). Used by
+  // extractFormants for male-vs-female LPC order + formant ceiling. One-
+  // frame lag is acceptable since formants change slowly relative to
+  // chunk cadence.
+  if (type === "pitch-hint") {
+    const p = e.data.pitch;
+    _lastKnownPitch = (typeof p === "number" && p > 0) ? p : null;
     return;
   }
  } catch (err) {
@@ -541,419 +283,6 @@ function computeIntensity(buffer) {
   return 20 * Math.log10(rms);
 }
 
-// --- YIN Pitch Detection (FFT-accelerated) ---
-// Uses FFT-based autocorrelation to compute the YIN difference function in
-// O(n log n) instead of O(n²). The difference function d(tau) can be expressed as:
-//   d(tau) = r(0) + r_shifted(0) - 2*r_cross(tau)
-// where r_cross is the cross-correlation computed via FFT.
-//
-// Stage 2 (pYIN HMM) returns the HMM's best pitch estimate regardless of
-// voicing state; production silence gating happens upstream in
-// useAudioPipeline.js. The HMM's voicing posterior is exposed separately
-// on the worker's postMessage payload as `voicedness ∈ [0,1]`. Stage 0 (legacy
-// YIN) and Stage 1 (Beta-threshold + argmax) keep the original null-on-no-
-// detection contract.
-
-function detectPitch(buffer, sr) {
-  // Reset Stage-2-only voicedness signals; Stage 2 sets them before
-  // returning, other stages leave them null so the postMessage payload
-  // reflects "not computed". See the module-level comment block on
-  // _pyinLastVoicedness / _pyinLastVoicednessObs for the distinction.
-  _pyinLastVoicedness = null;
-  _pyinLastVoicednessObs = null;
-  const threshold = 0.20;
-  const minF0 = 75;
-  const maxF0 = 600;
-  const minLag = Math.floor(sr / maxF0);
-  const maxLag = Math.floor(sr / minF0);
-  const halfLen = Math.floor(buffer.length / 2);
-  const searchLen = Math.min(maxLag + 2, halfLen);
-
-  if (maxLag >= halfLen) return null;
-
-  const N = buffer.length;
-  const fftLen = _yinFftLen;
-  const re = _yinRe;
-  const im = _yinIm;
-
-  // Zero-fill and load buffer into FFT arrays
-  re.fill(0);
-  im.fill(0);
-  for (let i = 0; i < N; i++) re[i] = buffer[i];
-
-  // Autocorrelation via FFT: IFFT(|FFT(x)|²)
-  fft(re, im);
-  for (let i = 0; i < fftLen; i++) {
-    re[i] = re[i] * re[i] + im[i] * im[i];
-    im[i] = 0;
-  }
-  fft(re, im);
-  // re[tau] / fftLen = autocorrelation at lag tau
-
-  // Compute the YIN difference function using FFT autocorrelation.
-  // The FFT gives r(tau) = sum_{i=0}^{N-1-tau} x[i]*x[i+tau] (linear correlation).
-  // The difference function over the matching range is:
-  //   d(tau) = sum_{i=0}^{N-1-tau} x[i]^2 + sum_{i=tau}^{N-1} x[i]^2 - 2*r(tau)
-  // We use a prefix sum of x[i]^2 to compute both energy terms in O(1) per tau.
-
-  const diff = _yinDiff;
-
-  // Prefix sum: cumSq[k] = sum_{i=0}^{k-1} x[i]^2
-  const cumSq = _yinCumSq;
-  cumSq[0] = 0;
-  for (let i = 0; i < N; i++) {
-    cumSq[i + 1] = cumSq[i] + buffer[i] * buffer[i];
-  }
-
-  diff[0] = 0;
-  for (let tau = 1; tau < searchLen; tau++) {
-    // leftEnergy(tau) = sum_{i=0}^{N-1-tau} x[i]^2 = cumSq[N - tau]
-    // rightEnergy(tau) = sum_{i=tau}^{N-1} x[i]^2 = cumSq[N] - cumSq[tau]
-    const autocorr = re[tau] / fftLen;
-    diff[tau] = cumSq[N - tau] + (cumSq[N] - cumSq[tau]) - 2 * autocorr;
-  }
-
-  // Step 2: Cumulative mean normalized difference
-  const cmnd = _yinCmnd;
-  cmnd[0] = 1;
-  let runningSum = 0;
-  for (let tau = 1; tau < searchLen; tau++) {
-    runningSum += diff[tau];
-    cmnd[tau] = diff[tau] / (runningSum / tau);
-  }
-
-  // pYIN gate: probabilistic threshold integration (Mauch & Dixon 2014 §2.1).
-  // When __PYIN_STAGE === 1, run Beta(2,18) threshold integration with naive
-  // argmax-over-candidates collapse. When === 2, run pYIN Stage 2.B (HMM +
-  // bounded-history Viterbi) — the production default. When === 0, fall
-  // through to vanilla YIN below (first-below-threshold + parabolic interp).
-  // Read lazily so the harness can change __PYIN_STAGE between calls without
-  // re-instantiating the worker context. Production default is
-  // _PYIN_STAGE_DEFAULT = 2 (set above); harnesses may override per call.
-  const __pyinStage =
-    typeof globalThis !== "undefined" && Number.isInteger(globalThis.__PYIN_STAGE)
-      ? globalThis.__PYIN_STAGE
-      : _PYIN_STAGE_DEFAULT;
-  if (__pyinStage === 1) {
-    return _detectPitchPyinStage1(cmnd, searchLen, minLag, maxLag, sr);
-  }
-  if (__pyinStage === 2) {
-    return _detectPitchPyinStage2(cmnd, searchLen, minLag, maxLag, sr);
-  }
-
-  // Step 3: Absolute threshold — collect all dips below threshold, then
-  // pick the best one (preferring the first/lowest-frequency dip to avoid
-  // octave errors, but allowing a deeper dip at 2× lag if it is significantly
-  // better — indicating the first dip was a sub-harmonic artifact).
-  let bestTau = -1;
-  for (let tau = minLag; tau < Math.min(maxLag, searchLen); tau++) {
-    if (cmnd[tau] < threshold) {
-      while (tau + 1 < searchLen && cmnd[tau + 1] < cmnd[tau]) tau++;
-      bestTau = tau;
-      break;
-    }
-  }
-
-  if (bestTau === -1) return null;
-
-  // (Stage 0 = vanilla YIN. The multi-mult harmonic-correction block
-  // that used to live here was removed on 2026-05-04 after Stage 2.B
-  // pYIN became the production default — its HMM does the work the
-  // multi-mult heuristic was doing, and on a wider class of inputs.
-  // PYIN_STAGE=0 is no longer the production path; it remains as a
-  // baseline reference for comparison harnesses, now equivalent to
-  // first-below-threshold YIN with parabolic interpolation only.)
-
-  // Step 4: Parabolic interpolation
-  const s0 = bestTau > 0 ? cmnd[bestTau - 1] : cmnd[bestTau];
-  const s1 = cmnd[bestTau];
-  const s2 = bestTau + 1 < searchLen ? cmnd[bestTau + 1] : cmnd[bestTau];
-  const denom = 2 * (s0 - 2 * s1 + s2);
-  let refinedTau = denom !== 0 ? bestTau + (s0 - s2) / denom : bestTau;
-
-  const minTauVal = sr / maxF0;
-  const maxTauVal = sr / minF0;
-  refinedTau = Math.max(minTauVal, Math.min(maxTauVal, refinedTau));
-
-  return sr / refinedTau;
-}
-
-// pYIN Stage 1: probabilistic threshold integration + naive argmax collapse.
-// Replaces the legacy "first below 0.20" decision and multi-mult harmonic
-// correction. Inputs: filled CMND in [0, searchLen), the τ-search bounds,
-// and sample rate. Returns Hz or null. Per-frame cost: one local-minima
-// scan over [minLag, maxLag), then ≤ _PYIN_MAX_CANDIDATES Beta-CDF lookups.
-//
-// Algorithm (Mauch & Dixon 2014, §2.1):
-//   - Candidates are local minima of CMND in the τ-search range.
-//   - Sort by τ ascending. For threshold s, YIN selects the smallest-τ
-//     candidate with CMND value < s. Integrate over s ~ Beta(2, 18):
-//     candidate τ_k with value v_k is selected when s ∈ (v_k, m_k], where
-//     m_k = min over earlier candidates' values (initial 1.0). Probability
-//     mass: F_β(m_k) − F_β(v_k), nonzero only when v_k < m_k (a "new low").
-//   - Stage 1 is naive: pick the highest-probability candidate. Stage 2
-//     will plug this distribution into an HMM and let Viterbi decode the
-//     state sequence over recent frames.
-function _detectPitchPyinStage1(cmnd, searchLen, minLag, maxLag, sr) {
-  const upper = maxLag < searchLen - 1 ? maxLag : searchLen - 1;
-
-  // Local-minima scan. "Strict left, ≤ right" picks the leftmost element
-  // of any plateau as its representative — exactly one candidate per dip.
-  let nCand = 0;
-  for (let tau = minLag + 1; tau < upper; tau++) {
-    if (cmnd[tau] < cmnd[tau - 1] && cmnd[tau] <= cmnd[tau + 1]) {
-      if (nCand < _PYIN_MAX_CANDIDATES) {
-        _pyinCandTau[nCand] = tau;
-        _pyinCandV[nCand] = cmnd[tau];
-        nCand++;
-      }
-    }
-  }
-  if (nCand === 0) return null;
-
-  // Probability mass per candidate (in τ-ascending order, which the scan
-  // already produces). runMin tracks min-of-previous; only "new lows"
-  // accumulate any mass.
-  let runMin = 1.0;
-  let bestProb = 0;
-  let bestIdx = -1;
-  for (let k = 0; k < nCand; k++) {
-    const v = _pyinCandV[k];
-    if (v < runMin) {
-      const prob = _betaCdfLookup(runMin) - _betaCdfLookup(v);
-      _pyinCandProb[k] = prob;
-      if (prob > bestProb) {
-        bestProb = prob;
-        bestIdx = k;
-      }
-      runMin = v;
-    } else {
-      _pyinCandProb[k] = 0;
-    }
-  }
-  if (bestIdx < 0) return null;
-  const bestTau = _pyinCandTau[bestIdx];
-
-  // Parabolic interpolation — identical to the legacy path so refinement
-  // accuracy on pure tones / clean harmonics is unchanged.
-  const s0 = bestTau > 0 ? cmnd[bestTau - 1] : cmnd[bestTau];
-  const s1 = cmnd[bestTau];
-  const s2 = bestTau + 1 < searchLen ? cmnd[bestTau + 1] : cmnd[bestTau];
-  const denom = 2 * (s0 - 2 * s1 + s2);
-  let refinedTau = denom !== 0 ? bestTau + (s0 - s2) / denom : bestTau;
-  const minTauVal = sr / 600;
-  const maxTauVal = sr / 75;
-  refinedTau = Math.max(minTauVal, Math.min(maxTauVal, refinedTau));
-  return sr / refinedTau;
-}
-
-// pYIN Stage 2 (option B): voicing-duplicated HMM + bounded-history Viterbi.
-// Returns the decoded pitch L frames behind real-time, or null when the
-// L-frames-back state is on the unvoiced half of the state space (or during
-// warm-up).
-//
-// Module-level state (`_pyinFrameIdx`, `_PYIN_LOG_ALPHA`, `_PYIN_BACKPTRS`)
-// accumulates across calls. Harness invokes {type: "reset-pitch-hmm"} between
-// independent recordings; production runs continuously without resets.
-function _detectPitchPyinStage2(cmnd, searchLen, minLag, maxLag, sr) {
-  // --- Stage 1 candidate generation (reused verbatim) ---
-  const upper = maxLag < searchLen - 1 ? maxLag : searchLen - 1;
-  let nCand = 0;
-  for (let tau = minLag + 1; tau < upper; tau++) {
-    if (cmnd[tau] < cmnd[tau - 1] && cmnd[tau] <= cmnd[tau + 1]) {
-      if (nCand < _PYIN_MAX_CANDIDATES) {
-        _pyinCandTau[nCand] = tau;
-        _pyinCandV[nCand] = cmnd[tau];
-        nCand++;
-      }
-    }
-  }
-
-  // --- Build observation likelihoods (librosa-pyin observation model) ---
-  // 1. Compute per-pitch candidate mass `pitch_obs[s]` (sums to voicedness).
-  // 2. Normalize: `pitch_obs_n[s] = pitch_obs[s] / voicedness` (sums to 1
-  //    when voicedness > 0).
-  // 3. Distribute across voicing twins:
-  //      obs[V(s)]  = voicedness        · pitch_obs_n[s]
-  //      obs[UV(s)] = (1 − voicedness)  · pitch_obs_n[s]
-  // The voiced and unvoiced twins share the SAME pitch shape — the
-  // voicedness factor only changes the voicing weight. This is the
-  // mechanism by which pitch context propagates through marginal-CMND
-  // frames: the unvoiced twin at the candidate's pitch carries most of the
-  // mass when voicedness is low, and the HMM later transitions back to
-  // voiced once voicedness recovers.
-  const NP = _PYIN_N_PITCH;
-  const N = _PYIN_N_STATES;
-  for (let s = 0; s < NP; s++) _PYIN_OBS_LOG[s] = 0; // pitch_obs scratch
-  let voicedness = 0;
-  if (nCand > 0) {
-    let runMin = 1.0;
-    for (let k = 0; k < nCand; k++) {
-      const v = _pyinCandV[k];
-      if (v < runMin) {
-        const prob = _betaCdfLookup(runMin) - _betaCdfLookup(v);
-        if (prob > 0) {
-          const tau = _pyinCandTau[k];
-          const pitchHz = sr / tau;
-          if (pitchHz >= 75 && pitchHz <= 600) {
-            const sFloat = 100 * Math.log2(pitchHz / 75);
-            let s = (sFloat + 0.5) | 0;
-            if (s < 0) s = 0;
-            else if (s >= NP) s = NP - 1;
-            _PYIN_OBS_LOG[s] += prob;
-            voicedness += prob;
-          }
-        }
-        runMin = v;
-      }
-    }
-  }
-  // Capture raw candidate-mass voicedness BEFORE the obs distribution
-  // normalization or no-candidate fallback. This is the "did this signal
-  // contain pitch evidence at all" signal — distinct from the HMM-smoothed
-  // posterior computed below. See the module-level comment block on the
-  // two voicedness signals for the architectural distinction.
-  _pyinLastVoicednessObs = voicedness;
-
-  if (voicedness > 0) {
-    // Normalize pitch_obs to sum to 1, then distribute across twins.
-    const inv = 1 / voicedness;
-    const oneMinusV = 1 - voicedness;
-    for (let s = 0; s < NP; s++) {
-      const p = _PYIN_OBS_LOG[s] * inv; // pitch_obs_n[s], sums to 1
-      _PYIN_OBS_LOG[s] = voicedness * p;            // obs[V(s)]
-      _PYIN_OBS_LOG[_PYIN_UNVOICED_OFFSET + s] = oneMinusV * p; // obs[UV(s)]
-    }
-  } else {
-    // No candidates at all → no pitch information. Uniform across both twins.
-    const u = 1 / N;
-    for (let s = 0; s < N; s++) _PYIN_OBS_LOG[s] = u;
-  }
-
-  // Smooth + log. Adding ε per state avoids log(0) without distorting the
-  // distribution shape: total mass is 1, ε per state ≪ typical mass.
-  const eps = _PYIN_OBS_FLOOR;
-  const denom = 1 + N * eps;
-  for (let s = 0; s < N; s++) {
-    _PYIN_OBS_LOG[s] = Math.log((_PYIN_OBS_LOG[s] + eps) / denom);
-  }
-
-  // --- Read lookback (per call so the harness can sweep) ---
-  // Production uses PYIN_LOOKBACK_DEFAULT (=4 → 100 ms latency at the
-  // 25 ms hop). Harnesses override per call via globalThis.__PYIN_LOOKBACK.
-  let lookback =
-    (typeof globalThis !== "undefined" && globalThis.__PYIN_LOOKBACK) | 0;
-  if (lookback < 1) lookback = PYIN_LOOKBACK_DEFAULT;
-  if (lookback > _PYIN_L_MAX) lookback = _PYIN_L_MAX;
-
-  // --- Viterbi forward step ---
-  // Decompose the transition into pitch_trans × voicing_flip. For each
-  // to_pitch, find the best voiced-source and unvoiced-source path
-  // (sweeping from_pitch); then for each (to_pitch, to_voiced) destination
-  // combine those two paths with the four voicing flip log-probs.
-  const t = _pyinFrameIdx;
-  const curOff = (t & 1) * N;
-  if (t === 0) {
-    const logUnif = -Math.log(N);
-    for (let s = 0; s < N; s++) {
-      _PYIN_LOG_ALPHA[curOff + s] = logUnif + _PYIN_OBS_LOG[s];
-    }
-  } else {
-    const prevOff = ((t - 1) & 1) * N;
-    const bpOff = (t % _PYIN_L_MAX) * N;
-
-    // Step 1: per to_pitch, find best from_pitch separately for voiced
-    // and unvoiced sources. Inner loop is sequential in memory.
-    for (let toPitch = 0; toPitch < NP; toPitch++) {
-      const transRow = toPitch * NP;
-      let bestV = -Infinity, bestVArg = 0;
-      let bestU = -Infinity, bestUArg = 0;
-      for (let fromPitch = 0; fromPitch < NP; fromPitch++) {
-        const tp = _PYIN_LOG_PITCH_TRANS[transRow + fromPitch];
-        const aV = _PYIN_LOG_ALPHA[prevOff + fromPitch] + tp;
-        if (aV > bestV) { bestV = aV; bestVArg = fromPitch; }
-        const aU = _PYIN_LOG_ALPHA[prevOff + _PYIN_UNVOICED_OFFSET + fromPitch] + tp;
-        if (aU > bestU) { bestU = aU; bestUArg = _PYIN_UNVOICED_OFFSET + fromPitch; }
-      }
-      _PYIN_BEST_VOICED_PATH[toPitch] = bestV;
-      _PYIN_BEST_VOICED_ARG[toPitch] = bestVArg;
-      _PYIN_BEST_UNVOICED_PATH[toPitch] = bestU;
-      _PYIN_BEST_UNVOICED_ARG[toPitch] = bestUArg;
-    }
-
-    // Step 2: combine with voicing-flip factor for each (to_pitch, to_voiced).
-    for (let toPitch = 0; toPitch < NP; toPitch++) {
-      const bestV = _PYIN_BEST_VOICED_PATH[toPitch];
-      const bestU = _PYIN_BEST_UNVOICED_PATH[toPitch];
-      const bestVArg = _PYIN_BEST_VOICED_ARG[toPitch];
-      const bestUArg = _PYIN_BEST_UNVOICED_ARG[toPitch];
-
-      // Destination voiced (twin index = toPitch).
-      const candVV = bestV + _PYIN_LOG_VOICING_VV;
-      const candUV = bestU + _PYIN_LOG_VOICING_UV;
-      let chosen, chosenArg;
-      if (candVV > candUV) { chosen = candVV; chosenArg = bestVArg; }
-      else { chosen = candUV; chosenArg = bestUArg; }
-      _PYIN_LOG_ALPHA[curOff + toPitch] = chosen + _PYIN_OBS_LOG[toPitch];
-      _PYIN_BACKPTRS[bpOff + toPitch] = chosenArg;
-
-      // Destination unvoiced (twin index = toPitch + 300).
-      const candVU = bestV + _PYIN_LOG_VOICING_VU;
-      const candUU = bestU + _PYIN_LOG_VOICING_UU;
-      const toUIdx = _PYIN_UNVOICED_OFFSET + toPitch;
-      if (candVU > candUU) { chosen = candVU; chosenArg = bestVArg; }
-      else { chosen = candUU; chosenArg = bestUArg; }
-      _PYIN_LOG_ALPHA[curOff + toUIdx] = chosen + _PYIN_OBS_LOG[toUIdx];
-      _PYIN_BACKPTRS[bpOff + toUIdx] = chosenArg;
-    }
-  }
-  _pyinFrameIdx = t + 1;
-
-  // --- HMM-smoothed voicing posterior at the current frame ---
-  // P(voiced | obs_{1..t}) = sum_{voiced s} α[s] / sum_{all s} α[s].
-  // Computed via log-sum-exp with the joint max as the shift to keep both
-  // halves on the same numerical scale.
-  {
-    let maxV = -Infinity, maxU = -Infinity;
-    for (let s = 0; s < NP; s++) {
-      const aV = _PYIN_LOG_ALPHA[curOff + s];
-      if (aV > maxV) maxV = aV;
-      const aU = _PYIN_LOG_ALPHA[curOff + _PYIN_UNVOICED_OFFSET + s];
-      if (aU > maxU) maxU = aU;
-    }
-    const maxBoth = maxV > maxU ? maxV : maxU;
-    let sumV = 0, sumU = 0;
-    for (let s = 0; s < NP; s++) {
-      sumV += Math.exp(_PYIN_LOG_ALPHA[curOff + s] - maxBoth);
-      sumU += Math.exp(_PYIN_LOG_ALPHA[curOff + _PYIN_UNVOICED_OFFSET + s] - maxBoth);
-    }
-    _pyinLastVoicedness = sumV / (sumV + sumU);
-  }
-
-  // --- Warm-up: need lookback complete frames before tracing back ---
-  if (t < lookback) return null;
-
-  // --- Trace back L steps from current argmax ---
-  let curBest = 0;
-  let curBestVal = _PYIN_LOG_ALPHA[curOff];
-  for (let s = 1; s < N; s++) {
-    const v = _PYIN_LOG_ALPHA[curOff + s];
-    if (v > curBestVal) { curBestVal = v; curBest = s; }
-  }
-  let st = curBest;
-  for (let i = 0; i < lookback; i++) {
-    const bpSlot = (t - i) % _PYIN_L_MAX;
-    st = _PYIN_BACKPTRS[bpSlot * N + st];
-  }
-  // Return pitch from whichever twin the HMM decoded — voicing is advisory,
-  // not gating. Matches librosa.pyin's behavior: f0 is reported from the
-  // pitch-state index regardless of voicing; the separate voicedness signal
-  // (exposed on the postMessage payload) tells consumers what the HMM
-  // thought about voicing. Gating-by-voicing happens upstream in
-  // useAudioPipeline.js and the smoother (silence hold + median).
-  const pitchIdx = st >= _PYIN_UNVOICED_OFFSET ? st - _PYIN_UNVOICED_OFFSET : st;
-  return 75 * Math.pow(2, pitchIdx / 100);
-}
 
 // --- Formant Extraction (Burg LPC) ---
 // Accepts optional detectedPitch to adapt LPC order and formant ceiling.
