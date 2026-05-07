@@ -385,6 +385,18 @@ export function useAudioPipeline() {
               confidence: msg.confidence,
             });
           }
+        } else if (msg.type === "inference-event") {
+          // Diag-only: capture defensive-timeout events from the gender
+          // worker into the errors ring so snapshots reveal hang frequency.
+          // Used to confirm/refute H1 (WebGPU init race) from real-user
+          // data — see CLAUDE.md "Pitch detection of periodic non-speech
+          // content" / gender-worker.js INFERENCE_TIMEOUT_MS for context.
+          pushError({
+            source: "mlWorker",
+            where: msg.event,
+            message: `${msg.event}: ${msg.durationMs}ms`,
+            ts: msg.ts,
+          });
         } else if (msg.type === "status") {
           setState((s) => ({
             ...s,
