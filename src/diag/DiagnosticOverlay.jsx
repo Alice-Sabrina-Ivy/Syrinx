@@ -71,10 +71,11 @@ function TimingRow({ label, stats, hint, showDrift }) {
   );
 }
 
-// Tiny canvas sparkline: draws three series stacked on a shared 0..1 y-axis.
-// voicedness (cyan), voicednessObs (purple), inputRms (orange — clipped at
-// 0.5 for legibility since speech RMS rarely exceeds that). Pitch is shown
-// as a separate row above with its own scale.
+// Tiny canvas sparkline: draws two series stacked on a shared 0..1 y-axis.
+// confidence (cyan, SwiftF0's voicing probability — replaced pYIN's HMM-
+// smoothed `voicedness` and raw `voicednessObs` at the Stage 4 cutover) and
+// inputRms (orange × 4 so quiet speech is visible). Pitch is shown as a
+// separate row above with its own 60..400 Hz scale.
 function Sparkline({ frames }) {
   const canvasRef = useRef(null);
 
@@ -112,8 +113,7 @@ function Sparkline({ frames }) {
     }
     ctx.stroke();
 
-    // Bottom half: voicedness (HMM smoothed) cyan, voicednessObs purple,
-    // inputRms (×2 for legibility) orange
+    // Bottom half: confidence (cyan), inputRms ×4 (orange).
     const botY0 = topH + 4;
     const botH = h - topH - 4;
 
@@ -132,8 +132,7 @@ function Sparkline({ frames }) {
       }
       ctx.stroke();
     };
-    drawSeries("voicedness", "#22d3ee");
-    drawSeries("voicednessObs", "#c084fc");
+    drawSeries("confidence", "#22d3ee");
     drawSeries("inputRms", "#fb923c", 4); // ×4 so quiet speech is visible
 
     // Baseline + 0.5 gridline for the bottom panel
@@ -274,8 +273,7 @@ export default function DiagnosticOverlay() {
         {stats ? (
           <div className="space-y-0.5">
             <TimingRow label="audio→worker" stats={stats.chunkArrivalMs} hint="capture-processor → DSP worker arrival; growing drift here = mobile audio-clock skew or buffer accumulation" showDrift />
-            <TimingRow label="detectPitch" stats={stats.pitchDetectMs} hint="time inside detectPitch only" />
-            <TimingRow label="worker total" stats={stats.workerProcessingMs} hint="detectPitch + formants/tilt/HNR (every 6th frame)" />
+            <TimingRow label="worker total" stats={stats.workerProcessingMs} hint="formants + tilt + HNR (every 6th frame); pitch is in pitch-worker, see SwiftF0 inference timings below" />
             <TimingRow label="worker→main" stats={stats.handoffToMainMs} hint="DSP postMessage → main onmessage" />
             <TimingRow label="main handler" stats={stats.mainHandlerMs} hint="handleAnalysisResult duration" />
             <TimingRow label="end-to-end" stats={stats.totalMs} hint="audio captured (ctx time → epoch) → display update" showDrift />
@@ -291,8 +289,7 @@ export default function DiagnosticOverlay() {
           <span>Last 5s</span>
           <span className="text-[9px] normal-case">
             <span className="text-amber-400">pitch</span>{" · "}
-            <span className="text-cyan-400">v</span>{" · "}
-            <span className="text-purple-400">vObs</span>{" · "}
+            <span className="text-cyan-400">conf</span>{" · "}
             <span className="text-orange-400">rms×4</span>
           </span>
         </div>
