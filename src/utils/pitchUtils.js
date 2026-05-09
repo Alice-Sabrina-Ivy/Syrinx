@@ -11,7 +11,7 @@ const NOTE_NAMES = [
  * Returns e.g. { note: "A", octave: 3, cents: -12 }
  */
 export function hzToNote(hz) {
-  if (!hz || hz <= 0) return null;
+  if (!Number.isFinite(hz) || hz <= 0) return null;
 
   // Number of semitones from A4
   const semitones = 12 * Math.log2(hz / 440);

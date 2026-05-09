@@ -28,11 +28,6 @@ function fmtMs(v, digits = 1) {
   return `${v.toFixed(digits)}ms`;
 }
 
-function fmtNum(v, digits = 2) {
-  if (v === null || v === undefined || !Number.isFinite(v)) return "—";
-  return v.toFixed(digits);
-}
-
 // Color the drift number by magnitude — green near 0, amber for slow
 // growth, red for fast. The threshold "fast" is set against the mobile
 // regression baseline (+11.5 ms/s); anything > 1 ms/s after the fix
@@ -78,14 +73,31 @@ function TimingRow({ label, stats, hint, showDrift }) {
 // separate row above with its own 60..400 Hz scale.
 function Sparkline({ frames }) {
   const canvasRef = useRef(null);
+  // Tracked separately from `frames` so window resize triggers a redraw at
+  // the new dimensions even between frame updates. Without this, the
+  // canvas would stretch the existing pixel buffer until the next frame
+  // arrives (~100 ms of visible distortion).
+  const [canvasSize, setCanvasSize] = useState({ w: 0, h: 0 });
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const observer = new ResizeObserver((entries) => {
+      const rect = entries[0]?.contentRect;
+      if (rect) setCanvasSize({ w: rect.width, h: rect.height });
+    });
+    observer.observe(canvas);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     const dpr = window.devicePixelRatio || 1;
-    const w = canvas.clientWidth;
-    const h = canvas.clientHeight;
+    const w = canvasSize.w || canvas.clientWidth;
+    const h = canvasSize.h || canvas.clientHeight;
+    if (w === 0 || h === 0) return;
     canvas.width = w * dpr;
     canvas.height = h * dpr;
     ctx.scale(dpr, dpr);
@@ -144,7 +156,7 @@ function Sparkline({ frames }) {
     ctx.moveTo(0, botY0 + botH);
     ctx.lineTo(w, botY0 + botH);
     ctx.stroke();
-  }, [frames]);
+  }, [frames, canvasSize]);
 
   return (
     <canvas
@@ -155,11 +167,17 @@ function Sparkline({ frames }) {
 }
 
 export default function DiagnosticOverlay() {
-  const [tick, setTick] = useState(0);
   const [collapsed, setCollapsed] = useState(false);
+  // Tick drives the periodic re-render (timings, sparkline, status all
+  // refresh from refs each render). tapAgeMs is computed in the rAF loop
+  // and stashed in state so render stays pure (no Date.now() at render
+  // time — React 19 purity rule). React batches the two setState calls in
+  // a single loop iteration into one re-render.
+  const [, setTick] = useState(0);
+  const [tapAgeMs, setTapAgeMs] = useState(null);
   const lastTapRef = useRef(null);
 
-  // rAF-paced refresh at REFRESH_HZ. Reads ring buffer on each tick.
+  // rAF-paced refresh at REFRESH_HZ.
   useEffect(() => {
     let stop = false;
     const periodMs = 1000 / REFRESH_HZ;
@@ -169,6 +187,8 @@ export default function DiagnosticOverlay() {
       if (t - last >= periodMs) {
         last = t;
         setTick((n) => n + 1);
+        const lt = lastTapRef.current;
+        setTapAgeMs(lt ? Date.now() - lt : null);
       }
       requestAnimationFrame(loop);
     }
@@ -177,10 +197,10 @@ export default function DiagnosticOverlay() {
   }, []);
 
   // Tap-to-display latency: capture event.timeStamp + epoch ms when the
-  // user taps anywhere; on the next refresh cycle compute the gap.
+  // user taps anywhere; the rAF loop above derives the age each tick.
   useEffect(() => {
     function onPointerDown(e) {
-      const tapEpochMs = performance.timeOrigin + performance.now();
+      const tapEpochMs = Date.now();
       lastTapRef.current = tapEpochMs;
       pushTap({ tapEpochMs, eventTimeStamp: e.timeStamp });
     }
@@ -192,11 +212,6 @@ export default function DiagnosticOverlay() {
   const stats = getTimingStats();
   const audio = diagState?.audio;
   const status = getStatus();
-  const lastTap = lastTapRef.current;
-  const tapAgeMs = lastTap ? (performance.timeOrigin + performance.now()) - lastTap : null;
-
-  // Suppress unused-var lint: tick triggers the rerender.
-  void tick;
 
   if (collapsed) {
     return (
@@ -326,7 +341,10 @@ export default function DiagnosticOverlay() {
 
       {/* Tap latency + lifecycle */}
       <div className="mb-3 flex justify-between text-[10px] text-neutral-300 font-mono">
-        <span>tap age: {fmtNum(tapAgeMs / 1000, 1)}s</span>
+        {/* `null / 1000` evaluates to 0, so dividing first then formatting
+            displays "0.0s" before the user has tapped. Branch on the
+            null first to render an em-dash instead. */}
+        <span>tap age: {tapAgeMs == null ? "—" : `${(tapAgeMs / 1000).toFixed(1)}s`}</span>
         <span>vis: <span className={typeof document !== "undefined" && document.visibilityState === "visible" ? "text-green-400" : "text-amber-400"}>{typeof document !== "undefined" ? document.visibilityState : "—"}</span></span>
       </div>
 

@@ -38,9 +38,12 @@
 // Protocol:
 //   main → worker: { type: "init", inputSampleRate, modelUrl?, diag? }
 //                  { type: "audioPort", port }       MessagePort from captureSource
-//                  { type: "stop" }
 //   worker → main: { type: "status", status, message? }     "loading"|"ready"|"error"
 //                  { type: "pitch", pitch, confidence, voiced, ts, contextTime, inferMs? }
+//                  { type: "inference-event", event: "timeout", durationMs, ts }
+//
+// (The main thread tears workers down via Worker.terminate(); there is
+// no graceful "stop" message — calls were never wired up.)
 //
 // `pitch`     — Hz, or null when confidence < 0.5
 // `confidence`— SwiftF0's raw output, [0, 1]
@@ -64,6 +67,17 @@ import * as ort from "onnxruntime-web";
 // same condition, and there's no ambiguous middle band.
 const CONFIDENCE_THRESHOLD = 0.5;
 
+// Inference-call timeout. session.run() typically takes ~5–11 ms on
+// browser ORT-WASM (Stage 3.5 measurement). 1500 ms is ~150× p95 — well
+// above any plausible thermal-throttled outlier on mobile, so the timeout
+// never fires on healthy inference. Defensive measure mirroring the
+// gender-worker fix: if ORT hangs (e.g. pathological model state, GPU
+// driver lockup if WebGPU is ever enabled here), Promise.race converts
+// the hang into a recoverable error so the next chunk's inference can
+// proceed normally instead of freezing the silence gate's confidence
+// signal at a stale value.
+const INFERENCE_TIMEOUT_MS = 1500;
+
 // Model parameters (constants, must match swift_f0/core.py).
 const TARGET_SAMPLE_RATE = 16000;
 const FRAME_LENGTH = 1024;
@@ -74,7 +88,6 @@ let modelUrl = null;
 let session = null;
 let modelStatus = "idle";    // idle | loading | ready | error
 let _diag = false;
-let _stopped = false;
 
 // Rolling 16 kHz buffer (FRAME_LENGTH samples). We drop the oldest samples
 // as new ones arrive — when the buffer is full, every chunk produces one
@@ -89,6 +102,29 @@ let lastSampleContextTimeSec = null;
 
 // Inference state
 let inferenceInProgress = false;
+
+// Sentinel error class so the catch branch can distinguish a hang-induced
+// timeout from a real inference error. Mirrors the gender-worker pattern.
+class InferenceTimeoutError extends Error {
+  constructor(ms) {
+    super(`session.run hang > ${ms}ms`);
+  }
+}
+
+async function runWithTimeout(feeds) {
+  let timeoutHandle;
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutHandle = setTimeout(
+      () => reject(new InferenceTimeoutError(INFERENCE_TIMEOUT_MS)),
+      INFERENCE_TIMEOUT_MS,
+    );
+  });
+  try {
+    return await Promise.race([session.run(feeds), timeoutPromise]);
+  } finally {
+    clearTimeout(timeoutHandle);
+  }
+}
 
 function status(s, message, extra) {
   modelStatus = s;
@@ -142,7 +178,7 @@ function appendToBuffer(incoming) {
 }
 
 async function maybeInfer() {
-  if (modelStatus !== "ready" || _stopped) return;
+  if (modelStatus !== "ready") return;
   if (inferenceInProgress) return;
   if (buffer16kFill < FRAME_LENGTH) return;
 
@@ -152,7 +188,7 @@ async function maybeInfer() {
     // Construct tensor view onto the rolling buffer. ORT clones the data
     // into the tensor backing store, so we don't need a fresh array.
     const tensor = new ort.Tensor("float32", buffer16k, [1, FRAME_LENGTH]);
-    const outputs = await session.run({ [session.inputNames[0]]: tensor });
+    const outputs = await runWithTimeout({ [session.inputNames[0]]: tensor });
     const inferMs = _diag ? performance.now() - inferStart : null;
 
     const pitchOut = outputs[session.outputNames[0]];
@@ -177,12 +213,27 @@ async function maybeInfer() {
       ...(_diag && inferMs !== null ? { inferMs } : {}),
     });
   } catch (err) {
-    self.postMessage({
-      type: "status",
-      status: "error",
-      message: String(err?.message || err),
-    });
-    modelStatus = "error";
+    if (err instanceof InferenceTimeoutError) {
+      // ORT hung past INFERENCE_TIMEOUT_MS. Don't trip modelStatus — the
+      // worker is still functional; the next chunk will trigger a fresh
+      // maybeInfer that may succeed. Emit a diagnostic event so snapshots
+      // record hang frequency. The silence gate will see a stale
+      // confidence value for ~1.5 s but recovers as soon as inference
+      // completes again.
+      self.postMessage({
+        type: "inference-event",
+        event: "timeout",
+        durationMs: INFERENCE_TIMEOUT_MS,
+        ts: performance.timeOrigin + performance.now(),
+      });
+    } else {
+      self.postMessage({
+        type: "status",
+        status: "error",
+        message: String(err?.message || err),
+      });
+      modelStatus = "error";
+    }
   } finally {
     inferenceInProgress = false;
   }
@@ -221,7 +272,6 @@ async function loadModel(url) {
 
 function attachAudioPort(port) {
   port.onmessage = (e) => {
-    if (_stopped) return;
     const msg = e.data;
     if (!msg || !msg.buffer) return;
     const incoming = new Float32Array(msg.buffer);
@@ -255,11 +305,6 @@ self.onmessage = (e) => {
       break;
     case "audioPort":
       attachAudioPort(msg.port);
-      break;
-    case "stop":
-      _stopped = true;
-      buffer16kFill = 0;
-      lastSampleContextTimeSec = null;
       break;
   }
 };
