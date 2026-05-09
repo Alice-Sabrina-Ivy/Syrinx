@@ -38,10 +38,13 @@
 // commit 8287b84 — without this, broadband ambient noise (AC, fans)
 // that exceeds the ML worker's peak-amplitude VAD but isn't actually
 // voiced was rendering as a confident perceived-voice score. The gate
-// is the OR of intensity and HMM voicedness in useAudioPipeline; the
-// `voiced` and `holding` props passed in here are the result. Holding
-// state (the 5 s silence-hold after recent voice) keeps the meter at
-// the last value so a brief breath doesn't blank.
+// is the AND of intensity and SwiftF0 confidence in useAudioPipeline
+// (post-Stage 4 cutover, 2026-05-06; previously OR + pYIN voicedness).
+// We read the live gate state from `dspGateRef` each rAF tick rather
+// than `voiced`/`holding` props — props go through a ~5 fps throttled
+// setState and would lag the live gate noticeably. Holding state (the
+// 5 s silence-hold after recent voice) keeps the meter at the last
+// value so a brief breath doesn't blank.
 
 import { useRef, useEffect } from "react";
 import { COLORS } from "../utils/constants";
@@ -64,8 +67,7 @@ const HISTORY_AGE_MS = 6000;
 
 export function ResonanceMeter({
   genderTraceRef,
-  voiced,
-  holding,
+  dspGateRef,
   modelStatus,
   modelProgress,
   modelError,
@@ -201,6 +203,9 @@ export function ResonanceMeter({
       // should. Without this gate, broadband ambient noise (AC, fans)
       // that exceeds the ML worker's peak-VAD threshold but isn't actually
       // voiced renders as a confident-looking score.
+      const gate = dspGateRef?.current ?? { voiced: false, holding: false };
+      const voiced = gate.voiced;
+      const holding = gate.holding;
       const idle = !voiced && !holding;
       const data = genderTraceRef?.current ?? [];
       const latest = data.length > 0 ? data[data.length - 1] : null;
@@ -356,7 +361,10 @@ export function ResonanceMeter({
 
     draw();
     return () => cancelAnimationFrame(animId);
-  }, [genderTraceRef, modelStatus, voiced, holding]);
+    // voiced/holding deliberately omitted: read from dspGateRef inside draw()
+    // so the rAF loop doesn't get torn down + recreated on every gate flip
+    // (which can happen multiple times per second under normal speech).
+  }, [genderTraceRef, dspGateRef, modelStatus]);
 
   // Overlays for loading and error states (HTML, sits above the canvas)
   let overlay = null;

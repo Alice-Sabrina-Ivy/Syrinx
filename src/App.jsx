@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, lazy, Suspense } from "react";
+import { useState, useRef, lazy, Suspense } from "react";
 import { useAudioPipeline } from "./audio/useAudioPipeline";
 import { PitchTrace } from "./components/PitchTrace";
 import { CombinedDashboard } from "./components/CombinedDashboard";
@@ -45,7 +45,15 @@ function WelcomeOverlay({ onDismiss }) {
 
 function App() {
   const [activeTab, setActiveTab] = useState("dashboard");
-  const [showWelcome, setShowWelcome] = useState(false);
+  // Read localStorage in the lazy initializer instead of via a mount-time
+  // useEffect: the effect path triggered an extra render (idle → welcome)
+  // and React 19's compiler-hint rule flagged the useEffect-then-setState
+  // pattern as a cascading-render risk. The initializer runs once before
+  // first paint, so first-visit users see the welcome overlay
+  // immediately rather than after a render-then-update flicker.
+  const [showWelcome, setShowWelcome] = useState(
+    () => typeof window !== "undefined" && !localStorage.getItem(WELCOME_KEY),
+  );
   const [showSettings, setShowSettings] = useState(false);
   // Ref for session metadata (notes, elapsed, recording state) —
   // kept in sync by CombinedDashboard, readable by a future save/export feature.
@@ -67,16 +75,10 @@ function App() {
     pitchTraceRef,
     formantTrailRef,
     genderTraceRef,
+    dspGateRef,
     frameCallbackRef,
     streamRef,
   } = useAudioPipeline();
-
-  // Check first visit
-  useEffect(() => {
-    if (!localStorage.getItem(WELCOME_KEY)) {
-      setShowWelcome(true);
-    }
-  }, []);
 
   function dismissWelcome() {
     localStorage.setItem(WELCOME_KEY, "1");
@@ -228,6 +230,7 @@ function App() {
                   pitchTraceRef={pitchTraceRef}
                   formantTrailRef={formantTrailRef}
                   genderTraceRef={genderTraceRef}
+                  dspGateRef={dspGateRef}
                   sessionRef={sessionRef}
                   frameCallbackRef={frameCallbackRef}
                   streamRef={streamRef}
