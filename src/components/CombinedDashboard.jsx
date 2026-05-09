@@ -155,19 +155,38 @@ export function CombinedDashboard({
       catch (err) { console.error("Failed to flush frames:", err); }
     }
 
-    // Stop audio recording (if running) and capture the blob.
+    // Stop audio recording and capture the blob.
+    //
+    // Two paths arrive here:
+    //   1. Stop & Save button — recorder is still active, we call stop()
+    //      and await onstop. The browser flushes any pending data via a
+    //      final dataavailable event before firing onstop.
+    //   2. Audio pipeline torn down first (Stop Listening, status→error,
+    //      tab change unmount) — useAudioPipeline.stop() ends the mic
+    //      tracks, the recorder auto-transitions to "inactive", and the
+    //      browser dispatches its final dataavailable event before
+    //      firing stop. By the time we run, audioChunksRef is fully
+    //      populated and calling stop() on the inactive recorder would
+    //      throw InvalidStateError.
+    //
+    // Earlier code gated blob assembly on state !== "inactive", which
+    // meant path 2 lost its audio: recorder was already inactive, the
+    // entire if-block was skipped, audioChunksRef discarded.
     let audioBlob = null;
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
-      try {
-        await new Promise((resolve) => {
-          mediaRecorderRef.current.onstop = resolve;
-          mediaRecorderRef.current.stop();
-        });
-        if (audioChunksRef.current.length > 0) {
-          audioBlob = new Blob(audioChunksRef.current, { type: mediaRecorderRef.current.mimeType });
+    if (mediaRecorderRef.current) {
+      const mimeType = mediaRecorderRef.current.mimeType || "audio/webm";
+      if (mediaRecorderRef.current.state !== "inactive") {
+        try {
+          await new Promise((resolve) => {
+            mediaRecorderRef.current.onstop = resolve;
+            mediaRecorderRef.current.stop();
+          });
+        } catch (err) {
+          console.error("Failed to stop MediaRecorder:", err);
         }
-      } catch (err) {
-        console.error("Failed to finalize MediaRecorder:", err);
+      }
+      if (audioChunksRef.current.length > 0) {
+        audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
       }
       mediaRecorderRef.current = null;
       audioChunksRef.current = [];
