@@ -137,9 +137,9 @@ export class SilenceTracker {
 // Parse a Transformers.js audio-classification result into a 0-1 femininity
 // score. Handles label-casing variation across community models. Returns
 // null if no recognizable female/male label is found — different gender
-// models disagree on positional ordering (the current model is
-// {0:female, 1:male}, the previous one was the opposite), so guessing
-// from index would silently invert the meter on a model swap.
+// models disagree on positional ordering (the current JaesungHuh model is
+// {0:male, 1:female}, the previous prithivMLmods was the opposite), so
+// guessing from index would silently invert the meter on a model swap.
 export function femaleScoreFromResult(result) {
   if (!Array.isArray(result) || result.length === 0) return null;
   let female = null, male = null;

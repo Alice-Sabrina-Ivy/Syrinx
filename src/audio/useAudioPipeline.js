@@ -145,12 +145,35 @@ export function useAudioPipeline() {
   // Optional callback for session recording — called with every analysis frame
   const frameCallbackRef = useRef(null);
 
-  useEffect(() => {
-    return () => stop();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // The DSP-worker `analysis` handler in start() needs to call
+  // handleAnalysisResult, which is declared later in this hook body and
+  // recreated on every render. Capturing it directly in start's closure
+  // would be both (a) a forward-reference at hook-evaluation time and
+  // (b) a "stale closure" lint warning since start's deps are []. The
+  // ref-update pattern below sidesteps both: start reads the latest
+  // handleAnalysisResult through the ref, and the effect that writes the
+  // ref runs after every render, so the ref always points to the most-
+  // recent version. Stable refs (audioCtxRef, captureSrcRef, etc.) are
+  // referenced directly.
+  const handleAnalysisResultRef = useRef(null);
+
+  // Guards against a second start() call slipping through during the
+  // ~1 s getUserMedia permission prompt — the audioCtxRef.current early-
+  // return below isn't set until createCaptureSource resolves, and the UI
+  // button-disable race (status "idle" → "requesting") is not airtight
+  // if start is ever invoked from a non-button code path.
+  const startingRef = useRef(false);
+
+  // stop() is declared after start() in this hook body, but start()'s
+  // mid-stream onError needs to call it (capture-source failures during
+  // an active session must clean up workers + tracks, not just transition
+  // to error state). The ref-update pattern below sidesteps the temporal
+  // dead zone — start captures the ref, the post-render effect populates
+  // it once stop is defined.
+  const stopRef = useRef(null);
 
   const start = useCallback(async () => {
+    if (startingRef.current) return;
     // If a previous AudioContext was closed (e.g. via stop()), discard the
     // stale reference so we create a fresh one. A closed AudioContext cannot
     // be resumed — the spec requires a new instance.
@@ -158,6 +181,7 @@ export function useAudioPipeline() {
       audioCtxRef.current = null;
     }
     if (audioCtxRef.current) return;
+    startingRef.current = true;
 
     setState((s) => ({ ...s, status: "requesting", error: null }));
 
@@ -212,7 +236,24 @@ export function useAudioPipeline() {
         sampleRate: DIAG_SR_OVERRIDE,
         forceKind: DIAG_CAPTURE_KIND,
         onInitAck: (ack) => setCaptureStatus(ack),
-        onError: (err) => pushError({ source: "capture", ...err }),
+        onError: (err) => {
+          pushError({ source: "capture", ...err });
+          // Mid-stream capture failures (AudioWorklet process throw, MSTP
+          // copyTo throw, MSTP read-loop reject) silently halt audio
+          // delivery. Without surfacing here the UI just freezes — the
+          // status indicator stays "running" forever with no chunks
+          // arriving. stop() tears down the pipeline (workers, audio
+          // context, tracks); the trailing setState overrides the idle
+          // status to error. React batches the two state updates into a
+          // single render, so the error message lands on the cleaned-up
+          // state.
+          stopRef.current?.();
+          setState((s) => ({
+            ...s,
+            status: "error",
+            error: `Audio capture failed: ${err.message || err.where || "unknown"}`,
+          }));
+        },
       });
       captureSrcRef.current = captureSrc;
       audioCtxRef.current = captureSrc.audioCtx; // null on mstp path
@@ -338,6 +379,18 @@ export function useAudioPipeline() {
               voiced: msg.voiced,
             });
           }
+        } else if (msg.type === "inference-event") {
+          // Mirrors the gender-worker timeout-event handling. Diag-only
+          // capture of pitch-worker hangs into the errors ring so
+          // snapshots reveal hang frequency.
+          if (DIAG_ENABLED) {
+            pushError({
+              source: "pitchWorker",
+              where: msg.event,
+              message: `${msg.event}: ${msg.durationMs}ms`,
+              ts: msg.ts,
+            });
+          }
         } else if (msg.type === "status") {
           if (msg.status === "error") {
             pushError({ source: "pitch-worker", where: "load", message: msg.message });
@@ -391,12 +444,14 @@ export function useAudioPipeline() {
           // Used to confirm/refute H1 (WebGPU init race) from real-user
           // data — see CLAUDE.md "Pitch detection of periodic non-speech
           // content" / gender-worker.js INFERENCE_TIMEOUT_MS for context.
-          pushError({
-            source: "mlWorker",
-            where: msg.event,
-            message: `${msg.event}: ${msg.durationMs}ms`,
-            ts: msg.ts,
-          });
+          if (DIAG_ENABLED) {
+            pushError({
+              source: "mlWorker",
+              where: msg.event,
+              message: `${msg.event}: ${msg.durationMs}ms`,
+              ts: msg.ts,
+            });
+          }
         } else if (msg.type === "status") {
           setState((s) => ({
             ...s,
@@ -475,7 +530,7 @@ export function useAudioPipeline() {
           // visible at this moment.
           const latest = latestPitchRef.current;
           try {
-            handleAnalysisResult(data);
+            handleAnalysisResultRef.current?.(data);
           } catch (err) {
             pushError({ source: "main", where: "handleAnalysisResult", message: err.message, stack: err.stack });
             return;
@@ -497,7 +552,7 @@ export function useAudioPipeline() {
             },
           });
         } else {
-          handleAnalysisResult(data);
+          handleAnalysisResultRef.current?.(data);
         }
       };
 
@@ -531,11 +586,37 @@ export function useAudioPipeline() {
 
       setState((s) => ({ ...s, status: "running" }));
     } catch (err) {
+      // Best-effort cleanup of any partial state. start() may have set up
+      // some refs before failing — getUserMedia stream, captureSrc, and any
+      // workers created up to the failure point. Without this, retry-after-
+      // error orphans the previous stream/workers (mic indicator stays on,
+      // workers keep running with no terminate path).
+      if (streamRef.current) {
+        try { streamRef.current.getTracks().forEach((t) => t.stop()); } catch { /* */ }
+        streamRef.current = null;
+      }
+      if (captureSrcRef.current) {
+        try { captureSrcRef.current.close(); } catch { /* */ }
+        captureSrcRef.current = null;
+      }
+      audioCtxRef.current = null;
+      for (const ref of [workerRef, mlWorkerRef, pitchWorkerRef]) {
+        if (ref.current) {
+          try { ref.current.terminate(); } catch { /* */ }
+          ref.current = null;
+        }
+      }
+      if (ctxSamplerRef.current) {
+        clearInterval(ctxSamplerRef.current);
+        ctxSamplerRef.current = null;
+      }
       setState((s) => ({
         ...s,
         status: "error",
         error: err.message || "Microphone access denied",
       }));
+    } finally {
+      startingRef.current = false;
     }
   }, []);
 
@@ -594,6 +675,20 @@ export function useAudioPipeline() {
       modelProgress: null,
     });
   }, []);
+
+  // Unmount cleanup. Placed here (rather than at the top of the hook body
+  // before start/stop are declared) so the [stop] dep list resolves
+  // without a temporal-dead-zone reference and without a lint suppression
+  // comment. stop is useCallback'd with [] so this effect runs exactly
+  // once for setup and once for teardown.
+  useEffect(() => {
+    return () => stop();
+  }, [stop]);
+
+  // Make stop() callable from start()'s onError closure (mid-stream
+  // capture errors must tear down the pipeline). Updated post-render so
+  // refs are not mutated during render (concurrent renders may abandon).
+  useEffect(() => { stopRef.current = stop; });
 
   // Throttled setState: only fires at STATE_UPDATE_INTERVAL to avoid
   // saturating the main thread with React renders on mobile.
@@ -812,6 +907,11 @@ export function useAudioPipeline() {
     }));
   }
 
+  // Keep the latest handleAnalysisResult reachable from start()'s closure
+  // via a ref. Updated post-render so it's safe under StrictMode and
+  // concurrent rendering (refs must not be mutated during render).
+  useEffect(() => { handleAnalysisResultRef.current = handleAnalysisResult; });
+
   return {
     ...state,
     start,
@@ -819,6 +919,11 @@ export function useAudioPipeline() {
     pitchTraceRef,
     formantTrailRef,
     genderTraceRef,
+    // Exposed so canvas-based components can read the DSP voicedness gate
+    // at full rAF rate, bypassing the ~5 fps throttledSetState that drives
+    // the `voiced` / `holding` text-readout fields above. The two are kept
+    // in sync each DSP analysis frame; the ref is just lower-latency.
+    dspGateRef,
     frameCallbackRef,
     streamRef,
   };

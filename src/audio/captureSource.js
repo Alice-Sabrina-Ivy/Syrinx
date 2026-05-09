@@ -332,12 +332,22 @@ async function _createMstpSource(stream, opts) {
   })();
 
   // Wait for first AudioData → readyPromise resolves with metadata. 5 s
-  // timeout in case the track silently fails to produce data.
-  const ready = await Promise.race([
-    readyPromise,
-    new Promise((_, rej) =>
-      setTimeout(() => rej(new Error("MSTP first-frame timeout (5s)")), 5000)),
-  ]);
+  // timeout in case the track silently fails to produce data. On timeout
+  // (or any other readyPromise rejection) the read-loop IIFE above is still
+  // running with stopped=false and has no caller-reachable handle — clean
+  // it up here so a no-frames failure doesn't leak the reader.
+  let ready;
+  try {
+    ready = await Promise.race([
+      readyPromise,
+      new Promise((_, rej) =>
+        setTimeout(() => rej(new Error("MSTP first-frame timeout (5s)")), 5000)),
+    ]);
+  } catch (err) {
+    stopped = true;
+    try { reader.cancel(); } catch { /* ignore */ }
+    throw err;
+  }
 
   return {
     kind: "mstp",

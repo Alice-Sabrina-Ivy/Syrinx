@@ -24,6 +24,7 @@ export function CombinedDashboard({
   modelProgress,
   pitchTraceRef,
   genderTraceRef,
+  dspGateRef,
   sessionRef,
   frameCallbackRef,
   streamRef,
@@ -124,56 +125,83 @@ export function CombinedDashboard({
     setRecording(true);
   }, [frameCallbackRef, flushFrames, recordAudio, streamRef]);
 
-  // Stop recording + compute summary stats
-  const stopRecording = useCallback(async () => {
-    // Stop timer
-    clearInterval(timerRef.current);
-    timerRef.current = null;
+  // notesRef tracks the latest notes value so the unmount cleanup can
+  // finalize a session with the up-to-date text without depending on the
+  // closure-captured value (which would re-run the effect on every keystroke).
+  // Updated post-render via useEffect — React forbids mutating refs during
+  // render (concurrent renders may abandon the render entirely).
+  const notesRef = useRef(notes);
+  useEffect(() => { notesRef.current = notes; });
 
-    // Remove frame callback
+  // DB-only finalization (no React state writes). Used by both stopRecording
+  // (button click) and the unmount cleanup, so an abandoned session — user
+  // navigates away or stops the audio pipeline mid-record — still gets
+  // endedAt + summary stats written. Sets sessionIdRef.current = null up
+  // front so concurrent calls (button + unmount race) deduplicate.
+  const finalizeRecordingDb = useCallback(async () => {
+    const sessionId = sessionIdRef.current;
+    if (!sessionId) return;
+    sessionIdRef.current = null;
+
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+    if (flushIntervalRef.current) { clearInterval(flushIntervalRef.current); flushIntervalRef.current = null; }
     frameCallbackRef.current = null;
 
-    // Stop flush interval and flush remaining
-    clearInterval(flushIntervalRef.current);
-    flushIntervalRef.current = null;
-    await flushFrames();
+    // Flush any remaining buffered frames before reading them back for stats.
+    const buffered = frameBufferRef.current;
+    if (buffered.length > 0) {
+      frameBufferRef.current = [];
+      try { await db.frames.bulkAdd(buffered); }
+      catch (err) { console.error("Failed to flush frames:", err); }
+    }
 
-    // Stop audio recording
+    // Stop audio recording (if running) and capture the blob.
     let audioBlob = null;
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
-      await new Promise((resolve) => {
-        mediaRecorderRef.current.onstop = resolve;
-        mediaRecorderRef.current.stop();
-      });
-      if (audioChunksRef.current.length > 0) {
-        audioBlob = new Blob(audioChunksRef.current, { type: mediaRecorderRef.current.mimeType });
+      try {
+        await new Promise((resolve) => {
+          mediaRecorderRef.current.onstop = resolve;
+          mediaRecorderRef.current.stop();
+        });
+        if (audioChunksRef.current.length > 0) {
+          audioBlob = new Blob(audioChunksRef.current, { type: mediaRecorderRef.current.mimeType });
+        }
+      } catch (err) {
+        console.error("Failed to finalize MediaRecorder:", err);
       }
       mediaRecorderRef.current = null;
       audioChunksRef.current = [];
     }
 
-    // Read all frames for this session to compute stats
-    const sessionId = sessionIdRef.current;
     const allFrames = await db.frames.where("sessionId").equals(sessionId).toArray();
     const endTime = Date.now();
-    const durationSeconds = Math.round((endTime - recordingStartRef.current) / 1000);
-
-    // Compute summary stats
+    const startedAt = recordingStartRef.current;
+    const durationSeconds = startedAt ? Math.round((endTime - startedAt) / 1000) : null;
     const summary = computeSummaryStats(allFrames);
 
-    // Update session record
     await db.sessions.update(sessionId, {
       endedAt: endTime,
       durationSeconds,
-      notes,
+      notes: notesRef.current,
       audioBlob,
       ...summary,
     });
 
-    sessionIdRef.current = null;
     recordingStartRef.current = null;
+  }, [frameCallbackRef]);
+
+  // Stop recording + compute summary stats (button-click path).
+  const stopRecording = useCallback(async () => {
+    await finalizeRecordingDb();
     setRecording(false);
-  }, [frameCallbackRef, flushFrames, notes]);
+  }, [finalizeRecordingDb]);
+
+  // Stash the latest finalize fn in a ref so the unmount cleanup can call
+  // it without re-subscribing the cleanup useEffect on every render.
+  // Updated post-render — see notesRef above for why mutating during
+  // render is unsafe.
+  const finalizeRef = useRef(finalizeRecordingDb);
+  useEffect(() => { finalizeRef.current = finalizeRecordingDb; });
 
   // Keep sessionRef in sync
   useEffect(() => {
@@ -187,6 +215,10 @@ export function CombinedDashboard({
       if (timerRef.current) clearInterval(timerRef.current);
       if (flushIntervalRef.current) clearInterval(flushIntervalRef.current);
       if (frameCallbackRef) frameCallbackRef.current = null;
+      // Fire-and-forget: finalize any in-progress recording so the DB row
+      // gets endedAt + stats. Tab-close may not flush IndexedDB, but
+      // tab-switch / stop-listening keeps the page alive long enough.
+      finalizeRef.current?.();
     };
   }, [frameCallbackRef]);
 
@@ -230,8 +262,7 @@ export function CombinedDashboard({
         <div className="lg:w-1/2 min-h-[260px] lg:min-h-0">
           <ResonanceMeter
             genderTraceRef={genderTraceRef}
-            voiced={voiced}
-            holding={holding}
+            dspGateRef={dspGateRef}
             modelStatus={modelStatus}
             modelProgress={modelProgress}
             modelError={modelError}
@@ -377,8 +408,10 @@ function computeSummaryStats(frames) {
   );
   const f2InTarget = f2Values.filter((f2) => f2 >= DEFAULT_F2_TARGET.low);
 
-  // Estimate voiced duration: each frame is ~50ms
-  const frameDurationMs = 50;
+  // Estimate voiced duration. DSP analysis runs once per chunk arrival
+  // (default chunkMs = 25), not once per WINDOW_MS — so frames are ~25 ms
+  // apart in steady state. The earlier 50 ms constant double-counted.
+  const frameDurationMs = 25;
   const voicedDurationSeconds = Math.round((voicedFrames.length * frameDurationMs) / 1000);
 
   return {
@@ -390,8 +423,11 @@ function computeSummaryStats(frames) {
     avgF3: avg(f3Values),
     avgSpectralTilt: avg(tiltValues),
     avgHnr: avg(hnrValues),
-    pitchRangeLow: f0Values.length ? Math.min(...f0Values) : null,
-    pitchRangeHigh: f0Values.length ? Math.max(...f0Values) : null,
+    // reduce instead of Math.min(...arr) — the spread operator can overflow
+    // engine arg-count limits on long sessions (60+ minutes of voiced
+    // frames at ~40 fps = >100K args).
+    pitchRangeLow: f0Values.length ? f0Values.reduce((m, v) => v < m ? v : m, Infinity) : null,
+    pitchRangeHigh: f0Values.length ? f0Values.reduce((m, v) => v > m ? v : m, -Infinity) : null,
     pitchStdev: stdev(f0Values),
     pctTimeInPitchTarget: f0Values.length
       ? Math.round((pitchInTarget.length / f0Values.length) * 100)

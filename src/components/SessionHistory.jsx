@@ -372,7 +372,9 @@ function drawStaticPitchTrace(canvas, frames, dpr) {
   const plotTop = pad.top;
   const plotBottom = h - pad.bottom;
 
-  const totalMs = frames[frames.length - 1].timestampMs;
+  // Single-frame sessions land timestampMs=0 → divide-by-zero in msToX.
+  // Floor to 1 so the lone point lands at the trace start instead of NaN.
+  const totalMs = Math.max(1, frames[frames.length - 1].timestampMs);
 
   const hzToY = (hz) => {
     const frac = (hz - displayLow) / (displayHigh - displayLow);
@@ -486,7 +488,9 @@ function drawStaticResonanceTrace(canvas, frames, dpr) {
   const plotTop = pad.top;
   const plotBottom = h - pad.bottom;
 
-  const totalMs = frames[frames.length - 1].timestampMs;
+  // Single-frame sessions land timestampMs=0 → divide-by-zero in msToX.
+  // Floor to 1 so the lone point lands at the trace start instead of NaN.
+  const totalMs = Math.max(1, frames[frames.length - 1].timestampMs);
 
   const hzToY = (hz) => {
     const frac = (hz - displayLow) / (displayHigh - displayLow);
