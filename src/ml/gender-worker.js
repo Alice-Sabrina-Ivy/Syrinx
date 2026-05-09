@@ -11,7 +11,6 @@
 // Protocol:
 //   main → worker: { type: "init", inputSampleRate, modelId?, diag? }
 //                  { type: "audioPort", port }       MessagePort from AudioWorklet
-//                  { type: "stop" }
 //   worker → main: { type: "status", status, message?, modelId?, device? }
 //                                                "loading"|"ready"|"error";
 //                                                modelId + device populated on
@@ -20,6 +19,10 @@
 //                                                backend (webgpu vs wasm) won
 //                  { type: "progress", loaded, total, file }
 //                  { type: "score", score, confidence, ts, inferMs? }
+//                  { type: "inference-event", event: "timeout", durationMs, ts }
+//
+// (The main thread tears workers down via Worker.terminate(); there is
+// no graceful "stop" message — calls were never wired up.)
 //
 // `inferMs` is the wall-clock duration of the classifier(...) call only
 // (no VAD gate, no EMA, no postMessage). Always populated when the
@@ -112,7 +115,6 @@ const silenceTracker = new SilenceTracker();
 class InferenceTimeoutError extends Error {
   constructor(ms) {
     super(`classifier hang > ${ms}ms`);
-    this.isTimeout = true;
   }
 }
 
@@ -186,7 +188,7 @@ async function maybeInfer() {
       ...(_diag ? { inferMs } : {}),
     });
   } catch (err) {
-    if (err && err.isTimeout) {
+    if (err instanceof InferenceTimeoutError) {
       // Classifier hung past INFERENCE_TIMEOUT_MS. Don't trip modelStatus —
       // the worker is still functional; the next chunk will trigger a fresh
       // maybeInfer that may succeed. Surface the event to diag.errors via
@@ -268,12 +270,6 @@ self.onmessage = (e) => {
       break;
     case "audioPort":
       attachAudioPort(msg.port);
-      break;
-    case "stop":
-      ring.reset();
-      inferenceInProgress = false;
-      smoothedFemale = null;
-      silenceTracker.noteActive();   // resets the silent-run counter
       break;
   }
 };

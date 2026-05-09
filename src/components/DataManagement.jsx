@@ -56,8 +56,12 @@ export function DataManagement({ onClose }) {
       const a = document.createElement("a");
       a.href = url;
       a.download = `syrinx-export-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
       a.click();
-      URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      // Defer revoke so the browser has time to start the download. Some
+      // browsers cancel the in-flight save if the URL goes away too fast.
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
       setStatus("Export complete!");
       setTimeout(() => setStatus(null), 2000);
     } catch (err) {

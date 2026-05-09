@@ -301,7 +301,8 @@ function extractFormants(buffer, detectedPitch) {
   // the effective analysis bandwidth matches the expected formant range.
   let lpcOrder, maxFormant, effectiveDecFactor, effectiveTargetSR, effectiveFilter;
 
-  const isFemale = detectedPitch === null || detectedPitch >= 160;
+  // Pitches in [140, 160) Hz fall through to the female-default branch —
+  // the male branch is only chosen on a confident male pitch detection.
   const isMale = detectedPitch !== null && detectedPitch < 140;
 
   if (isMale) {
