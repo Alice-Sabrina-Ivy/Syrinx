@@ -1,22 +1,22 @@
 {
-  "timestamp": "2026-05-10T16:20:32.699317+00:00",
+  "timestamp": "2026-05-10T16:41:34.287225+00:00",
   "n_pairs": 520,
-  "overall_pearson_r": 0.8323856762285617,
-  "bias_mean_db": 16.814529657795358,
+  "overall_pearson_r": 0.8522921453602201,
+  "bias_mean_db": 17.171188531666484,
   "bias_distribution": {
     "n": 520,
-    "mean": 16.815,
-    "median": 15.546,
-    "stdev": 3.556,
-    "p25": 13.715,
-    "p75": 19.629,
-    "min": 12.364,
-    "max": 28.307
+    "mean": 17.171,
+    "median": 15.708,
+    "stdev": 3.724,
+    "p25": 13.918,
+    "p75": 20.241,
+    "min": 12.56,
+    "max": 28.741
   },
   "per_corpus": {
     "hillenbrand": {
       "n": 200,
-      "pearson_r": 0.3869,
+      "pearson_r": 0.3513,
       "praat_dist": {
         "n": 200,
         "mean": 22.672,
@@ -29,28 +29,28 @@
       },
       "syrinx_dist": {
         "n": 200,
-        "mean": 2.015,
-        "median": 1.83,
-        "stdev": 0.772,
-        "p25": 1.41,
-        "p75": 2.643,
-        "min": 0.833,
-        "max": 4.861
+        "mean": 1.429,
+        "median": 1.351,
+        "stdev": 0.509,
+        "p25": 1.051,
+        "p75": 1.782,
+        "min": 0.561,
+        "max": 3.013
       },
       "bias_dist": {
         "n": 200,
-        "mean": 20.657,
-        "median": 20.568,
-        "stdev": 2.201,
-        "p25": 18.993,
-        "p75": 22.085,
-        "min": 14.976,
-        "max": 28.307
+        "mean": 21.244,
+        "median": 21.155,
+        "stdev": 2.253,
+        "p25": 19.571,
+        "p75": 22.657,
+        "min": 15.598,
+        "max": 28.741
       }
     },
     "ptdb-tug": {
       "n": 180,
-      "pearson_r": 0.6236,
+      "pearson_r": 0.63,
       "praat_dist": {
         "n": 180,
         "mean": 14.01,
@@ -63,28 +63,28 @@
       },
       "syrinx_dist": {
         "n": 180,
-        "mean": 0.454,
-        "median": 0.452,
-        "stdev": 0.008,
-        "p25": 0.448,
-        "p75": 0.46,
-        "min": 0.433,
-        "max": 0.475
+        "mean": 0.258,
+        "median": 0.258,
+        "stdev": 0.005,
+        "p25": 0.254,
+        "p75": 0.261,
+        "min": 0.247,
+        "max": 0.275
       },
       "bias_dist": {
         "n": 180,
-        "mean": 13.556,
-        "median": 13.577,
-        "stdev": 0.526,
-        "p25": 13.131,
-        "p75": 13.957,
-        "min": 12.364,
-        "max": 14.661
+        "mean": 13.752,
+        "median": 13.764,
+        "stdev": 0.528,
+        "p25": 13.327,
+        "p75": 14.161,
+        "min": 12.56,
+        "max": 14.862
       }
     },
     "vocadito": {
       "n": 40,
-      "pearson_r": 0.2135,
+      "pearson_r": 0.2538,
       "praat_dist": {
         "n": 40,
         "mean": 18.23,
@@ -97,28 +97,28 @@
       },
       "syrinx_dist": {
         "n": 40,
-        "mean": 0.852,
-        "median": 0.78,
-        "stdev": 0.274,
-        "p25": 0.621,
-        "p75": 1.044,
-        "min": 0.54,
-        "max": 1.589
+        "mean": 0.686,
+        "median": 0.588,
+        "stdev": 0.26,
+        "p25": 0.497,
+        "p75": 0.882,
+        "min": 0.329,
+        "max": 1.313
       },
       "bias_dist": {
         "n": 40,
-        "mean": 17.378,
-        "median": 17.518,
-        "stdev": 1.635,
-        "p25": 16.189,
-        "p75": 18.488,
-        "min": 14.607,
-        "max": 21.287
+        "mean": 17.544,
+        "median": 17.724,
+        "stdev": 1.625,
+        "p25": 16.379,
+        "p75": 18.643,
+        "min": 14.744,
+        "max": 21.406
       }
     },
     "fda": {
       "n": 100,
-      "pearson_r": 0.6158,
+      "pearson_r": 0.7127,
       "praat_dist": {
         "n": 100,
         "mean": 15.444,
@@ -131,65 +131,65 @@
       },
       "syrinx_dist": {
         "n": 100,
-        "mean": 0.675,
-        "median": 0.667,
-        "stdev": 0.068,
-        "p25": 0.63,
-        "p75": 0.707,
-        "min": 0.579,
-        "max": 1.071
+        "mean": 0.412,
+        "median": 0.395,
+        "stdev": 0.07,
+        "p25": 0.37,
+        "p75": 0.439,
+        "min": 0.336,
+        "max": 0.813
       },
       "bias_dist": {
         "n": 100,
-        "mean": 14.77,
-        "median": 14.544,
-        "stdev": 1.234,
-        "p25": 13.856,
-        "p75": 15.694,
-        "min": 12.974,
-        "max": 19.235
+        "mean": 15.033,
+        "median": 14.869,
+        "stdev": 1.226,
+        "p25": 14.148,
+        "p75": 15.961,
+        "min": 13.222,
+        "max": 19.405
       }
     }
   },
   "per_gender": {
     "m": {
       "n": 248,
-      "pearson_r": 0.9274
+      "pearson_r": 0.9185
     },
     "w": {
       "n": 92,
-      "pearson_r": 0.6776
+      "pearson_r": 0.6427
     },
     "f": {
       "n": 140,
-      "pearson_r": 0.4078
+      "pearson_r": 0.4359
     },
     "unknown": {
       "n": 40,
-      "pearson_r": 0.2135
+      "pearson_r": 0.2538
     }
   },
   "per_f0_bucket": {
     "<100": {
       "n": 5,
-      "pearson_r": 0.938,
+      "pearson_r": 0.6292,
       "praat_mean": 24.401,
-      "syrinx_mean": 1.402,
-      "bias_mean": 22.999
+      "syrinx_mean": 1.069,
+      "bias_mean": 23.331
     },
     "100-180": {
       "n": 104,
-      "pearson_r": 0.6959,
+      "pearson_r": 0.6076,
       "praat_mean": 23.166,
-      "syrinx_mean": 1.65,
-      "bias_mean": 21.516
+      "syrinx_mean": 1.182,
+      "bias_mean": 21.984
     },
     "180-260": {
       "n": 90,
-      "pearson_r": 0.6997,
+      "pearson_r": 0.6721,
       "praat_mean": 22.019,
-      "syrinx_mean": 2.455,
-      "bias_mean": 19.564
+      "syrinx_mean": 1.722,
+      "bias_mean": 20.296
     },
     ">260": {
       "n": 1,
@@ -202,155 +202,164 @@
       "track_id": "m06eh",
       "gender": "m",
       "praat_cpps_db": 30.288183282740835,
-      "syrinx_cpp_db": 1.9808769369062027,
-      "delta": 28.307,
-      "delta_z": 3.23
+      "syrinx_cpp_db": 1.547228332224143,
+      "delta": 28.741,
+      "delta_z": 3.11
     },
     {
       "corpus": "hillenbrand",
       "track_id": "m06ih",
       "gender": "m",
       "praat_cpps_db": 28.15601517874363,
-      "syrinx_cpp_db": 2.013139622095217,
-      "delta": 26.143,
-      "delta_z": 2.62
+      "syrinx_cpp_db": 0.9303820345501463,
+      "delta": 27.226,
+      "delta_z": 2.7
     },
     {
       "corpus": "hillenbrand",
       "track_id": "m20ah",
       "gender": "m",
       "praat_cpps_db": 28.673124694068257,
-      "syrinx_cpp_db": 2.795378427508648,
-      "delta": 25.878,
+      "syrinx_cpp_db": 2.0097901204683644,
+      "delta": 26.663,
       "delta_z": 2.55
-    },
-    {
-      "corpus": "hillenbrand",
-      "track_id": "m07ah",
-      "gender": "m",
-      "praat_cpps_db": 27.193026414367342,
-      "syrinx_cpp_db": 1.7607779542441566,
-      "delta": 25.432,
-      "delta_z": 2.42
-    },
-    {
-      "corpus": "hillenbrand",
-      "track_id": "m48er",
-      "gender": "m",
-      "praat_cpps_db": 27.178768146862904,
-      "syrinx_cpp_db": 1.7821139418932512,
-      "delta": 25.397,
-      "delta_z": 2.41
-    },
-    {
-      "corpus": "hillenbrand",
-      "track_id": "m48ah",
-      "gender": "m",
-      "praat_cpps_db": 26.899278669881266,
-      "syrinx_cpp_db": 1.6497203783617174,
-      "delta": 25.25,
-      "delta_z": 2.37
     },
     {
       "corpus": "hillenbrand",
       "track_id": "m41iy",
       "gender": "m",
       "praat_cpps_db": 28.03532179349883,
-      "syrinx_cpp_db": 2.8255777046958483,
-      "delta": 25.21,
-      "delta_z": 2.36
+      "syrinx_cpp_db": 1.7512855658422573,
+      "delta": 26.284,
+      "delta_z": 2.45
     },
     {
       "corpus": "hillenbrand",
       "track_id": "m30ah",
       "gender": "m",
       "praat_cpps_db": 27.282441075321536,
-      "syrinx_cpp_db": 2.156491492624132,
-      "delta": 25.126,
-      "delta_z": 2.34
-    },
-    {
-      "corpus": "hillenbrand",
-      "track_id": "m25er",
-      "gender": "m",
-      "praat_cpps_db": 26.674473581006282,
-      "syrinx_cpp_db": 1.9353923578966215,
-      "delta": 24.739,
-      "delta_z": 2.23
+      "syrinx_cpp_db": 1.1805828960615112,
+      "delta": 26.102,
+      "delta_z": 2.4
     },
     {
       "corpus": "hillenbrand",
       "track_id": "m48iy",
       "gender": "m",
       "praat_cpps_db": 27.81772026026747,
-      "syrinx_cpp_db": 3.080405806466836,
-      "delta": 24.737,
-      "delta_z": 2.23
+      "syrinx_cpp_db": 1.824720955251629,
+      "delta": 25.993,
+      "delta_z": 2.37
     },
     {
       "corpus": "hillenbrand",
-      "track_id": "m02aw",
+      "track_id": "m07ah",
       "gender": "m",
-      "praat_cpps_db": 26.62599235629946,
-      "syrinx_cpp_db": 2.0252165904083808,
-      "delta": 24.601,
-      "delta_z": 2.19
+      "praat_cpps_db": 27.193026414367342,
+      "syrinx_cpp_db": 1.2510857529962691,
+      "delta": 25.942,
+      "delta_z": 2.36
     },
     {
       "corpus": "hillenbrand",
-      "track_id": "m07ei",
+      "track_id": "m48er",
       "gender": "m",
-      "praat_cpps_db": 26.291889702140196,
-      "syrinx_cpp_db": 1.8296691841073904,
-      "delta": 24.462,
-      "delta_z": 2.15
+      "praat_cpps_db": 27.178768146862904,
+      "syrinx_cpp_db": 1.4341624223056333,
+      "delta": 25.745,
+      "delta_z": 2.3
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m48ah",
+      "gender": "m",
+      "praat_cpps_db": 26.899278669881266,
+      "syrinx_cpp_db": 1.340630355164868,
+      "delta": 25.559,
+      "delta_z": 2.25
     },
     {
       "corpus": "hillenbrand",
       "track_id": "m25eh",
       "gender": "m",
       "praat_cpps_db": 26.391288956847678,
-      "syrinx_cpp_db": 1.9975564448848757,
-      "delta": 24.394,
-      "delta_z": 2.13
+      "syrinx_cpp_db": 1.11041421100006,
+      "delta": 25.281,
+      "delta_z": 2.18
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w48ae",
+      "gender": "w",
+      "praat_cpps_db": 28.16295976984352,
+      "syrinx_cpp_db": 3.0133760507977123,
+      "delta": 25.15,
+      "delta_z": 2.14
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m02aw",
+      "gender": "m",
+      "praat_cpps_db": 26.62599235629946,
+      "syrinx_cpp_db": 1.4949096361544179,
+      "delta": 25.131,
+      "delta_z": 2.14
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m07ei",
+      "gender": "m",
+      "praat_cpps_db": 26.291889702140196,
+      "syrinx_cpp_db": 1.2671530307200118,
+      "delta": 25.025,
+      "delta_z": 2.11
     },
     {
       "corpus": "hillenbrand",
       "track_id": "m36er",
       "gender": "m",
       "praat_cpps_db": 26.689588559898002,
-      "syrinx_cpp_db": 2.331289600507286,
-      "delta": 24.358,
-      "delta_z": 2.12
+      "syrinx_cpp_db": 1.6824423691820667,
+      "delta": 25.007,
+      "delta_z": 2.1
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m25er",
+      "gender": "m",
+      "praat_cpps_db": 26.674473581006282,
+      "syrinx_cpp_db": 1.7052295636493553,
+      "delta": 24.969,
+      "delta_z": 2.09
     },
     {
       "corpus": "hillenbrand",
       "track_id": "m47ah",
       "gender": "m",
       "praat_cpps_db": 26.169394074761726,
-      "syrinx_cpp_db": 1.8317999875397342,
-      "delta": 24.338,
-      "delta_z": 2.12
+      "syrinx_cpp_db": 1.4567743656394812,
+      "delta": 24.713,
+      "delta_z": 2.03
     },
     {
       "corpus": "hillenbrand",
-      "track_id": "m50uh",
-      "gender": "m",
-      "praat_cpps_db": 25.70296015344713,
-      "syrinx_cpp_db": 1.4858609810950498,
-      "delta": 24.217,
-      "delta_z": 2.08
+      "track_id": "w29eh",
+      "gender": "w",
+      "praat_cpps_db": 26.760938184854943,
+      "syrinx_cpp_db": 2.047860404096631,
+      "delta": 24.713,
+      "delta_z": 2.03
     },
     {
       "corpus": "hillenbrand",
       "track_id": "m14eh",
       "gender": "m",
       "praat_cpps_db": 26.01637882773203,
-      "syrinx_cpp_db": 2.0637750526953567,
-      "delta": 23.953,
+      "syrinx_cpp_db": 1.3666338118060315,
+      "delta": 24.65,
       "delta_z": 2.01
     }
   ],
-  "outliers_count": 17,
+  "outliers_count": 18,
   "decision": "VALIDATED: overall r >= 0.5 -> algorithm correlates with Praat reference"
 }

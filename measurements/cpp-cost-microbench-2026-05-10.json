@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-10T16:11:45.641Z",
+  "timestamp": "2026-05-10T16:42:31.409Z",
   "config": {
     "SAMPLE_RATE": 48000,
     "CPP_INPUT_LEN": 2048,
@@ -19,25 +19,39 @@
         "timeSmoothFrames": 1,
         "quefrencySmoothBins": 1
       },
-      "median_ms": 0.12540000000001328,
-      "p95_ms": 0.21249999999999147,
-      "p99_ms": 0.2809000000000026,
-      "max_ms": 0.5915000000000248,
-      "mean_ms": 0.13859070000000037
+      "median_ms": 0.13110000000000355,
+      "p95_ms": 0.20300000000000296,
+      "p99_ms": 0.247099999999989,
+      "max_ms": 0.3937999999999988,
+      "mean_ms": 0.13953110000000007
     },
     {
-      "label": "Maryn default (Theil + exponential trend + 3+3 smoothing)",
+      "label": "production default (regression=linear, trend=linear, timeSmooth=1, quefrencySmooth=3)",
+      "opts": {
+        "regression": "linear",
+        "trend": "linear",
+        "timeSmoothFrames": 1,
+        "quefrencySmoothBins": 3
+      },
+      "median_ms": 0.1431999999999789,
+      "p95_ms": 0.1792000000000371,
+      "p99_ms": 0.22509999999999764,
+      "max_ms": 0.30330000000003565,
+      "mean_ms": 0.14517245000000056
+    },
+    {
+      "label": "full Maryn (Theil + exp + 3+3 smoothing)",
       "opts": {
         "regression": "theil",
         "trend": "exponential",
         "timeSmoothFrames": 3,
         "quefrencySmoothBins": 3
       },
-      "median_ms": 0.29340000000001965,
-      "p95_ms": 0.4782000000000153,
-      "p99_ms": 0.5729000000000042,
-      "max_ms": 0.7495000000000118,
-      "mean_ms": 0.32160709999999904
+      "median_ms": 0.31749999999999545,
+      "p95_ms": 0.5084000000000515,
+      "p99_ms": 0.616800000000012,
+      "max_ms": 0.7389000000000578,
+      "mean_ms": 0.34385430000000206
     },
     {
       "label": "Theil + linear trend (no exponential)",
@@ -47,11 +61,11 @@
         "timeSmoothFrames": 1,
         "quefrencySmoothBins": 1
       },
-      "median_ms": 0.2623000000000957,
-      "p95_ms": 0.4355000000000473,
-      "p99_ms": 0.5415000000000418,
-      "max_ms": 0.7339000000001761,
-      "mean_ms": 0.2912363000000004
+      "median_ms": 0.27670000000011896,
+      "p95_ms": 0.4420999999999822,
+      "p99_ms": 0.550499999999829,
+      "max_ms": 0.8208999999999378,
+      "mean_ms": 0.2972893499999987
     },
     {
       "label": "linear LSQ + exponential trend (Theil-free)",
@@ -61,11 +75,11 @@
         "timeSmoothFrames": 1,
         "quefrencySmoothBins": 1
       },
-      "median_ms": 0.1252999999999247,
-      "p95_ms": 0.1675000000000182,
-      "p99_ms": 0.22820000000001528,
-      "max_ms": 0.3341000000000349,
-      "mean_ms": 0.1320794000000019
+      "median_ms": 0.1273999999998523,
+      "p95_ms": 0.16620000000011714,
+      "p99_ms": 0.21550000000024738,
+      "max_ms": 0.37220000000002074,
+      "mean_ms": 0.13219185000000494
     },
     {
       "label": "Maryn − time smoothing",
@@ -75,11 +89,11 @@
         "timeSmoothFrames": 1,
         "quefrencySmoothBins": 3
       },
-      "median_ms": 0.2744999999999891,
-      "p95_ms": 0.3730000000000473,
-      "p99_ms": 0.4501000000000204,
-      "max_ms": 0.658900000000358,
-      "mean_ms": 0.28750755000000094
+      "median_ms": 0.30569999999988795,
+      "p95_ms": 0.49490000000014334,
+      "p99_ms": 0.5718999999999141,
+      "max_ms": 0.7878000000000611,
+      "mean_ms": 0.3230870000000057
     },
     {
       "label": "Maryn − quefrency smoothing",
@@ -89,11 +103,11 @@
         "timeSmoothFrames": 3,
         "quefrencySmoothBins": 1
       },
-      "median_ms": 0.2885999999998603,
-      "p95_ms": 0.42849999999998545,
-      "p99_ms": 0.5342000000000553,
-      "max_ms": 0.7881999999999607,
-      "mean_ms": 0.30441830000000275
+      "median_ms": 0.2880000000000109,
+      "p95_ms": 0.47139999999990323,
+      "p99_ms": 0.5498000000002321,
+      "max_ms": 0.7712000000001353,
+      "mean_ms": 0.30837514999999394
     }
   ]
 }

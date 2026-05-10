@@ -64,24 +64,29 @@ export const CPP_PREEMPH_ALPHA = 0.97;     // first-order HPF coefficient
 export const CPP_F0_MIN_HZ = 75;            // sets quefrency upper bound
 export const CPP_F0_MAX_HZ = 625;           // sets quefrency lower bound
 
-// Default option values. Originally set to full Maryn-style processing
-// (Theil + exponential + 3+3 smoothing) per the Option-A direction
-// (2026-05-10 morning); empirical isolation surfaced that time
-// smoothing across DSP frames substantially regresses Praat-comparison
-// correlation, while the other Maryn components (Theil, exponential
-// trend) produced near-baseline results — the audit-predicted
-// improvement from Theil-robust did NOT manifest empirically.
+// Default option values reflect the partial-A configuration selected
+// on 2026-05-10. Full Maryn CPPS was implemented and tested; component
+// isolation against the four Praat corpora showed:
+//   - Theil regression ≈ linear LSQ (audit's peak-influence prediction
+//     didn't manifest empirically)
+//   - Exponential trend slightly worse than linear
+//   - Time smoothing substantially regresses correlation (likely a
+//     methodology mismatch — Praat's 2 ms time-step vs Syrinx's 25 ms
+//     hop)
+//   - Quefrency smoothing (3-bin centered MA on cepstrum) IS the only
+//     Maryn-style addition that improves correlation: FDA jumps
+//     0.616 → 0.713, Vocadito 0.214 → 0.254, modest gains on PTDB-TUG,
+//     slight regression on Hillenbrand (data-limited short tracks).
 //
-// Reverted defaults to pre-Maryn (linear LSQ + linear trend + no
-// smoothing) on 2026-05-10 evening. Keeps the new algorithmic paths
-// (Theil, exponential, smoothing) as opt-in for measurement and
+// Defaults: linear regression + linear trend + no time smoothing +
+// 3-bin quefrency smoothing. Other paths stay opt-in for tests and
 // future investigation. See
 // measurements/cpp-maryn-component-isolation-2026-05-10.json for the
 // component-by-component data.
 export const CPP_DEFAULT_REGRESSION = "linear";
 export const CPP_DEFAULT_TREND = "linear";
 export const CPP_DEFAULT_TIME_SMOOTH_FRAMES = 1;
-export const CPP_DEFAULT_QUEFRENCY_SMOOTH_BINS = 1;
+export const CPP_DEFAULT_QUEFRENCY_SMOOTH_BINS = 3;
 export const CPP_THEIL_PAIRS = 500;          // sampled Theil pair count
 
 // Pre-allocated buffers to keep the hot path GC-free. Module-scoped
