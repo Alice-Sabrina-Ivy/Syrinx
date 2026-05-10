@@ -1,9 +1,11 @@
 // dsp-worker.js — Web Worker that performs DSP analysis off the main thread
-// Formant extraction (Burg LPC), spectral tilt, HNR, intensity. Pitch
+// Formant extraction (Burg LPC), spectral tilt, HNR, intensity, CPP. Pitch
 // detection lives in pitch-worker.js (SwiftF0 ONNX) since the Stage 4
 // cutover; the main thread relays the latest pitch back via "pitch-hint"
 // messages so this worker can use it for pitch-adaptive formant analysis
 // (Praat-style male-vs-female LPC order + formant ceiling selection).
+
+import { computeCPP } from "./cpp.js";
 
 const WINDOW_MS = 50;
 let sampleRate = 48000;
@@ -118,11 +120,12 @@ function processChunk(buffer, contextTime) {
   // Pitch is provided by pitch-worker via the "pitch-hint" message; the most
   // recent value is held in _lastKnownPitch. extractFormants accepts null
   // and falls back to the female-default LPC configuration.
-  let formants = null, spectralTilt = null, hnr = null;
+  let formants = null, spectralTilt = null, hnr = null, cpp = null;
   if (analysisCount % 6 === 0) {
     formants = extractFormants(window, _lastKnownPitch);
     spectralTilt = computeSpectralTilt(window, sampleRate);
     hnr = computeHNR(window, sampleRate);
+    cpp = computeCPP(window, sampleRate);
   }
   analysisCount++;
 
@@ -159,7 +162,7 @@ function processChunk(buffer, contextTime) {
       // useAudioPipeline.js merges the pitch-worker's most-recent pitch into
       // each analysis frame.
       pitch: null,
-      intensity, formants, spectralTilt, hnr,
+      intensity, formants, spectralTilt, hnr, cpp,
       // Absolute timestamp comparable across threads
       absoluteTime: performance.timeOrigin + performance.now(),
       // Diagnostic fields (always present so the main-thread shape doesn't
