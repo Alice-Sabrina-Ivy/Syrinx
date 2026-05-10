@@ -34,6 +34,9 @@ import {
   setMlModel,
   pushPitchInference,
   setPitchModel,
+  noteVocalWeightFrame,
+  pushVocalWeightEmit,
+  resetVocalWeightCounters,
 } from "../diag/diag";
 
 const SILENCE_THRESHOLD_DB = -50;
@@ -220,6 +223,7 @@ export function useAudioPipeline() {
     cppAggregatorRef.current = new VocalWeightAggregator();
     cppBaselineRef.current = new VocalWeightBaseline();
     lastCppAggregateRef.current = { time: -1 };
+    if (DIAG_ENABLED) resetVocalWeightCounters();
 
     setState((s) => ({ ...s, status: "requesting", error: null }));
 
@@ -832,20 +836,34 @@ export function useAudioPipeline() {
         voiced: !isQuiet,
       });
     }
+    if (DIAG_ENABLED) noteVocalWeightFrame(!isQuiet);
     // Feed locked-or-warming baseline. Only voiced aggregates contribute
     // to the baseline so silence/breath don't bias μ. Once baseline locks,
     // accumulate() is a no-op.
-    if (
-      cppAggregate &&
-      cppAggregate.time !== lastCppAggregateRef.current.time &&
-      !isQuiet &&
-      cppBaselineRef.current
-    ) {
+    const isFreshAggregate =
+      cppAggregate && cppAggregate.time !== lastCppAggregateRef.current.time;
+    if (isFreshAggregate && !isQuiet && cppBaselineRef.current) {
       cppBaselineRef.current.accumulate({
         time: cppAggregate.time,
         cpp: cppAggregate.cpp,
       });
       lastCppAggregateRef.current = cppAggregate;
+    }
+    if (DIAG_ENABLED && isFreshAggregate) {
+      const baseline = cppBaselineRef.current;
+      pushVocalWeightEmit({
+        tEpochMs: performance.timeOrigin + performance.now(),
+        aggregateTime: cppAggregate.time,
+        cpp: cppAggregate.cpp,
+        voicedFrames: cppAggregate.voicedFrames,
+        baselineProgress: baseline ? baseline.progress() : 0,
+        baselineSampleCount: baseline ? baseline.state().sampleCount : 0,
+        baselineSampleTarget: baseline ? baseline.state().sampleTarget : null,
+        baselineLocked: baseline ? baseline.ready() : false,
+        baselineMu: baseline ? baseline.mu() : null,
+        baselineSigma: baseline ? baseline.sigma() : null,
+        sigmaDelta: baseline ? baseline.sigmaDelta(cppAggregate.cpp) : null,
+      });
     }
 
     if (isQuiet) {
