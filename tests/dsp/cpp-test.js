@@ -29,7 +29,27 @@
 // Usage: node tests/dsp/cpp-test.js
 // Exit code 0 on all pass, 1 on any failure.
 
-import { computeCPP, CPP_INPUT_LEN, CPP_MIN_INPUT_LEN } from "../../src/dsp/cpp.js";
+import { computeCPP, resetCppState, CPP_INPUT_LEN, CPP_MIN_INPUT_LEN } from "../../src/dsp/cpp.js";
+
+// Pre-Maryn opts: linear LSQ + linear trend, no smoothing. Preserves
+// the absolute-value calibration of the original test thresholds. The
+// post-Maryn defaults (Theil + exponential trend + smoothing)
+// produce different absolute values; those are exercised in the
+// "Maryn defaults" test block at the end of this file.
+const LEGACY_OPTS = {
+  regression: "linear",
+  trend: "linear",
+  timeSmoothFrames: 1,
+  quefrencySmoothBins: 1,
+};
+
+// Compute CPP with legacy opts and a fresh module state — every test
+// case starts with a clean cepstrum-buffer / Theil-pair state so
+// time-domain smoothing across test cases doesn't bleed values.
+function legacyCpp(buffer, sr) {
+  resetCppState();
+  return computeCPP(buffer, sr, LEGACY_OPTS);
+}
 
 const SAMPLE_RATE = 48000;
 
@@ -178,13 +198,13 @@ console.log("CPP — silent / degenerate inputs");
 {
   // Buffer below the minimum floor (CPP_MIN_INPUT_LEN = 512)
   const tooShort = new Float64Array(256);
-  check("returns null for buffer < CPP_MIN_INPUT_LEN", computeCPP(tooShort, SAMPLE_RATE) === null);
+  check("returns null for buffer < CPP_MIN_INPUT_LEN", legacyCpp(tooShort, SAMPLE_RATE) === null);
 
   // Buffer between MIN_INPUT_LEN and INPUT_LEN — should compute, not return null
   const partial = new Float64Array(800);
   // Fill with a low-amplitude pulse train to avoid the all-zero degeneracy
   for (let t = 0; t < 800; t += 400) partial[t] = 0.5;
-  const cppPartial = computeCPP(partial, 16000);
+  const cppPartial = legacyCpp(partial, 16000);
   check(
     "buffer ≥ CPP_MIN_INPUT_LEN computes (zero-padded for FFT)",
     cppPartial === null || isFinite(cppPartial),
@@ -193,7 +213,7 @@ console.log("CPP — silent / degenerate inputs");
 
   // All-zero buffer
   const zeros = new Float64Array(CPP_INPUT_LEN);
-  const cppZeros = computeCPP(zeros, SAMPLE_RATE);
+  const cppZeros = legacyCpp(zeros, SAMPLE_RATE);
   check(
     "all-zero input does not crash, returns finite or null",
     cppZeros === null || isFinite(cppZeros),
@@ -214,7 +234,7 @@ console.log("\nCPP — pure pulse train (clean periodicity)");
   // The directional check (clean > noise) IS load-bearing — see
   // the SNR-monotonicity block below.
   const sig = pulseTrain(120, SAMPLE_RATE, CPP_INPUT_LEN);
-  const cpp = computeCPP(sig, SAMPLE_RATE);
+  const cpp = legacyCpp(sig, SAMPLE_RATE);
   check("pulse train produces non-null CPP", cpp !== null);
   check(
     "pulse train CPP > 8 dB (cepstral peak well above regression baseline)",
@@ -226,7 +246,7 @@ console.log("\nCPP — pure pulse train (clean periodicity)");
 console.log("\nCPP — pure white noise (very low CPP expected)");
 {
   const noise = addNoise(new Float64Array(CPP_INPUT_LEN), 0);  // pure noise
-  const cpp = computeCPP(noise, SAMPLE_RATE);
+  const cpp = legacyCpp(noise, SAMPLE_RATE);
   check("noise CPP is finite", cpp === null || isFinite(cpp));
   check(
     "noise CPP < 5 dB (no clean periodic peak)",
@@ -239,7 +259,7 @@ console.log("\nCPP — pulse train + decreasing SNR monotonically reduces CPP");
 {
   const sig = pulseTrain(120, SAMPLE_RATE, CPP_INPUT_LEN);
   const snrLevels = [Infinity, 20, 10, 0, -10];
-  const cppVals = snrLevels.map((snr) => computeCPP(addNoise(sig, snr), SAMPLE_RATE));
+  const cppVals = snrLevels.map((snr) => legacyCpp(addNoise(sig, snr), SAMPLE_RATE));
   cppVals.forEach((v, i) => {
     check(
       `CPP at SNR=${snrLevels[i]} dB is non-null`,
@@ -276,7 +296,7 @@ console.log("\nCPP — synthetic vowel (formants don't kill CPP)");
   // sits a bit below pure-pulse-train CPP because the tilt and
   // resonator filters smooth out the harmonic peaks slightly.
   const sig = syntheticVowel(120, [700, 1200, 2600], [80, 90, 120], SAMPLE_RATE, CPP_INPUT_LEN);
-  const cpp = computeCPP(sig, SAMPLE_RATE);
+  const cpp = legacyCpp(sig, SAMPLE_RATE);
   check("synthetic vowel CPP non-null", cpp !== null);
   check(
     "synthetic vowel CPP > 7 dB (formants attenuate but don't destroy peak)",
@@ -310,8 +330,8 @@ console.log("\nCPP — F0-independence sanity (low vs high F0 vowel)");
   // an absolute scale.
   const lowF0 = syntheticVowel(80, [700, 1200, 2600], [80, 90, 120], SAMPLE_RATE, CPP_INPUT_LEN);
   const highF0 = syntheticVowel(240, [700, 1200, 2600], [80, 90, 120], SAMPLE_RATE, CPP_INPUT_LEN);
-  const cppLow = computeCPP(lowF0, SAMPLE_RATE);
-  const cppHigh = computeCPP(highF0, SAMPLE_RATE);
+  const cppLow = legacyCpp(lowF0, SAMPLE_RATE);
+  const cppHigh = legacyCpp(highF0, SAMPLE_RATE);
   check("both F0 vowels produce non-null CPP", cppLow !== null && cppHigh !== null);
   check(
     "low-F0 vs high-F0 CPP within ±9 dB (linear-LSQ peak-influence at low F0)",
@@ -342,8 +362,8 @@ console.log("\nCPP — modal vs breathy phonation (directional check)");
   for (let t = 0; t < trials; t++) {
     const modal = breathyVowel(120, [700, 1200, 2600], [80, 90, 120], SAMPLE_RATE, CPP_INPUT_LEN, 0);
     const breathy = breathyVowel(120, [700, 1200, 2600], [80, 90, 120], SAMPLE_RATE, CPP_INPUT_LEN, 0.4);
-    const cm = computeCPP(modal, SAMPLE_RATE);
-    const cb = computeCPP(breathy, SAMPLE_RATE);
+    const cm = legacyCpp(modal, SAMPLE_RATE);
+    const cb = legacyCpp(breathy, SAMPLE_RATE);
     if (cm !== null) modalSum += cm;
     if (cb !== null) breathySum += cb;
   }
@@ -358,6 +378,114 @@ console.log("\nCPP — modal vs breathy phonation (directional check)");
     "modal CPP exceeds breathy CPP by > 3 dB (directional clarity)",
     modalAvg - breathyAvg > 3,
     `delta=${(modalAvg - breathyAvg).toFixed(2)} dB`,
+  );
+}
+
+// ============================================================
+//  Production defaults (post-2026-05-10 isolation): currently linear
+//  LSQ + linear trend + no smoothing — same as legacy. The Maryn
+//  components (Theil, exponential trend, smoothing) are opt-in but
+//  not default; isolation analysis showed time smoothing regressed
+//  Praat correlation, the other components were ~equal to baseline.
+// ============================================================
+
+console.log("\nCPP production defaults — sanity checks");
+{
+  resetCppState();
+  // Pulse train + tilt + formants — use as repeated input to populate
+  // the time-smoothing rolling buffer with consistent context.
+  const sig = syntheticVowel(120, [700, 1200, 2600], [80, 90, 120], SAMPLE_RATE, CPP_INPUT_LEN);
+  let cpp = null;
+  for (let i = 0; i < 4; i++) cpp = computeCPP(sig, SAMPLE_RATE);
+  check("Maryn-defaults computeCPP returns finite value", cpp !== null && isFinite(cpp));
+  check(
+    "production-defaults CPP is positive (peak above baseline)",
+    cpp !== null && cpp > 0,
+    `got ${cpp !== null ? cpp.toFixed(2) : "null"} dB`,
+  );
+
+  // Modal vs breathy: directional invariant must hold under Maryn
+  // defaults (the load-bearing claim for Aaen 2025 alignment).
+  const trials = 5;
+  let modalSum = 0, breathySum = 0;
+  for (let t = 0; t < trials; t++) {
+    resetCppState();
+    let modal = null;
+    for (let f = 0; f < 4; f++) {
+      modal = computeCPP(
+        breathyVowel(120, [700, 1200, 2600], [80, 90, 120], SAMPLE_RATE, CPP_INPUT_LEN, 0),
+        SAMPLE_RATE,
+      );
+    }
+    resetCppState();
+    let breathy = null;
+    for (let f = 0; f < 4; f++) {
+      breathy = computeCPP(
+        breathyVowel(120, [700, 1200, 2600], [80, 90, 120], SAMPLE_RATE, CPP_INPUT_LEN, 0.4),
+        SAMPLE_RATE,
+      );
+    }
+    if (modal !== null) modalSum += modal;
+    if (breathy !== null) breathySum += breathy;
+  }
+  const modalAvg = modalSum / trials;
+  const breathyAvg = breathySum / trials;
+  check(
+    "production-defaults: modal CPP > breathy CPP",
+    modalAvg > breathyAvg,
+    `modal=${modalAvg.toFixed(2)}, breathy=${breathyAvg.toFixed(2)}`,
+  );
+  // Note: Maryn-default absolute values are smaller than legacy
+  // values for the same synthetic input (different baseline math).
+  // Directional gap requirement is therefore looser — > 0.3 dB.
+  check(
+    "production-defaults: directional gap > 0.3 dB",
+    modalAvg - breathyAvg > 0.3,
+    `delta=${(modalAvg - breathyAvg).toFixed(2)} dB`,
+  );
+}
+
+console.log("\nresetCppState clears time-smoothing buffer");
+{
+  resetCppState();
+  const sig = syntheticVowel(120, [700, 1200, 2600], [80, 90, 120], SAMPLE_RATE, CPP_INPUT_LEN);
+  // Compute a few times to populate the buffer
+  for (let i = 0; i < 3; i++) computeCPP(sig, SAMPLE_RATE);
+  // After reset, very-first call should have no buffered context
+  resetCppState();
+  const firstAfterReset = computeCPP(sig, SAMPLE_RATE);
+  // Without buffered context, the first call uses only its own
+  // cepstrum (no smoothing). Should still be a valid number.
+  check(
+    "first call after reset returns valid CPP",
+    firstAfterReset !== null && isFinite(firstAfterReset),
+    `got ${firstAfterReset}`,
+  );
+}
+
+console.log("\nTheil regression handles flat-baseline + peak input");
+{
+  // Synthesize a contrived "cepstrum" (passed via legacy linear opt
+  // for control): mostly flat baseline + one strong outlier. With
+  // linear LSQ the peak distorts the slope; with Theil it shouldn't.
+  // Verify by comparing slopes derived from the function's behavior.
+  resetCppState();
+  const cleanPulse = pulseTrain(120, SAMPLE_RATE, CPP_INPUT_LEN);
+  const linearCpp = computeCPP(cleanPulse, SAMPLE_RATE, {
+    ...LEGACY_OPTS,
+    regression: "linear",
+  });
+  resetCppState();
+  const theilCpp = computeCPP(cleanPulse, SAMPLE_RATE, {
+    ...LEGACY_OPTS,
+    regression: "theil",
+  });
+  check("linear regression returns finite CPP", linearCpp !== null && isFinite(linearCpp));
+  check("Theil regression returns finite CPP", theilCpp !== null && isFinite(theilCpp));
+  check(
+    "Theil CPP > linear CPP for clean pulse train (peak-influence absent in Theil)",
+    theilCpp > linearCpp,
+    `theil=${theilCpp.toFixed(2)}, linear=${linearCpp.toFixed(2)}`,
   );
 }
 

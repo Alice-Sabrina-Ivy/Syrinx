@@ -24,7 +24,7 @@
 // Output: measurements/cpp-praat-methodology-probe-2026-05-10.json
 
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { computeCPP } from "../../src/dsp/cpp.js";
+import { computeCPP, resetCppState } from "../../src/dsp/cpp.js";
 import { loadHillenbrand, loadPtdbTug, loadVocadito, loadFda } from "./data/corpora.js";
 
 const PRAAT_PATH = "measurements/praat-cpps-corpus-2026-05-10.json";
@@ -71,6 +71,7 @@ function pearson(xs, ys) {
 // Compute per-frame CPP across a track at the specified frame
 // divisor. Returns the array of per-frame CPP values.
 function computeTrackCpps(track, frameDivisor) {
+  resetCppState();   // fresh time-smoothing buffer per track
   const { samples, sampleRate } = track;
   const chunkSize = Math.floor(sampleRate * CHUNK_MS / 1000);
   const windowSize = Math.floor(sampleRate * WINDOW_MS / 1000);
