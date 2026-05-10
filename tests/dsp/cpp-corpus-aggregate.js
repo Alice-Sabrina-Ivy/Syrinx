@@ -25,7 +25,9 @@ import { loadHillenbrand, loadPtdbTug, loadVocadito, loadFda } from "./data/corp
 
 const CHUNK_MS = 25;
 const WINDOW_MS = 50;
-const CPP_FRAME_DIVISOR = 6;
+// Mirror production: CPP runs every frame (no per-6th-frame
+// throttling) since the 2026-05-10 methodology iteration.
+const CPP_FRAME_DIVISOR = 1;
 
 function median(arr) {
   if (arr.length === 0) return null;

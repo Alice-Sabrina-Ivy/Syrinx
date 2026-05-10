@@ -125,8 +125,16 @@ function processChunk(buffer, contextTime) {
     formants = extractFormants(window, _lastKnownPitch);
     spectralTilt = computeSpectralTilt(window, sampleRate);
     hnr = computeHNR(window, sampleRate);
-    cpp = computeCPP(window, sampleRate);
   }
+  // CPP runs every frame (not throttled like the others). Original
+  // 6th-frame cadence dropped during the WS2 methodology investigation
+  // (2026-05-10): per-frame CPP gave Praat-comparison correlation
+  // r=0.62 on PTDB-TUG / r=0.62 on FDA vs r=0.46/0.48 at 6th-frame
+  // cadence. Each aggregator emit now averages ~40 CPP samples per 1-s
+  // window instead of ~7 — quieter emits, better baseline σ. Cost:
+  // ~80 ms/s CPU on desktop vs ~13 ms/s previously, both well within
+  // budget. See measurements/cpp-praat-methodology-probe-2026-05-10.json.
+  cpp = computeCPP(window, sampleRate);
   analysisCount++;
 
   const analysisEndTime = performance.now();

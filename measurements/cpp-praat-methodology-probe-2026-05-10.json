@@ -1,0 +1,389 @@
+{
+  "timestamp": "2026-05-10T15:41:39.556Z",
+  "config": {
+    "CHUNK_MS": 25,
+    "WINDOW_MS": 50,
+    "divisorVariants": [
+      1,
+      2,
+      3,
+      6
+    ],
+    "aggVariants": [
+      "median",
+      "mean",
+      "trimmed_mean_10",
+      "trimmed_mean_25"
+    ]
+  },
+  "results": [
+    {
+      "divisor": 1,
+      "aggregation": "median",
+      "overallR": 0.832,
+      "perCorpus": {
+        "hillenbrand": {
+          "n": 200,
+          "r": 0.387
+        },
+        "ptdb-tug": {
+          "n": 180,
+          "r": 0.624
+        },
+        "vocadito": {
+          "n": 40,
+          "r": 0.214
+        },
+        "fda": {
+          "n": 100,
+          "r": 0.616
+        }
+      }
+    },
+    {
+      "divisor": 1,
+      "aggregation": "mean",
+      "overallR": 0.873,
+      "perCorpus": {
+        "hillenbrand": {
+          "n": 200,
+          "r": 0.363
+        },
+        "ptdb-tug": {
+          "n": 180,
+          "r": 0.754
+        },
+        "vocadito": {
+          "n": 40,
+          "r": 0.157
+        },
+        "fda": {
+          "n": 100,
+          "r": 0.24
+        }
+      }
+    },
+    {
+      "divisor": 1,
+      "aggregation": "trimmed_mean_10",
+      "overallR": 0.873,
+      "perCorpus": {
+        "hillenbrand": {
+          "n": 200,
+          "r": 0.368
+        },
+        "ptdb-tug": {
+          "n": 180,
+          "r": 0.807
+        },
+        "vocadito": {
+          "n": 40,
+          "r": 0.164
+        },
+        "fda": {
+          "n": 100,
+          "r": 0.31
+        }
+      }
+    },
+    {
+      "divisor": 1,
+      "aggregation": "trimmed_mean_25",
+      "overallR": 0.866,
+      "perCorpus": {
+        "hillenbrand": {
+          "n": 200,
+          "r": 0.387
+        },
+        "ptdb-tug": {
+          "n": 180,
+          "r": 0.73
+        },
+        "vocadito": {
+          "n": 40,
+          "r": 0.181
+        },
+        "fda": {
+          "n": 100,
+          "r": 0.501
+        }
+      }
+    },
+    {
+      "divisor": 2,
+      "aggregation": "median",
+      "overallR": 0.814,
+      "perCorpus": {
+        "hillenbrand": {
+          "n": 200,
+          "r": 0.355
+        },
+        "ptdb-tug": {
+          "n": 180,
+          "r": 0.568
+        },
+        "vocadito": {
+          "n": 40,
+          "r": 0.218
+        },
+        "fda": {
+          "n": 100,
+          "r": 0.578
+        }
+      }
+    },
+    {
+      "divisor": 2,
+      "aggregation": "mean",
+      "overallR": 0.867,
+      "perCorpus": {
+        "hillenbrand": {
+          "n": 200,
+          "r": 0.329
+        },
+        "ptdb-tug": {
+          "n": 180,
+          "r": 0.762
+        },
+        "vocadito": {
+          "n": 40,
+          "r": 0.158
+        },
+        "fda": {
+          "n": 100,
+          "r": 0.221
+        }
+      }
+    },
+    {
+      "divisor": 2,
+      "aggregation": "trimmed_mean_10",
+      "overallR": 0.871,
+      "perCorpus": {
+        "hillenbrand": {
+          "n": 200,
+          "r": 0.348
+        },
+        "ptdb-tug": {
+          "n": 180,
+          "r": 0.817
+        },
+        "vocadito": {
+          "n": 40,
+          "r": 0.165
+        },
+        "fda": {
+          "n": 100,
+          "r": 0.298
+        }
+      }
+    },
+    {
+      "divisor": 2,
+      "aggregation": "trimmed_mean_25",
+      "overallR": 0.859,
+      "perCorpus": {
+        "hillenbrand": {
+          "n": 200,
+          "r": 0.363
+        },
+        "ptdb-tug": {
+          "n": 180,
+          "r": 0.689
+        },
+        "vocadito": {
+          "n": 40,
+          "r": 0.182
+        },
+        "fda": {
+          "n": 100,
+          "r": 0.474
+        }
+      }
+    },
+    {
+      "divisor": 3,
+      "aggregation": "median",
+      "overallR": 0.81,
+      "perCorpus": {
+        "hillenbrand": {
+          "n": 200,
+          "r": 0.338
+        },
+        "ptdb-tug": {
+          "n": 180,
+          "r": 0.421
+        },
+        "vocadito": {
+          "n": 40,
+          "r": 0.197
+        },
+        "fda": {
+          "n": 100,
+          "r": 0.62
+        }
+      }
+    },
+    {
+      "divisor": 3,
+      "aggregation": "mean",
+      "overallR": 0.857,
+      "perCorpus": {
+        "hillenbrand": {
+          "n": 200,
+          "r": 0.296
+        },
+        "ptdb-tug": {
+          "n": 180,
+          "r": 0.736
+        },
+        "vocadito": {
+          "n": 40,
+          "r": 0.16
+        },
+        "fda": {
+          "n": 100,
+          "r": 0.238
+        }
+      }
+    },
+    {
+      "divisor": 3,
+      "aggregation": "trimmed_mean_10",
+      "overallR": 0.866,
+      "perCorpus": {
+        "hillenbrand": {
+          "n": 200,
+          "r": 0.304
+        },
+        "ptdb-tug": {
+          "n": 180,
+          "r": 0.764
+        },
+        "vocadito": {
+          "n": 40,
+          "r": 0.165
+        },
+        "fda": {
+          "n": 100,
+          "r": 0.324
+        }
+      }
+    },
+    {
+      "divisor": 3,
+      "aggregation": "trimmed_mean_25",
+      "overallR": 0.856,
+      "perCorpus": {
+        "hillenbrand": {
+          "n": 200,
+          "r": 0.326
+        },
+        "ptdb-tug": {
+          "n": 180,
+          "r": 0.593
+        },
+        "vocadito": {
+          "n": 40,
+          "r": 0.177
+        },
+        "fda": {
+          "n": 100,
+          "r": 0.497
+        }
+      }
+    },
+    {
+      "divisor": 6,
+      "aggregation": "median",
+      "overallR": 0.735,
+      "perCorpus": {
+        "hillenbrand": {
+          "n": 200,
+          "r": 0.159
+        },
+        "ptdb-tug": {
+          "n": 180,
+          "r": 0.459
+        },
+        "vocadito": {
+          "n": 40,
+          "r": 0.212
+        },
+        "fda": {
+          "n": 100,
+          "r": 0.482
+        }
+      }
+    },
+    {
+      "divisor": 6,
+      "aggregation": "mean",
+      "overallR": 0.836,
+      "perCorpus": {
+        "hillenbrand": {
+          "n": 200,
+          "r": 0.24
+        },
+        "ptdb-tug": {
+          "n": 180,
+          "r": 0.742
+        },
+        "vocadito": {
+          "n": 40,
+          "r": 0.162
+        },
+        "fda": {
+          "n": 100,
+          "r": 0.248
+        }
+      }
+    },
+    {
+      "divisor": 6,
+      "aggregation": "trimmed_mean_10",
+      "overallR": 0.844,
+      "perCorpus": {
+        "hillenbrand": {
+          "n": 200,
+          "r": 0.24
+        },
+        "ptdb-tug": {
+          "n": 180,
+          "r": 0.752
+        },
+        "vocadito": {
+          "n": 40,
+          "r": 0.168
+        },
+        "fda": {
+          "n": 100,
+          "r": 0.302
+        }
+      }
+    },
+    {
+      "divisor": 6,
+      "aggregation": "trimmed_mean_25",
+      "overallR": 0.831,
+      "perCorpus": {
+        "hillenbrand": {
+          "n": 200,
+          "r": 0.261
+        },
+        "ptdb-tug": {
+          "n": 180,
+          "r": 0.585
+        },
+        "vocadito": {
+          "n": 40,
+          "r": 0.183
+        },
+        "fda": {
+          "n": 100,
+          "r": 0.423
+        }
+      }
+    }
+  ]
+}
