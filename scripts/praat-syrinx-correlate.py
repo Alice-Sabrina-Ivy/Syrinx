@@ -237,9 +237,9 @@ def main():
     if overall_r is None:
         decision = "STOP: insufficient data"
     elif overall_r >= 0.5:
-        decision = "VALIDATED: overall r ≥ 0.5 → algorithm correlates with Praat reference"
+        decision = "VALIDATED: overall r >= 0.5 -> algorithm correlates with Praat reference"
     elif overall_r >= 0.2:
-        decision = "WEAK: 0.2 ≤ r < 0.5 — surface findings; investigate per-bucket"
+        decision = "WEAK: 0.2 <= r < 0.5 -- surface findings; investigate per-bucket"
     else:
         decision = "FAIL: r < 0.2 — across-the-board correlation breakdown"
     # Refine with low-F0 specifically (audit-predicted regression bias)
@@ -250,12 +250,12 @@ def main():
 
     print()
     print(f"Overall Pearson r: {overall_r:.4f}" if overall_r is not None else "Overall: insufficient data")
-    print(f"Bias (Praat − Syrinx) mean: {bias_mean:.3f} dB")
+    print(f"Bias (Praat - Syrinx) mean: {bias_mean:.3f} dB")
     print()
     print("Per-corpus:")
     for c, info in per_corpus.items():
         print(f"  {c}: n={info['n']}, r={info['pearson_r']}, "
-              f"Praat μ={info['praat_dist']['mean']}, Syrinx μ={info['syrinx_dist']['mean']}")
+              f"Praat mean={info['praat_dist']['mean']}, Syrinx mean={info['syrinx_dist']['mean']}")
     print()
     print("Per-gender:")
     for g, info in per_gender.items():
@@ -267,11 +267,11 @@ def main():
             print(f"  {b} Hz: n={info['n']}, r=insufficient")
         else:
             print(f"  {b} Hz: n={info['n']}, r={info['pearson_r']}, "
-                  f"Praat μ={info['praat_mean']}, Syrinx μ={info['syrinx_mean']}, bias={info['bias_mean']}")
+                  f"Praat mean={info['praat_mean']}, Syrinx mean={info['syrinx_mean']}, bias={info['bias_mean']}")
     print()
-    print(f"Outliers (|delta| > 2σ): {len(outliers)} tracks")
+    print(f"Outliers (|delta| > 2 stdev): {len(outliers)} tracks")
     for o in outliers[:10]:
-        print(f"  {o['corpus']}/{o['track_id']} ({o['gender']}): Praat={o['praat_cpps_db']}, Syrinx={o['syrinx_cpp_db']}, Δ={o['delta']} (z={o['delta_z']})")
+        print(f"  {o['corpus']}/{o['track_id']} ({o['gender']}): Praat={o['praat_cpps_db']}, Syrinx={o['syrinx_cpp_db']}, delta={o['delta']} (z={o['delta_z']})")
     print()
     print(f"P5 decision: {decision}")
 
