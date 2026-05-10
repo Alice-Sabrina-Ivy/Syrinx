@@ -5,7 +5,7 @@
 // messages so this worker can use it for pitch-adaptive formant analysis
 // (Praat-style male-vs-female LPC order + formant ceiling selection).
 
-import { computeCPP } from "./cpp.js";
+import { computeCPP, resetCppState } from "./cpp.js";
 
 const WINDOW_MS = 50;
 let sampleRate = 48000;
@@ -134,7 +134,11 @@ function processChunk(buffer, contextTime) {
   // window instead of ~7 — quieter emits, better baseline σ. Cost:
   // ~80 ms/s CPU on desktop vs ~13 ms/s previously, both well within
   // budget. See measurements/cpp-praat-methodology-probe-2026-05-10.json.
+  // Maryn-style processing (Theil + exponential trend + smoothing)
+  // adds ~0.17 ms/frame over legacy LSQ. Well within budget.
+  const cppT0 = _diag ? performance.now() : 0;
   cpp = computeCPP(window, sampleRate);
+  const cppMs = _diag ? performance.now() - cppT0 : null;
   analysisCount++;
 
   const analysisEndTime = performance.now();
@@ -158,6 +162,10 @@ function processChunk(buffer, contextTime) {
       // handoffToMainMs (DSP postMessage → main onmessage entry).
       chunkReceiveEpochMs,
       postedAtEpochMs: performance.timeOrigin + performance.now(),
+      // Per-frame computeCPP duration (Maryn-style). Surfaces in
+      // diag snapshots so users can verify the per-frame cost
+      // measurement (Step 2a) holds in real browser execution.
+      cppMs,
     };
   }
 
@@ -218,6 +226,10 @@ self.onmessage = (e) => {
     _burgANew = new Float64Array(MAX_LPC_ORDER + 1);
     _rootsRe = new Float64Array(MAX_LPC_ORDER);
     _rootsIm = new Float64Array(MAX_LPC_ORDER);
+
+    // Reset cpp.js module state (cepstrum-time-smoothing buffer +
+    // sampled-Theil pair indices) so a worker re-init starts fresh.
+    resetCppState();
 
     // Init-ack so the main thread can confirm the worker received the
     // diag flag and set up its buffers. Always sent regardless of diag.

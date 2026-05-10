@@ -19,7 +19,7 @@
 // Output: measurements/syrinx-cpp-corpus-2026-05-10.json
 
 import { writeFileSync, mkdirSync } from "node:fs";
-import { computeCPP } from "../../src/dsp/cpp.js";
+import { computeCPP, resetCppState } from "../../src/dsp/cpp.js";
 import { VocalWeightAggregator } from "../../src/audio/vocal-weight-aggregator.js";
 import { loadHillenbrand, loadPtdbTug, loadVocadito, loadFda } from "./data/corpora.js";
 
@@ -37,6 +37,12 @@ function median(arr) {
 }
 
 function processTrack(track) {
+  // Reset module-level cepstrum-time-smoothing buffer between tracks
+  // so the Maryn-style time smoothing doesn't bleed cepstra across
+  // unrelated track contexts. Production maintains state within a
+  // session; the corpus harness's tracks-as-sessions metaphor needs
+  // the equivalent reset per "session" boundary.
+  resetCppState();
   const { samples, sampleRate } = track;
   const chunkSize = Math.floor(sampleRate * CHUNK_MS / 1000);
   const windowSize = Math.floor(sampleRate * WINDOW_MS / 1000);
