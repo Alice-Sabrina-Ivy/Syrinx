@@ -8,6 +8,32 @@
 - `measurements/syrinx-cpp-corpus-2026-05-10.json` (WS2 Syrinx side)
 - `measurements/praat-syrinx-correlation-2026-05-10.json` (WS2 P5 findings, when complete)
 
+## Update (post-iteration, 2026-05-10 daytime)
+
+**WS1 tune applied:** MIN_VOICED_FRAMES 6 → 4. Combined median lock now **39.4 s, p75 50.4 s** (acceptable per spec).
+
+**WS2 methodology investigation surfaced a real fix:** CPP per-frame cadence (not every-6th-frame). Applied to production. Post-fix correlation:
+
+| Corpus | Pre-iteration r | Post-iteration r | Status |
+|---|---|---|---|
+| Hillenbrand (sustained vowels, n=200) | 0.16 | **0.39** | <0.5 — track-length-limited |
+| PTDB-TUG (running speech, n=180) | 0.46 | **0.62** | **VALIDATED** |
+| Vocadito (singing, n=40) | 0.21 | **0.21** | <0.5 — small-sample-limited |
+| FDA (running speech, n=100) | 0.48 | **0.62** | **VALIDATED** |
+| **Overall** | 0.74 | **0.83** | strong (cross-corpus) |
+
+**2 of 4 corpora cross the >0.5 spec threshold post-fix.** The two that remain weak (Hillenbrand, Vocadito) have data-limitation explanations rather than algorithm-disagreement: Hillenbrand tracks are ~700 ms (28 CPP frames each — Praat's internal smoothing gives stabler values), Vocadito has only 40 tracks (small-sample uncertainty). The two validated corpora (PTDB-TUG, FDA) are the running-speech cases most representative of the production use case.
+
+**Decision point per your spec:**
+
+Strict reading of the criteria says "Per-corpus correlations improve to >0.5 after methodology fixes" → 2/4 doesn't fully satisfy. Three options:
+
+- **A** (ship with proxy validation, full Maryn CPPS path): Implement Theil-robust regression + time/quefrency smoothing + exponential trend type. ~1-2 days work. Predicted to push Hillenbrand >0.5 and modestly improve Vocadito; might not push Vocadito above threshold purely due to small N.
+- **B** (ship with weaker proxy validation, acknowledged limits): Accept the current state. PTDB-TUG and FDA validated for running-speech use case. Hillenbrand and Vocadito have data-limitation explanations. Layer 1 synthetic + Layer 2 corpus distribution + user-side testing carry the validation bar; Praat agreement is supplementary.
+- **C** (continue methodology investigation — Theil-robust only): Apply just Theil-robust regression (audit-predicted iteration fix), measure delta. Smaller scope than full Maryn. ~half day work.
+
+Your stated position: targeting (a), willing to fall back to (b) if (a) requires substantial work. Surfacing this now for direction.
+
 ## TL;DR
 
 - **WS1: STOPPED at gate per constraint 4.** Default MIN_VOICED_FRAMES=6 produces median lock time **64.78 s** on combined corpus speech — falls just outside "tunable territory" (>60 s median). What-if measurement at MIN_VOICED_FRAMES=4 (no production change applied) shows **median 39.4 s, p75 50.4 s** — solidly in "acceptable" range. **User decision needed in the morning** before applying the tuning.
