@@ -6,6 +6,7 @@
 import {
   VocalWeightBaseline,
   BASELINE_VOICED_MS,
+  BASELINE_AGGREGATE_INTERVAL_MS,
   BASELINE_SIGMA,
   BASELINE_MIN_SAMPLES,
 } from "../../src/audio/vocal-weight-baseline.js";
@@ -25,6 +26,7 @@ function check(name, condition, detail = "") {
 console.log("VocalWeightBaseline — exported defaults");
 {
   check("BASELINE_VOICED_MS = 30000", BASELINE_VOICED_MS === 30000);
+  check("BASELINE_AGGREGATE_INTERVAL_MS = 250", BASELINE_AGGREGATE_INTERVAL_MS === 250);
   check("BASELINE_SIGMA = 2", BASELINE_SIGMA === 2);
   check("BASELINE_MIN_SAMPLES = 8", BASELINE_MIN_SAMPLES === 8);
 }
@@ -40,53 +42,72 @@ console.log("\nInitial state");
   check("sigmaDelta returns null while warming up", b.sigmaDelta(2.0) === null);
 }
 
-console.log("\nLocking after enough voiced time + samples");
+console.log("\nLocking after enough voiced-content samples");
 {
   const b = new VocalWeightBaseline();
-  // Push samples spread across 31 seconds of "voiced time" (using
-  // sample timestamps as the clock). Mean ≈ 2.0, modest spread.
-  // Use enough samples (16) to clear the minSamples=8 floor.
-  const cpps = [1.8, 2.1, 1.9, 2.3, 2.0, 1.7, 2.2, 2.0, 1.9, 2.1, 2.0, 2.2, 1.8, 2.0, 2.1, 2.0];
-  for (let i = 0; i < cpps.length; i++) {
-    b.accumulate({ time: i * 2000, cpp: cpps[i] });   // 2 s apart, 30 s spread
+  // Default: BASELINE_VOICED_MS=30000, AGGREGATE_INTERVAL_MS=250.
+  // Sample target = 30000 / 250 = 120 samples.
+  // Push 120 samples; baseline should lock on the 120th.
+  let lockedAt = null;
+  for (let i = 0; i < 120; i++) {
+    b.accumulate({ time: i * 250, cpp: 2.0 + (i % 5) * 0.1 });
+    if (b.ready() && lockedAt === null) lockedAt = i;
   }
-  check("ready() true after baseline locks", b.ready() === true);
-  check("mu() ≈ 2.0", b.mu() !== null && Math.abs(b.mu() - 2.0) < 0.1);
+  check("ready() true after 120 samples (30 s × 4 Hz)", b.ready() === true);
+  check("locks at 120th sample (sample-count threshold)", lockedAt === 119, `locked at index ${lockedAt}`);
+  check("mu() ≈ 2.2", b.mu() !== null && Math.abs(b.mu() - 2.2) < 0.1);
   check("sigma() > 0", b.sigma() !== null && b.sigma() > 0);
   check("progress() = 1 after lock", b.progress() === 1);
 }
 
-console.log("\nNot enough voiced time keeps unlocked");
+console.log("\nFewer samples than target keeps unlocked");
 {
   const b = new VocalWeightBaseline();
-  // Many samples but only over 10 seconds.
-  for (let i = 0; i < 20; i++) {
-    b.accumulate({ time: i * 500, cpp: 2.0 });   // 0.5 s apart, 9.5 s spread
+  // 30 samples — well under the 120-sample target.
+  for (let i = 0; i < 30; i++) {
+    b.accumulate({ time: i * 250, cpp: 2.0 });
   }
-  check("not locked when voiced time < 30 s", b.ready() === false);
-  check("progress() < 1 while accumulating", b.progress() < 1);
-  check("progress() reflects voiced-time fraction", Math.abs(b.progress() - 9500 / 30000) < 1e-9);
+  check("not locked when samples < target", b.ready() === false);
+  check("progress() = 30/120 = 0.25", Math.abs(b.progress() - 30 / 120) < 1e-9);
 }
 
-console.log("\nNot enough samples keeps unlocked even with 30 s elapsed");
+console.log("\nWall-clock spread does NOT affect lock — only sample count");
+{
+  // Critical regression test for the iteration fix. A user with
+  // long pauses (or slow speech) shouldn't have to wait longer
+  // than a user with continuous fast speech to calibrate.
+  const b = new VocalWeightBaseline();
+  // 120 samples with HUGE wall-clock spread (each sample 10 s
+  // apart = 1200 s wall-clock). Lock should fire on sample 120
+  // regardless of the absurd spread.
+  for (let i = 0; i < 120; i++) {
+    b.accumulate({ time: i * 10000, cpp: 2.0 });
+  }
+  check("locks based on sample count, not wall-clock spread", b.ready() === true);
+}
+
+console.log("\nNot enough samples keeps unlocked");
 {
   const b = new VocalWeightBaseline();
-  // Only 4 samples spread across 32 s. Voiced-time gate satisfied
-  // but sample-count floor (8) is not.
+  // 5 samples — under both minSamples=8 floor and the default
+  // 120-sample target.
   b.accumulate({ time: 0, cpp: 2.0 });
   b.accumulate({ time: 10000, cpp: 2.1 });
   b.accumulate({ time: 20000, cpp: 1.9 });
   b.accumulate({ time: 32000, cpp: 2.0 });
-  check("not locked with < BASELINE_MIN_SAMPLES samples", b.ready() === false);
+  b.accumulate({ time: 40000, cpp: 2.05 });
+  check("not locked with < target samples", b.ready() === false);
 }
 
 console.log("\nGauge position mapping");
 {
-  const b = new VocalWeightBaseline();
+  // Use a smaller baseline (16 samples target) so this test stays
+  // small while exercising the position math.
+  const b = new VocalWeightBaseline({ baselineVoicedMs: 4000, minSamples: 16 });
   // 16 samples deliberately distributed around mean 2.0 with σ≈0.5
   const targets = [1.0, 1.5, 2.0, 2.5, 3.0, 1.5, 2.0, 2.5, 1.0, 1.5, 2.0, 2.5, 3.0, 1.5, 2.0, 2.5];
   for (let i = 0; i < targets.length; i++) {
-    b.accumulate({ time: i * 2000, cpp: targets[i] });
+    b.accumulate({ time: i * 250, cpp: targets[i] });
   }
   check("locked", b.ready());
   const mu = b.mu();
@@ -115,10 +136,16 @@ console.log("\nGauge position mapping");
   check("sigmaDelta(μ - 2σ) ≈ -2", Math.abs(b.sigmaDelta(mu - 2 * sigma) - (-2)) < 1e-9);
 }
 
+// Helper: smaller-target baseline for tests that want to exercise
+// post-lock behavior without pushing 120 samples each time.
+function fastBaseline(opts = {}) {
+  return new VocalWeightBaseline({ baselineVoicedMs: 4000, minSamples: 16, ...opts });
+}
+
 console.log("\nReset clears all state");
 {
-  const b = new VocalWeightBaseline();
-  for (let i = 0; i < 16; i++) b.accumulate({ time: i * 2000, cpp: 2.0 + i * 0.05 });
+  const b = fastBaseline();
+  for (let i = 0; i < 16; i++) b.accumulate({ time: i * 250, cpp: 2.0 + i * 0.05 });
   check("locked before reset", b.ready());
   b.reset();
   check("ready() false after reset", b.ready() === false);
@@ -129,13 +156,13 @@ console.log("\nReset clears all state");
 
 console.log("\nLocked baseline does not drift with subsequent samples");
 {
-  const b = new VocalWeightBaseline();
+  const b = fastBaseline();
   // Lock baseline at μ ≈ 2.0
-  for (let i = 0; i < 16; i++) b.accumulate({ time: i * 2000, cpp: 2.0 });
+  for (let i = 0; i < 16; i++) b.accumulate({ time: i * 250, cpp: 2.0 });
   const muLocked = b.mu();
 
   // Push subsequent voiced samples at very different CPP.
-  for (let i = 16; i < 50; i++) b.accumulate({ time: i * 2000, cpp: 8.0 });
+  for (let i = 16; i < 50; i++) b.accumulate({ time: i * 250, cpp: 8.0 });
 
   check("μ stays at locked value", b.mu() === muLocked);
   check("locked flag stays true", b.ready());
@@ -143,8 +170,8 @@ console.log("\nLocked baseline does not drift with subsequent samples");
 
 console.log("\nDegenerate baseline: all-identical samples");
 {
-  const b = new VocalWeightBaseline();
-  for (let i = 0; i < 16; i++) b.accumulate({ time: i * 2000, cpp: 2.0 });
+  const b = fastBaseline();
+  for (let i = 0; i < 16; i++) b.accumulate({ time: i * 250, cpp: 2.0 });
   check("locked with identical samples", b.ready());
   check("σ = 0 when all samples identical", b.sigma() === 0);
   // gaugePosition with σ=0 should return 0.5 (gauge center) — not
@@ -166,16 +193,19 @@ console.log("\nIgnores invalid input");
 
 console.log("\nCustom configuration");
 {
-  // Tighter baseline window (5 s, min 4 samples) for tests/tuning.
+  // Custom config: smaller voicedMs target + larger aggregate interval
+  // → only 4 samples needed to satisfy voiced-content threshold.
+  // Exercises the new (baselineVoicedMs / aggregateIntervalMs) math.
   const b = new VocalWeightBaseline({
-    baselineVoicedMs: 5000,
+    baselineVoicedMs: 6000,
+    aggregateIntervalMs: 1500,    // sample target = 4
     gaugeSigma: 1.5,
     minSamples: 4,
   });
   b.accumulate({ time: 0, cpp: 1.8 });
   b.accumulate({ time: 1500, cpp: 2.0 });
   b.accumulate({ time: 3000, cpp: 2.2 });
-  b.accumulate({ time: 5000, cpp: 2.0 });
+  b.accumulate({ time: 4500, cpp: 2.0 });
   check("custom config locks at custom voicedMs", b.ready());
   // gaugeSigma=1.5 means ±1.5σ maps to gauge ends.
   const mu = b.mu();

@@ -9,48 +9,65 @@
 //
 // Per-user baseline approach:
 //
-//   - During the first BASELINE_VOICED_MS of voiced speech in the
-//     session, accumulate CPP-aggregate samples.
-//   - Once the baseline window has filled, compute mean μ and
-//     stdev σ. These freeze for the remainder of the session.
+//   - During the first BASELINE_VOICED_MS of CUMULATIVE voiced
+//     content in the session, accumulate CPP-aggregate samples.
+//   - Once the target voiced-content-time has filled, compute mean
+//     μ and stdev σ. These freeze for the remainder of the session.
 //   - Subsequent CPP-aggregate values are mapped to gauge position
 //     by their distance from μ in σ-units. ±BASELINE_SIGMA σ maps
 //     to the full gauge.
 //
-// "Voiced speech" here = voiced AGGREGATE samples emitted by
-// VocalWeightAggregator (the aggregator already filters for ≥6
-// voiced frames in a 1 s window). Baseline elapsed-voiced-time is
-// computed from sample timestamps, not wall clock — a session that
-// starts with a long quiet period accumulates baseline only once
-// speech begins.
+// **Voiced-content-time, NOT wall-clock-time.** Each aggregator
+// emit represents ~250 ms of new voiced content (the aggregator's
+// 250 ms emit interval with 75 % rolling overlap means each
+// successive emit adds 250 ms of fresh material). Counting samples
+// × emitIntervalMs gives cumulative voiced-content-time, which is
+// what the audit specified ("first 30 s of voiced speech in the
+// session") — wall-clock spread between first and last sample
+// would inflate calibration time on speech with natural pauses
+// (breath, thinking, inter-phrase silence) since pauses count
+// toward wall-clock spread but are correctly excluded from sample
+// count.
 //
-// Baseline freezes after BASELINE_VOICED_MS of voiced material so
+// Baseline freezes after BASELINE_VOICED_MS of voiced content so
 // it doesn't drift across the session as the user trains: a user
 // who modulates from heavier to lighter voice over several minutes
 // won't see the baseline track upward and erase the gauge signal.
 // The "Reset baseline" affordance (UI in Step 4) lets users
 // re-anchor mid-session if their first 30 s wasn't representative.
 
-export const BASELINE_VOICED_MS = 30000;   // 30 s of voiced speech
+// Each aggregator sample represents this much voiced content (the
+// aggregator's emit interval). Used to convert sample count → voiced
+// content time. Constructor accepts override for tests + future
+// tuning.
+export const BASELINE_AGGREGATE_INTERVAL_MS = 250;
+export const BASELINE_VOICED_MS = 30000;   // 30 s of cumulative voiced content
 export const BASELINE_SIGMA = 2;           // gauge spans ±2σ from μ
 export const BASELINE_MIN_SAMPLES = 8;     // floor for σ to be meaningful
 
 export class VocalWeightBaseline {
   constructor({
     baselineVoicedMs = BASELINE_VOICED_MS,
+    aggregateIntervalMs = BASELINE_AGGREGATE_INTERVAL_MS,
     gaugeSigma = BASELINE_SIGMA,
     minSamples = BASELINE_MIN_SAMPLES,
   } = {}) {
     this.baselineVoicedMs = baselineVoicedMs;
+    this.aggregateIntervalMs = aggregateIntervalMs;
     this.gaugeSigma = gaugeSigma;
     this.minSamples = minSamples;
+    // Voiced-content-time threshold for lock = baselineVoicedMs.
+    // Sample count needed = ceil(baselineVoicedMs / aggregateIntervalMs)
+    // OR minSamples, whichever is larger.
+    this._sampleTarget = Math.max(
+      minSamples,
+      Math.ceil(baselineVoicedMs / aggregateIntervalMs),
+    );
 
     // Sample list during accumulation. Cleared after baseline locks
     // — once μ and σ are computed we don't need the samples
     // themselves.
     this._samples = [];
-    this._earliestTime = null;
-    this._latestTime = null;
 
     // Frozen baseline parameters; null while accumulating.
     this._mu = null;
@@ -66,20 +83,14 @@ export class VocalWeightBaseline {
     const { time, cpp } = sample;
     if (typeof cpp !== "number" || !isFinite(cpp)) return;
     this._samples.push({ time, cpp });
-    if (this._earliestTime === null || time < this._earliestTime) this._earliestTime = time;
-    if (this._latestTime === null || time > this._latestTime) this._latestTime = time;
 
-    // Lock baseline once enough voiced time has accumulated AND
-    // we have at least minSamples. Both gates matter:
-    // - voiced-time gate ensures we observe enough of the user's
-    //   speech to characterize their typical voice.
-    // - sample-count gate prevents σ from being computed on a tiny
-    //   sample (e.g., 2-3 quick utterances over 30 s wall-clock).
-    const voicedElapsed = this._latestTime - this._earliestTime;
-    if (
-      voicedElapsed >= this.baselineVoicedMs &&
-      this._samples.length >= this.minSamples
-    ) {
+    // Lock baseline once we've accumulated enough voiced-content-
+    // time. Each sample represents aggregateIntervalMs of new
+    // voiced material (per the aggregator's 75%-overlap emit
+    // cadence). _sampleTarget = baselineVoicedMs / aggregateIntervalMs,
+    // floored at minSamples to ensure σ has enough data points to
+    // be meaningful.
+    if (this._samples.length >= this._sampleTarget) {
       this._lockBaseline();
     }
   }
@@ -144,20 +155,17 @@ export class VocalWeightBaseline {
   }
 
   // Progress toward baseline-ready, in [0, 1]. UI uses this to
-  // render a "calibrating: X / 30 s" indicator during the first
-  // 30 seconds of voiced speech. Returns 1 once locked.
+  // render a "calibrating: X %" indicator. Computed from sample
+  // count (= cumulative voiced-content-time / aggregateIntervalMs).
+  // Returns 1 once locked.
   progress() {
     if (this._locked) return 1;
-    if (this._earliestTime === null || this._latestTime === null) return 0;
-    const voicedElapsed = this._latestTime - this._earliestTime;
-    return Math.max(0, Math.min(1, voicedElapsed / this.baselineVoicedMs));
+    return Math.max(0, Math.min(1, this._samples.length / this._sampleTarget));
   }
 
   // Force-clear (Reset baseline UI affordance, mic restart).
   reset() {
     this._samples.length = 0;
-    this._earliestTime = null;
-    this._latestTime = null;
     this._mu = null;
     this._sigma = null;
     this._locked = false;
@@ -170,8 +178,7 @@ export class VocalWeightBaseline {
       mu: this._mu,
       sigma: this._sigma,
       sampleCount: this._samples.length,
-      earliestTime: this._earliestTime,
-      latestTime: this._latestTime,
+      sampleTarget: this._sampleTarget,
       progress: this.progress(),
     };
   }
