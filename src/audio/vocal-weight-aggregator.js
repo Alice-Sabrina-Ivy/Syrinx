@@ -28,7 +28,17 @@
 export const AGGREGATE_WINDOW_MS = 1000;
 export const EMIT_INTERVAL_MS = 250;
 export const HARD_RESET_UNVOICED_MS = 2000;
-export const MIN_VOICED_FRAMES = 6;
+// MIN_VOICED_FRAMES is the minimum count of voiced+valid-CPP frames
+// in the 1-s window required for the aggregator to emit. Original
+// audit value was 6 (~900 ms of voiced phonation per aggregate);
+// WS1 corpus measurement (2026-05-10) showed conversational speech
+// at 60-80 % voiced fraction under-emitted at 6, pushing combined
+// median calibration to 64.78 s (vs audit's 30 s spec). Reduced to
+// 4 (~600 ms voiced per aggregate, ~67 % voiced content) which
+// brings median calibration to 39.4 s on the same corpus.
+// See measurements/calibration-timing-corpus-2026-05-10.json for
+// the pre/post-tune distributions.
+export const MIN_VOICED_FRAMES = 4;
 
 export class VocalWeightAggregator {
   constructor({
