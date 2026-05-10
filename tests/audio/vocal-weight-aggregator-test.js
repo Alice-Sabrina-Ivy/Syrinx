@@ -37,12 +37,24 @@ console.log("VocalWeightAggregator — exported defaults");
   check("AGGREGATE_WINDOW_MS = 1000", AGGREGATE_WINDOW_MS === 1000);
   check("EMIT_INTERVAL_MS = 250", EMIT_INTERVAL_MS === 250);
   check("HARD_RESET_UNVOICED_MS = 2000", HARD_RESET_UNVOICED_MS === 2000);
-  check("MIN_VOICED_FRAMES = 6", MIN_VOICED_FRAMES === 6);
+  // MIN_VOICED_FRAMES tuned from 6 → 4 in 2026-05-10 iteration after
+  // WS1 corpus measurements showed conversational speech under-emitted
+  // at 6.
+  check("MIN_VOICED_FRAMES = 4", MIN_VOICED_FRAMES === 4);
+}
+
+// Behavior tests below pin minVoicedFrames=6 explicitly via the
+// constructor option so they stay decoupled from future tuning of the
+// default. The intent of each test is to exercise a specific
+// threshold-related invariant; using a fixed value keeps the test's
+// reasoning stable.
+function aggWithMVF6(opts = {}) {
+  return new VocalWeightAggregator({ minVoicedFrames: 6, ...opts });
 }
 
 console.log("\nWarming-up state (insufficient voiced frames)");
 {
-  const agg = new VocalWeightAggregator();
+  const agg = aggWithMVF6();
   // Push 5 voiced frames at 150 ms cadence — under the 6-frame minimum.
   let result = null;
   for (let i = 0; i < 5; i++) {
@@ -56,7 +68,7 @@ console.log("\nWarming-up state (insufficient voiced frames)");
 
 console.log("\nFresh aggregate after MIN_VOICED_FRAMES voiced");
 {
-  const agg = new VocalWeightAggregator();
+  const agg = aggWithMVF6();
   // 6 voiced frames at 150 ms cadence. _lastEmitMs starts at
   // -Infinity, so each push >= 250 ms ago is eligible to compute.
   // Pushes 0-4 compute but emit nothing (under MIN_VOICED_FRAMES).
@@ -91,7 +103,7 @@ console.log("\nEmit-cadence throttle holds value between emits");
   // are buffered (and contribute to future means) but the emitted
   // _latest does not flicker. This is the load-bearing UX property
   // — the gauge updates 4 Hz at most.
-  const agg = new VocalWeightAggregator();
+  const agg = aggWithMVF6();
   for (let i = 0; i < 6; i++) agg.push(frame(i * 150, 20, true));
   const firstEmit = agg.state().latest;
 
@@ -110,7 +122,7 @@ console.log("\nEmit-cadence throttle holds value between emits");
 
 console.log("\nEmit-cadence throttle (250 ms minimum between emits)");
 {
-  const agg = new VocalWeightAggregator();
+  const agg = aggWithMVF6();
   // First emit happens once we cross ≥ 6 voiced frames.
   for (let i = 0; i < 6; i++) agg.push(frame(i * 150, 20, true));
   const firstEmit = agg.state().lastEmitMs;
@@ -137,7 +149,7 @@ console.log("\nEmit-cadence throttle (250 ms minimum between emits)");
 
 console.log("\nWindow trim (entries older than windowMs are dropped)");
 {
-  const agg = new VocalWeightAggregator();
+  const agg = aggWithMVF6();
   // Fill 1.5 s of voiced frames; entries from the first 0.5 s should
   // be trimmed by the time the 1.5 s entry is pushed.
   // Use 200 ms cadence so only 5 frames fit in 1 s — but we need
@@ -156,7 +168,7 @@ console.log("\nWindow trim (entries older than windowMs are dropped)");
 
 console.log("\nVoicing gate (unvoiced frames excluded from mean)");
 {
-  const agg = new VocalWeightAggregator();
+  const agg = aggWithMVF6();
   // Mix of voiced and unvoiced frames. Only voiced should contribute.
   agg.push(frame(0, 20, true));
   agg.push(frame(150, 99, false));   // unvoiced — excluded
@@ -192,7 +204,7 @@ console.log("\nVoicing gate (unvoiced frames excluded from mean)");
 
 console.log("\nNull CPP frames (computation failures excluded)");
 {
-  const agg = new VocalWeightAggregator();
+  const agg = aggWithMVF6();
   // Voiced flag true but CPP null — exclude from mean even though
   // voiced. Simulates a computation failure.
   agg.push(frame(0, null, true));
@@ -214,7 +226,7 @@ console.log("\nNull CPP frames (computation failures excluded)");
 
 console.log("\nHard reset on long unvoiced gap");
 {
-  const agg = new VocalWeightAggregator();
+  const agg = aggWithMVF6();
   // Establish an aggregate from voice block 1.
   for (let i = 0; i < 7; i++) agg.push(frame(i * 150, 20, true));
   const beforeReset = agg.state();
@@ -237,7 +249,7 @@ console.log("\nHard reset on long unvoiced gap");
 
 console.log("\nNo hard reset on short gaps (< 2 s)");
 {
-  const agg = new VocalWeightAggregator();
+  const agg = aggWithMVF6();
   for (let i = 0; i < 7; i++) agg.push(frame(i * 150, 20, true));
   const stable = agg.state().latest;
   check("baseline aggregate established", stable !== null);
@@ -261,7 +273,7 @@ console.log("\nNo hard reset on short gaps (< 2 s)");
 
 console.log("\nReset clears all state");
 {
-  const agg = new VocalWeightAggregator();
+  const agg = aggWithMVF6();
   for (let i = 0; i < 7; i++) agg.push(frame(i * 150, 20, true));
   agg.reset();
   const s = agg.state();
@@ -276,7 +288,7 @@ console.log("\nWater-break scenario (long voiced silence then resume)");
   // User speaks for several seconds, pauses for a 5-second water
   // break, then resumes. The post-break aggregate should reflect
   // post-break speech only — not blend with pre-break state.
-  const agg = new VocalWeightAggregator();
+  const agg = aggWithMVF6();
   // Pre-break: 12 voiced frames at 150 ms = 1.8 s of speech.
   for (let i = 0; i < 12; i++) agg.push(frame(i * 150, 18, true));
   const preBreak = agg.state().latest;
@@ -303,7 +315,7 @@ console.log("\nVoicing-gate flapping (rapid voiced/unvoiced alternation)");
   // Aggregator should still produce a sensible mean of the voiced
   // frames; unvoiced gaps don't reset until total unvoiced span
   // exceeds 2 s.
-  const agg = new VocalWeightAggregator();
+  const agg = aggWithMVF6();
   // Alternating voiced/unvoiced, 12 frames at 150 ms = 1.8 s.
   for (let i = 0; i < 12; i++) {
     agg.push(frame(i * 150, 20, i % 2 === 0));
@@ -318,7 +330,7 @@ console.log("\nVoicing-gate flapping (rapid voiced/unvoiced alternation)");
 
 console.log("\nSession-start: no voiced speech yet");
 {
-  const agg = new VocalWeightAggregator();
+  const agg = aggWithMVF6();
   // Pure silence: 10 unvoiced frames.
   for (let i = 0; i < 10; i++) agg.push(frame(i * 150, null, false));
   check("silence-only session has null aggregate", agg.state().latest === null);
@@ -332,8 +344,8 @@ console.log("\nMonotonic time consistency");
   // same final state.
   const sequence = [];
   for (let i = 0; i < 20; i++) sequence.push(frame(i * 150, 18 + (i % 3), i % 5 !== 4));
-  const agg1 = new VocalWeightAggregator();
-  const agg2 = new VocalWeightAggregator();
+  const agg1 = aggWithMVF6();
+  const agg2 = aggWithMVF6();
   for (const f of sequence) agg1.push(f);
   for (const f of sequence) agg2.push(f);
   const s1 = agg1.state();
@@ -343,6 +355,28 @@ console.log("\nMonotonic time consistency");
     s1.frameCount === s2.frameCount &&
       s1.lastEmitMs === s2.lastEmitMs &&
       JSON.stringify(s1.latest) === JSON.stringify(s2.latest),
+  );
+}
+
+console.log("\nDefault MIN_VOICED_FRAMES=4 emits at 4 voiced frames");
+{
+  // Confirms the production default lets the aggregator emit on
+  // shorter voiced runs than the original 6 — addresses WS1's
+  // calibration timing finding (conversational speech at 60-80 %
+  // voiced fraction under-emits at 6).
+  const agg = new VocalWeightAggregator();
+  let last = null;
+  // 3 voiced frames at 150 ms cadence — under threshold 4
+  for (let i = 0; i < 3; i++) {
+    last = agg.push(frame(i * 150, 20, true));
+  }
+  check("3 voiced frames stays under default threshold", last === null);
+  // 4th voiced frame at t=450ms — should emit (lastEmitMs is -Inf, gap satisfied)
+  last = agg.push(frame(450, 20, true));
+  check("4 voiced frames emits at default", last !== null);
+  check(
+    "4-frame aggregate has voicedFrames=4",
+    last !== null && last.voicedFrames === 4,
   );
 }
 

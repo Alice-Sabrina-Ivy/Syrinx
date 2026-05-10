@@ -311,10 +311,10 @@ const vocaditoSubset = pickLongest(vocaditoConcat, 8);
 const ptdbSubset = pickLongest(ptdbBySpeaker, 8);
 const fdaSubset = pickLongest(fdaBySpeaker, 8);
 
-// Measure both default and a what-if MIN_VOICED_FRAMES=4 setting.
-// The default (6) requires ~6 voiced+valid CPP frames in a 1 s window;
-// at conversational voiced fractions (60-80%) the aggregator emits
-// less consistently, slowing baseline accumulation.
+// Measures both the pre-tune (MVF=6) and post-tune (MVF=4, current
+// production default) configurations side-by-side. The harness pins
+// the value explicitly so the comparison stays meaningful regardless
+// of future production tuning.
 async function measureSuites(label, opts) {
   const v = await runSuite(`Vocadito (singing) ${label}`, vocaditoSubset, swift.session, swift.inputName, opts);
   const p = await runSuite(`PTDB-TUG (speech) ${label}`, ptdbSubset, swift.session, swift.inputName, opts);
@@ -322,9 +322,9 @@ async function measureSuites(label, opts) {
   return { vocadito: v, ptdb: p, fda: f };
 }
 
-console.log("\n--- Default config (MIN_VOICED_FRAMES=6) ---");
-const defaultRuns = await measureSuites("default", { minVoicedFrames: 6 });
-console.log("\n--- What-if config (MIN_VOICED_FRAMES=4) — MEASUREMENT ONLY, no production change ---");
+console.log("\n--- Pre-tune (MIN_VOICED_FRAMES=6) — historical, before 2026-05-10 iteration ---");
+const defaultRuns = await measureSuites("MVF=6", { minVoicedFrames: 6 });
+console.log("\n--- Post-tune (MIN_VOICED_FRAMES=4) — current production default ---");
 const whatIfRuns = await measureSuites("MVF=4", { minVoicedFrames: 4 });
 
 const vocaditoResults = defaultRuns.vocadito;
@@ -389,8 +389,9 @@ try { mkdirSync(outDir, { recursive: true }); } catch {}
 const outPath = `${outDir}/calibration-timing-corpus-2026-05-10.json`;
 writeFileSync(outPath, JSON.stringify({
   timestamp: new Date().toISOString(),
-  defaultConfig: {
+  preTune: {
     minVoicedFrames: 6,
+    note: "Historical pre-tune behavior, kept for regression comparison.",
     perTrack: allResults,
     perCorpus: {
       vocadito: describe(vocaditoResults.filter((r) => r.lockTimeMs !== null).map((r) => r.lockTimeMs / 1000)),
@@ -400,9 +401,9 @@ writeFileSync(outPath, JSON.stringify({
     combined: describe(allLockTimes),
     decision: { median, p75, verdict },
   },
-  whatIfConfig: {
+  postTune: {
     minVoicedFrames: 4,
-    note: "Measurement only — NOT applied to production. Surfaced for user review.",
+    note: "Current production default after 2026-05-10 iteration. Brings combined median into 'acceptable' range per WS1 decision criteria.",
     perTrack: whatIfAll,
     perCorpus: {
       vocadito: describe(whatIfRuns.vocadito.filter((r) => r.lockTimeMs !== null).map((r) => r.lockTimeMs / 1000)),
