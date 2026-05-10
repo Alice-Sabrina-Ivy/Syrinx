@@ -67,11 +67,13 @@ function App() {
     formants,
     spectralTilt,
     hnr,
+    vocalWeight,
     modelStatus,
     modelError,
     modelProgress,
     start,
     stop,
+    resetVocalWeightBaseline,
     pitchTraceRef,
     formantTrailRef,
     genderTraceRef,
@@ -224,6 +226,8 @@ function App() {
                   formants={formants}
                   spectralTilt={spectralTilt}
                   hnr={hnr}
+                  vocalWeight={vocalWeight}
+                  resetVocalWeightBaseline={resetVocalWeightBaseline}
                   modelStatus={modelStatus}
                   modelError={modelError}
                   modelProgress={modelProgress}

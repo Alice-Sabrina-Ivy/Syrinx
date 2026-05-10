@@ -27,13 +27,6 @@ function check(name, condition, detail = "") {
   }
 }
 
-// Helper: push a sequence of frames with monotonic timestamps.
-function pushFrames(agg, frames) {
-  let lastReturn = null;
-  for (const f of frames) lastReturn = agg.push(f);
-  return lastReturn;
-}
-
 // Helper: build a frame.
 function frame(time, cpp, voiced) {
   return { time, cpp, voiced };

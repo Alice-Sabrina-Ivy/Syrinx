@@ -6,7 +6,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { PitchTrace } from "./PitchTrace";
 import { ResonanceMeter } from "./ResonanceMeter";
-import { SpectralTiltGauge } from "./SpectralTiltGauge";
+import { VocalWeightGauge } from "./VocalWeightGauge";
 import { DEFAULT_PITCH_TARGET, DEFAULT_F2_TARGET } from "../utils/constants";
 import db from "../db";
 
@@ -17,8 +17,9 @@ export function CombinedDashboard({
   holding,
   pitch,
   formants,
-  spectralTilt,
   hnr,
+  vocalWeight,
+  resetVocalWeightBaseline,
   modelStatus,
   modelError,
   modelProgress,
@@ -331,10 +332,11 @@ export function CombinedDashboard({
                 <span className="text-xs text-neutral-500 ml-0.5">Hz</span>
               </span>
             </div>
-            <SpectralTiltGauge
-              spectralTilt={spectralTilt}
+            <VocalWeightGauge
+              vocalWeight={vocalWeight}
               voiced={voiced}
               holding={holding}
+              onResetBaseline={resetVocalWeightBaseline}
             />
           </div>
 
