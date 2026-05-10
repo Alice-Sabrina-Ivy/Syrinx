@@ -130,11 +130,22 @@ const results = [
     timeSmoothFrames: 1,
     quefrencySmoothBins: 1,
   }),
-  bench("Maryn default (Theil + exponential trend + 3+3 smoothing)", {
-    regression: CPP_DEFAULT_REGRESSION,
-    trend: CPP_DEFAULT_TREND,
-    timeSmoothFrames: CPP_DEFAULT_TIME_SMOOTH_FRAMES,
-    quefrencySmoothBins: CPP_DEFAULT_QUEFRENCY_SMOOTH_BINS,
+  bench(
+    `production default (regression=${CPP_DEFAULT_REGRESSION}, ` +
+    `trend=${CPP_DEFAULT_TREND}, timeSmooth=${CPP_DEFAULT_TIME_SMOOTH_FRAMES}, ` +
+    `quefrencySmooth=${CPP_DEFAULT_QUEFRENCY_SMOOTH_BINS})`,
+    {
+      regression: CPP_DEFAULT_REGRESSION,
+      trend: CPP_DEFAULT_TREND,
+      timeSmoothFrames: CPP_DEFAULT_TIME_SMOOTH_FRAMES,
+      quefrencySmoothBins: CPP_DEFAULT_QUEFRENCY_SMOOTH_BINS,
+    },
+  ),
+  bench("full Maryn (Theil + exp + 3+3 smoothing)", {
+    regression: "theil",
+    trend: "exponential",
+    timeSmoothFrames: 3,
+    quefrencySmoothBins: 3,
   }),
   bench("Theil + linear trend (no exponential)", {
     regression: "theil",
@@ -167,10 +178,10 @@ console.log(`  Per-frame CPP cost < 200ms/s desktop = < 5.0ms/frame at 40fps`);
 console.log(`  Per-frame CPP cost < 400ms/s mobile WASM = < 10.0ms/frame at 40fps`);
 
 const desktopBudget = 5.0;
-const maryn = results.find((r) => r.label.startsWith("Maryn default")).stats;
-const verdict = maryn.median < desktopBudget && maryn.p99 < desktopBudget * 2
-  ? "PASS desktop budget at Maryn default"
-  : "EXCEEDS desktop budget — investigate cost drivers";
+const productionStats = results.find((r) => r.label.startsWith("production default")).stats;
+const verdict = productionStats.median < desktopBudget && productionStats.p99 < desktopBudget * 2
+  ? "PASS desktop budget at production default"
+  : "EXCEEDS desktop budget at production default — investigate cost drivers";
 console.log(`\n  ${verdict}`);
 
 mkdirSync("measurements", { recursive: true });
