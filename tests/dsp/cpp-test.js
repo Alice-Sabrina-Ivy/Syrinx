@@ -29,7 +29,7 @@
 // Usage: node tests/dsp/cpp-test.js
 // Exit code 0 on all pass, 1 on any failure.
 
-import { computeCPP, CPP_INPUT_LEN } from "../../src/dsp/cpp.js";
+import { computeCPP, CPP_INPUT_LEN, CPP_MIN_INPUT_LEN } from "../../src/dsp/cpp.js";
 
 const SAMPLE_RATE = 48000;
 
@@ -176,9 +176,20 @@ function breathyVowel(f0Hz, formantFreqs, formantBws, sr, numSamples, breathines
 
 console.log("CPP — silent / degenerate inputs");
 {
-  // Buffer too short
-  const short = new Float64Array(512);
-  check("returns null for buffer < CPP_INPUT_LEN", computeCPP(short, SAMPLE_RATE) === null);
+  // Buffer below the minimum floor (CPP_MIN_INPUT_LEN = 512)
+  const tooShort = new Float64Array(256);
+  check("returns null for buffer < CPP_MIN_INPUT_LEN", computeCPP(tooShort, SAMPLE_RATE) === null);
+
+  // Buffer between MIN_INPUT_LEN and INPUT_LEN — should compute, not return null
+  const partial = new Float64Array(800);
+  // Fill with a low-amplitude pulse train to avoid the all-zero degeneracy
+  for (let t = 0; t < 800; t += 400) partial[t] = 0.5;
+  const cppPartial = computeCPP(partial, 16000);
+  check(
+    "buffer ≥ CPP_MIN_INPUT_LEN computes (zero-padded for FFT)",
+    cppPartial === null || isFinite(cppPartial),
+    `got ${cppPartial}`,
+  );
 
   // All-zero buffer
   const zeros = new Float64Array(CPP_INPUT_LEN);

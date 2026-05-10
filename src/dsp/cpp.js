@@ -30,16 +30,25 @@
 // This module is imported by dsp-worker.js (production hot path)
 // and by tests/dsp/cpp-test.js (Layer 1 synthetic regression).
 
-// 2048-sample input window at any sample rate ≥ 16 kHz. Hillenbrand
-// 1994 used 1024 samples at 22.05 kHz (~46 ms); at 48 kHz, 2048
-// samples is ~43 ms, matching the time window. This spans ~3.4
-// periods at the audit's lowest F0 (80 Hz, the user-reported
-// monotone failure case) and ~5+ periods at typical speech F0,
-// which is the cepstrum's regime of clean peak detection. The
-// audit's earlier choice of 1024 samples was based on F0=140 Hz
-// minimum; updated to 2048 after first-pass synthetic tests showed
-// the shorter window doesn't span enough periods at low male F0.
+// CPP_INPUT_LEN is the PREFERRED input length (cap), not a hard
+// requirement. The function uses min(buffer.length, CPP_INPUT_LEN);
+// shorter buffers are zero-padded out to CPP_FFT_SIZE.
+//
+// At 48 kHz the analysis window is 2400 samples → uses full 2048.
+// Hillenbrand 1994 originally used 1024 samples at 22.05 kHz (~46 ms);
+// 2048 at 48 kHz is the same ~43 ms time window with similar period
+// count. At lower sample rates (mobile silent downsample to 16 kHz,
+// some Linux audio configs at 22.05 or 32 kHz), the AudioContext's
+// 50 ms analysis window is shorter than 2048 samples — the function
+// uses what's available with appropriate Hann windowing and lets the
+// FFT zero-pad out to CPP_FFT_SIZE. Quefrency bins still map via
+// n/sr so the F0 search range is sample-rate-correct.
+//
+// CPP_MIN_INPUT_LEN floors out 512 samples = ~32 ms at 16 kHz, ~2.5
+// periods at F0=80 Hz. Below that, the cepstral peak isn't reliably
+// resolved and we return null rather than emit noise.
 export const CPP_INPUT_LEN = 2048;
+export const CPP_MIN_INPUT_LEN = 512;
 export const CPP_FFT_SIZE = 2048;
 export const CPP_PREEMPH_ALPHA = 0.97;     // first-order HPF coefficient
 export const CPP_F0_MIN_HZ = 75;            // sets quefrency upper bound
@@ -98,37 +107,41 @@ function fft(re, im) {
 }
 
 // Compute cepstral peak prominence for a buffer of audio samples.
-// Returns CPP in dB, or null if the buffer is too short or the
-// computation is degenerate (e.g., flat spectrum).
+// Returns CPP in dB, or null if the buffer is below CPP_MIN_INPUT_LEN
+// samples or the computation is degenerate (e.g., flat spectrum).
 //
-// `buffer` may be Float32Array or Float64Array. Only the last
-// CPP_INPUT_LEN samples are used; earlier samples are ignored. The
-// caller is responsible for handing in a long-enough analysis window
-// — the existing dsp-worker analysis window is 50 ms (≥ 1024 samples
-// at any sample rate ≥ 21 kHz, so this gate fires only on degenerate
-// inputs).
+// `buffer` may be Float32Array or Float64Array. The function uses up
+// to CPP_INPUT_LEN samples from the END of the buffer; shorter
+// buffers are zero-padded out to CPP_FFT_SIZE for the FFT. This makes
+// the function sample-rate-tolerant — at 48 kHz the production 50 ms
+// analysis window provides 2400 samples (uses 2048); at 16 kHz it
+// provides 800 samples (uses 800, zero-pads to 2048).
 //
 // `sr` is the sample rate of `buffer`, in Hz.
 export function computeCPP(buffer, sr) {
-  if (buffer.length < CPP_INPUT_LEN) return null;
-  const offset = buffer.length - CPP_INPUT_LEN;
+  const inputLen = Math.min(buffer.length, CPP_INPUT_LEN);
+  if (inputLen < CPP_MIN_INPUT_LEN) return null;
+  const offset = buffer.length - inputLen;
 
   _re.fill(0);
   _im.fill(0);
 
-  // Pre-emphasis (y[n] = x[n] - α·x[n-1]) + Hann window, zero-padded
-  // out to CPP_FFT_SIZE. Pre-emphasis is computed against the sample
-  // BEFORE the analysis offset (continuous with the prior frame's
-  // tail) when available, otherwise against the first sample (no
-  // boost on n=0). The exact treatment of the first sample matters
-  // very little for cepstral peak detection — pre-emphasis is to
-  // compensate the −6 dB/octave glottal source roll-off so the
-  // cepstrum sees more uniform harmonic amplitudes.
+  // Pre-emphasis (y[n] = x[n] - α·x[n-1]) + Hann window over the
+  // available inputLen samples. The remainder of _re (positions
+  // inputLen..CPP_FFT_SIZE-1) stays at 0 from .fill(0) above —
+  // natural zero-padding for the FFT.
+  //
+  // Pre-emphasis prev is computed against the sample BEFORE the
+  // analysis offset (continuous with the prior frame's tail) when
+  // available, otherwise against the first sample (no boost on
+  // n=0). Hann window period is inputLen, NOT CPP_INPUT_LEN — the
+  // window must span exactly the active samples so its zeros land
+  // at the input boundary, not inside the active region.
   let prev = offset > 0 ? buffer[offset - 1] : buffer[offset];
-  for (let i = 0; i < CPP_INPUT_LEN; i++) {
+  for (let i = 0; i < inputLen; i++) {
     const sample = buffer[offset + i];
     const preemph = sample - CPP_PREEMPH_ALPHA * prev;
-    const w = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (CPP_INPUT_LEN - 1));
+    const w = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (inputLen - 1));
     _re[i] = preemph * w;
     prev = sample;
   }
