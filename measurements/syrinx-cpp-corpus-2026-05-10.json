@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-10T16:41:33.953Z",
+  "timestamp": "2026-05-12T06:15:45.227Z",
   "config": {
     "chunkMs": 25,
     "windowMs": 50,
@@ -12289,9 +12289,9 @@
       "gender": "f",
       "duration_s": 6.87,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2521533024625397,
+      "cpp_aggregate_median_db": 0.3596130513081296,
       "aggregate_count": 27,
-      "cpp_per_frame_median_db": 0.25469644684952447,
+      "cpp_per_frame_median_db": 0.37788683018139146,
       "per_frame_count": 273
     },
     {
@@ -12300,9 +12300,9 @@
       "gender": "f",
       "duration_s": 5.85,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2627989833021622,
+      "cpp_aggregate_median_db": 0.36192247556372603,
       "aggregate_count": 23,
-      "cpp_per_frame_median_db": 0.26403124653828114,
+      "cpp_per_frame_median_db": 0.3669978419169109,
       "per_frame_count": 233
     },
     {
@@ -12311,9 +12311,9 @@
       "gender": "f",
       "duration_s": 5.85,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.256550746555088,
+      "cpp_aggregate_median_db": 0.3597715242081271,
       "aggregate_count": 23,
-      "cpp_per_frame_median_db": 0.2649550937186277,
+      "cpp_per_frame_median_db": 0.36304458537507234,
       "per_frame_count": 233
     },
     {
@@ -12322,9 +12322,9 @@
       "gender": "f",
       "duration_s": 5.86,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.27246130192190127,
+      "cpp_aggregate_median_db": 0.3579602800882404,
       "aggregate_count": 23,
-      "cpp_per_frame_median_db": 0.26161853965072734,
+      "cpp_per_frame_median_db": 0.35398634410912244,
       "per_frame_count": 233
     },
     {
@@ -12333,9 +12333,9 @@
       "gender": "f",
       "duration_s": 7.38,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2567609081630633,
+      "cpp_aggregate_median_db": 0.3785887166514918,
       "aggregate_count": 30,
-      "cpp_per_frame_median_db": 0.26420351673777887,
+      "cpp_per_frame_median_db": 0.3787920785088752,
       "per_frame_count": 294
     },
     {
@@ -12344,9 +12344,9 @@
       "gender": "f",
       "duration_s": 6.62,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2595898701030893,
+      "cpp_aggregate_median_db": 0.3568398755791201,
       "aggregate_count": 26,
-      "cpp_per_frame_median_db": 0.2687266805678626,
+      "cpp_per_frame_median_db": 0.3711963447105504,
       "per_frame_count": 263
     },
     {
@@ -12355,9 +12355,9 @@
       "gender": "f",
       "duration_s": 6.37,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.25703970636219625,
+      "cpp_aggregate_median_db": 0.352304461132723,
       "aggregate_count": 25,
-      "cpp_per_frame_median_db": 0.26271163962545807,
+      "cpp_per_frame_median_db": 0.3615852940208675,
       "per_frame_count": 253
     },
     {
@@ -12366,9 +12366,9 @@
       "gender": "f",
       "duration_s": 5.68,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2563646415532291,
+      "cpp_aggregate_median_db": 0.35986407437638446,
       "aggregate_count": 23,
-      "cpp_per_frame_median_db": 0.266429318836336,
+      "cpp_per_frame_median_db": 0.37274328399167145,
       "per_frame_count": 226
     },
     {
@@ -12377,9 +12377,9 @@
       "gender": "f",
       "duration_s": 6.98,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2539521569693504,
+      "cpp_aggregate_median_db": 0.36280846469504247,
       "aggregate_count": 28,
-      "cpp_per_frame_median_db": 0.260117745457506,
+      "cpp_per_frame_median_db": 0.37357389377296846,
       "per_frame_count": 278
     },
     {
@@ -12388,9 +12388,9 @@
       "gender": "f",
       "duration_s": 6.62,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.26258410382925834,
+      "cpp_aggregate_median_db": 0.3641155607366554,
       "aggregate_count": 26,
-      "cpp_per_frame_median_db": 0.26530016497542,
+      "cpp_per_frame_median_db": 0.378120608705827,
       "per_frame_count": 263
     },
     {
@@ -12399,9 +12399,9 @@
       "gender": "f",
       "duration_s": 7.39,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.27121494185016,
+      "cpp_aggregate_median_db": 0.36245027734189694,
       "aggregate_count": 30,
-      "cpp_per_frame_median_db": 0.26320222562057677,
+      "cpp_per_frame_median_db": 0.36511964718586803,
       "per_frame_count": 294
     },
     {
@@ -12410,9 +12410,9 @@
       "gender": "f",
       "duration_s": 6.1,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2624735028211304,
+      "cpp_aggregate_median_db": 0.360346969641276,
       "aggregate_count": 24,
-      "cpp_per_frame_median_db": 0.25699987916520495,
+      "cpp_per_frame_median_db": 0.3536320989577218,
       "per_frame_count": 243
     },
     {
@@ -12421,9 +12421,9 @@
       "gender": "f",
       "duration_s": 6.87,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.257719421691946,
+      "cpp_aggregate_median_db": 0.349223705400905,
       "aggregate_count": 27,
-      "cpp_per_frame_median_db": 0.25258894447887914,
+      "cpp_per_frame_median_db": 0.3474204487833086,
       "per_frame_count": 273
     },
     {
@@ -12432,9 +12432,9 @@
       "gender": "f",
       "duration_s": 6.62,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.25181782608544834,
+      "cpp_aggregate_median_db": 0.3568340971056999,
       "aggregate_count": 26,
-      "cpp_per_frame_median_db": 0.25602449602720123,
+      "cpp_per_frame_median_db": 0.3599589466101142,
       "per_frame_count": 263
     },
     {
@@ -12443,9 +12443,9 @@
       "gender": "f",
       "duration_s": 6.62,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2549745107810158,
+      "cpp_aggregate_median_db": 0.3580373048375021,
       "aggregate_count": 26,
-      "cpp_per_frame_median_db": 0.25815706640518765,
+      "cpp_per_frame_median_db": 0.36456740325988396,
       "per_frame_count": 263
     },
     {
@@ -12454,9 +12454,9 @@
       "gender": "f",
       "duration_s": 6.63,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.25434139059471533,
+      "cpp_aggregate_median_db": 0.35899022291669125,
       "aggregate_count": 27,
-      "cpp_per_frame_median_db": 0.2548341874526793,
+      "cpp_per_frame_median_db": 0.3713886961533243,
       "per_frame_count": 264
     },
     {
@@ -12465,9 +12465,9 @@
       "gender": "f",
       "duration_s": 6.63,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.25976596573633526,
+      "cpp_aggregate_median_db": 0.37555568347331697,
       "aggregate_count": 27,
-      "cpp_per_frame_median_db": 0.27091346085780044,
+      "cpp_per_frame_median_db": 0.38152953668221573,
       "per_frame_count": 264
     },
     {
@@ -12476,9 +12476,9 @@
       "gender": "f",
       "duration_s": 6.1,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.250531524876221,
+      "cpp_aggregate_median_db": 0.3589787513056481,
       "aggregate_count": 24,
-      "cpp_per_frame_median_db": 0.2511715056545792,
+      "cpp_per_frame_median_db": 0.35948392085388353,
       "per_frame_count": 243
     },
     {
@@ -12487,9 +12487,9 @@
       "gender": "f",
       "duration_s": 6.87,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.25206658600520565,
+      "cpp_aggregate_median_db": 0.3644401214207231,
       "aggregate_count": 27,
-      "cpp_per_frame_median_db": 0.2570625594062629,
+      "cpp_per_frame_median_db": 0.38165151692113514,
       "per_frame_count": 273
     },
     {
@@ -12498,9 +12498,9 @@
       "gender": "f",
       "duration_s": 6.37,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.25501989779828826,
+      "cpp_aggregate_median_db": 0.3661258654683245,
       "aggregate_count": 25,
-      "cpp_per_frame_median_db": 0.2517535512087808,
+      "cpp_per_frame_median_db": 0.369690594334105,
       "per_frame_count": 253
     },
     {
@@ -12509,9 +12509,9 @@
       "gender": "f",
       "duration_s": 6.16,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.25544947080951247,
+      "cpp_aggregate_median_db": 0.3570130294421172,
       "aggregate_count": 25,
-      "cpp_per_frame_median_db": 0.254813668598266,
+      "cpp_per_frame_median_db": 0.3610002220708676,
       "per_frame_count": 245
     },
     {
@@ -12520,9 +12520,9 @@
       "gender": "f",
       "duration_s": 6.61,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.25317692908774203,
+      "cpp_aggregate_median_db": 0.3546722659639898,
       "aggregate_count": 26,
-      "cpp_per_frame_median_db": 0.2537679556291325,
+      "cpp_per_frame_median_db": 0.35702314716509753,
       "per_frame_count": 263
     },
     {
@@ -12531,9 +12531,9 @@
       "gender": "f",
       "duration_s": 6.37,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2555840268336814,
+      "cpp_aggregate_median_db": 0.36982664393552944,
       "aggregate_count": 25,
-      "cpp_per_frame_median_db": 0.25672490740489934,
+      "cpp_per_frame_median_db": 0.3753666018504433,
       "per_frame_count": 253
     },
     {
@@ -12542,9 +12542,9 @@
       "gender": "f",
       "duration_s": 6.62,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.27597383845144263,
+      "cpp_aggregate_median_db": 0.4127614582881465,
       "aggregate_count": 26,
-      "cpp_per_frame_median_db": 0.26745083174964523,
+      "cpp_per_frame_median_db": 0.3776281930674203,
       "per_frame_count": 263
     },
     {
@@ -12553,9 +12553,9 @@
       "gender": "f",
       "duration_s": 6.37,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.259185156101533,
+      "cpp_aggregate_median_db": 0.36195148396356924,
       "aggregate_count": 25,
-      "cpp_per_frame_median_db": 0.26144157684934105,
+      "cpp_per_frame_median_db": 0.3691932713489387,
       "per_frame_count": 253
     },
     {
@@ -12564,9 +12564,9 @@
       "gender": "f",
       "duration_s": 6.88,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.25619959887150534,
+      "cpp_aggregate_median_db": 0.3571078361656212,
       "aggregate_count": 28,
-      "cpp_per_frame_median_db": 0.25239315595586587,
+      "cpp_per_frame_median_db": 0.3596875631905697,
       "per_frame_count": 274
     },
     {
@@ -12575,9 +12575,9 @@
       "gender": "f",
       "duration_s": 6.37,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.26518382761938414,
+      "cpp_aggregate_median_db": 0.37137995746396385,
       "aggregate_count": 25,
-      "cpp_per_frame_median_db": 0.25833451370319227,
+      "cpp_per_frame_median_db": 0.3605683605348789,
       "per_frame_count": 253
     },
     {
@@ -12586,9 +12586,9 @@
       "gender": "f",
       "duration_s": 7.12,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2558104844025761,
+      "cpp_aggregate_median_db": 0.3882146187553039,
       "aggregate_count": 28,
-      "cpp_per_frame_median_db": 0.25917694770198907,
+      "cpp_per_frame_median_db": 0.3702454926095502,
       "per_frame_count": 283
     },
     {
@@ -12597,9 +12597,9 @@
       "gender": "f",
       "duration_s": 6.88,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2550671120695356,
+      "cpp_aggregate_median_db": 0.35751655992111814,
       "aggregate_count": 28,
-      "cpp_per_frame_median_db": 0.25366857853449204,
+      "cpp_per_frame_median_db": 0.3569561817794932,
       "per_frame_count": 274
     },
     {
@@ -12608,9 +12608,9 @@
       "gender": "f",
       "duration_s": 7.89,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.25863854717813645,
+      "cpp_aggregate_median_db": 0.3735608398931839,
       "aggregate_count": 32,
-      "cpp_per_frame_median_db": 0.259743036896914,
+      "cpp_per_frame_median_db": 0.3706776119790439,
       "per_frame_count": 314
     },
     {
@@ -12619,9 +12619,9 @@
       "gender": "f",
       "duration_s": 6.62,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.25556328940837925,
+      "cpp_aggregate_median_db": 0.3543777283830811,
       "aggregate_count": 26,
-      "cpp_per_frame_median_db": 0.2584853526733707,
+      "cpp_per_frame_median_db": 0.36936040331068043,
       "per_frame_count": 263
     },
     {
@@ -12630,9 +12630,9 @@
       "gender": "f",
       "duration_s": 8.064,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2524957326484183,
+      "cpp_aggregate_median_db": 0.3523039148274595,
       "aggregate_count": 32,
-      "cpp_per_frame_median_db": 0.2596354811867403,
+      "cpp_per_frame_median_db": 0.36234772973506396,
       "per_frame_count": 321
     },
     {
@@ -12641,9 +12641,9 @@
       "gender": "f",
       "duration_s": 6.87,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2577531756122046,
+      "cpp_aggregate_median_db": 0.35739175912988164,
       "aggregate_count": 27,
-      "cpp_per_frame_median_db": 0.26211104486769715,
+      "cpp_per_frame_median_db": 0.35591314854045797,
       "per_frame_count": 273
     },
     {
@@ -12652,9 +12652,9 @@
       "gender": "f",
       "duration_s": 8.14,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2548931564230837,
+      "cpp_aggregate_median_db": 0.36406193616806876,
       "aggregate_count": 33,
-      "cpp_per_frame_median_db": 0.26859953124364383,
+      "cpp_per_frame_median_db": 0.37855125183286287,
       "per_frame_count": 324
     },
     {
@@ -12663,9 +12663,9 @@
       "gender": "f",
       "duration_s": 7.06,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2579904767427949,
+      "cpp_aggregate_median_db": 0.3576919501471542,
       "aggregate_count": 28,
-      "cpp_per_frame_median_db": 0.2615504697915827,
+      "cpp_per_frame_median_db": 0.3632753241480868,
       "per_frame_count": 281
     },
     {
@@ -12674,9 +12674,9 @@
       "gender": "f",
       "duration_s": 6.62,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.25588656259147863,
+      "cpp_aggregate_median_db": 0.3650124920683535,
       "aggregate_count": 26,
-      "cpp_per_frame_median_db": 0.2576892278234896,
+      "cpp_per_frame_median_db": 0.3694165313689213,
       "per_frame_count": 263
     },
     {
@@ -12685,9 +12685,9 @@
       "gender": "f",
       "duration_s": 6.87,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2614968858035612,
+      "cpp_aggregate_median_db": 0.35693353752760487,
       "aggregate_count": 27,
-      "cpp_per_frame_median_db": 0.2600757896285349,
+      "cpp_per_frame_median_db": 0.3653071153718985,
       "per_frame_count": 273
     },
     {
@@ -12696,9 +12696,9 @@
       "gender": "f",
       "duration_s": 7.44,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.3076839288272436,
+      "cpp_aggregate_median_db": 0.47834666683765403,
       "aggregate_count": 30,
-      "cpp_per_frame_median_db": 0.2609020896900219,
+      "cpp_per_frame_median_db": 0.3729461887110692,
       "per_frame_count": 296
     },
     {
@@ -12707,9 +12707,9 @@
       "gender": "f",
       "duration_s": 6.87,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2586308085158149,
+      "cpp_aggregate_median_db": 0.3690191344670944,
       "aggregate_count": 27,
-      "cpp_per_frame_median_db": 0.2588496349748554,
+      "cpp_per_frame_median_db": 0.3676163121688635,
       "per_frame_count": 273
     },
     {
@@ -12718,9 +12718,9 @@
       "gender": "f",
       "duration_s": 6.87,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.24883881510540912,
+      "cpp_aggregate_median_db": 0.35107055735327636,
       "aggregate_count": 27,
-      "cpp_per_frame_median_db": 0.25331650776838355,
+      "cpp_per_frame_median_db": 0.3591543283378605,
       "per_frame_count": 273
     },
     {
@@ -12729,9 +12729,9 @@
       "gender": "f",
       "duration_s": 6.18,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.25116289432097194,
+      "cpp_aggregate_median_db": 0.34622579547253823,
       "aggregate_count": 25,
-      "cpp_per_frame_median_db": 0.2511696450747638,
+      "cpp_per_frame_median_db": 0.35661826501459376,
       "per_frame_count": 246
     },
     {
@@ -12740,9 +12740,9 @@
       "gender": "f",
       "duration_s": 6.91,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2576747956079024,
+      "cpp_aggregate_median_db": 0.36774771696211056,
       "aggregate_count": 28,
-      "cpp_per_frame_median_db": 0.2571025029881382,
+      "cpp_per_frame_median_db": 0.365697871602277,
       "per_frame_count": 275
     },
     {
@@ -12751,9 +12751,9 @@
       "gender": "f",
       "duration_s": 7.03,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.26433045931220533,
+      "cpp_aggregate_median_db": 0.35907684101410786,
       "aggregate_count": 28,
-      "cpp_per_frame_median_db": 0.2631499657016836,
+      "cpp_per_frame_median_db": 0.36863102517649604,
       "per_frame_count": 280
     },
     {
@@ -12762,9 +12762,9 @@
       "gender": "f",
       "duration_s": 7.05,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2563525441569955,
+      "cpp_aggregate_median_db": 0.34759671862487634,
       "aggregate_count": 28,
-      "cpp_per_frame_median_db": 0.26267701413459327,
+      "cpp_per_frame_median_db": 0.3597940742791072,
       "per_frame_count": 281
     },
     {
@@ -12773,9 +12773,9 @@
       "gender": "f",
       "duration_s": 6.312,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2637349692329989,
+      "cpp_aggregate_median_db": 0.35780401471082934,
       "aggregate_count": 25,
-      "cpp_per_frame_median_db": 0.2617937368242451,
+      "cpp_per_frame_median_db": 0.3754863420122009,
       "per_frame_count": 251
     },
     {
@@ -12784,9 +12784,9 @@
       "gender": "f",
       "duration_s": 7.39,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2533779263962252,
+      "cpp_aggregate_median_db": 0.34781883484556964,
       "aggregate_count": 30,
-      "cpp_per_frame_median_db": 0.2606680384262091,
+      "cpp_per_frame_median_db": 0.367876229599182,
       "per_frame_count": 294
     },
     {
@@ -12795,9 +12795,9 @@
       "gender": "f",
       "duration_s": 7.41,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2660578396737765,
+      "cpp_aggregate_median_db": 0.3928435078304895,
       "aggregate_count": 30,
-      "cpp_per_frame_median_db": 0.258843019156683,
+      "cpp_per_frame_median_db": 0.37417430001583096,
       "per_frame_count": 295
     },
     {
@@ -12806,9 +12806,9 @@
       "gender": "f",
       "duration_s": 7.9,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2623661920288962,
+      "cpp_aggregate_median_db": 0.38408399084740424,
       "aggregate_count": 32,
-      "cpp_per_frame_median_db": 0.2640606582634297,
+      "cpp_per_frame_median_db": 0.380213757584462,
       "per_frame_count": 315
     },
     {
@@ -12817,9 +12817,9 @@
       "gender": "f",
       "duration_s": 6.87,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2698460715052863,
+      "cpp_aggregate_median_db": 0.39047754955253394,
       "aggregate_count": 27,
-      "cpp_per_frame_median_db": 0.26076034029595785,
+      "cpp_per_frame_median_db": 0.37181784280547336,
       "per_frame_count": 273
     },
     {
@@ -12828,9 +12828,9 @@
       "gender": "f",
       "duration_s": 7.47,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2500616824327647,
+      "cpp_aggregate_median_db": 0.3643763320760466,
       "aggregate_count": 30,
-      "cpp_per_frame_median_db": 0.25768563519032095,
+      "cpp_per_frame_median_db": 0.36543572663369833,
       "per_frame_count": 297
     },
     {
@@ -12839,9 +12839,9 @@
       "gender": "f",
       "duration_s": 7.63,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.25773344340686033,
+      "cpp_aggregate_median_db": 0.3634716284155182,
       "aggregate_count": 31,
-      "cpp_per_frame_median_db": 0.26290906873864683,
+      "cpp_per_frame_median_db": 0.37743419566661357,
       "per_frame_count": 304
     },
     {
@@ -12850,9 +12850,9 @@
       "gender": "f",
       "duration_s": 7.64,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.3242566038850293,
+      "cpp_aggregate_median_db": 0.5515479229046023,
       "aggregate_count": 31,
-      "cpp_per_frame_median_db": 0.2688651569183472,
+      "cpp_per_frame_median_db": 0.3913568132798656,
       "per_frame_count": 304
     },
     {
@@ -12861,9 +12861,9 @@
       "gender": "f",
       "duration_s": 7.39,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2708582226052169,
+      "cpp_aggregate_median_db": 0.3869715310843647,
       "aggregate_count": 30,
-      "cpp_per_frame_median_db": 0.2653686764616344,
+      "cpp_per_frame_median_db": 0.38089168644562665,
       "per_frame_count": 294
     },
     {
@@ -12872,9 +12872,9 @@
       "gender": "f",
       "duration_s": 7.4,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.29013420152693403,
+      "cpp_aggregate_median_db": 0.450854186294639,
       "aggregate_count": 30,
-      "cpp_per_frame_median_db": 0.26933735337841835,
+      "cpp_per_frame_median_db": 0.40133169030016547,
       "per_frame_count": 295
     },
     {
@@ -12883,9 +12883,9 @@
       "gender": "f",
       "duration_s": 7.15,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2600615778838806,
+      "cpp_aggregate_median_db": 0.37848010519082625,
       "aggregate_count": 29,
-      "cpp_per_frame_median_db": 0.2599974838009343,
+      "cpp_per_frame_median_db": 0.37138454588493197,
       "per_frame_count": 285
     },
     {
@@ -12894,9 +12894,9 @@
       "gender": "f",
       "duration_s": 8.66,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.26480376093698144,
+      "cpp_aggregate_median_db": 0.3765332079643169,
       "aggregate_count": 35,
-      "cpp_per_frame_median_db": 0.26448709240985957,
+      "cpp_per_frame_median_db": 0.3687132954254364,
       "per_frame_count": 345
     },
     {
@@ -12905,9 +12905,9 @@
       "gender": "f",
       "duration_s": 6.51,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.24962422173087978,
+      "cpp_aggregate_median_db": 0.3646430393318237,
       "aggregate_count": 26,
-      "cpp_per_frame_median_db": 0.2510605520280713,
+      "cpp_per_frame_median_db": 0.34848201803220774,
       "per_frame_count": 259
     },
     {
@@ -12916,9 +12916,9 @@
       "gender": "f",
       "duration_s": 7.9,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.29117744840235493,
+      "cpp_aggregate_median_db": 0.4633534195407651,
       "aggregate_count": 32,
-      "cpp_per_frame_median_db": 0.266057318741015,
+      "cpp_per_frame_median_db": 0.3877474680954449,
       "per_frame_count": 315
     },
     {
@@ -12927,9 +12927,9 @@
       "gender": "f",
       "duration_s": 7.47,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2825405445827446,
+      "cpp_aggregate_median_db": 0.419238993042799,
       "aggregate_count": 30,
-      "cpp_per_frame_median_db": 0.2669416907064027,
+      "cpp_per_frame_median_db": 0.38540724537274074,
       "per_frame_count": 297
     },
     {
@@ -12938,9 +12938,9 @@
       "gender": "f",
       "duration_s": 7.14,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2564262467920955,
+      "cpp_aggregate_median_db": 0.35790820556901554,
       "aggregate_count": 29,
-      "cpp_per_frame_median_db": 0.2666152598940916,
+      "cpp_per_frame_median_db": 0.3807014093589538,
       "per_frame_count": 284
     },
     {
@@ -12949,9 +12949,9 @@
       "gender": "f",
       "duration_s": 6.62,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2745255528054813,
+      "cpp_aggregate_median_db": 0.4239523680703714,
       "aggregate_count": 26,
-      "cpp_per_frame_median_db": 0.262014010354628,
+      "cpp_per_frame_median_db": 0.38553039346485646,
       "per_frame_count": 263
     },
     {
@@ -12960,9 +12960,9 @@
       "gender": "f",
       "duration_s": 6.87,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2626164258352023,
+      "cpp_aggregate_median_db": 0.3641199256524439,
       "aggregate_count": 27,
-      "cpp_per_frame_median_db": 0.2592233645536921,
+      "cpp_per_frame_median_db": 0.376826582389521,
       "per_frame_count": 273
     },
     {
@@ -12971,9 +12971,9 @@
       "gender": "f",
       "duration_s": 6.72,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2554641538270147,
+      "cpp_aggregate_median_db": 0.4113812452169658,
       "aggregate_count": 27,
-      "cpp_per_frame_median_db": 0.26005623887484564,
+      "cpp_per_frame_median_db": 0.36640290071287995,
       "per_frame_count": 267
     },
     {
@@ -12982,9 +12982,9 @@
       "gender": "f",
       "duration_s": 6.88,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2631396426624201,
+      "cpp_aggregate_median_db": 0.37074464204001356,
       "aggregate_count": 28,
-      "cpp_per_frame_median_db": 0.2599479002221239,
+      "cpp_per_frame_median_db": 0.3768466524759547,
       "per_frame_count": 274
     },
     {
@@ -12993,9 +12993,9 @@
       "gender": "f",
       "duration_s": 8,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.3065436246925399,
+      "cpp_aggregate_median_db": 0.48284917503565195,
       "aggregate_count": 32,
-      "cpp_per_frame_median_db": 0.2608633293345671,
+      "cpp_per_frame_median_db": 0.3770342577095614,
       "per_frame_count": 319
     },
     {
@@ -13004,9 +13004,9 @@
       "gender": "f",
       "duration_s": 6.9,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2605588409520489,
+      "cpp_aggregate_median_db": 0.3723237206583044,
       "aggregate_count": 28,
-      "cpp_per_frame_median_db": 0.25853695717867353,
+      "cpp_per_frame_median_db": 0.36997740806970675,
       "per_frame_count": 275
     },
     {
@@ -13015,9 +13015,9 @@
       "gender": "f",
       "duration_s": 6.62,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.26647832413695793,
+      "cpp_aggregate_median_db": 0.39390210404918924,
       "aggregate_count": 26,
-      "cpp_per_frame_median_db": 0.2648425873095871,
+      "cpp_per_frame_median_db": 0.3739927143006181,
       "per_frame_count": 263
     },
     {
@@ -13026,9 +13026,9 @@
       "gender": "f",
       "duration_s": 5.36,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2556094042251214,
+      "cpp_aggregate_median_db": 0.35627104519962705,
       "aggregate_count": 21,
-      "cpp_per_frame_median_db": 0.25360572965560246,
+      "cpp_per_frame_median_db": 0.346691502363359,
       "per_frame_count": 213
     },
     {
@@ -13037,9 +13037,9 @@
       "gender": "f",
       "duration_s": 6.37,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.24987684351108388,
+      "cpp_aggregate_median_db": 0.35024025261296404,
       "aggregate_count": 25,
-      "cpp_per_frame_median_db": 0.2565743427216068,
+      "cpp_per_frame_median_db": 0.36097214475807615,
       "per_frame_count": 253
     },
     {
@@ -13048,9 +13048,9 @@
       "gender": "f",
       "duration_s": 6.19,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2534916102951857,
+      "cpp_aggregate_median_db": 0.3562344454506166,
       "aggregate_count": 25,
-      "cpp_per_frame_median_db": 0.2582236807228694,
+      "cpp_per_frame_median_db": 0.36315862505598,
       "per_frame_count": 246
     },
     {
@@ -13059,9 +13059,9 @@
       "gender": "f",
       "duration_s": 7.14,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.24767649604516515,
+      "cpp_aggregate_median_db": 0.3568806571253217,
       "aggregate_count": 29,
-      "cpp_per_frame_median_db": 0.2549923658791906,
+      "cpp_per_frame_median_db": 0.3660539868314659,
       "per_frame_count": 284
     },
     {
@@ -13070,9 +13070,9 @@
       "gender": "f",
       "duration_s": 6.88,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.26771840677344994,
+      "cpp_aggregate_median_db": 0.36731678535720824,
       "aggregate_count": 28,
-      "cpp_per_frame_median_db": 0.26095788299740175,
+      "cpp_per_frame_median_db": 0.36655193481457393,
       "per_frame_count": 274
     },
     {
@@ -13081,9 +13081,9 @@
       "gender": "f",
       "duration_s": 6.62,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2745168825448601,
+      "cpp_aggregate_median_db": 0.4153115665681956,
       "aggregate_count": 26,
-      "cpp_per_frame_median_db": 0.26123843525444773,
+      "cpp_per_frame_median_db": 0.3781495086424205,
       "per_frame_count": 263
     },
     {
@@ -13092,9 +13092,9 @@
       "gender": "f",
       "duration_s": 7.65,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.25351491214344546,
+      "cpp_aggregate_median_db": 0.35757057025160627,
       "aggregate_count": 31,
-      "cpp_per_frame_median_db": 0.2568605728618511,
+      "cpp_per_frame_median_db": 0.36365306518353774,
       "per_frame_count": 305
     },
     {
@@ -13103,9 +13103,9 @@
       "gender": "f",
       "duration_s": 6.4,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.26141785665487594,
+      "cpp_aggregate_median_db": 0.3822793203064395,
       "aggregate_count": 26,
-      "cpp_per_frame_median_db": 0.26036619919168347,
+      "cpp_per_frame_median_db": 0.3700020172606276,
       "per_frame_count": 255
     },
     {
@@ -13114,9 +13114,9 @@
       "gender": "f",
       "duration_s": 6.62,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2662656656315141,
+      "cpp_aggregate_median_db": 0.35978166322432714,
       "aggregate_count": 26,
-      "cpp_per_frame_median_db": 0.2565186028824556,
+      "cpp_per_frame_median_db": 0.36566293780681164,
       "per_frame_count": 263
     },
     {
@@ -13125,9 +13125,9 @@
       "gender": "f",
       "duration_s": 6.96,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.26459070902917636,
+      "cpp_aggregate_median_db": 0.38525544204878015,
       "aggregate_count": 28,
-      "cpp_per_frame_median_db": 0.2581501162408743,
+      "cpp_per_frame_median_db": 0.3848379232296362,
       "per_frame_count": 277
     },
     {
@@ -13136,9 +13136,9 @@
       "gender": "f",
       "duration_s": 6.12,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2590825023999345,
+      "cpp_aggregate_median_db": 0.369069850227414,
       "aggregate_count": 24,
-      "cpp_per_frame_median_db": 0.25958827190183525,
+      "cpp_per_frame_median_db": 0.36604047002524304,
       "per_frame_count": 243
     },
     {
@@ -13147,9 +13147,9 @@
       "gender": "f",
       "duration_s": 6.36,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.26231133215822344,
+      "cpp_aggregate_median_db": 0.3609756354045057,
       "aggregate_count": 25,
-      "cpp_per_frame_median_db": 0.25991459715259213,
+      "cpp_per_frame_median_db": 0.3708689904786486,
       "per_frame_count": 253
     },
     {
@@ -13158,9 +13158,9 @@
       "gender": "f",
       "duration_s": 7.9,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.26037653081448353,
+      "cpp_aggregate_median_db": 0.36422699008686044,
       "aggregate_count": 32,
-      "cpp_per_frame_median_db": 0.26126100838254723,
+      "cpp_per_frame_median_db": 0.3673617277009339,
       "per_frame_count": 315
     },
     {
@@ -13169,9 +13169,9 @@
       "gender": "f",
       "duration_s": 7.12,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.26473820119590136,
+      "cpp_aggregate_median_db": 0.38784810298350014,
       "aggregate_count": 28,
-      "cpp_per_frame_median_db": 0.25993141953156634,
+      "cpp_per_frame_median_db": 0.36736100201461197,
       "per_frame_count": 283
     },
     {
@@ -13180,9 +13180,9 @@
       "gender": "f",
       "duration_s": 7.47,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2985811340107828,
+      "cpp_aggregate_median_db": 0.4399724859433653,
       "aggregate_count": 30,
-      "cpp_per_frame_median_db": 0.2748279478092221,
+      "cpp_per_frame_median_db": 0.39201554811447625,
       "per_frame_count": 297
     },
     {
@@ -13191,9 +13191,9 @@
       "gender": "f",
       "duration_s": 6.38,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2534626049179383,
+      "cpp_aggregate_median_db": 0.3563638706730035,
       "aggregate_count": 26,
-      "cpp_per_frame_median_db": 0.25849770196314836,
+      "cpp_per_frame_median_db": 0.3591757457105763,
       "per_frame_count": 254
     },
     {
@@ -13202,9 +13202,9 @@
       "gender": "f",
       "duration_s": 6.64,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2529167596527206,
+      "cpp_aggregate_median_db": 0.36413038258892,
       "aggregate_count": 27,
-      "cpp_per_frame_median_db": 0.2567852103278345,
+      "cpp_per_frame_median_db": 0.3652754692758581,
       "per_frame_count": 264
     },
     {
@@ -13213,9 +13213,9 @@
       "gender": "f",
       "duration_s": 6.43,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2637656076832272,
+      "cpp_aggregate_median_db": 0.3785288751911038,
       "aggregate_count": 26,
-      "cpp_per_frame_median_db": 0.2592314133403474,
+      "cpp_per_frame_median_db": 0.3741520690143836,
       "per_frame_count": 256
     },
     {
@@ -13224,9 +13224,9 @@
       "gender": "f",
       "duration_s": 8.14,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2613558877795415,
+      "cpp_aggregate_median_db": 0.37622359840583613,
       "aggregate_count": 33,
-      "cpp_per_frame_median_db": 0.2684509334304582,
+      "cpp_per_frame_median_db": 0.3802628598014067,
       "per_frame_count": 324
     },
     {
@@ -13235,9 +13235,9 @@
       "gender": "f",
       "duration_s": 6.37,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.27092330021713706,
+      "cpp_aggregate_median_db": 0.3897428516840911,
       "aggregate_count": 25,
-      "cpp_per_frame_median_db": 0.27114980218491797,
+      "cpp_per_frame_median_db": 0.3757192868062401,
       "per_frame_count": 253
     },
     {
@@ -13246,9 +13246,9 @@
       "gender": "f",
       "duration_s": 6.63,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.25473387555640326,
+      "cpp_aggregate_median_db": 0.3548654986519867,
       "aggregate_count": 27,
-      "cpp_per_frame_median_db": 0.2542912750241446,
+      "cpp_per_frame_median_db": 0.3563058775568386,
       "per_frame_count": 264
     },
     {
@@ -13257,9 +13257,9 @@
       "gender": "f",
       "duration_s": 6.87,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2678316915839885,
+      "cpp_aggregate_median_db": 0.43739122399334185,
       "aggregate_count": 27,
-      "cpp_per_frame_median_db": 0.26575643314306535,
+      "cpp_per_frame_median_db": 0.3814196953962434,
       "per_frame_count": 273
     },
     {
@@ -13268,9 +13268,9 @@
       "gender": "f",
       "duration_s": 6.69,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2564474618433861,
+      "cpp_aggregate_median_db": 0.3653288060256987,
       "aggregate_count": 27,
-      "cpp_per_frame_median_db": 0.26103446212378156,
+      "cpp_per_frame_median_db": 0.3712547448899461,
       "per_frame_count": 266
     },
     {
@@ -13279,9 +13279,9 @@
       "gender": "m",
       "duration_s": 7.39,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2554944450317155,
+      "cpp_aggregate_median_db": 0.36433329618042753,
       "aggregate_count": 30,
-      "cpp_per_frame_median_db": 0.25671863538879536,
+      "cpp_per_frame_median_db": 0.3736414458223326,
       "per_frame_count": 294
     },
     {
@@ -13290,9 +13290,9 @@
       "gender": "m",
       "duration_s": 6.87,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2566427272204903,
+      "cpp_aggregate_median_db": 0.35864719106567616,
       "aggregate_count": 27,
-      "cpp_per_frame_median_db": 0.2649637622230189,
+      "cpp_per_frame_median_db": 0.36853569362379857,
       "per_frame_count": 273
     },
     {
@@ -13301,9 +13301,9 @@
       "gender": "m",
       "duration_s": 6.39,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2579756391777259,
+      "cpp_aggregate_median_db": 0.3684775612521737,
       "aggregate_count": 26,
-      "cpp_per_frame_median_db": 0.262396788355902,
+      "cpp_per_frame_median_db": 0.38086178748040367,
       "per_frame_count": 254
     },
     {
@@ -13312,9 +13312,9 @@
       "gender": "m",
       "duration_s": 6.87,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2643954358756691,
+      "cpp_aggregate_median_db": 0.3776717063106692,
       "aggregate_count": 27,
-      "cpp_per_frame_median_db": 0.26142394609474984,
+      "cpp_per_frame_median_db": 0.3677548104726868,
       "per_frame_count": 273
     },
     {
@@ -13323,9 +13323,9 @@
       "gender": "m",
       "duration_s": 8.77,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.25920060416423435,
+      "cpp_aggregate_median_db": 0.34925965111582563,
       "aggregate_count": 35,
-      "cpp_per_frame_median_db": 0.25611911233141477,
+      "cpp_per_frame_median_db": 0.3600660929530903,
       "per_frame_count": 349
     },
     {
@@ -13334,9 +13334,9 @@
       "gender": "m",
       "duration_s": 7.14,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.25946127896182575,
+      "cpp_aggregate_median_db": 0.37770951835496147,
       "aggregate_count": 29,
-      "cpp_per_frame_median_db": 0.25863981383433066,
+      "cpp_per_frame_median_db": 0.37875777351035567,
       "per_frame_count": 284
     },
     {
@@ -13345,9 +13345,9 @@
       "gender": "m",
       "duration_s": 6.63,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.26043028392108103,
+      "cpp_aggregate_median_db": 0.36213554979738466,
       "aggregate_count": 27,
-      "cpp_per_frame_median_db": 0.2601445689207552,
+      "cpp_per_frame_median_db": 0.3652278639790447,
       "per_frame_count": 264
     },
     {
@@ -13356,9 +13356,9 @@
       "gender": "m",
       "duration_s": 6.1,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2636411958721725,
+      "cpp_aggregate_median_db": 0.37586296548341813,
       "aggregate_count": 24,
-      "cpp_per_frame_median_db": 0.25846579162741906,
+      "cpp_per_frame_median_db": 0.371581780057297,
       "per_frame_count": 243
     },
     {
@@ -13367,9 +13367,9 @@
       "gender": "m",
       "duration_s": 7.14,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2553012872143827,
+      "cpp_aggregate_median_db": 0.36902228870563225,
       "aggregate_count": 29,
-      "cpp_per_frame_median_db": 0.2574286451624668,
+      "cpp_per_frame_median_db": 0.377124196813334,
       "per_frame_count": 284
     },
     {
@@ -13378,9 +13378,9 @@
       "gender": "m",
       "duration_s": 7.64,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2588836965989884,
+      "cpp_aggregate_median_db": 0.36469231428083726,
       "aggregate_count": 31,
-      "cpp_per_frame_median_db": 0.2615015869996632,
+      "cpp_per_frame_median_db": 0.3667123892060727,
       "per_frame_count": 304
     },
     {
@@ -13389,9 +13389,9 @@
       "gender": "m",
       "duration_s": 7.14,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2513632547322121,
+      "cpp_aggregate_median_db": 0.3534641061183257,
       "aggregate_count": 29,
-      "cpp_per_frame_median_db": 0.25924003775950083,
+      "cpp_per_frame_median_db": 0.36672546358561386,
       "per_frame_count": 284
     },
     {
@@ -13400,9 +13400,9 @@
       "gender": "m",
       "duration_s": 5.85,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.25934618681895366,
+      "cpp_aggregate_median_db": 0.35446355042258815,
       "aggregate_count": 23,
-      "cpp_per_frame_median_db": 0.26085844196648017,
+      "cpp_per_frame_median_db": 0.3600190794329525,
       "per_frame_count": 233
     },
     {
@@ -13411,9 +13411,9 @@
       "gender": "m",
       "duration_s": 6.36,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2592298399681732,
+      "cpp_aggregate_median_db": 0.36666887526674286,
       "aggregate_count": 25,
-      "cpp_per_frame_median_db": 0.2553897947471995,
+      "cpp_per_frame_median_db": 0.36633776112738764,
       "per_frame_count": 253
     },
     {
@@ -13422,9 +13422,9 @@
       "gender": "m",
       "duration_s": 6.88,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2579747230525009,
+      "cpp_aggregate_median_db": 0.35880792705210074,
       "aggregate_count": 28,
-      "cpp_per_frame_median_db": 0.260414253677426,
+      "cpp_per_frame_median_db": 0.3703707642951394,
       "per_frame_count": 274
     },
     {
@@ -13433,9 +13433,9 @@
       "gender": "m",
       "duration_s": 6.97,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2537548607153508,
+      "cpp_aggregate_median_db": 0.3545332214427741,
       "aggregate_count": 28,
-      "cpp_per_frame_median_db": 0.2556646738023492,
+      "cpp_per_frame_median_db": 0.3617163329161687,
       "per_frame_count": 277
     },
     {
@@ -13444,9 +13444,9 @@
       "gender": "m",
       "duration_s": 6.62,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2574233161152095,
+      "cpp_aggregate_median_db": 0.36573077389655884,
       "aggregate_count": 26,
-      "cpp_per_frame_median_db": 0.25568812218163806,
+      "cpp_per_frame_median_db": 0.3618266692974213,
       "per_frame_count": 263
     },
     {
@@ -13455,9 +13455,9 @@
       "gender": "m",
       "duration_s": 6.88,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.25710015793077623,
+      "cpp_aggregate_median_db": 0.3731486167990732,
       "aggregate_count": 28,
-      "cpp_per_frame_median_db": 0.26203812859285625,
+      "cpp_per_frame_median_db": 0.3754522118801894,
       "per_frame_count": 274
     },
     {
@@ -13466,9 +13466,9 @@
       "gender": "m",
       "duration_s": 6.46,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.25312157418055625,
+      "cpp_aggregate_median_db": 0.3626405016583286,
       "aggregate_count": 26,
-      "cpp_per_frame_median_db": 0.25101411713377464,
+      "cpp_per_frame_median_db": 0.35058670083930515,
       "per_frame_count": 257
     },
     {
@@ -13477,9 +13477,9 @@
       "gender": "m",
       "duration_s": 6.97,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.26493628702095506,
+      "cpp_aggregate_median_db": 0.3603264977591285,
       "aggregate_count": 28,
-      "cpp_per_frame_median_db": 0.25639893528333,
+      "cpp_per_frame_median_db": 0.36659895038387014,
       "per_frame_count": 277
     },
     {
@@ -13488,9 +13488,9 @@
       "gender": "m",
       "duration_s": 6.62,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2534552889869768,
+      "cpp_aggregate_median_db": 0.3608741958294518,
       "aggregate_count": 26,
-      "cpp_per_frame_median_db": 0.25184913616100413,
+      "cpp_per_frame_median_db": 0.35361185435436754,
       "per_frame_count": 263
     },
     {
@@ -13499,9 +13499,9 @@
       "gender": "m",
       "duration_s": 5.856,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2602127543585697,
+      "cpp_aggregate_median_db": 0.36615743199087225,
       "aggregate_count": 23,
-      "cpp_per_frame_median_db": 0.25032121033396515,
+      "cpp_per_frame_median_db": 0.34732861400143605,
       "per_frame_count": 233
     },
     {
@@ -13510,9 +13510,9 @@
       "gender": "m",
       "duration_s": 5.88,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.25460822423453566,
+      "cpp_aggregate_median_db": 0.35022631452049136,
       "aggregate_count": 24,
-      "cpp_per_frame_median_db": 0.24942404976888943,
+      "cpp_per_frame_median_db": 0.3555950885393977,
       "per_frame_count": 234
     },
     {
@@ -13521,9 +13521,9 @@
       "gender": "m",
       "duration_s": 6.2,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2530465178898213,
+      "cpp_aggregate_median_db": 0.3677674958356306,
       "aggregate_count": 25,
-      "cpp_per_frame_median_db": 0.2507515372018244,
+      "cpp_per_frame_median_db": 0.36078966510813376,
       "per_frame_count": 247
     },
     {
@@ -13532,9 +13532,9 @@
       "gender": "m",
       "duration_s": 6.72,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2620759601855783,
+      "cpp_aggregate_median_db": 0.3653055105562969,
       "aggregate_count": 27,
-      "cpp_per_frame_median_db": 0.26250501959121814,
+      "cpp_per_frame_median_db": 0.3679578087269666,
       "per_frame_count": 267
     },
     {
@@ -13543,9 +13543,9 @@
       "gender": "m",
       "duration_s": 6.64,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2626921078513399,
+      "cpp_aggregate_median_db": 0.3571524404454569,
       "aggregate_count": 27,
-      "cpp_per_frame_median_db": 0.2561087750985039,
+      "cpp_per_frame_median_db": 0.3699135841697979,
       "per_frame_count": 264
     },
     {
@@ -13554,9 +13554,9 @@
       "gender": "m",
       "duration_s": 5.68,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2722836963545921,
+      "cpp_aggregate_median_db": 0.39193324816347946,
       "aggregate_count": 23,
-      "cpp_per_frame_median_db": 0.25352481478480593,
+      "cpp_per_frame_median_db": 0.35812516683504625,
       "per_frame_count": 226
     },
     {
@@ -13565,9 +13565,9 @@
       "gender": "m",
       "duration_s": 6.73,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.24975764920536841,
+      "cpp_aggregate_median_db": 0.3548256387861634,
       "aggregate_count": 27,
-      "cpp_per_frame_median_db": 0.2504887560221394,
+      "cpp_per_frame_median_db": 0.35041453386094695,
       "per_frame_count": 268
     },
     {
@@ -13576,9 +13576,9 @@
       "gender": "m",
       "duration_s": 7.14,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2978744272651185,
+      "cpp_aggregate_median_db": 0.4892285405091129,
       "aggregate_count": 29,
-      "cpp_per_frame_median_db": 0.2664896400513244,
+      "cpp_per_frame_median_db": 0.39263105117544034,
       "per_frame_count": 284
     },
     {
@@ -13587,9 +13587,9 @@
       "gender": "m",
       "duration_s": 6.37,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.25976174632017507,
+      "cpp_aggregate_median_db": 0.3622384143701069,
       "aggregate_count": 25,
-      "cpp_per_frame_median_db": 0.25821928699930796,
+      "cpp_per_frame_median_db": 0.35945650411519586,
       "per_frame_count": 253
     },
     {
@@ -13598,9 +13598,9 @@
       "gender": "m",
       "duration_s": 7.16,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2671210250197691,
+      "cpp_aggregate_median_db": 0.37090564754303795,
       "aggregate_count": 29,
-      "cpp_per_frame_median_db": 0.25610948677574197,
+      "cpp_per_frame_median_db": 0.3660638712532366,
       "per_frame_count": 285
     },
     {
@@ -13609,9 +13609,9 @@
       "gender": "m",
       "duration_s": 7.39,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.25384134384043905,
+      "cpp_aggregate_median_db": 0.36085167557321807,
       "aggregate_count": 30,
-      "cpp_per_frame_median_db": 0.26289108938743,
+      "cpp_per_frame_median_db": 0.3657812577802252,
       "per_frame_count": 294
     },
     {
@@ -13620,9 +13620,9 @@
       "gender": "m",
       "duration_s": 6.9,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.25786635739740627,
+      "cpp_aggregate_median_db": 0.36723730730584264,
       "aggregate_count": 28,
-      "cpp_per_frame_median_db": 0.2689455322269051,
+      "cpp_per_frame_median_db": 0.37568033084305585,
       "per_frame_count": 275
     },
     {
@@ -13631,9 +13631,9 @@
       "gender": "m",
       "duration_s": 7.12,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2651188885322377,
+      "cpp_aggregate_median_db": 0.38875105004430854,
       "aggregate_count": 28,
-      "cpp_per_frame_median_db": 0.25695693825167254,
+      "cpp_per_frame_median_db": 0.3742688894097852,
       "per_frame_count": 283
     },
     {
@@ -13642,9 +13642,9 @@
       "gender": "m",
       "duration_s": 7.32,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.28973935029832854,
+      "cpp_aggregate_median_db": 0.42279606737882636,
       "aggregate_count": 29,
-      "cpp_per_frame_median_db": 0.25849560467669774,
+      "cpp_per_frame_median_db": 0.37363066755601704,
       "per_frame_count": 291
     },
     {
@@ -13653,9 +13653,9 @@
       "gender": "m",
       "duration_s": 5.85,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.26111325945601566,
+      "cpp_aggregate_median_db": 0.37169949947854125,
       "aggregate_count": 23,
-      "cpp_per_frame_median_db": 0.2545934340397964,
+      "cpp_per_frame_median_db": 0.3748982293453478,
       "per_frame_count": 233
     },
     {
@@ -13664,9 +13664,9 @@
       "gender": "m",
       "duration_s": 6.37,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2626929053152464,
+      "cpp_aggregate_median_db": 0.36055130752244996,
       "aggregate_count": 25,
-      "cpp_per_frame_median_db": 0.25476775188661654,
+      "cpp_per_frame_median_db": 0.36374707957473995,
       "per_frame_count": 253
     },
     {
@@ -13675,9 +13675,9 @@
       "gender": "m",
       "duration_s": 6.46,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2615063809575696,
+      "cpp_aggregate_median_db": 0.3722489672047756,
       "aggregate_count": 26,
-      "cpp_per_frame_median_db": 0.257861141114129,
+      "cpp_per_frame_median_db": 0.3589881874134647,
       "per_frame_count": 257
     },
     {
@@ -13686,9 +13686,9 @@
       "gender": "m",
       "duration_s": 7.39,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.26083363861753317,
+      "cpp_aggregate_median_db": 0.3710113433695297,
       "aggregate_count": 30,
-      "cpp_per_frame_median_db": 0.2568051736024991,
+      "cpp_per_frame_median_db": 0.36038957311415776,
       "per_frame_count": 294
     },
     {
@@ -13697,9 +13697,9 @@
       "gender": "m",
       "duration_s": 6.63,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2593644292428556,
+      "cpp_aggregate_median_db": 0.36237766269495897,
       "aggregate_count": 27,
-      "cpp_per_frame_median_db": 0.25481310806085167,
+      "cpp_per_frame_median_db": 0.35629216735035807,
       "per_frame_count": 264
     },
     {
@@ -13708,9 +13708,9 @@
       "gender": "m",
       "duration_s": 6.62,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.26164594755678233,
+      "cpp_aggregate_median_db": 0.36228900325591235,
       "aggregate_count": 26,
-      "cpp_per_frame_median_db": 0.25962463819831283,
+      "cpp_per_frame_median_db": 0.3604435480833248,
       "per_frame_count": 263
     },
     {
@@ -13719,9 +13719,9 @@
       "gender": "m",
       "duration_s": 6.37,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2513417976959307,
+      "cpp_aggregate_median_db": 0.344914270163711,
       "aggregate_count": 25,
-      "cpp_per_frame_median_db": 0.2570552512547111,
+      "cpp_per_frame_median_db": 0.3481615415246959,
       "per_frame_count": 253
     },
     {
@@ -13730,9 +13730,9 @@
       "gender": "m",
       "duration_s": 9.16,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.25176547725542014,
+      "cpp_aggregate_median_db": 0.3507281888379697,
       "aggregate_count": 37,
-      "cpp_per_frame_median_db": 0.25677326409805507,
+      "cpp_per_frame_median_db": 0.35874008942755586,
       "per_frame_count": 365
     },
     {
@@ -13741,9 +13741,9 @@
       "gender": "m",
       "duration_s": 7.4,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2494679547550366,
+      "cpp_aggregate_median_db": 0.34897706244737164,
       "aggregate_count": 30,
-      "cpp_per_frame_median_db": 0.24818433190837672,
+      "cpp_per_frame_median_db": 0.3579320204760091,
       "per_frame_count": 295
     },
     {
@@ -13752,9 +13752,9 @@
       "gender": "m",
       "duration_s": 7.39,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2556960003548108,
+      "cpp_aggregate_median_db": 0.37547877299667376,
       "aggregate_count": 30,
-      "cpp_per_frame_median_db": 0.25035167839664985,
+      "cpp_per_frame_median_db": 0.3751003755934101,
       "per_frame_count": 294
     },
     {
@@ -13763,9 +13763,9 @@
       "gender": "m",
       "duration_s": 6.88,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.25225644463116603,
+      "cpp_aggregate_median_db": 0.3580148461666053,
       "aggregate_count": 28,
-      "cpp_per_frame_median_db": 0.2550041519846623,
+      "cpp_per_frame_median_db": 0.36443624864838736,
       "per_frame_count": 274
     },
     {
@@ -13774,9 +13774,9 @@
       "gender": "m",
       "duration_s": 6.74,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.26612669235137043,
+      "cpp_aggregate_median_db": 0.39416053745178403,
       "aggregate_count": 27,
-      "cpp_per_frame_median_db": 0.25038110284285137,
+      "cpp_per_frame_median_db": 0.3618331773520209,
       "per_frame_count": 268
     },
     {
@@ -13785,9 +13785,9 @@
       "gender": "m",
       "duration_s": 6.45,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2619246893490408,
+      "cpp_aggregate_median_db": 0.3517561324554594,
       "aggregate_count": 26,
-      "cpp_per_frame_median_db": 0.25879411316845663,
+      "cpp_per_frame_median_db": 0.3628023186060364,
       "per_frame_count": 257
     },
     {
@@ -13796,9 +13796,9 @@
       "gender": "m",
       "duration_s": 6.87,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2773969831346003,
+      "cpp_aggregate_median_db": 0.4115145340669281,
       "aggregate_count": 27,
-      "cpp_per_frame_median_db": 0.25686569709917173,
+      "cpp_per_frame_median_db": 0.36673495132939404,
       "per_frame_count": 273
     },
     {
@@ -13807,9 +13807,9 @@
       "gender": "m",
       "duration_s": 6.46,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2684380276570286,
+      "cpp_aggregate_median_db": 0.3819504591713318,
       "aggregate_count": 26,
-      "cpp_per_frame_median_db": 0.2558199560916727,
+      "cpp_per_frame_median_db": 0.35283179327886427,
       "per_frame_count": 257
     },
     {
@@ -13818,9 +13818,9 @@
       "gender": "m",
       "duration_s": 6.42,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2604173188884829,
+      "cpp_aggregate_median_db": 0.3828312043442026,
       "aggregate_count": 26,
-      "cpp_per_frame_median_db": 0.2528140997883886,
+      "cpp_per_frame_median_db": 0.3666658889511124,
       "per_frame_count": 255
     },
     {
@@ -13829,9 +13829,9 @@
       "gender": "m",
       "duration_s": 6.38,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2658852369883883,
+      "cpp_aggregate_median_db": 0.38525527097215284,
       "aggregate_count": 26,
-      "cpp_per_frame_median_db": 0.25192891448239374,
+      "cpp_per_frame_median_db": 0.36765275081478277,
       "per_frame_count": 254
     },
     {
@@ -13840,9 +13840,9 @@
       "gender": "m",
       "duration_s": 7.2,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.27304831109247146,
+      "cpp_aggregate_median_db": 0.4025806103241708,
       "aggregate_count": 29,
-      "cpp_per_frame_median_db": 0.2540575637779148,
+      "cpp_per_frame_median_db": 0.3724913946769527,
       "per_frame_count": 287
     },
     {
@@ -13851,9 +13851,9 @@
       "gender": "m",
       "duration_s": 7.12,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2633711490071739,
+      "cpp_aggregate_median_db": 0.36096350418132117,
       "aggregate_count": 28,
-      "cpp_per_frame_median_db": 0.25352909888701586,
+      "cpp_per_frame_median_db": 0.35672764105054366,
       "per_frame_count": 283
     },
     {
@@ -13862,9 +13862,9 @@
       "gender": "m",
       "duration_s": 6.62,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.25920786760166303,
+      "cpp_aggregate_median_db": 0.36078074993109266,
       "aggregate_count": 26,
-      "cpp_per_frame_median_db": 0.25555317473656597,
+      "cpp_per_frame_median_db": 0.35646579698614783,
       "per_frame_count": 263
     },
     {
@@ -13873,9 +13873,9 @@
       "gender": "m",
       "duration_s": 6.37,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.25890803954614733,
+      "cpp_aggregate_median_db": 0.3660484637491406,
       "aggregate_count": 25,
-      "cpp_per_frame_median_db": 0.26023195721502584,
+      "cpp_per_frame_median_db": 0.35382741738198026,
       "per_frame_count": 253
     },
     {
@@ -13884,9 +13884,9 @@
       "gender": "m",
       "duration_s": 8.14,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2781610824179722,
+      "cpp_aggregate_median_db": 0.3950596657778772,
       "aggregate_count": 33,
-      "cpp_per_frame_median_db": 0.2572274259271069,
+      "cpp_per_frame_median_db": 0.3634148870480219,
       "per_frame_count": 324
     },
     {
@@ -13895,9 +13895,9 @@
       "gender": "m",
       "duration_s": 5.6,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.25845155367968176,
+      "cpp_aggregate_median_db": 0.35289428279644725,
       "aggregate_count": 22,
-      "cpp_per_frame_median_db": 0.25425726637311313,
+      "cpp_per_frame_median_db": 0.349387343958961,
       "per_frame_count": 223
     },
     {
@@ -13906,9 +13906,9 @@
       "gender": "m",
       "duration_s": 7.64,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.27997896706004405,
+      "cpp_aggregate_median_db": 0.43025182301618065,
       "aggregate_count": 31,
-      "cpp_per_frame_median_db": 0.25765190915898867,
+      "cpp_per_frame_median_db": 0.3627487668212014,
       "per_frame_count": 304
     },
     {
@@ -13917,9 +13917,9 @@
       "gender": "m",
       "duration_s": 7.14,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.26018865029898985,
+      "cpp_aggregate_median_db": 0.3637253442472967,
       "aggregate_count": 29,
-      "cpp_per_frame_median_db": 0.2564811226477196,
+      "cpp_per_frame_median_db": 0.36822718119549464,
       "per_frame_count": 284
     },
     {
@@ -13928,9 +13928,9 @@
       "gender": "m",
       "duration_s": 6.62,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2656527564813296,
+      "cpp_aggregate_median_db": 0.38983406186161307,
       "aggregate_count": 26,
-      "cpp_per_frame_median_db": 0.25744656597218485,
+      "cpp_per_frame_median_db": 0.36342345740429205,
       "per_frame_count": 263
     },
     {
@@ -13939,9 +13939,9 @@
       "gender": "m",
       "duration_s": 6.37,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2680862895481854,
+      "cpp_aggregate_median_db": 0.37188047499865884,
       "aggregate_count": 25,
-      "cpp_per_frame_median_db": 0.2505063432937411,
+      "cpp_per_frame_median_db": 0.359201903638652,
       "per_frame_count": 253
     },
     {
@@ -13950,9 +13950,9 @@
       "gender": "m",
       "duration_s": 6.45,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2528122887520031,
+      "cpp_aggregate_median_db": 0.3705993352169653,
       "aggregate_count": 26,
-      "cpp_per_frame_median_db": 0.2516630278574215,
+      "cpp_per_frame_median_db": 0.3471559861378217,
       "per_frame_count": 257
     },
     {
@@ -13961,9 +13961,9 @@
       "gender": "m",
       "duration_s": 6.12,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.25034227772231776,
+      "cpp_aggregate_median_db": 0.3442261917923019,
       "aggregate_count": 24,
-      "cpp_per_frame_median_db": 0.2511796694870337,
+      "cpp_per_frame_median_db": 0.3511000824859807,
       "per_frame_count": 243
     },
     {
@@ -13972,9 +13972,9 @@
       "gender": "m",
       "duration_s": 6.624,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2776090793134102,
+      "cpp_aggregate_median_db": 0.3921373955367839,
       "aggregate_count": 26,
-      "cpp_per_frame_median_db": 0.25736505099998414,
+      "cpp_per_frame_median_db": 0.361216245239009,
       "per_frame_count": 263
     },
     {
@@ -13983,9 +13983,9 @@
       "gender": "m",
       "duration_s": 7.74,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.26689344229740847,
+      "cpp_aggregate_median_db": 0.41183053617865495,
       "aggregate_count": 31,
-      "cpp_per_frame_median_db": 0.2562607960495368,
+      "cpp_per_frame_median_db": 0.35847005772493346,
       "per_frame_count": 308
     },
     {
@@ -13994,9 +13994,9 @@
       "gender": "m",
       "duration_s": 6.37,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.25684187046448254,
+      "cpp_aggregate_median_db": 0.3594229324076149,
       "aggregate_count": 25,
-      "cpp_per_frame_median_db": 0.25185726484252147,
+      "cpp_per_frame_median_db": 0.354689133784425,
       "per_frame_count": 253
     },
     {
@@ -14005,9 +14005,9 @@
       "gender": "m",
       "duration_s": 6.87,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2599438988231819,
+      "cpp_aggregate_median_db": 0.3580066459637605,
       "aggregate_count": 27,
-      "cpp_per_frame_median_db": 0.25380890599909495,
+      "cpp_per_frame_median_db": 0.3643495122640017,
       "per_frame_count": 273
     },
     {
@@ -14016,9 +14016,9 @@
       "gender": "m",
       "duration_s": 4.58,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2505026072783242,
+      "cpp_aggregate_median_db": 0.35140588929486816,
       "aggregate_count": 18,
-      "cpp_per_frame_median_db": 0.2529473820832172,
+      "cpp_per_frame_median_db": 0.34277579473283315,
       "per_frame_count": 182
     },
     {
@@ -14027,9 +14027,9 @@
       "gender": "m",
       "duration_s": 6.37,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.26414051791114257,
+      "cpp_aggregate_median_db": 0.37642402287521326,
       "aggregate_count": 25,
-      "cpp_per_frame_median_db": 0.2579950163431273,
+      "cpp_per_frame_median_db": 0.36154309351146696,
       "per_frame_count": 253
     },
     {
@@ -14038,9 +14038,9 @@
       "gender": "m",
       "duration_s": 6.37,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2521291548784182,
+      "cpp_aggregate_median_db": 0.34907553110036865,
       "aggregate_count": 25,
-      "cpp_per_frame_median_db": 0.24887096947833684,
+      "cpp_per_frame_median_db": 0.35163078809226267,
       "per_frame_count": 253
     },
     {
@@ -14049,9 +14049,9 @@
       "gender": "m",
       "duration_s": 6.62,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.25299213925430286,
+      "cpp_aggregate_median_db": 0.3576309597505694,
       "aggregate_count": 26,
-      "cpp_per_frame_median_db": 0.24726716984952535,
+      "cpp_per_frame_median_db": 0.35062241648001835,
       "per_frame_count": 263
     },
     {
@@ -14060,9 +14060,9 @@
       "gender": "m",
       "duration_s": 6.37,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2560665720786966,
+      "cpp_aggregate_median_db": 0.35959700683108264,
       "aggregate_count": 25,
-      "cpp_per_frame_median_db": 0.2512694660918377,
+      "cpp_per_frame_median_db": 0.35970772367205406,
       "per_frame_count": 253
     },
     {
@@ -14071,9 +14071,9 @@
       "gender": "m",
       "duration_s": 7.23,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.25472809919610545,
+      "cpp_aggregate_median_db": 0.3564109627144767,
       "aggregate_count": 29,
-      "cpp_per_frame_median_db": 0.25352134666226267,
+      "cpp_per_frame_median_db": 0.3552500069302421,
       "per_frame_count": 288
     },
     {
@@ -14082,9 +14082,9 @@
       "gender": "m",
       "duration_s": 6.87,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2871790382293455,
+      "cpp_aggregate_median_db": 0.38379162391585186,
       "aggregate_count": 27,
-      "cpp_per_frame_median_db": 0.2584658744064021,
+      "cpp_per_frame_median_db": 0.36926907164454786,
       "per_frame_count": 273
     },
     {
@@ -14093,9 +14093,9 @@
       "gender": "m",
       "duration_s": 6.64,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.25900909655265053,
+      "cpp_aggregate_median_db": 0.3662434069588394,
       "aggregate_count": 27,
-      "cpp_per_frame_median_db": 0.2518297767772938,
+      "cpp_per_frame_median_db": 0.3524071326678905,
       "per_frame_count": 264
     },
     {
@@ -14104,9 +14104,9 @@
       "gender": "m",
       "duration_s": 6.45,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.25333804524165826,
+      "cpp_aggregate_median_db": 0.3605819006410207,
       "aggregate_count": 26,
-      "cpp_per_frame_median_db": 0.25106532839474555,
+      "cpp_per_frame_median_db": 0.3506551622768654,
       "per_frame_count": 257
     },
     {
@@ -14115,9 +14115,9 @@
       "gender": "m",
       "duration_s": 6.38,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2530447721672057,
+      "cpp_aggregate_median_db": 0.34795420750954964,
       "aggregate_count": 26,
-      "cpp_per_frame_median_db": 0.25386694183383357,
+      "cpp_per_frame_median_db": 0.3570751791803738,
       "per_frame_count": 254
     },
     {
@@ -14126,9 +14126,9 @@
       "gender": "m",
       "duration_s": 5.85,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.25329286516244254,
+      "cpp_aggregate_median_db": 0.34169605577059015,
       "aggregate_count": 23,
-      "cpp_per_frame_median_db": 0.24844139977555857,
+      "cpp_per_frame_median_db": 0.34209902174068635,
       "per_frame_count": 233
     },
     {
@@ -14137,9 +14137,9 @@
       "gender": "m",
       "duration_s": 5.85,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.26083071558826615,
+      "cpp_aggregate_median_db": 0.3712802181868722,
       "aggregate_count": 23,
-      "cpp_per_frame_median_db": 0.2561118048004116,
+      "cpp_per_frame_median_db": 0.3429306055076212,
       "per_frame_count": 233
     },
     {
@@ -14148,9 +14148,9 @@
       "gender": "m",
       "duration_s": 5.88,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.25857665644989913,
+      "cpp_aggregate_median_db": 0.3406485947224406,
       "aggregate_count": 24,
-      "cpp_per_frame_median_db": 0.25226654095245205,
+      "cpp_per_frame_median_db": 0.3491579802012569,
       "per_frame_count": 234
     },
     {
@@ -14159,9 +14159,9 @@
       "gender": "m",
       "duration_s": 6.1,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.26174511458846333,
+      "cpp_aggregate_median_db": 0.3764615828065164,
       "aggregate_count": 24,
-      "cpp_per_frame_median_db": 0.2544287368715342,
+      "cpp_per_frame_median_db": 0.3528572741847916,
       "per_frame_count": 243
     },
     {
@@ -14170,9 +14170,9 @@
       "gender": "m",
       "duration_s": 7.14,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.27205581512300797,
+      "cpp_aggregate_median_db": 0.3904331851186885,
       "aggregate_count": 29,
-      "cpp_per_frame_median_db": 0.25783572755794154,
+      "cpp_per_frame_median_db": 0.3739897114061567,
       "per_frame_count": 284
     },
     {
@@ -14181,9 +14181,9 @@
       "gender": "m",
       "duration_s": 5.6,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2591715794890185,
+      "cpp_aggregate_median_db": 0.35508232460976474,
       "aggregate_count": 22,
-      "cpp_per_frame_median_db": 0.25677926509101034,
+      "cpp_per_frame_median_db": 0.3620947631884183,
       "per_frame_count": 223
     },
     {
@@ -14192,9 +14192,9 @@
       "gender": "m",
       "duration_s": 5.85,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2551024833743153,
+      "cpp_aggregate_median_db": 0.3553406879121057,
       "aggregate_count": 23,
-      "cpp_per_frame_median_db": 0.2549352182510396,
+      "cpp_per_frame_median_db": 0.35743176744221433,
       "per_frame_count": 233
     },
     {
@@ -14203,9 +14203,9 @@
       "gender": "m",
       "duration_s": 6.37,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2650453927746817,
+      "cpp_aggregate_median_db": 0.36082906530322983,
       "aggregate_count": 25,
-      "cpp_per_frame_median_db": 0.2584941007490508,
+      "cpp_per_frame_median_db": 0.3621215532891754,
       "per_frame_count": 253
     },
     {
@@ -14214,9 +14214,9 @@
       "gender": "m",
       "duration_s": 7.22,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2564968841807573,
+      "cpp_aggregate_median_db": 0.35836414702407804,
       "aggregate_count": 29,
-      "cpp_per_frame_median_db": 0.24898759215165897,
+      "cpp_per_frame_median_db": 0.357821545406336,
       "per_frame_count": 287
     },
     {
@@ -14225,9 +14225,9 @@
       "gender": "m",
       "duration_s": 6.12,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.27330009552510426,
+      "cpp_aggregate_median_db": 0.3671431723568477,
       "aggregate_count": 24,
-      "cpp_per_frame_median_db": 0.25446186602141485,
+      "cpp_per_frame_median_db": 0.3622801079079747,
       "per_frame_count": 243
     },
     {
@@ -14236,9 +14236,9 @@
       "gender": "m",
       "duration_s": 5.85,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2519836847325289,
+      "cpp_aggregate_median_db": 0.3492910988555948,
       "aggregate_count": 23,
-      "cpp_per_frame_median_db": 0.2520139803812003,
+      "cpp_per_frame_median_db": 0.3405656002509636,
       "per_frame_count": 233
     },
     {
@@ -14247,9 +14247,9 @@
       "gender": "m",
       "duration_s": 6.372,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.2554188820304428,
+      "cpp_aggregate_median_db": 0.3733635181192043,
       "aggregate_count": 25,
-      "cpp_per_frame_median_db": 0.24914043180433706,
+      "cpp_per_frame_median_db": 0.3526877370874387,
       "per_frame_count": 253
     },
     {
@@ -14258,9 +14258,9 @@
       "gender": "m",
       "duration_s": 6.87,
       "sample_rate": 48000,
-      "cpp_aggregate_median_db": 0.24813890398530863,
+      "cpp_aggregate_median_db": 0.36998325014978184,
       "aggregate_count": 27,
-      "cpp_per_frame_median_db": 0.25241083314079227,
+      "cpp_per_frame_median_db": 0.36533774158763865,
       "per_frame_count": 273
     },
     {
@@ -14269,9 +14269,9 @@
       "gender": "unknown",
       "duration_s": 33.21224489795918,
       "sample_rate": 44100,
-      "cpp_aggregate_median_db": 0.6650526788587879,
+      "cpp_aggregate_median_db": 1.2762985932192692,
       "aggregate_count": 133,
-      "cpp_per_frame_median_db": 0.6616525997081657,
+      "cpp_per_frame_median_db": 1.3639386445953268,
       "per_frame_count": 1327
     },
     {
@@ -14280,9 +14280,9 @@
       "gender": "unknown",
       "duration_s": 9.097823129251701,
       "sample_rate": 44100,
-      "cpp_aggregate_median_db": 0.6358315348117007,
+      "cpp_aggregate_median_db": 1.2610169442758297,
       "aggregate_count": 36,
-      "cpp_per_frame_median_db": 0.5742589790352723,
+      "cpp_per_frame_median_db": 1.2483956802953022,
       "per_frame_count": 362
     },
     {
@@ -14291,9 +14291,9 @@
       "gender": "unknown",
       "duration_s": 12.983990929705216,
       "sample_rate": 44100,
-      "cpp_aggregate_median_db": 1.2034818960163114,
+      "cpp_aggregate_median_db": 2.1052947593550524,
       "aggregate_count": 52,
-      "cpp_per_frame_median_db": 1.2248083363407247,
+      "cpp_per_frame_median_db": 2.2894877395271767,
       "per_frame_count": 517
     },
     {
@@ -14302,9 +14302,9 @@
       "gender": "unknown",
       "duration_s": 15.153492063492063,
       "sample_rate": 44100,
-      "cpp_aggregate_median_db": 1.0311641000989074,
+      "cpp_aggregate_median_db": 1.7603757372285727,
       "aggregate_count": 61,
-      "cpp_per_frame_median_db": 1.0804156898436452,
+      "cpp_per_frame_median_db": 1.862622621434444,
       "per_frame_count": 604
     },
     {
@@ -14313,9 +14313,9 @@
       "gender": "unknown",
       "duration_s": 22.36,
       "sample_rate": 44100,
-      "cpp_aggregate_median_db": 0.5406541249139276,
+      "cpp_aggregate_median_db": 0.9678264121099759,
       "aggregate_count": 89,
-      "cpp_per_frame_median_db": 0.445104690843536,
+      "cpp_per_frame_median_db": 0.8915471580346044,
       "per_frame_count": 892
     },
     {
@@ -14324,9 +14324,9 @@
       "gender": "unknown",
       "duration_s": 12.1978231292517,
       "sample_rate": 44100,
-      "cpp_aggregate_median_db": 0.7479521560168474,
+      "cpp_aggregate_median_db": 1.4548860650373499,
       "aggregate_count": 49,
-      "cpp_per_frame_median_db": 0.6968348360729641,
+      "cpp_per_frame_median_db": 1.4837712391992095,
       "per_frame_count": 486
     },
     {
@@ -14335,9 +14335,9 @@
       "gender": "unknown",
       "duration_s": 20.28,
       "sample_rate": 44100,
-      "cpp_aggregate_median_db": 0.9539778562161605,
+      "cpp_aggregate_median_db": 1.7965006148878708,
       "aggregate_count": 81,
-      "cpp_per_frame_median_db": 0.8961763336145945,
+      "cpp_per_frame_median_db": 1.8765718857664806,
       "per_frame_count": 809
     },
     {
@@ -14346,9 +14346,9 @@
       "gender": "unknown",
       "duration_s": 17.277142857142856,
       "sample_rate": 44100,
-      "cpp_aggregate_median_db": 0.8792547241968,
+      "cpp_aggregate_median_db": 1.5303977802436497,
       "aggregate_count": 69,
-      "cpp_per_frame_median_db": 0.8755498696656063,
+      "cpp_per_frame_median_db": 1.7301048507914127,
       "per_frame_count": 689
     },
     {
@@ -14357,9 +14357,9 @@
       "gender": "unknown",
       "duration_s": 23.56800453514739,
       "sample_rate": 44100,
-      "cpp_aggregate_median_db": 1.3757070024221634,
+      "cpp_aggregate_median_db": 2.2870980346721046,
       "aggregate_count": 94,
-      "cpp_per_frame_median_db": 1.3129147593726174,
+      "cpp_per_frame_median_db": 2.3332552016855006,
       "per_frame_count": 941
     },
     {
@@ -14368,9 +14368,9 @@
       "gender": "unknown",
       "duration_s": 29.138820861678006,
       "sample_rate": 44100,
-      "cpp_aggregate_median_db": 0.7358145741637745,
+      "cpp_aggregate_median_db": 1.2623556295525593,
       "aggregate_count": 117,
-      "cpp_per_frame_median_db": 0.32878225966506097,
+      "cpp_per_frame_median_db": 0.5030695292090004,
       "per_frame_count": 1164
     },
     {
@@ -14379,9 +14379,9 @@
       "gender": "unknown",
       "duration_s": 30.493492063492063,
       "sample_rate": 44100,
-      "cpp_aggregate_median_db": 0.9293890941589003,
+      "cpp_aggregate_median_db": 1.7138961052180468,
       "aggregate_count": 122,
-      "cpp_per_frame_median_db": 0.8178255573846873,
+      "cpp_per_frame_median_db": 1.7003995830700425,
       "per_frame_count": 1218
     },
     {
@@ -14390,9 +14390,9 @@
       "gender": "unknown",
       "duration_s": 35.208004535147396,
       "sample_rate": 44100,
-      "cpp_aggregate_median_db": 1.1072756195790383,
+      "cpp_aggregate_median_db": 1.7507505148990978,
       "aggregate_count": 141,
-      "cpp_per_frame_median_db": 1.07052332320763,
+      "cpp_per_frame_median_db": 1.770773039488647,
       "per_frame_count": 1406
     },
     {
@@ -14401,9 +14401,9 @@
       "gender": "unknown",
       "duration_s": 8.713492063492064,
       "sample_rate": 44100,
-      "cpp_aggregate_median_db": 0.6614735989730212,
+      "cpp_aggregate_median_db": 1.2143975358435084,
       "aggregate_count": 35,
-      "cpp_per_frame_median_db": 0.5566536140733787,
+      "cpp_per_frame_median_db": 1.1716076448200874,
       "per_frame_count": 346
     },
     {
@@ -14412,9 +14412,9 @@
       "gender": "unknown",
       "duration_s": 22,
       "sample_rate": 44100,
-      "cpp_aggregate_median_db": 0.7597278943484361,
+      "cpp_aggregate_median_db": 1.4884539525713523,
       "aggregate_count": 88,
-      "cpp_per_frame_median_db": 0.7339046382596172,
+      "cpp_per_frame_median_db": 1.5383971993619525,
       "per_frame_count": 878
     },
     {
@@ -14423,9 +14423,9 @@
       "gender": "unknown",
       "duration_s": 18.333492063492063,
       "sample_rate": 44100,
-      "cpp_aggregate_median_db": 0.658309865546066,
+      "cpp_aggregate_median_db": 1.2391774145981451,
       "aggregate_count": 73,
-      "cpp_per_frame_median_db": 0.4965182527043611,
+      "cpp_per_frame_median_db": 1.0224514350785834,
       "per_frame_count": 731
     },
     {
@@ -14434,9 +14434,9 @@
       "gender": "unknown",
       "duration_s": 18.037823129251702,
       "sample_rate": 44100,
-      "cpp_aggregate_median_db": 0.515049776759561,
+      "cpp_aggregate_median_db": 1.0193489275890757,
       "aggregate_count": 72,
-      "cpp_per_frame_median_db": 0.40362740462919194,
+      "cpp_per_frame_median_db": 0.8166243298229127,
       "per_frame_count": 719
     },
     {
@@ -14445,9 +14445,9 @@
       "gender": "unknown",
       "duration_s": 14.757823129251701,
       "sample_rate": 44100,
-      "cpp_aggregate_median_db": 0.8366717844543017,
+      "cpp_aggregate_median_db": 1.5178976438548808,
       "aggregate_count": 59,
-      "cpp_per_frame_median_db": 0.8816413035181783,
+      "cpp_per_frame_median_db": 1.6820718245174386,
       "per_frame_count": 588
     },
     {
@@ -14456,9 +14456,9 @@
       "gender": "unknown",
       "duration_s": 14.657823129251701,
       "sample_rate": 44100,
-      "cpp_aggregate_median_db": 0.6659596542679378,
+      "cpp_aggregate_median_db": 1.3040531383139644,
       "aggregate_count": 59,
-      "cpp_per_frame_median_db": 0.6699298153848943,
+      "cpp_per_frame_median_db": 1.4120353026719372,
       "per_frame_count": 584
     },
     {
@@ -14467,9 +14467,9 @@
       "gender": "unknown",
       "duration_s": 12.8578231292517,
       "sample_rate": 44100,
-      "cpp_aggregate_median_db": 0.5823847960113712,
+      "cpp_aggregate_median_db": 1.0805240047484064,
       "aggregate_count": 51,
-      "cpp_per_frame_median_db": 0.5137005470552574,
+      "cpp_per_frame_median_db": 0.9812792793633729,
       "per_frame_count": 512
     },
     {
@@ -14478,9 +14478,9 @@
       "gender": "unknown",
       "duration_s": 14.0178231292517,
       "sample_rate": 44100,
-      "cpp_aggregate_median_db": 0.5814279378436875,
+      "cpp_aggregate_median_db": 1.071812733765801,
       "aggregate_count": 56,
-      "cpp_per_frame_median_db": 0.39954627199592746,
+      "cpp_per_frame_median_db": 0.80833688909126,
       "per_frame_count": 558
     },
     {
@@ -14489,9 +14489,9 @@
       "gender": "unknown",
       "duration_s": 12.8978231292517,
       "sample_rate": 44100,
-      "cpp_aggregate_median_db": 0.5992073393595041,
+      "cpp_aggregate_median_db": 1.1642810005063164,
       "aggregate_count": 52,
-      "cpp_per_frame_median_db": 0.4899654073810352,
+      "cpp_per_frame_median_db": 0.9893090916895333,
       "per_frame_count": 514
     },
     {
@@ -14500,9 +14500,9 @@
       "gender": "unknown",
       "duration_s": 14.893492063492063,
       "sample_rate": 44100,
-      "cpp_aggregate_median_db": 0.5629872177717051,
+      "cpp_aggregate_median_db": 1.1177541377948508,
       "aggregate_count": 60,
-      "cpp_per_frame_median_db": 0.5520454200630329,
+      "cpp_per_frame_median_db": 1.164724851125337,
       "per_frame_count": 594
     },
     {
@@ -14511,9 +14511,9 @@
       "gender": "unknown",
       "duration_s": 21.736326530612246,
       "sample_rate": 44100,
-      "cpp_aggregate_median_db": 0.6491891732481572,
+      "cpp_aggregate_median_db": 1.214583017184294,
       "aggregate_count": 87,
-      "cpp_per_frame_median_db": 0.5315342369948017,
+      "cpp_per_frame_median_db": 1.0748855141385558,
       "per_frame_count": 867
     },
     {
@@ -14522,9 +14522,9 @@
       "gender": "unknown",
       "duration_s": 13.0178231292517,
       "sample_rate": 44100,
-      "cpp_aggregate_median_db": 0.6258323750626216,
+      "cpp_aggregate_median_db": 1.1337738508570157,
       "aggregate_count": 52,
-      "cpp_per_frame_median_db": 0.4759521167656776,
+      "cpp_per_frame_median_db": 0.972026925181231,
       "per_frame_count": 518
     },
     {
@@ -14533,9 +14533,9 @@
       "gender": "unknown",
       "duration_s": 14.033492063492064,
       "sample_rate": 44100,
-      "cpp_aggregate_median_db": 0.5241278736981004,
+      "cpp_aggregate_median_db": 0.9715732425799382,
       "aggregate_count": 56,
-      "cpp_per_frame_median_db": 0.4570775512807458,
+      "cpp_per_frame_median_db": 0.9293096019598678,
       "per_frame_count": 559
     },
     {
@@ -14544,9 +14544,9 @@
       "gender": "unknown",
       "duration_s": 25.033492063492062,
       "sample_rate": 44100,
-      "cpp_aggregate_median_db": 0.6739737760035531,
+      "cpp_aggregate_median_db": 1.2508372196140267,
       "aggregate_count": 100,
-      "cpp_per_frame_median_db": 0.5537698421601008,
+      "cpp_per_frame_median_db": 1.1997663563547287,
       "per_frame_count": 999
     },
     {
@@ -14555,9 +14555,9 @@
       "gender": "unknown",
       "duration_s": 30,
       "sample_rate": 44100,
-      "cpp_aggregate_median_db": 0.575436500375389,
+      "cpp_aggregate_median_db": 1.1226554492967162,
       "aggregate_count": 120,
-      "cpp_per_frame_median_db": 0.44833963020912115,
+      "cpp_per_frame_median_db": 0.9207855438206568,
       "per_frame_count": 1198
     },
     {
@@ -14566,9 +14566,9 @@
       "gender": "unknown",
       "duration_s": 24.853492063492062,
       "sample_rate": 44100,
-      "cpp_aggregate_median_db": 0.6521847545740947,
+      "cpp_aggregate_median_db": 1.1780523538130165,
       "aggregate_count": 99,
-      "cpp_per_frame_median_db": 0.6263595080115023,
+      "cpp_per_frame_median_db": 1.1650486986574766,
       "per_frame_count": 992
     },
     {
@@ -14577,9 +14577,9 @@
       "gender": "unknown",
       "duration_s": 13.8,
       "sample_rate": 44100,
-      "cpp_aggregate_median_db": 0.5157436785301551,
+      "cpp_aggregate_median_db": 1.0160906214223608,
       "aggregate_count": 55,
-      "cpp_per_frame_median_db": 0.4695803162999117,
+      "cpp_per_frame_median_db": 0.9968622782101831,
       "per_frame_count": 550
     },
     {
@@ -14588,9 +14588,9 @@
       "gender": "unknown",
       "duration_s": 23.2778231292517,
       "sample_rate": 44100,
-      "cpp_aggregate_median_db": 0.5348657468721777,
+      "cpp_aggregate_median_db": 1.0454490234245442,
       "aggregate_count": 93,
-      "cpp_per_frame_median_db": 0.5079352105310116,
+      "cpp_per_frame_median_db": 1.093724966667034,
       "per_frame_count": 929
     },
     {
@@ -14599,9 +14599,9 @@
       "gender": "unknown",
       "duration_s": 38.736009070294784,
       "sample_rate": 44100,
-      "cpp_aggregate_median_db": 0.8760732074035511,
+      "cpp_aggregate_median_db": 1.477701630074384,
       "aggregate_count": 155,
-      "cpp_per_frame_median_db": 0.8011665416170131,
+      "cpp_per_frame_median_db": 1.460550104355322,
       "per_frame_count": 1548
     },
     {
@@ -14610,9 +14610,9 @@
       "gender": "unknown",
       "duration_s": 27.84,
       "sample_rate": 44100,
-      "cpp_aggregate_median_db": 0.8750301152201506,
+      "cpp_aggregate_median_db": 1.3965776133156478,
       "aggregate_count": 111,
-      "cpp_per_frame_median_db": 0.5881483690667448,
+      "cpp_per_frame_median_db": 1.1064714355557896,
       "per_frame_count": 1112
     },
     {
@@ -14621,9 +14621,9 @@
       "gender": "unknown",
       "duration_s": 31.68,
       "sample_rate": 44100,
-      "cpp_aggregate_median_db": 1.3437652154974602,
+      "cpp_aggregate_median_db": 1.9775871631944735,
       "aggregate_count": 127,
-      "cpp_per_frame_median_db": 1.304453212868135,
+      "cpp_per_frame_median_db": 2.108968773288147,
       "per_frame_count": 1265
     },
     {
@@ -14632,9 +14632,9 @@
       "gender": "unknown",
       "duration_s": 18.456009070294783,
       "sample_rate": 44100,
-      "cpp_aggregate_median_db": 0.5477402820282872,
+      "cpp_aggregate_median_db": 1.08204749507542,
       "aggregate_count": 74,
-      "cpp_per_frame_median_db": 0.5109900900797458,
+      "cpp_per_frame_median_db": 1.0511999505866623,
       "per_frame_count": 736
     },
     {
@@ -14643,9 +14643,9 @@
       "gender": "unknown",
       "duration_s": 18.5778231292517,
       "sample_rate": 44100,
-      "cpp_aggregate_median_db": 0.968769082277035,
+      "cpp_aggregate_median_db": 1.6445980100827922,
       "aggregate_count": 74,
-      "cpp_per_frame_median_db": 0.9432232915327289,
+      "cpp_per_frame_median_db": 1.7002287602977117,
       "per_frame_count": 741
     },
     {
@@ -14654,9 +14654,9 @@
       "gender": "unknown",
       "duration_s": 23.23199546485261,
       "sample_rate": 44100,
-      "cpp_aggregate_median_db": 0.9574272559070497,
+      "cpp_aggregate_median_db": 1.5681089004292956,
       "aggregate_count": 93,
-      "cpp_per_frame_median_db": 0.9015458942210408,
+      "cpp_per_frame_median_db": 1.6661556667062432,
       "per_frame_count": 927
     },
     {
@@ -14665,9 +14665,9 @@
       "gender": "unknown",
       "duration_s": 23.831995464852607,
       "sample_rate": 44100,
-      "cpp_aggregate_median_db": 0.6458449954214571,
+      "cpp_aggregate_median_db": 1.142176250551776,
       "aggregate_count": 95,
-      "cpp_per_frame_median_db": 0.5727536927318511,
+      "cpp_per_frame_median_db": 1.1584439283849144,
       "per_frame_count": 951
     },
     {
@@ -14676,9 +14676,9 @@
       "gender": "unknown",
       "duration_s": 19.46734693877551,
       "sample_rate": 44100,
-      "cpp_aggregate_median_db": 0.8488334748625775,
+      "cpp_aggregate_median_db": 1.573572913283892,
       "aggregate_count": 78,
-      "cpp_per_frame_median_db": 0.9717371521725068,
+      "cpp_per_frame_median_db": 1.79546976782454,
       "per_frame_count": 777
     },
     {
@@ -14687,9 +14687,9 @@
       "gender": "unknown",
       "duration_s": 17.041632653061225,
       "sample_rate": 44100,
-      "cpp_aggregate_median_db": 0.525389408287509,
+      "cpp_aggregate_median_db": 0.9996231624958702,
       "aggregate_count": 68,
-      "cpp_per_frame_median_db": 0.3868728648062763,
+      "cpp_per_frame_median_db": 0.700606662271132,
       "per_frame_count": 679
     },
     {
@@ -14698,9 +14698,9 @@
       "gender": "unknown",
       "duration_s": 20.375011337868482,
       "sample_rate": 44100,
-      "cpp_aggregate_median_db": 0.7924267610191758,
+      "cpp_aggregate_median_db": 1.355452957083068,
       "aggregate_count": 81,
-      "cpp_per_frame_median_db": 0.7023320343170448,
+      "cpp_per_frame_median_db": 1.3334977588205559,
       "per_frame_count": 813
     },
     {
@@ -14709,9 +14709,9 @@
       "gender": "m",
       "duration_s": 1.5,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.713517136983652,
+      "cpp_aggregate_median_db": 0.811926186627814,
       "aggregate_count": 6,
-      "cpp_per_frame_median_db": 0.47740139312510754,
+      "cpp_per_frame_median_db": 0.5492687284436512,
       "per_frame_count": 59
     },
     {
@@ -14720,9 +14720,9 @@
       "gender": "m",
       "duration_s": 2,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.5821892782410112,
+      "cpp_aggregate_median_db": 0.6430733104580457,
       "aggregate_count": 8,
-      "cpp_per_frame_median_db": 0.3726239944730947,
+      "cpp_per_frame_median_db": 0.4029573175640973,
       "per_frame_count": 79
     },
     {
@@ -14731,9 +14731,9 @@
       "gender": "m",
       "duration_s": 2,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.6922112464973917,
+      "cpp_aggregate_median_db": 0.7766515571132983,
       "aggregate_count": 8,
-      "cpp_per_frame_median_db": 0.3980687746584819,
+      "cpp_per_frame_median_db": 0.45043461680152064,
       "per_frame_count": 79
     },
     {
@@ -14742,9 +14742,9 @@
       "gender": "m",
       "duration_s": 1.6,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.6504616655922297,
+      "cpp_aggregate_median_db": 0.7374136614443698,
       "aggregate_count": 6,
-      "cpp_per_frame_median_db": 0.46839807442601766,
+      "cpp_per_frame_median_db": 0.5223911393643307,
       "per_frame_count": 63
     },
     {
@@ -14753,9 +14753,9 @@
       "gender": "m",
       "duration_s": 1.5,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.5618078140637612,
+      "cpp_aggregate_median_db": 0.6213681053603517,
       "aggregate_count": 6,
-      "cpp_per_frame_median_db": 0.3841345608204383,
+      "cpp_per_frame_median_db": 0.45492354635043697,
       "per_frame_count": 59
     },
     {
@@ -14764,9 +14764,9 @@
       "gender": "m",
       "duration_s": 2,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.6953683106446658,
+      "cpp_aggregate_median_db": 0.7840367209448627,
       "aggregate_count": 8,
-      "cpp_per_frame_median_db": 0.45908596369388827,
+      "cpp_per_frame_median_db": 0.5026683247981721,
       "per_frame_count": 79
     },
     {
@@ -14775,9 +14775,9 @@
       "gender": "m",
       "duration_s": 1.5,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.6690605599796481,
+      "cpp_aggregate_median_db": 0.7535171379037868,
       "aggregate_count": 6,
-      "cpp_per_frame_median_db": 0.3764610703188621,
+      "cpp_per_frame_median_db": 0.43145057406310877,
       "per_frame_count": 59
     },
     {
@@ -14786,9 +14786,9 @@
       "gender": "m",
       "duration_s": 2,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.6489491887551627,
+      "cpp_aggregate_median_db": 0.7299618969354544,
       "aggregate_count": 8,
-      "cpp_per_frame_median_db": 0.3793010853010352,
+      "cpp_per_frame_median_db": 0.41315706612879066,
       "per_frame_count": 79
     },
     {
@@ -14797,9 +14797,9 @@
       "gender": "m",
       "duration_s": 1.6,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.6594888004815325,
+      "cpp_aggregate_median_db": 0.7544784818501138,
       "aggregate_count": 6,
-      "cpp_per_frame_median_db": 0.6058377336839904,
+      "cpp_per_frame_median_db": 0.7045908151786957,
       "per_frame_count": 63
     },
     {
@@ -14808,9 +14808,9 @@
       "gender": "m",
       "duration_s": 2.5,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.6776815149677569,
+      "cpp_aggregate_median_db": 0.7543760022101829,
       "aggregate_count": 10,
-      "cpp_per_frame_median_db": 0.4722438289451582,
+      "cpp_per_frame_median_db": 0.5166055824935911,
       "per_frame_count": 99
     },
     {
@@ -14819,9 +14819,9 @@
       "gender": "m",
       "duration_s": 2,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.723144534779175,
+      "cpp_aggregate_median_db": 0.8065105161115937,
       "aggregate_count": 8,
-      "cpp_per_frame_median_db": 0.40772372600795476,
+      "cpp_per_frame_median_db": 0.4372263008130636,
       "per_frame_count": 79
     },
     {
@@ -14830,9 +14830,9 @@
       "gender": "m",
       "duration_s": 1.7,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.5851461953876492,
+      "cpp_aggregate_median_db": 0.6543578776571906,
       "aggregate_count": 7,
-      "cpp_per_frame_median_db": 0.4583816884592322,
+      "cpp_per_frame_median_db": 0.48442054254138417,
       "per_frame_count": 67
     },
     {
@@ -14841,9 +14841,9 @@
       "gender": "m",
       "duration_s": 1.7,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.6726929811512323,
+      "cpp_aggregate_median_db": 0.7776591487784881,
       "aggregate_count": 7,
-      "cpp_per_frame_median_db": 0.4822865069220074,
+      "cpp_per_frame_median_db": 0.5739951886924259,
       "per_frame_count": 67
     },
     {
@@ -14852,9 +14852,9 @@
       "gender": "m",
       "duration_s": 1.5,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.8000723598435174,
+      "cpp_aggregate_median_db": 0.9160811525273098,
       "aggregate_count": 6,
-      "cpp_per_frame_median_db": 0.6968594448356251,
+      "cpp_per_frame_median_db": 0.7863113082483488,
       "per_frame_count": 59
     },
     {
@@ -14863,9 +14863,9 @@
       "gender": "m",
       "duration_s": 3,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.5523687491325409,
+      "cpp_aggregate_median_db": 0.6089935538213254,
       "aggregate_count": 12,
-      "cpp_per_frame_median_db": 0.4173374675765851,
+      "cpp_per_frame_median_db": 0.46925720029548573,
       "per_frame_count": 119
     },
     {
@@ -14874,9 +14874,9 @@
       "gender": "m",
       "duration_s": 2.1,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.8775387943335958,
+      "cpp_aggregate_median_db": 1.0062892845001916,
       "aggregate_count": 8,
-      "cpp_per_frame_median_db": 0.47740734481169456,
+      "cpp_per_frame_median_db": 0.5084879846357112,
       "per_frame_count": 83
     },
     {
@@ -14885,9 +14885,9 @@
       "gender": "m",
       "duration_s": 1.5,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.7560070086647241,
+      "cpp_aggregate_median_db": 0.8672492093600184,
       "aggregate_count": 6,
-      "cpp_per_frame_median_db": 0.5507666212372356,
+      "cpp_per_frame_median_db": 0.6688571293033277,
       "per_frame_count": 59
     },
     {
@@ -14896,9 +14896,9 @@
       "gender": "m",
       "duration_s": 1.2,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 1.0435930309868606,
+      "cpp_aggregate_median_db": 1.2040754788933223,
       "aggregate_count": 5,
-      "cpp_per_frame_median_db": 0.8127269425689329,
+      "cpp_per_frame_median_db": 0.9987216281845259,
       "per_frame_count": 47
     },
     {
@@ -14907,9 +14907,9 @@
       "gender": "m",
       "duration_s": 1.5,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.5228096610788433,
+      "cpp_aggregate_median_db": 0.5878602363533256,
       "aggregate_count": 6,
-      "cpp_per_frame_median_db": 0.4234921194964986,
+      "cpp_per_frame_median_db": 0.4492203211093311,
       "per_frame_count": 59
     },
     {
@@ -14918,9 +14918,9 @@
       "gender": "m",
       "duration_s": 1.2,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.5957322944886821,
+      "cpp_aggregate_median_db": 0.6707481484676496,
       "aggregate_count": 5,
-      "cpp_per_frame_median_db": 0.35891612418984353,
+      "cpp_per_frame_median_db": 0.41147757172160787,
       "per_frame_count": 47
     },
     {
@@ -14929,9 +14929,9 @@
       "gender": "m",
       "duration_s": 3,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.5115988163236915,
+      "cpp_aggregate_median_db": 0.5765801314412327,
       "aggregate_count": 12,
-      "cpp_per_frame_median_db": 0.36066665236014256,
+      "cpp_per_frame_median_db": 0.40960753298409663,
       "per_frame_count": 119
     },
     {
@@ -14940,9 +14940,9 @@
       "gender": "m",
       "duration_s": 3,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.40030591605196564,
+      "cpp_aggregate_median_db": 0.43445371194842897,
       "aggregate_count": 12,
-      "cpp_per_frame_median_db": 0.344174004747442,
+      "cpp_per_frame_median_db": 0.39481248264767876,
       "per_frame_count": 119
     },
     {
@@ -14951,9 +14951,9 @@
       "gender": "m",
       "duration_s": 3,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.423334709884282,
+      "cpp_aggregate_median_db": 0.4748481223707307,
       "aggregate_count": 12,
-      "cpp_per_frame_median_db": 0.3478370637707887,
+      "cpp_per_frame_median_db": 0.3895803887417963,
       "per_frame_count": 119
     },
     {
@@ -14962,9 +14962,9 @@
       "gender": "m",
       "duration_s": 3,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.4831150619391722,
+      "cpp_aggregate_median_db": 0.5313778286803976,
       "aggregate_count": 12,
-      "cpp_per_frame_median_db": 0.35352304103540355,
+      "cpp_per_frame_median_db": 0.3836987584841084,
       "per_frame_count": 119
     },
     {
@@ -14973,9 +14973,9 @@
       "gender": "m",
       "duration_s": 3,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.7147132252022488,
+      "cpp_aggregate_median_db": 0.805260764622714,
       "aggregate_count": 12,
-      "cpp_per_frame_median_db": 0.4575200508238772,
+      "cpp_per_frame_median_db": 0.4863812852468227,
       "per_frame_count": 119
     },
     {
@@ -14984,9 +14984,9 @@
       "gender": "m",
       "duration_s": 3,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.48644906729286697,
+      "cpp_aggregate_median_db": 0.5554440526549401,
       "aggregate_count": 12,
-      "cpp_per_frame_median_db": 0.3699921110520681,
+      "cpp_per_frame_median_db": 0.41474191015987993,
       "per_frame_count": 119
     },
     {
@@ -14995,9 +14995,9 @@
       "gender": "m",
       "duration_s": 3,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.6101594858889825,
+      "cpp_aggregate_median_db": 0.6904849013695377,
       "aggregate_count": 12,
-      "cpp_per_frame_median_db": 0.4329172531107911,
+      "cpp_per_frame_median_db": 0.5218221434700762,
       "per_frame_count": 119
     },
     {
@@ -15006,9 +15006,9 @@
       "gender": "m",
       "duration_s": 5,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.5779688110901486,
+      "cpp_aggregate_median_db": 0.6383032486221112,
       "aggregate_count": 20,
-      "cpp_per_frame_median_db": 0.39455272000400293,
+      "cpp_per_frame_median_db": 0.42318145847999855,
       "per_frame_count": 199
     },
     {
@@ -15017,9 +15017,9 @@
       "gender": "m",
       "duration_s": 3,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.6225092567186075,
+      "cpp_aggregate_median_db": 0.7026484066466904,
       "aggregate_count": 12,
-      "cpp_per_frame_median_db": 0.38213733627773283,
+      "cpp_per_frame_median_db": 0.4048703035156429,
       "per_frame_count": 119
     },
     {
@@ -15028,9 +15028,9 @@
       "gender": "m",
       "duration_s": 4,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.585889673965396,
+      "cpp_aggregate_median_db": 0.679158891875449,
       "aggregate_count": 16,
-      "cpp_per_frame_median_db": 0.3776872115985322,
+      "cpp_per_frame_median_db": 0.4398756298475023,
       "per_frame_count": 159
     },
     {
@@ -15039,9 +15039,9 @@
       "gender": "m",
       "duration_s": 3,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.5985817155504387,
+      "cpp_aggregate_median_db": 0.6579828999879,
       "aggregate_count": 12,
-      "cpp_per_frame_median_db": 0.4656355410111327,
+      "cpp_per_frame_median_db": 0.5266069699899515,
       "per_frame_count": 119
     },
     {
@@ -15050,9 +15050,9 @@
       "gender": "m",
       "duration_s": 4,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.5399622919628716,
+      "cpp_aggregate_median_db": 0.5848508891677393,
       "aggregate_count": 16,
-      "cpp_per_frame_median_db": 0.35274331967859623,
+      "cpp_per_frame_median_db": 0.40244928528492935,
       "per_frame_count": 159
     },
     {
@@ -15061,9 +15061,9 @@
       "gender": "m",
       "duration_s": 4,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.4077463275229261,
+      "cpp_aggregate_median_db": 0.4341909942354308,
       "aggregate_count": 16,
-      "cpp_per_frame_median_db": 0.352902936361144,
+      "cpp_per_frame_median_db": 0.387794248763772,
       "per_frame_count": 159
     },
     {
@@ -15072,9 +15072,9 @@
       "gender": "m",
       "duration_s": 4,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.44962952139471135,
+      "cpp_aggregate_median_db": 0.5082815243125637,
       "aggregate_count": 16,
-      "cpp_per_frame_median_db": 0.3358264861951823,
+      "cpp_per_frame_median_db": 0.36159146293233513,
       "per_frame_count": 159
     },
     {
@@ -15083,9 +15083,9 @@
       "gender": "m",
       "duration_s": 3,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.6309862452862975,
+      "cpp_aggregate_median_db": 0.7069916631891587,
       "aggregate_count": 12,
-      "cpp_per_frame_median_db": 0.4467246400774938,
+      "cpp_per_frame_median_db": 0.5054385727310247,
       "per_frame_count": 119
     },
     {
@@ -15094,9 +15094,9 @@
       "gender": "m",
       "duration_s": 4,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.5843090864561945,
+      "cpp_aggregate_median_db": 0.6367993625200579,
       "aggregate_count": 16,
-      "cpp_per_frame_median_db": 0.37944141430127276,
+      "cpp_per_frame_median_db": 0.4052779487593035,
       "per_frame_count": 159
     },
     {
@@ -15105,9 +15105,9 @@
       "gender": "m",
       "duration_s": 4,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.6398689352619926,
+      "cpp_aggregate_median_db": 0.7111774169300528,
       "aggregate_count": 16,
-      "cpp_per_frame_median_db": 0.3838950827106905,
+      "cpp_per_frame_median_db": 0.3996694497870601,
       "per_frame_count": 159
     },
     {
@@ -15116,9 +15116,9 @@
       "gender": "m",
       "duration_s": 4,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.45623323919493375,
+      "cpp_aggregate_median_db": 0.5146169307674547,
       "aggregate_count": 16,
-      "cpp_per_frame_median_db": 0.3368641009088311,
+      "cpp_per_frame_median_db": 0.37578363035487355,
       "per_frame_count": 159
     },
     {
@@ -15127,9 +15127,9 @@
       "gender": "m",
       "duration_s": 4,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.5329614069083297,
+      "cpp_aggregate_median_db": 0.5938379439789471,
       "aggregate_count": 16,
-      "cpp_per_frame_median_db": 0.3781022817048223,
+      "cpp_per_frame_median_db": 0.3999233558520412,
       "per_frame_count": 159
     },
     {
@@ -15138,9 +15138,9 @@
       "gender": "m",
       "duration_s": 4,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.6082874364365807,
+      "cpp_aggregate_median_db": 0.6771757181331342,
       "aggregate_count": 16,
-      "cpp_per_frame_median_db": 0.42500512537462454,
+      "cpp_per_frame_median_db": 0.47527429829390977,
       "per_frame_count": 159
     },
     {
@@ -15149,9 +15149,9 @@
       "gender": "m",
       "duration_s": 4,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.6231881643142145,
+      "cpp_aggregate_median_db": 0.7008384286489665,
       "aggregate_count": 16,
-      "cpp_per_frame_median_db": 0.37093900254623197,
+      "cpp_per_frame_median_db": 0.39154168921955557,
       "per_frame_count": 159
     },
     {
@@ -15160,9 +15160,9 @@
       "gender": "m",
       "duration_s": 4,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.5652804693033757,
+      "cpp_aggregate_median_db": 0.6358765536284532,
       "aggregate_count": 16,
-      "cpp_per_frame_median_db": 0.3748579117103906,
+      "cpp_per_frame_median_db": 0.4132160395546603,
       "per_frame_count": 159
     },
     {
@@ -15171,9 +15171,9 @@
       "gender": "m",
       "duration_s": 4,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.587383479008303,
+      "cpp_aggregate_median_db": 0.6594236853330306,
       "aggregate_count": 16,
-      "cpp_per_frame_median_db": 0.4262131178214774,
+      "cpp_per_frame_median_db": 0.4624320578706344,
       "per_frame_count": 159
     },
     {
@@ -15182,9 +15182,9 @@
       "gender": "m",
       "duration_s": 4,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.5876140392170197,
+      "cpp_aggregate_median_db": 0.6500830890625715,
       "aggregate_count": 16,
-      "cpp_per_frame_median_db": 0.4738408684136594,
+      "cpp_per_frame_median_db": 0.5014066530492445,
       "per_frame_count": 159
     },
     {
@@ -15193,9 +15193,9 @@
       "gender": "m",
       "duration_s": 4,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.5531164824144683,
+      "cpp_aggregate_median_db": 0.6326609590649057,
       "aggregate_count": 16,
-      "cpp_per_frame_median_db": 0.419143252195431,
+      "cpp_per_frame_median_db": 0.45735151749130515,
       "per_frame_count": 159
     },
     {
@@ -15204,9 +15204,9 @@
       "gender": "m",
       "duration_s": 4,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.5210128375066383,
+      "cpp_aggregate_median_db": 0.585083895501692,
       "aggregate_count": 16,
-      "cpp_per_frame_median_db": 0.3634746019661867,
+      "cpp_per_frame_median_db": 0.3947530802579248,
       "per_frame_count": 159
     },
     {
@@ -15215,9 +15215,9 @@
       "gender": "m",
       "duration_s": 4,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.6271403482858333,
+      "cpp_aggregate_median_db": 0.6917510906610222,
       "aggregate_count": 16,
-      "cpp_per_frame_median_db": 0.4331323806048425,
+      "cpp_per_frame_median_db": 0.4802197120255811,
       "per_frame_count": 159
     },
     {
@@ -15226,9 +15226,9 @@
       "gender": "m",
       "duration_s": 4,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.43989867487308487,
+      "cpp_aggregate_median_db": 0.4918162415515883,
       "aggregate_count": 16,
-      "cpp_per_frame_median_db": 0.35598336301812794,
+      "cpp_per_frame_median_db": 0.4049483066625804,
       "per_frame_count": 159
     },
     {
@@ -15237,9 +15237,9 @@
       "gender": "m",
       "duration_s": 4,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.640608392705553,
+      "cpp_aggregate_median_db": 0.721863018264037,
       "aggregate_count": 16,
-      "cpp_per_frame_median_db": 0.433223433611407,
+      "cpp_per_frame_median_db": 0.469148607864831,
       "per_frame_count": 159
     },
     {
@@ -15248,9 +15248,9 @@
       "gender": "m",
       "duration_s": 4,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.6477617792335142,
+      "cpp_aggregate_median_db": 0.7532488602582277,
       "aggregate_count": 16,
-      "cpp_per_frame_median_db": 0.4135298053656549,
+      "cpp_per_frame_median_db": 0.4786999973987514,
       "per_frame_count": 159
     },
     {
@@ -15259,9 +15259,9 @@
       "gender": "f",
       "duration_s": 3,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.6436636710370862,
+      "cpp_aggregate_median_db": 0.721998003829682,
       "aggregate_count": 12,
-      "cpp_per_frame_median_db": 0.38112714901901573,
+      "cpp_per_frame_median_db": 0.41998627305045655,
       "per_frame_count": 119
     },
     {
@@ -15270,9 +15270,9 @@
       "gender": "f",
       "duration_s": 3,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.7562785773318457,
+      "cpp_aggregate_median_db": 0.8461910290359835,
       "aggregate_count": 12,
-      "cpp_per_frame_median_db": 0.3734820969134445,
+      "cpp_per_frame_median_db": 0.4354392620031136,
       "per_frame_count": 119
     },
     {
@@ -15281,9 +15281,9 @@
       "gender": "f",
       "duration_s": 3,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.7266387204240994,
+      "cpp_aggregate_median_db": 0.8338920667371559,
       "aggregate_count": 12,
-      "cpp_per_frame_median_db": 0.3681916848179194,
+      "cpp_per_frame_median_db": 0.41584259416009506,
       "per_frame_count": 119
     },
     {
@@ -15292,9 +15292,9 @@
       "gender": "f",
       "duration_s": 3,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.6806105778802329,
+      "cpp_aggregate_median_db": 0.7773608383137989,
       "aggregate_count": 12,
-      "cpp_per_frame_median_db": 0.3983038254177558,
+      "cpp_per_frame_median_db": 0.4442887144398162,
       "per_frame_count": 119
     },
     {
@@ -15303,9 +15303,9 @@
       "gender": "f",
       "duration_s": 3,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.5834288129534702,
+      "cpp_aggregate_median_db": 0.618606593008555,
       "aggregate_count": 12,
-      "cpp_per_frame_median_db": 0.344947463910444,
+      "cpp_per_frame_median_db": 0.3810818683036656,
       "per_frame_count": 119
     },
     {
@@ -15314,9 +15314,9 @@
       "gender": "f",
       "duration_s": 3,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.8160838540315651,
+      "cpp_aggregate_median_db": 0.9066691216855987,
       "aggregate_count": 12,
-      "cpp_per_frame_median_db": 0.39007131372878756,
+      "cpp_per_frame_median_db": 0.43181652385234237,
       "per_frame_count": 119
     },
     {
@@ -15325,9 +15325,9 @@
       "gender": "f",
       "duration_s": 3,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.5492564172382473,
+      "cpp_aggregate_median_db": 0.6131992664522263,
       "aggregate_count": 12,
-      "cpp_per_frame_median_db": 0.3557231783473492,
+      "cpp_per_frame_median_db": 0.37631366162101054,
       "per_frame_count": 119
     },
     {
@@ -15336,9 +15336,9 @@
       "gender": "f",
       "duration_s": 3,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.7589054582841349,
+      "cpp_aggregate_median_db": 0.8522279635134219,
       "aggregate_count": 12,
-      "cpp_per_frame_median_db": 0.3905050863922574,
+      "cpp_per_frame_median_db": 0.41680475885123497,
       "per_frame_count": 119
     },
     {
@@ -15347,9 +15347,9 @@
       "gender": "f",
       "duration_s": 3,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.7057869398678585,
+      "cpp_aggregate_median_db": 0.7919810235675251,
       "aggregate_count": 12,
-      "cpp_per_frame_median_db": 0.37002158543329267,
+      "cpp_per_frame_median_db": 0.4006087530930198,
       "per_frame_count": 119
     },
     {
@@ -15358,9 +15358,9 @@
       "gender": "f",
       "duration_s": 3,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.7282233275294143,
+      "cpp_aggregate_median_db": 0.8290945598682955,
       "aggregate_count": 12,
-      "cpp_per_frame_median_db": 0.4215532761449511,
+      "cpp_per_frame_median_db": 0.4422115143651265,
       "per_frame_count": 119
     },
     {
@@ -15369,9 +15369,9 @@
       "gender": "f",
       "duration_s": 3,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.7516730831974371,
+      "cpp_aggregate_median_db": 0.8359212471320988,
       "aggregate_count": 12,
-      "cpp_per_frame_median_db": 0.41903364463181775,
+      "cpp_per_frame_median_db": 0.4912051670762155,
       "per_frame_count": 119
     },
     {
@@ -15380,9 +15380,9 @@
       "gender": "f",
       "duration_s": 3,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.6604135208345912,
+      "cpp_aggregate_median_db": 0.7323292820628589,
       "aggregate_count": 12,
-      "cpp_per_frame_median_db": 0.37049564980962757,
+      "cpp_per_frame_median_db": 0.39191114834575586,
       "per_frame_count": 119
     },
     {
@@ -15391,9 +15391,9 @@
       "gender": "f",
       "duration_s": 3,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.755855268316934,
+      "cpp_aggregate_median_db": 0.8394402903446134,
       "aggregate_count": 12,
-      "cpp_per_frame_median_db": 0.3837197023172014,
+      "cpp_per_frame_median_db": 0.420568432279171,
       "per_frame_count": 119
     },
     {
@@ -15402,9 +15402,9 @@
       "gender": "f",
       "duration_s": 3,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.6110018054500307,
+      "cpp_aggregate_median_db": 0.6777825375788382,
       "aggregate_count": 12,
-      "cpp_per_frame_median_db": 0.3450899285809714,
+      "cpp_per_frame_median_db": 0.37840475226352116,
       "per_frame_count": 119
     },
     {
@@ -15413,9 +15413,9 @@
       "gender": "f",
       "duration_s": 3,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.8455037456948571,
+      "cpp_aggregate_median_db": 0.9559449490700329,
       "aggregate_count": 12,
-      "cpp_per_frame_median_db": 0.4693493883939449,
+      "cpp_per_frame_median_db": 0.5031664554235408,
       "per_frame_count": 119
     },
     {
@@ -15424,9 +15424,9 @@
       "gender": "f",
       "duration_s": 3,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.6591588799414215,
+      "cpp_aggregate_median_db": 0.7492401573565207,
       "aggregate_count": 12,
-      "cpp_per_frame_median_db": 0.4377896129752425,
+      "cpp_per_frame_median_db": 0.4532175046914918,
       "per_frame_count": 119
     },
     {
@@ -15435,9 +15435,9 @@
       "gender": "f",
       "duration_s": 3,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.6161138760874175,
+      "cpp_aggregate_median_db": 0.6936567663387918,
       "aggregate_count": 12,
-      "cpp_per_frame_median_db": 0.36366762589882284,
+      "cpp_per_frame_median_db": 0.4049934358520063,
       "per_frame_count": 119
     },
     {
@@ -15446,9 +15446,9 @@
       "gender": "f",
       "duration_s": 3,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.6162092255941374,
+      "cpp_aggregate_median_db": 0.6619686459417584,
       "aggregate_count": 12,
-      "cpp_per_frame_median_db": 0.37292165979156705,
+      "cpp_per_frame_median_db": 0.3826733439338298,
       "per_frame_count": 119
     },
     {
@@ -15457,9 +15457,9 @@
       "gender": "f",
       "duration_s": 3,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.5434153966726721,
+      "cpp_aggregate_median_db": 0.5886276458364357,
       "aggregate_count": 12,
-      "cpp_per_frame_median_db": 0.3492822079534441,
+      "cpp_per_frame_median_db": 0.3907941723462947,
       "per_frame_count": 119
     },
     {
@@ -15468,9 +15468,9 @@
       "gender": "f",
       "duration_s": 3,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.4976702767879668,
+      "cpp_aggregate_median_db": 0.5465496675392432,
       "aggregate_count": 12,
-      "cpp_per_frame_median_db": 0.33758620258227834,
+      "cpp_per_frame_median_db": 0.3669668133123487,
       "per_frame_count": 119
     },
     {
@@ -15479,9 +15479,9 @@
       "gender": "f",
       "duration_s": 3,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.7148165973385714,
+      "cpp_aggregate_median_db": 0.797282022377951,
       "aggregate_count": 12,
-      "cpp_per_frame_median_db": 0.3664028267809356,
+      "cpp_per_frame_median_db": 0.3971734511631235,
       "per_frame_count": 119
     },
     {
@@ -15490,9 +15490,9 @@
       "gender": "f",
       "duration_s": 3,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.6425306399224502,
+      "cpp_aggregate_median_db": 0.7190011750492058,
       "aggregate_count": 12,
-      "cpp_per_frame_median_db": 0.3666798017404788,
+      "cpp_per_frame_median_db": 0.42084124196558476,
       "per_frame_count": 119
     },
     {
@@ -15501,9 +15501,9 @@
       "gender": "f",
       "duration_s": 3,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.5593820445310548,
+      "cpp_aggregate_median_db": 0.6189416041028735,
       "aggregate_count": 12,
-      "cpp_per_frame_median_db": 0.3720380931980905,
+      "cpp_per_frame_median_db": 0.3942534382209204,
       "per_frame_count": 119
     },
     {
@@ -15512,9 +15512,9 @@
       "gender": "f",
       "duration_s": 3,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.765351865199285,
+      "cpp_aggregate_median_db": 0.8547368947469027,
       "aggregate_count": 12,
-      "cpp_per_frame_median_db": 0.3564619837621522,
+      "cpp_per_frame_median_db": 0.40403604927419773,
       "per_frame_count": 119
     },
     {
@@ -15523,9 +15523,9 @@
       "gender": "f",
       "duration_s": 4,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.6746200401242148,
+      "cpp_aggregate_median_db": 0.7589895484184181,
       "aggregate_count": 16,
-      "cpp_per_frame_median_db": 0.40728694510666585,
+      "cpp_per_frame_median_db": 0.46346364324313943,
       "per_frame_count": 159
     },
     {
@@ -15534,9 +15534,9 @@
       "gender": "f",
       "duration_s": 4,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.6828712465749969,
+      "cpp_aggregate_median_db": 0.7744440139739986,
       "aggregate_count": 16,
-      "cpp_per_frame_median_db": 0.37153796172506115,
+      "cpp_per_frame_median_db": 0.4186425773666962,
       "per_frame_count": 159
     },
     {
@@ -15545,9 +15545,9 @@
       "gender": "f",
       "duration_s": 4,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.6781717660824719,
+      "cpp_aggregate_median_db": 0.7429293371284931,
       "aggregate_count": 16,
-      "cpp_per_frame_median_db": 0.40336081710643396,
+      "cpp_per_frame_median_db": 0.41692351711833775,
       "per_frame_count": 159
     },
     {
@@ -15556,9 +15556,9 @@
       "gender": "f",
       "duration_s": 5,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.7993876933487817,
+      "cpp_aggregate_median_db": 0.9087143078317443,
       "aggregate_count": 20,
-      "cpp_per_frame_median_db": 0.38933839362424877,
+      "cpp_per_frame_median_db": 0.4492951642207887,
       "per_frame_count": 199
     },
     {
@@ -15567,9 +15567,9 @@
       "gender": "f",
       "duration_s": 5,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.5357680683742186,
+      "cpp_aggregate_median_db": 0.5978592965510572,
       "aggregate_count": 20,
-      "cpp_per_frame_median_db": 0.34324011655451014,
+      "cpp_per_frame_median_db": 0.3695797893271275,
       "per_frame_count": 199
     },
     {
@@ -15578,9 +15578,9 @@
       "gender": "f",
       "duration_s": 4,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.7060658988352227,
+      "cpp_aggregate_median_db": 0.7952422336385726,
       "aggregate_count": 16,
-      "cpp_per_frame_median_db": 0.4388070387517909,
+      "cpp_per_frame_median_db": 0.49092792934931984,
       "per_frame_count": 159
     },
     {
@@ -15589,9 +15589,9 @@
       "gender": "f",
       "duration_s": 4,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.6514002951227795,
+      "cpp_aggregate_median_db": 0.7372639124845035,
       "aggregate_count": 16,
-      "cpp_per_frame_median_db": 0.40390831671069594,
+      "cpp_per_frame_median_db": 0.44084180653105953,
       "per_frame_count": 159
     },
     {
@@ -15600,9 +15600,9 @@
       "gender": "f",
       "duration_s": 5,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.6262510724915754,
+      "cpp_aggregate_median_db": 0.7115490456950934,
       "aggregate_count": 20,
-      "cpp_per_frame_median_db": 0.3574825886302826,
+      "cpp_per_frame_median_db": 0.39877577048219537,
       "per_frame_count": 199
     },
     {
@@ -15611,9 +15611,9 @@
       "gender": "f",
       "duration_s": 4,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.6563745500667133,
+      "cpp_aggregate_median_db": 0.7400257039764881,
       "aggregate_count": 16,
-      "cpp_per_frame_median_db": 0.36717494247203886,
+      "cpp_per_frame_median_db": 0.41813151521818326,
       "per_frame_count": 159
     },
     {
@@ -15622,9 +15622,9 @@
       "gender": "f",
       "duration_s": 4,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.6908487420918945,
+      "cpp_aggregate_median_db": 0.765549467018311,
       "aggregate_count": 16,
-      "cpp_per_frame_median_db": 0.37809894235575636,
+      "cpp_per_frame_median_db": 0.4051669063243124,
       "per_frame_count": 159
     },
     {
@@ -15633,9 +15633,9 @@
       "gender": "f",
       "duration_s": 4,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.8226276396863954,
+      "cpp_aggregate_median_db": 0.919310901783128,
       "aggregate_count": 16,
-      "cpp_per_frame_median_db": 0.4620894945942542,
+      "cpp_per_frame_median_db": 0.5037237488059358,
       "per_frame_count": 159
     },
     {
@@ -15644,9 +15644,9 @@
       "gender": "f",
       "duration_s": 5,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.7376204823851755,
+      "cpp_aggregate_median_db": 0.8175110030356401,
       "aggregate_count": 20,
-      "cpp_per_frame_median_db": 0.4245814332068518,
+      "cpp_per_frame_median_db": 0.46048545571972777,
       "per_frame_count": 199
     },
     {
@@ -15655,9 +15655,9 @@
       "gender": "f",
       "duration_s": 4,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.7158775383770524,
+      "cpp_aggregate_median_db": 0.786359415719845,
       "aggregate_count": 16,
-      "cpp_per_frame_median_db": 0.44341120513796733,
+      "cpp_per_frame_median_db": 0.4833027331272363,
       "per_frame_count": 159
     },
     {
@@ -15666,9 +15666,9 @@
       "gender": "f",
       "duration_s": 4,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.5946872801900637,
+      "cpp_aggregate_median_db": 0.6525295151777621,
       "aggregate_count": 16,
-      "cpp_per_frame_median_db": 0.36781855655349915,
+      "cpp_per_frame_median_db": 0.39451586810426337,
       "per_frame_count": 159
     },
     {
@@ -15677,9 +15677,9 @@
       "gender": "f",
       "duration_s": 4,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.7230522181281434,
+      "cpp_aggregate_median_db": 0.803297933357547,
       "aggregate_count": 16,
-      "cpp_per_frame_median_db": 0.44920350324363617,
+      "cpp_per_frame_median_db": 0.47635306585777015,
       "per_frame_count": 159
     },
     {
@@ -15688,9 +15688,9 @@
       "gender": "f",
       "duration_s": 4,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.724694637634967,
+      "cpp_aggregate_median_db": 0.8066776784017315,
       "aggregate_count": 16,
-      "cpp_per_frame_median_db": 0.4548024555901336,
+      "cpp_per_frame_median_db": 0.47793867782398763,
       "per_frame_count": 159
     },
     {
@@ -15699,9 +15699,9 @@
       "gender": "f",
       "duration_s": 4,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.7720969665021724,
+      "cpp_aggregate_median_db": 0.8519187290497994,
       "aggregate_count": 16,
-      "cpp_per_frame_median_db": 0.42311412712180824,
+      "cpp_per_frame_median_db": 0.46394066680893564,
       "per_frame_count": 159
     },
     {
@@ -15710,9 +15710,9 @@
       "gender": "f",
       "duration_s": 4,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.7596443520759185,
+      "cpp_aggregate_median_db": 0.8442410168747032,
       "aggregate_count": 16,
-      "cpp_per_frame_median_db": 0.4744851986083258,
+      "cpp_per_frame_median_db": 0.48355839090614167,
       "per_frame_count": 159
     },
     {
@@ -15721,9 +15721,9 @@
       "gender": "f",
       "duration_s": 5,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.7132988124932829,
+      "cpp_aggregate_median_db": 0.7868320386172682,
       "aggregate_count": 20,
-      "cpp_per_frame_median_db": 0.40385523967526094,
+      "cpp_per_frame_median_db": 0.4232120263443931,
       "per_frame_count": 199
     },
     {
@@ -15732,9 +15732,9 @@
       "gender": "f",
       "duration_s": 5,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.8466570580316319,
+      "cpp_aggregate_median_db": 0.9418432452341092,
       "aggregate_count": 20,
-      "cpp_per_frame_median_db": 0.42481016972588914,
+      "cpp_per_frame_median_db": 0.4619007854993047,
       "per_frame_count": 199
     },
     {
@@ -15743,9 +15743,9 @@
       "gender": "f",
       "duration_s": 4,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.8508005223545025,
+      "cpp_aggregate_median_db": 0.9289876233686406,
       "aggregate_count": 16,
-      "cpp_per_frame_median_db": 0.4573439226065034,
+      "cpp_per_frame_median_db": 0.5579765461653069,
       "per_frame_count": 159
     },
     {
@@ -15754,9 +15754,9 @@
       "gender": "f",
       "duration_s": 4,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.6158067919992474,
+      "cpp_aggregate_median_db": 0.6701678607904001,
       "aggregate_count": 16,
-      "cpp_per_frame_median_db": 0.3925222497119722,
+      "cpp_per_frame_median_db": 0.41825234562486036,
       "per_frame_count": 159
     },
     {
@@ -15765,9 +15765,9 @@
       "gender": "f",
       "duration_s": 6,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.7285637197741519,
+      "cpp_aggregate_median_db": 0.8158271936305393,
       "aggregate_count": 24,
-      "cpp_per_frame_median_db": 0.39997889310015855,
+      "cpp_per_frame_median_db": 0.4519119507494888,
       "per_frame_count": 239
     },
     {
@@ -15776,9 +15776,9 @@
       "gender": "f",
       "duration_s": 4,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.7604605279153582,
+      "cpp_aggregate_median_db": 0.8359569657497323,
       "aggregate_count": 16,
-      "cpp_per_frame_median_db": 0.44979119529522404,
+      "cpp_per_frame_median_db": 0.46712890062480794,
       "per_frame_count": 159
     },
     {
@@ -15787,9 +15787,9 @@
       "gender": "f",
       "duration_s": 5,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.7609645973029775,
+      "cpp_aggregate_median_db": 0.8460063168746809,
       "aggregate_count": 20,
-      "cpp_per_frame_median_db": 0.4135173850726985,
+      "cpp_per_frame_median_db": 0.44951541370825626,
       "per_frame_count": 199
     },
     {
@@ -15798,9 +15798,9 @@
       "gender": "f",
       "duration_s": 4,
       "sample_rate": 20000,
-      "cpp_aggregate_median_db": 0.9250740842858607,
+      "cpp_aggregate_median_db": 1.0356051511253126,
       "aggregate_count": 16,
-      "cpp_per_frame_median_db": 0.5499228923775484,
+      "cpp_per_frame_median_db": 0.6596251151264835,
       "per_frame_count": 159
     }
   ]

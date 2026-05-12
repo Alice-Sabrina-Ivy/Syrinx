@@ -1,8 +1,9 @@
 {
-  "timestamp": "2026-05-10T16:42:31.409Z",
+  "timestamp": "2026-05-12T06:09:39.785Z",
   "config": {
     "SAMPLE_RATE": 48000,
-    "CPP_INPUT_LEN": 2048,
+    "CPP_INPUT_LEN": 1024,
+    "NATIVE_BUFFER_LEN": 3072,
     "WARMUP_FRAMES": 100,
     "MEASURE_FRAMES": 2000
   },
@@ -19,11 +20,11 @@
         "timeSmoothFrames": 1,
         "quefrencySmoothBins": 1
       },
-      "median_ms": 0.13110000000000355,
-      "p95_ms": 0.20300000000000296,
-      "p99_ms": 0.247099999999989,
-      "max_ms": 0.3937999999999988,
-      "mean_ms": 0.13953110000000007
+      "median_ms": 0.42900000000003047,
+      "p95_ms": 0.54849999999999,
+      "p99_ms": 0.7498999999999114,
+      "max_ms": 0.8903999999999996,
+      "mean_ms": 0.4468632499999998
     },
     {
       "label": "production default (regression=linear, trend=linear, timeSmooth=1, quefrencySmooth=3)",
@@ -33,11 +34,11 @@
         "timeSmoothFrames": 1,
         "quefrencySmoothBins": 3
       },
-      "median_ms": 0.1431999999999789,
-      "p95_ms": 0.1792000000000371,
-      "p99_ms": 0.22509999999999764,
-      "max_ms": 0.30330000000003565,
-      "mean_ms": 0.14517245000000056
+      "median_ms": 0.4393000000000029,
+      "p95_ms": 0.5674999999998818,
+      "p99_ms": 0.7850000000000819,
+      "max_ms": 1.2328999999999724,
+      "mean_ms": 0.46149985000000016
     },
     {
       "label": "full Maryn (Theil + exp + 3+3 smoothing)",
@@ -47,11 +48,11 @@
         "timeSmoothFrames": 3,
         "quefrencySmoothBins": 3
       },
-      "median_ms": 0.31749999999999545,
-      "p95_ms": 0.5084000000000515,
-      "p99_ms": 0.616800000000012,
-      "max_ms": 0.7389000000000578,
-      "mean_ms": 0.34385430000000206
+      "median_ms": 0.5353000000000065,
+      "p95_ms": 0.8290000000001783,
+      "p99_ms": 1.0072000000000116,
+      "max_ms": 1.197400000000016,
+      "mean_ms": 0.5748908000000064
     },
     {
       "label": "Theil + linear trend (no exponential)",
@@ -61,11 +62,11 @@
         "timeSmoothFrames": 1,
         "quefrencySmoothBins": 1
       },
-      "median_ms": 0.27670000000011896,
-      "p95_ms": 0.4420999999999822,
-      "p99_ms": 0.550499999999829,
-      "max_ms": 0.8208999999999378,
-      "mean_ms": 0.2972893499999987
+      "median_ms": 0.5228000000001884,
+      "p95_ms": 0.8042000000000371,
+      "p99_ms": 1.012499999999818,
+      "max_ms": 1.2105000000001382,
+      "mean_ms": 0.5647901999999992
     },
     {
       "label": "linear LSQ + exponential trend (Theil-free)",
@@ -75,11 +76,11 @@
         "timeSmoothFrames": 1,
         "quefrencySmoothBins": 1
       },
-      "median_ms": 0.1273999999998523,
-      "p95_ms": 0.16620000000011714,
-      "p99_ms": 0.21550000000024738,
-      "max_ms": 0.37220000000002074,
-      "mean_ms": 0.13219185000000494
+      "median_ms": 0.43110000000069704,
+      "p95_ms": 0.6100999999998749,
+      "p99_ms": 0.7593999999999141,
+      "max_ms": 0.9203999999999724,
+      "mean_ms": 0.4558630000000012
     },
     {
       "label": "Maryn − time smoothing",
@@ -89,11 +90,11 @@
         "timeSmoothFrames": 1,
         "quefrencySmoothBins": 3
       },
-      "median_ms": 0.30569999999988795,
-      "p95_ms": 0.49490000000014334,
-      "p99_ms": 0.5718999999999141,
-      "max_ms": 0.7878000000000611,
-      "mean_ms": 0.3230870000000057
+      "median_ms": 0.5324999999993452,
+      "p95_ms": 0.8173999999999069,
+      "p99_ms": 0.9992999999994936,
+      "max_ms": 1.2403999999996813,
+      "mean_ms": 0.570707099999985
     },
     {
       "label": "Maryn − quefrency smoothing",
@@ -103,11 +104,11 @@
         "timeSmoothFrames": 3,
         "quefrencySmoothBins": 1
       },
-      "median_ms": 0.2880000000000109,
-      "p95_ms": 0.47139999999990323,
-      "p99_ms": 0.5498000000002321,
-      "max_ms": 0.7712000000001353,
-      "mean_ms": 0.30837514999999394
+      "median_ms": 0.5203000000001339,
+      "p95_ms": 0.6994999999997162,
+      "p99_ms": 0.8629000000000815,
+      "max_ms": 1.1216000000003987,
+      "mean_ms": 0.5512124999999997
     }
   ]
 }
