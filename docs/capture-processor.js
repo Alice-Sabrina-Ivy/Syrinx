@@ -86,19 +86,16 @@ class CaptureProcessor extends AudioWorkletProcessor {
       const input = inputs[0]?.[0]; // mono channel
       if (!input || input.length === 0) return true;
 
-      // Copy input into pre-allocated buffer
+      // Copy input into pre-allocated buffer. The buffer is sized at
+      // chunkSize * 3 and post-emit copyWithin (below) keeps writePos in
+      // [0, chunkSize), so overflow is essentially unreachable in steady
+      // state. The expand branch only fires if a downstream consumer stalls
+      // long enough that chunks aren't being emitted — defensive only.
       if (this.writePos + input.length > this.bufferSize) {
-        // Should rarely happen — compact by shifting data left
-        if (this.writePos > 0) {
-          this.buffer.copyWithin(0, 0, this.writePos);
-        }
-        // If still not enough room, expand (very rare)
-        if (this.writePos + input.length > this.bufferSize) {
-          this.bufferSize = (this.writePos + input.length) * 2;
-          const newBuf = new Float32Array(this.bufferSize);
-          newBuf.set(this.buffer.subarray(0, this.writePos));
-          this.buffer = newBuf;
-        }
+        this.bufferSize = (this.writePos + input.length) * 2;
+        const newBuf = new Float32Array(this.bufferSize);
+        newBuf.set(this.buffer.subarray(0, this.writePos));
+        this.buffer = newBuf;
       }
       this.buffer.set(input, this.writePos);
       this.writePos += input.length;
