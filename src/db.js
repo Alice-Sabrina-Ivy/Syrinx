@@ -1,6 +1,13 @@
 // db.js — Dexie IndexedDB setup for Syrinx
 // Schema: settings, sessions, frames, exerciseResults
-// v2 adds: vocalWeightCalibration (persisted CPP baseline + target).
+//
+// v2 had a vocalWeightCalibration table for persisted CPP baselines,
+// added during the 2026-05-12 Stage C iteration and then removed in
+// the same-day course correction (zero-interaction adaptive σ window
+// makes cross-session persistence unnecessary). The v2 migration is
+// retained as a no-op-then-drop so dev users who tested the Stage C
+// branch get the v2 table cleanly removed on next session start
+// rather than getting a Dexie version-conflict error.
 
 import Dexie from "dexie";
 
@@ -34,27 +41,14 @@ db.version(1).stores({
   exerciseResults: "++id, sessionId, exerciseId, startedAt",
 });
 
-// v2: add vocalWeightCalibration. Persisted CPP baseline (and
-// optional target) so calibration is one-time per device instead of
-// per-session. Algorithm is sample-rate-invariant since the
-// 2026-05-12 canonical-rate merge, so baselineSampleRate is
-// diagnostic-only — not used to correct the baseline μ/σ. Single
-// row keyed on id="default" mirroring the settings table pattern.
-//
-// Row shape: {
-//   id: "default",
-//   schemaVersion: 1,
-//   baselineMu, baselineSigma, baselineCapturedAt,
-//   baselineSampleRate, baselineSampleCount,
-//   targetMu, targetSigma, targetCapturedAt,
-//   targetSampleRate, targetSampleCount,
-//   lastUsedAt,
-// }
-// All target* fields are null when no target has been captured.
-// All baseline* fields are null on the first session (triggers
-// calibration UI).
+// v2: drops the short-lived vocalWeightCalibration table introduced
+// then removed within the 2026-05-12 Stage C iteration. Dexie requires
+// monotonic version numbers; bumping to v2 with `null` for that table
+// removes it cleanly on databases that have it. Databases still on v1
+// (the typical case — Stage C wasn't released to main) simply skip
+// past this migration since the table never existed there.
 db.version(2).stores({
-  vocalWeightCalibration: "id",
+  vocalWeightCalibration: null,
 });
 
 export default db;

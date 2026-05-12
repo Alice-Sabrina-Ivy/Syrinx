@@ -19,10 +19,6 @@ export function CombinedDashboard({
   formants,
   hnr,
   vocalWeight,
-  resetVocalWeightBaseline,
-  startTargetCapture,
-  cancelTargetCapture,
-  clearVocalWeightTarget,
   modelStatus,
   modelError,
   modelProgress,
@@ -339,10 +335,6 @@ export function CombinedDashboard({
               vocalWeight={vocalWeight}
               voiced={voiced}
               holding={holding}
-              onResetBaseline={resetVocalWeightBaseline}
-              onStartTargetCapture={startTargetCapture}
-              onCancelTargetCapture={cancelTargetCapture}
-              onClearTarget={clearVocalWeightTarget}
             />
           </div>
 

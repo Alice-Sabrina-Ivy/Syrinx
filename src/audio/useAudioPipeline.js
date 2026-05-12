@@ -17,14 +17,6 @@ import { createCaptureSource } from "./captureSource";
 import { VocalWeightAggregator } from "./vocal-weight-aggregator";
 import { VocalWeightBaseline } from "./vocal-weight-baseline";
 import {
-  loadCalibration as loadVocalWeightCalibration,
-  saveBaseline as saveVocalWeightBaseline,
-  saveTarget as saveVocalWeightTarget,
-  clearBaseline as clearVocalWeightBaseline,
-  clearTarget as clearVocalWeightTarget,
-  touchLastUsed as touchVocalWeightLastUsed,
-} from "./vocal-weight-persistence";
-import {
   DIAG_ENABLED,
   DIAG_SR_OVERRIDE,
   DIAG_LATENCY_HINT,
@@ -94,28 +86,8 @@ export function useAudioPipeline() {
       cpp: null,
       position: null,
       sigmaDelta: null,
-      // baselineProgress: 0..1 fraction of voiced material captured.
-      // Stays at 1 if baseline was loaded from persistence — meaning
-      // calibration is complete, even though no in-session accumulation
-      // happened.
       baselineProgress: 0,
       baselineReady: false,
-      // source: "captured" (this session) | "loaded" (from persistence)
-      // | null (no baseline yet).
-      baselineSource: null,
-      // Target capture is OPTIONAL. When non-null target exists, the
-      // gauge spans baseline → target with polarity derived from
-      // sign(targetMu - baselineMu). Without a target, the gauge falls
-      // back to baseline ± 2σ with fixed Lighter/Heavier labels.
-      hasTarget: false,
-      polarity: 0,                 // +1, -1, or 0
-      sigmaDeltaFromBaseline: null, // shown alongside primary sigmaDelta when target exists
-      // targetCapture state machine:
-      //   idle    = no target capture in progress
-      //   active  = user is recording target voice (separate baseline acc)
-      // targetCaptureProgress 0..1 fraction filled.
-      targetCaptureStatus: "idle",
-      targetCaptureProgress: 0,
     },
     genderScore: null,        // 0-100 from ML worker, null until first inference
     genderConfidence: null,
@@ -185,24 +157,9 @@ export function useAudioPipeline() {
   // baseline.
   const cppAggregatorRef = useRef(null);
   const cppBaselineRef = useRef(null);
-  // Target capture: a separate VocalWeightBaseline instance that
-  // collects samples for the optional "target voice" calibration. Non-
-  // null only while target capture is active. Same accumulation rule
-  // as the baseline (30 s voiced content, lock and save). On lock,
-  // target μ/σ are written into the main baseline via setTarget() and
-  // persisted, then this ref is cleared.
-  const cppTargetCaptureRef = useRef(null);
   // Latest CPP-aggregate emit; used by the throttled state update so
   // we don't re-emit gauge state on every DSP frame.
   const lastCppAggregateRef = useRef({ time: -1 });
-  // Track which sample rate the in-session baseline was captured at,
-  // for the diagnostic field in persistence. Set when the worker init
-  // resolves with its sampleRate.
-  const captureSampleRateRef = useRef(null);
-  // Guard so we only persist the baseline once per session lock —
-  // saveBaseline is async and the lock transition could fire mid-
-  // batch otherwise.
-  const baselineSavedRef = useRef(false);
 
   // Silence gating
   const silenceStartRef = useRef(null);
@@ -260,50 +217,16 @@ export function useAudioPipeline() {
     if (audioCtxRef.current) return;
     startingRef.current = true;
 
-    // Fresh CPP aggregator per session. Baseline is constructed fresh
-    // too but its μ/σ are loaded from persisted calibration (if any)
-    // so the user doesn't recalibrate on every session — the algorithm
-    // is sample-rate-invariant since the 2026-05-12 canonical-rate
-    // merge, so the persisted parameters are valid across devices/
-    // sessions. First-ever session: no persisted row → baseline runs
-    // its normal 30 s accumulation, then this code saves it for next
-    // session.
+    // Fresh CPP aggregator + baseline per session. Calibration is
+    // session-local — mic, room, time-of-day, and voice state may all
+    // differ between sessions; a 30-s re-calibration each session is
+    // cheaper than the UX complexity of cross-session persistence
+    // (which was implemented and then removed on 2026-05-12 in favor
+    // of this simpler zero-interaction model).
     cppAggregatorRef.current = new VocalWeightAggregator();
     cppBaselineRef.current = new VocalWeightBaseline();
-    cppTargetCaptureRef.current = null;
     lastCppAggregateRef.current = { time: -1 };
-    baselineSavedRef.current = false;
     if (DIAG_ENABLED) resetVocalWeightCounters();
-
-    try {
-      const persisted = await loadVocalWeightCalibration();
-      if (persisted && typeof persisted.baselineMu === "number") {
-        cppBaselineRef.current.loadFromPersisted({
-          mu: persisted.baselineMu,
-          sigma: persisted.baselineSigma,
-        });
-        if (typeof persisted.targetMu === "number") {
-          cppBaselineRef.current.setTarget({
-            mu: persisted.targetMu,
-            sigma: persisted.targetSigma,
-          });
-        }
-        // Mark already-saved so the locked-baseline-detect loop below
-        // doesn't re-persist what we just loaded.
-        baselineSavedRef.current = true;
-        // Update lastUsedAt without blocking start (fire-and-forget).
-        touchVocalWeightLastUsed().catch(() => { /* non-fatal */ });
-      }
-    } catch (err) {
-      // Persistence load failed (DB unavailable, version mismatch, etc.).
-      // Fall back to first-session flow — the user will recalibrate.
-      // Surface to diag if enabled.
-      if (DIAG_ENABLED) pushError({
-        source: "vocalWeightPersistence",
-        where: "loadCalibration",
-        message: err?.message ?? String(err),
-      });
-    }
 
     setState((s) => ({ ...s, status: "requesting", error: null }));
 
@@ -379,7 +302,6 @@ export function useAudioPipeline() {
       });
       captureSrcRef.current = captureSrc;
       audioCtxRef.current = captureSrc.audioCtx; // null on mstp path
-      captureSampleRateRef.current = captureSrc.sampleRate;
 
       // Diagnostic snapshot — captured once at start. Path-specific
       // fields (baseLatency / outputLatency / ctxCreatedAtEpochMs)
@@ -782,9 +704,6 @@ export function useAudioPipeline() {
     dspGateRef.current = { voiced: false, holding: false };
     cppAggregatorRef.current = null;
     cppBaselineRef.current = null;
-    cppTargetCaptureRef.current = null;
-    captureSampleRateRef.current = null;
-    baselineSavedRef.current = false;
     lastCppAggregateRef.current = { time: -1 };
     setState({
       status: "idle",
@@ -803,12 +722,6 @@ export function useAudioPipeline() {
         sigmaDelta: null,
         baselineProgress: 0,
         baselineReady: false,
-        baselineSource: null,
-        hasTarget: false,
-        polarity: 0,
-        sigmaDeltaFromBaseline: null,
-        targetCaptureStatus: "idle",
-        targetCaptureProgress: 0,
       },
       genderScore: null,
       genderConfidence: null,
@@ -850,16 +763,9 @@ export function useAudioPipeline() {
   function buildVocalWeightState(aggregate) {
     const baseline = cppBaselineRef.current;
     const cppValue = aggregate ? aggregate.cpp : null;
-    const targetCap = cppTargetCaptureRef.current;
-    const targetCaptureStatus = targetCap ? "active" : "idle";
-    const targetCaptureProgress = targetCap ? targetCap.progress() : 0;
     if (!baseline) {
-      return {
-        cpp: cppValue, position: null, sigmaDelta: null,
-        baselineProgress: 0, baselineReady: false, baselineSource: null,
-        hasTarget: false, polarity: 0, sigmaDeltaFromBaseline: null,
-        targetCaptureStatus, targetCaptureProgress,
-      };
+      return { cpp: cppValue, position: null, sigmaDelta: null,
+               baselineProgress: 0, baselineReady: false };
     }
     return {
       cpp: cppValue,
@@ -867,14 +773,6 @@ export function useAudioPipeline() {
       sigmaDelta: cppValue !== null ? baseline.sigmaDelta(cppValue) : null,
       baselineProgress: baseline.progress(),
       baselineReady: baseline.ready(),
-      baselineSource: baseline.source(),
-      hasTarget: baseline.hasTarget(),
-      polarity: baseline.polarity(),
-      sigmaDeltaFromBaseline: cppValue !== null && baseline.hasTarget()
-        ? baseline.sigmaDeltaFromBaseline(cppValue)
-        : null,
-      targetCaptureStatus,
-      targetCaptureProgress,
     };
   }
 
@@ -947,65 +845,11 @@ export function useAudioPipeline() {
     // accumulate() is a no-op.
     const isFreshAggregate =
       cppAggregate && cppAggregate.time !== lastCppAggregateRef.current.time;
-    if (isFreshAggregate && !isQuiet) {
-      const baseline = cppBaselineRef.current;
-      if (baseline) {
-        const wasReady = baseline.ready();
-        baseline.accumulate({
-          time: cppAggregate.time,
-          cpp: cppAggregate.cpp,
-        });
-        // Lock transition: persist this session's freshly-captured
-        // baseline. Source is "captured" (not "loaded") since the only
-        // way to reach this branch is via in-session accumulation.
-        // baselineSavedRef gates against re-saving once per session.
-        if (!wasReady && baseline.ready() && baseline.source() === "captured" && !baselineSavedRef.current) {
-          baselineSavedRef.current = true;
-          saveVocalWeightBaseline({
-            mu: baseline.mu(),
-            sigma: baseline.sigma(),
-            sampleRate: captureSampleRateRef.current,
-            sampleCount: baseline.sampleTarget(),
-          }).catch((err) => {
-            if (DIAG_ENABLED) pushError({
-              source: "vocalWeightPersistence",
-              where: "saveBaseline",
-              message: err?.message ?? String(err),
-            });
-          });
-        }
-      }
-      // Feed an in-progress target capture, if active. Same accumulation
-      // rule; on lock, persist as target and clear the capture ref.
-      const targetCap = cppTargetCaptureRef.current;
-      if (targetCap) {
-        const targetWasReady = targetCap.ready();
-        targetCap.accumulate({
-          time: cppAggregate.time,
-          cpp: cppAggregate.cpp,
-        });
-        if (!targetWasReady && targetCap.ready()) {
-          const mu = targetCap.mu();
-          const sigma = targetCap.sigma();
-          // Attach to main baseline immediately so polarity / span
-          // update on the next emit.
-          cppBaselineRef.current?.setTarget({ mu, sigma });
-          // Persist.
-          saveVocalWeightTarget({
-            mu, sigma,
-            sampleRate: captureSampleRateRef.current,
-            sampleCount: targetCap.sampleTarget(),
-          }).catch((err) => {
-            if (DIAG_ENABLED) pushError({
-              source: "vocalWeightPersistence",
-              where: "saveTarget",
-              message: err?.message ?? String(err),
-            });
-          });
-          // Tear down capture instance.
-          cppTargetCaptureRef.current = null;
-        }
-      }
+    if (isFreshAggregate && !isQuiet && cppBaselineRef.current) {
+      cppBaselineRef.current.accumulate({
+        time: cppAggregate.time,
+        cpp: cppAggregate.cpp,
+      });
       lastCppAggregateRef.current = cppAggregate;
     }
     if (DIAG_ENABLED && isFreshAggregate) {
@@ -1192,110 +1036,11 @@ export function useAudioPipeline() {
   // concurrent rendering (refs must not be mutated during render).
   useEffect(() => { handleAnalysisResultRef.current = handleAnalysisResult; });
 
-  // Re-anchor the per-user vocal-weight baseline. Wired to a UI
-  // affordance so users whose baseline wasn't representative of their
-  // typical voice (e.g., started with a vocal warm-up before settling
-  // into trained voice, or have moved to a noticeably different mic /
-  // room) can re-calibrate. Clears BOTH the in-session state AND the
-  // persisted IndexedDB row, so the next 30 s of voiced speech
-  // captures a fresh baseline that gets re-persisted. Also clears the
-  // target — a target without a baseline is meaningless.
-  const resetVocalWeightBaseline = useCallback(() => {
-    if (cppBaselineRef.current) cppBaselineRef.current.reset();
-    if (cppAggregatorRef.current) cppAggregatorRef.current.reset();
-    if (cppTargetCaptureRef.current) cppTargetCaptureRef.current = null;
-    lastCppAggregateRef.current = { time: -1 };
-    baselineSavedRef.current = false;
-    clearVocalWeightBaseline().catch((err) => {
-      if (DIAG_ENABLED) pushError({
-        source: "vocalWeightPersistence",
-        where: "clearBaseline",
-        message: err?.message ?? String(err),
-      });
-    });
-    setState((s) => ({
-      ...s,
-      vocalWeight: {
-        cpp: null,
-        position: null,
-        sigmaDelta: null,
-        baselineProgress: 0,
-        baselineReady: false,
-        baselineSource: null,
-        hasTarget: false,
-        polarity: 0,
-        sigmaDeltaFromBaseline: null,
-        targetCaptureStatus: "idle",
-        targetCaptureProgress: 0,
-      },
-    }));
-  }, []);
-
-  // Begin target voice capture. Spins up a separate accumulator that
-  // tracks the user's "goal voice" — same 30 s voiced-content rule as
-  // the baseline. On lock, the target μ/σ are attached to the main
-  // baseline (switches the gauge to baseline → target span mode) and
-  // persisted. No-op if no baseline exists yet (target without
-  // baseline is meaningless).
-  const startTargetCapture = useCallback(() => {
-    if (!cppBaselineRef.current || !cppBaselineRef.current.ready()) return;
-    if (cppTargetCaptureRef.current) return; // already capturing
-    cppTargetCaptureRef.current = new VocalWeightBaseline();
-    setState((s) => ({
-      ...s,
-      vocalWeight: {
-        ...s.vocalWeight,
-        targetCaptureStatus: "active",
-        targetCaptureProgress: 0,
-      },
-    }));
-  }, []);
-
-  // Abort an in-progress target capture without persisting. Does NOT
-  // affect an already-captured target.
-  const cancelTargetCapture = useCallback(() => {
-    if (!cppTargetCaptureRef.current) return;
-    cppTargetCaptureRef.current = null;
-    setState((s) => ({
-      ...s,
-      vocalWeight: {
-        ...s.vocalWeight,
-        targetCaptureStatus: "idle",
-        targetCaptureProgress: 0,
-      },
-    }));
-  }, []);
-
-  // Clear an existing captured target. Gauge falls back to baseline
-  // ± 2σ display. Clears both in-session state and persistence.
-  const clearVocalWeightTargetCallback = useCallback(() => {
-    cppBaselineRef.current?.clearTarget();
-    clearVocalWeightTarget().catch((err) => {
-      if (DIAG_ENABLED) pushError({
-        source: "vocalWeightPersistence",
-        where: "clearTarget",
-        message: err?.message ?? String(err),
-      });
-    });
-    setState((s) => ({
-      ...s,
-      vocalWeight: {
-        ...s.vocalWeight,
-        hasTarget: false,
-        polarity: 0,
-        sigmaDeltaFromBaseline: null,
-      },
-    }));
-  }, []);
 
   return {
     ...state,
     start,
     stop,
-    resetVocalWeightBaseline,
-    startTargetCapture,
-    cancelTargetCapture,
-    clearVocalWeightTarget: clearVocalWeightTargetCallback,
     pitchTraceRef,
     formantTrailRef,
     genderTraceRef,
