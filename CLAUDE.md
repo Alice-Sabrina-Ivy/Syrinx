@@ -261,16 +261,17 @@ History arrays are stored in Refs (not React state) and read directly by `reques
 
 - **PitchTrace** — 15-second scrolling pitch waveform with target band
 - **ResonanceMeter** — vertical thermometer titled "Perceived voice" for the ML perceived-gender score (0–100). Reads `genderTraceRef` (entries `{ time, score, confidence }` posted by the ML Worker). Bar fills from 0 (bottom, "Masculine") to current score (top, "Feminine") with a warm→cool gradient; faint orange band marks the masculine range at 0–30, faint blue band marks the feminine range at 70–100, the middle 30–70 is the uncertain band. A glowing horizontal indicator at the current score tweens between samples via an exponential lerp in the rAF loop, with opacity scaled by confidence so low-confidence predictions read dim. A right-side history strip plots the last ~10 inferences fading by age. Big number readout below with a three-way subtitle driven by score range ("in feminine range" / "in uncertain range" / "in masculine range", plus "loading…" / "warming up" model-state messages). The middle uncertain range collapses with the classifier's low-confidence region because confidence is by construction `|score - 0.5| × 2`, so a single score-range check covers both. Replaces the older ResonanceScoreTrace + ResonanceGauge pair, which spread the same data across a 15-sec timeline + a separate horizontal bar. An earlier hand-crafted vowel-normalized formula (`src/utils/resonanceScore.js`) was tried and replaced because raw-formant geometry doesn't reliably model perceived gender.
-- **SpectralTiltGauge** — horizontal gauge for vocal weight
+- **VocalWeightGauge** — horizontal bar for vocal weight, driven by CPP (Cepstral Peak Prominence) computed in `src/dsp/cpp.js`. Per-user baseline (μ/σ over the first 30 s of voiced speech) persisted to IndexedDB so calibration is one-time per device. Optional target voice: users can capture a ~30 s "goal voice" sample. With target attached, gauge spans baseline → target with polarity from `sign(targetμ − baselineμ)`; without target, gauge spans baseline ± 2σ with fixed Lighter/Heavier labels. Algorithm is sample-rate-invariant (resamples internally to a canonical 16 kHz before the cepstrum pipeline) so persisted μ/σ stays valid across devices. Real-audio CPP spread across sample rates is < 0.03 dB; same-corpus Praat correlation r=0.64 (PTDB-TUG) / r=0.71 (FDA) on running speech. Investigation arc + design rationale: `measurements/vocal-weight-stage-c-implementation-2026-05-12.md`.
 - **CombinedDashboard** — main practice view composing the above, plus session recording logic
 
 ### Data Persistence
 
-`src/db.js` defines a Dexie (IndexedDB) schema with four tables:
+`src/db.js` defines a Dexie (IndexedDB) schema (v2):
 - **settings** — user preferences (record audio toggle, target ranges)
 - **sessions** — practice sessions with summary stats (avg F0, F1, F2, F3, spectral tilt, HNR, time-in-target %)
 - **frames** — raw per-frame metrics (timestamp, F0, F1, F2, F3, intensity, spectral tilt, HNR, voiced flag)
 - **exerciseResults** — stubbed for future exercise system
+- **vocalWeightCalibration** — single-row table (id="default") holding the per-user CPP baseline μ/σ + optional target μ/σ. `baselineSampleRate` is diagnostic only — algorithm is sample-rate-invariant since the 2026-05-12 canonical-rate merge. Wrapped in `src/audio/vocal-weight-persistence.js`. v1 → v2 migration is additive (new table only, existing data untouched).
 
 ### UI Components
 

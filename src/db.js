@@ -1,6 +1,6 @@
 // db.js — Dexie IndexedDB setup for Syrinx
 // Schema: settings, sessions, frames, exerciseResults
-// (baselines and exercises tables added in later sessions)
+// v2 adds: vocalWeightCalibration (persisted CPP baseline + target).
 
 import Dexie from "dexie";
 
@@ -32,6 +32,29 @@ db.version(1).stores({
   // Row shape: { id (auto), sessionId, exerciseId,
   //   startedAt, completedAt, score, metrics, notes }
   exerciseResults: "++id, sessionId, exerciseId, startedAt",
+});
+
+// v2: add vocalWeightCalibration. Persisted CPP baseline (and
+// optional target) so calibration is one-time per device instead of
+// per-session. Algorithm is sample-rate-invariant since the
+// 2026-05-12 canonical-rate merge, so baselineSampleRate is
+// diagnostic-only — not used to correct the baseline μ/σ. Single
+// row keyed on id="default" mirroring the settings table pattern.
+//
+// Row shape: {
+//   id: "default",
+//   schemaVersion: 1,
+//   baselineMu, baselineSigma, baselineCapturedAt,
+//   baselineSampleRate, baselineSampleCount,
+//   targetMu, targetSigma, targetCapturedAt,
+//   targetSampleRate, targetSampleCount,
+//   lastUsedAt,
+// }
+// All target* fields are null when no target has been captured.
+// All baseline* fields are null on the first session (triggers
+// calibration UI).
+db.version(2).stores({
+  vocalWeightCalibration: "id",
 });
 
 export default db;

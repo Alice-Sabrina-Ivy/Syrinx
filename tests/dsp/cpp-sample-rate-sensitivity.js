@@ -170,13 +170,30 @@ const fdaMedians = fdaResults.map((r) => r.median).filter((m) => m !== null);
 const fdaRange = fdaMedians.length > 0 ? Math.max(...fdaMedians) - Math.min(...fdaMedians) : 0;
 console.log(`FDA sample median spread: ${fdaRange.toFixed(3)} dB`);
 
-if (synthRange > 0.3 || ptdbRange > 0.3 || fdaRange > 0.3) {
-  console.log("\n>>> SAMPLE-RATE SENSITIVITY CONFIRMED. Same signal at different");
-  console.log(">>> sample rates produces materially different CPP values.");
+// The synthetic-vowel arm re-synthesizes the signal at each native
+// rate; pulse-train periods (sr/F0) land at different fractional
+// offsets and the resonator coefficients depend on sr, so the
+// stimuli aren't equivalent across rates by construction. Residual
+// synthetic spread documents stimulus-construction variance, not
+// algorithm sensitivity. The load-bearing invariance check is the
+// real-audio arm: same audio buffer at different target rates.
+const REAL_AUDIO_INVARIANCE_THRESHOLD = 0.05;  // dB
+if (ptdbRange > REAL_AUDIO_INVARIANCE_THRESHOLD || fdaRange > REAL_AUDIO_INVARIANCE_THRESHOLD) {
+  console.log("\n>>> SAMPLE-RATE SENSITIVITY DETECTED on real audio. Same audio");
+  console.log(">>> resampled to different rates produces materially different");
+  console.log(">>> CPP values — algorithm regression.");
+  console.log(`>>> (PTDB spread ${ptdbRange.toFixed(3)} dB, FDA spread ${fdaRange.toFixed(3)} dB,`);
+  console.log(`>>> threshold ${REAL_AUDIO_INVARIANCE_THRESHOLD} dB)`);
 } else {
-  console.log("\n>>> Sample-rate sensitivity is small. Bimodal corpus distribution");
-  console.log(">>> likely reflects mic/environment differences, not algorithm");
-  console.log(">>> sample-rate sensitivity.");
+  console.log("\n>>> Sample-rate invariance holds on real audio");
+  console.log(`>>> (PTDB spread ${ptdbRange.toFixed(3)} dB, FDA spread ${fdaRange.toFixed(3)} dB,`);
+  console.log(`>>> both < ${REAL_AUDIO_INVARIANCE_THRESHOLD} dB threshold).`);
+  if (synthRange > 0.3) {
+    console.log(`>>> Synthetic spread ${synthRange.toFixed(3)} dB reflects stimulus-`);
+    console.log(`>>> construction variance (resonator coefs + pulse-position`);
+    console.log(`>>> fractional offsets differ across native rates), not`);
+    console.log(`>>> algorithm sample-rate sensitivity.`);
+  }
 }
 
 mkdirSync("measurements", { recursive: true });

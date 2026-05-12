@@ -1,4 +1,5 @@
-// cpp.js — Cepstral Peak Prominence with Maryn-style processing.
+// cpp.js — Cepstral Peak Prominence with sample-rate-invariant
+// internal processing.
 //
 // Real cepstrum c[n] = (1/N) · IFFT(log|FFT(x)|). For real-valued
 // input the log-magnitude spectrum is real and even in frequency,
@@ -7,7 +8,25 @@
 // implementation reuses one radix-2 FFT for both the spectrum step
 // and the quefrency step.
 //
-// Quefrency range: peak search is bounded to F0 ∈ [75, 625] Hz
+// Sample-rate invariance: callers may pass audio at any rate. The
+// input is anti-alias filtered and linearly downsampled (or passed
+// through, if already at canonical rate) to CANONICAL_SR = 16 kHz
+// before the cepstrum pipeline runs. Quefrency search bounds and
+// FFT/window sizes are constant in canonical-rate samples, so the
+// algorithm operates in a single regime regardless of input rate.
+// Investigation + validation:
+// measurements/cpp-sample-rate-invariance-investigation-2026-05-12.md.
+//
+// CANONICAL_SR=16 kHz rationale:
+//   - Lowest common denominator across production rates (mobile
+//     silent downsample to 16, desktop 22.05/32/44.1/48). Downsampling
+//     only — never upsample, which avoids high-band interpolation
+//     artifacts.
+//   - Matches Hillenbrand 1994's analysis regime: 1024 samples at
+//     22 kHz ≈ 800 samples at 16 kHz, ~46 ms window in both cases.
+//   - Mobile no-op resampling where the budget is tightest.
+//
+// Quefrency range: peak search bounded to F0 ∈ [75, 625] Hz
 // (quefrency ∈ [1.6, 13.3] ms). Covers all plausible speaking voice
 // F0s including low-male (~80 Hz monotone) and high-female
 // (~500 Hz singing).
@@ -21,43 +40,45 @@
 // - Exponential trend type (replacing linear): cepstrum baseline
 //   shape is naturally exponential-decaying, log-domain Theil
 //   produces a closer-fitting baseline than linear-domain Theil.
-// - Time smoothing across 3 frames of cepstra (rolling buffer):
+// - Time smoothing across N frames of cepstra (rolling buffer):
 //   reduces per-frame cepstrum noise. Module-level state.
-// - Quefrency smoothing with 3-bin moving average: reduces
-//   per-bin noise. Cheap.
+// - Quefrency smoothing with N-bin moving average: reduces per-bin
+//   noise. Cheap.
 //
-// See measurements/maryn-cpps-design-2026-05-10.md for the
-// implementation-choice rationale per component, including which
-// Praat parameters this matches and which deviate.
+// Production defaults (selected via component isolation 2026-05-10):
+// linear regression + linear trend + no time smoothing + 3-bin
+// quefrency smoothing. See
+// measurements/maryn-cpps-design-2026-05-10.md and
+// measurements/cpp-maryn-component-isolation-2026-05-10.json.
 //
 // Numeric range: dB units (10·log10 power). Healthy sustained vowels
-// typically produce CPP ~20-30 dB; breathy phonation produces lower
-// values. Absolute values are algorithm-specific and won't transfer
-// cleanly from clinical literature — the gauge is calibrated per-
-// user (first 30 s baseline) rather than against a population
-// reference.
+// typically produce CPP ~10-20 dB at canonical rate; breathy
+// phonation produces lower values. Absolute values are algorithm-
+// specific and won't transfer cleanly from clinical literature —
+// the gauge is calibrated per-user (first 30 s baseline) rather
+// than against a population reference.
 //
 // This module is imported by dsp-worker.js (production hot path)
 // and by tests/dsp/cpp-test.js (Layer 1 synthetic regression).
 
-// CPP_INPUT_LEN is the PREFERRED input length (cap), not a hard
-// requirement. The function uses min(buffer.length, CPP_INPUT_LEN);
-// shorter buffers are zero-padded out to CPP_FFT_SIZE.
+// Canonical processing rate. All cepstrum math operates on a buffer
+// downsampled to this rate. Constant — changing it would invalidate
+// all per-user baselines stored in IndexedDB.
+export const CANONICAL_SR = 16000;
+
+// CPP_INPUT_LEN is the PREFERRED canonical-rate input length (cap),
+// not a hard requirement. The function uses min(resampled.length,
+// CPP_INPUT_LEN); shorter buffers are zero-padded out to CPP_FFT_SIZE.
+// 1024 samples at 16 kHz = 64 ms — matches Hillenbrand 1994's
+// 1024-samples-at-22 kHz regime in time, scaled to canonical rate.
 //
-// At 48 kHz the analysis window is 2400 samples → uses full 2048.
-// Hillenbrand 1994 originally used 1024 samples at 22.05 kHz (~46 ms);
-// 2048 at 48 kHz is the same ~43 ms time window with similar period
-// count. At lower sample rates (mobile silent downsample to 16 kHz,
-// some Linux audio configs at 22.05 or 32 kHz), the AudioContext's
-// 50 ms analysis window is shorter than 2048 samples — the function
-// uses what's available with appropriate Hann windowing and lets the
-// FFT zero-pad out to CPP_FFT_SIZE. Quefrency bins still map via
-// n/sr so the F0 search range is sample-rate-correct.
+// CPP_MIN_INPUT_LEN floors out 512 samples = ~32 ms at 16 kHz,
+// ~2.5 periods at F0=80 Hz. Below that the cepstral peak isn't
+// reliably resolved and we return null rather than emit noise.
 //
-// CPP_MIN_INPUT_LEN floors out 512 samples = ~32 ms at 16 kHz, ~2.5
-// periods at F0=80 Hz. Below that, the cepstral peak isn't reliably
-// resolved and we return null rather than emit noise.
-export const CPP_INPUT_LEN = 2048;
+// CPP_FFT_SIZE = 2048 zero-pads CPP_INPUT_LEN out for the cepstrum
+// FFT. Constant across all inputs.
+export const CPP_INPUT_LEN = 1024;
 export const CPP_MIN_INPUT_LEN = 512;
 export const CPP_FFT_SIZE = 2048;
 export const CPP_PREEMPH_ALPHA = 0.97;     // first-order HPF coefficient
@@ -65,29 +86,91 @@ export const CPP_F0_MIN_HZ = 75;            // sets quefrency upper bound
 export const CPP_F0_MAX_HZ = 625;           // sets quefrency lower bound
 
 // Default option values reflect the partial-A configuration selected
-// on 2026-05-10. Full Maryn CPPS was implemented and tested; component
-// isolation against the four Praat corpora showed:
-//   - Theil regression ≈ linear LSQ (audit's peak-influence prediction
-//     didn't manifest empirically)
-//   - Exponential trend slightly worse than linear
-//   - Time smoothing substantially regresses correlation (likely a
-//     methodology mismatch — Praat's 2 ms time-step vs Syrinx's 25 ms
-//     hop)
-//   - Quefrency smoothing (3-bin centered MA on cepstrum) IS the only
-//     Maryn-style addition that improves correlation: FDA jumps
-//     0.616 → 0.713, Vocadito 0.214 → 0.254, modest gains on PTDB-TUG,
-//     slight regression on Hillenbrand (data-limited short tracks).
-//
-// Defaults: linear regression + linear trend + no time smoothing +
-// 3-bin quefrency smoothing. Other paths stay opt-in for tests and
-// future investigation. See
-// measurements/cpp-maryn-component-isolation-2026-05-10.json for the
-// component-by-component data.
+// on 2026-05-10. See measurements/cpp-maryn-component-isolation-2026-
+// 05-10.json for the per-component data.
 export const CPP_DEFAULT_REGRESSION = "linear";
 export const CPP_DEFAULT_TREND = "linear";
 export const CPP_DEFAULT_TIME_SMOOTH_FRAMES = 1;
 export const CPP_DEFAULT_QUEFRENCY_SMOOTH_BINS = 3;
 export const CPP_THEIL_PAIRS = 500;          // sampled Theil pair count
+
+// --- Anti-alias FIR + canonical-rate resampler ---
+//
+// Real-speech audio is already band-limited by the browser audio
+// pipeline, so the FIR is mostly a no-op on real input. It exists
+// to prevent synthetic-test aliasing (pure pulse trains downsampled
+// by integer ratios lose most of their energy when pulses land
+// between output samples without anti-aliasing).
+//
+// Cutoff at 0.45/decimation (90 % of canonical Nyquist) matches the
+// dsp-worker.js formant-decimation FIR.
+
+function designLowPassFIR(cutoffNormalized, numTaps) {
+  const coeffs = new Float64Array(numTaps);
+  const mid = (numTaps - 1) / 2;
+  for (let i = 0; i < numTaps; i++) {
+    const x = i - mid;
+    let sinc;
+    if (Math.abs(x) < 1e-10) {
+      sinc = 2 * cutoffNormalized;
+    } else {
+      sinc = Math.sin(2 * Math.PI * cutoffNormalized * x) / (Math.PI * x);
+    }
+    const win = 0.42 - 0.5 * Math.cos((2 * Math.PI * i) / (numTaps - 1))
+                     + 0.08 * Math.cos((4 * Math.PI * i) / (numTaps - 1));
+    coeffs[i] = sinc * win;
+  }
+  let sum = 0;
+  for (let i = 0; i < numTaps; i++) sum += coeffs[i];
+  for (let i = 0; i < numTaps; i++) coeffs[i] /= sum;
+  return coeffs;
+}
+
+// Cache per fromRate so the FIR is computed once per distinct input
+// rate (production typically sees a single rate per session).
+const _firCache = new Map();
+function getAntiAliasFIR(fromRate) {
+  if (_firCache.has(fromRate)) return _firCache.get(fromRate);
+  if (fromRate <= CANONICAL_SR) {
+    _firCache.set(fromRate, null);
+    return null;
+  }
+  const decimation = fromRate / CANONICAL_SR;
+  const numTaps = Math.max(33, Math.ceil(decimation) * 16 + 1);
+  const fir = designLowPassFIR(0.45 / decimation, numTaps);
+  _firCache.set(fromRate, fir);
+  return fir;
+}
+
+function resampleToCanonical(buffer, fromRate) {
+  if (fromRate === CANONICAL_SR) return buffer;
+  let filtered = buffer;
+  const fir = getAntiAliasFIR(fromRate);
+  if (fir !== null) {
+    const filteredArr = new Float32Array(buffer.length);
+    const halfTaps = fir.length >> 1;
+    for (let i = 0; i < buffer.length; i++) {
+      let acc = 0;
+      for (let k = 0; k < fir.length; k++) {
+        const idx = i + k - halfTaps;
+        if (idx >= 0 && idx < buffer.length) acc += buffer[idx] * fir[k];
+      }
+      filteredArr[i] = acc;
+    }
+    filtered = filteredArr;
+  }
+  const ratio = fromRate / CANONICAL_SR;
+  const outLen = Math.floor(filtered.length / ratio);
+  const out = new Float32Array(outLen);
+  for (let i = 0; i < outLen; i++) {
+    const srcF = i / (CANONICAL_SR / fromRate);
+    const i0 = Math.floor(srcF);
+    const i1 = Math.min(i0 + 1, filtered.length - 1);
+    const t = srcF - i0;
+    out[i] = filtered[i0] * (1 - t) + filtered[i1] * t;
+  }
+  return out;
+}
 
 // Pre-allocated buffers to keep the hot path GC-free. Module-scoped
 // so the worker reuses the same buffers across frames; the cost of a
@@ -255,26 +338,30 @@ function lsqSlope(values, qMin, qMax) {
 }
 
 // Compute cepstral peak prominence for a buffer of audio samples.
-// Returns CPP in dB, or null if the buffer is below CPP_MIN_INPUT_LEN
-// samples or the computation is degenerate (e.g., flat spectrum).
+// Returns CPP in dB, or null if the resampled buffer is below
+// CPP_MIN_INPUT_LEN samples or the computation is degenerate.
 //
-// `buffer` may be Float32Array or Float64Array. The function uses up
-// to CPP_INPUT_LEN samples from the END of the buffer; shorter
-// buffers are zero-padded out to CPP_FFT_SIZE for the FFT.
+// `buffer` may be Float32Array or Float64Array.
 //
-// `sr` is the sample rate of `buffer`, in Hz.
+// `sr` is the sample rate of `buffer`, in Hz. The buffer is
+// internally resampled to CANONICAL_SR (16 kHz) — anti-aliased then
+// linear-interpolated — before the cepstrum pipeline runs. The
+// function then uses up to CPP_INPUT_LEN canonical-rate samples from
+// the END of the resampled buffer; shorter buffers are zero-padded
+// out to CPP_FFT_SIZE for the FFT.
 //
-// `opts` (all optional, defaults match Maryn-style processing):
-// - `regression`: "theil" | "linear" (default "theil")
-// - `trend`: "exponential" | "linear" (default "exponential")
-// - `timeSmoothFrames`: integer ≥ 1 (default 3) — number of recent
+// `opts` (all optional, defaults are production):
+// - `regression`: "theil" | "linear" (default "linear")
+// - `trend`: "exponential" | "linear" (default "linear")
+// - `timeSmoothFrames`: integer ≥ 1 (default 1) — number of recent
 //   cepstrum vectors to elementwise-average before peak detection
 // - `quefrencySmoothBins`: integer ≥ 1 (default 3) — width of the
 //   centered moving-average kernel applied to the cepstrum
 export function computeCPP(buffer, sr, opts = {}) {
-  const inputLen = Math.min(buffer.length, CPP_INPUT_LEN);
+  const canonical = resampleToCanonical(buffer, sr);
+  const inputLen = Math.min(canonical.length, CPP_INPUT_LEN);
   if (inputLen < CPP_MIN_INPUT_LEN) return null;
-  const offset = buffer.length - inputLen;
+  const offset = canonical.length - inputLen;
   const regression = opts.regression ?? CPP_DEFAULT_REGRESSION;
   const trend = opts.trend ?? CPP_DEFAULT_TREND;
   const timeSmoothFrames = opts.timeSmoothFrames ?? CPP_DEFAULT_TIME_SMOOTH_FRAMES;
@@ -287,9 +374,9 @@ export function computeCPP(buffer, sr, opts = {}) {
   // available inputLen samples. The remainder of _re (positions
   // inputLen..CPP_FFT_SIZE-1) stays at 0 from .fill(0) above —
   // natural zero-padding for the FFT.
-  let prev = offset > 0 ? buffer[offset - 1] : buffer[offset];
+  let prev = offset > 0 ? canonical[offset - 1] : canonical[offset];
   for (let i = 0; i < inputLen; i++) {
-    const sample = buffer[offset + i];
+    const sample = canonical[offset + i];
     const preemph = sample - CPP_PREEMPH_ALPHA * prev;
     const w = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (inputLen - 1));
     _re[i] = preemph * w;
@@ -368,9 +455,10 @@ export function computeCPP(buffer, sr, opts = {}) {
     for (let k = 0; k < CPP_FFT_SIZE; k++) _im[k] = 0;
   }
 
-  // Search peak in the speech-F0 quefrency range.
-  const qMin = Math.max(1, Math.floor(sr / CPP_F0_MAX_HZ));
-  const qMax = Math.min(CPP_FFT_SIZE / 2 - 1, Math.floor(sr / CPP_F0_MIN_HZ));
+  // Search peak in the speech-F0 quefrency range. Uses CANONICAL_SR
+  // since the cepstrum was computed on canonical-rate input.
+  const qMin = Math.max(1, Math.floor(CANONICAL_SR / CPP_F0_MAX_HZ));
+  const qMax = Math.min(CPP_FFT_SIZE / 2 - 1, Math.floor(CANONICAL_SR / CPP_F0_MIN_HZ));
   if (qMin >= qMax) return null;
 
   let peakIdx = qMin;
