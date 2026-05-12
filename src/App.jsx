@@ -74,6 +74,9 @@ function App() {
     start,
     stop,
     resetVocalWeightBaseline,
+    startTargetCapture,
+    cancelTargetCapture,
+    clearVocalWeightTarget,
     pitchTraceRef,
     formantTrailRef,
     genderTraceRef,
@@ -228,6 +231,9 @@ function App() {
                   hnr={hnr}
                   vocalWeight={vocalWeight}
                   resetVocalWeightBaseline={resetVocalWeightBaseline}
+                  startTargetCapture={startTargetCapture}
+                  cancelTargetCapture={cancelTargetCapture}
+                  clearVocalWeightTarget={clearVocalWeightTarget}
                   modelStatus={modelStatus}
                   modelError={modelError}
                   modelProgress={modelProgress}

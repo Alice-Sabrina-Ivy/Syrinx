@@ -14,6 +14,7 @@ import {
   computeCPP,
   resetCppState,
   CPP_INPUT_LEN,
+  CANONICAL_SR,
   CPP_DEFAULT_REGRESSION,
   CPP_DEFAULT_TREND,
   CPP_DEFAULT_TIME_SMOOTH_FRAMES,
@@ -21,6 +22,11 @@ import {
 } from "../../src/dsp/cpp.js";
 
 const SAMPLE_RATE = 48000;
+// Native-rate buffer length sized so the post-resample canonical
+// buffer reaches CPP_INPUT_LEN samples (mirrors production at 48 kHz
+// with ~50 ms windows that downsample to ~800 canonical samples; we
+// use the full CPP_INPUT_LEN here to stress the longest valid path).
+const NATIVE_BUFFER_LEN = Math.round((SAMPLE_RATE / CANONICAL_SR) * CPP_INPUT_LEN);
 const WARMUP_FRAMES = 100;
 const MEASURE_FRAMES = 2000;
 
@@ -67,7 +73,7 @@ function biquadResonator(signal, freq, bw, sr) {
 }
 
 function syntheticVowel() {
-  let signal = pulseTrain(120, SAMPLE_RATE, CPP_INPUT_LEN);
+  let signal = pulseTrain(120, SAMPLE_RATE, NATIVE_BUFFER_LEN);
   signal = applySpectralTilt(signal, 0.98);
   signal = biquadResonator(signal, 700, 80, SAMPLE_RATE);
   signal = biquadResonator(signal, 1200, 90, SAMPLE_RATE);
@@ -120,7 +126,7 @@ function bench(label, opts) {
 
 console.log("CPP per-frame cost microbenchmark (Node native)");
 console.log("===============================================");
-console.log(`SAMPLE_RATE=${SAMPLE_RATE}, CPP_INPUT_LEN=${CPP_INPUT_LEN}`);
+console.log(`SAMPLE_RATE=${SAMPLE_RATE}, CPP_INPUT_LEN=${CPP_INPUT_LEN} (canonical), NATIVE_BUFFER_LEN=${NATIVE_BUFFER_LEN}`);
 console.log(`Warmup=${WARMUP_FRAMES} frames, Measure=${MEASURE_FRAMES} frames\n`);
 
 const results = [
@@ -187,7 +193,7 @@ console.log(`\n  ${verdict}`);
 mkdirSync("measurements", { recursive: true });
 writeFileSync("measurements/cpp-cost-microbench-2026-05-10.json", JSON.stringify({
   timestamp: new Date().toISOString(),
-  config: { SAMPLE_RATE, CPP_INPUT_LEN, WARMUP_FRAMES, MEASURE_FRAMES },
+  config: { SAMPLE_RATE, CPP_INPUT_LEN, NATIVE_BUFFER_LEN, WARMUP_FRAMES, MEASURE_FRAMES },
   thresholds: { desktopMsPerFrame: desktopBudget, mobileMsPerFrame: desktopBudget * 2 },
   variants: results.map((r) => ({
     label: r.label,

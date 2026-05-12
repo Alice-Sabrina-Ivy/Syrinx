@@ -17,7 +17,7 @@
 // Prints the trace; non-zero exit if no aggregate emits within
 // 5 simulated seconds.
 
-import { computeCPP, CPP_INPUT_LEN, CPP_MIN_INPUT_LEN } from "../../src/dsp/cpp.js";
+import { computeCPP, CPP_INPUT_LEN, CPP_MIN_INPUT_LEN, CANONICAL_SR } from "../../src/dsp/cpp.js";
 import { VocalWeightAggregator } from "../../src/audio/vocal-weight-aggregator.js";
 import { VocalWeightBaseline } from "../../src/audio/vocal-weight-baseline.js";
 
@@ -28,11 +28,12 @@ const SIM_SECONDS = 5;
 function simulate(sampleRate, label) {
   console.log(`\n=== ${label}: sampleRate = ${sampleRate} Hz ===`);
   const windowSize = Math.floor(sampleRate * WINDOW_MS / 1000);
-  console.log(`  windowSize = ${windowSize}, CPP_INPUT_LEN(max) = ${CPP_INPUT_LEN}, CPP_MIN_INPUT_LEN = ${CPP_MIN_INPUT_LEN}`);
-  if (windowSize < CPP_MIN_INPUT_LEN) {
-    console.log(`  ⚠ window (${windowSize}) < CPP_MIN_INPUT_LEN (${CPP_MIN_INPUT_LEN}) → computeCPP will return null`);
-  } else if (windowSize < CPP_INPUT_LEN) {
-    console.log(`  ℹ window (${windowSize}) < CPP_INPUT_LEN (${CPP_INPUT_LEN}) → computeCPP zero-pads to ${CPP_INPUT_LEN}-pt FFT`);
+  const canonicalLen = Math.floor(windowSize * CANONICAL_SR / sampleRate);
+  console.log(`  windowSize = ${windowSize} native → ${canonicalLen} canonical (cap ${CPP_INPUT_LEN}, min ${CPP_MIN_INPUT_LEN})`);
+  if (canonicalLen < CPP_MIN_INPUT_LEN) {
+    console.log(`  ⚠ canonical (${canonicalLen}) < CPP_MIN_INPUT_LEN (${CPP_MIN_INPUT_LEN}) → computeCPP will return null`);
+  } else if (canonicalLen < CPP_INPUT_LEN) {
+    console.log(`  ℹ canonical (${canonicalLen}) < CPP_INPUT_LEN (${CPP_INPUT_LEN}) → computeCPP zero-pads to ${CPP_INPUT_LEN}-pt FFT`);
   }
 
   // Synthetic voiced signal: 120 Hz pulse train + cascaded resonators
