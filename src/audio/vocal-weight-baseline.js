@@ -1,4 +1,4 @@
-// vocal-weight-baseline.js — Per-user CPPS baseline tracker.
+// vocal-weight-baseline.js — Per-user CPPS adaptive σ window.
 //
 // CPP values vary by speaker, microphone, room, and algorithm
 // configuration. There is no public reference for "consumer-mic
@@ -7,34 +7,38 @@
 // §5 / measurements/vocal-weight-literature-2026-05-09.md §4.4
 // for the calibration-honesty rationale.
 //
-// Per-user baseline approach (session-local, zero user interaction):
+// Adaptive σ window — zero user interaction:
 //
-//   - During the first BASELINE_VOICED_MS of CUMULATIVE voiced
-//     content in the session, accumulate CPP-aggregate samples.
-//   - Once the target voiced-content-time has filled, compute mean
-//     μ and stdev σ. The gauge becomes functional.
-//   - Calibration is session-local — no persistence between sessions.
-//     A new session re-calibrates from scratch. This is intentional
-//     (mic / room / time-of-day may differ; the cost of a 30-s
-//     re-calibration is small vs the complexity + UX of cross-session
-//     persistence).
+//   - Ring buffer holds the last N voiced CPP-aggregate emits
+//     (N = baselineVoicedMs / aggregateIntervalMs = 120 by default
+//     = ~30 s of voiced content at the production 250 ms emit
+//     cadence).
+//   - Until the buffer fills, the gauge is "Calibrating: X %" and
+//     no μ/σ is exposed — ready() is false.
+//   - Once full, μ and σ are recomputed on every new emit; the
+//     oldest emit drops out. The gauge always reflects the user's
+//     recent ~30 s of voice.
+//   - No persistence between sessions, no buttons, no target voice.
+//     Each session calibrates from scratch.
+//
+// Why this design (course correction 2026-05-12 from the earlier
+// Stage C hybrid self+target with persistence): the hybrid approach
+// had interaction cost (set-target button, re-baseline button,
+// confirm-then-act flows) that wasn't worth the goal-tracking
+// benefit. Adaptive sliding window gives zero-interaction
+// calibration that always reflects "recent voice." Empirical probe
+// against 198 s of PTDB-TUG running speech showed σ stays
+// 0.26-0.56 dB throughout — no σ→0 hypersensitivity, no need for a
+// MIN_SIGMA floor. Probe data in measurements/cpp-adaptive-window-
+// probe-2026-05-12.json.
 //
 // **Voiced-content-time, NOT wall-clock-time.** Each aggregator
-// emit represents ~250 ms of new voiced content (the aggregator's
-// 250 ms emit interval with 75 % rolling overlap means each
-// successive emit adds 250 ms of fresh material). Counting samples
-// × emitIntervalMs gives cumulative voiced-content-time, which is
-// what the audit specified ("first 30 s of voiced speech in the
-// session") — wall-clock spread between first and last sample
-// would inflate calibration time on speech with natural pauses
-// (breath, thinking, inter-phrase silence) since pauses count
-// toward wall-clock spread but are correctly excluded from sample
-// count.
-//
-// Future work (planned for R3 of the 2026-05-12 simplification):
-// adaptive σ window after initial calibration so the gauge tracks
-// recent voice rather than locking forever. Current implementation
-// is the pre-adaptive lock-at-30s behavior.
+// emit represents ~250 ms of new voiced content. Counting samples
+// gives cumulative voiced-content-time. A user with long pauses
+// reaches the full window after the same number of voiced emits as
+// a continuously-speaking user — the buffer doesn't age out during
+// silence (the aggregator just stops producing emits, which the
+// baseline never sees).
 
 // Each aggregator sample represents this much voiced content (the
 // aggregator's emit interval). Used to convert sample count → voiced
@@ -56,87 +60,94 @@ export class VocalWeightBaseline {
     this.aggregateIntervalMs = aggregateIntervalMs;
     this.gaugeSigma = gaugeSigma;
     this.minSamples = minSamples;
-    // Voiced-content-time threshold for lock = baselineVoicedMs.
-    // Sample count needed = ceil(baselineVoicedMs / aggregateIntervalMs)
-    // OR minSamples, whichever is larger.
-    this._sampleTarget = Math.max(
+    // Window size in samples = baselineVoicedMs / aggregateIntervalMs,
+    // floored at minSamples so σ has enough data points to be
+    // meaningful when callers configure a very short window for
+    // tests.
+    this._windowSize = Math.max(
       minSamples,
       Math.ceil(baselineVoicedMs / aggregateIntervalMs),
     );
 
-    // Sample list during accumulation. Cleared after baseline locks
-    // — once μ and σ are computed we don't need the samples
-    // themselves.
-    this._samples = [];
+    // Ring buffer of recent CPP values. Pre-allocated; _writeIdx
+    // wraps modulo _windowSize.
+    this._buffer = new Float64Array(this._windowSize);
+    this._writeIdx = 0;
+    // Count of pushed-so-far samples (saturates at _windowSize once
+    // the buffer wraps for the first time). Drives progress() and
+    // ready() during the warm-up phase.
+    this._count = 0;
 
-    // Frozen baseline parameters; null while accumulating.
+    // Current μ/σ — null while warming up, recomputed on every push
+    // once the buffer is full.
     this._mu = null;
     this._sigma = null;
-    this._locked = false;
   }
 
-  // Push a CPP-aggregate sample. Shape: { time, cpp }. Both must be
-  // numbers. Caller is responsible for filtering: only voiced
+  // Push a CPP-aggregate sample. Shape: { time, cpp }. cpp must be a
+  // finite number. Caller is responsible for filtering: only voiced
   // aggregates should be accumulated.
   accumulate(sample) {
-    if (this._locked) return;
-    const { time, cpp } = sample;
+    const { cpp } = sample;
     if (typeof cpp !== "number" || !isFinite(cpp)) return;
-    this._samples.push({ time, cpp });
-
-    // Lock baseline once we've accumulated enough voiced-content-
-    // time. Each sample represents aggregateIntervalMs of new
-    // voiced material (per the aggregator's 75%-overlap emit
-    // cadence). _sampleTarget = baselineVoicedMs / aggregateIntervalMs,
-    // floored at minSamples to ensure σ has enough data points to
-    // be meaningful.
-    if (this._samples.length >= this._sampleTarget) {
-      this._lockBaseline();
+    this._buffer[this._writeIdx] = cpp;
+    this._writeIdx = (this._writeIdx + 1) % this._windowSize;
+    if (this._count < this._windowSize) {
+      this._count++;
+      if (this._count < this._windowSize) {
+        // Still calibrating; don't expose μ/σ yet.
+        return;
+      }
     }
+    // Buffer is full — recompute μ/σ from the entire window. O(N)
+    // per push, N = 120 by default = ~120 float ops at ~4 Hz emit
+    // cadence. Trivial cost; chosen over incremental sum/sum-sq
+    // updates for numerical clarity (no accumulated rounding drift
+    // across long sessions).
+    let sum = 0;
+    for (let i = 0; i < this._windowSize; i++) sum += this._buffer[i];
+    const mu = sum / this._windowSize;
+    let sumSqDev = 0;
+    for (let i = 0; i < this._windowSize; i++) {
+      const d = this._buffer[i] - mu;
+      sumSqDev += d * d;
+    }
+    this._mu = mu;
+    this._sigma = Math.sqrt(sumSqDev / Math.max(1, this._windowSize - 1));
   }
 
-  _lockBaseline() {
-    const cppValues = this._samples.map((s) => s.cpp);
-    const mean = cppValues.reduce((a, b) => a + b, 0) / cppValues.length;
-    const variance =
-      cppValues.reduce((s, v) => s + (v - mean) ** 2, 0) /
-      Math.max(1, cppValues.length - 1);
-    this._mu = mean;
-    this._sigma = Math.sqrt(variance);
-    this._locked = true;
-    // Free the sample buffer; downstream callers only need μ/σ.
-    this._samples.length = 0;
-  }
-
-  // True when baseline parameters are locked and ready for use.
+  // True once the buffer has filled (i.e., we have ~30 s of voiced
+  // content). After this, every push updates μ/σ; the API doesn't
+  // distinguish "first time full" from "still full" — the gauge is
+  // ready as long as the user keeps producing voiced material.
   ready() {
-    return this._locked;
+    return this._count >= this._windowSize;
   }
 
-  // Locked baseline mean. Null while accumulating.
+  // Current adaptive mean. Null while warming up.
   mu() {
-    return this._locked ? this._mu : null;
+    return this.ready() ? this._mu : null;
   }
 
-  // Locked baseline stdev. Null while accumulating.
+  // Current adaptive stdev. Null while warming up.
   sigma() {
-    return this._locked ? this._sigma : null;
+    return this.ready() ? this._sigma : null;
   }
 
   // Map a CPP-aggregate value to a gauge position in [0, 1].
   // 0 = μ - gaugeSigma·σ; 1 = μ + gaugeSigma·σ. Values outside
-  // ±gaugeSigma σ are clamped. Returns null if baseline isn't
-  // ready or if cpp isn't a valid number.
+  // ±gaugeSigma σ are clamped. Returns null if not ready or if cpp
+  // isn't a valid number.
   //
   // Direction: per Aaen 2025 + literature review, higher CPP =
   // lighter voice. The gauge UI maps position 1.0 to the "Lighter"
   // end and position 0.0 to the "Heavier" end.
   gaugePosition(cpp) {
-    if (!this._locked) return null;
+    if (!this.ready()) return null;
     if (typeof cpp !== "number" || !isFinite(cpp)) return null;
     if (this._sigma === 0) {
-      // Pathological: all baseline samples were identical. Map to
-      // gauge center; without σ we can't give meaningful position.
+      // Pathological: all window samples identical. Map to gauge
+      // center; without σ we can't give a meaningful position.
       return 0.5;
     }
     const sigmaDelta = (cpp - this._mu) / this._sigma;
@@ -144,43 +155,46 @@ export class VocalWeightBaseline {
     return Math.max(0, Math.min(1, norm));
   }
 
-  // σ-distance from baseline mean. Used by UI for the numeric
-  // readout below the gauge ("+1.2 σ", "−0.4 σ"). Returns null if
-  // baseline isn't ready.
+  // σ-distance from the adaptive mean. Used by UI for the numeric
+  // readout below the gauge ("+1.2 σ", "-0.4 σ"). Returns null if
+  // not ready.
   sigmaDelta(cpp) {
-    if (!this._locked) return null;
+    if (!this.ready()) return null;
     if (typeof cpp !== "number" || !isFinite(cpp)) return null;
     if (this._sigma === 0) return 0;
     return (cpp - this._mu) / this._sigma;
   }
 
-  // Progress toward baseline-ready, in [0, 1]. UI uses this to
-  // render a "calibrating: X %" indicator. Computed from sample
-  // count (= cumulative voiced-content-time / aggregateIntervalMs).
-  // Returns 1 once locked.
+  // Progress toward ready, in [0, 1]. UI uses this to render the
+  // "Calibrating: X %" indicator. Returns 1 once the buffer fills.
   progress() {
-    if (this._locked) return 1;
-    return Math.max(0, Math.min(1, this._samples.length / this._sampleTarget));
+    if (this.ready()) return 1;
+    return Math.max(0, Math.min(1, this._count / this._windowSize));
   }
 
-  // Force-clear (mic restart). Resets accumulation state and μ/σ.
-  // Called by useAudioPipeline.stop()/start() to ensure each session
-  // calibrates from scratch.
+  // Force-clear (mic restart). Called by useAudioPipeline on
+  // stop()/start() so each session calibrates from scratch.
   reset() {
-    this._samples.length = 0;
+    this._writeIdx = 0;
+    this._count = 0;
     this._mu = null;
     this._sigma = null;
-    this._locked = false;
+    // Buffer contents don't need clearing — write pointer + count
+    // determine which entries are valid. (Re-allocating would be
+    // wasteful at the GC-free hot path.)
   }
 
-  // Diagnostic snapshot for tests and the diag overlay.
+  // Diagnostic snapshot for tests and the diag overlay. The
+  // `locked` field is preserved for backward compatibility with
+  // diag consumers; it now means "buffer is full and exposing μ/σ"
+  // rather than "baseline parameters have frozen."
   state() {
     return {
-      locked: this._locked,
+      locked: this.ready(),
       mu: this._mu,
       sigma: this._sigma,
-      sampleCount: this._samples.length,
-      sampleTarget: this._sampleTarget,
+      sampleCount: this._count,
+      sampleTarget: this._windowSize,
       progress: this.progress(),
     };
   }

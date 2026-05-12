@@ -154,18 +154,86 @@ console.log("\nReset clears all state");
   check("progress() = 0 after reset", b.progress() === 0);
 }
 
-console.log("\nLocked baseline does not drift with subsequent samples");
+console.log("\nSliding window: μ tracks the recent window");
 {
   const b = fastBaseline();
-  // Lock baseline at μ ≈ 2.0
+  // Fill window with CPP=2.0 — μ should be 2.0
   for (let i = 0; i < 16; i++) b.accumulate({ time: i * 250, cpp: 2.0 });
-  const muLocked = b.mu();
+  check("ready after first 16 samples", b.ready());
+  const muInitial = b.mu();
+  check("μ ≈ 2.0 after initial fill", Math.abs(muInitial - 2.0) < 1e-9, `got ${muInitial}`);
 
-  // Push subsequent voiced samples at very different CPP.
-  for (let i = 16; i < 50; i++) b.accumulate({ time: i * 250, cpp: 8.0 });
+  // Push 16 more samples at CPP=8.0 — buffer is now ALL 8.0s
+  for (let i = 16; i < 32; i++) b.accumulate({ time: i * 250, cpp: 8.0 });
+  check("μ has drifted to ≈ 8.0 after full window of new values",
+    Math.abs(b.mu() - 8.0) < 1e-9, `got ${b.mu()}`);
+  check("ready stays true throughout drift", b.ready());
+}
 
-  check("μ stays at locked value", b.mu() === muLocked);
-  check("locked flag stays true", b.ready());
+console.log("\nSliding window: σ tracks the recent window");
+{
+  const b = fastBaseline();
+  // Fill with low-σ samples (all 2.0)
+  for (let i = 0; i < 16; i++) b.accumulate({ time: i * 250, cpp: 2.0 });
+  check("σ = 0 with all-identical fill", b.sigma() === 0);
+
+  // Push 16 alternating high/low samples — σ should grow
+  for (let i = 16; i < 32; i++) {
+    b.accumulate({ time: i * 250, cpp: i % 2 === 0 ? 5.0 : 1.0 });
+  }
+  check("σ > 0 after window fills with varied samples", b.sigma() > 0);
+  // μ should be ≈ 3.0 (avg of 5 and 1)
+  check("μ ≈ 3.0 after alternating fill", Math.abs(b.mu() - 3.0) < 0.1, `got ${b.mu()}`);
+}
+
+console.log("\nSliding window: old emits age out FIFO");
+{
+  // 4-sample window so we can verify ageout precisely.
+  const b = new VocalWeightBaseline({
+    baselineVoicedMs: 1000,
+    aggregateIntervalMs: 250,
+    minSamples: 4,
+  });
+  b.accumulate({ time: 0, cpp: 1.0 });
+  b.accumulate({ time: 250, cpp: 2.0 });
+  b.accumulate({ time: 500, cpp: 3.0 });
+  check("not ready with 3 of 4 samples", b.ready() === false);
+  b.accumulate({ time: 750, cpp: 4.0 });
+  check("ready with 4/4 samples", b.ready());
+  // μ = (1+2+3+4)/4 = 2.5
+  check("μ = 2.5 with window [1,2,3,4]", Math.abs(b.mu() - 2.5) < 1e-9);
+
+  // Push a new sample — oldest (1.0) ages out, window becomes [2,3,4,5]
+  b.accumulate({ time: 1000, cpp: 5.0 });
+  check("μ = 3.5 after oldest (1.0) ages out", Math.abs(b.mu() - 3.5) < 1e-9, `got ${b.mu()}`);
+
+  // Another push — window becomes [3,4,5,6]
+  b.accumulate({ time: 1250, cpp: 6.0 });
+  check("μ = 4.5 after second ageout", Math.abs(b.mu() - 4.5) < 1e-9, `got ${b.mu()}`);
+}
+
+console.log("\nSliding window: aggregator hard-reset interaction (long unvoiced gap)");
+{
+  // Use a 4-sample window so we can drive this precisely.
+  const b = new VocalWeightBaseline({
+    baselineVoicedMs: 1000,
+    aggregateIntervalMs: 250,
+    minSamples: 4,
+  });
+  // First voiced burst: 2 samples, not enough to fill
+  b.accumulate({ time: 0, cpp: 2.0 });
+  b.accumulate({ time: 250, cpp: 2.1 });
+  check("partial fill: 2/4 samples", b.state().sampleCount === 2);
+
+  // Long unvoiced gap (aggregator would hard-reset internally) —
+  // baseline sees no calls. State should be unchanged.
+  check("count unchanged across unvoiced gap", b.state().sampleCount === 2);
+  check("not yet ready", b.ready() === false);
+
+  // Voiced resumption — baseline keeps filling from where it was.
+  b.accumulate({ time: 60000, cpp: 2.0 });  // huge wall-clock jump, doesn't matter
+  b.accumulate({ time: 60250, cpp: 2.0 });
+  check("ready after 4 cumulative voiced emits regardless of wall-clock", b.ready());
 }
 
 console.log("\nDegenerate baseline: all-identical samples");
