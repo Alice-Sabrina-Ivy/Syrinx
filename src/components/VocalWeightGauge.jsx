@@ -44,16 +44,13 @@ export function VocalWeightGauge({
   // match the "Lighter ← → Heavier" label arrangement.
   const visualPct = positionFromHook !== null ? (1 - positionFromHook) * 100 : null;
 
-  // Target band: σ-distance > TARGET_BAND_LOW_SIGMA = "in target"
-  // (lighter than baseline). Maps to the visual LEFT third of the
-  // bar (since LEFT = lighter).
-  const targetCenterPct = ready
-    ? (1 - 0.5 - TARGET_BAND_LOW_SIGMA / 4) * 100  // covers σ ∈ (+0.5, +2)
-    : null;
-  const targetWidthPct = (1.5 / 4) * 100;          // σ width = 1.5
-  const targetLeftPct = targetCenterPct !== null
-    ? Math.max(0, targetCenterPct - targetWidthPct / 2)
-    : null;
+  // Target band: σ ∈ (+TARGET_BAND_LOW_SIGMA, +gaugeSigma) covers the
+  // "lighter than baseline" region. Visual LEFT = lighter (high σ),
+  // so the band anchors at the LEFT edge (visualPct 0, corresponding
+  // to σ=+2) and extends rightward by (2 - 0.5) = 1.5σ. Each σ is
+  // 25% of bar width (4σ total span), so the band occupies 37.5%.
+  const targetLeftPct = ready ? 0 : null;
+  const targetWidthPct = ((2 - TARGET_BAND_LOW_SIGMA) / 4) * 100;
 
   const inTarget = sigmaDelta !== null && sigmaDelta >= TARGET_BAND_LOW_SIGMA;
   const opacity = !voiced && !holding ? 0.3 : holding ? 0.5 : 1;
