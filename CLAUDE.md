@@ -346,6 +346,30 @@ The pitch-worker reports periodic non-speech content (e.g., mechanical fan hum a
 
 **Practical impact:** users in environments with steady mechanical hums (laptop fans, HVAC, server room) will see the pitch trace track those frequencies during silence. Workaround: pause detection or move to a quieter environment until VAD ships. Not a regression vs the prior pYIN production build.
 
+### Pitch detection — octave-up failure on low-F0 voices with harmonic-stack interference
+
+Related to the periodic-non-speech limitation above, but distinct in mechanism and severity. **Active during voiced speech** (not just silence). Documented 2026-05-12; investigation arc in `pitch-half-period-octave-fix` branch (not merged to main — negative-finding artifact).
+
+**Symptom:** SwiftF0 reports approximately 2× the user's actual F0 with high confidence, sustained over many frames. Specifically observed on a low-F0 voice (85-95 Hz) where the pitch trace sat at ~175 Hz predominantly with intermittent brief drops to the true F0.
+
+**Root cause:** the recording environment contains a harmonic-rich tonal source at approximately 2× the user's fundamental — e.g., refrigerator compressor, HVAC duct resonance, mains-electrical 3rd harmonic (180 Hz), computer fan whine, or a room standing-wave resonance. The interferer's harmonic structure looks "voice-like" to SwiftF0's CNN, and the model reports the interferer's fundamental rather than the actual voice fundamental. Even at SNR=+20 dB (interferer 10× quieter than voice), the failure can produce ≥ 66 % sustained octave-up errors.
+
+**Deterministic reproducer:** synthetic harmonic-stack added to a clean low-F0 corpus track. See `tests/dsp/swift-f0-synthetic-stress.js` Test 7 on the `pitch-half-period-octave-fix` branch.
+
+**Fix attempted and ruled out:** frame-local half-period autocorrelation check (compare `r(sr/X)` vs `r(2·sr/X)`, prefer X/2 if half-period more periodic). MARGIN sweep showed no single value simultaneously achieves reproducer < 5 % octave-up AND clean-corpus regression < 2 % AND high-pitch invariance < 5 %. The autocorrelation approach is structurally limited because at high interferer levels the audio genuinely IS more periodic at the interferer's frequency — the algorithm has no information to distinguish "voice + tonal interferer" from "tonal interferer alone." See the negative-finding commit on `pitch-half-period-octave-fix`.
+
+**Mitigation directions:**
+
+1. **User-side: identify and remove the physical source.** This is the recommended workaround. Run `scripts/ambient-noise-probe/index.html` (standalone HTML utility, serve via `npx serve scripts/ambient-noise-probe`) to capture an ambient-noise FFT and identify narrow tonal peaks in the recording environment. Peaks in the speech F0 range (75-300 Hz) with high prominence (≥ 15 dB above local noise floor) are likely culprits. Common sources: refrigerator (~100-200 Hz with harmonics), HVAC duct resonance, computer fans, room standing waves. Physical isolation from the source resolves the failure without code changes.
+
+2. **Adaptive noise-suppression front-end (Direction D, not pursued).** Identify persistent narrowband tonal sources from quiet moments + notch-filter before SwiftF0. Adds DSP complexity and has its own failure modes (e.g., notching at voice harmonics). Candidate for future investigation if user-base feedback indicates this failure is common.
+
+3. **Alternative pitch model (Direction C, not pursued).** PENN (mentioned in the Stage 3 field benchmark) may handle this case better — unverified. Stage-4-scale investigation if needed.
+
+**Effect on other Syrinx features:** the vocal-weight gauge (CPP-based, in development on `vocal-weight-cpps-replacement` branch) is UNAFFECTED by this failure. CPP is computed independently of SwiftF0's pitch interpretation, and the silence gate uses SwiftF0's *confidence* (which stays high on voiced speech regardless of pitch correctness). Users hitting this failure can still use the vocal-weight gauge; only the pitch trace and pitch-derived UI (note name) are visibly wrong.
+
+**Practical impact:** users in environments with strong harmonic tonal sources will see their pitch trace lock to multiples / submultiples of their actual F0. Currently mitigated only by physical-environment improvement. Document this as a known limitation in any user-facing pitch-training documentation.
+
 ### Pitch detection — SwiftF0 cutover, 2026-05-06 (resolved)
 
 **Outcome:** Production pitch detection swapped from pYIN Stage 2.B (HMM with bounded-history Viterbi, σ=50/L=4/α=0.0001 tuning, 1633-LOC dsp-worker.js) to SwiftF0 (95 K-param CNN, MIT, 388 KB ONNX, lives in dedicated `src/dsp/pitch-worker.js`). User-reported 80 Hz monotone reproducer fixed (FDA `rl022` mean error 27.12 → 2.44 Hz, octave errors 2 → 0). Aggregate octave-error rates collapse 50–100× across all four corpora; mobile WASM inference 11.2 ms median on Pixel 8 Pro / Chrome 147 (45 % of 25 ms hop budget).
