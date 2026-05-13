@@ -1,0 +1,405 @@
+{
+  "generatedAt": "2026-05-13T00:27:48.566Z",
+  "config": {
+    "targetSampleRate": 16000,
+    "interfererHz": 175,
+    "testSnrs": [
+      20,
+      10,
+      0,
+      -10
+    ],
+    "sourceRates": [
+      16000,
+      22050,
+      32000,
+      44100,
+      48000
+    ],
+    "truthHz": 83.7
+  },
+  "results": [
+    {
+      "sourceRate": 16000,
+      "snrDb": 20,
+      "stats": {
+        "total": 373,
+        "counts": {
+          "null": 17,
+          "correct": 52,
+          "octave-up": 247,
+          "octave-down": 0,
+          "other-error": 57
+        },
+        "correctRate": 0.13941018766756033,
+        "octaveUpRate": 0.6621983914209115,
+        "nullRate": 0.045576407506702415,
+        "meanReportedHz": 147.36280524864625
+      }
+    },
+    {
+      "sourceRate": 16000,
+      "snrDb": 10,
+      "stats": {
+        "total": 373,
+        "counts": {
+          "null": 12,
+          "correct": 46,
+          "octave-up": 267,
+          "octave-down": 0,
+          "other-error": 48
+        },
+        "correctRate": 0.12332439678284182,
+        "octaveUpRate": 0.7158176943699732,
+        "nullRate": 0.032171581769437,
+        "meanReportedHz": 151.50444546432706
+      }
+    },
+    {
+      "sourceRate": 16000,
+      "snrDb": 0,
+      "stats": {
+        "total": 373,
+        "counts": {
+          "null": 7,
+          "correct": 31,
+          "octave-up": 301,
+          "octave-down": 0,
+          "other-error": 34
+        },
+        "correctRate": 0.08310991957104558,
+        "octaveUpRate": 0.806970509383378,
+        "nullRate": 0.01876675603217158,
+        "meanReportedHz": 159.18482260365303
+      }
+    },
+    {
+      "sourceRate": 16000,
+      "snrDb": -10,
+      "stats": {
+        "total": 373,
+        "counts": {
+          "null": 0,
+          "correct": 2,
+          "octave-up": 342,
+          "octave-down": 0,
+          "other-error": 29
+        },
+        "correctRate": 0.005361930294906166,
+        "octaveUpRate": 0.9168900804289544,
+        "nullRate": 0,
+        "meanReportedHz": 167.77848588877006
+      }
+    },
+    {
+      "sourceRate": 22050,
+      "snrDb": 20,
+      "stats": {
+        "total": 373,
+        "counts": {
+          "null": 20,
+          "correct": 48,
+          "octave-up": 246,
+          "octave-down": 0,
+          "other-error": 59
+        },
+        "correctRate": 0.128686327077748,
+        "octaveUpRate": 0.6595174262734584,
+        "nullRate": 0.05361930294906166,
+        "meanReportedHz": 147.65352522550157
+      }
+    },
+    {
+      "sourceRate": 22050,
+      "snrDb": 10,
+      "stats": {
+        "total": 373,
+        "counts": {
+          "null": 12,
+          "correct": 45,
+          "octave-up": 269,
+          "octave-down": 0,
+          "other-error": 47
+        },
+        "correctRate": 0.12064343163538874,
+        "octaveUpRate": 0.7211796246648794,
+        "nullRate": 0.032171581769437,
+        "meanReportedHz": 152.0009099690868
+      }
+    },
+    {
+      "sourceRate": 22050,
+      "snrDb": 0,
+      "stats": {
+        "total": 373,
+        "counts": {
+          "null": 6,
+          "correct": 32,
+          "octave-up": 302,
+          "octave-down": 0,
+          "other-error": 33
+        },
+        "correctRate": 0.08579088471849866,
+        "octaveUpRate": 0.8096514745308311,
+        "nullRate": 0.0160857908847185,
+        "meanReportedHz": 159.20484390050905
+      }
+    },
+    {
+      "sourceRate": 22050,
+      "snrDb": -10,
+      "stats": {
+        "total": 373,
+        "counts": {
+          "null": 0,
+          "correct": 2,
+          "octave-up": 342,
+          "octave-down": 0,
+          "other-error": 29
+        },
+        "correctRate": 0.005361930294906166,
+        "octaveUpRate": 0.9168900804289544,
+        "nullRate": 0,
+        "meanReportedHz": 167.778116548349
+      }
+    },
+    {
+      "sourceRate": 32000,
+      "snrDb": 20,
+      "stats": {
+        "total": 373,
+        "counts": {
+          "null": 17,
+          "correct": 52,
+          "octave-up": 247,
+          "octave-down": 0,
+          "other-error": 57
+        },
+        "correctRate": 0.13941018766756033,
+        "octaveUpRate": 0.6621983914209115,
+        "nullRate": 0.045576407506702415,
+        "meanReportedHz": 147.36217644509304
+      }
+    },
+    {
+      "sourceRate": 32000,
+      "snrDb": 10,
+      "stats": {
+        "total": 373,
+        "counts": {
+          "null": 12,
+          "correct": 46,
+          "octave-up": 267,
+          "octave-down": 0,
+          "other-error": 48
+        },
+        "correctRate": 0.12332439678284182,
+        "octaveUpRate": 0.7158176943699732,
+        "nullRate": 0.032171581769437,
+        "meanReportedHz": 151.50374332755555
+      }
+    },
+    {
+      "sourceRate": 32000,
+      "snrDb": 0,
+      "stats": {
+        "total": 373,
+        "counts": {
+          "null": 7,
+          "correct": 31,
+          "octave-up": 301,
+          "octave-down": 0,
+          "other-error": 34
+        },
+        "correctRate": 0.08310991957104558,
+        "octaveUpRate": 0.806970509383378,
+        "nullRate": 0.01876675603217158,
+        "meanReportedHz": 159.1842052897469
+      }
+    },
+    {
+      "sourceRate": 32000,
+      "snrDb": -10,
+      "stats": {
+        "total": 373,
+        "counts": {
+          "null": 0,
+          "correct": 2,
+          "octave-up": 342,
+          "octave-down": 0,
+          "other-error": 29
+        },
+        "correctRate": 0.005361930294906166,
+        "octaveUpRate": 0.9168900804289544,
+        "nullRate": 0,
+        "meanReportedHz": 167.77844792588468
+      }
+    },
+    {
+      "sourceRate": 44100,
+      "snrDb": 20,
+      "stats": {
+        "total": 373,
+        "counts": {
+          "null": 15,
+          "correct": 53,
+          "octave-up": 247,
+          "octave-down": 0,
+          "other-error": 58
+        },
+        "correctRate": 0.14209115281501342,
+        "octaveUpRate": 0.6621983914209115,
+        "nullRate": 0.040214477211796246,
+        "meanReportedHz": 147.05498662341242
+      }
+    },
+    {
+      "sourceRate": 44100,
+      "snrDb": 10,
+      "stats": {
+        "total": 373,
+        "counts": {
+          "null": 11,
+          "correct": 46,
+          "octave-up": 268,
+          "octave-down": 0,
+          "other-error": 48
+        },
+        "correctRate": 0.12332439678284182,
+        "octaveUpRate": 0.7184986595174263,
+        "nullRate": 0.029490616621983913,
+        "meanReportedHz": 151.58047407371564
+      }
+    },
+    {
+      "sourceRate": 44100,
+      "snrDb": 0,
+      "stats": {
+        "total": 373,
+        "counts": {
+          "null": 8,
+          "correct": 30,
+          "octave-up": 301,
+          "octave-down": 0,
+          "other-error": 34
+        },
+        "correctRate": 0.08042895442359249,
+        "octaveUpRate": 0.806970509383378,
+        "nullRate": 0.021447721179624665,
+        "meanReportedHz": 159.3803697350907
+      }
+    },
+    {
+      "sourceRate": 44100,
+      "snrDb": -10,
+      "stats": {
+        "total": 373,
+        "counts": {
+          "null": 0,
+          "correct": 2,
+          "octave-up": 342,
+          "octave-down": 0,
+          "other-error": 29
+        },
+        "correctRate": 0.005361930294906166,
+        "octaveUpRate": 0.9168900804289544,
+        "nullRate": 0,
+        "meanReportedHz": 167.77864483789847
+      }
+    },
+    {
+      "sourceRate": 48000,
+      "snrDb": 20,
+      "stats": {
+        "total": 373,
+        "counts": {
+          "null": 17,
+          "correct": 52,
+          "octave-up": 247,
+          "octave-down": 0,
+          "other-error": 57
+        },
+        "correctRate": 0.13941018766756033,
+        "octaveUpRate": 0.6621983914209115,
+        "nullRate": 0.045576407506702415,
+        "meanReportedHz": 147.3628762920251
+      }
+    },
+    {
+      "sourceRate": 48000,
+      "snrDb": 10,
+      "stats": {
+        "total": 373,
+        "counts": {
+          "null": 12,
+          "correct": 46,
+          "octave-up": 267,
+          "octave-down": 0,
+          "other-error": 48
+        },
+        "correctRate": 0.12332439678284182,
+        "octaveUpRate": 0.7158176943699732,
+        "nullRate": 0.032171581769437,
+        "meanReportedHz": 151.50452437889544
+      }
+    },
+    {
+      "sourceRate": 48000,
+      "snrDb": 0,
+      "stats": {
+        "total": 373,
+        "counts": {
+          "null": 7,
+          "correct": 31,
+          "octave-up": 301,
+          "octave-down": 0,
+          "other-error": 34
+        },
+        "correctRate": 0.08310991957104558,
+        "octaveUpRate": 0.806970509383378,
+        "nullRate": 0.01876675603217158,
+        "meanReportedHz": 159.18489262315094
+      }
+    },
+    {
+      "sourceRate": 48000,
+      "snrDb": -10,
+      "stats": {
+        "total": 373,
+        "counts": {
+          "null": 0,
+          "correct": 2,
+          "octave-up": 342,
+          "octave-down": 0,
+          "other-error": 29
+        },
+        "correctRate": 0.005361930294906166,
+        "octaveUpRate": 0.9168900804289544,
+        "nullRate": 0,
+        "meanReportedHz": 167.77848993868994
+      }
+    }
+  ],
+  "snrSpreads": {
+    "0": {
+      "minRate": 0.806970509383378,
+      "maxRate": 0.8096514745308311,
+      "spread": 0.002680965147453085
+    },
+    "10": {
+      "minRate": 0.7158176943699732,
+      "maxRate": 0.7211796246648794,
+      "spread": 0.00536193029490617
+    },
+    "20": {
+      "minRate": 0.6595174262734584,
+      "maxRate": 0.6621983914209115,
+      "spread": 0.002680965147453085
+    },
+    "-10": {
+      "minRate": 0.9168900804289544,
+      "maxRate": 0.9168900804289544,
+      "spread": 0
+    }
+  }
+}
