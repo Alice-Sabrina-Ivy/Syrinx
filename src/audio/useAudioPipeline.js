@@ -14,6 +14,8 @@ import {
   PITCH_SMOOTH_LEN,
 } from "./pitchSmoothing";
 import { createCaptureSource } from "./captureSource";
+import { VocalWeightAggregator } from "./vocal-weight-aggregator";
+import { VocalWeightBaseline } from "./vocal-weight-baseline";
 import {
   DIAG_ENABLED,
   DIAG_SR_OVERRIDE,
@@ -32,6 +34,9 @@ import {
   setMlModel,
   pushPitchInference,
   setPitchModel,
+  noteVocalWeightFrame,
+  pushVocalWeightEmit,
+  resetVocalWeightCounters,
 } from "../diag/diag";
 
 const SILENCE_THRESHOLD_DB = -50;
@@ -67,6 +72,23 @@ export function useAudioPipeline() {
     formants: { f1: null, f2: null, f3: null },
     spectralTilt: null,
     hnr: null,
+    // Vocal-weight metric (CPP-aggregate, per-user-baseline-normalized).
+    // - vocalWeight.cpp: latest 1-s aggregate CPP value in dB (raw).
+    // - vocalWeight.position: gauge position in [0, 1]; null while
+    //   warming up (insufficient voiced material) or while baseline
+    //   is still calibrating.
+    // - vocalWeight.sigmaDelta: σ-distance from baseline mean
+    //   (positive = lighter, negative = heavier).
+    // - vocalWeight.baselineProgress: 0-1 fraction of the first-30-s
+    //   baseline window that has been filled by voiced speech.
+    // - vocalWeight.baselineReady: true once baseline μ/σ are locked.
+    vocalWeight: {
+      cpp: null,
+      position: null,
+      sigmaDelta: null,
+      baselineProgress: 0,
+      baselineReady: false,
+    },
     genderScore: null,        // 0-100 from ML worker, null until first inference
     genderConfidence: null,
     modelStatus: "idle",       // idle | loading | ready | error
@@ -127,6 +149,18 @@ export function useAudioPipeline() {
   const f2SmoothRef = useRef([]);
   const f3SmoothRef = useRef([]);
 
+  // Vocal-weight (CPP) aggregation + per-user baseline. The aggregator
+  // owns the 1-s window + 250 ms emit cadence + hard-reset rule
+  // (see src/audio/vocal-weight-aggregator.js); the baseline owns the
+  // first-30-s μ/σ derivation (see vocal-weight-baseline.js). Both are
+  // re-instantiated on each start() so a stop/start cycle gets a fresh
+  // baseline.
+  const cppAggregatorRef = useRef(null);
+  const cppBaselineRef = useRef(null);
+  // Latest CPP-aggregate emit; used by the throttled state update so
+  // we don't re-emit gauge state on every DSP frame.
+  const lastCppAggregateRef = useRef({ time: -1 });
+
   // Silence gating
   const silenceStartRef = useRef(null);
   const quietFrameCountRef = useRef(0);
@@ -182,6 +216,17 @@ export function useAudioPipeline() {
     }
     if (audioCtxRef.current) return;
     startingRef.current = true;
+
+    // Fresh CPP aggregator + baseline per session. Calibration is
+    // session-local — mic, room, time-of-day, and voice state may all
+    // differ between sessions; a 30-s re-calibration each session is
+    // cheaper than the UX complexity of cross-session persistence
+    // (which was implemented and then removed on 2026-05-12 in favor
+    // of this simpler zero-interaction model).
+    cppAggregatorRef.current = new VocalWeightAggregator();
+    cppBaselineRef.current = new VocalWeightBaseline();
+    lastCppAggregateRef.current = { time: -1 };
+    if (DIAG_ENABLED) resetVocalWeightCounters();
 
     setState((s) => ({ ...s, status: "requesting", error: null }));
 
@@ -657,6 +702,9 @@ export function useAudioPipeline() {
     formantTrailRef.current = [];
     genderTraceRef.current = [];
     dspGateRef.current = { voiced: false, holding: false };
+    cppAggregatorRef.current = null;
+    cppBaselineRef.current = null;
+    lastCppAggregateRef.current = { time: -1 };
     setState({
       status: "idle",
       error: null,
@@ -668,6 +716,13 @@ export function useAudioPipeline() {
       formants: { f1: null, f2: null, f3: null },
       spectralTilt: null,
       hnr: null,
+      vocalWeight: {
+        cpp: null,
+        position: null,
+        sigmaDelta: null,
+        baselineProgress: 0,
+        baselineReady: false,
+      },
       genderScore: null,
       genderConfidence: null,
       modelStatus: "idle",
@@ -701,8 +756,28 @@ export function useAudioPipeline() {
     }
   }
 
+  // Build the vocalWeight state slice from the latest aggregator output
+  // and the baseline tracker. Pure function — no side effects, called
+  // from each setState path so state stays consistent across silent/
+  // voiced/hold branches.
+  function buildVocalWeightState(aggregate) {
+    const baseline = cppBaselineRef.current;
+    const cppValue = aggregate ? aggregate.cpp : null;
+    if (!baseline) {
+      return { cpp: cppValue, position: null, sigmaDelta: null,
+               baselineProgress: 0, baselineReady: false };
+    }
+    return {
+      cpp: cppValue,
+      position: cppValue !== null ? baseline.gaugePosition(cppValue) : null,
+      sigmaDelta: cppValue !== null ? baseline.sigmaDelta(cppValue) : null,
+      baselineProgress: baseline.progress(),
+      baselineReady: baseline.ready(),
+    };
+  }
+
   function handleAnalysisResult(data) {
-    const { intensity, formants, spectralTilt, hnr, absoluteTime } = data;
+    const { intensity, formants, spectralTilt, hnr, cpp, absoluteTime } = data;
     // Pitch + confidence come from pitch-worker (SwiftF0) via latestPitchRef,
     // not from the DSP analysis message. Each DSP frame consumes the most-
     // recent pitch-worker output (nearest-neighbor temporal alignment).
@@ -751,6 +826,49 @@ export function useAudioPipeline() {
 
     const isQuiet = quietFrameCountRef.current >= SILENCE_DEBOUNCE_FRAMES;
 
+    // Push CPP into the vocal-weight aggregator with the DEBOUNCED
+    // voicing flag (audit §3.5). Frames are pushed regardless of the
+    // silent/voiced branch below — the aggregator's hard-reset rule
+    // depends on observing unvoiced gaps. Only the aggregator's emit
+    // result drives the gauge state update further down.
+    let cppAggregate = null;
+    if (cppAggregatorRef.current) {
+      cppAggregate = cppAggregatorRef.current.push({
+        time: now,
+        cpp,                               // may be null on non-6th-frame DSP cycles
+        voiced: !isQuiet,
+      });
+    }
+    if (DIAG_ENABLED) noteVocalWeightFrame(!isQuiet);
+    // Feed locked-or-warming baseline. Only voiced aggregates contribute
+    // to the baseline so silence/breath don't bias μ. Once baseline locks,
+    // accumulate() is a no-op.
+    const isFreshAggregate =
+      cppAggregate && cppAggregate.time !== lastCppAggregateRef.current.time;
+    if (isFreshAggregate && !isQuiet && cppBaselineRef.current) {
+      cppBaselineRef.current.accumulate({
+        time: cppAggregate.time,
+        cpp: cppAggregate.cpp,
+      });
+      lastCppAggregateRef.current = cppAggregate;
+    }
+    if (DIAG_ENABLED && isFreshAggregate) {
+      const baseline = cppBaselineRef.current;
+      pushVocalWeightEmit({
+        tEpochMs: performance.timeOrigin + performance.now(),
+        aggregateTime: cppAggregate.time,
+        cpp: cppAggregate.cpp,
+        voicedFrames: cppAggregate.voicedFrames,
+        baselineProgress: baseline ? baseline.progress() : 0,
+        baselineSampleCount: baseline ? baseline.state().sampleCount : 0,
+        baselineSampleTarget: baseline ? baseline.state().sampleTarget : null,
+        baselineLocked: baseline ? baseline.ready() : false,
+        baselineMu: baseline ? baseline.mu() : null,
+        baselineSigma: baseline ? baseline.sigma() : null,
+        sigmaDelta: baseline ? baseline.sigmaDelta(cppAggregate.cpp) : null,
+      });
+    }
+
     if (isQuiet) {
       // Record silence start time
       if (silenceStartRef.current === null) {
@@ -767,6 +885,7 @@ export function useAudioPipeline() {
         // Hold last voiced values (display goes to reduced opacity)
         dspGateRef.current = { voiced: false, holding: true };
         const held = lastVoicedRef.current;
+        const vw = buildVocalWeightState(cppAggregate);
         throttledSetState((s) => ({
           ...s,
           voiced: false,
@@ -777,6 +896,7 @@ export function useAudioPipeline() {
           formants: held.formants,
           spectralTilt: held.spectralTilt,
           hnr: held.hnr,
+          vocalWeight: vw,
         }));
       } else {
         // Prolonged silence: clear everything
@@ -785,6 +905,7 @@ export function useAudioPipeline() {
         f1SmoothRef.current = [];
         f2SmoothRef.current = [];
         f3SmoothRef.current = [];
+        const vw = buildVocalWeightState(cppAggregate);
         throttledSetState((s) => ({
           ...s,
           voiced: false,
@@ -795,6 +916,7 @@ export function useAudioPipeline() {
           formants: { f1: null, f2: null, f3: null },
           spectralTilt: null,
           hnr: null,
+          vocalWeight: vw,
         }));
       }
       // Notify frame callback (session recording) even during silence
@@ -894,6 +1016,7 @@ export function useAudioPipeline() {
     }
 
     // Throttled: only update React state for text readouts at ~5fps
+    const vw = buildVocalWeightState(cppAggregate);
     throttledSetState((s) => ({
       ...s,
       voiced: true,
@@ -904,6 +1027,7 @@ export function useAudioPipeline() {
       formants: smoothedFormants,
       spectralTilt: currentTilt,
       hnr: currentHnr,
+      vocalWeight: vw,
     }));
   }
 
@@ -911,6 +1035,7 @@ export function useAudioPipeline() {
   // via a ref. Updated post-render so it's safe under StrictMode and
   // concurrent rendering (refs must not be mutated during render).
   useEffect(() => { handleAnalysisResultRef.current = handleAnalysisResult; });
+
 
   return {
     ...state,

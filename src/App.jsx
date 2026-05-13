@@ -67,6 +67,7 @@ function App() {
     formants,
     spectralTilt,
     hnr,
+    vocalWeight,
     modelStatus,
     modelError,
     modelProgress,
@@ -224,6 +225,7 @@ function App() {
                   formants={formants}
                   spectralTilt={spectralTilt}
                   hnr={hnr}
+                  vocalWeight={vocalWeight}
                   modelStatus={modelStatus}
                   modelError={modelError}
                   modelProgress={modelProgress}

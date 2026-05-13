@@ -954,7 +954,7 @@ Push to `main` → GitHub Actions builds → deploys to Pages. That's it.
 | **F2 (resonance)** | Varies by vowel | **~10-20% higher** | **Raise via vocal tract shaping** | **Highest** |
 | F1 | Varies by vowel | ~10-20% higher | Moderate shift | Moderate |
 | F0 (pitch) | 85–180 Hz | 165–255 Hz | Raise habitual pitch | Moderate — necessary but not sufficient |
-| Spectral tilt | More negative (heavier) | Less negative (lighter) | Lighten vocal weight | High — often undertrained |
+| Vocal weight (CPP-based correlate) | Lower CPP (heavier) | Higher CPP (lighter) | Lighten phonatory density | High — often undertrained. Per-user-baseline calibrated; published correlate of phonatory density (Aaen et al. 2025) rather than an absolute measurement. |
 | HNR | Higher (cleaner) | Similar or slightly lower | Maintain clarity | Low — mainly diagnostic |
 | Pitch variability (σ) | Lower (flatter) | Higher (more expressive) | Increase intonation range | Moderate |
 

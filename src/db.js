@@ -1,6 +1,13 @@
 // db.js — Dexie IndexedDB setup for Syrinx
 // Schema: settings, sessions, frames, exerciseResults
-// (baselines and exercises tables added in later sessions)
+//
+// v2 had a vocalWeightCalibration table for persisted CPP baselines,
+// added during the 2026-05-12 Stage C iteration and then removed in
+// the same-day course correction (zero-interaction adaptive σ window
+// makes cross-session persistence unnecessary). The v2 migration is
+// retained as a no-op-then-drop so dev users who tested the Stage C
+// branch get the v2 table cleanly removed on next session start
+// rather than getting a Dexie version-conflict error.
 
 import Dexie from "dexie";
 
@@ -32,6 +39,16 @@ db.version(1).stores({
   // Row shape: { id (auto), sessionId, exerciseId,
   //   startedAt, completedAt, score, metrics, notes }
   exerciseResults: "++id, sessionId, exerciseId, startedAt",
+});
+
+// v2: drops the short-lived vocalWeightCalibration table introduced
+// then removed within the 2026-05-12 Stage C iteration. Dexie requires
+// monotonic version numbers; bumping to v2 with `null` for that table
+// removes it cleanly on databases that have it. Databases still on v1
+// (the typical case — Stage C wasn't released to main) simply skip
+// past this migration since the table never existed there.
+db.version(2).stores({
+  vocalWeightCalibration: null,
 });
 
 export default db;

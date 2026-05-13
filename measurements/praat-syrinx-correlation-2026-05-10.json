@@ -1,0 +1,365 @@
+{
+  "timestamp": "2026-05-12T06:15:48.796869+00:00",
+  "n_pairs": 520,
+  "overall_pearson_r": 0.815061104563527,
+  "bias_mean_db": 17.07619555359533,
+  "bias_distribution": {
+    "n": 520,
+    "mean": 17.076,
+    "median": 15.607,
+    "stdev": 3.76,
+    "p25": 13.82,
+    "p75": 20.093,
+    "min": 12.47,
+    "max": 28.741
+  },
+  "per_corpus": {
+    "hillenbrand": {
+      "n": 200,
+      "pearson_r": 0.3513,
+      "praat_dist": {
+        "n": 200,
+        "mean": 22.672,
+        "median": 22.41,
+        "stdev": 2.381,
+        "p25": 21.077,
+        "p75": 24.169,
+        "min": 16.621,
+        "max": 30.288
+      },
+      "syrinx_dist": {
+        "n": 200,
+        "mean": 1.429,
+        "median": 1.351,
+        "stdev": 0.509,
+        "p25": 1.051,
+        "p75": 1.782,
+        "min": 0.561,
+        "max": 3.013
+      },
+      "bias_dist": {
+        "n": 200,
+        "mean": 21.244,
+        "median": 21.155,
+        "stdev": 2.253,
+        "p25": 19.571,
+        "p75": 22.657,
+        "min": 15.598,
+        "max": 28.741
+      }
+    },
+    "ptdb-tug": {
+      "n": 180,
+      "pearson_r": 0.635,
+      "praat_dist": {
+        "n": 180,
+        "mean": 14.01,
+        "median": 14.018,
+        "stdev": 0.531,
+        "p25": 13.584,
+        "p75": 14.419,
+        "min": 12.813,
+        "max": 15.126
+      },
+      "syrinx_dist": {
+        "n": 180,
+        "mean": 0.366,
+        "median": 0.366,
+        "stdev": 0.011,
+        "p25": 0.359,
+        "p75": 0.373,
+        "min": 0.341,
+        "max": 0.401
+      },
+      "bias_dist": {
+        "n": 180,
+        "mean": 13.644,
+        "median": 13.654,
+        "stdev": 0.524,
+        "p25": 13.223,
+        "p75": 14.05,
+        "min": 12.47,
+        "max": 14.747
+      }
+    },
+    "vocadito": {
+      "n": 40,
+      "pearson_r": 0.2725,
+      "praat_dist": {
+        "n": 40,
+        "mean": 18.23,
+        "median": 18.138,
+        "stdev": 1.671,
+        "p25": 17.014,
+        "p75": 19.545,
+        "min": 15.201,
+        "max": 22.14
+      },
+      "syrinx_dist": {
+        "n": 40,
+        "mean": 1.327,
+        "median": 1.2,
+        "stdev": 0.435,
+        "p25": 0.997,
+        "p75": 1.7,
+        "min": 0.503,
+        "max": 2.333
+      },
+      "bias_dist": {
+        "n": 40,
+        "mean": 16.903,
+        "median": 16.886,
+        "stdev": 1.608,
+        "p25": 15.679,
+        "p75": 18.039,
+        "min": 14.162,
+        "max": 20.602
+      }
+    },
+    "fda": {
+      "n": 100,
+      "pearson_r": 0.7114,
+      "praat_dist": {
+        "n": 100,
+        "mean": 15.444,
+        "median": 15.284,
+        "stdev": 1.275,
+        "p25": 14.522,
+        "p75": 16.387,
+        "min": 13.566,
+        "max": 20.102
+      },
+      "syrinx_dist": {
+        "n": 100,
+        "mean": 0.456,
+        "median": 0.437,
+        "stdev": 0.089,
+        "p25": 0.404,
+        "p75": 0.48,
+        "min": 0.362,
+        "max": 0.999
+      },
+      "bias_dist": {
+        "n": 100,
+        "mean": 14.989,
+        "median": 14.786,
+        "stdev": 1.213,
+        "p25": 14.086,
+        "p75": 15.925,
+        "min": 13.196,
+        "max": 19.316
+      }
+    }
+  },
+  "per_gender": {
+    "m": {
+      "n": 248,
+      "pearson_r": 0.9031
+    },
+    "w": {
+      "n": 92,
+      "pearson_r": 0.6427
+    },
+    "f": {
+      "n": 140,
+      "pearson_r": 0.5345
+    },
+    "unknown": {
+      "n": 40,
+      "pearson_r": 0.2725
+    }
+  },
+  "per_f0_bucket": {
+    "<100": {
+      "n": 5,
+      "pearson_r": 0.6292,
+      "praat_mean": 24.401,
+      "syrinx_mean": 1.069,
+      "bias_mean": 23.331
+    },
+    "100-180": {
+      "n": 104,
+      "pearson_r": 0.6076,
+      "praat_mean": 23.166,
+      "syrinx_mean": 1.182,
+      "bias_mean": 21.984
+    },
+    "180-260": {
+      "n": 90,
+      "pearson_r": 0.6721,
+      "praat_mean": 22.019,
+      "syrinx_mean": 1.722,
+      "bias_mean": 20.296
+    },
+    ">260": {
+      "n": 1,
+      "pearson_r": null
+    }
+  },
+  "outliers_top": [
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m06eh",
+      "gender": "m",
+      "praat_cpps_db": 30.288183282740835,
+      "syrinx_cpp_db": 1.547228332224143,
+      "delta": 28.741,
+      "delta_z": 3.1
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m06ih",
+      "gender": "m",
+      "praat_cpps_db": 28.15601517874363,
+      "syrinx_cpp_db": 0.9303820345501463,
+      "delta": 27.226,
+      "delta_z": 2.7
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m20ah",
+      "gender": "m",
+      "praat_cpps_db": 28.673124694068257,
+      "syrinx_cpp_db": 2.0097901204683644,
+      "delta": 26.663,
+      "delta_z": 2.55
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m41iy",
+      "gender": "m",
+      "praat_cpps_db": 28.03532179349883,
+      "syrinx_cpp_db": 1.7512855658422573,
+      "delta": 26.284,
+      "delta_z": 2.45
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m30ah",
+      "gender": "m",
+      "praat_cpps_db": 27.282441075321536,
+      "syrinx_cpp_db": 1.1805828960615112,
+      "delta": 26.102,
+      "delta_z": 2.4
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m48iy",
+      "gender": "m",
+      "praat_cpps_db": 27.81772026026747,
+      "syrinx_cpp_db": 1.824720955251629,
+      "delta": 25.993,
+      "delta_z": 2.37
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m07ah",
+      "gender": "m",
+      "praat_cpps_db": 27.193026414367342,
+      "syrinx_cpp_db": 1.2510857529962691,
+      "delta": 25.942,
+      "delta_z": 2.36
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m48er",
+      "gender": "m",
+      "praat_cpps_db": 27.178768146862904,
+      "syrinx_cpp_db": 1.4341624223056333,
+      "delta": 25.745,
+      "delta_z": 2.31
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m48ah",
+      "gender": "m",
+      "praat_cpps_db": 26.899278669881266,
+      "syrinx_cpp_db": 1.340630355164868,
+      "delta": 25.559,
+      "delta_z": 2.26
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m25eh",
+      "gender": "m",
+      "praat_cpps_db": 26.391288956847678,
+      "syrinx_cpp_db": 1.11041421100006,
+      "delta": 25.281,
+      "delta_z": 2.18
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w48ae",
+      "gender": "w",
+      "praat_cpps_db": 28.16295976984352,
+      "syrinx_cpp_db": 3.0133760507977123,
+      "delta": 25.15,
+      "delta_z": 2.15
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m02aw",
+      "gender": "m",
+      "praat_cpps_db": 26.62599235629946,
+      "syrinx_cpp_db": 1.4949096361544179,
+      "delta": 25.131,
+      "delta_z": 2.14
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m07ei",
+      "gender": "m",
+      "praat_cpps_db": 26.291889702140196,
+      "syrinx_cpp_db": 1.2671530307200118,
+      "delta": 25.025,
+      "delta_z": 2.11
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m36er",
+      "gender": "m",
+      "praat_cpps_db": 26.689588559898002,
+      "syrinx_cpp_db": 1.6824423691820667,
+      "delta": 25.007,
+      "delta_z": 2.11
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m25er",
+      "gender": "m",
+      "praat_cpps_db": 26.674473581006282,
+      "syrinx_cpp_db": 1.7052295636493553,
+      "delta": 24.969,
+      "delta_z": 2.1
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m47ah",
+      "gender": "m",
+      "praat_cpps_db": 26.169394074761726,
+      "syrinx_cpp_db": 1.4567743656394812,
+      "delta": 24.713,
+      "delta_z": 2.03
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w29eh",
+      "gender": "w",
+      "praat_cpps_db": 26.760938184854943,
+      "syrinx_cpp_db": 2.047860404096631,
+      "delta": 24.713,
+      "delta_z": 2.03
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m14eh",
+      "gender": "m",
+      "praat_cpps_db": 26.01637882773203,
+      "syrinx_cpp_db": 1.3666338118060315,
+      "delta": 24.65,
+      "delta_z": 2.01
+    }
+  ],
+  "outliers_count": 18,
+  "decision": "VALIDATED: overall r >= 0.5 -> algorithm correlates with Praat reference"
+}
