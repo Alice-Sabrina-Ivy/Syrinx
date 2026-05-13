@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ambient Noise Probe</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    background: #0a0a0a;
+    color: #d4d4d4;
+    padding: 20px;
+    min-height: 100vh;
+    line-height: 1.5;
+  }
+  h1 { font-weight: 300; color: #fff; margin-bottom: 4px; }
+  .subtitle { font-size: 13px; color: #888; margin-bottom: 24px; }
+  .container { max-width: 960px; margin: 0 auto; }
+  .controls { display: flex; gap: 16px; align-items: center; margin-bottom: 20px; }
+  button {
+    padding: 10px 20px;
+    background: #5b21b6;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  button:hover { background: #6d28d9; }
+  button:disabled { background: #444; cursor: not-allowed; }
+  .status {
+    padding: 8px 12px;
+    background: #1a1a1a;
+    border-radius: 6px;
+    font-size: 12px;
+    color: #999;
+    flex: 1;
+  }
+  .status.active { color: #4ade80; }
+  .status.error { color: #f87171; }
+
+  canvas {
+    width: 100%;
+    height: 320px;
+    background: #1a1a1a;
+    border-radius: 8px;
+    margin-bottom: 16px;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    background: #1a1a1a;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  th, td {
+    padding: 10px 14px;
+    text-align: left;
+    border-bottom: 1px solid #2a2a2a;
+  }
+  th { background: #232323; font-weight: 500; color: #aaa; font-size: 11px;
+       text-transform: uppercase; letter-spacing: 0.05em; }
+  td { font-variant-numeric: tabular-nums; }
+  tr:last-child td { border-bottom: none; }
+  .peak-row.high-prom td { color: #fbbf24; }
+  .peak-row.very-high-prom td { color: #f87171; font-weight: 500; }
+  .pitch-overlap { color: #60a5fa; font-size: 11px; }
+
+  .help {
+    margin-top: 24px;
+    padding: 16px;
+    background: #1a1a1a;
+    border-radius: 8px;
+    border-left: 3px solid #5b21b6;
+    font-size: 13px;
+    color: #999;
+  }
+  .help strong { color: #d4d4d4; }
+  .help ul { margin-left: 18px; margin-top: 6px; }
+  .help li { margin-bottom: 4px; }
+
+  .sr-info {
+    margin-top: 10px;
+    font-size: 11px;
+    color: #666;
+    font-family: ui-monospace, monospace;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Ambient Noise Probe</h1>
+  <p class="subtitle">
+    Identifies persistent narrowband tonal sources in your recording environment
+    that could confuse pitch detection. Run this in the same room / with the same
+    microphone you use for Syrinx, while NOT speaking. Look for peaks above 100 Hz
+    with high prominence — those are candidates for the interference source.
+  </p>
+
+  <div class="controls">
+    <button id="startBtn">Start probe</button>
+    <button id="stopBtn" disabled>Stop</button>
+    <div class="status" id="status">Click "Start probe" to begin. Mic permission required.</div>
+  </div>
+
+  <canvas id="spectrumCanvas" width="1920" height="640"></canvas>
+
+  <h2 style="font-weight: 400; font-size: 16px; margin-bottom: 8px; color: #aaa;">
+    Top narrowband peaks (50–500 Hz)
+  </h2>
+  <table id="peakTable">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Frequency (Hz)</th>
+        <th>Level (dB)</th>
+        <th>Prominence (dB)</th>
+        <th>Possible source</th>
+      </tr>
+    </thead>
+    <tbody id="peakTbody">
+      <tr><td colspan="5" style="text-align: center; color: #555;">No data yet</td></tr>
+    </tbody>
+  </table>
+
+  <div class="sr-info" id="srInfo"></div>
+
+  <div class="help">
+    <strong>How to interpret the results</strong>
+    <ul>
+      <li><strong>Speech F0 range (75–300 Hz):</strong> if you see a strong narrow peak here AND you're not speaking, it's likely interference that could confuse pitch detection.</li>
+      <li><strong>Mains hum (50/60/100/120 Hz):</strong> electrical interference. A peak around 50 or 60 Hz suggests poorly-shielded equipment or a ground loop.</li>
+      <li><strong>Refrigerator / HVAC (~80–200 Hz):</strong> motor / compressor fundamental + harmonics. Try unplugging or moving away from the source.</li>
+      <li><strong>Fan whine (varies):</strong> computer / room fans. Depends on RPM and blade count; often 100–250 Hz.</li>
+      <li><strong>Room standing wave:</strong> half-wavelength of the peak frequency in cm = 17150 / peak_Hz. If that matches a room dimension, your room is resonating at that frequency.</li>
+    </ul>
+    <p style="margin-top: 10px;">
+      Prominence is the peak's height above the surrounding noise floor. Peaks with
+      prominence ≥ 10 dB are marked amber; ≥ 18 dB are marked red. The 175 Hz peak
+      that triggers SwiftF0 octave-up errors typically has prominence ≥ 15 dB.
+    </p>
+    <p style="margin-top: 10px; font-size: 11px; color: #777;">
+      All processing is local. No audio is uploaded or stored. Stop the probe and
+      close the tab to revoke the mic permission for this session.
+    </p>
+  </div>
+</div>
+
+<script type="module">
+  const startBtn = document.getElementById("startBtn");
+  const stopBtn = document.getElementById("stopBtn");
+  const statusEl = document.getElementById("status");
+  const canvas = document.getElementById("spectrumCanvas");
+  const ctx = canvas.getContext("2d");
+  const peakTbody = document.getElementById("peakTbody");
+  const srInfoEl = document.getElementById("srInfo");
+
+  // Run state
+  let audioCtx = null;
+  let stream = null;
+  let source = null;
+  let analyser = null;
+  let running = false;
+  let starting = false;
+  let avgSpectrum = null;  // running-average power spectrum
+  let frameCount = 0;
+  let rafId = null;
+  let lastUpdate = 0;
+
+  // FFT / analyser config
+  const FFT_SIZE = 16384;  // 8192-bin spectrum
+
+  // Visualization range
+  const MIN_HZ = 30;
+  const MAX_HZ = 2000;
+  const MIN_DB = -100;
+  const MAX_DB = -20;
+
+  // Peak detection range (speech-relevant interference)
+  const PEAK_MIN_HZ = 50;
+  const PEAK_MAX_HZ = 500;
+
+  function setStatus(text, cls = "") {
+    statusEl.textContent = text;
+    statusEl.className = "status " + cls;
+  }
+
+  async function start() {
+    // Gate against concurrent starts. Without this, a second click
+    // during the getUserMedia await would spawn a parallel pipeline:
+    // the module-scoped stream/audioCtx/source/analyser references
+    // would be overwritten, leaking the first mic stream (mic light
+    // stays on with no UI handle to stop it).
+    if (starting || running) return;
+    starting = true;
+    startBtn.disabled = true;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+        },
+      });
+      audioCtx = new AudioContext();
+      source = audioCtx.createMediaStreamSource(stream);
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = FFT_SIZE;
+      analyser.smoothingTimeConstant = 0;  // we'll do our own averaging
+      analyser.minDecibels = -120;
+      analyser.maxDecibels = 0;
+      source.connect(analyser);
+
+      const granted = stream.getAudioTracks()[0]?.getSettings?.() ?? {};
+      srInfoEl.textContent =
+        `AudioContext sampleRate ${audioCtx.sampleRate} Hz, ` +
+        `FFT size ${FFT_SIZE} bins, ` +
+        `frequency resolution ${(audioCtx.sampleRate / FFT_SIZE).toFixed(2)} Hz/bin, ` +
+        `granted: ec=${String(granted.echoCancellation)} ns=${String(granted.noiseSuppression)} agc=${String(granted.autoGainControl)}`;
+
+      avgSpectrum = new Float32Array(analyser.frequencyBinCount);
+      frameCount = 0;
+      running = true;
+      stopBtn.disabled = false;
+      setStatus("Listening… running average will update every ~1 s.", "active");
+      loop();
+    } catch (err) {
+      setStatus(`Error: ${err.message || err}`, "error");
+      console.error(err);
+      // Tear down partial state so retry works cleanly.
+      if (stream) { try { stream.getTracks().forEach((t) => t.stop()); } catch {} stream = null; }
+      if (audioCtx) { try { audioCtx.close(); } catch {} audioCtx = null; }
+      source = null;
+      analyser = null;
+      startBtn.disabled = false;  // re-enable so user can retry
+    } finally {
+      starting = false;
+    }
+  }
+
+  function stop() {
+    running = false;
+    if (rafId) cancelAnimationFrame(rafId);
+    rafId = null;
+    if (source) { try { source.disconnect(); } catch {} source = null; }
+    if (audioCtx) { try { audioCtx.close(); } catch {} audioCtx = null; }
+    if (stream) {
+      try { stream.getTracks().forEach((t) => t.stop()); } catch {}
+      stream = null;
+    }
+    analyser = null;
+    startBtn.disabled = false;
+    stopBtn.disabled = true;
+    setStatus("Stopped.", "");
+  }
+
+  function loop() {
+    if (!running) return;
+    rafId = requestAnimationFrame(loop);
+
+    const N = analyser.frequencyBinCount;
+    const spectrum = new Float32Array(N);
+    analyser.getFloatFrequencyData(spectrum);  // in dB
+
+    // Convert dB → linear power, accumulate, increment count.
+    // (Averaging in linear power, then converting back to dB, is more
+    // numerically correct than averaging dB values directly.)
+    if (frameCount === 0) {
+      for (let i = 0; i < N; i++) {
+        avgSpectrum[i] = Math.pow(10, spectrum[i] / 10);
+      }
+    } else {
+      for (let i = 0; i < N; i++) {
+        const lin = Math.pow(10, spectrum[i] / 10);
+        avgSpectrum[i] = (avgSpectrum[i] * frameCount + lin) / (frameCount + 1);
+      }
+    }
+    frameCount++;
+
+    const now = performance.now();
+    if (now - lastUpdate > 800) {  // update display every ~0.8 s
+      lastUpdate = now;
+      const dbSpectrum = new Float32Array(N);
+      for (let i = 0; i < N; i++) {
+        const lin = avgSpectrum[i];
+        dbSpectrum[i] = lin > 1e-12 ? 10 * Math.log10(lin) : -120;
+      }
+      const peaks = findPeaks(dbSpectrum, audioCtx.sampleRate, N);
+      drawSpectrum(dbSpectrum, peaks);
+      drawPeakTable(peaks);
+    }
+  }
+
+  // Convert frequency-bin index to Hz given the analyser's sample rate.
+  function binToHz(bin, sr, n) {
+    return (bin * sr) / (2 * n);  // analyser bins are [0..N/2-1] but exposed as N
+  }
+  function hzToBin(hz, sr, n) {
+    return Math.round((hz * 2 * n) / sr);
+  }
+
+  // Peak detection on dB spectrum. Returns array of { bin, hz, db, prominence }
+  // sorted by prominence descending.
+  function findPeaks(dbSpectrum, sr, n) {
+    const minBin = Math.max(2, hzToBin(PEAK_MIN_HZ, sr, n));
+    const maxBin = Math.min(n - 2, hzToBin(PEAK_MAX_HZ, sr, n));
+
+    const candidates = [];
+    // Local maxima with at least PEAK_HALF_WIDTH bins of lower neighbors on each side
+    const HALF_WIDTH = 3;
+    for (let i = minBin; i < maxBin; i++) {
+      let isMax = true;
+      for (let k = 1; k <= HALF_WIDTH; k++) {
+        if (dbSpectrum[i - k] >= dbSpectrum[i] || dbSpectrum[i + k] >= dbSpectrum[i]) {
+          isMax = false; break;
+        }
+      }
+      if (!isMax) continue;
+      candidates.push({ bin: i, db: dbSpectrum[i] });
+    }
+
+    // Compute prominence: peak height above the local noise floor.
+    // Local noise floor = median of dB values within ±NOISE_WIDTH_HZ around the
+    // peak, excluding bins within ±EXCLUDE_HZ of the peak itself.
+    const NOISE_WIDTH_HZ = 30;
+    const EXCLUDE_HZ = 5;
+    const noiseHalfBins = Math.max(5, hzToBin(NOISE_WIDTH_HZ, sr, n));
+    const excludeBins = Math.max(2, hzToBin(EXCLUDE_HZ, sr, n));
+    for (const c of candidates) {
+      const surround = [];
+      for (let k = c.bin - noiseHalfBins; k < c.bin + noiseHalfBins; k++) {
+        if (k < 0 || k >= n) continue;
+        if (Math.abs(k - c.bin) <= excludeBins) continue;
+        surround.push(dbSpectrum[k]);
+      }
+      surround.sort((a, b) => a - b);
+      const floor = surround[Math.floor(surround.length / 2)] ?? -100;
+      c.prominence = c.db - floor;
+      c.hz = binToHz(c.bin, sr, n);
+    }
+
+    // Keep peaks with reasonable prominence
+    const PROM_THRESHOLD = 6;
+    return candidates
+      .filter((c) => c.prominence >= PROM_THRESHOLD)
+      .sort((a, b) => b.prominence - a.prominence)
+      .slice(0, 12);
+  }
+
+  function drawSpectrum(dbSpectrum, peaks) {
+    const w = canvas.width;
+    const h = canvas.height;
+    ctx.fillStyle = "#1a1a1a";
+    ctx.fillRect(0, 0, w, h);
+
+    const sr = audioCtx.sampleRate;
+    const n = dbSpectrum.length;
+
+    // Axes (log frequency, linear dB)
+    function freqToX(hz) {
+      const logMin = Math.log10(MIN_HZ);
+      const logMax = Math.log10(MAX_HZ);
+      return ((Math.log10(hz) - logMin) / (logMax - logMin)) * w;
+    }
+    function dbToY(db) {
+      return h - ((db - MIN_DB) / (MAX_DB - MIN_DB)) * h;
+    }
+
+    // Grid: vertical lines at decade boundaries + speech-pitch markers
+    ctx.strokeStyle = "#2a2a2a";
+    ctx.lineWidth = 1;
+    ctx.font = "11px ui-monospace, monospace";
+    ctx.fillStyle = "#666";
+    const gridFreqs = [50, 60, 100, 175, 200, 300, 500, 1000];
+    for (const f of gridFreqs) {
+      const x = freqToX(f);
+      ctx.beginPath();
+      ctx.moveTo(x, 0); ctx.lineTo(x, h);
+      ctx.stroke();
+      ctx.fillText(`${f} Hz`, x + 3, h - 4);
+    }
+    // Speech F0 band shading
+    ctx.fillStyle = "rgba(96, 165, 250, 0.06)";
+    ctx.fillRect(freqToX(75), 0, freqToX(300) - freqToX(75), h);
+    ctx.fillStyle = "#666";
+
+    // Spectrum line
+    ctx.strokeStyle = "#a78bfa";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    let first = true;
+    for (let i = 1; i < n; i++) {
+      const hz = binToHz(i, sr, n);
+      if (hz < MIN_HZ || hz > MAX_HZ) continue;
+      const x = freqToX(hz);
+      const y = dbToY(Math.max(MIN_DB, Math.min(MAX_DB, dbSpectrum[i])));
+      if (first) { ctx.moveTo(x, y); first = false; }
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    // Peak markers
+    for (const p of peaks) {
+      const x = freqToX(p.hz);
+      const y = dbToY(Math.max(MIN_DB, Math.min(MAX_DB, p.db)));
+      // Color by prominence
+      ctx.fillStyle = p.prominence >= 18 ? "#f87171"
+                    : p.prominence >= 10 ? "#fbbf24"
+                    : "#9ca3af";
+      ctx.beginPath();
+      ctx.arc(x, y, 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#e5e7eb";
+      ctx.font = "11px ui-monospace, monospace";
+      ctx.fillText(`${p.hz.toFixed(1)} Hz`, x + 9, y - 4);
+    }
+
+    // dB axis labels
+    ctx.fillStyle = "#666";
+    for (let db = MIN_DB; db <= MAX_DB; db += 20) {
+      const y = dbToY(db);
+      ctx.fillText(`${db} dB`, 4, y - 2);
+    }
+  }
+
+  function classifySource(hz, prominence) {
+    if (prominence < 10) return "";
+    // Heuristics. NOT diagnostic — just hints.
+    if (Math.abs(hz - 50) < 3 || Math.abs(hz - 60) < 3) return "mains hum (electrical)";
+    if (Math.abs(hz - 100) < 4 || Math.abs(hz - 120) < 4) return "mains 2nd harmonic";
+    if (hz > 80 && hz < 200 && prominence > 12) return "possible fridge / HVAC compressor";
+    if (hz > 200 && hz < 400 && prominence > 12) return "possible fan / motor whine";
+    return "narrowband — investigate physical source";
+  }
+
+  function drawPeakTable(peaks) {
+    if (peaks.length === 0) {
+      peakTbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:#555;">No narrowband peaks detected above prominence 6 dB. Either your environment is unusually quiet (good!) or the running average needs more time.</td></tr>`;
+      return;
+    }
+    const rows = peaks.map((p, i) => {
+      const promClass = p.prominence >= 18 ? "very-high-prom"
+                      : p.prominence >= 10 ? "high-prom" : "";
+      const inPitchRange = p.hz >= 75 && p.hz <= 300;
+      const hzCell = inPitchRange
+        ? `<td>${p.hz.toFixed(1)} <span class="pitch-overlap">(in speech F0 range)</span></td>`
+        : `<td>${p.hz.toFixed(1)}</td>`;
+      const source = classifySource(p.hz, p.prominence);
+      return (
+        `<tr class="peak-row ${promClass}">` +
+        `<td>${i + 1}</td>` +
+        hzCell +
+        `<td>${p.db.toFixed(1)}</td>` +
+        `<td>${p.prominence.toFixed(1)}</td>` +
+        `<td style="color:#888">${source}</td>` +
+        `</tr>`
+      );
+    }).join("");
+    peakTbody.innerHTML = rows;
+  }
+
+  function resizeCanvas() {
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = Math.round(rect.width * dpr);
+    canvas.height = Math.round(rect.height * dpr);
+  }
+  window.addEventListener("resize", resizeCanvas);
+  resizeCanvas();
+
+  startBtn.addEventListener("click", start);
+  stopBtn.addEventListener("click", stop);
+</script>
+</body>
+</html>
