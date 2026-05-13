@@ -1,0 +1,4175 @@
+{
+  "timestamp": "2026-05-10T08:41:59.423089+00:00",
+  "praat_params": {
+    "pitch_floor_hz": 60,
+    "time_step_s": 0.002,
+    "max_freq_hz": 5000,
+    "pre_emphasis_from_hz": 50,
+    "cpps_pitch_floor_hz": 60,
+    "cpps_pitch_ceiling_hz": 330,
+    "trend_type": "Exponential decay",
+    "fit_method": "Robust slow"
+  },
+  "results": [
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m23ae",
+      "gender": "m",
+      "duration_s": 0.5285625,
+      "sample_rate": 16000.0,
+      "cpps_db": 23.675437721875277
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m06eh",
+      "gender": "m",
+      "duration_s": 0.329625,
+      "sample_rate": 16000.0,
+      "cpps_db": 30.288183282740835
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w02uw",
+      "gender": "w",
+      "duration_s": 0.802,
+      "sample_rate": 16000.0,
+      "cpps_db": 22.715445250794904
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m47oo",
+      "gender": "m",
+      "duration_s": 0.4571875,
+      "sample_rate": 16000.0,
+      "cpps_db": 25.843426605918918
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m42ah",
+      "gender": "m",
+      "duration_s": 0.542375,
+      "sample_rate": 16000.0,
+      "cpps_db": 23.664461786521123
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m27oo",
+      "gender": "m",
+      "duration_s": 0.491,
+      "sample_rate": 16000.0,
+      "cpps_db": 20.92519751347802
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m21er",
+      "gender": "m",
+      "duration_s": 0.45575,
+      "sample_rate": 16000.0,
+      "cpps_db": 22.33403890869636
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m18uh",
+      "gender": "m",
+      "duration_s": 0.4289375,
+      "sample_rate": 16000.0,
+      "cpps_db": 18.773297201744057
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w29ae",
+      "gender": "w",
+      "duration_s": 0.5715,
+      "sample_rate": 16000.0,
+      "cpps_db": 22.62235341469103
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m07er",
+      "gender": "m",
+      "duration_s": 0.5599375,
+      "sample_rate": 16000.0,
+      "cpps_db": 23.609751016211384
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m07ah",
+      "gender": "m",
+      "duration_s": 0.49775,
+      "sample_rate": 16000.0,
+      "cpps_db": 27.193026414367342
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m19uw",
+      "gender": "m",
+      "duration_s": 0.6575625,
+      "sample_rate": 16000.0,
+      "cpps_db": 19.92096221415895
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m41eh",
+      "gender": "m",
+      "duration_s": 0.4051875,
+      "sample_rate": 16000.0,
+      "cpps_db": 24.43635301696423
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m44oa",
+      "gender": "m",
+      "duration_s": 0.609,
+      "sample_rate": 16000.0,
+      "cpps_db": 22.896664094360293
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w44aw",
+      "gender": "w",
+      "duration_s": 0.7480625,
+      "sample_rate": 16000.0,
+      "cpps_db": 21.39973108489796
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m06ih",
+      "gender": "m",
+      "duration_s": 0.3544375,
+      "sample_rate": 16000.0,
+      "cpps_db": 28.15601517874363
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m37uw",
+      "gender": "m",
+      "duration_s": 0.4536875,
+      "sample_rate": 16000.0,
+      "cpps_db": 22.39843239303097
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w28iy",
+      "gender": "w",
+      "duration_s": 0.469,
+      "sample_rate": 16000.0,
+      "cpps_db": 20.188665551221263
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m41iy",
+      "gender": "m",
+      "duration_s": 0.4159375,
+      "sample_rate": 16000.0,
+      "cpps_db": 28.03532179349883
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w33iy",
+      "gender": "w",
+      "duration_s": 0.525125,
+      "sample_rate": 16000.0,
+      "cpps_db": 21.538742746040263
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w03er",
+      "gender": "w",
+      "duration_s": 0.489375,
+      "sample_rate": 16000.0,
+      "cpps_db": 22.435712774848415
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m02ah",
+      "gender": "m",
+      "duration_s": 0.5401875,
+      "sample_rate": 16000.0,
+      "cpps_db": 22.011081420734865
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m31aw",
+      "gender": "m",
+      "duration_s": 0.4888125,
+      "sample_rate": 16000.0,
+      "cpps_db": 18.729014120946054
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w29ah",
+      "gender": "w",
+      "duration_s": 0.5415625,
+      "sample_rate": 16000.0,
+      "cpps_db": 22.356266190191846
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w14ae",
+      "gender": "w",
+      "duration_s": 0.478875,
+      "sample_rate": 16000.0,
+      "cpps_db": 25.544407756631212
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m30ih",
+      "gender": "m",
+      "duration_s": 0.49225,
+      "sample_rate": 16000.0,
+      "cpps_db": 22.456315792723046
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m40oa",
+      "gender": "m",
+      "duration_s": 0.525,
+      "sample_rate": 16000.0,
+      "cpps_db": 21.083484989214053
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w13er",
+      "gender": "w",
+      "duration_s": 0.5606875,
+      "sample_rate": 16000.0,
+      "cpps_db": 22.03270282513495
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m19oo",
+      "gender": "m",
+      "duration_s": 0.5264375,
+      "sample_rate": 16000.0,
+      "cpps_db": 21.783829952871773
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w21uh",
+      "gender": "w",
+      "duration_s": 0.7320625,
+      "sample_rate": 16000.0,
+      "cpps_db": 20.8794575215285
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m20ih",
+      "gender": "m",
+      "duration_s": 0.4850625,
+      "sample_rate": 16000.0,
+      "cpps_db": 25.08022397682434
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w17eh",
+      "gender": "w",
+      "duration_s": 0.514125,
+      "sample_rate": 16000.0,
+      "cpps_db": 21.00924806361673
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w14oa",
+      "gender": "w",
+      "duration_s": 0.56525,
+      "sample_rate": 16000.0,
+      "cpps_db": 19.79124095432204
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w01ah",
+      "gender": "w",
+      "duration_s": 0.518375,
+      "sample_rate": 16000.0,
+      "cpps_db": 21.49785196643969
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m09ei",
+      "gender": "m",
+      "duration_s": 0.679375,
+      "sample_rate": 16000.0,
+      "cpps_db": 24.23648109847718
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w35ei",
+      "gender": "w",
+      "duration_s": 0.6231875,
+      "sample_rate": 16000.0,
+      "cpps_db": 22.283452430976343
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w49ih",
+      "gender": "w",
+      "duration_s": 0.502125,
+      "sample_rate": 16000.0,
+      "cpps_db": 19.8493603906977
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m25eh",
+      "gender": "m",
+      "duration_s": 0.3586875,
+      "sample_rate": 16000.0,
+      "cpps_db": 26.391288956847678
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w21iy",
+      "gender": "w",
+      "duration_s": 0.710875,
+      "sample_rate": 16000.0,
+      "cpps_db": 20.356399554082156
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m17er",
+      "gender": "m",
+      "duration_s": 0.6015,
+      "sample_rate": 16000.0,
+      "cpps_db": 19.185425231663995
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w06ae",
+      "gender": "w",
+      "duration_s": 0.624,
+      "sample_rate": 16000.0,
+      "cpps_db": 24.384642281311223
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w17oa",
+      "gender": "w",
+      "duration_s": 0.5876875,
+      "sample_rate": 16000.0,
+      "cpps_db": 22.148299639454244
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m36oo",
+      "gender": "m",
+      "duration_s": 0.467375,
+      "sample_rate": 16000.0,
+      "cpps_db": 23.986567926484376
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m14uh",
+      "gender": "m",
+      "duration_s": 0.4871875,
+      "sample_rate": 16000.0,
+      "cpps_db": 22.28702205349591
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m09oo",
+      "gender": "m",
+      "duration_s": 0.6985625,
+      "sample_rate": 16000.0,
+      "cpps_db": 19.345993655706646
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m42uh",
+      "gender": "m",
+      "duration_s": 0.5454375,
+      "sample_rate": 16000.0,
+      "cpps_db": 20.276846842042257
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w05ei",
+      "gender": "w",
+      "duration_s": 0.5705,
+      "sample_rate": 16000.0,
+      "cpps_db": 21.658495826397985
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m17iy",
+      "gender": "m",
+      "duration_s": 0.5443125,
+      "sample_rate": 16000.0,
+      "cpps_db": 20.01889302743686
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m21aw",
+      "gender": "m",
+      "duration_s": 0.4975,
+      "sample_rate": 16000.0,
+      "cpps_db": 23.62666750958511
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w34ei",
+      "gender": "w",
+      "duration_s": 0.607625,
+      "sample_rate": 16000.0,
+      "cpps_db": 20.87669903493089
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w19eh",
+      "gender": "w",
+      "duration_s": 0.6663125,
+      "sample_rate": 16000.0,
+      "cpps_db": 20.969765341035266
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m31oo",
+      "gender": "m",
+      "duration_s": 0.4179375,
+      "sample_rate": 16000.0,
+      "cpps_db": 17.120711695640093
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w20aw",
+      "gender": "w",
+      "duration_s": 0.6161875,
+      "sample_rate": 16000.0,
+      "cpps_db": 21.76222561236637
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w16iy",
+      "gender": "w",
+      "duration_s": 0.6674375,
+      "sample_rate": 16000.0,
+      "cpps_db": 19.101940173141127
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m39oo",
+      "gender": "m",
+      "duration_s": 0.4490625,
+      "sample_rate": 16000.0,
+      "cpps_db": 22.121524264173743
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w01ih",
+      "gender": "w",
+      "duration_s": 0.4176875,
+      "sample_rate": 16000.0,
+      "cpps_db": 21.502131976133622
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m16aw",
+      "gender": "m",
+      "duration_s": 0.4335,
+      "sample_rate": 16000.0,
+      "cpps_db": 24.839794435208105
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m33aw",
+      "gender": "m",
+      "duration_s": 0.461375,
+      "sample_rate": 16000.0,
+      "cpps_db": 26.081592485756286
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w49ah",
+      "gender": "w",
+      "duration_s": 0.6438125,
+      "sample_rate": 16000.0,
+      "cpps_db": 20.61590085058019
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m31uh",
+      "gender": "m",
+      "duration_s": 0.46525,
+      "sample_rate": 16000.0,
+      "cpps_db": 17.614583987130107
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w35uh",
+      "gender": "w",
+      "duration_s": 0.532875,
+      "sample_rate": 16000.0,
+      "cpps_db": 21.06833045350744
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w21oo",
+      "gender": "w",
+      "duration_s": 0.7315,
+      "sample_rate": 16000.0,
+      "cpps_db": 21.461900253077182
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w02ae",
+      "gender": "w",
+      "duration_s": 0.7599375,
+      "sample_rate": 16000.0,
+      "cpps_db": 23.734362084163998
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m41er",
+      "gender": "m",
+      "duration_s": 0.47575,
+      "sample_rate": 16000.0,
+      "cpps_db": 25.396269948168566
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w11ei",
+      "gender": "w",
+      "duration_s": 0.609,
+      "sample_rate": 16000.0,
+      "cpps_db": 25.956128733438273
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m11ih",
+      "gender": "m",
+      "duration_s": 0.60525,
+      "sample_rate": 16000.0,
+      "cpps_db": 22.592261800463987
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m44ah",
+      "gender": "m",
+      "duration_s": 0.5785625,
+      "sample_rate": 16000.0,
+      "cpps_db": 24.59740115790046
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w09uh",
+      "gender": "w",
+      "duration_s": 0.432625,
+      "sample_rate": 16000.0,
+      "cpps_db": 19.916512365879264
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w25er",
+      "gender": "w",
+      "duration_s": 0.7345625,
+      "sample_rate": 16000.0,
+      "cpps_db": 21.00205839461866
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w01oa",
+      "gender": "w",
+      "duration_s": 0.54125,
+      "sample_rate": 16000.0,
+      "cpps_db": 20.07239346744873
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m14eh",
+      "gender": "m",
+      "duration_s": 0.4460625,
+      "sample_rate": 16000.0,
+      "cpps_db": 26.01637882773203
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m40ae",
+      "gender": "m",
+      "duration_s": 0.52825,
+      "sample_rate": 16000.0,
+      "cpps_db": 24.050304343194252
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w09oa",
+      "gender": "w",
+      "duration_s": 0.50675,
+      "sample_rate": 16000.0,
+      "cpps_db": 20.87983629742003
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m40eh",
+      "gender": "m",
+      "duration_s": 0.4656875,
+      "sample_rate": 16000.0,
+      "cpps_db": 21.18004439715891
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w42aw",
+      "gender": "w",
+      "duration_s": 0.6375625,
+      "sample_rate": 16000.0,
+      "cpps_db": 25.401263429394
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w24ih",
+      "gender": "w",
+      "duration_s": 0.5485,
+      "sample_rate": 16000.0,
+      "cpps_db": 21.85673648469104
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w35eh",
+      "gender": "w",
+      "duration_s": 0.4806875,
+      "sample_rate": 16000.0,
+      "cpps_db": 24.516957502530122
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m28ei",
+      "gender": "m",
+      "duration_s": 0.47,
+      "sample_rate": 16000.0,
+      "cpps_db": 21.31533429658035
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w01aw",
+      "gender": "w",
+      "duration_s": 0.55075,
+      "sample_rate": 16000.0,
+      "cpps_db": 21.651642412408904
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m48ah",
+      "gender": "m",
+      "duration_s": 0.364375,
+      "sample_rate": 16000.0,
+      "cpps_db": 26.899278669881266
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w49uw",
+      "gender": "w",
+      "duration_s": 0.5506875,
+      "sample_rate": 16000.0,
+      "cpps_db": 19.3695119007499
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m50uh",
+      "gender": "m",
+      "duration_s": 0.4010625,
+      "sample_rate": 16000.0,
+      "cpps_db": 25.70296015344713
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w30ah",
+      "gender": "w",
+      "duration_s": 0.591125,
+      "sample_rate": 16000.0,
+      "cpps_db": 22.74889466871322
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w25ah",
+      "gender": "w",
+      "duration_s": 0.7466875,
+      "sample_rate": 16000.0,
+      "cpps_db": 20.635288591967527
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w17oo",
+      "gender": "w",
+      "duration_s": 0.4978125,
+      "sample_rate": 16000.0,
+      "cpps_db": 20.916159775695697
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m27iy",
+      "gender": "m",
+      "duration_s": 0.55025,
+      "sample_rate": 16000.0,
+      "cpps_db": 21.706666275934953
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w44uw",
+      "gender": "w",
+      "duration_s": 0.777625,
+      "sample_rate": 16000.0,
+      "cpps_db": 16.62087588474685
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w41aw",
+      "gender": "w",
+      "duration_s": 0.71,
+      "sample_rate": 16000.0,
+      "cpps_db": 21.518452419656608
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m19ih",
+      "gender": "m",
+      "duration_s": 0.5184375,
+      "sample_rate": 16000.0,
+      "cpps_db": 20.72274454912919
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m10ae",
+      "gender": "m",
+      "duration_s": 0.513875,
+      "sample_rate": 16000.0,
+      "cpps_db": 24.051769685499753
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m22oa",
+      "gender": "m",
+      "duration_s": 0.5524375,
+      "sample_rate": 16000.0,
+      "cpps_db": 23.263111808586906
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m30ah",
+      "gender": "m",
+      "duration_s": 0.5198125,
+      "sample_rate": 16000.0,
+      "cpps_db": 27.282441075321536
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m31eh",
+      "gender": "m",
+      "duration_s": 0.4240625,
+      "sample_rate": 16000.0,
+      "cpps_db": 19.002970165981893
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m13uh",
+      "gender": "m",
+      "duration_s": 0.4378125,
+      "sample_rate": 16000.0,
+      "cpps_db": 23.53835418012839
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w22oa",
+      "gender": "w",
+      "duration_s": 0.682125,
+      "sample_rate": 16000.0,
+      "cpps_db": 22.662048242440147
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w22ah",
+      "gender": "w",
+      "duration_s": 0.6851875,
+      "sample_rate": 16000.0,
+      "cpps_db": 24.48951517015017
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w36uh",
+      "gender": "w",
+      "duration_s": 0.6988125,
+      "sample_rate": 16000.0,
+      "cpps_db": 23.431969797495952
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w48eh",
+      "gender": "w",
+      "duration_s": 0.566,
+      "sample_rate": 16000.0,
+      "cpps_db": 22.812593268668277
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m48uh",
+      "gender": "m",
+      "duration_s": 0.399,
+      "sample_rate": 16000.0,
+      "cpps_db": 21.601081662529456
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m02uw",
+      "gender": "m",
+      "duration_s": 0.5581875,
+      "sample_rate": 16000.0,
+      "cpps_db": 20.81394037092104
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m23ih",
+      "gender": "m",
+      "duration_s": 0.3775,
+      "sample_rate": 16000.0,
+      "cpps_db": 22.89538998968351
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w49iy",
+      "gender": "w",
+      "duration_s": 0.6510625,
+      "sample_rate": 16000.0,
+      "cpps_db": 17.595746359604913
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w06ah",
+      "gender": "w",
+      "duration_s": 0.5736875,
+      "sample_rate": 16000.0,
+      "cpps_db": 24.580137847829594
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w31aw",
+      "gender": "w",
+      "duration_s": 0.6325625,
+      "sample_rate": 16000.0,
+      "cpps_db": 23.60076683909887
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m30uw",
+      "gender": "m",
+      "duration_s": 0.5574375,
+      "sample_rate": 16000.0,
+      "cpps_db": 22.046665874634936
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w34er",
+      "gender": "w",
+      "duration_s": 0.5160625,
+      "sample_rate": 16000.0,
+      "cpps_db": 19.853198076301297
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m01ih",
+      "gender": "m",
+      "duration_s": 0.6538125,
+      "sample_rate": 16000.0,
+      "cpps_db": 21.616449735906055
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m50uw",
+      "gender": "m",
+      "duration_s": 0.4189375,
+      "sample_rate": 16000.0,
+      "cpps_db": 25.235035736652062
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w42er",
+      "gender": "w",
+      "duration_s": 0.5298125,
+      "sample_rate": 16000.0,
+      "cpps_db": 25.163023183677765
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m34er",
+      "gender": "m",
+      "duration_s": 0.5294375,
+      "sample_rate": 16000.0,
+      "cpps_db": 23.007307438877504
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w44iy",
+      "gender": "w",
+      "duration_s": 0.8216875,
+      "sample_rate": 16000.0,
+      "cpps_db": 20.16181309070788
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m22ah",
+      "gender": "m",
+      "duration_s": 0.632125,
+      "sample_rate": 16000.0,
+      "cpps_db": 22.18882571972389
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w06uw",
+      "gender": "w",
+      "duration_s": 0.5593125,
+      "sample_rate": 16000.0,
+      "cpps_db": 23.444997060122635
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w20oo",
+      "gender": "w",
+      "duration_s": 0.609625,
+      "sample_rate": 16000.0,
+      "cpps_db": 19.532708273525337
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m31ih",
+      "gender": "m",
+      "duration_s": 0.43825,
+      "sample_rate": 16000.0,
+      "cpps_db": 17.17479048580927
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w50ae",
+      "gender": "w",
+      "duration_s": 0.6025,
+      "sample_rate": 16000.0,
+      "cpps_db": 24.814028365158173
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w48ih",
+      "gender": "w",
+      "duration_s": 0.4485,
+      "sample_rate": 16000.0,
+      "cpps_db": 23.795202280571456
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m01ah",
+      "gender": "m",
+      "duration_s": 0.6700625,
+      "sample_rate": 16000.0,
+      "cpps_db": 22.405438021969626
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w11eh",
+      "gender": "w",
+      "duration_s": 0.5358125,
+      "sample_rate": 16000.0,
+      "cpps_db": 23.617015141994745
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w40ei",
+      "gender": "w",
+      "duration_s": 0.6335625,
+      "sample_rate": 16000.0,
+      "cpps_db": 21.077294291680232
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m04eh",
+      "gender": "m",
+      "duration_s": 0.4614375,
+      "sample_rate": 16000.0,
+      "cpps_db": 22.68698331988044
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m23ah",
+      "gender": "m",
+      "duration_s": 0.5135,
+      "sample_rate": 16000.0,
+      "cpps_db": 22.690132657923535
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w17uw",
+      "gender": "w",
+      "duration_s": 0.524625,
+      "sample_rate": 16000.0,
+      "cpps_db": 21.61162032651346
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w08er",
+      "gender": "w",
+      "duration_s": 0.450125,
+      "sample_rate": 16000.0,
+      "cpps_db": 21.965044671608652
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m45uh",
+      "gender": "m",
+      "duration_s": 0.4825625,
+      "sample_rate": 16000.0,
+      "cpps_db": 20.105015449046885
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m11uh",
+      "gender": "m",
+      "duration_s": 0.5853125,
+      "sample_rate": 16000.0,
+      "cpps_db": 22.306931674483366
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m47ah",
+      "gender": "m",
+      "duration_s": 0.530625,
+      "sample_rate": 16000.0,
+      "cpps_db": 26.169394074761726
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m18iy",
+      "gender": "m",
+      "duration_s": 0.493,
+      "sample_rate": 16000.0,
+      "cpps_db": 23.30346809417792
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w39uw",
+      "gender": "w",
+      "duration_s": 0.6019375,
+      "sample_rate": 16000.0,
+      "cpps_db": 19.282770074770557
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m14oo",
+      "gender": "m",
+      "duration_s": 0.4155625,
+      "sample_rate": 16000.0,
+      "cpps_db": 21.374746678697065
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w48uh",
+      "gender": "w",
+      "duration_s": 0.47175,
+      "sample_rate": 16000.0,
+      "cpps_db": 22.839667634990228
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m25er",
+      "gender": "m",
+      "duration_s": 0.4385,
+      "sample_rate": 16000.0,
+      "cpps_db": 26.674473581006282
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m25uh",
+      "gender": "m",
+      "duration_s": 0.40325,
+      "sample_rate": 16000.0,
+      "cpps_db": 24.675485723520694
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w38ah",
+      "gender": "w",
+      "duration_s": 0.615375,
+      "sample_rate": 16000.0,
+      "cpps_db": 23.88547193447631
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m32aw",
+      "gender": "m",
+      "duration_s": 0.41175,
+      "sample_rate": 16000.0,
+      "cpps_db": 21.867117503482365
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w48ae",
+      "gender": "w",
+      "duration_s": 0.5159375,
+      "sample_rate": 16000.0,
+      "cpps_db": 28.16295976984352
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w29aw",
+      "gender": "w",
+      "duration_s": 0.5985,
+      "sample_rate": 16000.0,
+      "cpps_db": 24.104910908035777
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m40ah",
+      "gender": "m",
+      "duration_s": 0.53925,
+      "sample_rate": 16000.0,
+      "cpps_db": 21.97571595741804
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m38eh",
+      "gender": "m",
+      "duration_s": 0.4335,
+      "sample_rate": 16000.0,
+      "cpps_db": 21.778647223597694
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w09aw",
+      "gender": "w",
+      "duration_s": 0.567875,
+      "sample_rate": 16000.0,
+      "cpps_db": 21.925304499643016
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w20oa",
+      "gender": "w",
+      "duration_s": 0.668,
+      "sample_rate": 16000.0,
+      "cpps_db": 18.90362185442181
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w31oo",
+      "gender": "w",
+      "duration_s": 0.486,
+      "sample_rate": 16000.0,
+      "cpps_db": 21.399685307524418
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w46eh",
+      "gender": "w",
+      "duration_s": 0.5634375,
+      "sample_rate": 16000.0,
+      "cpps_db": 22.410490898420704
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w34ae",
+      "gender": "w",
+      "duration_s": 0.5843125,
+      "sample_rate": 16000.0,
+      "cpps_db": 20.741599147282123
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m24iy",
+      "gender": "m",
+      "duration_s": 0.533375,
+      "sample_rate": 16000.0,
+      "cpps_db": 23.476335457092105
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m48eh",
+      "gender": "m",
+      "duration_s": 0.36425,
+      "sample_rate": 16000.0,
+      "cpps_db": 25.252482188272765
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m42ei",
+      "gender": "m",
+      "duration_s": 0.5696875,
+      "sample_rate": 16000.0,
+      "cpps_db": 23.180003109891064
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m13uw",
+      "gender": "m",
+      "duration_s": 0.5763125,
+      "sample_rate": 16000.0,
+      "cpps_db": 21.093014915288578
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w13oa",
+      "gender": "w",
+      "duration_s": 0.58575,
+      "sample_rate": 16000.0,
+      "cpps_db": 21.582338988216677
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m04iy",
+      "gender": "m",
+      "duration_s": 0.4495625,
+      "sample_rate": 16000.0,
+      "cpps_db": 20.736863704179928
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m44eh",
+      "gender": "m",
+      "duration_s": 0.4555625,
+      "sample_rate": 16000.0,
+      "cpps_db": 24.019650839287234
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m02aw",
+      "gender": "m",
+      "duration_s": 0.5078125,
+      "sample_rate": 16000.0,
+      "cpps_db": 26.62599235629946
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m16ah",
+      "gender": "m",
+      "duration_s": 0.4513125,
+      "sample_rate": 16000.0,
+      "cpps_db": 22.664716109702063
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m13ae",
+      "gender": "m",
+      "duration_s": 0.5179375,
+      "sample_rate": 16000.0,
+      "cpps_db": 23.25839049970245
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m44ae",
+      "gender": "m",
+      "duration_s": 0.6234375,
+      "sample_rate": 16000.0,
+      "cpps_db": 23.959366471216452
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m14ih",
+      "gender": "m",
+      "duration_s": 0.4644375,
+      "sample_rate": 16000.0,
+      "cpps_db": 24.719985120838817
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m07ei",
+      "gender": "m",
+      "duration_s": 0.538875,
+      "sample_rate": 16000.0,
+      "cpps_db": 26.291889702140196
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w12ei",
+      "gender": "w",
+      "duration_s": 0.6021875,
+      "sample_rate": 16000.0,
+      "cpps_db": 22.55327214964637
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w45oa",
+      "gender": "w",
+      "duration_s": 0.5055625,
+      "sample_rate": 16000.0,
+      "cpps_db": 24.38338687087909
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m45iy",
+      "gender": "m",
+      "duration_s": 0.486125,
+      "sample_rate": 16000.0,
+      "cpps_db": 20.72861125613387
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w03ih",
+      "gender": "w",
+      "duration_s": 0.3306875,
+      "sample_rate": 16000.0,
+      "cpps_db": 25.62629405076169
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w39uh",
+      "gender": "w",
+      "duration_s": 0.6328125,
+      "sample_rate": 16000.0,
+      "cpps_db": 19.81637967487282
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m40ih",
+      "gender": "m",
+      "duration_s": 0.4385625,
+      "sample_rate": 16000.0,
+      "cpps_db": 23.06278507118017
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m26ih",
+      "gender": "m",
+      "duration_s": 0.476625,
+      "sample_rate": 16000.0,
+      "cpps_db": 21.405528257704194
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w37oa",
+      "gender": "w",
+      "duration_s": 0.7415,
+      "sample_rate": 16000.0,
+      "cpps_db": 23.561285005221457
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m47er",
+      "gender": "m",
+      "duration_s": 0.52675,
+      "sample_rate": 16000.0,
+      "cpps_db": 24.764550772907075
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w26er",
+      "gender": "w",
+      "duration_s": 0.6719375,
+      "sample_rate": 16000.0,
+      "cpps_db": 24.489273053877803
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m36er",
+      "gender": "m",
+      "duration_s": 0.534375,
+      "sample_rate": 16000.0,
+      "cpps_db": 26.689588559898002
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m20ah",
+      "gender": "m",
+      "duration_s": 0.4608125,
+      "sample_rate": 16000.0,
+      "cpps_db": 28.673124694068257
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w30ih",
+      "gender": "w",
+      "duration_s": 0.5179375,
+      "sample_rate": 16000.0,
+      "cpps_db": 21.04223838566187
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w16er",
+      "gender": "w",
+      "duration_s": 0.6379375,
+      "sample_rate": 16000.0,
+      "cpps_db": 20.456658205881446
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w29eh",
+      "gender": "w",
+      "duration_s": 0.381875,
+      "sample_rate": 16000.0,
+      "cpps_db": 26.760938184854943
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w27ah",
+      "gender": "w",
+      "duration_s": 0.5011875,
+      "sample_rate": 16000.0,
+      "cpps_db": 22.9147958118139
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w36oa",
+      "gender": "w",
+      "duration_s": 0.6916875,
+      "sample_rate": 16000.0,
+      "cpps_db": 21.412658029695333
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m11aw",
+      "gender": "m",
+      "duration_s": 0.656625,
+      "sample_rate": 16000.0,
+      "cpps_db": 24.16884554351428
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m20oo",
+      "gender": "m",
+      "duration_s": 0.4529375,
+      "sample_rate": 16000.0,
+      "cpps_db": 25.891942536385532
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m13ei",
+      "gender": "m",
+      "duration_s": 0.50225,
+      "sample_rate": 16000.0,
+      "cpps_db": 23.221420384671834
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w25oa",
+      "gender": "w",
+      "duration_s": 0.6996875,
+      "sample_rate": 16000.0,
+      "cpps_db": 21.544907986919085
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w13uh",
+      "gender": "w",
+      "duration_s": 0.4685,
+      "sample_rate": 16000.0,
+      "cpps_db": 22.435816789171355
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m22iy",
+      "gender": "m",
+      "duration_s": 0.628625,
+      "sample_rate": 16000.0,
+      "cpps_db": 19.831984193091575
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m48er",
+      "gender": "m",
+      "duration_s": 0.38825,
+      "sample_rate": 16000.0,
+      "cpps_db": 27.178768146862904
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m36oa",
+      "gender": "m",
+      "duration_s": 0.522125,
+      "sample_rate": 16000.0,
+      "cpps_db": 25.04539618660632
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w33ih",
+      "gender": "w",
+      "duration_s": 0.470625,
+      "sample_rate": 16000.0,
+      "cpps_db": 22.692976864216412
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m27uw",
+      "gender": "m",
+      "duration_s": 0.53175,
+      "sample_rate": 16000.0,
+      "cpps_db": 22.29698046055525
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m35eh",
+      "gender": "m",
+      "duration_s": 0.499625,
+      "sample_rate": 16000.0,
+      "cpps_db": 25.358466995103022
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w35uw",
+      "gender": "w",
+      "duration_s": 0.586375,
+      "sample_rate": 16000.0,
+      "cpps_db": 21.541593029891988
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m48iy",
+      "gender": "m",
+      "duration_s": 0.370875,
+      "sample_rate": 16000.0,
+      "cpps_db": 27.81772026026747
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m16uh",
+      "gender": "m",
+      "duration_s": 0.403,
+      "sample_rate": 16000.0,
+      "cpps_db": 21.885780016115703
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w32iy",
+      "gender": "w",
+      "duration_s": 0.47575,
+      "sample_rate": 16000.0,
+      "cpps_db": 20.712675213295213
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m20oa",
+      "gender": "m",
+      "duration_s": 0.5528125,
+      "sample_rate": 16000.0,
+      "cpps_db": 26.02551612919582
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m10iy",
+      "gender": "m",
+      "duration_s": 0.65475,
+      "sample_rate": 16000.0,
+      "cpps_db": 19.689973529087062
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w50eh",
+      "gender": "w",
+      "duration_s": 0.524,
+      "sample_rate": 16000.0,
+      "cpps_db": 24.762937399683427
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m03ih",
+      "gender": "m",
+      "duration_s": 0.6208125,
+      "sample_rate": 16000.0,
+      "cpps_db": 23.36299301531459
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m45ei",
+      "gender": "m",
+      "duration_s": 0.545875,
+      "sample_rate": 16000.0,
+      "cpps_db": 20.0049665185907
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m32ei",
+      "gender": "m",
+      "duration_s": 0.4940625,
+      "sample_rate": 16000.0,
+      "cpps_db": 21.935919539714558
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w26ei",
+      "gender": "w",
+      "duration_s": 0.743125,
+      "sample_rate": 16000.0,
+      "cpps_db": 24.09793436095694
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w39ah",
+      "gender": "w",
+      "duration_s": 0.7081875,
+      "sample_rate": 16000.0,
+      "cpps_db": 21.25682157437965
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m40er",
+      "gender": "m",
+      "duration_s": 0.534625,
+      "sample_rate": 16000.0,
+      "cpps_db": 22.59024046902038
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "m32ah",
+      "gender": "m",
+      "duration_s": 0.4326875,
+      "sample_rate": 16000.0,
+      "cpps_db": 22.920967414809283
+    },
+    {
+      "corpus": "hillenbrand",
+      "track_id": "w21oa",
+      "gender": "w",
+      "duration_s": 0.74525,
+      "sample_rate": 16000.0,
+      "cpps_db": 21.913218567858742
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F01_sx10",
+      "gender": "f",
+      "duration_s": 6.87,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.670741518149907
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F01_sx11",
+      "gender": "f",
+      "duration_s": 5.85,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.953263474935007
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F01_sx12",
+      "gender": "f",
+      "duration_s": 5.85,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.990810823132133
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F01_sx13",
+      "gender": "f",
+      "duration_s": 5.86,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.430593386939357
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F01_sx14",
+      "gender": "f",
+      "duration_s": 7.38,
+      "sample_rate": 48000.0,
+      "cpps_db": 15.125774313954704
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F01_sx15",
+      "gender": "f",
+      "duration_s": 6.62,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.512196661289734
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F01_sx16",
+      "gender": "f",
+      "duration_s": 6.37,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.89513155681042
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F01_sx17",
+      "gender": "f",
+      "duration_s": 5.68,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.563947082310841
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F01_sx18",
+      "gender": "f",
+      "duration_s": 6.98,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.616176257103263
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F01_sx19",
+      "gender": "f",
+      "duration_s": 6.62,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.574242454086514
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F01_sx20",
+      "gender": "f",
+      "duration_s": 7.39,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.417551349314971
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F01_sx21",
+      "gender": "f",
+      "duration_s": 6.1,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.82773221760773
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F01_sx22",
+      "gender": "f",
+      "duration_s": 6.87,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.996103118304827
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F01_sx23",
+      "gender": "f",
+      "duration_s": 6.62,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.159850812657853
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F01_sx24",
+      "gender": "f",
+      "duration_s": 6.62,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.418774549464219
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F01_sx25",
+      "gender": "f",
+      "duration_s": 6.63,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.702625171885918
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F01_sx26",
+      "gender": "f",
+      "duration_s": 6.63,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.710465316409174
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F01_sx27",
+      "gender": "f",
+      "duration_s": 6.1,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.779935186776413
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F01_sx28",
+      "gender": "f",
+      "duration_s": 6.87,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.316071305200582
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F01_sx29",
+      "gender": "f",
+      "duration_s": 6.37,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.445374601541031
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F01_sx3",
+      "gender": "f",
+      "duration_s": 6.16,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.4868864984621
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F01_sx30",
+      "gender": "f",
+      "duration_s": 6.61,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.094716082300476
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F01_sx31",
+      "gender": "f",
+      "duration_s": 6.37,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.559514675820482
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F01_sx32",
+      "gender": "f",
+      "duration_s": 6.62,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.818423944990919
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F01_sx33",
+      "gender": "f",
+      "duration_s": 6.37,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.164850938809655
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F01_sx34",
+      "gender": "f",
+      "duration_s": 6.88,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.56172783936069
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F01_sx35",
+      "gender": "f",
+      "duration_s": 6.37,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.389846272020023
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F01_sx36",
+      "gender": "f",
+      "duration_s": 7.12,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.175792673496804
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F01_sx37",
+      "gender": "f",
+      "duration_s": 6.88,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.446696949456515
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F01_sx38",
+      "gender": "f",
+      "duration_s": 7.89,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.686070810104463
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F01_sx39",
+      "gender": "f",
+      "duration_s": 6.62,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.052531957936683
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F01_sx4",
+      "gender": "f",
+      "duration_s": 8.064,
+      "sample_rate": 48000.0,
+      "cpps_db": 15.076272780884088
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F01_sx40",
+      "gender": "f",
+      "duration_s": 6.87,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.432660253161766
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F01_sx41",
+      "gender": "f",
+      "duration_s": 8.14,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.341980729885513
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F01_sx42",
+      "gender": "f",
+      "duration_s": 7.06,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.075623623912499
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F01_sx43",
+      "gender": "f",
+      "duration_s": 6.62,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.969752197772978
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F01_sx44",
+      "gender": "f",
+      "duration_s": 6.87,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.923039518762934
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F01_sx45",
+      "gender": "f",
+      "duration_s": 7.44,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.41899390701789
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F01_sx46",
+      "gender": "f",
+      "duration_s": 6.87,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.55028037716754
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F01_sx47",
+      "gender": "f",
+      "duration_s": 6.87,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.088079704024263
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F01_sx5",
+      "gender": "f",
+      "duration_s": 6.18,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.887161087415043
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F01_sx6",
+      "gender": "f",
+      "duration_s": 6.91,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.204944072758346
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F01_sx7",
+      "gender": "f",
+      "duration_s": 7.03,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.515889278142962
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F01_sx8",
+      "gender": "f",
+      "duration_s": 7.05,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.639608386096674
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F01_sx9",
+      "gender": "f",
+      "duration_s": 6.312,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.601544910540111
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F02_sx48",
+      "gender": "f",
+      "duration_s": 7.39,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.358062537649431
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F02_sx49",
+      "gender": "f",
+      "duration_s": 7.41,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.585149963605634
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F02_sx50",
+      "gender": "f",
+      "duration_s": 7.9,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.359619043858993
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F02_sx51",
+      "gender": "f",
+      "duration_s": 6.87,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.876379532086968
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F02_sx52",
+      "gender": "f",
+      "duration_s": 7.47,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.73346858051783
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F02_sx53",
+      "gender": "f",
+      "duration_s": 7.63,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.635276868890974
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F02_sx54",
+      "gender": "f",
+      "duration_s": 7.64,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.486791464760879
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F02_sx55",
+      "gender": "f",
+      "duration_s": 7.39,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.80809856358115
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F02_sx56",
+      "gender": "f",
+      "duration_s": 7.4,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.889407091553435
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F02_sx57",
+      "gender": "f",
+      "duration_s": 7.15,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.87976115681254
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F02_sx58",
+      "gender": "f",
+      "duration_s": 8.66,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.599336860342493
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F02_sx59",
+      "gender": "f",
+      "duration_s": 6.51,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.114864532909744
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F02_sx60",
+      "gender": "f",
+      "duration_s": 7.9,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.553449510665466
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F02_sx61",
+      "gender": "f",
+      "duration_s": 7.47,
+      "sample_rate": 48000.0,
+      "cpps_db": 15.125386789529452
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F02_sx62",
+      "gender": "f",
+      "duration_s": 7.14,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.23213354369768
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F02_sx63",
+      "gender": "f",
+      "duration_s": 6.62,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.44767447118981
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F02_sx64",
+      "gender": "f",
+      "duration_s": 6.87,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.410275736716097
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F02_sx65",
+      "gender": "f",
+      "duration_s": 6.72,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.18611163710776
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F02_sx66",
+      "gender": "f",
+      "duration_s": 6.88,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.284940001945685
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F02_sx67",
+      "gender": "f",
+      "duration_s": 8.0,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.306316866715223
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F02_sx68",
+      "gender": "f",
+      "duration_s": 6.9,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.042564425432102
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F02_sx69",
+      "gender": "f",
+      "duration_s": 6.62,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.597959335470724
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F02_sx70",
+      "gender": "f",
+      "duration_s": 5.36,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.155090319561367
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F02_sx71",
+      "gender": "f",
+      "duration_s": 6.37,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.143075502420713
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F02_sx72",
+      "gender": "f",
+      "duration_s": 6.19,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.638306126967324
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F02_sx73",
+      "gender": "f",
+      "duration_s": 7.14,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.985069764431108
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F02_sx74",
+      "gender": "f",
+      "duration_s": 6.88,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.483278603810138
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F02_sx75",
+      "gender": "f",
+      "duration_s": 6.62,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.395463795908592
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F02_sx76",
+      "gender": "f",
+      "duration_s": 7.65,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.188069287823357
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F02_sx77",
+      "gender": "f",
+      "duration_s": 6.4,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.883432480037401
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F02_sx78",
+      "gender": "f",
+      "duration_s": 6.62,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.17336172984626
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F02_sx79",
+      "gender": "f",
+      "duration_s": 6.96,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.217214191959
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F02_sx80",
+      "gender": "f",
+      "duration_s": 6.12,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.564351410264923
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F02_sx81",
+      "gender": "f",
+      "duration_s": 6.36,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.46368722994564
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F02_sx82",
+      "gender": "f",
+      "duration_s": 7.9,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.0948911956311
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F02_sx83",
+      "gender": "f",
+      "duration_s": 7.12,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.99415274624686
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F02_sx84",
+      "gender": "f",
+      "duration_s": 7.47,
+      "sample_rate": 48000.0,
+      "cpps_db": 15.011693365158887
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F02_sx85",
+      "gender": "f",
+      "duration_s": 6.38,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.158349036669101
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F02_sx86",
+      "gender": "f",
+      "duration_s": 6.64,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.785324727123156
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F02_sx87",
+      "gender": "f",
+      "duration_s": 6.43,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.932656581131774
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F02_sx88",
+      "gender": "f",
+      "duration_s": 8.14,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.429845155101802
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F02_sx89",
+      "gender": "f",
+      "duration_s": 6.37,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.335615858082958
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F02_sx90",
+      "gender": "f",
+      "duration_s": 6.63,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.536687153474285
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F02_sx91",
+      "gender": "f",
+      "duration_s": 6.87,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.32800821727954
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_F02_sx92",
+      "gender": "f",
+      "duration_s": 6.69,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.009961364449994
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M01_sx10",
+      "gender": "m",
+      "duration_s": 7.39,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.595373568683167
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M01_sx11",
+      "gender": "m",
+      "duration_s": 6.87,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.439558395463061
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M01_sx12",
+      "gender": "m",
+      "duration_s": 6.39,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.638835810515204
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M01_sx13",
+      "gender": "m",
+      "duration_s": 6.87,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.069396828022498
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M01_sx14",
+      "gender": "m",
+      "duration_s": 8.77,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.078019440022693
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M01_sx15",
+      "gender": "m",
+      "duration_s": 7.14,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.448448462678863
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M01_sx16",
+      "gender": "m",
+      "duration_s": 6.63,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.435325686874304
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M01_sx17",
+      "gender": "m",
+      "duration_s": 6.1,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.749528965087608
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M01_sx18",
+      "gender": "m",
+      "duration_s": 7.14,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.678047273797342
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M01_sx19",
+      "gender": "m",
+      "duration_s": 7.64,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.0925293948136
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M01_sx20",
+      "gender": "m",
+      "duration_s": 7.14,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.880826432002841
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M01_sx21",
+      "gender": "m",
+      "duration_s": 5.85,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.241861409397245
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M01_sx22",
+      "gender": "m",
+      "duration_s": 6.36,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.807751184983351
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M01_sx23",
+      "gender": "m",
+      "duration_s": 6.88,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.191807253802091
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M01_sx24",
+      "gender": "m",
+      "duration_s": 6.97,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.064358044231545
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M01_sx25",
+      "gender": "m",
+      "duration_s": 6.62,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.181951647085354
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M01_sx26",
+      "gender": "m",
+      "duration_s": 6.88,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.42577814315301
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M01_sx27",
+      "gender": "m",
+      "duration_s": 6.46,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.653504415743221
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M01_sx28",
+      "gender": "m",
+      "duration_s": 6.97,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.940043453453105
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M01_sx29",
+      "gender": "m",
+      "duration_s": 6.62,
+      "sample_rate": 48000.0,
+      "cpps_db": 12.916664374578263
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M01_sx3",
+      "gender": "m",
+      "duration_s": 5.856,
+      "sample_rate": 48000.0,
+      "cpps_db": 12.94129565436823
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M01_sx30",
+      "gender": "m",
+      "duration_s": 5.88,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.040681510976555
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M01_sx31",
+      "gender": "m",
+      "duration_s": 6.2,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.364097547221395
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M01_sx32",
+      "gender": "m",
+      "duration_s": 6.72,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.955365570539662
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M01_sx33",
+      "gender": "m",
+      "duration_s": 6.64,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.790410184543436
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M01_sx34",
+      "gender": "m",
+      "duration_s": 5.68,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.280071442802644
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M01_sx35",
+      "gender": "m",
+      "duration_s": 6.73,
+      "sample_rate": 48000.0,
+      "cpps_db": 12.937072617867617
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M01_sx36",
+      "gender": "m",
+      "duration_s": 7.14,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.971603582031465
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M01_sx37",
+      "gender": "m",
+      "duration_s": 6.37,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.450465265084214
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M01_sx38",
+      "gender": "m",
+      "duration_s": 7.16,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.405866489488782
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M01_sx39",
+      "gender": "m",
+      "duration_s": 7.39,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.222763370147856
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M01_sx4",
+      "gender": "m",
+      "duration_s": 6.9,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.911736534541195
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M01_sx40",
+      "gender": "m",
+      "duration_s": 7.12,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.443711858689273
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M01_sx41",
+      "gender": "m",
+      "duration_s": 7.32,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.274057558402351
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M01_sx42",
+      "gender": "m",
+      "duration_s": 5.85,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.580876918096711
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M01_sx43",
+      "gender": "m",
+      "duration_s": 6.37,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.335293570008236
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M01_sx44",
+      "gender": "m",
+      "duration_s": 6.46,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.54805019626668
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M01_sx45",
+      "gender": "m",
+      "duration_s": 7.39,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.583551958664792
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M01_sx46",
+      "gender": "m",
+      "duration_s": 6.63,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.608714428322529
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M01_sx47",
+      "gender": "m",
+      "duration_s": 6.62,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.785247537933031
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M01_sx5",
+      "gender": "m",
+      "duration_s": 6.37,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.610698128269995
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M01_sx6",
+      "gender": "m",
+      "duration_s": 9.16,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.44634753866327
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M01_sx7",
+      "gender": "m",
+      "duration_s": 7.4,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.178407330803575
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M01_sx8",
+      "gender": "m",
+      "duration_s": 7.39,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.1970367060298
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M01_sx9",
+      "gender": "m",
+      "duration_s": 6.88,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.92214616042115
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M02_sx48",
+      "gender": "m",
+      "duration_s": 6.74,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.068129238230442
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M02_sx49",
+      "gender": "m",
+      "duration_s": 6.45,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.445296227607452
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M02_sx50",
+      "gender": "m",
+      "duration_s": 6.87,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.637012730677007
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M02_sx51",
+      "gender": "m",
+      "duration_s": 6.46,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.483922579426082
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M02_sx52",
+      "gender": "m",
+      "duration_s": 6.42,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.804527043648426
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M02_sx53",
+      "gender": "m",
+      "duration_s": 6.38,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.92802584904353
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M02_sx54",
+      "gender": "m",
+      "duration_s": 7.2,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.758173206296426
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M02_sx55",
+      "gender": "m",
+      "duration_s": 7.12,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.06023496469677
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M02_sx56",
+      "gender": "m",
+      "duration_s": 6.62,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.621272710800095
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M02_sx57",
+      "gender": "m",
+      "duration_s": 6.37,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.145816461594318
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M02_sx58",
+      "gender": "m",
+      "duration_s": 8.14,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.99084358283964
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M02_sx59",
+      "gender": "m",
+      "duration_s": 5.6,
+      "sample_rate": 48000.0,
+      "cpps_db": 12.994441565805259
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M02_sx60",
+      "gender": "m",
+      "duration_s": 7.64,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.0038615993231
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M02_sx61",
+      "gender": "m",
+      "duration_s": 7.14,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.2671176084801
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M02_sx62",
+      "gender": "m",
+      "duration_s": 6.62,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.992099401783232
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M02_sx63",
+      "gender": "m",
+      "duration_s": 6.37,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.168402249392036
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M02_sx64",
+      "gender": "m",
+      "duration_s": 6.45,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.8318461797046
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M02_sx65",
+      "gender": "m",
+      "duration_s": 6.12,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.954052398549777
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M02_sx66",
+      "gender": "m",
+      "duration_s": 6.624,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.806444305744002
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M02_sx67",
+      "gender": "m",
+      "duration_s": 7.74,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.509796730276603
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M02_sx68",
+      "gender": "m",
+      "duration_s": 6.37,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.356435988524252
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M02_sx69",
+      "gender": "m",
+      "duration_s": 6.87,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.017889806861517
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M02_sx70",
+      "gender": "m",
+      "duration_s": 4.58,
+      "sample_rate": 48000.0,
+      "cpps_db": 12.812916412664844
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M02_sx71",
+      "gender": "m",
+      "duration_s": 6.37,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.944733279688421
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M02_sx72",
+      "gender": "m",
+      "duration_s": 6.37,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.004011982532054
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M02_sx73",
+      "gender": "m",
+      "duration_s": 6.62,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.309791026608124
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M02_sx74",
+      "gender": "m",
+      "duration_s": 6.37,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.976554872164796
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M02_sx75",
+      "gender": "m",
+      "duration_s": 7.23,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.541424958421036
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M02_sx76",
+      "gender": "m",
+      "duration_s": 6.87,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.84395516966171
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M02_sx77",
+      "gender": "m",
+      "duration_s": 6.64,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.431355185169608
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M02_sx78",
+      "gender": "m",
+      "duration_s": 6.45,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.19807179113114
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M02_sx79",
+      "gender": "m",
+      "duration_s": 6.38,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.945910463391098
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M02_sx80",
+      "gender": "m",
+      "duration_s": 5.85,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.299278657385475
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M02_sx81",
+      "gender": "m",
+      "duration_s": 5.85,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.474064512853786
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M02_sx82",
+      "gender": "m",
+      "duration_s": 5.88,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.654665289483379
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M02_sx83",
+      "gender": "m",
+      "duration_s": 6.1,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.782380254695445
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M02_sx84",
+      "gender": "m",
+      "duration_s": 7.14,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.420197536381144
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M02_sx85",
+      "gender": "m",
+      "duration_s": 5.6,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.72739689080847
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M02_sx86",
+      "gender": "m",
+      "duration_s": 5.85,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.04116136182646
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M02_sx87",
+      "gender": "m",
+      "duration_s": 6.37,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.227219755744894
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M02_sx88",
+      "gender": "m",
+      "duration_s": 7.22,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.889852949359307
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M02_sx89",
+      "gender": "m",
+      "duration_s": 6.12,
+      "sample_rate": 48000.0,
+      "cpps_db": 14.406022262708
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M02_sx90",
+      "gender": "m",
+      "duration_s": 5.85,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.234547670047096
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M02_sx91",
+      "gender": "m",
+      "duration_s": 6.372,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.826067294960923
+    },
+    {
+      "corpus": "ptdb-tug",
+      "track_id": "mic_M02_sx92",
+      "gender": "m",
+      "duration_s": 6.87,
+      "sample_rate": 48000.0,
+      "cpps_db": 13.888231502542524
+    },
+    {
+      "corpus": "vocadito",
+      "track_id": "vocadito_1",
+      "gender": "unknown",
+      "duration_s": 33.21224489795918,
+      "sample_rate": 44100.0,
+      "cpps_db": 20.139169097068763
+    },
+    {
+      "corpus": "vocadito",
+      "track_id": "vocadito_10",
+      "gender": "unknown",
+      "duration_s": 9.097823129251701,
+      "sample_rate": 44100.0,
+      "cpps_db": 21.222223806670666
+    },
+    {
+      "corpus": "vocadito",
+      "track_id": "vocadito_11",
+      "gender": "unknown",
+      "duration_s": 12.983990929705216,
+      "sample_rate": 44100.0,
+      "cpps_db": 19.80308443525313
+    },
+    {
+      "corpus": "vocadito",
+      "track_id": "vocadito_12",
+      "gender": "unknown",
+      "duration_s": 15.153492063492063,
+      "sample_rate": 44100.0,
+      "cpps_db": 20.496282010602524
+    },
+    {
+      "corpus": "vocadito",
+      "track_id": "vocadito_13",
+      "gender": "unknown",
+      "duration_s": 22.36,
+      "sample_rate": 44100.0,
+      "cpps_db": 17.45903935264506
+    },
+    {
+      "corpus": "vocadito",
+      "track_id": "vocadito_14",
+      "gender": "unknown",
+      "duration_s": 12.1978231292517,
+      "sample_rate": 44100.0,
+      "cpps_db": 17.513197449692875
+    },
+    {
+      "corpus": "vocadito",
+      "track_id": "vocadito_15",
+      "gender": "unknown",
+      "duration_s": 20.28,
+      "sample_rate": 44100.0,
+      "cpps_db": 17.55581395923186
+    },
+    {
+      "corpus": "vocadito",
+      "track_id": "vocadito_16",
+      "gender": "unknown",
+      "duration_s": 17.277142857142856,
+      "sample_rate": 44100.0,
+      "cpps_db": 18.00831935202568
+    },
+    {
+      "corpus": "vocadito",
+      "track_id": "vocadito_17",
+      "gender": "unknown",
+      "duration_s": 23.56800453514739,
+      "sample_rate": 44100.0,
+      "cpps_db": 19.03649671941843
+    },
+    {
+      "corpus": "vocadito",
+      "track_id": "vocadito_18",
+      "gender": "unknown",
+      "duration_s": 29.138820861678006,
+      "sample_rate": 44100.0,
+      "cpps_db": 18.542153492793204
+    },
+    {
+      "corpus": "vocadito",
+      "track_id": "vocadito_19",
+      "gender": "unknown",
+      "duration_s": 30.493492063492063,
+      "sample_rate": 44100.0,
+      "cpps_db": 20.586199884342786
+    },
+    {
+      "corpus": "vocadito",
+      "track_id": "vocadito_2",
+      "gender": "unknown",
+      "duration_s": 35.208004535147396,
+      "sample_rate": 44100.0,
+      "cpps_db": 16.45033591329874
+    },
+    {
+      "corpus": "vocadito",
+      "track_id": "vocadito_20",
+      "gender": "unknown",
+      "duration_s": 8.713492063492064,
+      "sample_rate": 44100.0,
+      "cpps_db": 18.05735176748962
+    },
+    {
+      "corpus": "vocadito",
+      "track_id": "vocadito_21",
+      "gender": "unknown",
+      "duration_s": 22.0,
+      "sample_rate": 44100.0,
+      "cpps_db": 22.140237243163774
+    },
+    {
+      "corpus": "vocadito",
+      "track_id": "vocadito_22",
+      "gender": "unknown",
+      "duration_s": 18.333492063492063,
+      "sample_rate": 44100.0,
+      "cpps_db": 16.566063250981593
+    },
+    {
+      "corpus": "vocadito",
+      "track_id": "vocadito_23",
+      "gender": "unknown",
+      "duration_s": 18.037823129251702,
+      "sample_rate": 44100.0,
+      "cpps_db": 18.560704077872902
+    },
+    {
+      "corpus": "vocadito",
+      "track_id": "vocadito_24",
+      "gender": "unknown",
+      "duration_s": 14.757823129251701,
+      "sample_rate": 44100.0,
+      "cpps_db": 18.771623919138428
+    },
+    {
+      "corpus": "vocadito",
+      "track_id": "vocadito_25",
+      "gender": "unknown",
+      "duration_s": 14.657823129251701,
+      "sample_rate": 44100.0,
+      "cpps_db": 16.796358537783888
+    },
+    {
+      "corpus": "vocadito",
+      "track_id": "vocadito_26",
+      "gender": "unknown",
+      "duration_s": 12.8578231292517,
+      "sample_rate": 44100.0,
+      "cpps_db": 20.307806565067665
+    },
+    {
+      "corpus": "vocadito",
+      "track_id": "vocadito_27",
+      "gender": "unknown",
+      "duration_s": 14.0178231292517,
+      "sample_rate": 44100.0,
+      "cpps_db": 16.045099376545696
+    },
+    {
+      "corpus": "vocadito",
+      "track_id": "vocadito_28",
+      "gender": "unknown",
+      "duration_s": 12.8978231292517,
+      "sample_rate": 44100.0,
+      "cpps_db": 20.043320393522887
+    },
+    {
+      "corpus": "vocadito",
+      "track_id": "vocadito_29",
+      "gender": "unknown",
+      "duration_s": 14.893492063492063,
+      "sample_rate": 44100.0,
+      "cpps_db": 15.327121183668066
+    },
+    {
+      "corpus": "vocadito",
+      "track_id": "vocadito_3",
+      "gender": "unknown",
+      "duration_s": 21.736326530612246,
+      "sample_rate": 44100.0,
+      "cpps_db": 18.841014151148027
+    },
+    {
+      "corpus": "vocadito",
+      "track_id": "vocadito_30",
+      "gender": "unknown",
+      "duration_s": 13.0178231292517,
+      "sample_rate": 44100.0,
+      "cpps_db": 17.610516834584608
+    },
+    {
+      "corpus": "vocadito",
+      "track_id": "vocadito_31",
+      "gender": "unknown",
+      "duration_s": 14.033492063492064,
+      "sample_rate": 44100.0,
+      "cpps_db": 15.201275229819656
+    },
+    {
+      "corpus": "vocadito",
+      "track_id": "vocadito_32",
+      "gender": "unknown",
+      "duration_s": 25.033492063492062,
+      "sample_rate": 44100.0,
+      "cpps_db": 16.230023989535194
+    },
+    {
+      "corpus": "vocadito",
+      "track_id": "vocadito_33",
+      "gender": "unknown",
+      "duration_s": 30.0,
+      "sample_rate": 44100.0,
+      "cpps_db": 17.400238138288866
+    },
+    {
+      "corpus": "vocadito",
+      "track_id": "vocadito_34",
+      "gender": "unknown",
+      "duration_s": 24.853492063492062,
+      "sample_rate": 44100.0,
+      "cpps_db": 17.005520594292687
+    },
+    {
+      "corpus": "vocadito",
+      "track_id": "vocadito_35",
+      "gender": "unknown",
+      "duration_s": 13.8,
+      "sample_rate": 44100.0,
+      "cpps_db": 19.188639957600998
+    },
+    {
+      "corpus": "vocadito",
+      "track_id": "vocadito_36",
+      "gender": "unknown",
+      "duration_s": 23.2778231292517,
+      "sample_rate": 44100.0,
+      "cpps_db": 19.105022549046318
+    },
+    {
+      "corpus": "vocadito",
+      "track_id": "vocadito_37",
+      "gender": "unknown",
+      "duration_s": 38.736009070294784,
+      "sample_rate": 44100.0,
+      "cpps_db": 17.38773707025317
+    },
+    {
+      "corpus": "vocadito",
+      "track_id": "vocadito_38",
+      "gender": "unknown",
+      "duration_s": 27.84,
+      "sample_rate": 44100.0,
+      "cpps_db": 17.014308187893796
+    },
+    {
+      "corpus": "vocadito",
+      "track_id": "vocadito_39",
+      "gender": "unknown",
+      "duration_s": 31.68,
+      "sample_rate": 44100.0,
+      "cpps_db": 19.585094482791998
+    },
+    {
+      "corpus": "vocadito",
+      "track_id": "vocadito_4",
+      "gender": "unknown",
+      "duration_s": 18.456009070294783,
+      "sample_rate": 44100.0,
+      "cpps_db": 19.277051371769065
+    },
+    {
+      "corpus": "vocadito",
+      "track_id": "vocadito_40",
+      "gender": "unknown",
+      "duration_s": 18.5778231292517,
+      "sample_rate": 44100.0,
+      "cpps_db": 18.96557145964218
+    },
+    {
+      "corpus": "vocadito",
+      "track_id": "vocadito_5",
+      "gender": "unknown",
+      "duration_s": 23.23199546485261,
+      "sample_rate": 44100.0,
+      "cpps_db": 19.544604401847916
+    },
+    {
+      "corpus": "vocadito",
+      "track_id": "vocadito_6",
+      "gender": "unknown",
+      "duration_s": 23.831995464852607,
+      "sample_rate": 44100.0,
+      "cpps_db": 15.792340494241888
+    },
+    {
+      "corpus": "vocadito",
+      "track_id": "vocadito_7",
+      "gender": "unknown",
+      "duration_s": 19.46734693877551,
+      "sample_rate": 44100.0,
+      "cpps_db": 17.32779765762598
+    },
+    {
+      "corpus": "vocadito",
+      "track_id": "vocadito_8",
+      "gender": "unknown",
+      "duration_s": 17.041632653061225,
+      "sample_rate": 44100.0,
+      "cpps_db": 18.138383217064167
+    },
+    {
+      "corpus": "vocadito",
+      "track_id": "vocadito_9",
+      "gender": "unknown",
+      "duration_s": 20.375011337868482,
+      "sample_rate": 44100.0,
+      "cpps_db": 16.151551165164676
+    },
+    {
+      "corpus": "fda",
+      "track_id": "rl001",
+      "gender": "m",
+      "duration_s": 1.5,
+      "sample_rate": 20000.0,
+      "cpps_db": 17.17836555779263
+    },
+    {
+      "corpus": "fda",
+      "track_id": "rl002",
+      "gender": "m",
+      "duration_s": 2.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 15.876507247771027
+    },
+    {
+      "corpus": "fda",
+      "track_id": "rl003",
+      "gender": "m",
+      "duration_s": 2.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 16.49605980865194
+    },
+    {
+      "corpus": "fda",
+      "track_id": "rl004",
+      "gender": "m",
+      "duration_s": 1.6,
+      "sample_rate": 20000.0,
+      "cpps_db": 16.777635577071464
+    },
+    {
+      "corpus": "fda",
+      "track_id": "rl005",
+      "gender": "m",
+      "duration_s": 1.5,
+      "sample_rate": 20000.0,
+      "cpps_db": 16.071272111849193
+    },
+    {
+      "corpus": "fda",
+      "track_id": "rl006",
+      "gender": "m",
+      "duration_s": 2.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 17.208440255531983
+    },
+    {
+      "corpus": "fda",
+      "track_id": "rl007",
+      "gender": "m",
+      "duration_s": 1.5,
+      "sample_rate": 20000.0,
+      "cpps_db": 15.766582580332921
+    },
+    {
+      "corpus": "fda",
+      "track_id": "rl008",
+      "gender": "m",
+      "duration_s": 2.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 15.464894905528288
+    },
+    {
+      "corpus": "fda",
+      "track_id": "rl009",
+      "gender": "m",
+      "duration_s": 1.6,
+      "sample_rate": 20000.0,
+      "cpps_db": 17.455666790617762
+    },
+    {
+      "corpus": "fda",
+      "track_id": "rl010",
+      "gender": "m",
+      "duration_s": 2.5,
+      "sample_rate": 20000.0,
+      "cpps_db": 17.186609002252364
+    },
+    {
+      "corpus": "fda",
+      "track_id": "rl011",
+      "gender": "m",
+      "duration_s": 2.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 17.089179232745952
+    },
+    {
+      "corpus": "fda",
+      "track_id": "rl012",
+      "gender": "m",
+      "duration_s": 1.7,
+      "sample_rate": 20000.0,
+      "cpps_db": 16.525104729668993
+    },
+    {
+      "corpus": "fda",
+      "track_id": "rl013",
+      "gender": "m",
+      "duration_s": 1.7,
+      "sample_rate": 20000.0,
+      "cpps_db": 16.72676901013125
+    },
+    {
+      "corpus": "fda",
+      "track_id": "rl014",
+      "gender": "m",
+      "duration_s": 1.5,
+      "sample_rate": 20000.0,
+      "cpps_db": 20.10211166226847
+    },
+    {
+      "corpus": "fda",
+      "track_id": "rl015",
+      "gender": "m",
+      "duration_s": 3.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 16.11286559023916
+    },
+    {
+      "corpus": "fda",
+      "track_id": "rl016",
+      "gender": "m",
+      "duration_s": 2.1,
+      "sample_rate": 20000.0,
+      "cpps_db": 17.358373989604413
+    },
+    {
+      "corpus": "fda",
+      "track_id": "rl017",
+      "gender": "m",
+      "duration_s": 1.5,
+      "sample_rate": 20000.0,
+      "cpps_db": 17.764016214519987
+    },
+    {
+      "corpus": "fda",
+      "track_id": "rl018",
+      "gender": "m",
+      "duration_s": 1.2,
+      "sample_rate": 20000.0,
+      "cpps_db": 19.997242487061403
+    },
+    {
+      "corpus": "fda",
+      "track_id": "rl019",
+      "gender": "m",
+      "duration_s": 1.5,
+      "sample_rate": 20000.0,
+      "cpps_db": 15.353337773883052
+    },
+    {
+      "corpus": "fda",
+      "track_id": "rl020",
+      "gender": "m",
+      "duration_s": 1.2,
+      "sample_rate": 20000.0,
+      "cpps_db": 14.576674625693993
+    },
+    {
+      "corpus": "fda",
+      "track_id": "rl021",
+      "gender": "m",
+      "duration_s": 3.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 14.662150302165937
+    },
+    {
+      "corpus": "fda",
+      "track_id": "rl022",
+      "gender": "m",
+      "duration_s": 3.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 15.668419340911083
+    },
+    {
+      "corpus": "fda",
+      "track_id": "rl023",
+      "gender": "m",
+      "duration_s": 3.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 14.196562734869978
+    },
+    {
+      "corpus": "fda",
+      "track_id": "rl024",
+      "gender": "m",
+      "duration_s": 3.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 15.359269631806507
+    },
+    {
+      "corpus": "fda",
+      "track_id": "rl025",
+      "gender": "m",
+      "duration_s": 3.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 17.549337901690432
+    },
+    {
+      "corpus": "fda",
+      "track_id": "rl026",
+      "gender": "m",
+      "duration_s": 3.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 15.15122271203541
+    },
+    {
+      "corpus": "fda",
+      "track_id": "rl027",
+      "gender": "m",
+      "duration_s": 3.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 17.10946347660471
+    },
+    {
+      "corpus": "fda",
+      "track_id": "rl028",
+      "gender": "m",
+      "duration_s": 5.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 16.102468899669038
+    },
+    {
+      "corpus": "fda",
+      "track_id": "rl029",
+      "gender": "m",
+      "duration_s": 3.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 16.415034401444053
+    },
+    {
+      "corpus": "fda",
+      "track_id": "rl030",
+      "gender": "m",
+      "duration_s": 4.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 16.28510641679829
+    },
+    {
+      "corpus": "fda",
+      "track_id": "rl031",
+      "gender": "m",
+      "duration_s": 3.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 17.157048250360113
+    },
+    {
+      "corpus": "fda",
+      "track_id": "rl032",
+      "gender": "m",
+      "duration_s": 4.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 15.35177612423928
+    },
+    {
+      "corpus": "fda",
+      "track_id": "rl033",
+      "gender": "m",
+      "duration_s": 4.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 14.64107282042136
+    },
+    {
+      "corpus": "fda",
+      "track_id": "rl034",
+      "gender": "m",
+      "duration_s": 4.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 13.933839687517313
+    },
+    {
+      "corpus": "fda",
+      "track_id": "rl035",
+      "gender": "m",
+      "duration_s": 3.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 16.955387257088233
+    },
+    {
+      "corpus": "fda",
+      "track_id": "rl036",
+      "gender": "m",
+      "duration_s": 4.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 16.271741377511947
+    },
+    {
+      "corpus": "fda",
+      "track_id": "rl037",
+      "gender": "m",
+      "duration_s": 4.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 16.65259131494179
+    },
+    {
+      "corpus": "fda",
+      "track_id": "rl038",
+      "gender": "m",
+      "duration_s": 4.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 14.606380327262075
+    },
+    {
+      "corpus": "fda",
+      "track_id": "rl039",
+      "gender": "m",
+      "duration_s": 4.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 15.9964753914565
+    },
+    {
+      "corpus": "fda",
+      "track_id": "rl040",
+      "gender": "m",
+      "duration_s": 4.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 16.764079056653973
+    },
+    {
+      "corpus": "fda",
+      "track_id": "rl041",
+      "gender": "m",
+      "duration_s": 4.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 15.590155861502392
+    },
+    {
+      "corpus": "fda",
+      "track_id": "rl042",
+      "gender": "m",
+      "duration_s": 4.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 15.972756941374014
+    },
+    {
+      "corpus": "fda",
+      "track_id": "rl043",
+      "gender": "m",
+      "duration_s": 4.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 16.387358726517554
+    },
+    {
+      "corpus": "fda",
+      "track_id": "rl044",
+      "gender": "m",
+      "duration_s": 4.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 16.612381147444257
+    },
+    {
+      "corpus": "fda",
+      "track_id": "rl045",
+      "gender": "m",
+      "duration_s": 4.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 16.0643537748045
+    },
+    {
+      "corpus": "fda",
+      "track_id": "rl046",
+      "gender": "m",
+      "duration_s": 4.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 15.47233023524624
+    },
+    {
+      "corpus": "fda",
+      "track_id": "rl047",
+      "gender": "m",
+      "duration_s": 4.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 17.026071387763295
+    },
+    {
+      "corpus": "fda",
+      "track_id": "rl048",
+      "gender": "m",
+      "duration_s": 4.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 15.515806565617543
+    },
+    {
+      "corpus": "fda",
+      "track_id": "rl049",
+      "gender": "m",
+      "duration_s": 4.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 17.00467380510856
+    },
+    {
+      "corpus": "fda",
+      "track_id": "rl050",
+      "gender": "m",
+      "duration_s": 4.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 16.68611179537592
+    },
+    {
+      "corpus": "fda",
+      "track_id": "sb001",
+      "gender": "f",
+      "duration_s": 3.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 13.973551031874667
+    },
+    {
+      "corpus": "fda",
+      "track_id": "sb002",
+      "gender": "f",
+      "duration_s": 3.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 14.521856969989425
+    },
+    {
+      "corpus": "fda",
+      "track_id": "sb003",
+      "gender": "f",
+      "duration_s": 3.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 14.800415260323811
+    },
+    {
+      "corpus": "fda",
+      "track_id": "sb004",
+      "gender": "f",
+      "duration_s": 3.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 14.041301701749727
+    },
+    {
+      "corpus": "fda",
+      "track_id": "sb005",
+      "gender": "f",
+      "duration_s": 3.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 13.943414077541787
+    },
+    {
+      "corpus": "fda",
+      "track_id": "sb006",
+      "gender": "f",
+      "duration_s": 3.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 14.778119734711447
+    },
+    {
+      "corpus": "fda",
+      "track_id": "sb007",
+      "gender": "f",
+      "duration_s": 3.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 14.072967783670416
+    },
+    {
+      "corpus": "fda",
+      "track_id": "sb008",
+      "gender": "f",
+      "duration_s": 3.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 14.566312308181779
+    },
+    {
+      "corpus": "fda",
+      "track_id": "sb009",
+      "gender": "f",
+      "duration_s": 3.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 14.338580358415875
+    },
+    {
+      "corpus": "fda",
+      "track_id": "sb010",
+      "gender": "f",
+      "duration_s": 3.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 14.287597146783273
+    },
+    {
+      "corpus": "fda",
+      "track_id": "sb011",
+      "gender": "f",
+      "duration_s": 3.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 14.208285920686555
+    },
+    {
+      "corpus": "fda",
+      "track_id": "sb012",
+      "gender": "f",
+      "duration_s": 3.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 14.09490458961993
+    },
+    {
+      "corpus": "fda",
+      "track_id": "sb013",
+      "gender": "f",
+      "duration_s": 3.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 14.865796063602076
+    },
+    {
+      "corpus": "fda",
+      "track_id": "sb014",
+      "gender": "f",
+      "duration_s": 3.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 14.989891308020557
+    },
+    {
+      "corpus": "fda",
+      "track_id": "sb015",
+      "gender": "f",
+      "duration_s": 3.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 15.149523051507263
+    },
+    {
+      "corpus": "fda",
+      "track_id": "sb016",
+      "gender": "f",
+      "duration_s": 3.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 13.88029279160692
+    },
+    {
+      "corpus": "fda",
+      "track_id": "sb017",
+      "gender": "f",
+      "duration_s": 3.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 14.521745050645274
+    },
+    {
+      "corpus": "fda",
+      "track_id": "sb018",
+      "gender": "f",
+      "duration_s": 3.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 14.596418422920719
+    },
+    {
+      "corpus": "fda",
+      "track_id": "sb019",
+      "gender": "f",
+      "duration_s": 3.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 14.124401912738449
+    },
+    {
+      "corpus": "fda",
+      "track_id": "sb020",
+      "gender": "f",
+      "duration_s": 3.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 13.683987171156163
+    },
+    {
+      "corpus": "fda",
+      "track_id": "sb021",
+      "gender": "f",
+      "duration_s": 3.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 14.33580682238262
+    },
+    {
+      "corpus": "fda",
+      "track_id": "sb022",
+      "gender": "f",
+      "duration_s": 3.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 14.921947788697723
+    },
+    {
+      "corpus": "fda",
+      "track_id": "sb023",
+      "gender": "f",
+      "duration_s": 3.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 14.131516421290328
+    },
+    {
+      "corpus": "fda",
+      "track_id": "sb024",
+      "gender": "f",
+      "duration_s": 3.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 15.283973902744622
+    },
+    {
+      "corpus": "fda",
+      "track_id": "sb025",
+      "gender": "f",
+      "duration_s": 4.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 14.690837793444057
+    },
+    {
+      "corpus": "fda",
+      "track_id": "sb026",
+      "gender": "f",
+      "duration_s": 4.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 14.154345316060335
+    },
+    {
+      "corpus": "fda",
+      "track_id": "sb027",
+      "gender": "f",
+      "duration_s": 4.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 14.09495044248447
+    },
+    {
+      "corpus": "fda",
+      "track_id": "sb028",
+      "gender": "f",
+      "duration_s": 5.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 14.565234099455587
+    },
+    {
+      "corpus": "fda",
+      "track_id": "sb029",
+      "gender": "f",
+      "duration_s": 5.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 13.565712780561203
+    },
+    {
+      "corpus": "fda",
+      "track_id": "sb030",
+      "gender": "f",
+      "duration_s": 4.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 14.466851023914908
+    },
+    {
+      "corpus": "fda",
+      "track_id": "sb031",
+      "gender": "f",
+      "duration_s": 4.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 14.714559563964556
+    },
+    {
+      "corpus": "fda",
+      "track_id": "sb032",
+      "gender": "f",
+      "duration_s": 5.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 13.803633491191347
+    },
+    {
+      "corpus": "fda",
+      "track_id": "sb033",
+      "gender": "f",
+      "duration_s": 4.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 14.291358684215972
+    },
+    {
+      "corpus": "fda",
+      "track_id": "sb034",
+      "gender": "f",
+      "duration_s": 4.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 14.039468403656326
+    },
+    {
+      "corpus": "fda",
+      "track_id": "sb035",
+      "gender": "f",
+      "duration_s": 4.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 14.74463600399887
+    },
+    {
+      "corpus": "fda",
+      "track_id": "sb036",
+      "gender": "f",
+      "duration_s": 5.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 14.6690977978259
+    },
+    {
+      "corpus": "fda",
+      "track_id": "sb037",
+      "gender": "f",
+      "duration_s": 4.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 15.312732171687276
+    },
+    {
+      "corpus": "fda",
+      "track_id": "sb038",
+      "gender": "f",
+      "duration_s": 4.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 14.223733259986059
+    },
+    {
+      "corpus": "fda",
+      "track_id": "sb039",
+      "gender": "f",
+      "duration_s": 4.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 14.90294979135526
+    },
+    {
+      "corpus": "fda",
+      "track_id": "sb040",
+      "gender": "f",
+      "duration_s": 4.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 15.536126125208057
+    },
+    {
+      "corpus": "fda",
+      "track_id": "sb041",
+      "gender": "f",
+      "duration_s": 4.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 14.422864136507526
+    },
+    {
+      "corpus": "fda",
+      "track_id": "sb042",
+      "gender": "f",
+      "duration_s": 4.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 15.40134594766898
+    },
+    {
+      "corpus": "fda",
+      "track_id": "sb043",
+      "gender": "f",
+      "duration_s": 5.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 14.97729347060287
+    },
+    {
+      "corpus": "fda",
+      "track_id": "sb044",
+      "gender": "f",
+      "duration_s": 5.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 15.460051281796659
+    },
+    {
+      "corpus": "fda",
+      "track_id": "sb045",
+      "gender": "f",
+      "duration_s": 4.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 15.647860667743359
+    },
+    {
+      "corpus": "fda",
+      "track_id": "sb046",
+      "gender": "f",
+      "duration_s": 4.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 14.215050422064873
+    },
+    {
+      "corpus": "fda",
+      "track_id": "sb047",
+      "gender": "f",
+      "duration_s": 6.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 15.128403584946104
+    },
+    {
+      "corpus": "fda",
+      "track_id": "sb048",
+      "gender": "f",
+      "duration_s": 4.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 14.908622946669952
+    },
+    {
+      "corpus": "fda",
+      "track_id": "sb049",
+      "gender": "f",
+      "duration_s": 5.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 14.695348587903938
+    },
+    {
+      "corpus": "fda",
+      "track_id": "sb050",
+      "gender": "f",
+      "duration_s": 4.0,
+      "sample_rate": 20000.0,
+      "cpps_db": 15.445361448307963
+    }
+  ]
+}

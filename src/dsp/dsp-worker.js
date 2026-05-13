@@ -1,9 +1,11 @@
 // dsp-worker.js — Web Worker that performs DSP analysis off the main thread
-// Formant extraction (Burg LPC), spectral tilt, HNR, intensity. Pitch
+// Formant extraction (Burg LPC), spectral tilt, HNR, intensity, CPP. Pitch
 // detection lives in pitch-worker.js (SwiftF0 ONNX) since the Stage 4
 // cutover; the main thread relays the latest pitch back via "pitch-hint"
 // messages so this worker can use it for pitch-adaptive formant analysis
 // (Praat-style male-vs-female LPC order + formant ceiling selection).
+
+import { computeCPP, resetCppState } from "./cpp.js";
 
 const WINDOW_MS = 50;
 let sampleRate = 48000;
@@ -118,12 +120,25 @@ function processChunk(buffer, contextTime) {
   // Pitch is provided by pitch-worker via the "pitch-hint" message; the most
   // recent value is held in _lastKnownPitch. extractFormants accepts null
   // and falls back to the female-default LPC configuration.
-  let formants = null, spectralTilt = null, hnr = null;
+  let formants = null, spectralTilt = null, hnr = null, cpp = null;
   if (analysisCount % 6 === 0) {
     formants = extractFormants(window, _lastKnownPitch);
     spectralTilt = computeSpectralTilt(window, sampleRate);
     hnr = computeHNR(window, sampleRate);
   }
+  // CPP runs every frame (not throttled like the others). Original
+  // 6th-frame cadence dropped during the WS2 methodology investigation
+  // (2026-05-10): per-frame CPP gave Praat-comparison correlation
+  // r=0.62 on PTDB-TUG / r=0.62 on FDA vs r=0.46/0.48 at 6th-frame
+  // cadence. Each aggregator emit now averages ~40 CPP samples per 1-s
+  // window instead of ~7 — quieter emits, better baseline σ. Cost:
+  // ~80 ms/s CPU on desktop vs ~13 ms/s previously, both well within
+  // budget. See measurements/cpp-praat-methodology-probe-2026-05-10.json.
+  // Maryn-style processing (Theil + exponential trend + smoothing)
+  // adds ~0.17 ms/frame over legacy LSQ. Well within budget.
+  const cppT0 = _diag ? performance.now() : 0;
+  cpp = computeCPP(window, sampleRate);
+  const cppMs = _diag ? performance.now() - cppT0 : null;
   analysisCount++;
 
   const analysisEndTime = performance.now();
@@ -147,6 +162,10 @@ function processChunk(buffer, contextTime) {
       // handoffToMainMs (DSP postMessage → main onmessage entry).
       chunkReceiveEpochMs,
       postedAtEpochMs: performance.timeOrigin + performance.now(),
+      // Per-frame computeCPP duration (Maryn-style). Surfaces in
+      // diag snapshots so users can verify the per-frame cost
+      // measurement (Step 2a) holds in real browser execution.
+      cppMs,
     };
   }
 
@@ -159,7 +178,7 @@ function processChunk(buffer, contextTime) {
       // useAudioPipeline.js merges the pitch-worker's most-recent pitch into
       // each analysis frame.
       pitch: null,
-      intensity, formants, spectralTilt, hnr,
+      intensity, formants, spectralTilt, hnr, cpp,
       // Absolute timestamp comparable across threads
       absoluteTime: performance.timeOrigin + performance.now(),
       // Diagnostic fields (always present so the main-thread shape doesn't
@@ -207,6 +226,10 @@ self.onmessage = (e) => {
     _burgANew = new Float64Array(MAX_LPC_ORDER + 1);
     _rootsRe = new Float64Array(MAX_LPC_ORDER);
     _rootsIm = new Float64Array(MAX_LPC_ORDER);
+
+    // Reset cpp.js module state (cepstrum-time-smoothing buffer +
+    // sampled-Theil pair indices) so a worker re-init starts fresh.
+    resetCppState();
 
     // Init-ack so the main thread can confirm the worker received the
     // diag flag and set up its buffers. Always sent regardless of diag.

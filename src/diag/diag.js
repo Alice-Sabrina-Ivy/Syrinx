@@ -110,6 +110,13 @@ const ML_INFERENCES_CAP = 600;
 // ~40 B per entry ≈ 60 KB.
 const PITCH_INFERENCES_CAP = 1500;
 
+// Vocal-weight aggregate ring. Aggregator emits at 4 Hz during voiced
+// speech; 600 entries = ~2.5 min of coverage. Each entry captures the
+// per-emit aggregate plus baseline state at that moment. Useful for
+// post-hoc diagnosis of calibration timing and gauge responsiveness.
+// ~50 B per entry ≈ 30 KB.
+const VOCAL_WEIGHT_CAP = 600;
+
 // Long-history low-res buffer: one entry per second, 600 entries = 10 min.
 // Each entry is sampled from the most recent high-res frame plus
 // audio-context introspection (state, baseLatency, outputLatency,
@@ -212,6 +219,28 @@ function _createState() {
     //   voiced,      // confidence >= threshold (0.5)
     // }
     pitchInferences: new RingBuffer(PITCH_INFERENCES_CAP),
+    // Vocal-weight aggregate emits ring (when diag is on). Each entry:
+    // {
+    //   tEpochMs,        // performance.timeOrigin + now() at emit
+    //   aggregateTime,   // aggregator's internal time field (DSP absoluteTime
+    //                    // of the triggering push)
+    //   cpp,             // aggregate CPP value in dB
+    //   voicedFrames,    // number of voiced+valid-CPP frames in the 1 s window
+    //   baselineProgress,    // [0..1] fraction toward baseline lock at emit time
+    //   baselineSampleCount, // accumulated baseline samples
+    //   baselineSampleTarget,// target sample count
+    //   baselineLocked,  // whether baseline μ/σ is frozen
+    //   baselineMu,      // locked μ (null if not locked)
+    //   baselineSigma,   // locked σ (null if not locked)
+    //   sigmaDelta,      // (cpp - μ) / σ, null if not locked
+    // }
+    vocalWeightEmits: new RingBuffer(VOCAL_WEIGHT_CAP),
+    // Cumulative tally of frames pushed to the vocal-weight aggregator
+    // and how many of those were voiced. Used to surface "voiced-frame
+    // fraction" — if it's surprisingly low, the silence gate is firing
+    // more than expected during real speech. Reset by useAudioPipeline's
+    // start().
+    vocalWeightFrames: { pushed: 0, voiced: 0 },
     // Which model+device the gender worker ended up running. Tracks
     // the modelId reported by the worker on its "ready" status and
     // the ORT backend that succeeded ("webgpu" or "wasm"). Useful
@@ -392,6 +421,35 @@ export function pushPitchInference(entry) {
   diagState.pitchInferences.push(entry);
 }
 
+// Called by useAudioPipeline.js's handleAnalysisResult on each DSP
+// frame, recording whether the frame was pushed to the aggregator
+// and whether it was tagged voiced. The cumulative tally surfaces
+// the voiced-frame fraction, which calibration-time investigations
+// need to distinguish "user pauses" from "silence gate too strict".
+export function noteVocalWeightFrame(voiced) {
+  if (!diagState) return;
+  diagState.vocalWeightFrames.pushed++;
+  if (voiced) diagState.vocalWeightFrames.voiced++;
+}
+
+// Called when the vocal-weight aggregator emits a fresh aggregate
+// (i.e., a unique emit time, not a throttle-cached repeat). Records
+// the aggregate value plus the baseline tracker's state at that
+// moment so post-hoc snapshot inspection can answer "why is
+// calibration slow / fast" without browser-side console.log.
+export function pushVocalWeightEmit(entry) {
+  if (!diagState) return;
+  diagState.vocalWeightEmits.push(entry);
+}
+
+// Reset cumulative counters at session start. Aggregate ring is left
+// alone — the ring is naturally bounded by RING_CAP and will scroll
+// out the previous session's entries as new ones arrive.
+export function resetVocalWeightCounters() {
+  if (!diagState) return;
+  diagState.vocalWeightFrames = { pushed: 0, voiced: 0 };
+}
+
 export function getPitchInferences() {
   return diagState ? diagState.pitchInferences.toArray() : [];
 }
@@ -516,6 +574,8 @@ export function snapshot() {
     mlModel: { ...diagState.mlModel },
     pitchInferences: diagState.pitchInferences.toArray(),
     pitchModel: { ...diagState.pitchModel },
+    vocalWeightEmits: diagState.vocalWeightEmits.toArray(),
+    vocalWeightFrames: { ...diagState.vocalWeightFrames },
   };
 }
 
