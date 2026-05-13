@@ -358,6 +358,10 @@ function lsqSlope(values, qMin, qMax) {
 // - `quefrencySmoothBins`: integer ≥ 1 (default 3) — width of the
 //   centered moving-average kernel applied to the cepstrum
 export function computeCPP(buffer, sr, opts = {}) {
+  // Resampling is downsample-only (see header). Inputs below canonical
+  // rate would be upsampled via linear interp, fabricating content the
+  // cepstrum would then read as signal. Reject rather than emit noise.
+  if (sr < CANONICAL_SR) return null;
   const canonical = resampleToCanonical(buffer, sr);
   const inputLen = Math.min(canonical.length, CPP_INPUT_LEN);
   if (inputLen < CPP_MIN_INPUT_LEN) return null;
