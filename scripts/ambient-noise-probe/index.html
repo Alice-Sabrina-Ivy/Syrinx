@@ -166,6 +166,7 @@
   let source = null;
   let analyser = null;
   let running = false;
+  let starting = false;
   let avgSpectrum = null;  // running-average power spectrum
   let frameCount = 0;
   let rafId = null;
@@ -190,6 +191,14 @@
   }
 
   async function start() {
+    // Gate against concurrent starts. Without this, a second click
+    // during the getUserMedia await would spawn a parallel pipeline:
+    // the module-scoped stream/audioCtx/source/analyser references
+    // would be overwritten, leaking the first mic stream (mic light
+    // stays on with no UI handle to stop it).
+    if (starting || running) return;
+    starting = true;
+    startBtn.disabled = true;
     try {
       stream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -217,13 +226,20 @@
       avgSpectrum = new Float32Array(analyser.frequencyBinCount);
       frameCount = 0;
       running = true;
-      startBtn.disabled = true;
       stopBtn.disabled = false;
       setStatus("Listening… running average will update every ~1 s.", "active");
       loop();
     } catch (err) {
       setStatus(`Error: ${err.message || err}`, "error");
       console.error(err);
+      // Tear down partial state so retry works cleanly.
+      if (stream) { try { stream.getTracks().forEach((t) => t.stop()); } catch {} stream = null; }
+      if (audioCtx) { try { audioCtx.close(); } catch {} audioCtx = null; }
+      source = null;
+      analyser = null;
+      startBtn.disabled = false;  // re-enable so user can retry
+    } finally {
+      starting = false;
     }
   }
 
