@@ -13,6 +13,7 @@ import {
   pushAndMedianPitch,
   PITCH_SMOOTH_LEN,
 } from "./pitchSmoothing";
+import { createGateState, evaluateFrameGate } from "./pitchGate";
 import { createCaptureSource } from "./captureSource";
 import { VocalWeightAggregator } from "./vocal-weight-aggregator";
 import { VocalWeightBaseline } from "./vocal-weight-baseline";
@@ -39,24 +40,12 @@ import {
   resetVocalWeightCounters,
 } from "../diag/diag";
 
-const SILENCE_THRESHOLD_DB = -50;
-const SILENCE_DEBOUNCE_FRAMES = 3; // require 3 consecutive quiet frames before gating
-// Confidence threshold for the AND-logic noise gate below. Reads the
-// latest pitch-worker (SwiftF0) confidence, which is the upstream signal
-// indicating "is this frame voiced with a clear pitch present" — exactly
-// the question the gate's voicedness arm asks. Replaced pYIN's HMM-
-// smoothed posterior at the Stage 4 SwiftF0 cutover (see CLAUDE.md
-// §"Pitch detection — SwiftF0 cutover, 2026-05-06"). 0.5 matches the
-// pitch-reporting threshold inside pitch-worker, so producing a non-null
-// pitch and being "voiced enough for the gate to trust" are the same
-// condition — single threshold value, no ambiguous middle band.
-//
-// Validated against the four-corpus pitch-bucket harness in Stage 3.4
-// (measurements/swift-f0-stage3-4-3-5-validation-2026-05-06.md): drops
-// 6.8 % null rate worst-case (PTDB-TUG <90 Hz) while keeping octave-
-// error rate at 1.69 % — better than pYIN's 2.3 % baseline at the same
-// cell.
-const CONFIDENCE_THRESHOLD = 0.5;
+// Silence-gate thresholds (SILENCE_THRESHOLD_DB, CONFIDENCE_THRESHOLD,
+// SILENCE_DEBOUNCE_FRAMES), pitch staleness, and the bounded pitch-hold
+// window live in pitchGate.js — extracted 2026-06-09 so the frame-level
+// gate decisions are unit-testable in plain Node (same pattern as
+// pitchSmoothing.js). See that module for the AND-logic rationale and
+// the corpus measurements behind the constants.
 const FORMANT_SMOOTH_LEN = 7;
 const FORMANT_OUTLIER_HZ = 500; // max plausible frame-to-frame formant jump
 
@@ -161,9 +150,9 @@ export function useAudioPipeline() {
   // we don't re-emit gauge state on every DSP frame.
   const lastCppAggregateRef = useRef({ time: -1 });
 
-  // Silence gating
+  // Silence gating + pitch staleness/hold (see pitchGate.js)
   const silenceStartRef = useRef(null);
-  const quietFrameCountRef = useRef(0);
+  const gateStateRef = useRef(createGateState());
   const lastVoicedRef = useRef({
     pitch: null,
     noteName: null,
@@ -697,7 +686,7 @@ export function useAudioPipeline() {
     f2SmoothRef.current = [];
     f3SmoothRef.current = [];
     silenceStartRef.current = null;
-    quietFrameCountRef.current = 0;
+    gateStateRef.current = createGateState();
     pitchTraceRef.current = [];
     formantTrailRef.current = [];
     genderTraceRef.current = [];
@@ -778,12 +767,6 @@ export function useAudioPipeline() {
 
   function handleAnalysisResult(data) {
     const { intensity, formants, spectralTilt, hnr, cpp, absoluteTime } = data;
-    // Pitch + confidence come from pitch-worker (SwiftF0) via latestPitchRef,
-    // not from the DSP analysis message. Each DSP frame consumes the most-
-    // recent pitch-worker output (nearest-neighbor temporal alignment).
-    const latestPitch = latestPitchRef.current;
-    const pitch = latestPitch.pitch;
-    const confidence = latestPitch.confidence;
 
     // Use the worker's absolute timestamp for data points.
     // This reflects when audio was *analyzed* in the worker, which is the
@@ -791,40 +774,22 @@ export function useAudioPipeline() {
     // and clockOffset between worker and main thread is ~0ms.
     const now = Math.round(absoluteTime);
 
-    // Silence = below intensity threshold AND below confidence threshold,
-    // for multiple consecutive frames. AND-logic (NOT OR) is intentional
-    // — both signals must agree on "noise" before a frame is suppressed.
-    // Either signal alone over-suppresses real speech: the intensity arm
-    // catches genuine speech during inter-phoneme dips (real desktop mic
-    // speech median intensity is ~-38 dB but routinely crosses -50
-    // between articulations); a low-confidence-only gate would suppress
-    // borderline-voiced frames where pitch is real but uncertain.
-    //
-    // The confidence signal here is SwiftF0's per-frame voicing probability
-    // (replaced pYIN's HMM-smoothed posterior at the Stage 4 cutover). 0.5
-    // also matches the threshold inside pitch-worker that gates pitch
-    // reporting — so confidence < 0.5 is exactly when pitch is null. The
-    // gate's voicedness arm and the pitch-reporting threshold are the
-    // same condition by design (no ambiguous middle band).
-    //
-    // Pre-warmup frames (pitch-worker has not yet completed its first
-    // inference): confidence is null, voicednessQuiet defaults to true so
-    // the AND collapses to intensity-only gating until SwiftF0 starts
-    // emitting confidence values (~3 chunks ≈ 75 ms after start).
-    const intensityQuiet = intensity < SILENCE_THRESHOLD_DB;
-    const voicednessQuiet =
-      typeof confidence !== "number" ||
-      confidence < CONFIDENCE_THRESHOLD;
-    const frameQuiet = intensityQuiet && voicednessQuiet;
-    const hasPitch = pitch !== null;
-
-    if (frameQuiet) {
-      quietFrameCountRef.current++;
-    } else {
-      quietFrameCountRef.current = 0;
-    }
-
-    const isQuiet = quietFrameCountRef.current >= SILENCE_DEBOUNCE_FRAMES;
+    // Pitch + confidence come from pitch-worker (SwiftF0) via latestPitchRef,
+    // not from the DSP analysis message. Each DSP frame consumes the most-
+    // recent pitch-worker output (nearest-neighbor temporal alignment).
+    // pitchGate.js owns the frame-level decisions: silence gate (AND-logic
+    // intensity + confidence, debounced), staleness fallback (a pitch-worker
+    // stall/death must not freeze the gate's voicedness arm), and the
+    // bounded hold window for bridging brief SwiftF0 null gaps.
+    const latestPitch = latestPitchRef.current;
+    const gate = evaluateFrameGate(gateStateRef.current, {
+      now,
+      intensity,
+      pitch: latestPitch.pitch,
+      confidence: latestPitch.confidence,
+      pitchTs: latestPitch.ts,
+    });
+    const { pitch, hasPitch, isQuiet } = gate;
 
     // Push CPP into the vocal-weight aggregator with the DEBOUNCED
     // voicing flag (audit §3.5). Frames are pushed regardless of the
@@ -929,33 +894,42 @@ export function useAudioPipeline() {
       return;
     }
 
-    // Audio is above silence threshold — treat as voiced
+    // Audio is above silence threshold. Note the dspGateRef "voiced" flag
+    // means "audio present" (not silence-gated) — it can be true on frames
+    // where no pitch is detected (breath, fricatives, broadband noise).
+    // The throttled state's `voiced` flag below is stricter: it requires a
+    // displayable pitch this frame.
     dspGateRef.current = { voiced: true, holding: false };
     silenceStartRef.current = null;
 
-    // Use detected pitch, or hold last smoothed pitch across detection gaps
+    // Use detected pitch, or hold the last smoothed pitch across brief
+    // SwiftF0 null gaps. The hold is bounded (pitchGate.js
+    // PITCH_HOLD_MAX_MS): corpus measurement shows intra-speech null runs
+    // are ~p99 ≤ 400 ms, so longer pitchless stretches are not speech
+    // gaps — they're sustained pitchless audio (breath, noise) and must
+    // render as an honest trace gap. The pre-2026-06 unbounded hold
+    // painted a stale flat pitch line through such audio indefinitely
+    // and recorded the frames as voiced at a stale F0.
     const effectivePitch = hasPitch
       ? pitch
-      : (pitchSmoothRef.current.length > 0
+      : (gate.holdAllowed && pitchSmoothRef.current.length > 0
         ? pitchSmoothRef.current[pitchSmoothRef.current.length - 1]
         : null);
 
-    if (effectivePitch === null) {
-      // No pitch history to hold — treat as gap
-      pitchTraceRef.current.push({ time: now, pitch: null, voiced: false });
-      trimHistory(pitchTraceRef.current, PITCH_TRACE_SECONDS * 1000, now);
-      return;
+    // Smooth pitch with a rolling median. Only new detections are pushed
+    // — held values (SwiftF0 null but audio still loud enough) don't
+    // enter the buffer so they can't stale-shift the median.
+    let smoothedPitch = null;
+    if (effectivePitch !== null) {
+      smoothedPitch = hasPitch
+        ? pushAndMedianPitch(pitchSmoothRef.current, pitch, PITCH_SMOOTH_LEN)
+        : median(pitchSmoothRef.current);
+    } else if (pitchSmoothRef.current.length > 0) {
+      // Hold window exhausted (or pitch-worker stale): reset the
+      // smoothing buffer so the next utterance starts fresh instead of
+      // being medianed against pre-gap values.
+      pitchSmoothRef.current = [];
     }
-
-    // Smooth pitch with a harmonic-aware rolling median: when YIN briefly
-    // locks on 2·f0 or 3·f0 (typically when a strong formant amplifies a
-    // higher harmonic), reconcile the value back to the fundamental
-    // before the median pass. Only new detections are pushed — held
-    // values (when YIN returned null but audio is still loud enough)
-    // don't enter the buffer so they can't stale-shift the median.
-    const smoothedPitch = hasPitch
-      ? pushAndMedianPitch(pitchSmoothRef.current, pitch, PITCH_SMOOTH_LEN)
-      : median(pitchSmoothRef.current);
 
     // Smooth formants with rolling median + outlier rejection.
     // Discard values that jump more than FORMANT_OUTLIER_HZ from the
@@ -971,16 +945,19 @@ export function useAudioPipeline() {
       ? pushAndMedianGated(f3SmoothRef, formants.f3, FORMANT_SMOOTH_LEN, FORMANT_OUTLIER_HZ)
       : median(f3SmoothRef.current);
 
-    const noteInfo = hzToNote(smoothedPitch);
+    const framePitched = smoothedPitch !== null;
+    const noteInfo = framePitched ? hzToNote(smoothedPitch) : null;
     const noteName = noteInfo?.name || null;
     const smoothedFormants = { f1, f2, f3 };
 
-    // Update history buffers (always, at full rate — canvas reads these)
-    pitchTraceRef.current.push({
-      time: now,
-      pitch: smoothedPitch,
-      voiced: true,
-    });
+    // Update history buffers (always, at full rate — canvas reads these).
+    // A pitchless frame renders as a trace gap even though audio is
+    // present — the trace draws pitch, not loudness.
+    pitchTraceRef.current.push(
+      framePitched
+        ? { time: now, pitch: smoothedPitch, voiced: true }
+        : { time: now, pitch: null, voiced: false },
+    );
     trimHistory(pitchTraceRef.current, PITCH_TRACE_SECONDS * 1000, now);
 
     if (f1 !== null && f2 !== null) {
@@ -992,19 +969,24 @@ export function useAudioPipeline() {
     const currentTilt = spectralTilt ?? lastVoicedRef.current.spectralTilt;
     const currentHnr = hnr ?? lastVoicedRef.current.hnr;
 
-    // Save as last voiced values (for hold behavior)
+    // Save as last voiced values (for hold behavior). On pitchless frames
+    // the measured fields (formants/tilt/HNR) still update, but the last
+    // real pitch is kept so the 5-s silence hold can dim-display it.
     lastVoicedRef.current = {
-      pitch: smoothedPitch,
-      noteName,
+      pitch: framePitched ? smoothedPitch : lastVoicedRef.current.pitch,
+      noteName: framePitched ? noteName : lastVoicedRef.current.noteName,
       formants: smoothedFormants,
       spectralTilt: currentTilt,
       hnr: currentHnr,
     };
 
-    // Notify frame callback (session recording) with smoothed values
+    // Notify frame callback (session recording) with smoothed values.
+    // Pitchless frames record voiced: false with f0 null — session stats
+    // filter on `voiced && f0 !== null`, so phantom held pitch must not
+    // be recorded as voiced (it skews avg F0 / time-in-target).
     if (frameCallbackRef.current) {
       frameCallbackRef.current({
-        voiced: true,
+        voiced: framePitched,
         f0: smoothedPitch,
         f1: f1,
         f2: f2,
@@ -1019,7 +1001,7 @@ export function useAudioPipeline() {
     const vw = buildVocalWeightState(cppAggregate);
     throttledSetState((s) => ({
       ...s,
-      voiced: true,
+      voiced: framePitched,
       holding: false,
       pitch: smoothedPitch,
       intensity,
@@ -1045,9 +1027,10 @@ export function useAudioPipeline() {
     formantTrailRef,
     genderTraceRef,
     // Exposed so canvas-based components can read the DSP voicedness gate
-    // at full rAF rate, bypassing the ~5 fps throttledSetState that drives
-    // the `voiced` / `holding` text-readout fields above. The two are kept
-    // in sync each DSP analysis frame; the ref is just lower-latency.
+    // at full rAF rate, bypassing the ~5 fps throttledSetState. Note the
+    // ref's `voiced` means "audio present" (silence gate not engaged),
+    // which is looser than the state's `voiced` flag (which additionally
+    // requires a displayable pitch this frame).
     dspGateRef,
     frameCallbackRef,
     streamRef,
