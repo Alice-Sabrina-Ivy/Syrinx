@@ -56,3 +56,11 @@ docs/jaesunghuh-gender/
 # preserved on the pitch-detection-penn branch; the ONNX files
 # themselves are too large to commit on main.
 scripts/penn-validation/
+
+# public/ copies of the gender-model investigation artifacts (the source
+# dirs the build copies into the docs/ entries above). Accidentally
+# committed in 9d71338 (~105 MB), untracked again 2026-06-09 —
+# production loads the gender model from HF Hub (gender-worker.js sets
+# env.allowLocalModels = false), so these are unreachable from the app.
+public/audeering-6l-gender/
+public/jaesunghuh-gender/
