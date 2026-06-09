@@ -1,0 +1,185 @@
+// boersma-ac.js — Frame-local Praat-style autocorrelation pitch detector
+// (Boersma 1993, "Accurate short-term analysis of the fundamental
+// frequency and the harmonics-to-noise ratio of a sampled sound").
+//
+// Implements the core of Praat's AC method on a single analysis frame:
+//   1. subtract local mean, multiply by Hann window
+//   2. normalized autocorrelation via FFT: r_x(tau) / r_x(0)
+//   3. divide by the window's own normalized autocorrelation
+//      (Boersma's key correction — undoes the window taper bias)
+//   4. find local maxima in the pitch range, parabolic interpolation
+//   5. candidate strength = r - octaveCost * log2(minPitch * tau_sec)
+//      (favors higher-frequency candidates, per Praat)
+//   6. compare best voiced candidate against the unvoiced candidate
+//      (voicingThreshold + silence term)
+//
+// Deliberately frame-local: no Viterbi path search (Praat's
+// octave-jump/voiced-unvoiced transition costs). This matches the
+// constraint of Syrinx's per-25-ms-hop streaming pipeline and gives a
+// conservative (lower-bound) estimate of Praat-like quality; a
+// bounded-lookback path search like the retired pYIN L=4 machinery is
+// the known upgrade path if frame-local proves close but flippy.
+//
+// Built for the 2026-06-09 pitch-detector shootout (SwiftF0 weak-H1
+// octave-up failure on low-F0 voices). Evaluation harness:
+// scripts/pitch-shootout-extract.js.
+
+export const BOERSMA_DEFAULTS = {
+  minPitchHz: 50,
+  maxPitchHz: 600,
+  voicingThreshold: 0.45, // Praat default
+  silenceThreshold: 0.03, // Praat default (fraction of global peak)
+  octaveCost: 0.01,       // Praat default, per octave below ceiling
+  maxCandidates: 15,
+};
+
+// In-place iterative radix-2 complex FFT (re/im arrays, length power of 2).
+function fft(re, im, invert) {
+  const n = re.length;
+  for (let i = 1, j = 0; i < n; i++) {
+    let bit = n >> 1;
+    for (; j & bit; bit >>= 1) j ^= bit;
+    j ^= bit;
+    if (i < j) {
+      [re[i], re[j]] = [re[j], re[i]];
+      [im[i], im[j]] = [im[j], im[i]];
+    }
+  }
+  for (let len = 2; len <= n; len <<= 1) {
+    const ang = (2 * Math.PI / len) * (invert ? 1 : -1);
+    const wRe = Math.cos(ang), wIm = Math.sin(ang);
+    for (let i = 0; i < n; i += len) {
+      let curRe = 1, curIm = 0;
+      for (let k = 0; k < len / 2; k++) {
+        const uRe = re[i + k], uIm = im[i + k];
+        const vRe = re[i + k + len / 2] * curRe - im[i + k + len / 2] * curIm;
+        const vIm = re[i + k + len / 2] * curIm + im[i + k + len / 2] * curRe;
+        re[i + k] = uRe + vRe; im[i + k] = uIm + vIm;
+        re[i + k + len / 2] = uRe - vRe; im[i + k + len / 2] = uIm - vIm;
+        const nRe = curRe * wRe - curIm * wIm;
+        curIm = curRe * wIm + curIm * wRe;
+        curRe = nRe;
+      }
+    }
+  }
+  if (invert) for (let i = 0; i < n; i++) { re[i] /= n; im[i] /= n; }
+}
+
+// Linear autocorrelation of x (length n) for lags [0, maxLag] via FFT
+// with zero padding. Writes into out (length maxLag+1).
+function autocorrFFT(x, n, fftSize, scratch, out, maxLag) {
+  const { re, im } = scratch;
+  re.fill(0); im.fill(0);
+  for (let i = 0; i < n; i++) re[i] = x[i];
+  fft(re, im, false);
+  for (let i = 0; i < fftSize; i++) {
+    const p = re[i] * re[i] + im[i] * im[i];
+    re[i] = p; im[i] = 0;
+  }
+  fft(re, im, true);
+  for (let t = 0; t <= maxLag; t++) out[t] = re[t];
+}
+
+export function createBoersmaAC(sampleRate, frameLength, opts = {}) {
+  const cfg = { ...BOERSMA_DEFAULTS, ...opts };
+  const n = frameLength;
+  const fftSize = 1 << Math.ceil(Math.log2(2 * n));
+  const minLag = Math.max(2, Math.floor(sampleRate / cfg.maxPitchHz));
+  const maxLag = Math.min(n - 1, Math.ceil(sampleRate / cfg.minPitchHz));
+
+  const window = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    window[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (n - 1));
+  }
+
+  const scratch = { re: new Float64Array(fftSize), im: new Float64Array(fftSize) };
+  const windowed = new Float64Array(n);
+  const rX = new Float64Array(maxLag + 1);
+  const rW = new Float64Array(maxLag + 1);
+  const rNorm = new Float64Array(maxLag + 1);
+
+  // Window autocorrelation, computed once.
+  autocorrFFT(window, n, fftSize, scratch, rW, maxLag);
+  const rW0 = rW[0];
+
+  // detect(buffer): buffer is a Float32/Float64Array of frameLength
+  // samples at sampleRate. Returns { pitch, strength, voiced }.
+  function detect(buffer) {
+    // Local peak for the silence term (Praat compares against the
+    // global peak; in streaming we treat full scale 1.0 as global).
+    let mean = 0;
+    for (let i = 0; i < n; i++) mean += buffer[i];
+    mean /= n;
+    let localPeak = 0;
+    for (let i = 0; i < n; i++) {
+      const v = Math.abs(buffer[i] - mean);
+      if (v > localPeak) localPeak = v;
+    }
+    if (localPeak === 0) return { pitch: null, strength: 0, voiced: false };
+
+    for (let i = 0; i < n; i++) windowed[i] = (buffer[i] - mean) * window[i];
+    autocorrFFT(windowed, n, fftSize, scratch, rX, maxLag);
+    const r0 = rX[0];
+    if (r0 <= 0) return { pitch: null, strength: 0, voiced: false };
+    for (let t = 0; t <= maxLag; t++) rNorm[t] = (rX[t] / r0) / (rW[t] / rW0);
+
+    // Unvoiced candidate strength (Boersma eq. for R_unvoiced):
+    // voicingThreshold + max(0, 2 - (localPeak/globalPeak) /
+    //   (silenceThreshold / (1 + voicingThreshold)))
+    const unvoicedStrength = cfg.voicingThreshold + Math.max(
+      0,
+      2 - (localPeak / 1.0) / (cfg.silenceThreshold / (1 + cfg.voicingThreshold)),
+    );
+
+    // Voiced candidates: local maxima of rNorm in [minLag, maxLag].
+    let best = null;
+    let count = 0;
+    for (let t = minLag + 1; t < maxLag && count < cfg.maxCandidates * 4; t++) {
+      if (rNorm[t] > rNorm[t - 1] && rNorm[t] >= rNorm[t + 1] && rNorm[t] > 0.15) {
+        // Parabolic interpolation around the peak.
+        const a = rNorm[t - 1], b = rNorm[t], c = rNorm[t + 1];
+        const denom = a - 2 * b + c;
+        const dt = denom !== 0 ? 0.5 * (a - c) / denom : 0;
+        const lag = t + Math.max(-0.5, Math.min(0.5, dt));
+        const r = b - 0.25 * (a - c) * dt;
+        const freq = sampleRate / lag;
+        if (freq < cfg.minPitchHz || freq > cfg.maxPitchHz) continue;
+        // Praat candidate strength R' = R - octaveCost * log2(minPitch * tau).
+        // tau <= 1/minPitch makes the log term <= 0, so this is a bonus
+        // that grows with candidate frequency — Praat's counterweight to
+        // raw autocorrelation's subharmonic bias.
+        const strength = r - cfg.octaveCost * Math.log2(cfg.minPitchHz * lag / sampleRate);
+        count++;
+        if (!best || strength > best.strength) best = { freq, strength, r };
+      }
+    }
+
+    if (!best || best.strength <= unvoicedStrength) {
+      return { pitch: null, strength: best ? best.strength : 0, voiced: false };
+    }
+    return { pitch: best.freq, strength: best.strength, voiced: true };
+  }
+
+  return { detect, config: cfg, minLag, maxLag, fftSize };
+}
+
+// Normalized cross-correlation at a specific integer lag over the frame
+// (used by the half-period referee on SwiftF0 output). Searches +-search
+// lags around `lag` and returns the max.
+export function normCorrAtLag(buffer, lag, search = 2) {
+  const n = buffer.length;
+  let best = -1;
+  for (let L = lag - search; L <= lag + search; L++) {
+    if (L < 1 || L >= n) continue;
+    let num = 0, e0 = 0, e1 = 0;
+    for (let i = 0; i + L < n; i++) {
+      num += buffer[i] * buffer[i + L];
+      e0 += buffer[i] * buffer[i];
+      e1 += buffer[i + L] * buffer[i + L];
+    }
+    const denom = Math.sqrt(e0 * e1);
+    const r = denom > 0 ? num / denom : 0;
+    if (r > best) best = r;
+  }
+  return best;
+}
