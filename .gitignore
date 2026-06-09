@@ -34,3 +34,33 @@ tests/ml/data/
 # the audio + REF data files are excluded here.
 tests/dsp/data/ptdb-tug/FEMALE/
 tests/dsp/data/ptdb-tug/MALE/
+
+# Python bytecode cache (generated when scripts/ Python tools run).
+__pycache__/
+
+# Claude Code harness scheduled-tasks lockfile (per-user runtime state).
+.claude/scheduled_tasks.lock
+
+# Local scratch directory for research PDFs / prototype scripts / draft
+# PR bodies. Not part of the project; kept out of git.
+build/
+
+# Stale model-investigation artifacts from the audeering 6L + JaesungHuh
+# perceived-voice gender experiments. The investigations are preserved
+# on their own unmerged branches; these local copies in the build-output
+# dir aren't part of any shipping artifact.
+docs/audeering-6l-gender/
+docs/jaesunghuh-gender/
+
+# PENN Direction C investigation ONNX scaffolding. The investigation is
+# preserved on the pitch-detection-penn branch; the ONNX files
+# themselves are too large to commit on main.
+scripts/penn-validation/
+
+# public/ copies of the gender-model investigation artifacts (the source
+# dirs the build copies into the docs/ entries above). Accidentally
+# committed in 9d71338 (~105 MB), untracked again 2026-06-09 —
+# production loads the gender model from HF Hub (gender-worker.js sets
+# env.allowLocalModels = false), so these are unreachable from the app.
+public/audeering-6l-gender/
+public/jaesunghuh-gender/

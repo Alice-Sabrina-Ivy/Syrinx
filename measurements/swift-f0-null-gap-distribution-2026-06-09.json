@@ -1,0 +1,99 @@
+{
+  "generatedAt": "2026-06-09T18:06:31.110Z",
+  "confidenceThreshold": 0.5,
+  "candidateBoundsMs": [
+    100,
+    200,
+    300,
+    500,
+    1000
+  ],
+  "corpora": {
+    "hillenbrand": 1116,
+    "ptdb-tug": 180,
+    "vocadito": 40,
+    "fda": 100
+  },
+  "perCorpus": {
+    "hillenbrand": {
+      "interiorRunCount": 203,
+      "trackCount": 1116,
+      "hopMs": 25,
+      "percentilesFrames": {
+        "p50": 1,
+        "p75": 1,
+        "p90": 2,
+        "p95": 2,
+        "p99": 3
+      },
+      "maxFrames": 6,
+      "bridgedFractionAtBound": {
+        "100ms": 0.9950738916256158,
+        "200ms": 1,
+        "300ms": 1,
+        "500ms": 1,
+        "1000ms": 1
+      }
+    },
+    "ptdb-tug": {
+      "interiorRunCount": 1163,
+      "trackCount": 180,
+      "hopMs": 25,
+      "percentilesFrames": {
+        "p50": 4,
+        "p75": 6,
+        "p90": 8,
+        "p95": 11,
+        "p99": 16
+      },
+      "maxFrames": 30,
+      "bridgedFractionAtBound": {
+        "100ms": 0.5451418744625968,
+        "200ms": 0.9062768701633706,
+        "300ms": 0.9664660361134996,
+        "500ms": 0.9957007738607051,
+        "1000ms": 1
+      }
+    },
+    "vocadito": {
+      "interiorRunCount": 1145,
+      "trackCount": 40,
+      "hopMs": 24.988662131519273,
+      "percentilesFrames": {
+        "p50": 3,
+        "p75": 6,
+        "p90": 15,
+        "p95": 20,
+        "p99": 31
+      },
+      "maxFrames": 167,
+      "bridgedFractionAtBound": {
+        "100ms": 0.6567685589519651,
+        "200ms": 0.8235807860262009,
+        "300ms": 0.8812227074235808,
+        "500ms": 0.9510917030567686,
+        "1000ms": 0.9956331877729258
+      }
+    },
+    "fda": {
+      "interiorRunCount": 668,
+      "trackCount": 100,
+      "hopMs": 25,
+      "percentilesFrames": {
+        "p50": 4,
+        "p75": 6,
+        "p90": 8,
+        "p95": 10,
+        "p99": 14
+      },
+      "maxFrames": 17,
+      "bridgedFractionAtBound": {
+        "100ms": 0.5194610778443114,
+        "200ms": 0.9221556886227545,
+        "300ms": 0.9850299401197605,
+        "500ms": 1,
+        "1000ms": 1
+      }
+    }
+  }
+}
