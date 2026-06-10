@@ -18,7 +18,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { loadAllCorpora } from "../tests/dsp/data/corpora.js";
 import { resampleLinear } from "../tests/dsp/swift-f0-adapter.js";
-import { createBoersmaAC, createPathTracker } from "../tests/dsp/boersma-ac.js";
+import { createBoersmaAC, createPathTracker } from "../src/dsp/boersma-ac.js";
 
 const SR = 16000;
 const HOP = Math.round(SR * 0.025); // 400 samples = 25 ms

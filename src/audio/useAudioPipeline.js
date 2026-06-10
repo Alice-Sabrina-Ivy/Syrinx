@@ -357,23 +357,21 @@ export function useAudioPipeline() {
         [mlPort],
       );
 
-      // Pitch detection worker. Hosts SwiftF0 ONNX inference via
-      // onnxruntime-web; emits {pitch, confidence, voiced} per audio
-      // chunk. Replaces pYIN's pitch + voicedness signals (Stage 4
-      // cutover, 2026-05-06). Audio forked from the same captureSource
-      // via a third MessagePort.
+      // Pitch detection worker. Hosts the Boersma-AC (Praat-style
+      // autocorrelation) detector + bounded-Viterbi path tracker — pure
+      // JS, no model fetch, ready immediately. Emits {pitch, confidence,
+      // voiced} per audio chunk. Replaced SwiftF0 ONNX at the 2026-06-09
+      // cutover (weak-fundamental octave-up failure on low-F0 voices;
+      // see measurements/boersma-ac-tuning-2026-06-09.md). Audio forked
+      // from the same captureSource via a third MessagePort.
       const pitchWorker = new Worker(
         new URL("../dsp/pitch-worker.js", import.meta.url),
         { type: "module" },
       );
       pitchWorkerRef.current = pitchWorker;
-      // Vite serves /Syrinx/swift-f0/model.onnx in both dev and prod;
-      // import.meta.env.BASE_URL resolves to "/Syrinx/" per vite.config.js.
-      const modelUrl = `${import.meta.env.BASE_URL}swift-f0/model.onnx`;
       pitchWorker.postMessage({
         type: "init",
         inputSampleRate: captureSrc.sampleRate,
-        modelUrl,
         ...(DIAG_ENABLED ? { diag: true } : {}),
       });
 
