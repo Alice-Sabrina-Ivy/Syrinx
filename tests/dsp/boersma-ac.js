@@ -30,6 +30,7 @@ export const BOERSMA_DEFAULTS = {
   voicingThreshold: 0.45, // Praat default
   silenceThreshold: 0.03, // Praat default (fraction of global peak)
   octaveCost: 0.01,       // Praat default, per octave below ceiling
+  peakFloor: 0.15,        // ignore AC maxima weaker than this (rNorm)
   maxCandidates: 15,
 };
 
@@ -102,11 +103,14 @@ export function createBoersmaAC(sampleRate, frameLength, opts = {}) {
   autocorrFFT(window, n, fftSize, scratch, rW, maxLag);
   const rW0 = rW[0];
 
-  // detect(buffer): buffer is a Float32/Float64Array of frameLength
-  // samples at sampleRate. Returns { pitch, strength, voiced }.
-  function detect(buffer) {
-    // Local peak for the silence term (Praat compares against the
-    // global peak; in streaming we treat full scale 1.0 as global).
+  // candidates(buffer): returns Praat-style frame candidates
+  //   { voiced: [{ freq, strength }, ...], unvoicedStrength }
+  // sorted by descending strength. The voiced array holds up to
+  // maxCandidates local autocorrelation maxima in the pitch range; the
+  // unvoiced option competes via unvoicedStrength. Frame-local detection
+  // (detect, below) just takes the argmax; the path tracker runs a
+  // bounded-lookback Viterbi over these candidate sets.
+  function candidates(buffer) {
     let mean = 0;
     for (let i = 0; i < n; i++) mean += buffer[i];
     mean /= n;
@@ -115,28 +119,22 @@ export function createBoersmaAC(sampleRate, frameLength, opts = {}) {
       const v = Math.abs(buffer[i] - mean);
       if (v > localPeak) localPeak = v;
     }
-    if (localPeak === 0) return { pitch: null, strength: 0, voiced: false };
+    if (localPeak === 0) return { voiced: [], unvoicedStrength: cfg.voicingThreshold };
 
     for (let i = 0; i < n; i++) windowed[i] = (buffer[i] - mean) * window[i];
     autocorrFFT(windowed, n, fftSize, scratch, rX, maxLag);
     const r0 = rX[0];
-    if (r0 <= 0) return { pitch: null, strength: 0, voiced: false };
+    if (r0 <= 0) return { voiced: [], unvoicedStrength: cfg.voicingThreshold };
     for (let t = 0; t <= maxLag; t++) rNorm[t] = (rX[t] / r0) / (rW[t] / rW0);
 
-    // Unvoiced candidate strength (Boersma eq. for R_unvoiced):
-    // voicingThreshold + max(0, 2 - (localPeak/globalPeak) /
-    //   (silenceThreshold / (1 + voicingThreshold)))
     const unvoicedStrength = cfg.voicingThreshold + Math.max(
       0,
       2 - (localPeak / 1.0) / (cfg.silenceThreshold / (1 + cfg.voicingThreshold)),
     );
 
-    // Voiced candidates: local maxima of rNorm in [minLag, maxLag].
-    let best = null;
-    let count = 0;
-    for (let t = minLag + 1; t < maxLag && count < cfg.maxCandidates * 4; t++) {
-      if (rNorm[t] > rNorm[t - 1] && rNorm[t] >= rNorm[t + 1] && rNorm[t] > 0.15) {
-        // Parabolic interpolation around the peak.
+    const cands = [];
+    for (let t = minLag + 1; t < maxLag; t++) {
+      if (rNorm[t] > rNorm[t - 1] && rNorm[t] >= rNorm[t + 1] && rNorm[t] > cfg.peakFloor) {
         const a = rNorm[t - 1], b = rNorm[t], c = rNorm[t + 1];
         const denom = a - 2 * b + c;
         const dt = denom !== 0 ? 0.5 * (a - c) / denom : 0;
@@ -144,23 +142,124 @@ export function createBoersmaAC(sampleRate, frameLength, opts = {}) {
         const r = b - 0.25 * (a - c) * dt;
         const freq = sampleRate / lag;
         if (freq < cfg.minPitchHz || freq > cfg.maxPitchHz) continue;
-        // Praat candidate strength R' = R - octaveCost * log2(minPitch * tau).
-        // tau <= 1/minPitch makes the log term <= 0, so this is a bonus
-        // that grows with candidate frequency — Praat's counterweight to
-        // raw autocorrelation's subharmonic bias.
+        // Praat candidate strength: R - octaveCost*log2(minPitch*tau).
+        // tau ≤ 1/minPitch ⇒ log term ≤ 0 ⇒ bonus growing with freq,
+        // the counterweight to raw AC's subharmonic preference.
         const strength = r - cfg.octaveCost * Math.log2(cfg.minPitchHz * lag / sampleRate);
-        count++;
-        if (!best || strength > best.strength) best = { freq, strength, r };
+        cands.push({ freq, strength, r });
       }
     }
+    cands.sort((x, y) => y.strength - x.strength);
+    if (cands.length > cfg.maxCandidates) cands.length = cfg.maxCandidates;
+    return { voiced: cands, unvoicedStrength };
+  }
 
+  // detect(buffer): frame-local argmax over the candidate set. Returns
+  // { pitch, strength, voiced }.
+  function detect(buffer) {
+    const { voiced, unvoicedStrength } = candidates(buffer);
+    const best = voiced[0]; // candidates() returns descending strength
     if (!best || best.strength <= unvoicedStrength) {
       return { pitch: null, strength: best ? best.strength : 0, voiced: false };
     }
     return { pitch: best.freq, strength: best.strength, voiced: true };
   }
 
-  return { detect, config: cfg, minLag, maxLag, fftSize };
+  return { detect, candidates, config: cfg, minLag, maxLag, fftSize };
+}
+
+// createPathTracker — online bounded-lookback Viterbi over Boersma
+// candidate sets (Praat's path-finding, adapted to streaming with a
+// finite L-frame delay, mirroring the retired pYIN L=4 design). Suppresses
+// octave flips that frame-local argmax produces: a candidate that requires
+// an octave jump from the running path pays octaveJumpCost * |Δlog2 f|, so
+// a single strong subharmonic frame can't yank the contour unless it
+// persists. Voiced↔unvoiced transitions pay voicedUnvoicedCost.
+//
+// emit(frameCandidates) is called once per hop with the output of
+// detector.candidates(buffer); it returns the decoded pitch for the frame
+// that is now L hops old (null until the lattice has filled), so the
+// contour is delayed by L hops — acceptable at L≤4 (≤100 ms), the same
+// trade pYIN made.
+export const PATH_DEFAULTS = {
+  octaveJumpCost: 0.30,     // per octave of frame-to-frame pitch jump
+  voicedUnvoicedCost: 0.20, // entering/leaving voicing
+  lookback: 4,              // L: decode delay in frames
+};
+
+export function createPathTracker(opts = {}) {
+  const cfg = { ...PATH_DEFAULTS, ...opts };
+  // Lattice column: array of states { freq|null, localCost, totalCost,
+  // backState }. localCost = -strength (Viterbi minimizes cost). The
+  // window holds at most lookback+1 columns; backState chains are severed
+  // at the trailing edge each emit, bounding memory and making the search
+  // a true bounded-lookback decode (no traceback past the window).
+  let prevColumn = null;
+  const window = [];
+  let lastEmitted = null;
+
+  function transitionCost(prev, cur) {
+    const pv = prev.freq === null, cv = cur.freq === null;
+    if (pv !== cv) return cfg.voicedUnvoicedCost;
+    if (pv && cv) return 0;
+    return cfg.octaveJumpCost * Math.abs(Math.log2(cur.freq / prev.freq));
+  }
+
+  function buildColumn(frameCandidates) {
+    const states = frameCandidates.voiced.map((c) => ({
+      freq: c.freq, localCost: -c.strength, totalCost: 0, backState: null,
+    }));
+    states.push({
+      freq: null, localCost: -frameCandidates.unvoicedStrength,
+      totalCost: 0, backState: null,
+    });
+    if (!prevColumn) {
+      for (const s of states) s.totalCost = s.localCost;
+    } else {
+      for (const s of states) {
+        let bestCost = Infinity, bestBack = null;
+        for (const p of prevColumn) {
+          const c = p.totalCost + transitionCost(p, s) + s.localCost;
+          if (c < bestCost) { bestCost = c; bestBack = p; }
+        }
+        s.totalCost = bestCost; s.backState = bestBack;
+      }
+    }
+    prevColumn = states;
+    window.push(states);
+    return states;
+  }
+
+  // emit(frameCandidates): push a frame, return the decoded pitch for the
+  // frame now `lookback` hops old (null until the window has filled).
+  function emit(frameCandidates) {
+    const states = buildColumn(frameCandidates);
+    if (window.length <= cfg.lookback) return null;
+    // Trace the current best path back `lookback` columns to the window's
+    // trailing column, emit that, then drop and sever it.
+    let cur = states.reduce((a, b) => (b.totalCost < a.totalCost ? b : a));
+    for (let k = 0; k < cfg.lookback; k++) cur = cur.backState ?? cur;
+    lastEmitted = cur.freq;
+    window.shift();
+    for (const s of window[0]) s.backState = null; // sever; bound memory
+    return cur.freq;
+  }
+
+  // flush(): at stream end, decode and return the still-pending trailing
+  // frames (the last `window.length` columns) via best-path traceback.
+  function flush() {
+    if (!prevColumn) return [];
+    let cur = prevColumn.reduce((a, b) => (b.totalCost < a.totalCost ? b : a));
+    const tail = [];
+    while (cur) { tail.push(cur.freq); cur = cur.backState; }
+    tail.reverse();
+    const out = tail.slice(Math.max(0, tail.length - window.length));
+    window.length = 0;
+    prevColumn = null;
+    return out;
+  }
+
+  return { emit, flush, get lastEmitted() { return lastEmitted; }, config: cfg };
 }
 
 // Normalized cross-correlation at a specific integer lag over the frame
