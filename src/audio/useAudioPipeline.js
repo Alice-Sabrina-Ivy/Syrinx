@@ -14,6 +14,7 @@ import {
   PITCH_SMOOTH_LEN,
 } from "./pitchSmoothing";
 import { createGateState, evaluateFrameGate } from "./pitchGate";
+import { createPaintGate } from "./pitchPaintGate";
 import { createCaptureSource } from "./captureSource";
 import { VocalWeightAggregator } from "./vocal-weight-aggregator";
 import { VocalWeightBaseline } from "./vocal-weight-baseline";
@@ -49,40 +50,24 @@ import {
 const FORMANT_SMOOTH_LEN = 7;
 const FORMANT_OUTLIER_HZ = 500; // max plausible frame-to-frame formant jump
 
-// Display-layer hysteresis (2026-06-10, live-use report: pitch spikes at
-// utterance boundaries + the pitch view strobing grey when background
-// noise flaps the voicing decision at frame rate).
+// Display-layer hysteresis (2026-06-10, live-use reports: pitch spikes
+// at utterance boundaries, octave-class harmonic excursions painting as
+// connected spike lines, and the pitch view strobing grey when noise
+// flaps the voicing decision).
 //
-// ONSET_CONFIRM_FRAMES: pitch is painted (trace + readout) only once this
-// many consecutive frames carry a decoded pitch. 3 also means the first
-// painted value is a true median-of-3 — the smoothing buffer resets on
-// every gap, so the first post-gap frame otherwise passes through the
-// median unfiltered (which is exactly how onset spikes reached the
-// display). Spike-run classification
-// on the 2026-05-26 session (scripts/pitch-spike-measure.js): ~30 % of
-// user-visible spike runs sit in the first ~50 ms of a voiced segment —
-// every tracker misestimates fresh onsets. Cost: ~25 ms extra display
-// latency at utterance start only. Also prevents single noise-blip
-// frames from flashing the display to the voiced style.
+// Painting "is this pitch on the established level, and confirmed" lives
+// in pitchPaintGate.js (onset confirmation + established-level excursion
+// break with sustained-new-level accept) — extracted for unit testing.
+// It replaced an earlier consecutive-delta jump break that the 5-frame
+// median's octave ramps defeated; see that module's header + the
+// excursion measurement for the data.
 //
 // VOICED_FALL_FRAMES: the displayed voiced state drops to the inactive
 // (grey) style only after this many consecutive pitchless frames
 // (~400 ms); in between, the display shows the dim "holding" style. The
 // 300 ms CSS opacity transition then never strobes. Session recording is
 // NOT hysteresis'd — recorded frames keep the truthful per-frame flag.
-const ONSET_CONFIRM_FRAMES = 3;
 const VOICED_FALL_FRAMES = 16;
-
-// DISPLAY_JUMP_BREAK_SEMI: an instantaneous step of this many semitones
-// between consecutive painted values breaks display continuity — the new
-// level must re-earn ONSET_CONFIRM_FRAMES before painting (see the
-// jump-break block in handleAnalysisResult). 12 st = one octave per
-// 25 ms hop, far beyond any human glide rate; tracker-level harmonic
-// excursions (2x/3x/4x) all exceed it while real glides never do.
-// Measured on the 2026-05-26 session: full-height connected spike lines
-// 1791 -> 0, painted spike frames -14 %, at -2.3 pp display-only band
-// accuracy (50 ms re-confirm after each genuine register leap).
-const DISPLAY_JUMP_BREAK_SEMI = 12;
 
 export function useAudioPipeline() {
   const [state, setState] = useState({
@@ -189,15 +174,17 @@ export function useAudioPipeline() {
   const silenceStartRef = useRef(null);
   const gateStateRef = useRef(createGateState());
 
-  // Display hysteresis state (ONSET_CONFIRM_FRAMES / VOICED_FALL_FRAMES):
-  // consecutive pitched/pitchless frame streaks + whether the display is
-  // currently in the voiced style. Display-only — never feeds recording.
-  const displayStreakRef = useRef({ pitched: 0, unpitched: 0 });
+  // Display painting state (display-only — never feeds recording).
+  // - paintGateRef: onset confirmation + established-level excursion
+  //   break (pitchPaintGate.js). Decides whether each pitched frame
+  //   paints. Its level reference persists across brief gaps.
+  // - displayVoicedRef + unpitchedFramesRef: the VOICED_FALL_FRAMES
+  //   hysteresis — after this many consecutive non-painted frames the
+  //   display drops from the dim "holding" style to inactive grey, so
+  //   the readout/status don't strobe.
+  const paintGateRef = useRef(createPaintGate());
   const displayVoicedRef = useRef(false);
-  // Last pitch actually painted — the reference for the display jump
-  // break (see DISPLAY_JUMP_BREAK_SEMI). Survives unvoiced gaps by
-  // design; cleared on jump-break and stop().
-  const lastShownPitchRef = useRef(null);
+  const unpitchedFramesRef = useRef(0);
   const lastVoicedRef = useRef({
     pitch: null,
     noteName: null,
@@ -730,9 +717,9 @@ export function useAudioPipeline() {
     f3SmoothRef.current = [];
     silenceStartRef.current = null;
     gateStateRef.current = createGateState();
-    displayStreakRef.current = { pitched: 0, unpitched: 0 };
+    paintGateRef.current.reset();
     displayVoicedRef.current = false;
-    lastShownPitchRef.current = null;
+    unpitchedFramesRef.current = 0;
     pitchTraceRef.current = [];
     formantTrailRef.current = [];
     genderTraceRef.current = [];
@@ -887,11 +874,12 @@ export function useAudioPipeline() {
     }
 
     if (isQuiet) {
-      // Silence frames count as pitchless for the display hysteresis;
-      // the silence-hold below owns the dim/clear styling from here.
-      displayStreakRef.current.pitched = 0;
-      displayStreakRef.current.unpitched++;
-      if (displayStreakRef.current.unpitched >= VOICED_FALL_FRAMES) {
+      // Silence frames are a trace gap for the paint gate (continuity
+      // counters reset; the established level persists across this brief
+      // gap). The fall counter advances the dim→grey hysteresis.
+      paintGateRef.current.resetSegment();
+      unpitchedFramesRef.current++;
+      if (unpitchedFramesRef.current >= VOICED_FALL_FRAMES) {
         displayVoicedRef.current = false;
       }
 
@@ -924,12 +912,15 @@ export function useAudioPipeline() {
           vocalWeight: vw,
         }));
       } else {
-        // Prolonged silence: clear everything
+        // Prolonged silence: clear everything, including the paint
+        // gate's established level — a new utterance after a long pause
+        // should not be octave-judged against the pre-pause level.
         dspGateRef.current = { voiced: false, holding: false };
         pitchSmoothRef.current = [];
         f1SmoothRef.current = [];
         f2SmoothRef.current = [];
         f3SmoothRef.current = [];
+        paintGateRef.current.reset();
         const vw = buildVocalWeightState(cppAggregate);
         throttledSetState((s) => ({
           ...s,
@@ -1007,49 +998,35 @@ export function useAudioPipeline() {
 
     const framePitched = smoothedPitch !== null;
 
-    // Display hysteresis: paint pitch only after ONSET_CONFIRM_FRAMES
-    // consecutive pitched frames (fresh-onset estimates are the spikiest
-    // — see the spike-run classification in pitch-spike-measure.js — and
-    // single noise-blip frames must not flash the voiced style); drop to
-    // the inactive style only after VOICED_FALL_FRAMES pitchless frames
-    // (the dim "holding" style bridges the gap, so the readout never
-    // strobes). Recording below stays per-frame truthful.
-    const streak = displayStreakRef.current;
+    // Decide whether to PAINT this frame's pitch. pitchPaintGate.js owns
+    // onset confirmation AND the established-level excursion break: a
+    // value an octave-class jump off the established pitch level is
+    // suppressed (rendered as a gap) unless it sustains a consistent new
+    // level — so transient 2x/3x/4x harmonic locks never paint, while
+    // genuine register changes do. This replaced a consecutive-delta jump
+    // break that the 5-frame median's octave ramps defeated (the
+    // "testing 1 2 3" connected spike lines; see pitchPaintGate.js +
+    // measurements/pitch-excursion-break-2026-06-10.md). Recording stays
+    // per-frame truthful — this only governs the trace/readout.
+    //
+    // VOICED_FALL_FRAMES hysteresis: after this many consecutive
+    // non-painted frames the display drops from the dim "holding" style
+    // to inactive grey; in between it holds dim, so brief suppressions
+    // (onset confirm, short excursions) don't strobe the readout.
+    let displayPitched = false;
     if (framePitched) {
-      streak.pitched++;
-      streak.unpitched = 0;
+      displayPitched = paintGateRef.current.push(smoothedPitch);
     } else {
-      streak.pitched = 0;
-      streak.unpitched++;
+      paintGateRef.current.resetSegment();
     }
-
-    // Jump break: a >= DISPLAY_JUMP_BREAK_SEMI step between consecutive
-    // displayed values is physiologically impossible within one 25 ms hop
-    // (a voice cannot teleport two octaves), so treat it as a fresh onset
-    // needing its own ONSET_CONFIRM_FRAMES confirmation. Detector-level
-    // harmonic excursions (2x/3x/4x locks lasting 3-11 frames — see
-    // measurements/pitch-display-jump-break-2026-06-10.md) then render as
-    // short detached dashes instead of full-height vertical lines joined
-    // to the real trace, and excursions shorter than the confirm window
-    // disappear entirely. Real fast glides are unaffected: their
-    // per-frame deltas stay far below the threshold. The reference
-    // persists through unvoiced gaps, so a post-gap re-entry on a wrong
-    // harmonic must also re-confirm. Display-only; recording unaffected.
-    if (
-      framePitched &&
-      lastShownPitchRef.current !== null &&
-      Math.abs(12 * Math.log2(smoothedPitch / lastShownPitchRef.current)) >= DISPLAY_JUMP_BREAK_SEMI
-    ) {
-      streak.pitched = 1;
-      lastShownPitchRef.current = null;
-    }
-
-    const displayPitched = framePitched && streak.pitched >= ONSET_CONFIRM_FRAMES;
     if (displayPitched) {
       displayVoicedRef.current = true;
-      lastShownPitchRef.current = smoothedPitch;
-    } else if (streak.unpitched >= VOICED_FALL_FRAMES) {
-      displayVoicedRef.current = false;
+      unpitchedFramesRef.current = 0;
+    } else {
+      unpitchedFramesRef.current++;
+      if (unpitchedFramesRef.current >= VOICED_FALL_FRAMES) {
+        displayVoicedRef.current = false;
+      }
     }
     const displayHolding = !displayPitched && displayVoicedRef.current;
 
