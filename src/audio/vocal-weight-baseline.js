@@ -15,11 +15,28 @@
 //     cadence).
 //   - Until the buffer fills, the gauge is "Calibrating: X %" and
 //     no μ/σ is exposed — ready() is false.
-//   - Once full, μ and σ are recomputed on every new emit; the
-//     oldest emit drops out. The gauge always reflects the user's
-//     recent ~30 s of voice.
+//   - Once full, μ and σ are FROZEN for the rest of the session
+//     (changed 2026-06-10 from a continuously-sliding window). The
+//     gauge then reads the user's current voice against a fixed
+//     reference, so sustained changes stay visible.
 //   - No persistence between sessions, no buttons, no target voice.
 //     Each session calibrates from scratch.
+//
+// Why freeze (2026-06-10 accuracy pass): the sliding window
+// mean-reverted — a sustained lighter passage pulled μ up to meet it,
+// so the gauge drifted back toward center as if the change hadn't
+// happened. Measured on the 2026-05-26 session: over a 24 s sustained-
+// lighter run the sliding gauge moved 0.38→0.20 (toward heavier!),
+// while the frozen gauge held 0.74→0.64 (correctly lighter). Freezing
+// also fixes sensitivity drift — a continuously-recomputed σ deadened
+// the gauge whenever recent speech was varied. Gauge-vs-CPP fidelity
+// (fraction of needle motion explained by the current voice rather
+// than baseline drift) rose 0.795→0.956. Trade-off: the first 30 s
+// must be reasonably representative — an unusual warm-up (throat-clear,
+// deliberately heavy start) miscalibrates the whole session with no
+// recovery until restart. The "Calibrating…" UI implicitly asks for
+// normal speech; accepted as the zero-interaction cost.
+// measurements/vocal-weight-accuracy-pass-2026-06-10.md.
 //
 // Why this design (course correction 2026-05-12 from the earlier
 // Stage C hybrid self+target with persistence): the hybrid approach
@@ -46,7 +63,14 @@
 // tuning.
 export const BASELINE_AGGREGATE_INTERVAL_MS = 250;
 export const BASELINE_VOICED_MS = 30000;   // 30 s of cumulative voiced content
-export const BASELINE_SIGMA = 2;           // gauge spans ±2σ from μ
+// Gauge spans ±BASELINE_SIGMA·σ from μ. Widened 2→3 on 2026-06-10
+// alongside the μ/σ freeze (below): a frozen σ measured over the calm
+// first 30 s underestimates full-session CPP spread, so a ±2σ span
+// clamped 17.7 % of later frames on the 2026-05-26 session. ±3σ brings
+// clamp to 7.1 % (≈ the old sliding-window's 5.5 %) while still using
+// 81 % of the gauge range. measurements/vocal-weight-accuracy-pass-
+// 2026-06-10.md.
+export const BASELINE_SIGMA = 3;
 export const BASELINE_MIN_SAMPLES = 8;     // floor for σ to be meaningful
 
 export class VocalWeightBaseline {
@@ -88,6 +112,10 @@ export class VocalWeightBaseline {
   // finite number. Caller is responsible for filtering: only voiced
   // aggregates should be accumulated.
   accumulate(sample) {
+    // Frozen after the baseline window first fills (see header). Once
+    // μ/σ are set, further samples are ignored — the reference holds
+    // for the rest of the session. reset() clears the freeze.
+    if (this._mu !== null) return;
     const { cpp } = sample;
     if (typeof cpp !== "number" || !isFinite(cpp)) return;
     this._buffer[this._writeIdx] = cpp;
@@ -99,11 +127,8 @@ export class VocalWeightBaseline {
         return;
       }
     }
-    // Buffer is full — recompute μ/σ from the entire window. O(N)
-    // per push, N = 120 by default = ~120 float ops at ~4 Hz emit
-    // cadence. Trivial cost; chosen over incremental sum/sum-sq
-    // updates for numerical clarity (no accumulated rounding drift
-    // across long sessions).
+    // Buffer just filled — compute μ/σ once from the full window and
+    // freeze them. O(N), one time per session. N = 120 by default.
     let sum = 0;
     for (let i = 0; i < this._windowSize; i++) sum += this._buffer[i];
     const mu = sum / this._windowSize;
