@@ -73,6 +73,17 @@ const FORMANT_OUTLIER_HZ = 500; // max plausible frame-to-frame formant jump
 const ONSET_CONFIRM_FRAMES = 3;
 const VOICED_FALL_FRAMES = 16;
 
+// DISPLAY_JUMP_BREAK_SEMI: an instantaneous step of this many semitones
+// between consecutive painted values breaks display continuity — the new
+// level must re-earn ONSET_CONFIRM_FRAMES before painting (see the
+// jump-break block in handleAnalysisResult). 12 st = one octave per
+// 25 ms hop, far beyond any human glide rate; tracker-level harmonic
+// excursions (2x/3x/4x) all exceed it while real glides never do.
+// Measured on the 2026-05-26 session: full-height connected spike lines
+// 1791 -> 0, painted spike frames -14 %, at -2.3 pp display-only band
+// accuracy (50 ms re-confirm after each genuine register leap).
+const DISPLAY_JUMP_BREAK_SEMI = 12;
+
 export function useAudioPipeline() {
   const [state, setState] = useState({
     status: "idle",
@@ -183,6 +194,10 @@ export function useAudioPipeline() {
   // currently in the voiced style. Display-only — never feeds recording.
   const displayStreakRef = useRef({ pitched: 0, unpitched: 0 });
   const displayVoicedRef = useRef(false);
+  // Last pitch actually painted — the reference for the display jump
+  // break (see DISPLAY_JUMP_BREAK_SEMI). Survives unvoiced gaps by
+  // design; cleared on jump-break and stop().
+  const lastShownPitchRef = useRef(null);
   const lastVoicedRef = useRef({
     pitch: null,
     noteName: null,
@@ -717,6 +732,7 @@ export function useAudioPipeline() {
     gateStateRef.current = createGateState();
     displayStreakRef.current = { pitched: 0, unpitched: 0 };
     displayVoicedRef.current = false;
+    lastShownPitchRef.current = null;
     pitchTraceRef.current = [];
     formantTrailRef.current = [];
     genderTraceRef.current = [];
@@ -1000,9 +1016,35 @@ export function useAudioPipeline() {
       streak.pitched = 0;
       streak.unpitched++;
     }
+
+    // Jump break: a >= DISPLAY_JUMP_BREAK_SEMI step between consecutive
+    // displayed values is physiologically impossible within one 25 ms hop
+    // (a voice cannot teleport two octaves), so treat it as a fresh onset
+    // needing its own ONSET_CONFIRM_FRAMES confirmation. Detector-level
+    // harmonic excursions (2x/3x/4x locks lasting 3-11 frames — see
+    // measurements/pitch-display-jump-break-2026-06-10.md) then render as
+    // short detached dashes instead of full-height vertical lines joined
+    // to the real trace, and excursions shorter than the confirm window
+    // disappear entirely. Real fast glides are unaffected: their
+    // per-frame deltas stay far below the threshold. The reference
+    // persists through unvoiced gaps, so a post-gap re-entry on a wrong
+    // harmonic must also re-confirm. Display-only; recording unaffected.
+    if (
+      framePitched &&
+      lastShownPitchRef.current !== null &&
+      Math.abs(12 * Math.log2(smoothedPitch / lastShownPitchRef.current)) >= DISPLAY_JUMP_BREAK_SEMI
+    ) {
+      streak.pitched = 1;
+      lastShownPitchRef.current = null;
+    }
+
     const displayPitched = framePitched && streak.pitched >= ONSET_CONFIRM_FRAMES;
-    if (displayPitched) displayVoicedRef.current = true;
-    else if (streak.unpitched >= VOICED_FALL_FRAMES) displayVoicedRef.current = false;
+    if (displayPitched) {
+      displayVoicedRef.current = true;
+      lastShownPitchRef.current = smoothedPitch;
+    } else if (streak.unpitched >= VOICED_FALL_FRAMES) {
+      displayVoicedRef.current = false;
+    }
     const displayHolding = !displayPitched && displayVoicedRef.current;
 
     const noteInfo = displayPitched ? hzToNote(smoothedPitch) : null;
