@@ -73,6 +73,22 @@ Production-module end-to-end check (real pitchPaintGate, not the sweep's
 inline copy): 54 725 painted / 142 connected / 24 octave-class — matches
 the sweep exactly.
 
+## The "81 %" band number is alignment-understated — true accuracy ~94 %
+
+The `band 80-110 corr` column above is a *relative knob-comparison*
+metric (did the fix help: 79 → 81), scored at a fixed ~98 ms attribution
+offset. That offset doesn't account for the 5-frame median's lag.
+`scripts/pitch-accuracy-decompose.js` sweeps the offset: displayed-pitch
+accuracy in the 80-110 band peaks at **93.6 % @5 % / 95.8 % @10 %** at
+150 ms (window-center 48 ms + decode + median lag), matching the tuning
+shootout's 93.7 %. 81 % was a point on the rising edge of that curve, not
+the accuracy. Non-correct decomposition at correct alignment: near-miss
+(5-12 %) 2.5 %, octave-up 2.4 %, octave-down 0 %, gross-other 1.4 %.
+93.6 % agreement with Praat @5 % is near the ceiling of cross-tracker
+agreement; the only genuinely-improvable slice is the 2.4 % residual
+low-F0 octave lock, whose levers (path lookback L=4, adaptive range
+prior, PENN) are all marginal or costly. Treat ~94 % as the real number.
+
 ## Residual / limitations
 
 - ~24 octave-class connecting steps remain over 53 min (~0.45/min), each
