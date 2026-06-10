@@ -91,7 +91,13 @@ export const CPP_F0_MAX_HZ = 625;           // sets quefrency lower bound
 export const CPP_DEFAULT_REGRESSION = "linear";
 export const CPP_DEFAULT_TREND = "linear";
 export const CPP_DEFAULT_TIME_SMOOTH_FRAMES = 1;
-export const CPP_DEFAULT_QUEFRENCY_SMOOTH_BINS = 3;
+// Quefrency smoothing was the ONE Maryn component that improved Praat
+// correlation (2026-05-10 isolation); the bin COUNT was adopted from
+// Praat's default 3 without sweeping. The 2026-06-10 bins sweep
+// (measurements/cpp-quefrency-bins-sweep-2026-06-10.md) found 5 the
+// peak: mean Praat r 0.493→0.500, FDA 0.711→0.724, with Hillenbrand/
+// PTDB flat; 7+ regress. Marginal but free.
+export const CPP_DEFAULT_QUEFRENCY_SMOOTH_BINS = 5;
 export const CPP_THEIL_PAIRS = 500;          // sampled Theil pair count
 
 // --- Anti-alias FIR + canonical-rate resampler ---

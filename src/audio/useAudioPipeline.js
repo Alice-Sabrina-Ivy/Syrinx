@@ -837,26 +837,32 @@ export function useAudioPipeline() {
     });
     const { pitch, hasPitch, isQuiet } = gate;
 
-    // Push CPP into the vocal-weight aggregator with the DEBOUNCED
-    // voicing flag (audit §3.5). Frames are pushed regardless of the
-    // silent/voiced branch below — the aggregator's hard-reset rule
-    // depends on observing unvoiced gaps. Only the aggregator's emit
-    // result drives the gauge state update further down.
+    // Push CPP into the vocal-weight aggregator gated on CONFIRMED
+    // PITCH, not the silence gate (changed 2026-06-10). CPP measures
+    // harmonic periodicity, so a frame the pitch detector confirms as
+    // pitched is exactly a frame where CPP is meaningful; the old
+    // !isQuiet gate let breath/fricatives/background noise (loud but
+    // unpitched) into the aggregate, dragging it toward "heavy/breathy."
+    // On the 2026-05-26 session this cut Praat-unvoiced contamination of
+    // the gauge feed from 59.5 % to 45.9 %. Frames are pushed regardless
+    // of the silent/voiced branch below — the aggregator's hard-reset
+    // rule depends on observing unpitched gaps. Only the aggregator's
+    // emit result drives the gauge state update further down.
     let cppAggregate = null;
     if (cppAggregatorRef.current) {
       cppAggregate = cppAggregatorRef.current.push({
         time: now,
         cpp,                               // may be null on non-6th-frame DSP cycles
-        voiced: !isQuiet,
+        voiced: hasPitch,
       });
     }
-    if (DIAG_ENABLED) noteVocalWeightFrame(!isQuiet);
-    // Feed locked-or-warming baseline. Only voiced aggregates contribute
-    // to the baseline so silence/breath don't bias μ. Once baseline locks,
+    if (DIAG_ENABLED) noteVocalWeightFrame(hasPitch);
+    // Feed locked-or-warming baseline. Only pitched aggregates contribute
+    // so silence/breath/noise don't bias μ. Once baseline freezes,
     // accumulate() is a no-op.
     const isFreshAggregate =
       cppAggregate && cppAggregate.time !== lastCppAggregateRef.current.time;
-    if (isFreshAggregate && !isQuiet && cppBaselineRef.current) {
+    if (isFreshAggregate && hasPitch && cppBaselineRef.current) {
       cppBaselineRef.current.accumulate({
         time: cppAggregate.time,
         cpp: cppAggregate.cpp,
