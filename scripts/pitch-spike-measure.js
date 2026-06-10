@@ -59,6 +59,23 @@ function spikeEvents(series, hopMs) {
 const samples = readWav(SESSION);
 const hopMs = HOP / SR * 1000;
 
+// Display path: production median-5 smoothing (buffer reset on gaps)
+// gated by onset confirmation — pitch is painted only once
+// `confirmFrames` consecutive decoded frames carry pitch.
+// confirmFrames = 1 reproduces the pre-fix display (every decoded frame
+// painted immediately); 3 is the shipped ONSET_CONFIRM_FRAMES
+// (useAudioPipeline.js, 2026-06-10).
+function displaySeries(decoded, confirmFrames) {
+  const smoothBuf = [];
+  let streak = 0;
+  return decoded.map((p) => {
+    if (!(p > 0)) { smoothBuf.length = 0; streak = 0; return 0; }
+    streak++;
+    const m = pushAndMedianPitch(smoothBuf, p, PITCH_SMOOTH_LEN);
+    return streak >= confirmFrames ? m : 0;
+  });
+}
+
 for (const L of [2, 4, 6]) {
   const ac = createBoersmaAC(SR, N);
   const pt = createPathTracker({ lookback: L });
@@ -71,14 +88,11 @@ for (const L of [2, 4, 6]) {
     if (v !== undefined) decoded.push(v ?? 0);
   }
   decoded.push(...pt.flush().map((v) => v ?? 0));
-  // Production display smoothing: median-5, buffer reset on gaps > hold.
-  const smoothBuf = [];
-  const displayed = decoded.map((p) => {
-    if (!(p > 0)) { smoothBuf.length = 0; return 0; }
-    return pushAndMedianPitch(smoothBuf, p, PITCH_SMOOTH_LEN);
-  });
-  const s = spikeEvents(displayed, hopMs);
-  console.log(`L=${L}: ${s.events} spike events (${s.perMin}/voiced-min)`);
+  for (const confirm of [1, 3]) {
+    const s = spikeEvents(displaySeries(decoded, confirm), hopMs);
+    const label = confirm === 1 ? "pre-fix display" : "shipped onset-confirm(3)";
+    console.log(`L=${L} ${label}: ${s.events} spike events (${s.perMin}/voiced-min)`);
+  }
 }
 
 // Praat reference floor on the same audio (10 ms grid → ~25 ms equiv).
