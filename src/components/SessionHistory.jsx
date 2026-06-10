@@ -434,10 +434,16 @@ function drawStaticPitchTrace(canvas, frames, dpr) {
   ctx.stroke();
   ctx.setLineDash([]);
 
-  // Pitch line
+  // Pitch line. Clip to the plot rect: sessions recorded before the
+  // 2026-06-10 detector-floor change can hold stored F0 below the 75 Hz
+  // display floor, which would otherwise paint under the chart here too.
   ctx.lineWidth = 1.5 * dpr;
   ctx.lineJoin = "round";
   ctx.lineCap = "round";
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(plotLeft, plotTop, plotRight - plotLeft, plotBottom - plotTop);
+  ctx.clip();
 
   let inSegment = false;
   for (let i = 0; i < frames.length; i++) {
@@ -470,6 +476,7 @@ function drawStaticPitchTrace(canvas, frames, dpr) {
     }
   }
   if (inSegment) ctx.stroke();
+  ctx.restore(); // end plot-rect clip
 }
 
 function drawStaticResonanceTrace(canvas, frames, dpr) {
