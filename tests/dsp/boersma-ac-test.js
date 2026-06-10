@@ -48,6 +48,19 @@ check("silence is unvoiced", ac.detect(new Float32Array(N)).pitch === null);
   check("white noise is unvoiced", ac.detect(noise).pitch === null);
 }
 
+console.log("\ndetector — real-mic levels (adaptive global peak)");
+{
+  // Regression: live mics with AGC off peak at 0.01-0.05 full scale. The
+  // pre-fix silence term normalized against hardcoded full scale (1.0)
+  // and silenced quiet-but-clean speech (live-use report 2026-06-09).
+  const quiet = createBoersmaAC(SR, N);
+  const b = new Float32Array(N);
+  for (let i = 0; i < N; i++) b[i] = 0.02 * Math.sin(2 * Math.PI * 100 * i / SR);
+  let r;
+  for (let k = 0; k < 5; k++) r = quiet.detect(b);
+  check("quiet mic (peak 0.02) 100 Hz tone is voiced", near(r.pitch, 100, 1));
+}
+
 console.log("\ncandidates — shape");
 {
   const c = ac.candidates(tone(150));

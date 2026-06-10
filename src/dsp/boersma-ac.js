@@ -103,6 +103,15 @@ export function createBoersmaAC(sampleRate, frameLength, opts = {}) {
     window[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (n - 1));
   }
 
+  // Adaptive global peak for the Boersma silence term. Praat normalizes
+  // localPeak by the RECORDING's global peak; a streaming detector has no
+  // file, so track a slowly decaying running max (~17 s half-life at the
+  // 25 ms hop). Hardcoding 1.0 (pre-fix) silenced real mics: with AGC off
+  // speech peaks at 0.01-0.05 full-scale, inflating unvoicedStrength past
+  // any voiced candidate — a clean 100 Hz tone at peak 0.02 decoded
+  // UNVOICED. Corpus/session WAVs sit near full scale, which masked this
+  // in every harness; caught from live-use report 2026-06-09.
+  let globalPeak = 1e-4;
   const scratch = { re: new Float64Array(fftSize), im: new Float64Array(fftSize) };
   const windowed = new Float64Array(n);
   const rX = new Float64Array(maxLag + 1);
@@ -130,6 +139,7 @@ export function createBoersmaAC(sampleRate, frameLength, opts = {}) {
       if (v > localPeak) localPeak = v;
     }
     if (localPeak === 0) return { voiced: [], unvoicedStrength: cfg.voicingThreshold };
+    globalPeak = Math.max(localPeak, globalPeak * 0.999, 1e-4);
 
     for (let i = 0; i < n; i++) windowed[i] = (buffer[i] - mean) * window[i];
     autocorrFFT(windowed, n, fftSize, scratch, rX, maxLag);
@@ -139,7 +149,7 @@ export function createBoersmaAC(sampleRate, frameLength, opts = {}) {
 
     const unvoicedStrength = cfg.voicingThreshold + Math.max(
       0,
-      2 - (localPeak / 1.0) / (cfg.silenceThreshold / (1 + cfg.voicingThreshold)),
+      2 - (localPeak / globalPeak) / (cfg.silenceThreshold / (1 + cfg.voicingThreshold)),
     );
 
     const cands = [];
