@@ -27,7 +27,7 @@ console.log("VocalWeightBaseline — exported defaults");
 {
   check("BASELINE_VOICED_MS = 30000", BASELINE_VOICED_MS === 30000);
   check("BASELINE_AGGREGATE_INTERVAL_MS = 250", BASELINE_AGGREGATE_INTERVAL_MS === 250);
-  check("BASELINE_SIGMA = 2", BASELINE_SIGMA === 2);
+  check("BASELINE_SIGMA = 3", BASELINE_SIGMA === 3);
   check("BASELINE_MIN_SAMPLES = 8", BASELINE_MIN_SAMPLES === 8);
 }
 
@@ -119,16 +119,16 @@ console.log("\nGauge position mapping");
   const posAtMu = b.gaugePosition(mu);
   check("gaugePosition(μ) ≈ 0.5", Math.abs(posAtMu - 0.5) < 1e-9);
 
-  // Position at μ + 2σ should be 1.0 (top of gauge)
-  const posAtPlus2 = b.gaugePosition(mu + 2 * sigma);
-  check("gaugePosition(μ + 2σ) = 1.0 (top)", Math.abs(posAtPlus2 - 1.0) < 1e-9);
+  // Position at μ + 3σ should be 1.0 (top of gauge — span is ±3σ)
+  const posAtPlus3 = b.gaugePosition(mu + 3 * sigma);
+  check("gaugePosition(μ + 3σ) = 1.0 (top)", Math.abs(posAtPlus3 - 1.0) < 1e-9);
 
-  // Position at μ - 2σ should be 0.0 (bottom)
-  const posAtMinus2 = b.gaugePosition(mu - 2 * sigma);
-  check("gaugePosition(μ - 2σ) = 0.0 (bottom)", Math.abs(posAtMinus2 - 0.0) < 1e-9);
+  // Position at μ - 3σ should be 0.0 (bottom)
+  const posAtMinus3 = b.gaugePosition(mu - 3 * sigma);
+  check("gaugePosition(μ - 3σ) = 0.0 (bottom)", Math.abs(posAtMinus3 - 0.0) < 1e-9);
 
-  // Position at μ + 5σ should be clamped to 1.0
-  const posWayHigh = b.gaugePosition(mu + 5 * sigma);
+  // Position at μ + 6σ should be clamped to 1.0
+  const posWayHigh = b.gaugePosition(mu + 6 * sigma);
   check("gaugePosition above ±gaugeSigma is clamped to 1", posWayHigh === 1);
 
   // sigmaDelta should be straightforward (σ-units)
@@ -154,41 +154,49 @@ console.log("\nReset clears all state");
   check("progress() = 0 after reset", b.progress() === 0);
 }
 
-console.log("\nSliding window: μ tracks the recent window");
+console.log("\nFreeze: μ holds after lock (no mean-reversion)");
 {
   const b = fastBaseline();
-  // Fill window with CPP=2.0 — μ should be 2.0
-  for (let i = 0; i < 16; i++) b.accumulate({ time: i * 250, cpp: 2.0 });
+  // Fill window centered on 2.0 with mild spread so σ > 0 (μ ≈ 2.0).
+  const fill = [1.8, 2.0, 2.2, 2.0, 1.9, 2.1, 2.0, 2.0, 1.8, 2.2, 2.0, 2.0, 1.9, 2.1, 2.0, 2.0];
+  for (let i = 0; i < 16; i++) b.accumulate({ time: i * 250, cpp: fill[i] });
   check("ready after first 16 samples", b.ready());
   const muInitial = b.mu();
-  check("μ ≈ 2.0 after initial fill", Math.abs(muInitial - 2.0) < 1e-9, `got ${muInitial}`);
+  check("μ ≈ 2.0 after initial fill", Math.abs(muInitial - 2.0) < 0.05, `got ${muInitial}`);
 
-  // Push 16 more samples at CPP=8.0 — buffer is now ALL 8.0s
+  // Push 16 more samples at CPP=8.0 — frozen μ must NOT follow.
+  // (Pre-2026-06-10 this slid to 8.0, the mean-reversion that made
+  // sustained changes vanish from the gauge.)
   for (let i = 16; i < 32; i++) b.accumulate({ time: i * 250, cpp: 8.0 });
-  check("μ has drifted to ≈ 8.0 after full window of new values",
-    Math.abs(b.mu() - 8.0) < 1e-9, `got ${b.mu()}`);
-  check("ready stays true throughout drift", b.ready());
+  check("μ holds at ≈2.0 after a sustained higher run (frozen)",
+    Math.abs(b.mu() - muInitial) < 1e-9, `got ${b.mu()}`);
+  // A sustained-lighter voice therefore reads as lighter on the gauge,
+  // not drifting back to center: CPP 8.0 ≫ frozen μ → top of gauge.
+  check("sustained higher CPP reads at gauge top (not recentered)",
+    b.gaugePosition(8.0) === 1);
+  check("ready stays true after freeze", b.ready());
 }
 
-console.log("\nSliding window: σ tracks the recent window");
+console.log("\nFreeze: σ holds after lock (no sensitivity drift)");
 {
   const b = fastBaseline();
-  // Fill with low-σ samples (all 2.0)
-  for (let i = 0; i < 16; i++) b.accumulate({ time: i * 250, cpp: 2.0 });
-  check("σ = 0 with all-identical fill", b.sigma() === 0);
+  // Lock with varied samples so σ > 0 (alternating 1.0/3.0 → σ≈1.0).
+  for (let i = 0; i < 16; i++) b.accumulate({ time: i * 250, cpp: i % 2 === 0 ? 3.0 : 1.0 });
+  check("ready with varied fill", b.ready());
+  const sigmaInitial = b.sigma();
+  check("σ > 0 after varied fill", sigmaInitial > 0);
 
-  // Push 16 alternating high/low samples — σ should grow
-  for (let i = 16; i < 32; i++) {
-    b.accumulate({ time: i * 250, cpp: i % 2 === 0 ? 5.0 : 1.0 });
-  }
-  check("σ > 0 after window fills with varied samples", b.sigma() > 0);
-  // μ should be ≈ 3.0 (avg of 5 and 1)
-  check("μ ≈ 3.0 after alternating fill", Math.abs(b.mu() - 3.0) < 0.1, `got ${b.mu()}`);
+  // Push 16 wildly-varied samples — frozen σ must NOT grow (growing σ
+  // is what deadened the gauge when recent speech was varied).
+  for (let i = 16; i < 32; i++) b.accumulate({ time: i * 250, cpp: i % 2 === 0 ? 20.0 : -10.0 });
+  check("σ holds after a varied run (frozen)",
+    Math.abs(b.sigma() - sigmaInitial) < 1e-9, `got ${b.sigma()} vs ${sigmaInitial}`);
 }
 
-console.log("\nSliding window: old emits age out FIFO");
+console.log("\nFreeze: μ/σ computed once at the lock moment");
 {
-  // 4-sample window so we can verify ageout precisely.
+  // 4-sample window: μ should be the mean of the FIRST four samples
+  // that fill the buffer, then frozen — never the most-recent four.
   const b = new VocalWeightBaseline({
     baselineVoicedMs: 1000,
     aggregateIntervalMs: 250,
@@ -200,16 +208,12 @@ console.log("\nSliding window: old emits age out FIFO");
   check("not ready with 3 of 4 samples", b.ready() === false);
   b.accumulate({ time: 750, cpp: 4.0 });
   check("ready with 4/4 samples", b.ready());
-  // μ = (1+2+3+4)/4 = 2.5
-  check("μ = 2.5 with window [1,2,3,4]", Math.abs(b.mu() - 2.5) < 1e-9);
+  check("μ = 2.5 frozen from the first window [1,2,3,4]", Math.abs(b.mu() - 2.5) < 1e-9);
 
-  // Push a new sample — oldest (1.0) ages out, window becomes [2,3,4,5]
+  // Further pushes are ignored — μ stays 2.5 (pre-freeze this aged to 3.5).
   b.accumulate({ time: 1000, cpp: 5.0 });
-  check("μ = 3.5 after oldest (1.0) ages out", Math.abs(b.mu() - 3.5) < 1e-9, `got ${b.mu()}`);
-
-  // Another push — window becomes [3,4,5,6]
   b.accumulate({ time: 1250, cpp: 6.0 });
-  check("μ = 4.5 after second ageout", Math.abs(b.mu() - 4.5) < 1e-9, `got ${b.mu()}`);
+  check("μ unchanged after post-lock pushes (frozen)", Math.abs(b.mu() - 2.5) < 1e-9, `got ${b.mu()}`);
 }
 
 console.log("\nSliding window: aggregator hard-reset interaction (long unvoiced gap)");
