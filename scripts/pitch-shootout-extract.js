@@ -31,7 +31,7 @@ import {
   SWIFT_F0_SAMPLE_RATE,
   SWIFT_F0_FRAME_LENGTH,
 } from "../tests/dsp/swift-f0-adapter.js";
-import { createBoersmaAC, createPathTracker, normCorrAtLag } from "../tests/dsp/boersma-ac.js";
+import { createBoersmaAC, createPathTracker, normCorrAtLag } from "../src/dsp/boersma-ac.js";
 import * as ort from "onnxruntime-node";
 
 const CONFIDENCE_THRESHOLD = 0.5;

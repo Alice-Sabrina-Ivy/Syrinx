@@ -27,12 +27,22 @@
 export const BOERSMA_DEFAULTS = {
   minPitchHz: 50,
   maxPitchHz: 600,
-  voicingThreshold: 0.45, // Praat default
+  voicingThreshold: 0.40, // tuned (Praat default 0.45) — stage-A sweep,
+                          // measurements/boersma-ac-tuning-2026-06-09.md
   silenceThreshold: 0.03, // Praat default (fraction of global peak)
-  octaveCost: 0.01,       // Praat default, per octave below ceiling
+  octaveCost: 0.01,       // Praat default. DO NOT RAISE — higher values
+                          // are a high-octave bias that re-creates the
+                          // weak-H1 octave-up failure on low-F0 voices
+                          // (stage-A: 0.2 -> 48.5 % octave-up in the
+                          // user-session 80-110 Hz band).
   peakFloor: 0.15,        // ignore AC maxima weaker than this (rNorm)
   maxCandidates: 15,
 };
+
+// Production frame length at 16 kHz: 96 ms. Stage-B sweep: beats 64 ms
+// (vocadito +1.8, session +2.1, flips -2.7) and 128 ms (which blurs
+// dynamic speech). Response center sits 48 ms behind the latest sample.
+export const BOERSMA_FRAME_LENGTH_16K = 1536;
 
 // In-place iterative radix-2 complex FFT (re/im arrays, length power of 2).
 function fft(re, im, invert) {
@@ -182,9 +192,13 @@ export function createBoersmaAC(sampleRate, frameLength, opts = {}) {
 // contour is delayed by L hops — acceptable at L≤4 (≤100 ms), the same
 // trade pYIN made.
 export const PATH_DEFAULTS = {
-  octaveJumpCost: 0.30,     // per octave of frame-to-frame pitch jump
+  octaveJumpCost: 0.15,     // per octave of frame-to-frame pitch jump.
+                            // Tuned (stage-C): higher values make a
+                            // wrong octave stickier, not rarer.
   voicedUnvoicedCost: 0.20, // entering/leaving voicing
-  lookback: 4,              // L: decode delay in frames
+  lookback: 4,              // L: decode delay in frames (100 ms at the
+                            // 25 ms hop; L=2 costs ~0.3 pp if the added
+                            // latency is ever felt in practice)
 };
 
 export function createPathTracker(opts = {}) {
