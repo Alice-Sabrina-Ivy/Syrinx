@@ -162,6 +162,12 @@ function gridStageC(bestAc, bestFl) {
 }
 
 const STAGES = {
+  // Range constraint check (2026-06-10): production tuned config at the
+  // legacy 50-600 Hz search range vs the 60-400 Hz speech-scoped range.
+  R: () => [
+    { name: "range50-600", frameLength: 1536, ac: { minPitchHz: 50, maxPitchHz: 600 }, path: { lookback: 2 } },
+    { name: "range60-400", frameLength: 1536, ac: { minPitchHz: 60, maxPitchHz: 400 }, path: { lookback: 2 } },
+  ],
   P: () => [{ name: `probe_attr${process.env.AC_ATTR_OFF_MS || "center"}`, frameLength: 1024, ac: { voicingThreshold: 0.40, octaveCost: 0.01 }, path: null }],
   A: () => gridStageA(),
   B: () => gridStageB(JSON.parse(process.env.AC_BEST || '{"voicingThreshold":0.40,"octaveCost":0.05}')),
