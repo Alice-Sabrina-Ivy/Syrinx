@@ -49,6 +49,30 @@ import {
 const FORMANT_SMOOTH_LEN = 7;
 const FORMANT_OUTLIER_HZ = 500; // max plausible frame-to-frame formant jump
 
+// Display-layer hysteresis (2026-06-10, live-use report: pitch spikes at
+// utterance boundaries + the pitch view strobing grey when background
+// noise flaps the voicing decision at frame rate).
+//
+// ONSET_CONFIRM_FRAMES: pitch is painted (trace + readout) only once this
+// many consecutive frames carry a decoded pitch. 3 also means the first
+// painted value is a true median-of-3 — the smoothing buffer resets on
+// every gap, so the first post-gap frame otherwise passes through the
+// median unfiltered (which is exactly how onset spikes reached the
+// display). Spike-run classification
+// on the 2026-05-26 session (scripts/pitch-spike-measure.js): ~30 % of
+// user-visible spike runs sit in the first ~50 ms of a voiced segment —
+// every tracker misestimates fresh onsets. Cost: ~25 ms extra display
+// latency at utterance start only. Also prevents single noise-blip
+// frames from flashing the display to the voiced style.
+//
+// VOICED_FALL_FRAMES: the displayed voiced state drops to the inactive
+// (grey) style only after this many consecutive pitchless frames
+// (~400 ms); in between, the display shows the dim "holding" style. The
+// 300 ms CSS opacity transition then never strobes. Session recording is
+// NOT hysteresis'd — recorded frames keep the truthful per-frame flag.
+const ONSET_CONFIRM_FRAMES = 3;
+const VOICED_FALL_FRAMES = 16;
+
 export function useAudioPipeline() {
   const [state, setState] = useState({
     status: "idle",
@@ -153,6 +177,12 @@ export function useAudioPipeline() {
   // Silence gating + pitch staleness/hold (see pitchGate.js)
   const silenceStartRef = useRef(null);
   const gateStateRef = useRef(createGateState());
+
+  // Display hysteresis state (ONSET_CONFIRM_FRAMES / VOICED_FALL_FRAMES):
+  // consecutive pitched/pitchless frame streaks + whether the display is
+  // currently in the voiced style. Display-only — never feeds recording.
+  const displayStreakRef = useRef({ pitched: 0, unpitched: 0 });
+  const displayVoicedRef = useRef(false);
   const lastVoicedRef = useRef({
     pitch: null,
     noteName: null,
@@ -685,6 +715,8 @@ export function useAudioPipeline() {
     f3SmoothRef.current = [];
     silenceStartRef.current = null;
     gateStateRef.current = createGateState();
+    displayStreakRef.current = { pitched: 0, unpitched: 0 };
+    displayVoicedRef.current = false;
     pitchTraceRef.current = [];
     formantTrailRef.current = [];
     genderTraceRef.current = [];
@@ -833,6 +865,14 @@ export function useAudioPipeline() {
     }
 
     if (isQuiet) {
+      // Silence frames count as pitchless for the display hysteresis;
+      // the silence-hold below owns the dim/clear styling from here.
+      displayStreakRef.current.pitched = 0;
+      displayStreakRef.current.unpitched++;
+      if (displayStreakRef.current.unpitched >= VOICED_FALL_FRAMES) {
+        displayVoicedRef.current = false;
+      }
+
       // Record silence start time
       if (silenceStartRef.current === null) {
         silenceStartRef.current = now;
@@ -944,15 +984,36 @@ export function useAudioPipeline() {
       : median(f3SmoothRef.current);
 
     const framePitched = smoothedPitch !== null;
-    const noteInfo = framePitched ? hzToNote(smoothedPitch) : null;
+
+    // Display hysteresis: paint pitch only after ONSET_CONFIRM_FRAMES
+    // consecutive pitched frames (fresh-onset estimates are the spikiest
+    // — see the spike-run classification in pitch-spike-measure.js — and
+    // single noise-blip frames must not flash the voiced style); drop to
+    // the inactive style only after VOICED_FALL_FRAMES pitchless frames
+    // (the dim "holding" style bridges the gap, so the readout never
+    // strobes). Recording below stays per-frame truthful.
+    const streak = displayStreakRef.current;
+    if (framePitched) {
+      streak.pitched++;
+      streak.unpitched = 0;
+    } else {
+      streak.pitched = 0;
+      streak.unpitched++;
+    }
+    const displayPitched = framePitched && streak.pitched >= ONSET_CONFIRM_FRAMES;
+    if (displayPitched) displayVoicedRef.current = true;
+    else if (streak.unpitched >= VOICED_FALL_FRAMES) displayVoicedRef.current = false;
+    const displayHolding = !displayPitched && displayVoicedRef.current;
+
+    const noteInfo = displayPitched ? hzToNote(smoothedPitch) : null;
     const noteName = noteInfo?.name || null;
     const smoothedFormants = { f1, f2, f3 };
 
     // Update history buffers (always, at full rate — canvas reads these).
-    // A pitchless frame renders as a trace gap even though audio is
-    // present — the trace draws pitch, not loudness.
+    // A pitchless or unconfirmed-onset frame renders as a trace gap even
+    // though audio is present — the trace draws confirmed pitch only.
     pitchTraceRef.current.push(
-      framePitched
+      displayPitched
         ? { time: now, pitch: smoothedPitch, voiced: true }
         : { time: now, pitch: null, voiced: false },
     );
@@ -969,10 +1030,10 @@ export function useAudioPipeline() {
 
     // Save as last voiced values (for hold behavior). On pitchless frames
     // the measured fields (formants/tilt/HNR) still update, but the last
-    // real pitch is kept so the 5-s silence hold can dim-display it.
+    // displayed pitch is kept so hold states can dim-display it.
     lastVoicedRef.current = {
-      pitch: framePitched ? smoothedPitch : lastVoicedRef.current.pitch,
-      noteName: framePitched ? noteName : lastVoicedRef.current.noteName,
+      pitch: displayPitched ? smoothedPitch : lastVoicedRef.current.pitch,
+      noteName: displayPitched ? noteName : lastVoicedRef.current.noteName,
       formants: smoothedFormants,
       spectralTilt: currentTilt,
       hnr: currentHnr,
@@ -995,15 +1056,17 @@ export function useAudioPipeline() {
       });
     }
 
-    // Throttled: only update React state for text readouts at ~5fps
+    // Throttled: only update React state for text readouts at ~5fps.
+    // displayHolding bridges brief pitch dropouts in the dim style so
+    // the readout/status never strobe between voiced and inactive.
     const vw = buildVocalWeightState(cppAggregate);
     throttledSetState((s) => ({
       ...s,
-      voiced: framePitched,
-      holding: false,
-      pitch: smoothedPitch,
+      voiced: displayPitched,
+      holding: displayHolding,
+      pitch: displayPitched ? smoothedPitch : (displayHolding ? lastVoicedRef.current.pitch : null),
       intensity,
-      noteName,
+      noteName: displayPitched ? noteName : (displayHolding ? lastVoicedRef.current.noteName : null),
       formants: smoothedFormants,
       spectralTilt: currentTilt,
       hnr: currentHnr,
