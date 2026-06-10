@@ -92,40 +92,48 @@ def main():
 
     report = {"margins": MARGINS, "corpora": {}, "session": {}}
 
+    # Rows: [truthSwift, swift, rT, rHalf, truthAc, ac]. Each detector is
+    # scored against truth at its own attribution time. E1 = refereed
+    # SwiftF0, AC fills nulls (AC-filled frames scored against truthAc).
+    def detector_series(rows):
+        truth_s, swift, rT, rHalf, truth_a, acp = rows.T
+        ref, _ = apply_referee(swift, rT, rHalf, -0.02)
+        fill = (ref == 0) & (acp > 0)
+        e1 = ref.copy(); e1[fill] = acp[fill]
+        e1_truth = truth_s.copy(); e1_truth[fill] = truth_a[fill]
+        return {
+            "swift": (swift, truth_s),
+            "swift+referee@-0.02": (ref, truth_s),
+            "boersma-ac-tuned": (acp, truth_a),
+            "E1 (referee+ACfill)": (e1, e1_truth),
+        }
+
     # ---------- corpora (ground truth) ----------
     by_corpus = {}
     for t in corp["tracks"]:
-        by_corpus.setdefault(t["corpus"], []).append(np.array(t["rows"], dtype=float))
+        if t["rows"]:
+            by_corpus.setdefault(t["corpus"], []).append(np.array(t["rows"], dtype=float))
     print("========== Corpora (ground truth) ==========")
     for corpus, rowsets in sorted(by_corpus.items()):
-        rows = np.vstack([r for r in rowsets if r.size])
-        truth, swift, rT, rHalf, acp = rows.T
-        entry = {"swift": score(swift, truth), "boersma-ac": score(acp, truth)}
-        for mg in MARGINS:
-            ref, halved = apply_referee(swift, rT, rHalf, mg)
-            entry[f"swift+referee@{mg}"] = {**score(ref, truth), "halvedFrames": halved}
+        rows = np.vstack(rowsets)
+        entry = {}
+        for name, (series, truth) in detector_series(rows).items():
+            entry[name] = score(series, truth)
         report["corpora"][corpus] = entry
-        print(f"\n  {corpus} (n={entry['swift']['n']}):")
-        for k in ["swift", "boersma-ac"] + [f"swift+referee@{m}" for m in MARGINS]:
-            e = entry[k]
+        print(f"\n  {corpus}:")
+        for k, e in entry.items():
             print(f"    {k:24} correct {e['correct']:5.1f}  up {e['octave-up']:5.2f}  "
                   f"down {e['octave-down']:5.2f}  other {e['other']:4.1f}  null {e['null']:5.1f}  "
-                  f"meanErr {e['meanErrHz']}")
+                  f"meanErr {e['meanErrHz']}  (n={e['n']})")
 
     # ---------- session (Praat reference) ----------
     rows = np.vstack([np.array(t["rows"], dtype=float) for t in sess["tracks"]])
-    truth, swift, rT, rHalf, acp = rows.T
     print("\n========== 2026-05-26 session (Praat reference) ==========")
     sess_entry = {}
-    for name, series in [("swift", swift), ("boersma-ac", acp)]:
+    for name, (series, truth) in detector_series(rows).items():
         sess_entry[name] = {"overall": score(series, truth), "byBand": by_band(series, truth),
                             "flipPct": flip_pct(series)}
-    for mg in MARGINS:
-        ref, halved = apply_referee(swift, rT, rHalf, mg)
-        sess_entry[f"swift+referee@{mg}"] = {"overall": score(ref, truth),
-                                             "byBand": by_band(ref, truth),
-                                             "flipPct": flip_pct(ref), "halvedFrames": halved}
-    sess_entry["praat-self-flipPct"] = flip_pct(truth)
+    sess_entry["praat-self-flipPct"] = flip_pct(rows[:, 0])
     report["session"] = sess_entry
 
     for k, e in sess_entry.items():

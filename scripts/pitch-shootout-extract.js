@@ -31,7 +31,7 @@ import {
   SWIFT_F0_SAMPLE_RATE,
   SWIFT_F0_FRAME_LENGTH,
 } from "../tests/dsp/swift-f0-adapter.js";
-import { createBoersmaAC, normCorrAtLag } from "../tests/dsp/boersma-ac.js";
+import { createBoersmaAC, createPathTracker, normCorrAtLag } from "../tests/dsp/boersma-ac.js";
 import * as ort from "onnxruntime-node";
 
 const CONFIDENCE_THRESHOLD = 0.5;
@@ -56,42 +56,75 @@ function readWav(filePath) {
   return { samples, sampleRate };
 }
 
+// PTDB-TUG reference timestamps sit ~20 ms later than the loader's i*hopMs
+// convention (located empirically via attribution probes — see
+// scripts/ac-tuning-sweep.js REF_OFFSET_MS). Applied to truth lookups for
+// every detector so the comparison is alignment-fair.
+const REF_OFFSET_MS = { "ptdb-tug": 20 };
+
+// Tuned AC config from the 2026-06-09 tuning pass (stages A-C):
+// Praat-default voicing/octave costs, 96 ms window, bounded Viterbi L=4.
+const AC_FRAME = 1536;
+const AC_CONF = { voicingThreshold: 0.40, octaveCost: 0.01 };
+const AC_PATH = { octaveJumpCost: 0.15, voicedUnvoicedCost: 0.20, lookback: 4 };
+const AC_CENTER_MS = (AC_FRAME / 2) / SWIFT_F0_SAMPLE_RATE * 1000;
+
 console.log("Loading SwiftF0 model …");
 const { session } = await createSwiftF0Session();
 const inputName = session.inputNames[0];
-const ac = createBoersmaAC(SWIFT_F0_SAMPLE_RATE, SWIFT_F0_FRAME_LENGTH);
+const ac = createBoersmaAC(SWIFT_F0_SAMPLE_RATE, AC_FRAME, AC_CONF);
 
 const buffer = new Float32Array(SWIFT_F0_FRAME_LENGTH);
 let fill = 0;
+const acBuffer = new Float32Array(AC_FRAME);
+let acFill = 0;
 function append(incoming) {
   const k = incoming.length;
   if (k === 0) return;
   if (k >= SWIFT_F0_FRAME_LENGTH) {
     buffer.set(incoming.subarray(k - SWIFT_F0_FRAME_LENGTH));
     fill = SWIFT_F0_FRAME_LENGTH;
-    return;
+  } else {
+    buffer.copyWithin(0, k, SWIFT_F0_FRAME_LENGTH);
+    buffer.set(incoming, SWIFT_F0_FRAME_LENGTH - k);
+    fill = Math.min(SWIFT_F0_FRAME_LENGTH, fill + k);
   }
-  buffer.copyWithin(0, k, SWIFT_F0_FRAME_LENGTH);
-  buffer.set(incoming, SWIFT_F0_FRAME_LENGTH - k);
-  fill = Math.min(SWIFT_F0_FRAME_LENGTH, fill + k);
+  if (k >= AC_FRAME) {
+    acBuffer.set(incoming.subarray(k - AC_FRAME));
+    acFill = AC_FRAME;
+  } else {
+    acBuffer.copyWithin(0, k, AC_FRAME);
+    acBuffer.set(incoming, AC_FRAME - k);
+    acFill = Math.min(AC_FRAME, acFill + k);
+  }
 }
 
 let acTotalMs = 0, acCalls = 0;
 
 async function processTrack(samples, sampleRate, refLookup) {
   buffer.fill(0); fill = 0;
+  acBuffer.fill(0); acFill = 0;
+  const tracker = createPathTracker(AC_PATH);
   const hopN = Math.floor(sampleRate * HOP_MS / 1000);
   const hopMs = hopN * 1000 / sampleRate;
-  const rows = []; // [truthHz, swift, rT, rHalf, ac] per hop with valid truth
+  // rows: [truthSwift, swift, rT, rHalf, truthAc, ac] per hop. Each
+  // detector is scored against truth at ITS OWN attribution time
+  // (SwiftF0 ~56 ms back; AC window center 48 ms back). The AC value
+  // arrives L hops late from the Viterbi decode and is written back to
+  // its source row; rows with no decoded AC yet are flushed at EOF.
+  const rows = [];
+  const acRowIdx = []; // rows index per AC-eligible hop, in emit order
   let n = 0;
   for (let i = 0; i + hopN <= samples.length; i += hopN, n++) {
     const chunk = samples.subarray(i, i + hopN);
     append(sampleRate === SWIFT_F0_SAMPLE_RATE ? chunk : resampleLinear(chunk, sampleRate, SWIFT_F0_SAMPLE_RATE));
-    if (fill < SWIFT_F0_FRAME_LENGTH) continue;
+    if (fill < SWIFT_F0_FRAME_LENGTH || acFill < AC_FRAME) continue;
     const attrMs = (n + 1) * hopMs - PITCH_LATENCY_MS;
-    if (attrMs < 0) continue;
+    const attrAcMs = (n + 1) * hopMs - AC_CENTER_MS;
+    if (attrMs < 0 || attrAcMs < 0) continue;
     const truthHz = refLookup(attrMs);
-    if (truthHz === null) continue; // outside reference range
+    const truthAcHz = refLookup(attrAcMs);
+    if (truthHz === null && truthAcHz === null) continue;
 
     const tensor = new ort.Tensor("float32", buffer, [1, SWIFT_F0_FRAME_LENGTH]);
     const outputs = await session.run({ [inputName]: tensor });
@@ -101,26 +134,36 @@ async function processTrack(samples, sampleRate, refLookup) {
 
     let rT = 0, rHalf = 0;
     if (swift > 0 && swift >= 100) {
-      // Referee lags: period of the reported pitch and twice that
-      // (the half-frequency hypothesis). Only meaningful when the
-      // halved pitch stays above the ~50 Hz analysis floor.
+      // Referee lags: period of the reported pitch and twice that (the
+      // half-frequency hypothesis), on the buffer SwiftF0 saw.
       const lagT = Math.round(SWIFT_F0_SAMPLE_RATE / swift);
       rT = normCorrAtLag(buffer, lagT);
       rHalf = normCorrAtLag(buffer, lagT * 2);
     }
 
     const t0 = performance.now();
-    const acOut = ac.detect(buffer);
+    const decoded = tracker.emit(ac.candidates(acBuffer));
     acTotalMs += performance.now() - t0;
     acCalls++;
 
     rows.push([
-      +truthHz.toFixed(2),
+      truthHz !== null ? +truthHz.toFixed(2) : -1,
       swift > 0 ? +swift.toFixed(2) : 0,
       +rT.toFixed(4),
       +rHalf.toFixed(4),
-      acOut.pitch ? +acOut.pitch.toFixed(2) : 0,
+      truthAcHz !== null ? +truthAcHz.toFixed(2) : -1,
+      0, // AC decode lands below, L hops later
     ]);
+    acRowIdx.push(rows.length - 1);
+    if (acRowIdx.length > AC_PATH.lookback) {
+      const target = acRowIdx[acRowIdx.length - 1 - AC_PATH.lookback];
+      rows[target][5] = decoded ? +decoded.toFixed(2) : 0;
+    }
+  }
+  const tail = tracker.flush();
+  for (let k = 0; k < tail.length; k++) {
+    const target = acRowIdx[acRowIdx.length - tail.length + k];
+    if (target !== undefined) rows[target][5] = tail[k] ? +tail[k].toFixed(2) : 0;
   }
   return rows;
 }
@@ -136,8 +179,9 @@ if (mode === "--corpora") {
   let done = 0;
   for (const track of corpora) {
     const { ref } = track;
+    const refOffMs = REF_OFFSET_MS[track.corpus] ?? 0;
     const refLookup = (attrMs) => {
-      const idx = Math.round(attrMs / ref.hopMs);
+      const idx = Math.round((attrMs - refOffMs) / ref.hopMs);
       if (idx < 0 || idx >= ref.f0.length) return null;
       return ref.f0[idx]; // 0 = unvoiced per corpus convention
     };
