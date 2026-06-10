@@ -1,0 +1,138 @@
+{
+ "timestamp": "2026-06-10T05:18:21.091Z",
+ "method": "per-track median of production-cadence CPP vs Praat CPPS, Pearson per corpus",
+ "results": [
+  {
+   "bins": 1,
+   "perCorpus": {
+    "hillenbrand": {
+     "n": 200,
+     "r": 0.387
+    },
+    "ptdb-tug": {
+     "n": 180,
+     "r": 0.615
+    },
+    "vocadito": {
+     "n": 40,
+     "r": 0.273
+    },
+    "fda": {
+     "n": 100,
+     "r": 0.648
+    }
+   },
+   "meanR": 0.481
+  },
+  {
+   "bins": 3,
+   "perCorpus": {
+    "hillenbrand": {
+     "n": 200,
+     "r": 0.351
+    },
+    "ptdb-tug": {
+     "n": 180,
+     "r": 0.635
+    },
+    "vocadito": {
+     "n": 40,
+     "r": 0.272
+    },
+    "fda": {
+     "n": 100,
+     "r": 0.711
+    }
+   },
+   "meanR": 0.493
+  },
+  {
+   "bins": 5,
+   "perCorpus": {
+    "hillenbrand": {
+     "n": 200,
+     "r": 0.38
+    },
+    "ptdb-tug": {
+     "n": 180,
+     "r": 0.629
+    },
+    "vocadito": {
+     "n": 40,
+     "r": 0.267
+    },
+    "fda": {
+     "n": 100,
+     "r": 0.724
+    }
+   },
+   "meanR": 0.5
+  },
+  {
+   "bins": 7,
+   "perCorpus": {
+    "hillenbrand": {
+     "n": 200,
+     "r": 0.36
+    },
+    "ptdb-tug": {
+     "n": 180,
+     "r": 0.616
+    },
+    "vocadito": {
+     "n": 40,
+     "r": 0.263
+    },
+    "fda": {
+     "n": 100,
+     "r": 0.687
+    }
+   },
+   "meanR": 0.481
+  },
+  {
+   "bins": 11,
+   "perCorpus": {
+    "hillenbrand": {
+     "n": 200,
+     "r": 0.32
+    },
+    "ptdb-tug": {
+     "n": 180,
+     "r": 0.619
+    },
+    "vocadito": {
+     "n": 40,
+     "r": 0.315
+    },
+    "fda": {
+     "n": 100,
+     "r": 0.654
+    }
+   },
+   "meanR": 0.477
+  },
+  {
+   "bins": 15,
+   "perCorpus": {
+    "hillenbrand": {
+     "n": 200,
+     "r": 0.279
+    },
+    "ptdb-tug": {
+     "n": 180,
+     "r": 0.622
+    },
+    "vocadito": {
+     "n": 40,
+     "r": 0.388
+    },
+    "fda": {
+     "n": 100,
+     "r": 0.625
+    }
+   },
+   "meanR": 0.479
+  }
+ ]
+}
