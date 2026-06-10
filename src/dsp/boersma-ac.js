@@ -25,19 +25,21 @@
 // scripts/pitch-shootout-extract.js.
 
 export const BOERSMA_DEFAULTS = {
-  minPitchHz: 60,        // speech-scoped search range (user decision
-  maxPitchHz: 400,       // 2026-06-10, was 50-600): the UI's display
-                         // ceiling is 400 Hz, so >400 detections were
-                         // never displayable — but they WERE the error
-                         // surface for 3-4x harmonic locks (218 of the
-                         // 2026-05-26 session's spike runs sat at
-                         // 450-600 Hz). Range check: speech corpora
-                         // improve or hold (FDA octave errors halved),
-                         // session flips drop below Praat's own rate;
-                         // sole cost is singing content above 400 Hz
-                         // (vocadito -1.6pp), out of scope for a speech
-                         // trainer. measurements/pitch-range-60-400-
-                         // 2026-06-10.md
+  minPitchHz: 75,        // speech-scoped search range = the pitch trace's
+  maxPitchHz: 400,       // display range exactly (constants.js
+                         // PITCH_DISPLAY_RANGE 75-400). Floor raised
+                         // 60->75 on 2026-06-10 to match the display: at
+                         // 60 the trace painted 60-75 Hz detections under
+                         // the chart (the display floor was 75). Corpus
+                         // cost of dropping 60-75 Hz is negligible (FDA
+                         // 0.13%, PTDB 0.97%, Hillenbrand/vocadito ~0);
+                         // 3.6% of the low-voice session's frames sat
+                         // there and now render as honest gaps instead of
+                         // under-chart artifacts. Ceiling was cut 600->400
+                         // earlier the same day (removed the 3-4x
+                         // harmonic-lock error surface). measurements/
+                         // pitch-range-60-400-2026-06-10.md +
+                         // pitch-trace-floor-2026-06-10.md
   voicingThreshold: 0.40, // tuned (Praat default 0.45) — stage-A sweep,
                           // measurements/boersma-ac-tuning-2026-06-09.md
   silenceThreshold: 0.03, // Praat default (fraction of global peak)

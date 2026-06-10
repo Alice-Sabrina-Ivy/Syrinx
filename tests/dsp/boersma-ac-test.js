@@ -35,8 +35,9 @@ const near = (a, b, tol) => a !== null && Math.abs(a - b) <= tol;
 console.log("detector — frame-local");
 check("100 Hz pure tone", near(ac.detect(tone(100)).pitch, 100, 1));
 check("300 Hz pure tone", near(ac.detect(tone(300)).pitch, 300, 2));
-check("65 Hz low tone (below SwiftF0's reliable floor)", near(ac.detect(tone(65)).pitch, 65, 1));
-check("55 Hz tone below the 60 Hz search floor is unvoiced", ac.detect(tone(55)).pitch === null);
+check("85 Hz low tone (low male / creaky speech)", near(ac.detect(tone(85)).pitch, 85, 1));
+check("65 Hz tone below the 75 Hz search floor is not reported as 65",
+  (() => { const r = ac.detect(tone(65)); return r.pitch === null || r.pitch >= 75; })());
 check("450 Hz tone above the 400 Hz search ceiling is not reported as 450",
   (() => { const r = ac.detect(tone(450)); return r.pitch === null || r.pitch < 410; })());
 // The cutover motivation: fundamental weaker than the 2nd harmonic
