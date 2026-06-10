@@ -1,0 +1,335 @@
+{
+ "margins": [
+  -0.05,
+  -0.02,
+  0.0,
+  0.02,
+  0.05,
+  0.1
+ ],
+ "corpora": {
+  "fda": {
+   "swift": {
+    "correct": 90.24,
+    "octave-up": 0.04,
+    "octave-down": 0.0,
+    "other": 5.16,
+    "null": 4.56,
+    "meanErrHz": 2.27,
+    "n": 4939
+   },
+   "boersma-ac": {
+    "correct": 68.76,
+    "octave-up": 0.57,
+    "octave-down": 1.5,
+    "other": 14.52,
+    "null": 14.66,
+    "meanErrHz": 3.59,
+    "n": 4939
+   },
+   "swift+referee@-0.05": {
+    "correct": 89.71,
+    "octave-up": 0.04,
+    "octave-down": 0.65,
+    "other": 5.04,
+    "null": 4.56,
+    "meanErrHz": 2.27,
+    "n": 4939,
+    "halvedFrames": 40
+   },
+   "swift+referee@-0.02": {
+    "correct": 89.31,
+    "octave-up": 0.04,
+    "octave-down": 1.09,
+    "other": 5.0,
+    "null": 4.56,
+    "meanErrHz": 2.26,
+    "n": 4939,
+    "halvedFrames": 70
+   },
+   "swift+referee@0.0": {
+    "correct": 88.28,
+    "octave-up": 0.04,
+    "octave-down": 2.23,
+    "other": 4.9,
+    "null": 4.56,
+    "meanErrHz": 2.26,
+    "n": 4939,
+    "halvedFrames": 136
+   },
+   "swift+referee@0.02": {
+    "correct": 80.42,
+    "octave-up": 0.02,
+    "octave-down": 10.22,
+    "other": 4.78,
+    "null": 4.56,
+    "meanErrHz": 2.26,
+    "n": 4939,
+    "halvedFrames": 543
+   },
+   "swift+referee@0.05": {
+    "correct": 66.94,
+    "octave-up": 0.02,
+    "octave-down": 23.97,
+    "other": 4.52,
+    "null": 4.56,
+    "meanErrHz": 2.21,
+    "n": 4939,
+    "halvedFrames": 1266
+   },
+   "swift+referee@0.1": {
+    "correct": 50.64,
+    "octave-up": 0.02,
+    "octave-down": 40.88,
+    "other": 3.91,
+    "null": 4.56,
+    "meanErrHz": 2.14,
+    "n": 4939,
+    "halvedFrames": 2185
+   }
+  },
+  "hillenbrand": {
+   "swift": {
+    "correct": 61.76,
+    "octave-up": 0.06,
+    "octave-down": 0.07,
+    "other": 30.92,
+    "null": 7.19,
+    "meanErrHz": 3.37,
+    "n": 17389
+   },
+   "boersma-ac": {
+    "correct": 58.43,
+    "octave-up": 2.44,
+    "octave-down": 2.36,
+    "other": 31.0,
+    "null": 5.76,
+    "meanErrHz": 3.22,
+    "n": 17389
+   },
+   "swift+referee@-0.05": {
+    "correct": 61.38,
+    "octave-up": 0.04,
+    "octave-down": 0.72,
+    "other": 30.67,
+    "null": 7.19,
+    "meanErrHz": 3.37,
+    "n": 17389,
+    "halvedFrames": 207
+   },
+   "swift+referee@-0.02": {
+    "correct": 60.96,
+    "octave-up": 0.03,
+    "octave-down": 1.29,
+    "other": 30.53,
+    "null": 7.19,
+    "meanErrHz": 3.37,
+    "n": 17389,
+    "halvedFrames": 352
+   },
+   "swift+referee@0.0": {
+    "correct": 58.21,
+    "octave-up": 0.02,
+    "octave-down": 4.31,
+    "other": 30.27,
+    "null": 7.19,
+    "meanErrHz": 3.4,
+    "n": 17389,
+    "halvedFrames": 914
+   },
+   "swift+referee@0.02": {
+    "correct": 43.89,
+    "octave-up": 0.02,
+    "octave-down": 20.16,
+    "other": 28.74,
+    "null": 7.19,
+    "meanErrHz": 3.58,
+    "n": 17389,
+    "halvedFrames": 3816
+   },
+   "swift+referee@0.05": {
+    "correct": 32.83,
+    "octave-up": 0.02,
+    "octave-down": 33.36,
+    "other": 26.6,
+    "null": 7.19,
+    "meanErrHz": 3.71,
+    "n": 17389,
+    "halvedFrames": 6356
+   },
+   "swift+referee@0.1": {
+    "correct": 22.87,
+    "octave-up": 0.02,
+    "octave-down": 45.99,
+    "other": 23.94,
+    "null": 7.19,
+    "meanErrHz": 3.74,
+    "n": 17389,
+    "halvedFrames": 9068
+   }
+  },
+  "ptdb-tug": {
+   "swift": {
+    "correct": 74.51,
+    "octave-up": 0.3,
+    "octave-down": 0.0,
+    "other": 19.55,
+    "null": 5.64,
+    "meanErrHz": 2.99,
+    "n": 9328
+   },
+   "boersma-ac": {
+    "correct": 86.14,
+    "octave-up": 0.54,
+    "octave-down": 1.8,
+    "other": 2.36,
+    "null": 9.17,
+    "meanErrHz": 1.63,
+    "n": 9328
+   },
+   "swift+referee@-0.05": {
+    "correct": 74.07,
+    "octave-up": 0.18,
+    "octave-down": 0.65,
+    "other": 19.46,
+    "null": 5.64,
+    "meanErrHz": 2.99,
+    "n": 9328,
+    "halvedFrames": 113
+   },
+   "swift+referee@-0.02": {
+    "correct": 73.83,
+    "octave-up": 0.16,
+    "octave-down": 1.01,
+    "other": 19.36,
+    "null": 5.64,
+    "meanErrHz": 3.0,
+    "n": 9328,
+    "halvedFrames": 178
+   },
+   "swift+referee@0.0": {
+    "correct": 73.33,
+    "octave-up": 0.13,
+    "octave-down": 1.64,
+    "other": 19.26,
+    "null": 5.64,
+    "meanErrHz": 3.01,
+    "n": 9328,
+    "halvedFrames": 265
+   },
+   "swift+referee@0.02": {
+    "correct": 68.5,
+    "octave-up": 0.12,
+    "octave-down": 6.58,
+    "other": 19.16,
+    "null": 5.64,
+    "meanErrHz": 3.13,
+    "n": 9328,
+    "halvedFrames": 769
+   },
+   "swift+referee@0.05": {
+    "correct": 59.18,
+    "octave-up": 0.11,
+    "octave-down": 16.03,
+    "other": 19.05,
+    "null": 5.64,
+    "meanErrHz": 3.34,
+    "n": 9328,
+    "halvedFrames": 1741
+   },
+   "swift+referee@0.1": {
+    "correct": 46.08,
+    "octave-up": 0.1,
+    "octave-down": 29.57,
+    "other": 18.62,
+    "null": 5.64,
+    "meanErrHz": 3.57,
+    "n": 9328,
+    "halvedFrames": 3201
+   }
+  },
+  "vocadito": {
+   "swift": {
+    "correct": 97.79,
+    "octave-up": 0.4,
+    "octave-down": 0.08,
+    "other": 0.62,
+    "null": 1.1,
+    "meanErrHz": 1.3,
+    "n": 21582
+   },
+   "boersma-ac": {
+    "correct": 87.68,
+    "octave-up": 0.05,
+    "octave-down": 3.38,
+    "other": 3.67,
+    "null": 5.23,
+    "meanErrHz": 2.41,
+    "n": 21582
+   },
+   "swift+referee@-0.05": {
+    "correct": 97.46,
+    "octave-up": 0.12,
+    "octave-down": 0.71,
+    "other": 0.61,
+    "null": 1.1,
+    "meanErrHz": 1.3,
+    "n": 21582,
+    "halvedFrames": 309
+   },
+   "swift+referee@-0.02": {
+    "correct": 96.82,
+    "octave-up": 0.03,
+    "octave-down": 1.44,
+    "other": 0.61,
+    "null": 1.1,
+    "meanErrHz": 1.31,
+    "n": 21582,
+    "halvedFrames": 556
+   },
+   "swift+referee@0.0": {
+    "correct": 91.38,
+    "octave-up": 0.02,
+    "octave-down": 6.89,
+    "other": 0.61,
+    "null": 1.1,
+    "meanErrHz": 1.33,
+    "n": 21582,
+    "halvedFrames": 1799
+   },
+   "swift+referee@0.02": {
+    "correct": 55.72,
+    "octave-up": 0.02,
+    "octave-down": 42.56,
+    "other": 0.6,
+    "null": 1.1,
+    "meanErrHz": 1.59,
+    "n": 21582,
+    "halvedFrames": 9647
+   },
+   "swift+referee@0.05": {
+    "correct": 35.7,
+    "octave-up": 0.02,
+    "octave-down": 62.61,
+    "other": 0.57,
+    "null": 1.1,
+    "meanErrHz": 1.87,
+    "n": 21582,
+    "halvedFrames": 14251
+   },
+   "swift+referee@0.1": {
+    "correct": 22.01,
+    "octave-up": 0.02,
+    "octave-down": 76.37,
+    "other": 0.5,
+    "null": 1.1,
+    "meanErrHz": 2.17,
+    "n": 21582,
+    "halvedFrames": 17632
+   }
+  }
+ },
+ "acPerFrameMs": {
+  "corpora": 0.113
+ }
+}

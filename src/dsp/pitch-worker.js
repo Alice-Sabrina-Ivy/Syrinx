@@ -1,133 +1,79 @@
-// pitch-worker.js — On-device pitch detection via SwiftF0.
+// pitch-worker.js — On-device pitch detection via Boersma-style
+// autocorrelation (Praat AC method) with a bounded-Viterbi path tracker.
 //
-// Hosts an ONNX Runtime Web inference session for the SwiftF0 model
-// (lars76/swift-f0, MIT, ~388 KB ONNX, 95 K-param CNN that operates on
-// 1024-sample (64 ms) windows of 16 kHz mono audio). Replaces pYIN, which
-// previously lived in dsp-worker.js and produced both pitch and a HMM-
-// smoothed voicedness posterior. This worker emits pitch + a confidence
-// signal; consumers (useAudioPipeline.js) use confidence as the upstream
-// "voicedness" signal in the silence gate, since pYIN's voicedness was
-// purpose-built for the same question and SwiftF0's confidence is its
-// direct semantic replacement.
+// Replaces SwiftF0 (ONNX CNN), cut over 2026-06-09. SwiftF0 confidently
+// reported 2×F0 on weak-fundamental phonation (H2 louder than H1 —
+// routine in voice training): 25.6 % octave-up / 19.1 % null in the
+// user's 80–110 Hz register on real session audio, vs 4.1 % / 0.4 % for
+// the tuned AC detector, at corpus parity or better on two of four
+// ground-truth corpora and ~25–50× less compute (0.21 ms/frame pure JS
+// vs 5–11 ms browser-WASM inference). Decision data:
+// measurements/swift-f0-vs-praat-sessions-2026-06-09.md,
+// measurements/pitch-detector-shootout-2026-06-09.md,
+// measurements/boersma-ac-tuning-2026-06-09.md.
 //
-// Stage 4 integration of the SwiftF0 investigation arc — see
-// measurements/swift-f0-stage3-validation-2026-05-06.md and
-// measurements/swift-f0-stage3-4-3-5-validation-2026-05-06.md for the
-// validation that motivated the cutover.
-//
-// Streaming protocol:
+// Streaming protocol (cadence unchanged from the SwiftF0 era):
 //   Each capture chunk arrives at ~25 ms cadence with `contextTime`
-//   (AudioContext seconds). We resample to 16 kHz via linear interpolation,
-//   maintain a rolling 1024-sample buffer, and run inference on every
-//   chunk once the buffer is full. SwiftF0's STFT-based architecture
-//   handles a 1024-sample input as one frame whose center sits at sample
-//   127.5 (~7.97 ms into the buffer). The reported pitch corresponds to
-//   the audio centered at that sample position; with our rolling buffer,
-//   that's roughly 56 ms before the latest captured sample.
-//
-// Inference cadence: per-hop. Each capture chunk → one inference → one
-// pitch frame. Validated as fitting the 25 ms hop budget on Pixel 8 Pro
-// Chrome 147 (5.0 ms median, 5.4 ms p95) in Stage 3.5.
-//
-// Confidence threshold 0.5: validated in Stage 3.4 as the operating point
-// that balances null rate (~6.8 % worst-case) against octave-error rate
-// (~1.7 % worst-case, still better than pYIN's 2.3 % baseline). pitch is
-// reported as null when confidence < 0.5; consumers treat null pitch as
-// "no usable pitch this frame."
+//   (AudioContext seconds). We resample to 16 kHz via linear
+//   interpolation, maintain a rolling 1536-sample (96 ms) buffer, and
+//   evaluate candidates on every chunk once the buffer is full. The
+//   path tracker (octave-jump + voiced/unvoiced transition costs, the
+//   retired-pYIN L=4 bounded-Viterbi pattern) decodes the frame that is
+//   `lookback` hops old — so each posted pitch describes audio centered
+//   48 ms before the latest sample of a chunk L hops in the past
+//   (~148 ms total display latency vs SwiftF0's ~56 ms; the trade for
+//   octave-flip rates at Praat parity).
 //
 // Protocol:
-//   main → worker: { type: "init", inputSampleRate, modelUrl?, diag? }
+//   main → worker: { type: "init", inputSampleRate, diag? }
 //                  { type: "audioPort", port }       MessagePort from captureSource
-//   worker → main: { type: "status", status, message? }     "loading"|"ready"|"error"
+//   worker → main: { type: "status", status, message? }     "ready"|"error"
 //                  { type: "pitch", pitch, confidence, voiced, ts, contextTime, inferMs? }
-//                  { type: "inference-event", event: "timeout", durationMs, ts }
 //
-// (The main thread tears workers down via Worker.terminate(); there is
-// no graceful "stop" message — calls were never wired up.)
+// (The main thread tears workers down via Worker.terminate(). The
+// SwiftF0-era inference timeout machinery is gone — the detector is a
+// synchronous pure function; there is nothing to hang.)
 //
-// `pitch`     — Hz, or null when confidence < 0.5
-// `confidence`— SwiftF0's raw output, [0, 1]
-// `voiced`    — confidence >= CONFIDENCE_THRESHOLD (boolean)
-// `ts`        — wall-clock epoch ms when inference completed
-// `contextTime`— AudioContext.currentTime (seconds) at the moment the
-//               *latest* sample in the inference buffer was captured.
-//               Combined with audioOriginEpochMs in the main thread to
-//               reconstruct the audio-clock timestamp for merging with
-//               DSP analysis frames.
-// `inferMs`   — wall-clock duration of the session.run() call, only when
-//               init.diag === true. Surfaced in the diag overlay.
+// `pitch`     — Hz, or null when the decoded frame is unvoiced
+// `confidence`— [0, 1]; preserves the SwiftF0-era invariant that
+//               pitch !== null ⟺ confidence ≥ 0.5, so the silence
+//               gate's voicedness arm (pitchGate.js, threshold 0.5)
+//               works unchanged. Derived from the decoded frame's
+//               best-candidate strength vs its unvoiced strength.
+// `voiced`    — pitch !== null
+// `ts`        — wall-clock epoch ms when the frame was decoded
+// `contextTime`— AudioContext seconds of the LATEST sample of the
+//               decoded frame's chunk (i.e. the chunk L hops back —
+//               the ring below carries it through the decode delay).
+// `inferMs`   — candidates+decode duration, only when init.diag === true.
 
-import * as ort from "onnxruntime-web";
+import {
+  createBoersmaAC,
+  createPathTracker,
+  BOERSMA_FRAME_LENGTH_16K,
+} from "./boersma-ac.js";
 
-// Confidence threshold — validated in Stage 3.4 (see measurements/
-// swift-f0-stage3-4-3-5-validation-2026-05-06.md). The same value gates
-// pitch reporting AND seeds the upstream "voiced" boolean for the silence
-// gate, by design — keeping a single threshold value means producing a
-// non-null pitch and being "voiced enough for the gate to trust" are the
-// same condition, and there's no ambiguous middle band.
-const CONFIDENCE_THRESHOLD = 0.5;
-
-// Inference-call timeout. session.run() typically takes ~5–11 ms on
-// browser ORT-WASM (Stage 3.5 measurement). 1500 ms is ~150× p95 — well
-// above any plausible thermal-throttled outlier on mobile, so the timeout
-// never fires on healthy inference. Defensive measure mirroring the
-// gender-worker fix: if ORT hangs (e.g. pathological model state, GPU
-// driver lockup if WebGPU is ever enabled here), Promise.race converts
-// the hang into a recoverable error so the next chunk's inference can
-// proceed normally instead of freezing the silence gate's confidence
-// signal at a stale value.
-const INFERENCE_TIMEOUT_MS = 1500;
-
-// Model parameters (constants, must match swift_f0/core.py).
 const TARGET_SAMPLE_RATE = 16000;
-const FRAME_LENGTH = 1024;
-const HOP_LENGTH = 256;
+const FRAME_LENGTH = BOERSMA_FRAME_LENGTH_16K; // 1536 = 96 ms
 
 let inputSampleRate = 48000;
-let modelUrl = null;
-let session = null;
-let modelStatus = "idle";    // idle | loading | ready | error
 let _diag = false;
+let ready = false;
 
-// Rolling 16 kHz buffer (FRAME_LENGTH samples). We drop the oldest samples
-// as new ones arrive — when the buffer is full, every chunk produces one
-// inference call.
+let detector = null;
+let tracker = null;
+
+// Rolling 16 kHz analysis buffer. Newest samples at the tail; zeros at
+// the front until warm.
 const buffer16k = new Float32Array(FRAME_LENGTH);
-let buffer16kFill = 0;       // how many valid samples are in the buffer
+let buffer16kFill = 0;
 
-// AudioContext-time of the LATEST sample currently sitting in the buffer.
-// Combined with audioOriginEpochMs (in the main thread) to reconstruct
-// when the analyzed audio was captured.
-let lastSampleContextTimeSec = null;
-
-// Inference state
-let inferenceInProgress = false;
-
-// Sentinel error class so the catch branch can distinguish a hang-induced
-// timeout from a real inference error. Mirrors the gender-worker pattern.
-class InferenceTimeoutError extends Error {
-  constructor(ms) {
-    super(`session.run hang > ${ms}ms`);
-  }
-}
-
-async function runWithTimeout(feeds) {
-  let timeoutHandle;
-  const timeoutPromise = new Promise((_, reject) => {
-    timeoutHandle = setTimeout(
-      () => reject(new InferenceTimeoutError(INFERENCE_TIMEOUT_MS)),
-      INFERENCE_TIMEOUT_MS,
-    );
-  });
-  try {
-    return await Promise.race([session.run(feeds), timeoutPromise]);
-  } finally {
-    clearTimeout(timeoutHandle);
-  }
-}
+// Per-frame metadata ring, carried through the tracker's decode delay so
+// each decoded pitch is posted with ITS OWN frame's contextTime and
+// strength data (not the just-arrived chunk's). Length lookback+1.
+let frameMeta = [];
 
 function status(s, message, extra) {
-  modelStatus = s;
   self.postMessage({
     type: "status",
     status: s,
@@ -136,9 +82,9 @@ function status(s, message, extra) {
   });
 }
 
-// Linear-interpolation resampler. Mirrors gender-worker / SwiftF0 adapter
-// pattern. Speech energy above 8 kHz is minimal and the production mic
-// chain already low-passes; a polyphase FIR is unnecessary here.
+// Linear-interpolation resampler (same as the SwiftF0-era worker and
+// gender-worker; speech energy above 8 kHz is minimal and the mic chain
+// already low-passes).
 function resampleLinear(samples, srIn, srOut) {
   if (srIn === srOut) return samples;
   const ratio = srOut / srIn;
@@ -154,138 +100,70 @@ function resampleLinear(samples, srIn, srOut) {
   return out;
 }
 
-// Append samples to the rolling buffer. After the call, the buffer holds
-// the most recent FRAME_LENGTH samples (or fewer if not yet warmed up,
-// in which case they sit at the END of the buffer with zeros at the
-// front). This convention means inference always sees the most-recent
-// audio at samples [FRAME_LENGTH - buffer16kFill, FRAME_LENGTH).
 function appendToBuffer(incoming) {
   const k = incoming.length;
   if (k === 0) return;
   if (k >= FRAME_LENGTH) {
-    // New chunk alone exceeds the window — keep only its tail.
     buffer16k.set(incoming.subarray(k - FRAME_LENGTH));
     buffer16kFill = FRAME_LENGTH;
     return;
   }
-  // Shift existing samples left by k positions, dropping the oldest k
-  // (or up to FRAME_LENGTH - k if we have fewer to begin with). Source
-  // span: [k, FRAME_LENGTH); destination [0, FRAME_LENGTH - k).
   buffer16k.copyWithin(0, k, FRAME_LENGTH);
-  // Place the new samples at the tail.
   buffer16k.set(incoming, FRAME_LENGTH - k);
   buffer16kFill = Math.min(FRAME_LENGTH, buffer16kFill + k);
 }
 
-async function maybeInfer() {
-  if (modelStatus !== "ready") return;
-  if (inferenceInProgress) return;
-  if (buffer16kFill < FRAME_LENGTH) return;
-
-  inferenceInProgress = true;
-  try {
-    const inferStart = _diag ? performance.now() : 0;
-    // Construct tensor view onto the rolling buffer. ORT clones the data
-    // into the tensor backing store, so we don't need a fresh array.
-    const tensor = new ort.Tensor("float32", buffer16k, [1, FRAME_LENGTH]);
-    const outputs = await runWithTimeout({ [session.inputNames[0]]: tensor });
-    const inferMs = _diag ? performance.now() - inferStart : null;
-
-    const pitchOut = outputs[session.outputNames[0]];
-    const confOut = outputs[session.outputNames[1]];
-    if (!pitchOut || !confOut) throw new Error("SwiftF0 returned unexpected outputs");
-
-    // Single-frame inference: take the first (and only) frame.
-    // Outputs come back as Float32Array with shape [1, n_frames].
-    const pitchHz = pitchOut.data[0];
-    const confidence = confOut.data[0];
-
-    const voiced = confidence >= CONFIDENCE_THRESHOLD;
-    const reportedPitch = voiced ? pitchHz : null;
-
-    self.postMessage({
-      type: "pitch",
-      pitch: reportedPitch,
-      confidence,
-      voiced,
-      ts: performance.timeOrigin + performance.now(),
-      contextTime: lastSampleContextTimeSec,
-      ...(_diag && inferMs !== null ? { inferMs } : {}),
-    });
-  } catch (err) {
-    if (err instanceof InferenceTimeoutError) {
-      // ORT hung past INFERENCE_TIMEOUT_MS. Don't trip modelStatus — the
-      // worker is still functional; the next chunk will trigger a fresh
-      // maybeInfer that may succeed. Emit a diagnostic event so snapshots
-      // record hang frequency. The silence gate will see a stale
-      // confidence value for ~1.5 s but recovers as soon as inference
-      // completes again.
-      self.postMessage({
-        type: "inference-event",
-        event: "timeout",
-        durationMs: INFERENCE_TIMEOUT_MS,
-        ts: performance.timeOrigin + performance.now(),
-      });
-    } else {
-      self.postMessage({
-        type: "status",
-        status: "error",
-        message: String(err?.message || err),
-      });
-      modelStatus = "error";
-    }
-  } finally {
-    inferenceInProgress = false;
-  }
+// Map a decoded frame to the confidence value posted to the main thread.
+// Preserves the SwiftF0-era invariant pitch!==null ⟺ confidence ≥ 0.5
+// that the silence gate's voicedness arm depends on; the magnitude
+// reflects how decisively the frame's best voiced candidate beat (or
+// lost to) its unvoiced option.
+function frameConfidence(voiced, meta) {
+  const delta = meta ? meta.bestStrength - meta.unvoicedStrength : 0;
+  const c = 0.5 + delta;
+  return voiced ? Math.min(1, Math.max(0.5, c)) : Math.max(0, Math.min(0.499, c));
 }
 
-async function loadModel(url) {
-  if (modelStatus === "loading" || modelStatus === "ready") return;
-  status("loading");
-  try {
-    // ORT WASM bundle imports its own WASM file from the npm package. Vite
-    // bundles the loader; the WASM file itself is served alongside via the
-    // bundle.min.mjs's relative-import mechanism. Single-threaded since
-    // SwiftF0's 95 K params don't benefit from threading and the per-hop
-    // inference sits well under budget already.
-    ort.env.wasm.numThreads = 1;
-    ort.env.wasm.simd = true;
+function processChunk(msg) {
+  if (!ready || !msg || !msg.buffer) return;
+  const incoming = new Float32Array(msg.buffer);
+  if (incoming.length === 0) return;
+  const t0 = _diag ? performance.now() : 0;
+  appendToBuffer(resampleLinear(incoming, inputSampleRate, TARGET_SAMPLE_RATE));
+  if (buffer16kFill < FRAME_LENGTH) return;
 
-    // Fetch model bytes from the in-repo location (public/swift-f0/model.onnx).
-    const r = await fetch(url);
-    if (!r.ok) throw new Error(`SwiftF0 model fetch failed: ${r.status}`);
-    const modelBytes = await r.arrayBuffer();
+  const frameCandidates = detector.candidates(buffer16k);
+  frameMeta.push({
+    contextTime: typeof msg.contextTime === "number" ? msg.contextTime : null,
+    bestStrength: frameCandidates.voiced.length > 0 ? frameCandidates.voiced[0].strength : 0,
+    unvoicedStrength: frameCandidates.unvoicedStrength,
+  });
+  const decoded = tracker.emit(frameCandidates);
+  const inferMs = _diag ? performance.now() - t0 : null;
 
-    session = await ort.InferenceSession.create(modelBytes, {
-      executionProviders: ["wasm"],
-      graphOptimizationLevel: "all",
-    });
-    status("ready", null, {
-      modelUrl: url,
-      device: "wasm",
-      threshold: CONFIDENCE_THRESHOLD,
-    });
-  } catch (err) {
-    status("error", String(err?.message || err));
-  }
+  // Tracker warm-up: no decode for the first `lookback` frames.
+  if (frameMeta.length <= tracker.config.lookback) return;
+  const meta = frameMeta.shift();
+
+  const voiced = decoded !== null && decoded !== undefined && decoded > 0;
+  self.postMessage({
+    type: "pitch",
+    pitch: voiced ? decoded : null,
+    confidence: frameConfidence(voiced, meta),
+    voiced,
+    ts: performance.timeOrigin + performance.now(),
+    contextTime: meta.contextTime,
+    ...(_diag && inferMs !== null ? { inferMs } : {}),
+  });
 }
 
 function attachAudioPort(port) {
   port.onmessage = (e) => {
-    const msg = e.data;
-    if (!msg || !msg.buffer) return;
-    const incoming = new Float32Array(msg.buffer);
-    if (incoming.length === 0) return;
-    const resampled = resampleLinear(incoming, inputSampleRate, TARGET_SAMPLE_RATE);
-    appendToBuffer(resampled);
-    // contextTime in the chunk message = AudioContext seconds at the
-    // moment the LATEST sample in this chunk was captured (per
-    // captureSource.js's chunk semantics). Track it so the inference
-    // postMessage can stamp its own audio-clock timestamp.
-    if (typeof msg.contextTime === "number") {
-      lastSampleContextTimeSec = msg.contextTime;
+    try {
+      processChunk(e.data);
+    } catch (err) {
+      status("error", String(err?.message || err));
     }
-    maybeInfer();
   };
 }
 
@@ -296,12 +174,21 @@ self.onmessage = (e) => {
     case "init":
       if (typeof msg.inputSampleRate === "number") inputSampleRate = msg.inputSampleRate;
       _diag = msg.diag === true;
-      modelUrl = msg.modelUrl || null;
-      if (!modelUrl) {
-        status("error", "modelUrl missing in init");
-        return;
-      }
-      loadModel(modelUrl);
+      detector = createBoersmaAC(TARGET_SAMPLE_RATE, FRAME_LENGTH);
+      tracker = createPathTracker();
+      buffer16k.fill(0);
+      buffer16kFill = 0;
+      frameMeta = [];
+      ready = true;
+      // Same "ready" shape the SwiftF0 worker posted so diag snapshots
+      // keep recording which pitch backend loaded; modelUrl is null and
+      // device is "js" on this pure-JS path.
+      status("ready", null, {
+        modelUrl: null,
+        device: "js",
+        detector: "boersma-ac",
+        threshold: detector.config.voicingThreshold,
+      });
       break;
     case "audioPort":
       attachAudioPort(msg.port);

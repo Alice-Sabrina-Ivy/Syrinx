@@ -1,0 +1,119 @@
+{
+  "generatedAt": "2026-06-09T22:30:17.376Z",
+  "config": {
+    "cutoffsHz": [
+      0,
+      60,
+      100,
+      120,
+      150,
+      200
+    ],
+    "lowF0MaxHz": 110,
+    "confidenceThreshold": 0.5,
+    "filter": "2x biquad Butterworth HP (4th-order)"
+  },
+  "trackCount": 61,
+  "byCorpus": {
+    "fda": 13,
+    "ptdb-tug": 48
+  },
+  "results": {
+    "0": {
+      "counts": {
+        "correct": 2147,
+        "octave-up": 6,
+        "octave-down": 0,
+        "other": 605,
+        "null": 309
+      },
+      "totalVoiced": 3067,
+      "octaveUpPct": 0.2,
+      "correctPct": 70,
+      "nullPct": 10.1,
+      "flipTransitions": 4,
+      "reportedPairs": 2697,
+      "flipPct": 0.15
+    },
+    "60": {
+      "counts": {
+        "correct": 2093,
+        "octave-up": 4,
+        "octave-down": 0,
+        "other": 631,
+        "null": 339
+      },
+      "totalVoiced": 3067,
+      "octaveUpPct": 0.1,
+      "correctPct": 68.2,
+      "nullPct": 11.1,
+      "flipTransitions": 4,
+      "reportedPairs": 2667,
+      "flipPct": 0.15
+    },
+    "100": {
+      "counts": {
+        "correct": 1930,
+        "octave-up": 11,
+        "octave-down": 0,
+        "other": 575,
+        "null": 551
+      },
+      "totalVoiced": 3067,
+      "octaveUpPct": 0.4,
+      "correctPct": 62.9,
+      "nullPct": 18,
+      "flipTransitions": 11,
+      "reportedPairs": 2455,
+      "flipPct": 0.45
+    },
+    "120": {
+      "counts": {
+        "correct": 1762,
+        "octave-up": 32,
+        "octave-down": 0,
+        "other": 524,
+        "null": 749
+      },
+      "totalVoiced": 3067,
+      "octaveUpPct": 1,
+      "correctPct": 57.5,
+      "nullPct": 24.4,
+      "flipTransitions": 32,
+      "reportedPairs": 2257,
+      "flipPct": 1.42
+    },
+    "150": {
+      "counts": {
+        "correct": 1391,
+        "octave-up": 150,
+        "octave-down": 0,
+        "other": 398,
+        "null": 1128
+      },
+      "totalVoiced": 3067,
+      "octaveUpPct": 4.9,
+      "correctPct": 45.4,
+      "nullPct": 36.8,
+      "flipTransitions": 147,
+      "reportedPairs": 1878,
+      "flipPct": 7.83
+    },
+    "200": {
+      "counts": {
+        "correct": 893,
+        "octave-up": 290,
+        "octave-down": 0,
+        "other": 206,
+        "null": 1678
+      },
+      "totalVoiced": 3067,
+      "octaveUpPct": 9.5,
+      "correctPct": 29.1,
+      "nullPct": 54.7,
+      "flipTransitions": 194,
+      "reportedPairs": 1328,
+      "flipPct": 14.61
+    }
+  }
+}
