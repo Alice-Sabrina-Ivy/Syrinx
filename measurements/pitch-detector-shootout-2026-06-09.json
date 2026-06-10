@@ -1,0 +1,889 @@
+{
+ "margins": [
+  -0.05,
+  -0.02,
+  0.0,
+  0.02,
+  0.05,
+  0.1
+ ],
+ "corpora": {
+  "fda": {
+   "swift": {
+    "correct": 90.24,
+    "octave-up": 0.04,
+    "octave-down": 0.0,
+    "other": 5.16,
+    "null": 4.56,
+    "meanErrHz": 2.27,
+    "n": 4939
+   },
+   "boersma-ac": {
+    "correct": 68.76,
+    "octave-up": 0.57,
+    "octave-down": 1.5,
+    "other": 14.52,
+    "null": 14.66,
+    "meanErrHz": 3.59,
+    "n": 4939
+   },
+   "swift+referee@-0.05": {
+    "correct": 89.71,
+    "octave-up": 0.04,
+    "octave-down": 0.65,
+    "other": 5.04,
+    "null": 4.56,
+    "meanErrHz": 2.27,
+    "n": 4939,
+    "halvedFrames": 40
+   },
+   "swift+referee@-0.02": {
+    "correct": 89.31,
+    "octave-up": 0.04,
+    "octave-down": 1.09,
+    "other": 5.0,
+    "null": 4.56,
+    "meanErrHz": 2.26,
+    "n": 4939,
+    "halvedFrames": 70
+   },
+   "swift+referee@0.0": {
+    "correct": 88.28,
+    "octave-up": 0.04,
+    "octave-down": 2.23,
+    "other": 4.9,
+    "null": 4.56,
+    "meanErrHz": 2.26,
+    "n": 4939,
+    "halvedFrames": 136
+   },
+   "swift+referee@0.02": {
+    "correct": 80.42,
+    "octave-up": 0.02,
+    "octave-down": 10.22,
+    "other": 4.78,
+    "null": 4.56,
+    "meanErrHz": 2.26,
+    "n": 4939,
+    "halvedFrames": 543
+   },
+   "swift+referee@0.05": {
+    "correct": 66.94,
+    "octave-up": 0.02,
+    "octave-down": 23.97,
+    "other": 4.52,
+    "null": 4.56,
+    "meanErrHz": 2.21,
+    "n": 4939,
+    "halvedFrames": 1266
+   },
+   "swift+referee@0.1": {
+    "correct": 50.64,
+    "octave-up": 0.02,
+    "octave-down": 40.88,
+    "other": 3.91,
+    "null": 4.56,
+    "meanErrHz": 2.14,
+    "n": 4939,
+    "halvedFrames": 2185
+   }
+  },
+  "hillenbrand": {
+   "swift": {
+    "correct": 61.76,
+    "octave-up": 0.06,
+    "octave-down": 0.07,
+    "other": 30.92,
+    "null": 7.19,
+    "meanErrHz": 3.37,
+    "n": 17389
+   },
+   "boersma-ac": {
+    "correct": 58.43,
+    "octave-up": 2.44,
+    "octave-down": 2.36,
+    "other": 31.0,
+    "null": 5.76,
+    "meanErrHz": 3.22,
+    "n": 17389
+   },
+   "swift+referee@-0.05": {
+    "correct": 61.38,
+    "octave-up": 0.04,
+    "octave-down": 0.72,
+    "other": 30.67,
+    "null": 7.19,
+    "meanErrHz": 3.37,
+    "n": 17389,
+    "halvedFrames": 207
+   },
+   "swift+referee@-0.02": {
+    "correct": 60.96,
+    "octave-up": 0.03,
+    "octave-down": 1.29,
+    "other": 30.53,
+    "null": 7.19,
+    "meanErrHz": 3.37,
+    "n": 17389,
+    "halvedFrames": 352
+   },
+   "swift+referee@0.0": {
+    "correct": 58.21,
+    "octave-up": 0.02,
+    "octave-down": 4.31,
+    "other": 30.27,
+    "null": 7.19,
+    "meanErrHz": 3.4,
+    "n": 17389,
+    "halvedFrames": 914
+   },
+   "swift+referee@0.02": {
+    "correct": 43.89,
+    "octave-up": 0.02,
+    "octave-down": 20.16,
+    "other": 28.74,
+    "null": 7.19,
+    "meanErrHz": 3.58,
+    "n": 17389,
+    "halvedFrames": 3816
+   },
+   "swift+referee@0.05": {
+    "correct": 32.83,
+    "octave-up": 0.02,
+    "octave-down": 33.36,
+    "other": 26.6,
+    "null": 7.19,
+    "meanErrHz": 3.71,
+    "n": 17389,
+    "halvedFrames": 6356
+   },
+   "swift+referee@0.1": {
+    "correct": 22.87,
+    "octave-up": 0.02,
+    "octave-down": 45.99,
+    "other": 23.94,
+    "null": 7.19,
+    "meanErrHz": 3.74,
+    "n": 17389,
+    "halvedFrames": 9068
+   }
+  },
+  "ptdb-tug": {
+   "swift": {
+    "correct": 74.51,
+    "octave-up": 0.3,
+    "octave-down": 0.0,
+    "other": 19.55,
+    "null": 5.64,
+    "meanErrHz": 2.99,
+    "n": 9328
+   },
+   "boersma-ac": {
+    "correct": 86.14,
+    "octave-up": 0.54,
+    "octave-down": 1.8,
+    "other": 2.36,
+    "null": 9.17,
+    "meanErrHz": 1.63,
+    "n": 9328
+   },
+   "swift+referee@-0.05": {
+    "correct": 74.07,
+    "octave-up": 0.18,
+    "octave-down": 0.65,
+    "other": 19.46,
+    "null": 5.64,
+    "meanErrHz": 2.99,
+    "n": 9328,
+    "halvedFrames": 113
+   },
+   "swift+referee@-0.02": {
+    "correct": 73.83,
+    "octave-up": 0.16,
+    "octave-down": 1.01,
+    "other": 19.36,
+    "null": 5.64,
+    "meanErrHz": 3.0,
+    "n": 9328,
+    "halvedFrames": 178
+   },
+   "swift+referee@0.0": {
+    "correct": 73.33,
+    "octave-up": 0.13,
+    "octave-down": 1.64,
+    "other": 19.26,
+    "null": 5.64,
+    "meanErrHz": 3.01,
+    "n": 9328,
+    "halvedFrames": 265
+   },
+   "swift+referee@0.02": {
+    "correct": 68.5,
+    "octave-up": 0.12,
+    "octave-down": 6.58,
+    "other": 19.16,
+    "null": 5.64,
+    "meanErrHz": 3.13,
+    "n": 9328,
+    "halvedFrames": 769
+   },
+   "swift+referee@0.05": {
+    "correct": 59.18,
+    "octave-up": 0.11,
+    "octave-down": 16.03,
+    "other": 19.05,
+    "null": 5.64,
+    "meanErrHz": 3.34,
+    "n": 9328,
+    "halvedFrames": 1741
+   },
+   "swift+referee@0.1": {
+    "correct": 46.08,
+    "octave-up": 0.1,
+    "octave-down": 29.57,
+    "other": 18.62,
+    "null": 5.64,
+    "meanErrHz": 3.57,
+    "n": 9328,
+    "halvedFrames": 3201
+   }
+  },
+  "vocadito": {
+   "swift": {
+    "correct": 97.79,
+    "octave-up": 0.4,
+    "octave-down": 0.08,
+    "other": 0.62,
+    "null": 1.1,
+    "meanErrHz": 1.3,
+    "n": 21582
+   },
+   "boersma-ac": {
+    "correct": 87.68,
+    "octave-up": 0.05,
+    "octave-down": 3.38,
+    "other": 3.67,
+    "null": 5.23,
+    "meanErrHz": 2.41,
+    "n": 21582
+   },
+   "swift+referee@-0.05": {
+    "correct": 97.46,
+    "octave-up": 0.12,
+    "octave-down": 0.71,
+    "other": 0.61,
+    "null": 1.1,
+    "meanErrHz": 1.3,
+    "n": 21582,
+    "halvedFrames": 309
+   },
+   "swift+referee@-0.02": {
+    "correct": 96.82,
+    "octave-up": 0.03,
+    "octave-down": 1.44,
+    "other": 0.61,
+    "null": 1.1,
+    "meanErrHz": 1.31,
+    "n": 21582,
+    "halvedFrames": 556
+   },
+   "swift+referee@0.0": {
+    "correct": 91.38,
+    "octave-up": 0.02,
+    "octave-down": 6.89,
+    "other": 0.61,
+    "null": 1.1,
+    "meanErrHz": 1.33,
+    "n": 21582,
+    "halvedFrames": 1799
+   },
+   "swift+referee@0.02": {
+    "correct": 55.72,
+    "octave-up": 0.02,
+    "octave-down": 42.56,
+    "other": 0.6,
+    "null": 1.1,
+    "meanErrHz": 1.59,
+    "n": 21582,
+    "halvedFrames": 9647
+   },
+   "swift+referee@0.05": {
+    "correct": 35.7,
+    "octave-up": 0.02,
+    "octave-down": 62.61,
+    "other": 0.57,
+    "null": 1.1,
+    "meanErrHz": 1.87,
+    "n": 21582,
+    "halvedFrames": 14251
+   },
+   "swift+referee@0.1": {
+    "correct": 22.01,
+    "octave-up": 0.02,
+    "octave-down": 76.37,
+    "other": 0.5,
+    "null": 1.1,
+    "meanErrHz": 2.17,
+    "n": 21582,
+    "halvedFrames": 17632
+   }
+  }
+ },
+ "session": {
+  "swift": {
+   "overall": {
+    "correct": 53.26,
+    "octave-up": 17.48,
+    "octave-down": 1.42,
+    "other": 3.88,
+    "null": 23.96,
+    "meanErrHz": 2.02,
+    "n": 51183
+   },
+   "byBand": {
+    "50-80": {
+     "correct": 3.07,
+     "octave-up": 56.62,
+     "octave-down": 0.0,
+     "other": 1.89,
+     "null": 38.43,
+     "meanErrHz": 1.24,
+     "n": 4398
+    },
+    "80-110": {
+     "correct": 49.14,
+     "octave-up": 25.63,
+     "octave-down": 0.0,
+     "other": 6.13,
+     "null": 19.1,
+     "meanErrHz": 1.32,
+     "n": 19782
+    },
+    "110-150": {
+     "correct": 54.97,
+     "octave-up": 19.59,
+     "octave-down": 0.0,
+     "other": 2.74,
+     "null": 22.7,
+     "meanErrHz": 1.11,
+     "n": 5829
+    },
+    "150-220": {
+     "correct": 60.54,
+     "octave-up": 1.41,
+     "octave-down": 4.38,
+     "other": 2.25,
+     "null": 31.42,
+     "meanErrHz": 1.97,
+     "n": 8966
+    },
+    "220-350": {
+     "correct": 80.01,
+     "octave-up": 0.78,
+     "octave-down": 0.75,
+     "other": 3.0,
+     "null": 15.45,
+     "meanErrHz": 2.98,
+     "n": 9565
+    },
+    "350-600": {
+     "correct": 42.55,
+     "octave-up": 1.41,
+     "octave-down": 10.0,
+     "other": 1.6,
+     "null": 44.45,
+     "meanErrHz": 4.44,
+     "n": 2630
+    }
+   },
+   "flipPct": 5.5
+  },
+  "boersma-ac": {
+   "overall": {
+    "correct": 70.24,
+    "octave-up": 6.65,
+    "octave-down": 9.49,
+    "other": 9.9,
+    "null": 3.72,
+    "meanErrHz": 2.35,
+    "n": 51183
+   },
+   "byBand": {
+    "50-80": {
+     "correct": 61.76,
+     "octave-up": 17.87,
+     "octave-down": 0.0,
+     "other": 15.58,
+     "null": 4.8,
+     "meanErrHz": 0.57,
+     "n": 4398
+    },
+    "80-110": {
+     "correct": 73.02,
+     "octave-up": 9.52,
+     "octave-down": 2.81,
+     "other": 10.83,
+     "null": 3.83,
+     "meanErrHz": 1.11,
+     "n": 19782
+    },
+    "110-150": {
+     "correct": 71.01,
+     "octave-up": 6.33,
+     "octave-down": 10.02,
+     "other": 9.02,
+     "null": 3.62,
+     "meanErrHz": 1.51,
+     "n": 5829
+    },
+    "150-220": {
+     "correct": 68.39,
+     "octave-up": 1.82,
+     "octave-down": 20.1,
+     "other": 5.7,
+     "null": 3.99,
+     "meanErrHz": 2.86,
+     "n": 8966
+    },
+    "220-350": {
+     "correct": 70.91,
+     "octave-up": 2.05,
+     "octave-down": 16.09,
+     "other": 8.3,
+     "null": 2.65,
+     "meanErrHz": 4.27,
+     "n": 9565
+    },
+    "350-600": {
+     "correct": 65.97,
+     "octave-up": 0.0,
+     "octave-down": 14.33,
+     "other": 15.36,
+     "null": 4.33,
+     "meanErrHz": 8.12,
+     "n": 2630
+    }
+   },
+   "flipPct": 13.95
+  },
+  "swift+referee@-0.05": {
+   "overall": {
+    "correct": 59.38,
+    "octave-up": 9.64,
+    "octave-down": 2.55,
+    "other": 4.47,
+    "null": 23.96,
+    "meanErrHz": 1.85,
+    "n": 51183
+   },
+   "byBand": {
+    "50-80": {
+     "correct": 22.62,
+     "octave-up": 31.51,
+     "octave-down": 0.0,
+     "other": 7.44,
+     "null": 38.43,
+     "meanErrHz": 0.56,
+     "n": 4398
+    },
+    "80-110": {
+     "correct": 59.96,
+     "octave-up": 13.95,
+     "octave-down": 0.48,
+     "other": 6.51,
+     "null": 19.1,
+     "meanErrHz": 1.17,
+     "n": 19782
+    },
+    "110-150": {
+     "correct": 61.95,
+     "octave-up": 10.91,
+     "octave-down": 1.8,
+     "other": 2.64,
+     "null": 22.7,
+     "meanErrHz": 1.07,
+     "n": 5829
+    },
+    "150-220": {
+     "correct": 58.44,
+     "octave-up": 0.75,
+     "octave-down": 7.18,
+     "other": 2.21,
+     "null": 31.42,
+     "meanErrHz": 1.98,
+     "n": 8966
+    },
+    "220-350": {
+     "correct": 79.06,
+     "octave-up": 0.53,
+     "octave-down": 2.03,
+     "other": 2.93,
+     "null": 15.45,
+     "meanErrHz": 3.0,
+     "n": 9565
+    },
+    "350-600": {
+     "correct": 42.59,
+     "octave-up": 1.22,
+     "octave-down": 10.19,
+     "other": 1.56,
+     "null": 44.45,
+     "meanErrHz": 4.42,
+     "n": 2630
+    }
+   },
+   "flipPct": 9.05,
+   "halvedFrames": 6112
+  },
+  "swift+referee@-0.02": {
+   "overall": {
+    "correct": 60.23,
+    "octave-up": 7.34,
+    "octave-down": 3.68,
+    "other": 4.79,
+    "null": 23.96,
+    "meanErrHz": 1.82,
+    "n": 51183
+   },
+   "byBand": {
+    "50-80": {
+     "correct": 27.38,
+     "octave-up": 24.35,
+     "octave-down": 0.0,
+     "other": 9.85,
+     "null": 38.43,
+     "meanErrHz": 0.54,
+     "n": 4398
+    },
+    "80-110": {
+     "correct": 62.67,
+     "octave-up": 10.61,
+     "octave-down": 0.81,
+     "other": 6.81,
+     "null": 19.1,
+     "meanErrHz": 1.14,
+     "n": 19782
+    },
+    "110-150": {
+     "correct": 63.77,
+     "octave-up": 7.81,
+     "octave-down": 3.07,
+     "other": 2.66,
+     "null": 22.7,
+     "meanErrHz": 1.05,
+     "n": 5829
+    },
+    "150-220": {
+     "correct": 55.71,
+     "octave-up": 0.61,
+     "octave-down": 10.06,
+     "other": 2.2,
+     "null": 31.42,
+     "meanErrHz": 2.0,
+     "n": 8966
+    },
+    "220-350": {
+     "correct": 77.33,
+     "octave-up": 0.45,
+     "octave-down": 3.87,
+     "other": 2.9,
+     "null": 15.45,
+     "meanErrHz": 3.03,
+     "n": 9565
+    },
+    "350-600": {
+     "correct": 42.47,
+     "octave-up": 1.14,
+     "octave-down": 10.38,
+     "other": 1.56,
+     "null": 44.45,
+     "meanErrHz": 4.42,
+     "n": 2630
+    }
+   },
+   "flipPct": 10.17,
+   "halvedFrames": 8178
+  },
+  "swift+referee@0.0": {
+   "overall": {
+    "correct": 59.62,
+    "octave-up": 5.75,
+    "octave-down": 5.66,
+    "other": 5.01,
+    "null": 23.96,
+    "meanErrHz": 1.81,
+    "n": 51183
+   },
+   "byBand": {
+    "50-80": {
+     "correct": 30.24,
+     "octave-up": 19.96,
+     "octave-down": 0.0,
+     "other": 11.37,
+     "null": 38.43,
+     "meanErrHz": 0.53,
+     "n": 4398
+    },
+    "80-110": {
+     "correct": 64.49,
+     "octave-up": 8.13,
+     "octave-down": 1.23,
+     "other": 7.05,
+     "null": 19.1,
+     "meanErrHz": 1.13,
+     "n": 19782
+    },
+    "110-150": {
+     "correct": 63.51,
+     "octave-up": 5.73,
+     "octave-down": 5.39,
+     "other": 2.68,
+     "null": 22.7,
+     "meanErrHz": 1.05,
+     "n": 5829
+    },
+    "150-220": {
+     "correct": 51.15,
+     "octave-up": 0.56,
+     "octave-down": 14.7,
+     "other": 2.17,
+     "null": 31.42,
+     "meanErrHz": 2.07,
+     "n": 8966
+    },
+    "220-350": {
+     "correct": 73.48,
+     "octave-up": 0.43,
+     "octave-down": 7.75,
+     "other": 2.9,
+     "null": 15.45,
+     "meanErrHz": 3.11,
+     "n": 9565
+    },
+    "350-600": {
+     "correct": 42.17,
+     "octave-up": 1.14,
+     "octave-down": 10.68,
+     "other": 1.56,
+     "null": 44.45,
+     "meanErrHz": 4.44,
+     "n": 2630
+    }
+   },
+   "flipPct": 11.22,
+   "halvedFrames": 10227
+  },
+  "swift+referee@0.02": {
+   "overall": {
+    "correct": 57.15,
+    "octave-up": 4.33,
+    "octave-down": 9.22,
+    "other": 5.34,
+    "null": 23.96,
+    "meanErrHz": 1.82,
+    "n": 51183
+   },
+   "byBand": {
+    "50-80": {
+     "correct": 32.33,
+     "octave-up": 16.14,
+     "octave-down": 0.0,
+     "other": 13.1,
+     "null": 38.43,
+     "meanErrHz": 0.53,
+     "n": 4398
+    },
+    "80-110": {
+     "correct": 65.25,
+     "octave-up": 5.93,
+     "octave-down": 2.19,
+     "other": 7.53,
+     "null": 19.1,
+     "meanErrHz": 1.12,
+     "n": 19782
+    },
+    "110-150": {
+     "correct": 61.54,
+     "octave-up": 3.89,
+     "octave-down": 9.14,
+     "other": 2.73,
+     "null": 22.7,
+     "meanErrHz": 1.06,
+     "n": 5829
+    },
+    "150-220": {
+     "correct": 44.68,
+     "octave-up": 0.45,
+     "octave-down": 21.29,
+     "other": 2.16,
+     "null": 31.42,
+     "meanErrHz": 2.18,
+     "n": 8966
+    },
+    "220-350": {
+     "correct": 65.74,
+     "octave-up": 0.37,
+     "octave-down": 15.58,
+     "other": 2.86,
+     "null": 15.45,
+     "meanErrHz": 3.31,
+     "n": 9565
+    },
+    "350-600": {
+     "correct": 39.43,
+     "octave-up": 1.1,
+     "octave-down": 13.46,
+     "other": 1.56,
+     "null": 44.45,
+     "meanErrHz": 4.53,
+     "n": 2630
+    }
+   },
+   "flipPct": 12.41,
+   "halvedFrames": 13040
+  },
+  "swift+referee@0.05": {
+   "overall": {
+    "correct": 52.23,
+    "octave-up": 3.09,
+    "octave-down": 15.0,
+    "other": 5.73,
+    "null": 23.96,
+    "meanErrHz": 1.84,
+    "n": 51183
+   },
+   "byBand": {
+    "50-80": {
+     "correct": 34.13,
+     "octave-up": 12.51,
+     "octave-down": 0.0,
+     "other": 14.94,
+     "null": 38.43,
+     "meanErrHz": 0.53,
+     "n": 4398
+    },
+    "80-110": {
+     "correct": 64.65,
+     "octave-up": 4.05,
+     "octave-down": 4.13,
+     "other": 8.07,
+     "null": 19.1,
+     "meanErrHz": 1.12,
+     "n": 19782
+    },
+    "110-150": {
+     "correct": 55.69,
+     "octave-up": 2.49,
+     "octave-down": 16.37,
+     "other": 2.76,
+     "null": 22.7,
+     "meanErrHz": 1.09,
+     "n": 5829
+    },
+    "150-220": {
+     "correct": 35.08,
+     "octave-up": 0.33,
+     "octave-down": 30.96,
+     "other": 2.21,
+     "null": 31.42,
+     "meanErrHz": 2.37,
+     "n": 8966
+    },
+    "220-350": {
+     "correct": 54.22,
+     "octave-up": 0.3,
+     "octave-down": 27.15,
+     "other": 2.88,
+     "null": 15.45,
+     "meanErrHz": 3.62,
+     "n": 9565
+    },
+    "350-600": {
+     "correct": 32.85,
+     "octave-up": 0.91,
+     "octave-down": 20.19,
+     "other": 1.6,
+     "null": 44.45,
+     "meanErrHz": 4.87,
+     "n": 2630
+    }
+   },
+   "flipPct": 13.53,
+   "halvedFrames": 17017
+  },
+  "swift+referee@0.1": {
+   "overall": {
+    "correct": 45.25,
+    "octave-up": 2.13,
+    "octave-down": 22.67,
+    "other": 5.99,
+    "null": 23.96,
+    "meanErrHz": 1.82,
+    "n": 51183
+   },
+   "byBand": {
+    "50-80": {
+     "correct": 35.86,
+     "octave-up": 9.8,
+     "octave-down": 0.0,
+     "other": 15.92,
+     "null": 38.43,
+     "meanErrHz": 0.55,
+     "n": 4398
+    },
+    "80-110": {
+     "correct": 62.96,
+     "octave-up": 2.55,
+     "octave-down": 6.81,
+     "other": 8.58,
+     "null": 19.1,
+     "meanErrHz": 1.13,
+     "n": 19782
+    },
+    "110-150": {
+     "correct": 46.44,
+     "octave-up": 1.53,
+     "octave-down": 26.56,
+     "other": 2.78,
+     "null": 22.7,
+     "meanErrHz": 1.14,
+     "n": 5829
+    },
+    "150-220": {
+     "correct": 23.53,
+     "octave-up": 0.26,
+     "octave-down": 42.65,
+     "other": 2.14,
+     "null": 31.42,
+     "meanErrHz": 2.68,
+     "n": 8966
+    },
+    "220-350": {
+     "correct": 38.56,
+     "octave-up": 0.21,
+     "octave-down": 42.95,
+     "other": 2.83,
+     "null": 15.45,
+     "meanErrHz": 4.14,
+     "n": 9565
+    },
+    "350-600": {
+     "correct": 23.57,
+     "octave-up": 0.76,
+     "octave-down": 29.58,
+     "other": 1.63,
+     "null": 44.45,
+     "meanErrHz": 5.39,
+     "n": 2630
+    }
+   },
+   "flipPct": 13.65,
+   "halvedFrames": 22043
+  },
+  "praat-self-flipPct": 4.27
+ },
+ "acPerFrameMs": {
+  "corpora": 0.113,
+  "session": 0.1193
+ }
+}

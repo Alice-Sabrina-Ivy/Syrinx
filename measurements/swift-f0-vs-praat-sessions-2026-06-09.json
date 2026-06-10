@@ -1,0 +1,238 @@
+{
+ "files": [
+  {
+   "path": "C:/Coding Projects/Calliope/sessions/2026-05-07/audit/slice_15-20min.wav",
+   "praatVoicedFrames": 5283,
+   "classificationPct": {
+    "correct": 70.94,
+    "null": 21.31,
+    "octave-down": 0.49,
+    "octave-up": 3.88,
+    "other": 3.37
+   },
+   "byPraatBandPct": {
+    "110-150": {
+     "correct": 84.4,
+     "null": 9.2,
+     "octave-up": 2.5,
+     "other": 3.9
+    },
+    "150-220": {
+     "correct": 53.5,
+     "null": 40.6,
+     "octave-down": 0.1,
+     "octave-up": 4.1,
+     "other": 1.7
+    },
+    "220-350": {
+     "correct": 81.8,
+     "null": 8.4,
+     "octave-down": 0.3,
+     "octave-up": 3.9,
+     "other": 5.6
+    },
+    "350-600": {
+     "correct": 68.6,
+     "null": 24.0,
+     "octave-down": 2.1,
+     "octave-up": 3.1,
+     "other": 2.3
+    },
+    "80-110": {
+     "correct": 87.3,
+     "null": 11.5,
+     "octave-up": 0.2,
+     "other": 1.0
+    }
+   },
+   "bandFrameCounts": {
+    "110-150": 360,
+    "150-220": 1578,
+    "220-350": 2008,
+    "350-600": 875,
+    "50-80": 53,
+    "80-110": 409
+   },
+   "swiftFlipPct": 2.39,
+   "swiftFlips": 117,
+   "praatFlipPct": 0.57,
+   "praatFlips": 75,
+   "spuriousSwiftReports": 738,
+   "swiftReportedFrames": 4896,
+   "h1MinusH2dB_lowRegister": {
+    "octave-up": {
+     "n": 1,
+     "p25": -4.5,
+     "median": -4.5,
+     "p75": -4.5
+    },
+    "correct": {
+     "n": 357,
+     "p25": -6.4,
+     "median": -4.6,
+     "p75": -2.8
+    }
+   }
+  },
+  {
+   "path": "C:/Coding Projects/Calliope/sessions/2025-09-08/session.wav",
+   "praatVoicedFrames": 28599,
+   "classificationPct": {
+    "correct": 84.45,
+    "null": 10.19,
+    "octave-down": 0.47,
+    "octave-up": 1.99,
+    "other": 2.91
+   },
+   "byPraatBandPct": {
+    "110-150": {
+     "correct": 95.2,
+     "null": 2.3,
+     "octave-up": 1.0,
+     "other": 1.4
+    },
+    "150-220": {
+     "correct": 81.5,
+     "null": 14.4,
+     "octave-down": 0.5,
+     "octave-up": 1.7,
+     "other": 2.0
+    },
+    "220-350": {
+     "correct": 87.1,
+     "null": 7.5,
+     "octave-down": 0.5,
+     "octave-up": 0.3,
+     "other": 4.6
+    },
+    "350-600": {
+     "correct": 58.2,
+     "null": 35.8,
+     "octave-down": 3.3,
+     "octave-up": 0.5,
+     "other": 2.1
+    },
+    "50-80": {
+     "correct": 10.8,
+     "null": 23.1,
+     "octave-up": 62.9,
+     "other": 3.3
+    },
+    "80-110": {
+     "correct": 91.6,
+     "null": 3.8,
+     "octave-up": 1.9,
+     "other": 2.7
+    }
+   },
+   "bandFrameCounts": {
+    "110-150": 3553,
+    "150-220": 9766,
+    "220-350": 9684,
+    "350-600": 1292,
+    "50-80": 399,
+    "80-110": 3901
+   },
+   "swiftFlipPct": 1.21,
+   "swiftFlips": 390,
+   "praatFlipPct": 0.59,
+   "praatFlips": 424,
+   "spuriousSwiftReports": 6629,
+   "swiftReportedFrames": 32315,
+   "h1MinusH2dB_lowRegister": {
+    "octave-up": {
+     "n": 75,
+     "p25": -25.9,
+     "median": -19.1,
+     "p75": -13.0
+    },
+    "correct": {
+     "n": 400,
+     "p25": -2.4,
+     "median": -1.2,
+     "p75": 0.5
+    }
+   }
+  },
+  {
+   "path": "C:/Coding Projects/Calliope/sessions/2026-05-26/session.wav",
+   "praatVoicedFrames": 51183,
+   "classificationPct": {
+    "correct": 53.26,
+    "null": 23.96,
+    "octave-down": 1.42,
+    "octave-up": 17.48,
+    "other": 3.88
+   },
+   "byPraatBandPct": {
+    "110-150": {
+     "correct": 55.0,
+     "null": 22.7,
+     "octave-up": 19.6,
+     "other": 2.7
+    },
+    "150-220": {
+     "correct": 60.5,
+     "null": 31.4,
+     "octave-down": 4.4,
+     "octave-up": 1.4,
+     "other": 2.3
+    },
+    "220-350": {
+     "correct": 80.0,
+     "null": 15.5,
+     "octave-down": 0.8,
+     "octave-up": 0.8,
+     "other": 3.0
+    },
+    "350-600": {
+     "correct": 42.5,
+     "null": 44.4,
+     "octave-down": 10.0,
+     "octave-up": 1.4,
+     "other": 1.6
+    },
+    "50-80": {
+     "correct": 3.1,
+     "null": 38.4,
+     "octave-up": 56.6,
+     "other": 1.9
+    },
+    "80-110": {
+     "correct": 49.1,
+     "null": 19.1,
+     "octave-up": 25.6,
+     "other": 6.1
+    }
+   },
+   "bandFrameCounts": {
+    "110-150": 5829,
+    "150-220": 8966,
+    "220-350": 9565,
+    "350-600": 2630,
+    "50-80": 4398,
+    "80-110": 19782
+   },
+   "swiftFlipPct": 5.5,
+   "swiftFlips": 3338,
+   "praatFlipPct": 1.73,
+   "praatFlips": 2222,
+   "spuriousSwiftReports": 21809,
+   "swiftReportedFrames": 60731,
+   "h1MinusH2dB_lowRegister": {
+    "octave-up": {
+     "n": 400,
+     "p25": -6.8,
+     "median": -3.0,
+     "p75": 1.8
+    },
+    "correct": {
+     "n": 400,
+     "p25": 3.9,
+     "median": 11.9,
+     "p75": 16.8
+    }
+   }
+  }
+ ]
+}
