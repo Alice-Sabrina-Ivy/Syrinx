@@ -142,6 +142,17 @@ export function PitchTrace({ pitchTraceRef, voiced, holding, pitch, compact = fa
       ctx.lineJoin = "round";
       ctx.lineCap = "round";
 
+      // Clip the trace + glow dot to the plot rectangle so a pitch
+      // outside the display range can never paint over the axis labels
+      // or below the chart. The detector range is kept in sync with
+      // PITCH_DISPLAY_RANGE (so this shouldn't fire), but the clip is a
+      // structural guarantee against the under-chart artifact recurring
+      // if the ranges ever drift apart again (2026-06-10).
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(plotLeft, plotTop, plotRight - plotLeft, plotBottom - plotTop);
+      ctx.clip();
+
       let inSegment = false;
       for (let i = 0; i < data.length; i++) {
         const pt = data[i];
@@ -215,6 +226,8 @@ export function PitchTrace({ pitchTraceRef, voiced, holding, pitch, compact = fa
         ctx.fillStyle = grad;
         ctx.fill();
       }
+
+      ctx.restore(); // end plot-rect clip
 
 
       animId = requestAnimationFrame(draw);
