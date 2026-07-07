@@ -314,7 +314,6 @@ export function pushError(err) {
     diagState.status.errors.splice(0, diagState.status.errors.length - 50);
   }
   // Also log to console — diag mode is opt-in so noisy console is fine.
-  // eslint-disable-next-line no-console
   console.error("[diag]", err.source ?? "unknown", err.where ?? "", err.message ?? "", err.stack ?? "");
 }
 

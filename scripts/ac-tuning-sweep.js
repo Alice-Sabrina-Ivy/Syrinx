@@ -30,11 +30,11 @@ const PRAAT_CONTOURS = "build/pitch-compare/praat-contours.json";
 
 function readWav(filePath) {
   const buf = readFileSync(filePath);
-  let offset = 12, sampleRate = 0, bits = 0, dataStart = 0, dataSize = 0;
+  let offset = 12, sampleRate = 0, dataStart = 0, dataSize = 0;
   while (offset < buf.length - 8) {
     const id = buf.toString("ascii", offset, offset + 4);
     const size = buf.readUInt32LE(offset + 4);
-    if (id === "fmt ") { sampleRate = buf.readUInt32LE(offset + 12); bits = buf.readUInt16LE(offset + 22); }
+    if (id === "fmt ") { sampleRate = buf.readUInt32LE(offset + 12); }
     else if (id === "data") { dataStart = offset + 8; dataSize = size; break; }
     offset += 8 + size;
   }
@@ -136,7 +136,6 @@ function flipPct(reported) {
 }
 
 // ---- config stages ----
-const base = { frameLength: 1024, ac: {}, path: null };
 function gridStageA() {
   const out = [];
   for (const vt of [0.30, 0.40, 0.45, 0.55]) {
