@@ -18,11 +18,11 @@
 //   interpolation, maintain a rolling 1536-sample (96 ms) buffer, and
 //   evaluate candidates on every chunk once the buffer is full. The
 //   path tracker (octave-jump + voiced/unvoiced transition costs, the
-//   retired-pYIN L=4 bounded-Viterbi pattern) decodes the frame that is
+//   retired pYIN's bounded-Viterbi pattern) decodes the frame that is
 //   `lookback` hops old — so each posted pitch describes audio centered
 //   48 ms before the latest sample of a chunk L hops in the past
-//   (~148 ms total display latency vs SwiftF0's ~56 ms; the trade for
-//   octave-flip rates at Praat parity).
+//   (~98 ms total display latency at the deployed L=2 vs SwiftF0's
+//   ~56 ms; the trade for octave-flip rates at Praat parity).
 //
 // Protocol:
 //   main → worker: { type: "init", inputSampleRate, diag? }
