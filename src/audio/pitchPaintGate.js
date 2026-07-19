@@ -1,12 +1,13 @@
 // pitchPaintGate.js — Decides whether a smoothed pitch value should be
 // PAINTED on the trace, suppressing transient octave/harmonic excursions
-// that the detector + 5-frame median still let through. Extracted from
+// that the detector + display median still let through. Extracted from
 // useAudioPipeline.js for unit-testing, same pattern as pitchGate.js /
 // pitchSmoothing.js.
 //
 // Why this replaced the PR #84 consecutive-delta jump break: that broke
 // continuity only when two ADJACENT painted values differed by ≥ 12 st.
-// But the 5-frame display median ramps an instant octave jump
+// But the display median (5-frame then, 3-frame since 2026-07-19; the
+// mechanism holds for any length > 1) ramps an instant octave jump
 // (100 → 380 Hz) through intermediate values whose step-to-step deltas
 // are each < 12 st, so the jump break never fired and the ramp painted
 // as a connected near-vertical line. Measured on the 2026-05-26 session:

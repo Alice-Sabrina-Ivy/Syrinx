@@ -1,12 +1,10 @@
 // pitchSmoothing.js — Rolling-median smoother for pitch values produced
-// by the SwiftF0 pitch worker. Extracted from useAudioPipeline.js so it
-// can be unit-tested in plain Node without spinning up React + AudioContext.
+// by the pitch worker. Extracted from useAudioPipeline.js so it can be
+// unit-tested in plain Node without spinning up React + AudioContext.
 //
 // The smoother maintains a length-PITCH_SMOOTH_LEN ring of recent values
-// and returns the median on each push. The median tolerates 1- and 2-
-// frame outlier spikes naturally (a 5-window median cannot be flipped by
-// fewer than 3 of 5 buffer slots) and tracks sustained pitch shifts in
-// 2 frames once 3 of the 5 slots hold the new value.
+// and returns the median on each push. Single-frame outliers cannot
+// flip it; sustained shifts track within (LEN+1)/2 frames.
 //
 // Earlier versions (pYIN era) wrapped the median in a `reconcileHarmonic`
 // helper that detected k=2 / k=3 octave-relations between an incoming
@@ -22,10 +20,18 @@
 // measurements/pitchsmoothing-octave-shift-2026-05-09.md.
 
 // Number of recent pitch samples kept for the rolling median.
-// 5 frames × ~25 ms hop = ~125 ms of memory — long enough to outvote a
-// 1- or 2-frame outlier, short enough that a real pitch shift is fully
-// reflected in the output within ~75 ms.
-export const PITCH_SMOOTH_LEN = 5;
+// 3 frames × ~25 ms hop = ~75 ms of memory. Reduced 5 → 3 on 2026-07-19:
+// the length-5 window was sized for pYIN/SwiftF0-era raw detector output,
+// but since the Boersma-AC cutover the L=2 bounded-Viterbi path tracker
+// already suppresses single-frame octave flips upstream, and the long
+// median was measurably COSTING displayed accuracy — reconstructing the
+// production display chain against Praat references showed K=5 losing
+// 1.4–2.2 pp of 80–110 Hz band accuracy and 25 ms of display lag vs K=3
+// on the tuning session AND both held-out recordings, with K=3 painting
+// no more spikes than K=5 (measurements/pitch-l2-retune-2026-07-19.md).
+// A 2-frame outlier now reaches the output by design — 1-frame flips are
+// the tracker's job, octave-class excursions are the paint gate's.
+export const PITCH_SMOOTH_LEN = 3;
 
 // Median of an array. Returns null for empty input.
 export function median(arr) {

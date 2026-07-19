@@ -25,7 +25,12 @@ const HOP = Math.round(SR * 0.025); // 400 samples = 25 ms
 const RATIO_TOL = 0.05;
 const OCTAVE_REL_TOL = 0.10;
 const FLIP_TOL = 0.2;
-const SESSION_WAV = "C:/Coding Projects/Calliope/sessions/2026-05-26/session.wav";
+// AC_SESSION_WAV overrides for held-out-session validation (any path
+// present in praat-contours.json); AC_SESSION_ONLY=1 skips the corpora
+// for fast session-only cells.
+const SESSION_WAV = process.env.AC_SESSION_WAV
+  || "C:/Coding Projects/Calliope/sessions/2026-05-26/session.wav";
+const SESSION_ONLY = process.env.AC_SESSION_ONLY === "1";
 const PRAAT_CONTOURS = "build/pitch-compare/praat-contours.json";
 
 function readWav(filePath) {
@@ -191,6 +196,51 @@ const STAGES = {
     out.push({ name: "fl1280", frameLength: 1280, ac: { ...prodAc }, path: { ...prodPath } });
     return out;
   },
+  // Stage E (2026-07-19): fine voicingThreshold grid at the deployed
+  // operating point, run AFTER the minLag candidate-scan fix (top-edge
+  // 396-400 Hz octave-down) landed in boersma-ac.js — stage D found vt
+  // is NOT flat here (0.35 beat 0.40 on every headline metric; stage A's
+  // "flat 0.30-0.45" was measured frame-local at 50-600 Hz). vt0.40 cell
+  // doubles as the fix-impact comparison against stage D's prod-baseline.
+  E: () => {
+    const prodPath = { octaveJumpCost: 0.15, voicedUnvoicedCost: 0.20, lookback: 2 };
+    return [0.28, 0.30, 0.33, 0.35, 0.37, 0.40].map((vt) => ({
+      name: `vt${vt}`,
+      frameLength: 1536,
+      ac: { voicingThreshold: vt, octaveCost: 0.01 },
+      path: { ...prodPath },
+    }));
+  },
+  // Stage F (2026-07-19): frameLength × voicingThreshold interaction at
+  // the deployed operating point, with the minLag fix in place. Stage D
+  // found fl1280 beats fl1536 on session band (+1.2), octave-up (−0.6),
+  // FDA and PTDB, at the cost of hillenbrand NULLS (+0.9) — while vt0.35's
+  // main effect is cutting nulls on every corpus. Test whether the two
+  // levers compose; fl1408/fl1152 probe the window axis around the 1280
+  // point.
+  F: () => {
+    const prodPath = { octaveJumpCost: 0.15, voicedUnvoicedCost: 0.20, lookback: 2 };
+    const out = [];
+    for (const fl of [1280]) {
+      for (const vt of [0.33, 0.35, 0.37, 0.40]) {
+        out.push({ name: `fl${fl}_vt${vt}`, frameLength: fl, ac: { voicingThreshold: vt, octaveCost: 0.01 }, path: { ...prodPath } });
+      }
+    }
+    out.push({ name: "fl1408_vt0.35", frameLength: 1408, ac: { voicingThreshold: 0.35, octaveCost: 0.01 }, path: { ...prodPath } });
+    out.push({ name: "fl1152_vt0.35", frameLength: 1152, ac: { voicingThreshold: 0.35, octaveCost: 0.01 }, path: { ...prodPath } });
+    return out;
+  },
+  // Stage H (2026-07-19): held-out-session trio — run with
+  // AC_SESSION_ONLY=1 AC_SESSION_WAV=<held-out wav> to validate the
+  // proposed configs on recordings that took no part in tuning.
+  H: () => {
+    const prodPath = { octaveJumpCost: 0.15, voicedUnvoicedCost: 0.20, lookback: 2 };
+    return [
+      { name: "pre(fl1536,vt0.40)", frameLength: 1536, ac: { voicingThreshold: 0.40, octaveCost: 0.01 }, path: { ...prodPath } },
+      { name: "fl1536_vt0.35", frameLength: 1536, ac: { voicingThreshold: 0.35, octaveCost: 0.01 }, path: { ...prodPath } },
+      { name: "fl1280_vt0.35", frameLength: 1280, ac: { voicingThreshold: 0.35, octaveCost: 0.01 }, path: { ...prodPath } },
+    ];
+  },
   P: () => [{ name: `probe_attr${process.env.AC_ATTR_OFF_MS || "center"}`, frameLength: 1024, ac: { voicingThreshold: 0.40, octaveCost: 0.01 }, path: null }],
   A: () => gridStageA(),
   B: () => gridStageB(JSON.parse(process.env.AC_BEST || '{"voicingThreshold":0.40,"octaveCost":0.05}')),
@@ -205,13 +255,15 @@ const outPath = process.argv[3];
 const configs = STAGES[stageName]();
 if (!configs) throw new Error(`unknown stage ${stageName}; choose A|B|C`);
 
-console.log("Loading corpora …");
-const corpora = loadAllCorpora();
-// Pre-resample every track to 16 kHz once.
 const byCorpus = {};
-for (const t of corpora) {
-  const sig = t.sampleRate === SR ? t.samples : resampleLinear(t.samples, t.sampleRate, SR);
-  (byCorpus[t.corpus] ||= []).push({ sig16k: sig, ref: t.ref.f0, refHopMs: t.ref.hopMs });
+if (!SESSION_ONLY) {
+  console.log("Loading corpora …");
+  const corpora = loadAllCorpora();
+  // Pre-resample every track to 16 kHz once.
+  for (const t of corpora) {
+    const sig = t.sampleRate === SR ? t.samples : resampleLinear(t.samples, t.sampleRate, SR);
+    (byCorpus[t.corpus] ||= []).push({ sig16k: sig, ref: t.ref.f0, refHopMs: t.ref.hopMs });
+  }
 }
 console.log("Loading session WAV + Praat reference …");
 const sessRaw = readWav(SESSION_WAV);
@@ -249,17 +301,24 @@ for (const cfg of configs) {
   }
   const sess = scoreSession(runConfig(sessSig, cfg));
   results.push({ cfg, corpusScores, sess });
-  // ranking helpers
-  const octErr = Math.max(...Object.values(corpusScores).map((c) => pct(c, "octave-up") + pct(c, "octave-down")));
-  const minCorrect = Math.min(...Object.values(corpusScores).map((c) => pct(c, "correct")));
-  console.log(
-    `${cfg.name.padEnd(18)} | corpora minCorrect ${minCorrect.toFixed(1)} maxOctErr ${octErr.toFixed(2)} ` +
-    `| FDA ${pct(corpusScores.fda, "correct")}/${(pct(corpusScores.fda,"octave-up")+pct(corpusScores.fda,"octave-down")).toFixed(1)} ` +
-    `voc ${pct(corpusScores.vocadito, "correct")}/${(pct(corpusScores.vocadito,"octave-up")+pct(corpusScores.vocadito,"octave-down")).toFixed(1)} ` +
-    `ptdb ${pct(corpusScores["ptdb-tug"], "correct")} ` +
-    `| sess80-110 corr ${pct(sess.band, "correct")} up ${pct(sess.band, "octave-up")} null ${pct(sess.band, "null")} flip ${sess.flip} ` +
-    `(${((Date.now() - t0) / 1000).toFixed(0)}s)`,
-  );
+  const sessLine =
+    `sess80-110 corr ${pct(sess.band, "correct")} up ${pct(sess.band, "octave-up")} null ${pct(sess.band, "null")} flip ${sess.flip} ` +
+    `| overall corr ${pct(sess.overall, "correct")} ` +
+    `(${((Date.now() - t0) / 1000).toFixed(0)}s)`;
+  if (SESSION_ONLY) {
+    console.log(`${cfg.name.padEnd(18)} | ${sessLine}`);
+  } else {
+    // ranking helpers
+    const octErr = Math.max(...Object.values(corpusScores).map((c) => pct(c, "octave-up") + pct(c, "octave-down")));
+    const minCorrect = Math.min(...Object.values(corpusScores).map((c) => pct(c, "correct")));
+    console.log(
+      `${cfg.name.padEnd(18)} | corpora minCorrect ${minCorrect.toFixed(1)} maxOctErr ${octErr.toFixed(2)} ` +
+      `| FDA ${pct(corpusScores.fda, "correct")}/${(pct(corpusScores.fda,"octave-up")+pct(corpusScores.fda,"octave-down")).toFixed(1)} ` +
+      `voc ${pct(corpusScores.vocadito, "correct")}/${(pct(corpusScores.vocadito,"octave-up")+pct(corpusScores.vocadito,"octave-down")).toFixed(1)} ` +
+      `ptdb ${pct(corpusScores["ptdb-tug"], "correct")} ` +
+      `| ${sessLine}`,
+    );
+  }
 }
 
 if (outPath) {

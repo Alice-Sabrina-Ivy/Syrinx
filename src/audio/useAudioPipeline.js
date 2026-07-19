@@ -58,7 +58,7 @@ const FORMANT_OUTLIER_HZ = 500; // max plausible frame-to-frame formant jump
 // Painting "is this pitch on the established level, and confirmed" lives
 // in pitchPaintGate.js (onset confirmation + established-level excursion
 // break with sustained-new-level accept) — extracted for unit testing.
-// It replaced an earlier consecutive-delta jump break that the 5-frame
+// It replaced an earlier consecutive-delta jump break that the display
 // median's octave ramps defeated; see that module's header + the
 // excursion measurement for the data.
 //
@@ -1004,7 +1004,7 @@ export function useAudioPipeline() {
     // suppressed (rendered as a gap) unless it sustains a consistent new
     // level — so transient 2x/3x/4x harmonic locks never paint, while
     // genuine register changes do. This replaced a consecutive-delta jump
-    // break that the 5-frame median's octave ramps defeated (the
+    // break that the display median's octave ramps defeated (the
     // "testing 1 2 3" connected spike lines; see pitchPaintGate.js +
     // measurements/pitch-excursion-break-2026-06-10.md). Recording stays
     // per-frame truthful — this only governs the trace/readout.

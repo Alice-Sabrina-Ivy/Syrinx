@@ -15,13 +15,13 @@
 // Streaming protocol (cadence unchanged from the SwiftF0 era):
 //   Each capture chunk arrives at ~25 ms cadence with `contextTime`
 //   (AudioContext seconds). We resample to 16 kHz via linear
-//   interpolation, maintain a rolling 1536-sample (96 ms) buffer, and
+//   interpolation, maintain a rolling 1280-sample (80 ms) buffer, and
 //   evaluate candidates on every chunk once the buffer is full. The
 //   path tracker (octave-jump + voiced/unvoiced transition costs, the
 //   retired pYIN's bounded-Viterbi pattern) decodes the frame that is
 //   `lookback` hops old — so each posted pitch describes audio centered
-//   48 ms before the latest sample of a chunk L hops in the past
-//   (~98 ms total display latency at the deployed L=2 vs SwiftF0's
+//   40 ms before the latest sample of a chunk L hops in the past
+//   (~90 ms total display latency at the deployed L=2 vs SwiftF0's
 //   ~56 ms; the trade for octave-flip rates at Praat parity).
 //
 // Protocol:
@@ -54,7 +54,7 @@ import {
 } from "./boersma-ac.js";
 
 const TARGET_SAMPLE_RATE = 16000;
-const FRAME_LENGTH = BOERSMA_FRAME_LENGTH_16K; // 1536 = 96 ms
+const FRAME_LENGTH = BOERSMA_FRAME_LENGTH_16K; // 1280 = 80 ms
 
 let inputSampleRate = 48000;
 let _diag = false;

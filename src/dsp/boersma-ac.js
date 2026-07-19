@@ -40,8 +40,18 @@ export const BOERSMA_DEFAULTS = {
                          // harmonic-lock error surface). measurements/
                          // pitch-range-60-400-2026-06-10.md +
                          // pitch-trace-floor-2026-06-10.md
-  voicingThreshold: 0.40, // tuned (Praat default 0.45) — stage-A sweep,
-                          // measurements/boersma-ac-tuning-2026-06-09.md
+  voicingThreshold: 0.35, // tuned (Praat default 0.45). 0.45→0.40 by the
+                          // stage-A sweep (frame-local, 50-600 Hz,
+                          // boersma-ac-tuning-2026-06-09.md); 0.40→0.35
+                          // by the stage-E sweep AT the deployed
+                          // operating point (75-400 Hz, L=2 tracker):
+                          // corpus nulls convert to correct with octave
+                          // errors and flip rate flat-or-better on every
+                          // corpus + the session (band 93.9→94.2, band
+                          // nulls 0.4→0.1). 0.28-0.33 measured slightly
+                          // better still on clean corpora — headroom
+                          // pending a real-noise oracle. measurements/
+                          // pitch-l2-retune-2026-07-19.md
   silenceThreshold: 0.03, // Praat default (fraction of global peak)
   octaveCost: 0.01,       // Praat default. DO NOT RAISE — higher values
                           // are a high-octave bias that re-creates the
@@ -52,10 +62,19 @@ export const BOERSMA_DEFAULTS = {
   maxCandidates: 15,
 };
 
-// Production frame length at 16 kHz: 96 ms. Stage-B sweep: beats 64 ms
-// (vocadito +1.8, session +2.1, flips -2.7) and 128 ms (which blurs
-// dynamic speech). Response center sits 48 ms behind the latest sample.
-export const BOERSMA_FRAME_LENGTH_16K = 1536;
+// Production frame length at 16 kHz: 80 ms. Response center sits 40 ms
+// behind the latest sample. 1536→1280 on 2026-07-19 (stage-F sweep at
+// the deployed 75-400/L=2 operating point, minLag fix in place): with
+// vt 0.35, 1280 beats 1536 on the tuning session (band 94.2→95.4,
+// octave-up 4.1→3.4), BOTH held-out recordings (97.3→98.3, 98.1→98.6),
+// FDA (+1.0) and PTDB (+1.4) for BOTH genders, at the cost of ~1 pp on
+// hillenbrand (isolated short vowels; symmetric across m/w, mostly
+// nulls) and −0.1 vocadito. 1152 pushes further but the hillenbrand/
+// vocadito cost steepens; 1408 is dominated. The 2026-06-09 stage-B
+// pick of 1536 was measured frame-local at 50-600 Hz — the optimum
+// moved with the operating point. measurements/
+// pitch-l2-retune-2026-07-19.md
+export const BOERSMA_FRAME_LENGTH_16K = 1280;
 
 // In-place iterative radix-2 complex FFT (re/im arrays, length power of 2).
 function fft(re, im, invert) {
@@ -166,7 +185,14 @@ export function createBoersmaAC(sampleRate, frameLength, opts = {}) {
     );
 
     const cands = [];
-    for (let t = minLag + 1; t < maxLag; t++) {
+    // Scan from minLag exactly (rNorm is computed for all lags 0..maxLag,
+    // so the t-1 neighbor exists): starting at minLag+1 made the lag bin
+    // of maxPitchHz itself ineligible as a local max, so any F0 above
+    // ~maxPitch*(1 - maxPitch/(2*sampleRate)) (≈395 Hz at 400/16k) had NO
+    // fundamental candidate and decoded as a confident octave-down via
+    // the always-present 2x-period subharmonic peak (2026-07-19; frame
+    // guard in tests/dsp/boersma-ac-test.js).
+    for (let t = minLag; t < maxLag; t++) {
       if (rNorm[t] > rNorm[t - 1] && rNorm[t] >= rNorm[t + 1] && rNorm[t] > cfg.peakFloor) {
         const a = rNorm[t - 1], b = rNorm[t], c = rNorm[t + 1];
         const denom = a - 2 * b + c;
