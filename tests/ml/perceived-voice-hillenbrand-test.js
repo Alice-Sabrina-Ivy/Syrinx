@@ -48,11 +48,27 @@ const argString = (name, def) => {
   return a ? a.split("=").slice(1).join("=") : def;
 };
 // `--model=<HF_id>` selects which gender model to evaluate. Defaults
-// to current production (JaesungHuh ECAPA-TDNN ONNX q8). Use this
-// flag to compare against a candidate without modifying the worker —
-// e.g. `--model=prithivMLmods/Common-Voice-Gender-Detection-ONNX` to
-// re-measure the previous production model on the same corpus.
-const MODEL_ID = argString("model", "Alice-Sabrina-Ivy/voice-gender-classifier-onnx-q8");
+// to current production (JaesungHuh ECAPA-TDNN ONNX q8-v2, the
+// exclude-matmul re-quantization — keep this in sync with
+// DEFAULT_MODEL_ID in src/ml/gender-worker.js so a no-args oracle run
+// validates what production actually loads). Use the flag to compare
+// candidates without modifying the worker — e.g.
+// `--model=Alice-Sabrina-Ivy/voice-gender-classifier-onnx-q8` to
+// re-measure the retired v1 on the same corpus.
+const MODEL_ID = argString("model", "Alice-Sabrina-Ivy/voice-gender-classifier-onnx-q8-v2");
+// `--local-root=DIR` loads MODEL_ID from a local directory tree instead
+// of the HF Hub (DIR/<model>/onnx/model*.onnx + config files), and
+// `--dtype=q8|fp32|fp16` selects the weight file — used to measure the
+// accuracy cost of quantization against locally exported variants
+// (2026-07-19 gender-model investigation; regeneration recipe in
+// measurements/gender-model-latency-2026-07-19.md).
+const LOCAL_ROOT = argString("local-root", null);
+const DTYPE = argString("dtype", "q8");
+if (LOCAL_ROOT) {
+  env.allowRemoteModels = false;
+  env.allowLocalModels = true;
+  env.localModelPath = LOCAL_ROOT;
+}
 const ALPHA = argFloat("alpha", 0.2);
 const WINDOW_SEC = argFloat("window", 0.75);
 const HOP_MS = 150;
@@ -168,10 +184,10 @@ function deltaStd(a) {
 function median(a) { const s = [...a].sort((x,y)=>x-y); return s[Math.floor(s.length/2)]; }
 
 async function main() {
-  console.log(`Config: window=${WINDOW_SEC}s, hop=${HOP_MS}ms, EMA α=${ALPHA}`);
-  console.log(`Loading ${MODEL_ID} (q8)…`);
+  console.log(`Config: window=${WINDOW_SEC}s, hop=${HOP_MS}ms, EMA α=${ALPHA}, dtype=${DTYPE}${LOCAL_ROOT ? `, local-root=${LOCAL_ROOT}` : ""}`);
+  console.log(`Loading ${MODEL_ID} (${DTYPE})…`);
   const t0 = performance.now();
-  const classifier = await pipeline("audio-classification", MODEL_ID, { dtype: "q8" });
+  const classifier = await pipeline("audio-classification", MODEL_ID, { dtype: DTYPE });
   console.log(`Model loaded in ${((performance.now() - t0) / 1000).toFixed(1)}s\n`);
 
   const speakers = [
