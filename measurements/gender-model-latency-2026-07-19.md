@@ -175,20 +175,37 @@ the Pixel with the WASM build before the PR merges. If mobile WASM
 measures *worse* than 460 ms, the load becomes platform-conditional —
 decide on the measurement, not now.
 
-**Staged (needs model-file upload to the HF repo):** the v2
-re-quantized model (§5) — Hillenbrand 100/100, fp32-level noise,
-46 ms browser WASM, 16.1 MB. Artifact + config staged at
-`build/jaesunghuh-gender-v2/`. Upload requires the HF account owner
-(repo `Alice-Sabrina-Ivy/voice-gender-classifier-onnx-q8`; recommend
-uploading as a new commit so the old artifact stays addressable by
-revision, or a `-v2` repo + worker MODEL_ID bump). Acceptance after
-upload: oracle re-run against the hub file, probe, one diag-capture
-end-to-end, and the mobile measurement. Expected user-visible effect
-of the full stack (WASM + cadence + v2 model): meter updates 2.44 →
-6.19 Hz with per-window noise ~10× lower — the EMA α could then be
+**v2 model: uploaded and cut over (2026-07-19, same day).** Published
+as `Alice-Sabrina-Ivy/voice-gender-classifier-onnx-q8-v2` (MIT,
+new repo so v1 stays addressable); hub artifact verified byte-exact
+against the staged file (sha256 `fdc2dbdc…d86c252`). Worker
+`DEFAULT_MODEL_ID` bumped. Acceptance against the live hub file:
+
+- **Oracle:** 100 % male (45/45) / 100 % female (48/48), raw_std
+  0.010/0.025, **0/93 speakers in the uncertain band [0.3, 0.7]**
+  (v1: 4 misclassified + borderline finals).
+- **End-to-end production path** (diag capture, v2 from hub, device
+  wasm): median 112.7 ms / p95 135.3, cadence 6.14 Hz — measured
+  while a heavy unrelated workload (8 workers × ~3.5 GB) was running
+  on the machine. A same-state control probe confirmed the load
+  roughly doubles all inference times (probe WASM 46 → 100 ms), so
+  the idle-machine numbers in §1 (~52 ms production path) and this
+  loaded-state run bracket the real range. The load-bearing
+  observations hold in BOTH states: WASM beats WebGPU ~2.5–4.7×, and
+  the cadence stays at the ~6.1 Hz design ceiling because even
+  loaded-state inference fits the 150 ms hop — where the retired
+  WebGPU config was over budget even idle.
+
+**Mobile measurement: waived by the user (2026-07-19)** — accepted
+risk. If mobile WASM turns out slower than the old 460 ms WebGPU
+path, the `inferenceInProgress` guard still degrades the meter
+gracefully; the first mobile diag capture after this ships will
+settle it as a side effect.
+
+Follow-up headroom (separate measured decision, post-ship): with
+per-window noise now ~10× lower, the EMA α=0.2 choice could be
 revisited for responsiveness (the 05-05 audeering analysis showed
-low-noise models tolerate α≈0.55 ≈ 270 ms settling), but that is a
-separate measured decision AFTER the model ships.
+low-noise models tolerate α≈0.55 ≈ 270 ms settling).
 
 **Also corrected by this investigation:** the m45 "architecture-
 independent calibration noise floor" note (INVESTIGATIONS.md) — m45
