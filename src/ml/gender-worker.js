@@ -83,21 +83,22 @@ const EMA_ALPHA = 0.2;                     // score smoothing
 const INFERENCE_TIMEOUT_MS = 2500;
 // JaesungHuh's voice-gender-classifier (ECAPA-TDNN), q8-quantized
 // ONNX export hosted under the project's HF account. ~15.4 M params
-// (5-6× smaller than the previous wav2vec2-base prithivMLmods),
-// gender-symmetric Hillenbrand accuracy 95.6 % (male) / 95.8 %
-// (female) — vs prithivMLmods's 100 % / 81.3 %, fixing the female-
-// accuracy gap that motivated the 2026-05-05 model-swap arc. Labels
-// are id2label {0:male, 1:female} — opposite ordering from
-// prithivMLmods's {0:female, 1:male}; femaleScoreFromResult parses
-// by label name not index, so this swap is correct without other
-// code changes. Mobile (Pixel 8 Pro / Chrome 147 / WebGPU): ~460 ms
-// per inference, vs prithivMLmods ~2100 ms on the same device — the
-// new model is ALSO faster on mobile, contrary to the platform-
-// split intuition. See measurements/jaesunghuh-q8-results-
-// 2026-05-06.md (investigation outcome) and CLAUDE.md "Perceived-
-// voice gender model — investigation arc 2026-05-05/06" for the
-// full reasoning.
-const DEFAULT_MODEL_ID = "Alice-Sabrina-Ivy/voice-gender-classifier-onnx-q8";
+// (5-6× smaller than the previous wav2vec2-base prithivMLmods).
+// "-v2" (2026-07-19): identical weights/recipe except the attentive-
+// pooling matmul is EXCLUDED from quantization — a per-node
+// sensitivity sweep showed that one activation×activation product
+// carried ~10× the quantization error of any other node, and it was
+// the whole accuracy ceiling: Hillenbrand 95.6/95.8 (v1) → 100/100
+// (v2) at fp32-level per-window noise (raw_std ~0.20 → ~0.02) and
+// ~46 ms browser-WASM inference. The prior "m45 is an architecture-
+// independent noise floor" belief is retracted — it was quantization
+// damage. Labels are id2label {0:male, 1:female} — opposite ordering
+// from prithivMLmods's {0:female, 1:male}; femaleScoreFromResult
+// parses by label name not index, so model swaps can't silently
+// invert the meter. Decision data: measurements/
+// gender-model-latency-2026-07-19.md; v1 remains published for
+// reproducibility of results measured against it.
+const DEFAULT_MODEL_ID = "Alice-Sabrina-Ivy/voice-gender-classifier-onnx-q8-v2";
 
 let inputSampleRate = 48000;
 let classifier = null;
