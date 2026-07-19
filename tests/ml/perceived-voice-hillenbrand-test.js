@@ -53,6 +53,19 @@ const argString = (name, def) => {
 // e.g. `--model=prithivMLmods/Common-Voice-Gender-Detection-ONNX` to
 // re-measure the previous production model on the same corpus.
 const MODEL_ID = argString("model", "Alice-Sabrina-Ivy/voice-gender-classifier-onnx-q8");
+// `--local-root=DIR` loads MODEL_ID from a local directory tree instead
+// of the HF Hub (DIR/<model>/onnx/model*.onnx + config files), and
+// `--dtype=q8|fp32|fp16` selects the weight file — used to measure the
+// accuracy cost of quantization against locally exported variants
+// (2026-07-19 gender-model investigation; regeneration recipe in
+// measurements/gender-model-latency-2026-07-19.md).
+const LOCAL_ROOT = argString("local-root", null);
+const DTYPE = argString("dtype", "q8");
+if (LOCAL_ROOT) {
+  env.allowRemoteModels = false;
+  env.allowLocalModels = true;
+  env.localModelPath = LOCAL_ROOT;
+}
 const ALPHA = argFloat("alpha", 0.2);
 const WINDOW_SEC = argFloat("window", 0.75);
 const HOP_MS = 150;
@@ -168,10 +181,10 @@ function deltaStd(a) {
 function median(a) { const s = [...a].sort((x,y)=>x-y); return s[Math.floor(s.length/2)]; }
 
 async function main() {
-  console.log(`Config: window=${WINDOW_SEC}s, hop=${HOP_MS}ms, EMA α=${ALPHA}`);
-  console.log(`Loading ${MODEL_ID} (q8)…`);
+  console.log(`Config: window=${WINDOW_SEC}s, hop=${HOP_MS}ms, EMA α=${ALPHA}, dtype=${DTYPE}${LOCAL_ROOT ? `, local-root=${LOCAL_ROOT}` : ""}`);
+  console.log(`Loading ${MODEL_ID} (${DTYPE})…`);
   const t0 = performance.now();
-  const classifier = await pipeline("audio-classification", MODEL_ID, { dtype: "q8" });
+  const classifier = await pipeline("audio-classification", MODEL_ID, { dtype: DTYPE });
   console.log(`Model loaded in ${((performance.now() - t0) / 1000).toFixed(1)}s\n`);
 
   const speakers = [

@@ -233,9 +233,13 @@ reused for the platform-split probe — different decisions need
 separately-anchored thresholds).
 
 **Known borderline samples:** m45 misclassifies under any α tested,
-across both audeering 6L and JaesungHuh — architecture-independent;
-treat as the calibration noise floor, don't re-litigate in future
-evaluations.
+across both audeering 6L and JaesungHuh — long treated as an
+architecture-independent calibration noise floor. **Superseded
+2026-07-19:** the floor was q8 quantization damage, concentrated in
+the attentive-pooling matmul — at fp32, and under the re-quantization
+that excludes that single node, m45 classifies correctly and
+confidently and Hillenbrand reaches 100/100
+([gender-model-latency-2026-07-19.md](measurements/gender-model-latency-2026-07-19.md)).
 
 **Measurement infrastructure preserved on main:** `mlInferences` ring +
 `pushMlInference` + `mlModel` snapshot field in
