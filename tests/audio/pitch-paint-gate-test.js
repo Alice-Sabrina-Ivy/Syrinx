@@ -84,6 +84,27 @@ console.log("\nsmooth glide is unaffected (steps stay within SEMI of moving leve
     `suppressed ${out.filter((p) => !p).length}/40 frames`);
 }
 
+console.log("\nfast wide glide recovers while the target note is held (offRun windowing)");
+{
+  // Regression (2026-07-19): a fast ~2-octave siren (+24 st in 16
+  // frames) puts off-level values spanning >= EXCURSION_SEMI into the
+  // candidate run. Unwindowed, those mid-glide values inflated the
+  // min-max consistency check forever — the held target note stayed
+  // suppressed until the next unvoiced gap. Windowed to the last
+  // EXCURSION_SUSTAIN values, the run empties of glide values once the
+  // target holds, and painting resumes within ~EXCURSION_SUSTAIN frames.
+  const g = established(createPaintGate(), 110, 30);
+  for (let i = 1; i <= 16; i++) g.push(110 * 2 ** (24 * i / 16 / 12));
+  const target = 110 * 2 ** (24 / 12); // 440
+  const hold = [];
+  for (let i = 0; i < 40; i++) hold.push(g.push(target));
+  const firstPaint = hold.indexOf(true);
+  check(`held siren target paints within ~EXCURSION_SUSTAIN frames (got ${firstPaint})`,
+    firstPaint !== -1 && firstPaint <= EXCURSION_SUSTAIN);
+  check("target keeps painting once accepted (level reseeded)",
+    hold.slice(firstPaint + 1).every((p) => p === true));
+}
+
 console.log("\nresetSegment keeps level; reset clears it");
 {
   const g = established(createPaintGate(), 100);

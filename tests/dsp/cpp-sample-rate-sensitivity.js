@@ -93,12 +93,10 @@ for (const sr of sampleRates) {
   // Run on 50 ms windows like production
   const winSize = Math.floor(sr * 0.05);
   const cpps = [];
-  let analysisCount = 0;
   for (let pos = winSize; pos <= sig.length; pos += Math.floor(sr * 0.025)) {
     const window = sig.subarray(pos - winSize, pos);
     const cpp = computeCPP(window, sr);
     if (typeof cpp === "number" && isFinite(cpp)) cpps.push(cpp);
-    analysisCount++;
   }
   const sorted = [...cpps].sort((a, b) => a - b);
   const median = sorted[Math.floor(sorted.length / 2)];

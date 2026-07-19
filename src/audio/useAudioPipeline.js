@@ -58,7 +58,7 @@ const FORMANT_OUTLIER_HZ = 500; // max plausible frame-to-frame formant jump
 // Painting "is this pitch on the established level, and confirmed" lives
 // in pitchPaintGate.js (onset confirmation + established-level excursion
 // break with sustained-new-level accept) — extracted for unit testing.
-// It replaced an earlier consecutive-delta jump break that the 5-frame
+// It replaced an earlier consecutive-delta jump break that the display
 // median's octave ramps defeated; see that module's header + the
 // excursion measurement for the data.
 //
@@ -169,6 +169,13 @@ export function useAudioPipeline() {
   // Latest CPP-aggregate emit; used by the throttled state update so
   // we don't re-emit gauge state on every DSP frame.
   const lastCppAggregateRef = useRef({ time: -1 });
+  // Last aggregate time pushed into the diag vocal-weight ring. Tracked
+  // separately from lastCppAggregateRef, which only advances when the
+  // aggregate is CONSUMED by the baseline (fresh AND pitched) — keying
+  // the diag push off that ref made an aggregate that emitted on an
+  // unpitched frame stay "fresh" forever, flooding the diag ring with
+  // the identical emit at frame rate for the rest of the silence.
+  const lastDiagVwEmitRef = useRef(-1);
 
   // Silence gating + pitch staleness/hold (see pitchGate.js)
   const silenceStartRef = useRef(null);
@@ -235,7 +242,13 @@ export function useAudioPipeline() {
     if (audioCtxRef.current && audioCtxRef.current.state === "closed") {
       audioCtxRef.current = null;
     }
-    if (audioCtxRef.current) return;
+    // captureSrcRef is the guard that holds on BOTH capture paths —
+    // audioCtxRef stays null on the MSTP path (see the assignment below),
+    // so checking it alone left the running-pipeline guard dead on the
+    // production default path: a second start() would build a complete
+    // second pipeline and orphan the first (mic captured twice, workers
+    // leaked, stop() only reaching the second set).
+    if (captureSrcRef.current || audioCtxRef.current) return;
     startingRef.current = true;
 
     // Fresh CPP aggregator + baseline per session. Calibration is
@@ -720,6 +733,16 @@ export function useAudioPipeline() {
     paintGateRef.current.reset();
     displayVoicedRef.current = false;
     unpitchedFramesRef.current = 0;
+    // Without this reset the next session's initial silence "holds" the
+    // PREVIOUS session's pitch/note/formants in the dim style for up to
+    // 5 s before the first utterance.
+    lastVoicedRef.current = {
+      pitch: null,
+      noteName: null,
+      formants: { f1: null, f2: null, f3: null },
+      spectralTilt: null,
+      hnr: null,
+    };
     pitchTraceRef.current = [];
     formantTrailRef.current = [];
     genderTraceRef.current = [];
@@ -727,6 +750,7 @@ export function useAudioPipeline() {
     cppAggregatorRef.current = null;
     cppBaselineRef.current = null;
     lastCppAggregateRef.current = { time: -1 };
+    lastDiagVwEmitRef.current = -1;
     setState({
       status: "idle",
       error: null,
@@ -856,7 +880,8 @@ export function useAudioPipeline() {
       });
       lastCppAggregateRef.current = cppAggregate;
     }
-    if (DIAG_ENABLED && isFreshAggregate) {
+    if (DIAG_ENABLED && cppAggregate && cppAggregate.time !== lastDiagVwEmitRef.current) {
+      lastDiagVwEmitRef.current = cppAggregate.time;
       const baseline = cppBaselineRef.current;
       pushVocalWeightEmit({
         tEpochMs: performance.timeOrigin + performance.now(),
@@ -889,6 +914,16 @@ export function useAudioPipeline() {
       }
 
       const silenceDuration = now - silenceStartRef.current;
+
+      // Once the pitch-hold window expires during silence, drop the
+      // smoothing buffer. The non-quiet path below has an equivalent
+      // reset, but silence frames return early and never reach it — so
+      // a 0.4 s–5 s pause used to keep pre-pause values in the buffer
+      // and median the next utterance's onset against them (~2 frames
+      // recorded at the OLD pitch after every mid-length pause).
+      if (!gate.holdAllowed && pitchSmoothRef.current.length > 0) {
+        pitchSmoothRef.current = [];
+      }
 
       // Add gap to pitch trace (null pitch = gap)
       pitchTraceRef.current.push({ time: now, pitch: null, voiced: false });
@@ -1004,7 +1039,7 @@ export function useAudioPipeline() {
     // suppressed (rendered as a gap) unless it sustains a consistent new
     // level — so transient 2x/3x/4x harmonic locks never paint, while
     // genuine register changes do. This replaced a consecutive-delta jump
-    // break that the 5-frame median's octave ramps defeated (the
+    // break that the display median's octave ramps defeated (the
     // "testing 1 2 3" connected spike lines; see pitchPaintGate.js +
     // measurements/pitch-excursion-break-2026-06-10.md). Recording stays
     // per-frame truthful — this only governs the trace/readout.
@@ -1067,11 +1102,16 @@ export function useAudioPipeline() {
     // Notify frame callback (session recording) with smoothed values.
     // Pitchless frames record voiced: false with f0 null — session stats
     // filter on `voiced && f0 !== null`, so phantom held pitch must not
-    // be recorded as voiced (it skews avg F0 / time-in-target).
+    // be recorded as voiced (it skews avg F0 / time-in-target). Keyed on
+    // hasPitch, NOT framePitched: on hold frames (detector null, hold
+    // window open) framePitched is true with smoothedPitch = the stale
+    // pre-gap median — recording that as voiced is exactly the phantom
+    // pollution this comment forbids. The hold still bridges the DISPLAY
+    // (trace/readout) via the paint path above; recording stays honest.
     if (frameCallbackRef.current) {
       frameCallbackRef.current({
-        voiced: framePitched,
-        f0: smoothedPitch,
+        voiced: hasPitch,
+        f0: hasPitch ? smoothedPitch : null,
         f1: f1,
         f2: f2,
         f3: f3,

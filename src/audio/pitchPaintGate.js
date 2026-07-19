@@ -1,12 +1,13 @@
 // pitchPaintGate.js — Decides whether a smoothed pitch value should be
 // PAINTED on the trace, suppressing transient octave/harmonic excursions
-// that the detector + 5-frame median still let through. Extracted from
+// that the detector + display median still let through. Extracted from
 // useAudioPipeline.js for unit-testing, same pattern as pitchGate.js /
 // pitchSmoothing.js.
 //
 // Why this replaced the PR #84 consecutive-delta jump break: that broke
 // continuity only when two ADJACENT painted values differed by ≥ 12 st.
-// But the 5-frame display median ramps an instant octave jump
+// But the display median (5-frame then, 3-frame since 2026-07-19; the
+// mechanism holds for any length > 1) ramps an instant octave jump
 // (100 → 380 Hz) through intermediate values whose step-to-step deltas
 // are each < 12 st, so the jump break never fired and the ramp painted
 // as a connected near-vertical line. Measured on the 2026-05-26 session:
@@ -82,7 +83,19 @@ export function createPaintGate({
     }
 
     // Off-level: an octave-class departure from the established level.
+    // offRun is a SLIDING window of the last excursionSustain off-level
+    // values (2026-07-19; was unbounded). Unbounded, a fast wide glide
+    // (≥ excursionSemi spanned WITHIN the off-level portion — ~2-octave
+    // sirens in ≲500 ms) left mid-glide values in the run forever, so
+    // the min–max consistency check below could never pass and the held
+    // target note stayed suppressed until the next unvoiced gap.
+    // Windowed, the accept asks "were the LAST ~400 ms internally
+    // consistent" — mid-glide values scroll out once the target holds.
+    // Harmonic locks are unaffected: they run median 4 / p90 11 frames
+    // (< excursionSustain), so they still never fill the window. Also
+    // bounds the previously O(run-length) spread computation.
     offRun.push(pitch);
+    if (offRun.length > excursionSustain) offRun.shift();
     const spread = offRun.length > 1
       ? Math.abs(semitones(Math.max(...offRun), Math.min(...offRun)))
       : 0;
