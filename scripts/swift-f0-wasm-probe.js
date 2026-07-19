@@ -28,9 +28,9 @@ import http from "node:http";
 import { readFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, extname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { spawnSync, spawn } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import puppeteer from "puppeteer-core";
-import { networkInterfaces, tmpdir } from "node:os";
+import { networkInterfaces } from "node:os";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
@@ -242,7 +242,7 @@ async function runMobileMode() {
       try {
         const r = await fetch("http://localhost:9222/json/version");
         if (r.ok) { cdpReady = true; break; }
-      } catch {}
+      } catch { /* CDP not up yet — keep polling */ }
       await new Promise((r) => setTimeout(r, 250));
     }
     if (!cdpReady) throw new Error("CDP didn't come up. Is Chrome foregrounded on the phone?");
@@ -280,8 +280,8 @@ async function runMobileMode() {
       let state = null;
       try {
         state = await page.evaluate(() => window.__swiftF0WasmProbe || null);
-      } catch (e) {
-        // tab can navigate away if the user touches the device — surface but keep trying
+      } catch {
+        // tab can navigate away if the user touches the device — keep trying
       }
       if (state && state.status === "done") {
         result = state;

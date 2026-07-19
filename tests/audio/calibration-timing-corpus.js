@@ -385,7 +385,7 @@ console.log(`What-if median: ${whatIfMedian !== null ? whatIfMedian.toFixed(2) :
 // Persist the measurement so we can compare pre/post-tune
 import { writeFileSync, mkdirSync } from "node:fs";
 const outDir = "measurements";
-try { mkdirSync(outDir, { recursive: true }); } catch {}
+try { mkdirSync(outDir, { recursive: true }); } catch { /* best-effort */ }
 const outPath = `${outDir}/calibration-timing-corpus-2026-05-10.json`;
 writeFileSync(outPath, JSON.stringify({
   timestamp: new Date().toISOString(),

@@ -40,6 +40,16 @@ check("65 Hz tone below the 75 Hz search floor is not reported as 65",
   (() => { const r = ac.detect(tone(65)); return r.pitch === null || r.pitch >= 75; })());
 check("450 Hz tone above the 400 Hz search ceiling is not reported as 450",
   (() => { const r = ac.detect(tone(450)); return r.pitch === null || r.pitch < 410; })());
+// Top-of-range regression (2026-07-19): the candidate scan used to start
+// at minLag+1, so the lag bin of maxPitchHz itself could never be a local
+// max — any F0 above ~395 Hz had no fundamental candidate and decoded as
+// a CONFIDENT octave-down (396→198, 400→200) via the 2x-period
+// subharmonic peak. Harmonic-rich stimulus: the subharmonic trap needs
+// harmonics to be attractive, same as real voices near the ceiling.
+for (const f of [396, 398, 400]) {
+  check(`${f} Hz harmonic tone at the range ceiling is not octave-down`,
+    near(ac.detect(tone(f, [0.6, 0.3, 0.15])).pitch, f, 2.5));
+}
 // The cutover motivation: fundamental weaker than the 2nd harmonic
 // (breathy/pressed phonation). SwiftF0 confidently reported 2×F0 here.
 const weakH1 = tone(95, [0.35, 1.0, 0.4, 0.2]);

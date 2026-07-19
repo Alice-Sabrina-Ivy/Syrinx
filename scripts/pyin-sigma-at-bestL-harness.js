@@ -183,7 +183,6 @@ function evalPtdbWithMasks(ctx, corpus, lookback) {
     reset(ctx);
     const sr = 48000, winN = 2400, hopN = 1200;
     const detectedMask = [];
-    let refVoicedFrames = 0;
     let n = 0;
     for (let i = 0; i + winN <= e.samples.length; i += hopN, n++) {
       const got = ctx.detectPitch(e.samples.subarray(i, i + winN), sr);
@@ -192,7 +191,6 @@ function evalPtdbWithMasks(ctx, corpus, lookback) {
       const refIdx = Math.round((attrHop * 25 + 25) / e.ref.hopMs);
       if (refIdx < 0 || refIdx >= e.ref.f0.length) continue;
       if (e.ref.voiced[refIdx] !== 1) continue;
-      refVoicedFrames++;
       detectedMask.push(got !== null ? 1 : 0);
       if (got === null) continue;
       errs[e.gender].push(Math.abs(got - e.ref.f0[refIdx]));
