@@ -83,7 +83,19 @@ export function createPaintGate({
     }
 
     // Off-level: an octave-class departure from the established level.
+    // offRun is a SLIDING window of the last excursionSustain off-level
+    // values (2026-07-19; was unbounded). Unbounded, a fast wide glide
+    // (≥ excursionSemi spanned WITHIN the off-level portion — ~2-octave
+    // sirens in ≲500 ms) left mid-glide values in the run forever, so
+    // the min–max consistency check below could never pass and the held
+    // target note stayed suppressed until the next unvoiced gap.
+    // Windowed, the accept asks "were the LAST ~400 ms internally
+    // consistent" — mid-glide values scroll out once the target holds.
+    // Harmonic locks are unaffected: they run median 4 / p90 11 frames
+    // (< excursionSustain), so they still never fill the window. Also
+    // bounds the previously O(run-length) spread computation.
     offRun.push(pitch);
+    if (offRun.length > excursionSustain) offRun.shift();
     const spread = offRun.length > 1
       ? Math.abs(semitones(Math.max(...offRun), Math.min(...offRun)))
       : 0;
