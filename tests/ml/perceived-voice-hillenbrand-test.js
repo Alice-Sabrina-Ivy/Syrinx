@@ -48,11 +48,14 @@ const argString = (name, def) => {
   return a ? a.split("=").slice(1).join("=") : def;
 };
 // `--model=<HF_id>` selects which gender model to evaluate. Defaults
-// to current production (JaesungHuh ECAPA-TDNN ONNX q8). Use this
-// flag to compare against a candidate without modifying the worker —
-// e.g. `--model=prithivMLmods/Common-Voice-Gender-Detection-ONNX` to
-// re-measure the previous production model on the same corpus.
-const MODEL_ID = argString("model", "Alice-Sabrina-Ivy/voice-gender-classifier-onnx-q8");
+// to current production (JaesungHuh ECAPA-TDNN ONNX q8-v2, the
+// exclude-matmul re-quantization — keep this in sync with
+// DEFAULT_MODEL_ID in src/ml/gender-worker.js so a no-args oracle run
+// validates what production actually loads). Use the flag to compare
+// candidates without modifying the worker — e.g.
+// `--model=Alice-Sabrina-Ivy/voice-gender-classifier-onnx-q8` to
+// re-measure the retired v1 on the same corpus.
+const MODEL_ID = argString("model", "Alice-Sabrina-Ivy/voice-gender-classifier-onnx-q8-v2");
 // `--local-root=DIR` loads MODEL_ID from a local directory tree instead
 // of the HF Hub (DIR/<model>/onnx/model*.onnx + config files), and
 // `--dtype=q8|fp32|fp16` selects the weight file — used to measure the
