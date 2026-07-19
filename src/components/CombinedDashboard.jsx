@@ -44,14 +44,13 @@ export function CombinedDashboard({
   // Audio recording state
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
-  const [recordAudio, setRecordAudio] = useState(false);
 
-  // Load audio recording preference
-  useEffect(() => {
-    db.settings.get("default").then((s) => {
-      if (s?.recordAudio) setRecordAudio(true);
-    });
-  }, []);
+  // Re-entry guard for startRecording: `recording` state only flips
+  // after the awaited db.sessions.add resolves, so a double-click (or a
+  // slow IndexedDB open) could otherwise run startRecording twice —
+  // orphaning the first session row and leaking its timer + flush
+  // intervals (the refs get overwritten by the second call).
+  const startingRef = useRef(false);
 
   // Flush buffered frames to IndexedDB
   const flushFrames = useCallback(async () => {
@@ -61,69 +60,98 @@ export function CombinedDashboard({
     try {
       await db.frames.bulkAdd(buffer);
     } catch (err) {
+      // Put the frames back at the head of the buffer (frames appended
+      // during the await stay behind them, preserving order) so a
+      // transient failure retries on the next flush instead of silently
+      // dropping a second of session data.
+      frameBufferRef.current = buffer.concat(frameBufferRef.current);
       console.error("Failed to write frames to IndexedDB:", err);
     }
   }, []);
 
   // Start recording
   const startRecording = useCallback(async () => {
-    const now = Date.now();
-    recordingStartRef.current = now;
+    if (startingRef.current || sessionIdRef.current !== null) return;
+    startingRef.current = true;
+    try {
+      const now = Date.now();
+      recordingStartRef.current = now;
 
-    // Create session in DB
-    const id = await db.sessions.add({
-      startedAt: now,
-      sessionType: "freeform",
-      notes: "",
-    });
-    sessionIdRef.current = id;
+      // Read the audio-recording preference fresh at start time. The
+      // toggle lives in the DataManagement overlay, which renders OVER
+      // this still-mounted component — a value cached at mount goes
+      // stale the moment the user flips the toggle, and the stale-ON
+      // direction would keep recording mic audio against the user's
+      // expressed setting.
+      const settings = await db.settings.get("default");
+      const recordAudio = !!settings?.recordAudio;
 
-    // Set up frame callback
-    frameCallbackRef.current = (frame) => {
-      const ts = Date.now() - recordingStartRef.current;
-      frameBufferRef.current.push({
-        sessionId: sessionIdRef.current,
-        timestampMs: ts,
-        voiced: frame.voiced,
-        f0: frame.f0,
-        f1: frame.f1,
-        f2: frame.f2,
-        f3: frame.f3,
-        intensity: frame.intensity,
-        spectralTilt: frame.spectralTilt,
-        hnr: frame.hnr,
+      // Create session in DB
+      const id = await db.sessions.add({
+        startedAt: now,
+        sessionType: "freeform",
+        notes: "",
       });
-    };
+      sessionIdRef.current = id;
 
-    // Flush interval
-    flushIntervalRef.current = setInterval(flushFrames, FRAME_FLUSH_INTERVAL);
+      // Set up frame callback
+      frameCallbackRef.current = (frame) => {
+        const ts = Date.now() - recordingStartRef.current;
+        frameBufferRef.current.push({
+          sessionId: sessionIdRef.current,
+          timestampMs: ts,
+          voiced: frame.voiced,
+          f0: frame.f0,
+          f1: frame.f1,
+          f2: frame.f2,
+          f3: frame.f3,
+          intensity: frame.intensity,
+          spectralTilt: frame.spectralTilt,
+          hnr: frame.hnr,
+        });
+      };
 
-    // Start audio recording if enabled
-    if (recordAudio && streamRef?.current) {
-      try {
-        const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-          ? "audio/webm;codecs=opus"
-          : "audio/webm";
-        const recorder = new MediaRecorder(streamRef.current, { mimeType });
-        audioChunksRef.current = [];
-        recorder.ondataavailable = (e) => {
-          if (e.data.size > 0) audioChunksRef.current.push(e.data);
-        };
-        recorder.start(1000); // 1s timeslices
-        mediaRecorderRef.current = recorder;
-      } catch (err) {
-        console.error("Audio recording failed to start:", err);
+      // Flush interval
+      flushIntervalRef.current = setInterval(flushFrames, FRAME_FLUSH_INTERVAL);
+
+      // Start audio recording if enabled
+      if (recordAudio && streamRef?.current) {
+        try {
+          // First supported container wins; Safari supports neither webm
+          // variant (it records audio/mp4), and an unsupported explicit
+          // mimeType makes the constructor throw — in that case fall
+          // through to letting the browser pick its default.
+          const mimeType = [
+            "audio/webm;codecs=opus",
+            "audio/webm",
+            "audio/mp4",
+          ].find((t) => MediaRecorder.isTypeSupported(t));
+          const recorder = new MediaRecorder(
+            streamRef.current,
+            mimeType ? { mimeType } : undefined,
+          );
+          audioChunksRef.current = [];
+          recorder.ondataavailable = (e) => {
+            if (e.data.size > 0) audioChunksRef.current.push(e.data);
+          };
+          recorder.start(1000); // 1s timeslices
+          mediaRecorderRef.current = recorder;
+        } catch (err) {
+          console.error("Audio recording failed to start:", err);
+        }
       }
-    }
 
-    // Timer
-    setElapsed(0);
-    startTimeRef.current = Date.now();
-    timerRef.current = setInterval(() => {
-      setElapsed(Math.floor((Date.now() - startTimeRef.current) / 1000));
-    }, 1000);
-    setRecording(true);
-  }, [frameCallbackRef, flushFrames, recordAudio, streamRef]);
+      // Timer
+      setElapsed(0);
+      startTimeRef.current = Date.now();
+      timerRef.current = setInterval(() => {
+        setElapsed(Math.floor((Date.now() - startTimeRef.current) / 1000));
+      }, 1000);
+      setRecording(true);
+    } finally {
+      startingRef.current = false;
+    }
+  }, [frameCallbackRef, flushFrames, streamRef]);
 
   // notesRef tracks the latest notes value so the unmount cleanup can
   // finalize a session with the up-to-date text without depending on the
@@ -207,6 +235,12 @@ export function CombinedDashboard({
     });
 
     recordingStartRef.current = null;
+
+    // Announce completion so a SessionHistory that mounted DURING the
+    // async finalize (tab switch away from the dashboard is exactly what
+    // unmount-finalize means) re-queries and picks up the endedAt +
+    // stats it read too early.
+    window.dispatchEvent(new CustomEvent("syrinx:session-finalized"));
   }, [frameCallbackRef]);
 
   // Stop recording + compute summary stats (button-click path).
