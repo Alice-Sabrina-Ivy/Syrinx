@@ -58,7 +58,14 @@ export function CombinedDashboard({
     if (buffer.length === 0) return;
     frameBufferRef.current = [];
     try {
-      await db.frames.bulkAdd(buffer);
+      // Explicit transaction so the flush is ATOMIC: on any failure the
+      // whole transaction aborts and nothing persists, which is what
+      // makes the re-queue below safe. A bare bulkAdd outside a
+      // transaction commits its successful rows even when the call
+      // rejects (Dexie BulkError semantics) — re-queueing after that
+      // would insert the committed rows again under fresh auto-increment
+      // ids, inflating frame counts and derived session stats.
+      await db.transaction("rw", db.frames, () => db.frames.bulkAdd(buffer));
     } catch (err) {
       // Put the frames back at the head of the buffer (frames appended
       // during the await stay behind them, preserving order) so a
