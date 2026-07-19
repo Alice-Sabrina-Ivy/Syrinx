@@ -1,0 +1,118 @@
+{
+  "capturedAtIso": "2026-07-19T18:12:53.786Z",
+  "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+  "ortWebVersion": "1.26.0-dev.20260416-b7804b056c",
+  "webgpuAdapter": "nvidia ampere",
+  "iters": 30,
+  "modelBytes": {
+    "q8": 15779619,
+    "fp32": 62263844,
+    "fp16": 31292148
+  },
+  "results": [
+    {
+      "model": "q8",
+      "ep": "webgpu",
+      "windowSec": 0.75,
+      "createMs": 1101,
+      "medianMs": 198.8,
+      "p95Ms": 232.9,
+      "minMs": 187.3,
+      "firstOutput": [
+        2.016188859939575,
+        -3.15663480758667
+      ]
+    },
+    {
+      "model": "q8",
+      "ep": "webgpu",
+      "windowSec": 0.625,
+      "createMs": 340,
+      "medianMs": 196.5,
+      "p95Ms": 210.7,
+      "minMs": 175.2,
+      "firstOutput": [
+        1.7814817428588867,
+        -2.6284074783325195
+      ]
+    },
+    {
+      "model": "q8",
+      "ep": "wasm",
+      "windowSec": 0.75,
+      "createMs": 216,
+      "medianMs": 50.5,
+      "p95Ms": 68.5,
+      "minMs": 42.8,
+      "firstOutput": [
+        6.006732940673828,
+        -7.280454635620117
+      ]
+    },
+    {
+      "model": "q8",
+      "ep": "wasm",
+      "windowSec": 0.625,
+      "createMs": 232,
+      "medianMs": 50.6,
+      "p95Ms": 68.6,
+      "minMs": 37,
+      "firstOutput": [
+        0.3075093924999237,
+        -0.6648768782615662
+      ]
+    },
+    {
+      "model": "fp32",
+      "ep": "wasm",
+      "windowSec": 0.75,
+      "createMs": 257,
+      "medianMs": 431.4,
+      "p95Ms": 458.3,
+      "minMs": 410.7,
+      "firstOutput": [
+        1.0370229482650757,
+        -1.211849331855774
+      ]
+    },
+    {
+      "model": "fp32",
+      "ep": "wasm",
+      "windowSec": 0.625,
+      "createMs": 218,
+      "medianMs": 354.4,
+      "p95Ms": 372.3,
+      "minMs": 333.7,
+      "firstOutput": [
+        -0.23123860359191895,
+        0.30029723048210144
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "cell": "fp32 / webgpu / 0.75s",
+      "message": "Can't create a session. ERROR_CODE: 6, ERROR_MESSAGE: [ShapeInferenceError] Can't merge shape info. Both inferred and declared dimension have values but they differ. Inferred=3072 Declared=1 Dimension=0"
+    },
+    {
+      "cell": "fp32 / webgpu / 0.625s",
+      "message": "Can't create a session. ERROR_CODE: 6, ERROR_MESSAGE: [ShapeInferenceError] Can't merge shape info. Both inferred and declared dimension have values but they differ. Inferred=3072 Declared=1 Dimension=0"
+    },
+    {
+      "cell": "fp16 / webgpu / 0.75s",
+      "message": "Can't create a session. ERROR_CODE: 1, ERROR_MESSAGE: Type Error: Type (tensor(float16)) of output arg (val_261) of node (node_Cast_342) does not match expected type (tensor(float))."
+    },
+    {
+      "cell": "fp16 / webgpu / 0.625s",
+      "message": "Can't create a session. ERROR_CODE: 1, ERROR_MESSAGE: Type Error: Type (tensor(float16)) of output arg (val_261) of node (node_Cast_342) does not match expected type (tensor(float))."
+    },
+    {
+      "cell": "fp16 / wasm / 0.75s",
+      "message": "Can't create a session. ERROR_CODE: 1, ERROR_MESSAGE: Type Error: Type (tensor(float16)) of output arg (val_261) of node (node_Cast_342) does not match expected type (tensor(float))."
+    },
+    {
+      "cell": "fp16 / wasm / 0.625s",
+      "message": "Can't create a session. ERROR_CODE: 1, ERROR_MESSAGE: Type Error: Type (tensor(float16)) of output arg (val_261) of node (node_Cast_342) does not match expected type (tensor(float))."
+    }
+  ]
+}

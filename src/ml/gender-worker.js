@@ -46,14 +46,16 @@ import {
 env.allowRemoteModels = true;
 env.allowLocalModels = false;
 
-// 0.75-sec window at ~6.7 Hz cadence. ECAPA-TDNN inference at this
-// window length runs ~190 ms median on desktop browser WebGPU and
-// ~460 ms median on Pixel 8 Pro Chrome 147 (WebGPU). Both exceed the
-// 150 ms hop budget, but the `inferenceInProgress` guard in
-// maybeInfer() drops overruns gracefully — the meter degrades to
-// whatever rate the device supports, ~5 Hz on desktop and ~2 Hz on
-// mobile. EMA smoothing absorbs the per-window noise that a shorter
-// window introduces.
+// 0.75-sec window at ~6.7 Hz design cadence. ECAPA-TDNN q8 inference
+// at this window length runs ~52 ms median on desktop browser WASM
+// (2026-07-19; the earlier "~190 ms desktop / ~460 ms mobile" figures
+// were the retired WebGPU path). Desktop now fits the 150 ms hop
+// budget (~6.2 Hz measured cadence); mobile WASM is unmeasured — the
+// `inferenceInProgress` guard still drops overruns gracefully wherever
+// inference exceeds the hop. Window length was re-swept 2026-07-19:
+// 0.5 s is gender-asymmetric on Hillenbrand (female 89.6 %), and
+// shorter windows don't reduce WASM latency anyway — keep 0.75 s.
+// measurements/gender-model-latency-2026-07-19.md
 const WINDOW_SECONDS = 0.75;
 const WINDOW_SAMPLES = Math.floor(TARGET_SAMPLE_RATE * WINDOW_SECONDS);
 const INFERENCE_INTERVAL_MS = 150;        // ~6.7 Hz emit rate
@@ -81,21 +83,22 @@ const EMA_ALPHA = 0.2;                     // score smoothing
 const INFERENCE_TIMEOUT_MS = 2500;
 // JaesungHuh's voice-gender-classifier (ECAPA-TDNN), q8-quantized
 // ONNX export hosted under the project's HF account. ~15.4 M params
-// (5-6× smaller than the previous wav2vec2-base prithivMLmods),
-// gender-symmetric Hillenbrand accuracy 95.6 % (male) / 95.8 %
-// (female) — vs prithivMLmods's 100 % / 81.3 %, fixing the female-
-// accuracy gap that motivated the 2026-05-05 model-swap arc. Labels
-// are id2label {0:male, 1:female} — opposite ordering from
-// prithivMLmods's {0:female, 1:male}; femaleScoreFromResult parses
-// by label name not index, so this swap is correct without other
-// code changes. Mobile (Pixel 8 Pro / Chrome 147 / WebGPU): ~460 ms
-// per inference, vs prithivMLmods ~2100 ms on the same device — the
-// new model is ALSO faster on mobile, contrary to the platform-
-// split intuition. See measurements/jaesunghuh-q8-results-
-// 2026-05-06.md (investigation outcome) and CLAUDE.md "Perceived-
-// voice gender model — investigation arc 2026-05-05/06" for the
-// full reasoning.
-const DEFAULT_MODEL_ID = "Alice-Sabrina-Ivy/voice-gender-classifier-onnx-q8";
+// (5-6× smaller than the previous wav2vec2-base prithivMLmods).
+// "-v2" (2026-07-19): identical weights/recipe except the attentive-
+// pooling matmul is EXCLUDED from quantization — a per-node
+// sensitivity sweep showed that one activation×activation product
+// carried ~10× the quantization error of any other node, and it was
+// the whole accuracy ceiling: Hillenbrand 95.6/95.8 (v1) → 100/100
+// (v2) at fp32-level per-window noise (raw_std ~0.20 → ~0.02) and
+// ~46 ms browser-WASM inference. The prior "m45 is an architecture-
+// independent noise floor" belief is retracted — it was quantization
+// damage. Labels are id2label {0:male, 1:female} — opposite ordering
+// from prithivMLmods's {0:female, 1:male}; femaleScoreFromResult
+// parses by label name not index, so model swaps can't silently
+// invert the meter. Decision data: measurements/
+// gender-model-latency-2026-07-19.md; v1 remains published for
+// reproducibility of results measured against it.
+const DEFAULT_MODEL_ID = "Alice-Sabrina-Ivy/voice-gender-classifier-onnx-q8-v2";
 
 let inputSampleRate = 48000;
 let classifier = null;
@@ -171,6 +174,15 @@ async function maybeInfer() {
   silenceTracker.noteActive();
 
   inferenceInProgress = true;
+  // Hop is timed START-to-start (2026-07-19; was set in the finally
+  // block, i.e. end-to-start): with the hop measured from inference
+  // end, the real emit period was INFERENCE_INTERVAL_MS + inferMs —
+  // ~4.6 Hz at the 53 ms WASM inference instead of the design 6.7 Hz
+  // that the α=0.2 EMA tuning assumed (the Hillenbrand oracle steps
+  // exactly 150 ms per inference). Start-to-start restores the
+  // validated cadence whenever inference fits inside the hop;
+  // `inferenceInProgress` still prevents overlap when it doesn't.
+  lastInferenceMs = now;
   try {
     const inferStart = _diag ? performance.now() : 0;
     const result = await classifyWithTimeout(windowCopy);
@@ -205,8 +217,9 @@ async function maybeInfer() {
       modelStatus = "error";
     }
   } finally {
+    // lastInferenceMs is NOT reset here — it was stamped at inference
+    // start (hop is start-to-start; see comment above).
     inferenceInProgress = false;
-    lastInferenceMs = performance.now();
   }
 }
 
@@ -224,27 +237,24 @@ async function loadModel(modelId) {
     }
   };
   try {
-    // Prefer WebGPU when available. The catch block below retries
-    // without `device:` (WASM CPU fallback) if WebGPU isn't usable
-    // for this model on this device. The "ready" status reports
-    // which path actually succeeded so the main thread can record
-    // the backend in diag for post-hoc verification.
+    // WASM deliberately, NOT WebGPU (2026-07-19). The old webgpu-first
+    // preference was measured 4-5× SLOWER than WASM for this q8 model:
+    // WebGPU session creation "succeeds" but the graph throws WebGPU
+    // validation errors (Invalid BindGroupLayout / Concat) and limps —
+    // exactly the failure mode a try/catch fallback can't catch. Same
+    // ORT version, same machine, production path: WebGPU median 249 ms
+    // per inference (2.4 Hz effective meter cadence) vs WASM median
+    // ~50 ms — back inside the 150 ms hop budget at the design 6.7 Hz.
+    // Quantized int8 ops are a poor fit for the WebGPU EP generally;
+    // revisit only with a measured win on BOTH desktop and mobile.
+    // measurements/gender-model-latency-2026-07-19.md
     classifier = await pipeline("audio-classification", modelId, {
       progress_callback: progressCallback,
-      device: "webgpu",
       dtype: "q8",
     });
-    status("ready", null, { modelId, device: "webgpu" });
-  } catch {
-    try {
-      classifier = await pipeline("audio-classification", modelId, {
-        progress_callback: progressCallback,
-        dtype: "q8",
-      });
-      status("ready", null, { modelId, device: "wasm" });
-    } catch (err2) {
-      status("error", String(err2?.message || err2));
-    }
+    status("ready", null, { modelId, device: "wasm" });
+  } catch (err) {
+    status("error", String(err?.message || err));
   }
 }
 

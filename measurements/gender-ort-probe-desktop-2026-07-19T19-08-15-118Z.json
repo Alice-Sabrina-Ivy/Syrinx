@@ -1,0 +1,65 @@
+{
+  "capturedAtIso": "2026-07-19T19:08:15.118Z",
+  "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+  "ortWebVersion": "1.26.0-dev.20260416-b7804b056c",
+  "webgpuAdapter": "nvidia ampere",
+  "iters": 30,
+  "modelBytes": {
+    "q8": 16057697
+  },
+  "results": [
+    {
+      "model": "q8",
+      "ep": "webgpu",
+      "windowSec": 0.75,
+      "createMs": 1717,
+      "medianMs": 286.5,
+      "p95Ms": 306.1,
+      "minMs": 268.6,
+      "firstOutput": [
+        512.1189575195312,
+        -475.2312316894531
+      ]
+    },
+    {
+      "model": "q8",
+      "ep": "webgpu",
+      "windowSec": 0.625,
+      "createMs": 510,
+      "medianMs": 272.4,
+      "p95Ms": 307.9,
+      "minMs": 249.6,
+      "firstOutput": [
+        6.1393609046936035,
+        -7.380195140838623
+      ]
+    },
+    {
+      "model": "q8",
+      "ep": "wasm",
+      "windowSec": 0.75,
+      "createMs": 425,
+      "medianMs": 100.2,
+      "p95Ms": 121.9,
+      "minMs": 83.8,
+      "firstOutput": [
+        1.7854849100112915,
+        -1.9650275707244873
+      ]
+    },
+    {
+      "model": "q8",
+      "ep": "wasm",
+      "windowSec": 0.625,
+      "createMs": 412,
+      "medianMs": 86.7,
+      "p95Ms": 102.8,
+      "minMs": 76,
+      "firstOutput": [
+        -0.04963596165180206,
+        0.18491508066654205
+      ]
+    }
+  ],
+  "errors": []
+}

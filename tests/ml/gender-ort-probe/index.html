@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<!-- gender-ort-probe/index.html — Browser ORT inference-latency probe for
+     the ECAPA-TDNN gender model (2026-07-19 latency investigation).
+
+     Runs a (model dtype × execution provider × window length) timing
+     matrix on the PRODUCTION runtime class (browser ORT — Node ORT is
+     ~18× faster and forbidden for ship decisions per CLAUDE.md). The
+     exported ONNX embeds its own log-mel preprocessing, so the probe
+     feeds raw float32 audio exactly like the production worker does.
+
+     Driven by scripts/gender-ort-probe.js which serves this page, the
+     ORT dist, the model files, and a /probe-config.json describing the
+     matrix. Results land on window.__genderOrtProbe. -->
+<html>
+<head><meta charset="utf-8"><title>gender ORT probe</title></head>
+<body>
+<pre id="log">booting…</pre>
+<script type="module">
+const logEl = document.getElementById("log");
+const log = (s) => { logEl.textContent += "\n" + s; console.log(s); };
+
+window.__genderOrtProbe = { done: false, results: [], errors: [] };
+
+function synthVoice(n, sr = 16000) {
+  // Harmonic-rich voiced-like signal + mild noise; content is irrelevant
+  // for timing but must be non-degenerate (no denormals, passes any
+  // internal thresholds).
+  const x = new Float32Array(n);
+  let seed = 1234;
+  for (let i = 0; i < n; i++) {
+    const t = i / sr;
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+    x[i] = 0.25 * Math.sin(2 * Math.PI * 150 * t)
+         + 0.12 * Math.sin(2 * Math.PI * 300 * t)
+         + 0.06 * Math.sin(2 * Math.PI * 450 * t)
+         + 0.01 * (seed / 0x3fffffff - 1);
+  }
+  return x;
+}
+
+const median = (a) => { const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
+const p95 = (a) => { const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length * 0.95)]; };
+
+(async () => {
+  try {
+    const ort = await import("/ort/ort.all.min.mjs");
+    ort.env.wasm.wasmPaths = "/ort/";
+    const cfg = await (await fetch("/probe-config.json")).json();
+    log(`matrix: ${cfg.cells.length} cells, ${cfg.iters} timed runs each`);
+
+    let adapterInfo = null;
+    try {
+      const adapter = navigator.gpu ? await navigator.gpu.requestAdapter() : null;
+      adapterInfo = adapter ? (adapter.info ? `${adapter.info.vendor} ${adapter.info.architecture}` : "adapter-present") : "no-adapter";
+    } catch (e) { adapterInfo = `adapter-error: ${e.message}`; }
+    log(`webgpu: ${adapterInfo}`);
+    window.__genderOrtProbe.webgpuAdapter = adapterInfo;
+
+    for (const cell of cfg.cells) {
+      const label = `${cell.model} / ${cell.ep} / ${cell.windowSec}s`;
+      try {
+        const t0 = performance.now();
+        const session = await ort.InferenceSession.create(`/models/${cell.file}`, {
+          executionProviders: [cell.ep],
+        });
+        const createMs = performance.now() - t0;
+        const inputName = session.inputNames[0];
+        const n = Math.floor(16000 * cell.windowSec);
+        const audio = synthVoice(n);
+        const feed = { [inputName]: new ort.Tensor("float32", audio, [1, n]) };
+        // Warmup (shader/kernel compilation on webgpu lands here).
+        for (let i = 0; i < cfg.warmup; i++) await session.run(feed);
+        const times = [];
+        for (let i = 0; i < cfg.iters; i++) {
+          const s = performance.now();
+          const out = await session.run(feed);
+          times.push(performance.now() - s);
+          if (i === 0) {
+            const first = out[session.outputNames[0]];
+            window.__genderOrtProbe.results; // keep linter quiet
+            cell.firstOutput = Array.from(first.data.slice(0, 2));
+          }
+        }
+        const rec = {
+          model: cell.model, ep: cell.ep, windowSec: cell.windowSec,
+          createMs: +createMs.toFixed(0),
+          medianMs: +median(times).toFixed(1),
+          p95Ms: +p95(times).toFixed(1),
+          minMs: +Math.min(...times).toFixed(1),
+          firstOutput: cell.firstOutput,
+        };
+        window.__genderOrtProbe.results.push(rec);
+        log(`${label}: median ${rec.medianMs} ms  p95 ${rec.p95Ms}  min ${rec.minMs}  (create ${rec.createMs} ms)`);
+        if (session.release) await session.release();
+      } catch (err) {
+        window.__genderOrtProbe.errors.push({ cell: label, message: String(err?.message || err) });
+        log(`${label}: ERROR ${err?.message || err}`);
+      }
+    }
+  } catch (err) {
+    window.__genderOrtProbe.errors.push({ cell: "boot", message: String(err?.message || err) });
+    log(`BOOT ERROR: ${err?.message || err}`);
+  } finally {
+    window.__genderOrtProbe.done = true;
+    log("done");
+  }
+})();
+</script>
+</body>
+</html>
