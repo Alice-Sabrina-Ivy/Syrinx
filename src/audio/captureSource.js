@@ -147,6 +147,20 @@ async function _createAudioContextSource(stream, opts) {
   workletNode.connect(muteNode);
   muteNode.connect(audioCtx.destination);
 
+  // A context created outside a user-activation window (strict autoplay
+  // configs; activation expiring during the multi-second getUserMedia
+  // prompt) starts "suspended" and never calls process() — no chunks, no
+  // error, and unlike the MSTP path there is no first-frame timeout to
+  // catch it. Resume explicitly; a rejected resume surfaces via onError
+  // instead of a silently dead pipeline.
+  if (audioCtx.state === "suspended") {
+    try {
+      await audioCtx.resume();
+    } catch (err) {
+      opts.onError?.({ where: "audiocontext-resume", message: String(err?.message || err) });
+    }
+  }
+
   return {
     kind: "audiocontext",
     sampleRate: audioCtx.sampleRate,

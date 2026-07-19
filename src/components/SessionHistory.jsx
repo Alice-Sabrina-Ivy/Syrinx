@@ -17,17 +17,29 @@ export function SessionHistory() {
 
   useEffect(() => {
     let cancelled = false;
-    db.sessions
-      .orderBy("startedAt")
-      .reverse()
-      .toArray()
-      .then((all) => {
-        if (!cancelled) {
-          setSessions(all);
-          setLoading(false);
-        }
-      });
-    return () => { cancelled = true; };
+    const load = () => {
+      db.sessions
+        .orderBy("startedAt")
+        .reverse()
+        .toArray()
+        .then((all) => {
+          if (!cancelled) {
+            setSessions(all);
+            setLoading(false);
+          }
+        });
+    };
+    load();
+    // Switching tabs mid-recording unmounts the dashboard, whose cleanup
+    // finalizes the session asynchronously (flush → recorder stop →
+    // stats → sessions.update). This component's initial query races
+    // that update and shows the just-ended session without duration/
+    // stats — re-query when the finalize announces completion.
+    window.addEventListener("syrinx:session-finalized", load);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("syrinx:session-finalized", load);
+    };
   }, []);
 
   async function deleteSession(id) {

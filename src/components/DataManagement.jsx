@@ -80,32 +80,42 @@ export function DataManagement({ onClose }) {
         throw new Error("Invalid export file format");
       }
 
-      // Import settings
-      if (data.settings?.length) {
-        for (const s of data.settings) {
-          await db.settings.put(s);
+      // Single rw transaction: a failure mid-import (quota, malformed
+      // row, tab close) rolls everything back instead of committing a
+      // partial import that a retry would then duplicate.
+      await db.transaction("rw", db.settings, db.sessions, db.frames, async () => {
+        // Import settings
+        if (data.settings?.length) {
+          for (const s of data.settings) {
+            await db.settings.put(s);
+          }
         }
-      }
 
-      // Import sessions (strip auto-increment id, let Dexie assign new ones)
-      const idMap = {};
-      for (const session of data.sessions) {
-        const { id: oldId, ...rest } = session;
-        const newId = await db.sessions.add(rest);
-        idMap[oldId] = newId;
-      }
+        // Import sessions (strip auto-increment id, let Dexie assign new ones)
+        const idMap = {};
+        for (const session of data.sessions) {
+          const { id: oldId, ...rest } = session;
+          const newId = await db.sessions.add(rest);
+          idMap[oldId] = newId;
+        }
 
-      // Import frames with remapped sessionIds
-      // eslint-disable-next-line no-unused-vars
-      const frameBatch = data.frames.map(({ id, sessionId, ...rest }) => ({
-        ...rest,
-        sessionId: idMap[sessionId] ?? sessionId,
-      }));
+        // Import frames with remapped sessionIds. Frames referencing a
+        // session that isn't in the export are dropped — falling back to
+        // the original id would attach them to whatever unrelated local
+        // session happens to own that id.
+        const frameBatch = data.frames
+          .filter(({ sessionId }) => idMap[sessionId] !== undefined)
+          // eslint-disable-next-line no-unused-vars
+          .map(({ id, sessionId, ...rest }) => ({
+            ...rest,
+            sessionId: idMap[sessionId],
+          }));
 
-      // Batch in chunks of 5000 to avoid memory issues
-      for (let i = 0; i < frameBatch.length; i += 5000) {
-        await db.frames.bulkAdd(frameBatch.slice(i, i + 5000));
-      }
+        // Batch in chunks of 5000 to avoid memory issues
+        for (let i = 0; i < frameBatch.length; i += 5000) {
+          await db.frames.bulkAdd(frameBatch.slice(i, i + 5000));
+        }
+      });
 
       setStatus(`Imported ${data.sessions.length} sessions!`);
       setTimeout(() => setStatus(null), 3000);
