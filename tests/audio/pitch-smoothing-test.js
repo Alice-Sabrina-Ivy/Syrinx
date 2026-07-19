@@ -68,59 +68,53 @@ console.log("\npushAndMedianPitch — buffer is bounded by maxLen");
 
 console.log("\npushAndMedianPitch — single-frame outlier rejected by median");
 
-// A length-5 median cannot be flipped by a single outlier: 4 of the 5
-// values still hold the original pitch, so the middle of the sorted
-// buffer remains the original.
+// An odd-length median cannot be flipped by a single outlier: the
+// majority of slots still hold the original pitch, so the middle of the
+// sorted buffer remains the original.
 {
   const buf = [];
-  for (const v of [130, 130, 130, 130, 130]) pushAndMedianPitch(buf, v);
+  for (let i = 0; i < PITCH_SMOOTH_LEN; i++) pushAndMedianPitch(buf, 130);
   const out = pushAndMedianPitch(buf, 260);
   check(`single-frame 2× spike does not reach output (got ${out})`, near(out, 130));
 }
 
-console.log("\npushAndMedianPitch — two-frame outlier still rejected");
+// Contract change 2026-07-19 (PITCH_SMOOTH_LEN 5 → 3): a TWO-frame
+// outlier now reaches the smoothed output — at length 3, two new values
+// outvote the remaining old one. That duty moved upstream: the pitch
+// worker's L=2 Viterbi tracker suppresses 1-frame octave flips before
+// the main thread sees them, and pitchPaintGate suppresses octave-class
+// excursions at painting. Reconstructing the full production display
+// chain shows K=3 painting no more spikes than K=5 while recovering
+// 1.4–2.2 pp of displayed band accuracy and 25 ms of display lag
+// (measurements/pitch-l2-retune-2026-07-19.md).
 
-// At length 5, two outliers leave 3 of 5 values at the original pitch,
-// so the sorted middle stays at the original.
+console.log("\npushAndMedianPitch — two-frame sustained shift is accepted");
+
+// Two consecutive values at the new pitch occupy the majority of the
+// length-3 buffer — median flips. This is the intended behavior for
+// real sustained pitch shifts (faster tracking than the old length-5's
+// three-frame requirement).
 {
   const buf = [];
-  for (const v of [130, 130, 130, 130, 130]) pushAndMedianPitch(buf, v);
-  const a = pushAndMedianPitch(buf, 260);
-  const b = pushAndMedianPitch(buf, 260);
-  check(
-    `two-frame 2× spike does not reach output (got ${a}, ${b})`,
-    near(a, 130) && near(b, 130),
-  );
-}
-
-console.log("\npushAndMedianPitch — three-frame shift is accepted");
-
-// Three consecutive values at the new pitch occupy the majority of the
-// length-5 buffer — median flips. This is the intended behavior for
-// real sustained pitch shifts.
-{
-  const buf = [];
-  for (const v of [130, 130, 130, 130, 130]) pushAndMedianPitch(buf, v);
-  pushAndMedianPitch(buf, 260);
+  for (let i = 0; i < PITCH_SMOOTH_LEN; i++) pushAndMedianPitch(buf, 130);
   pushAndMedianPitch(buf, 260);
   const out = pushAndMedianPitch(buf, 260);
-  check(`three-frame sustained shift tracks (got ${out})`, near(out, 260));
+  check(`two-frame sustained shift tracks (got ${out})`, near(out, 260));
 }
 
-console.log("\npushAndMedianPitch — abrupt octave shift converges in 2 frames");
+console.log("\npushAndMedianPitch — abrupt octave shift converges fast");
 
 // The user-reported bug from 2026-05-09: speak at one pitch, abruptly
 // shift to its octave, the trace must converge to the new pitch
-// quickly. After fix, 2 frames of the new pitch flip the median.
+// quickly. At length 3, frame 1 onward is at the new pitch.
 {
   const buf = [];
   for (let i = 0; i < 10; i++) pushAndMedianPitch(buf, 100);
   const trace = [];
   for (let i = 0; i < 5; i++) trace.push(pushAndMedianPitch(buf, 200));
-  // Frames 0 and 1 still see majority-old; frame 2 onwards is at new pitch.
   check(
-    `octave-up shift converges by frame 3 (trace=${trace.map((x) => x.toFixed(0)).join(",")})`,
-    near(trace[2], 200) && near(trace[3], 200) && near(trace[4], 200),
+    `octave-up shift converges by frame 2 (trace=${trace.map((x) => x.toFixed(0)).join(",")})`,
+    near(trace[1], 200) && near(trace[2], 200) && near(trace[3], 200) && near(trace[4], 200),
   );
 }
 
@@ -130,8 +124,8 @@ console.log("\npushAndMedianPitch — abrupt octave shift converges in 2 frames"
   const trace = [];
   for (let i = 0; i < 5; i++) trace.push(pushAndMedianPitch(buf, 100));
   check(
-    `octave-down shift converges by frame 3 (trace=${trace.map((x) => x.toFixed(0)).join(",")})`,
-    near(trace[2], 100) && near(trace[3], 100) && near(trace[4], 100),
+    `octave-down shift converges by frame 2 (trace=${trace.map((x) => x.toFixed(0)).join(",")})`,
+    near(trace[1], 100) && near(trace[2], 100) && near(trace[3], 100) && near(trace[4], 100),
   );
 }
 
