@@ -246,11 +246,14 @@ export const PATH_DEFAULTS = {
                             // wrong octave stickier, not rarer.
   voicedUnvoicedCost: 0.20, // entering/leaving voicing
   lookback: 2,              // L: decode delay in frames (50 ms at the
-                            // 25 ms hop -> ~98 ms total display latency).
-                            // L=4 (~148 ms) scores marginally better
-                            // (session correct 93.7 vs 93.4, flip 4.3
-                            // vs 5.0); L=2 chosen for responsiveness
-                            // (user decision 2026-06-09).
+                            // 25 ms hop -> ~90 ms total display latency
+                            // at the 80 ms frame: 40 ms window center +
+                            // 50 ms decode). L=4 (~140 ms) scores
+                            // marginally better (2026-06-09 tuning at
+                            // the then-96 ms frame: session correct
+                            // 93.7 vs 93.4, flip 4.3 vs 5.0); L=2
+                            // chosen for responsiveness (user decision
+                            // 2026-06-09).
 };
 
 export function createPathTracker(opts = {}) {
