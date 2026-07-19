@@ -167,6 +167,30 @@ const STAGES = {
     { name: "range50-600", frameLength: 1536, ac: { minPitchHz: 50, maxPitchHz: 600 }, path: { lookback: 2 } },
     { name: "range60-400", frameLength: 1536, ac: { minPitchHz: 60, maxPitchHz: 400 }, path: { lookback: 2 } },
   ],
+  // Stage D (2026-07-19): one-factor-at-a-time re-tune AT the deployed
+  // operating point (75-400 Hz range via BOERSMA_DEFAULTS, L=2 tracker).
+  // Stages A-C tuned vt/oc frame-local at 50-600 and never swept
+  // voicedUnvoicedCost or peakFloor; ojc was swept jointly with L but the
+  // fine grid around 0.15 at L=2 specifically was not run.
+  D: () => {
+    const prodAc = { voicingThreshold: 0.40, octaveCost: 0.01 };
+    const prodPath = { octaveJumpCost: 0.15, voicedUnvoicedCost: 0.20, lookback: 2 };
+    const out = [{ name: "prod-baseline", frameLength: 1536, ac: { ...prodAc }, path: { ...prodPath } }];
+    for (const vuc of [0.10, 0.14, 0.28, 0.40]) {
+      out.push({ name: `vuc${vuc}`, frameLength: 1536, ac: { ...prodAc }, path: { ...prodPath, voicedUnvoicedCost: vuc } });
+    }
+    for (const ojc of [0.08, 0.11, 0.22, 0.30]) {
+      out.push({ name: `ojc${ojc}`, frameLength: 1536, ac: { ...prodAc }, path: { ...prodPath, octaveJumpCost: ojc } });
+    }
+    for (const vt of [0.35, 0.45, 0.50]) {
+      out.push({ name: `vt${vt}`, frameLength: 1536, ac: { ...prodAc, voicingThreshold: vt }, path: { ...prodPath } });
+    }
+    for (const pf of [0.10, 0.20]) {
+      out.push({ name: `pf${pf}`, frameLength: 1536, ac: { ...prodAc, peakFloor: pf }, path: { ...prodPath } });
+    }
+    out.push({ name: "fl1280", frameLength: 1280, ac: { ...prodAc }, path: { ...prodPath } });
+    return out;
+  },
   P: () => [{ name: `probe_attr${process.env.AC_ATTR_OFF_MS || "center"}`, frameLength: 1024, ac: { voicingThreshold: 0.40, octaveCost: 0.01 }, path: null }],
   A: () => gridStageA(),
   B: () => gridStageB(JSON.parse(process.env.AC_BEST || '{"voicingThreshold":0.40,"octaveCost":0.05}')),
