@@ -281,3 +281,68 @@ trace and, via it, the ML gate) is the remaining broadband gap;
 field-recorded noise validation (real fans, real insects, real rooms)
 before closing the arc; `notchedFreqs` is surfaced in diag pitch
 messages for field observability.
+
+## 8. Hardening pass (field report + Codex review on PR #90)
+
+Two inputs after the PR #90 merge: a field report that a YouTube
+"white noise" sleep video triggered the meters, and a Codex P2 (the
+voiced-recency ML gate silences speakers phonating below the 75 Hz
+pitch floor). Investigating the field report found a chain of real
+issues; all fixed on this branch, validated by re-running the matrix.
+
+**What the field report turned out to be.** Sleep-video "white noise"
+is never white — it's brown/low-passed rumble. Reproducing with new
+`brown` / `sleep-noise` generators surfaced, in order: (1) the
+original LCG noise generator had lattice artifacts — stable spectral
+lines at 72.7 Hz harmonics surviving the low-pass — which the notch
+tracker CORRECTLY promoted, and (2) the high-Q notches then rang
+against the surrounding rumble, manufacturing sustained periodicity
+the Viterbi voiced: noise-only sleep-noise painted 26.8 % of trace
+hops. Fixes: xorshift RNG in the generators (no more lines; a
+deliberate `sleep-birdies` type keeps the codec-birdie field scenario
+covered — lossy codecs DO create stable tonal lines in noise), and a
+**ghost-voicing veto** in the pitch worker (`isNearNotch`): a decoded
+pitch at an actively-notched frequency or its octave relatives is by
+definition the interferer, never the user.
+
+**Codex P2 fix.** `subFloorVoiced` probe (audio-utils): before
+skipping an "unvoiced" window, the gender worker probes the ML window
+itself for 40–75 Hz periodicity — genuine sub-floor phonation (fry,
+very low voices) fails open. Three design iterations, each forced by
+measurement: lag exclusion of notched interferers cannot work (a
+tone's autocorrelation is a cosine, high at many lags → notch the
+probe segment instead, with an energy-survival check because
+normalized correlation is amplitude-blind), and a bare correlation
+threshold cannot reject rumble (brown/sleep noise correlates ≥0.5 at
+sub-floor lags in 50–96 % of windows) → **peakedness criterion**:
+r(lag) must beat r(lag/2) by 0.1 — genuine periodicity has a
+localized peak (low half-period correlation), rumble decorrelates
+monotonically (half-lag correlates HIGHER). Probe-level: 0/129 rumble
+windows pass, all fry/low-voice unit cases pass, hum exclusion works
+via the relayed `notchedFreqs` (pitch-hint now carries them).
+
+**Re-validated matrix (hardened stack: fixed generators + notch +
+ghost veto + two-arm VAD + sub-floor fail-open):**
+
+- Pitch, noise-only false-voicing: sleep-noise ≤1.7 %, sleep-birdies
+  ≤4.6 %, brown ≤7.2 %, fan-hum ≤1 %, mains 0 %; trace PAINTING on
+  ambient rumble: sleep-noise 26.8 → **0.0 %**, sleep-birdies 1.7 %,
+  brown 1.6 %, pink 3.2 %. Speech accuracy unchanged everywhere
+  (clean 87.0; rumble types 86–87 % — LF noise barely touches the
+  band); fan-hum/mains recovery intact.
+- Gender: speech accuracy 31/31 across ALL noise types at +10 dB;
+  noise-only VAD pass: white/mains/cicadas 0 %, fan-hum/crickets 6 %,
+  **rumble residual via the RECENCY arm** (pink 50 %, brown 65 %,
+  sleep-noise 21 %, sleep-birdies 40 %; down from 50/96/94/100) —
+  bounded by the pitch detector's own rumble flicker-voicing
+  amplified by the 500 ms recency window (P ≈ 1−(1−p)^20). The
+  sub-floor probe itself passes 0 rumble windows.
+
+**Open item (unchanged in kind, better quantified):** detector-level
+flicker-voicing on LF rumble (brown/pink class, ~6–16 % of hops) is
+now the single root of both residuals (trace flicker ≤3.2 % painted;
+gender pause-drag partially mitigated). Closing it requires a
+detector-level rumble discriminator — candidate: the same
+half-lag-peakedness idea applied to the AC candidate acceptance —
+which is rule-3 detector tuning with corpus-regression stakes; scoped
+as follow-up. Field-recorded-noise validation also still pending.

@@ -7,7 +7,7 @@
 //
 // Usage: node tests/dsp/noise-notch-test.js
 
-import { createNoiseNotch, NOTCH_DEFAULTS } from "../../src/dsp/noise-notch.js";
+import { createNoiseNotch, NOTCH_DEFAULTS, isNearNotch } from "../../src/dsp/noise-notch.js";
 
 let passed = 0, failed = 0;
 function check(name, cond, detail = "") {
@@ -124,6 +124,14 @@ console.log("\nno notches on clean-speech-like input (hum-free)");
   }, 12);
   check("no spurious notch on modulated voice", n.activeFreqs().length === 0, `active=${n.activeFreqs()}`);
 }
+
+console.log("\nisNearNotch (ghost-voicing veto)");
+check("at the notch freq", isNearNotch(120, [120]) === true);
+check("within 4% of notch", isNearNotch(124, [120]) === true);
+check("at half the notch freq", isNearNotch(60, [120]) === true);
+check("at double the notch freq", isNearNotch(240, [120]) === true);
+check("well away from notch", isNearNotch(150, [120]) === false);
+check("no active notches", isNearNotch(120, []) === false);
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);

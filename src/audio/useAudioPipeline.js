@@ -459,6 +459,10 @@ export function useAudioPipeline() {
               type: "pitch-hint",
               voiced: msg.voiced,
               ts: msg.ts,
+              // Active tonal-interferer notches — consumed by the ML
+              // worker's sub-floor voicing probe (fail-open for
+              // below-pitch-floor phonation, Codex review on PR #90).
+              notchedFreqs: msg.notchedFreqs ?? [],
             });
           }
           if (DIAG_ENABLED && typeof msg.inferMs === "number") {

@@ -52,7 +52,7 @@ import { computeCPP, CPP_INPUT_LEN } from "../src/dsp/cpp.js";
 import {
   SR, NOISE_TYPES, TONAL_FREQS, babble, mix, notchCascade,
 } from "./noise-synth.js";
-import { createNoiseNotch } from "../src/dsp/noise-notch.js";
+import { createNoiseNotch, isNearNotch } from "../src/dsp/noise-notch.js";
 
 const args = Object.fromEntries(
   process.argv.slice(3).map((a) => {
@@ -208,6 +208,7 @@ async function runGender() {
   const { pipeline: hfPipeline } = await import("@huggingface/transformers");
   const {
     RingWindow, femaleScoreFromResult, windowPeak, ema, VAD_PEAK_THRESHOLD,
+    subFloorVoiced,
   } = await import("../src/ml/audio-utils.js");
   const classifier = await hfPipeline("audio-classification", MODEL_ID, { dtype: "q8" });
 
@@ -247,28 +248,35 @@ async function runGender() {
     const pt = createPathTracker();
     const buf = new Float32Array(N);
     let fill = 0;
-    const out = [];
+    const out = [], freqs = [];
     for (let i = 0; i + 400 <= sig.length; i += 400) {
       const chunk = Float32Array.from(sig.subarray(i, i + 400));
       notch.process(chunk);
+      freqs.push(notch.activeFreqs());
       buf.copyWithin(0, 400, N);
       buf.set(chunk, N - 400);
       fill = Math.min(N, fill + 400);
       if (fill < N) { pt.emit({ voiced: [], unvoicedStrength: ac.config.voicingThreshold }); out.push(false); continue; }
-      out.push(pt.emit(ac.candidates(buf)) > 0);
+      const decoded = pt.emit(ac.candidates(buf));
+      // ghost-voicing veto, as in pitch-worker
+      out.push(decoded > 0 && !isNearNotch(decoded, notch.activeFreqs()));
     }
     const L2 = pt.config.lookback;
     const tail = pt.flush().map((v) => v > 0);
     const vals = out.slice(L2).concat(tail);
-    return out.map((_, k) => vals[k] ?? false);
+    return { voiced: out.map((_, k) => vals[k] ?? false), notchFreqs: freqs };
   }
 
   function recentlyVoiced(timeline, samplePos) {
     const hop = Math.floor(samplePos / 400);
-    for (let k = Math.max(0, hop - VOICED_RECENCY_HOPS); k <= Math.min(hop, timeline.length - 1); k++) {
-      if (timeline[k]) return true;
+    for (let k = Math.max(0, hop - VOICED_RECENCY_HOPS); k <= Math.min(hop, timeline.voiced.length - 1); k++) {
+      if (timeline.voiced[k]) return true;
     }
     return false;
+  }
+  function notchFreqsAt(timeline, samplePos) {
+    const hop = Math.min(Math.floor(samplePos / 400), timeline.notchFreqs.length - 1);
+    return hop >= 0 ? timeline.notchFreqs[hop] : [];
   }
 
   async function scoreTrack(sig) {
@@ -282,7 +290,8 @@ async function runGender() {
       if (!ring.isFull()) continue;
       const win = ring.snapshot();
       if (windowPeak(win) < VAD_PEAK_THRESHOLD) continue;
-      if (timeline && !recentlyVoiced(timeline, pos)) continue;
+      if (timeline && !recentlyVoiced(timeline, pos)
+          && !subFloorVoiced(win, SR, notchFreqsAt(timeline, pos))) continue;
       const female = femaleScoreFromResult(await classifier(win, { sampling_rate: SR }));
       if (female == null) continue;
       smoothed = ema(smoothed, female, 0.2);
@@ -331,7 +340,8 @@ async function runGender() {
         vadWindows++;
         const win = ringN.snapshot();
         if (windowPeak(win) < VAD_PEAK_THRESHOLD) continue;
-        if (timelineN && !recentlyVoiced(timelineN, p)) continue;
+        if (timelineN && !recentlyVoiced(timelineN, p)
+            && !subFloorVoiced(win, SR, notchFreqsAt(timelineN, p))) continue;
         vadPassed++;
         const f = femaleScoreFromResult(await classifier(win, { sampling_rate: SR }));
         if (f != null) noiseScores.push(f);
