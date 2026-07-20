@@ -213,7 +213,7 @@ async function runGender() {
   console.log(`gender oracle — model=${MODEL_ID} frontend=${FRONTEND} subset stride=${SUBSET_STRIDE}`);
   const { pipeline: hfPipeline } = await import("@huggingface/transformers");
   const {
-    RingWindow, femaleScoreFromResult, windowPeak, ema, VAD_PEAK_THRESHOLD,
+    RingWindow, femaleScoreFromResult, windowPeak, ema, VAD_SILENCE_FLOOR,
     subFloorVoiced,
   } = await import("../src/ml/audio-utils.js");
   const classifier = await hfPipeline("audio-classification", MODEL_ID, { dtype: "q8" });
@@ -224,6 +224,12 @@ async function runGender() {
     const sp = t.trackId.slice(0, 3);
     (byId.get(sp) ?? byId.set(sp, { gender: t.gender, parts: [] }).get(sp)).parts.push(to16k(t));
   }
+  // --scale=N rescales the assembled speech to a target PEAK amplitude —
+  // real desktop mics with AGC off deliver speech peaks of 0.01-0.05
+  // full-scale (documented in boersma-ac.js's globalPeak fix), far below
+  // the corpus recordings' near-full-scale levels. Added 2026-07-20 to
+  // reproduce the field report of the desktop meter freezing.
+  const PEAK_SCALE = args.scale != null ? parseFloat(args.scale) : null;
   const speakers = [...byId.entries()]
     .filter((_, i) => i % SUBSET_STRIDE === 0)
     .map(([id, v]) => {
@@ -232,6 +238,12 @@ async function runGender() {
       const sig = new Float32Array(total);
       let o = 0;
       for (const p of v.parts) { sig.set(p, o); o += p.length + gap.length; }
+      if (PEAK_SCALE != null) {
+        let pk = 0;
+        for (let i = 0; i < sig.length; i++) { const a = Math.abs(sig[i]); if (a > pk) pk = a; }
+        const g = pk > 0 ? PEAK_SCALE / pk : 1;
+        for (let i = 0; i < sig.length; i++) sig[i] *= g;
+      }
       return { id, gender: v.gender === "m" ? "male" : "female", sig };
     });
   const fdaSrc = corpora.filter((t) => t.corpus === "fda").filter((_, i) => i % 10 === 0).map(to16k);
@@ -301,7 +313,10 @@ async function runGender() {
       pos += HOP_SAMPLES;
       if (!ring.isFull()) continue;
       const win = ring.snapshot();
-      if (windowPeak(win) < VAD_PEAK_THRESHOLD) continue;
+      // production VAD since 2026-07-20: silence floor + voiced gate
+      // (the timeline is always live in the oracle, so the legacy
+      // stale-fallback peak threshold never applies here)
+      if (windowPeak(win) < VAD_SILENCE_FLOOR) continue;
       if (timeline && !recentlyVoiced(timeline, pos)
           && !subFloorVoiced(win, SR, notchFreqsAt(timeline, pos))) continue;
       const female = femaleScoreFromResult(await classifier(win, { sampling_rate: SR }));
@@ -351,7 +366,7 @@ async function runGender() {
         if (p < scaled.length / 2) continue; // warm-up half
         vadWindows++;
         const win = ringN.snapshot();
-        if (windowPeak(win) < VAD_PEAK_THRESHOLD) continue;
+        if (windowPeak(win) < VAD_SILENCE_FLOOR) continue;
         if (timelineN && !recentlyVoiced(timelineN, p)
             && !subFloorVoiced(win, SR, notchFreqsAt(timelineN, p))) continue;
         vadPassed++;

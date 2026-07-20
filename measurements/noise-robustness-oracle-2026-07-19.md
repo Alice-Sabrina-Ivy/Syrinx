@@ -402,3 +402,36 @@ Remaining known-open: babble (competing speech, out of scope), the
 notch's ~5 s cold-start warm-up on tonal interferers (structural), and
 field-recorded-noise validation — now including a retest of the
 original YouTube video — before closing the arc.
+
+## 10. Quiet-mic ML VAD freeze (field report, 2026-07-20) — threshold asymmetry
+
+User-diagnosed in simultaneous desktop/mobile testing: "the threshold
+for my voice to show up in the pitch detector and the threshold to
+affect the perceived-gender model are different." Exactly right. The
+pitch detector's amplitude handling has been ADAPTIVE to mic level
+since the 2026-06-09 globalPeak fix (real desktop mics with AGC off
+peak at 0.01–0.05 full-scale); the ML VAD still used
+`VAD_PEAK_THRESHOLD = 0.05` ABSOLUTE, calibrated on near-full-scale
+corpus recordings. A desktop mic delivering speech peaks below 0.05:
+pitch tracks fine, the ML VAD gates EVERY window, the meter freezes at
+its last score — while a hotter phone mic clears 0.05 and keeps
+updating. Oracle reproduction at peak 0.03 (`--scale`): **zero windows
+scored** (clean "15/31" = null-scores accidentally counting males).
+
+**Fix**: the absolute 0.05 threshold now applies ONLY on the
+stale-fallback path (pitch feed dead >2 s — the legacy behavior when
+the adaptive signal is unavailable). A true silence floor
+(`VAD_SILENCE_FLOOR = 0.008`, below the quietest real-mic speech,
+above electronics hiss) applies always; above it, speech-vs-noise
+rides the pitch-voicedness gate, which inherits the detector's
+adaptive mic-level handling — both paths now share one notion of
+"loud enough".
+
+**Validation** (gender oracle): quiet-mic (peak 0.03) clean
+15/31 → **31/31**, noisy cells 0/31 → 31/31, noise-only VAD pass
+0 % preserved at BOTH scales; normal-scale rows unchanged (31/31,
+0 %). The oracle gender mode gained `--scale` so mic-level cells are
+now a permanent part of the acceptance surface — corpus-level signals
+masked this for two months, the same lesson as the globalPeak fix
+("corpus/session WAVs sit near full scale, which masked this in every
+harness").
