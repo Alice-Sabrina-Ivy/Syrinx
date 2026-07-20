@@ -351,3 +351,97 @@ export function normCorrAtLag(buffer, lag, search = 2) {
   }
   return best;
 }
+
+// harmonicStructureCount(buffer, f0, sampleRate) — SWIPE-flavored
+// harmonic-structure check (Camacho 2008, simplified), added 2026-07-20
+// as the voicing-quality veto the voicing-robustness shootout selected
+// (measurements/noise-robustness-oracle-2026-07-19.md §9): counts
+// spectral peaks at k*f0 (k=1..4) that clear the local floor by 6 dB.
+// Voiced speech always presents several harmonics; noise shaped through
+// a resonator presents exactly one — the field-failure class ("white
+// noise" videos painting 290-380 Hz) is vetoed BY CONSTRUCTION when the
+// caller requires a count >= 2. Shootout: costs 0.3 pp FDA / 0.0 pp
+// vocadito while cutting every measured noise class's painting 3-8x.
+// NOTE: a mathematically pure sine also has count 1 — the veto is
+// applied at the WORKER level (reported pitch), deliberately not inside
+// detect(), so detector-level tests and harnesses that use pure-tone
+// stimuli keep exercising the estimator itself.
+const _hsFftN = 4096;
+let _hsScratch = null;
+export function harmonicStructureCount(buffer, f0, sampleRate, ratio = 10) {
+  if (!_hsScratch) {
+    _hsScratch = {
+      re: new Float64Array(_hsFftN),
+      im: new Float64Array(_hsFftN),
+      hann: null,
+    };
+  }
+  const s = _hsScratch;
+  if (!s.hann || s.hann.length !== buffer.length) {
+    s.hann = new Float64Array(buffer.length);
+    for (let i = 0; i < buffer.length; i++) {
+      s.hann[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (buffer.length - 1));
+    }
+  }
+  s.re.fill(0); s.im.fill(0);
+  const n = Math.min(buffer.length, _hsFftN);
+  for (let i = 0; i < n; i++) s.re[i] = buffer[i] * s.hann[i];
+  fft(s.re, s.im, false);
+  const half = _hsFftN / 2;
+  const binHz = sampleRate / _hsFftN;
+  let count = 0;
+  for (let k = 1; k <= 4; k++) {
+    const f = k * f0;
+    if (f > sampleRate / 2 - 100) break;
+    const lo = Math.max(1, Math.floor((f * 0.96) / binHz));
+    const hi = Math.min(half - 1, Math.ceil((f * 1.04) / binHz));
+    let peak = 0;
+    for (let b = lo; b <= hi; b++) {
+      const p = s.re[b] * s.re[b] + s.im[b] * s.im[b];
+      if (p > peak) peak = p;
+    }
+    const flo = Math.max(1, Math.floor((f * 0.65) / binHz));
+    const fhi = Math.min(half - 1, Math.ceil((f * 1.35) / binHz));
+    const band = [];
+    for (let b = flo; b <= fhi; b++) band.push(s.re[b] * s.re[b] + s.im[b] * s.im[b]);
+    band.sort((a, b) => a - b);
+    const floor = band[Math.floor(band.length / 2)] || 1e-12;
+    // `ratio` guards against max-statistics: the max over the ~13 bins
+    // of the ±4 % search band is typically ~4x the band median for pure
+    // noise (max of N exponentials), so a 6 dB threshold let noise fake
+    // harmonics. Default 10x (10 dB) puts a noise-bin false harmonic
+    // below ~1 % per band while true speech harmonics (20 dB+) pass.
+    if (peak >= ratio * floor) count++;
+  }
+  return count;
+}
+
+// createHarmonicVoicingGuard — the production wrapper around
+// harmonicStructureCount selected by the 2026-07-20 voicing-robustness
+// shootout (scripts/voicing-robustness-shootout.js): veto reported
+// voicing only after `debounce` CONSECUTIVE frames fail the harmonic
+// check. Sustained non-harmonic content (the field-failure class:
+// noise shaped through the pitch band) dies after debounce*hop
+// (~100 ms) and can never paint beyond an onset blip; transient weak
+// speech frames (breathy offsets, soft onsets) pass untouched —
+// measured cost 0.1 pp FDA / 0.1 pp vocadito at ratio 10 / debounce 4,
+// with every synthetic noise class <= 0.1 % painted. One instance per
+// stream; check() must be called for every DECODED frame in order.
+export function createHarmonicVoicingGuard({ ratio = 10, debounce = 4 } = {}) {
+  let failStreak = 0;
+  return {
+    // check(buffer, f0, sampleRate): true = keep voiced, false = veto.
+    // Call with f0 > 0 only; call reset() (or let streak decay via a
+    // passing frame) across unvoiced gaps — unvoiced frames don't
+    // advance the streak by definition.
+    check(buffer, f0, sampleRate) {
+      if (harmonicStructureCount(buffer, f0, sampleRate, ratio) >= 2) {
+        failStreak = 0;
+        return true;
+      }
+      failStreak++;
+      return failStreak < debounce;
+    },
+    reset() { failStreak = 0; },
+  };
+}

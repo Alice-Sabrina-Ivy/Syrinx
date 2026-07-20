@@ -47,7 +47,7 @@
 
 import { loadAllCorpora } from "../tests/dsp/data/corpora.js";
 import { resampleLinear } from "../tests/dsp/swift-f0-adapter.js";
-import { createBoersmaAC, createPathTracker, BOERSMA_FRAME_LENGTH_16K } from "../src/dsp/boersma-ac.js";
+import { createBoersmaAC, createPathTracker, createHarmonicVoicingGuard, BOERSMA_FRAME_LENGTH_16K } from "../src/dsp/boersma-ac.js";
 import { computeCPP, CPP_INPUT_LEN } from "../src/dsp/cpp.js";
 import {
   SR, NOISE_TYPES, TONAL_FREQS, babble, mix, notchCascade,
@@ -140,18 +140,24 @@ async function runPitch() {
   function runTrack(sig) {
     const ac = createBoersmaAC(SR, N, detectorOpts);
     const pt = createPathTracker();
+    const guard = createHarmonicVoicingGuard(); // production-parity
+    const L2 = pt.config.lookback;
     const buf = new Float32Array(N);
+    const delayLine = [];
     let fill = 0;
     const out = [];
     for (let i = 0; i + HOP <= sig.length; i += HOP) {
       buf.copyWithin(0, HOP, N);
       buf.set(sig.subarray(i, i + HOP), N - HOP);
       fill = Math.min(N, fill + HOP);
+      delayLine.push(Float32Array.from(buf));
+      if (delayLine.length > L2 + 1) delayLine.shift();
       if (fill < N) { pt.emit({ voiced: [], unvoicedStrength: ac.config.voicingThreshold }); out.push(null); continue; }
-      out.push(pt.emit(ac.candidates(buf)));
+      let v = pt.emit(ac.candidates(buf));
+      if (v > 0 && !guard.check(delayLine[0], v, SR)) v = null;
+      out.push(v);
     }
     // re-align tracker delay (L=2) like ac-tuning-sweep does
-    const L2 = pt.config.lookback;
     const tail = pt.flush();
     const vals = out.slice(L2).concat(tail);
     return out.map((_, k) => vals[k] ?? null);
@@ -246,6 +252,8 @@ async function runGender() {
     const notch = createNoiseNotch(SR);
     const ac = createBoersmaAC(SR, N);
     const pt = createPathTracker();
+    const gGuard = createHarmonicVoicingGuard();
+    const gDelay = [];
     const buf = new Float32Array(N);
     let fill = 0;
     const out = [], freqs = [];
@@ -255,11 +263,15 @@ async function runGender() {
       freqs.push(notch.activeFreqs());
       buf.copyWithin(0, 400, N);
       buf.set(chunk, N - 400);
+      gDelay.push(Float32Array.from(buf));
+      if (gDelay.length > pt.config.lookback + 1) gDelay.shift();
       fill = Math.min(N, fill + 400);
       if (fill < N) { pt.emit({ voiced: [], unvoicedStrength: ac.config.voicingThreshold }); out.push(false); continue; }
-      const decoded = pt.emit(ac.candidates(buf));
-      // ghost-voicing veto, as in pitch-worker
-      out.push(decoded > 0 && !isNearNotch(decoded, notch.activeFreqs()));
+      let decoded = pt.emit(ac.candidates(buf));
+      // ghost-voicing veto + harmonic guard, as in pitch-worker
+      if (decoded > 0 && isNearNotch(decoded, notch.activeFreqs())) decoded = null;
+      if (decoded > 0 && !gGuard.check(gDelay[0], decoded, SR)) decoded = null;
+      out.push(decoded > 0);
     }
     const L2 = pt.config.lookback;
     const tail = pt.flush().map((v) => v > 0);

@@ -247,6 +247,7 @@ export const NOISE_TYPES = {
   brown,
   "sleep-noise": sleepNoise,
   "sleep-birdies": sleepBirdies,
+  "resonant-noise": resonantNoise,
   "fan-hum": fanHum,
   "mains-complex": mainsComplex,
   crickets,
@@ -304,4 +305,28 @@ export function sleepBirdies(n, seed = 10) {
     base[i] += 0.12 * Math.sin(2 * Math.PI * 87 * t) + 0.08 * Math.sin(2 * Math.PI * 174 * t + 0.9);
   }
   return normalizeRms(base);
+}
+
+// Resonant noise — white noise through a moderate-Q resonator in the
+// upper pitch band (~330 Hz), emulating "white noise" video content
+// shaped by codec + speaker/room resonances (field report 2026-07-20:
+// the real signature is dense 290-380 Hz voicing with HNR ~0.2 dB, not
+// LF rumble). Noise through a resonator is genuinely quasi-periodic at
+// the resonant frequency — the detector's window-corrected AC voices
+// it while raw-AC HNR stays near zero, which is exactly the
+// discriminating signature the HNR gate arm keys on.
+export function resonantNoise(n, seed = 11, freq = 330, q = 5) {
+  const rnd = makeLcg(seed);
+  const x = new Float32Array(n);
+  const w0 = 2 * Math.PI * freq / SR;
+  const alpha = Math.sin(w0) / (2 * q);
+  const b0 = alpha, b2 = -alpha, a0 = 1 + alpha, a1 = -2 * Math.cos(w0), a2 = 1 - alpha;
+  let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+  for (let i = 0; i < n; i++) {
+    const w = rnd() + 0.25 * (rnd());
+    const y = (b0 * w + b2 * x2 - a1 * y1 - a2 * y2) / a0;
+    x2 = x1; x1 = w; y2 = y1; y1 = y;
+    x[i] = y + 0.15 * w; // resonance + broadband floor
+  }
+  return normalizeRms(x);
 }
