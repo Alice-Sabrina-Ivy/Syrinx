@@ -346,3 +346,59 @@ detector-level rumble discriminator — candidate: the same
 half-lag-peakedness idea applied to the AC candidate acceptance —
 which is rule-3 detector tuning with corpus-regression stakes; scoped
 as follow-up. Field-recorded-noise validation also still pending.
+
+## 9. Voicing-robustness shootout — literature mechanisms head-to-head (2026-07-20)
+
+The PR #91 retest showed the REAL field signature: dense sustained
+painting at 290–380 Hz with HNR ~0.2 dB — noise shaped through the
+upper pitch band (a class none of the rumble synthetics covered; a new
+`resonant-noise` generator models it). Per user direction, instead of
+a bespoke fix we tested the voicing/noise-rejection mechanisms of the
+major published detectors as add-on criteria over the existing
+(accuracy-validated) Boersma-AC estimator
+([scripts/voicing-robustness-shootout.js](../scripts/voicing-robustness-shootout.js)):
+YIN's CMNDF aperiodicity (de Cheveigné & Kawahara 2002), a
+SWIPE-flavored harmonic-structure check (Camacho 2008), and
+Praat-style raw-AC HNR (the dashboard's own measure).
+
+| criterion | FDA (clean 87.0) | vocadito (97.2) | worst in-scope noise painted |
+|---|---|---|---|
+| rawHNR ≥ 1 dB | **76.2 — ruled out** | 96.0 | 1.7 % |
+| YIN d' ≤ 0.50 | 79.8 | 96.4 | 0 % |
+| YIN d' ≤ 0.70 | 85.2 | 97.1 | 0.6 % |
+| harmonic ≥ 2 (6 dB floor) | 86.7 | 97.2 | 1.1 % |
+| harmonic ≥ 2 (10 dB floor) | 84.3 | 96.3 | 0 % |
+| **harmonic ≥ 2 @10 dB, debounce 4 (SHIPPED)** | **86.9** | **97.1** | **≤ 0.1 %** |
+
+Notes: the originally-proposed HNR veto is measurably the WORST speech
+trade (−10.8 pp FDA at even 1 dB) — vetoing on it would have gutted
+accuracy. The 6 dB harmonic floor was a max-statistics bug (max of ~13
+noise bins ≈ 4× their median, so noise faked harmonics); 10 dB fixes
+it. Debouncing (veto only after 4 CONSECUTIVE non-harmonic frames,
+~100 ms) recovers essentially all speech cost — sustained noise
+still dies by construction, since a lone resonance can never present
+two harmonics of the decoded F0, while transient weak speech frames
+pass.
+
+**Shipped**: `harmonicStructureCount` + `createHarmonicVoicingGuard`
+(boersma-ac.js), applied post-decode in pitch-worker (after the ghost
+veto, on the decoded frame's own buffer via a delay line); oracle
+pitch + gender modes mirror it. Guard unit cases in
+boersma-ac-test.js (25/25).
+
+**Final matrix through the full production chain** (notch + ghost veto
++ harmonic guard):
+
+- Pitch noise-only false-voicing: **≤ 0.7 % for every class** (pink
+  was 10.8 %; resonant-noise 0.1 %); speech accuracy at +10 dB within
+  ~1 pp of the pre-guard chain (losses go to honest nulls — noise
+  masks real speech harmonics at low SNR), clean cost 0.1 pp.
+- Gender noise-only VAD pass: **0 % for every tested class**
+  (pink/brown/sleep/birdies/resonant/white), 31/31 speech accuracy —
+  the recency-arm rumble residual from §8 is fully closed because the
+  pitch voicing it keys on is now guarded.
+
+Remaining known-open: babble (competing speech, out of scope), the
+notch's ~5 s cold-start warm-up on tonal interferers (structural), and
+field-recorded-noise validation — now including a retest of the
+original YouTube video — before closing the arc.

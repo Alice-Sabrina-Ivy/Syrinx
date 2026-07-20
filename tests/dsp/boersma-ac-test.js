@@ -62,6 +62,45 @@ check("silence is unvoiced", ac.detect(new Float32Array(N)).pitch === null);
   check("white noise is unvoiced", ac.detect(noise).pitch === null);
 }
 
+console.log("\nharmonic-structure voicing guard (noise-robustness shootout 2026-07-20)");
+{
+  const { harmonicStructureCount, createHarmonicVoicingGuard } = await import("../../src/dsp/boersma-ac.js");
+  let seed = 9;
+  const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x3fffffff - 1; };
+  const mk = (fn) => { const x = new Float32Array(N); for (let i = 0; i < N; i++) x[i] = fn(i / SR); return x; };
+  const voiced330 = () => mk((t) => 0.1 * (Math.sin(2 * Math.PI * 330 * t) + 0.5 * Math.sin(2 * Math.PI * 660 * t) + 0.3 * Math.sin(2 * Math.PI * 990 * t)) + 0.01 * rnd());
+  // The field-failure class, via the shootout-validated generator:
+  // white noise through a moderate-Q resonator at 330 Hz over a
+  // broadband floor (scripts/noise-synth.js resonantNoise) — genuinely
+  // quasi-periodic at 330, but with no harmonic series.
+  const { resonantNoise } = await import("../../scripts/noise-synth.js");
+  const stream = resonantNoise(SR * 4);
+  const resFrame = (k) => stream.subarray(k * 400, k * 400 + N);
+  check("harmonic voice at 330 counts >= 2 harmonics",
+    harmonicStructureCount(voiced330(), 330, SR) >= 2);
+  {
+    let below = 0;
+    for (let k = 0; k < 20; k++) if (harmonicStructureCount(resFrame(k), 330, SR) < 2) below++;
+    check("resonant noise frames overwhelmingly count < 2 harmonics", below >= 18, `${below}/20`);
+  }
+  const g = createHarmonicVoicingGuard();
+  // find a run of 8 consecutive sub-threshold frames to exercise debounce
+  let start = 0;
+  for (let k = 0; k < 100; k++) {
+    let ok = true;
+    for (let j = k; j < k + 8; j++) if (harmonicStructureCount(resFrame(j), 330, SR) >= 2) { ok = false; break; }
+    if (ok) { start = k; break; }
+  }
+  check("guard passes frames 1-3 of sustained non-harmonic (debounce)",
+    g.check(resFrame(start), 330, SR) && g.check(resFrame(start + 1), 330, SR) && g.check(resFrame(start + 2), 330, SR));
+  check("guard vetoes the 4th consecutive non-harmonic frame",
+    g.check(resFrame(start + 3), 330, SR) === false);
+  check("guard recovers immediately on a harmonic frame",
+    g.check(voiced330(), 330, SR) === true);
+  check("streak restarts after recovery (3 more pass again)",
+    g.check(resFrame(start + 4), 330, SR) && g.check(resFrame(start + 5), 330, SR) && g.check(resFrame(start + 6), 330, SR));
+}
+
 console.log("\ndetector — real-mic levels (adaptive global peak)");
 {
   // Regression: live mics with AGC off peak at 0.01-0.05 full scale. The
