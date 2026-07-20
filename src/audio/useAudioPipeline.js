@@ -447,6 +447,20 @@ export function useAudioPipeline() {
               pitch: msg.pitch,
             });
           }
+          // Forward voicedness to the ML worker: its VAD gates gender
+          // inference on "pitch recently voiced" so noise-only windows
+          // stop feeding masculine-leaning scores into the EMA (every
+          // synthetic noise type passed the old peak-amplitude VAD 100%
+          // of the time — measurements/noise-robustness-oracle-
+          // 2026-07-19.md §4). Sent on every pitch message, voiced or
+          // not, so the worker's recency window closes promptly.
+          if (mlWorkerRef.current) {
+            mlWorkerRef.current.postMessage({
+              type: "pitch-hint",
+              voiced: msg.voiced,
+              ts: msg.ts,
+            });
+          }
           if (DIAG_ENABLED && typeof msg.inferMs === "number") {
             pushPitchInference({
               tEpochMs: msg.ts,

@@ -185,21 +185,27 @@ export function activeRms(x) {
   return m ? Math.sqrt(ss / m) : 0;
 }
 
-// mix(speech, noiseUnitRms, snrDb, tailSec): returns { mixed, tailStart }
-// — speech + noise at the requested SNR vs the speech's active level,
-// plus a noise-only tail of tailSec appended (for false-voicing
-// measurement). The noise is tiled/truncated to cover the full length.
-export function mix(speech, noiseUnitRms, snrDb, tailSec = 0) {
+// mix(speech, noiseUnitRms, snrDb, tailSec, leadSec): returns
+// { mixed, tailStart, lead } — speech + noise at the requested SNR vs
+// the speech's active level, with a noise-only LEAD of leadSec
+// prepended (simulates a session where the ambient noise precedes
+// speech — required to give the persistent-peak notch tracker its
+// promotion time, and realistic for every front-end) and a noise-only
+// TAIL of tailSec appended (false-voicing measurement). The noise is
+// tiled to cover the full length. tailStart is relative to the start
+// of `mixed` (i.e. includes the lead).
+export function mix(speech, noiseUnitRms, snrDb, tailSec = 0, leadSec = 0) {
   const sRms = activeRms(speech);
   const g = sRms / Math.pow(10, snrDb / 20);
   const tail = Math.floor(tailSec * SR);
-  const n = speech.length + tail;
+  const lead = Math.floor(leadSec * SR);
+  const n = lead + speech.length + tail;
   const out = new Float32Array(n);
   for (let i = 0; i < n; i++) {
-    const s = i < speech.length ? speech[i] : 0;
+    const s = i >= lead && i - lead < speech.length ? speech[i - lead] : 0;
     out[i] = s + g * noiseUnitRms[i % noiseUnitRms.length];
   }
-  return { mixed: out, tailStart: speech.length };
+  return { mixed: out, tailStart: lead + speech.length, lead };
 }
 
 // Cascade of biquad notch filters (RBJ cookbook) — the "Direction D"
