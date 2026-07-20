@@ -52,7 +52,7 @@ import {
   createPathTracker,
   BOERSMA_FRAME_LENGTH_16K,
 } from "./boersma-ac.js";
-import { createNoiseNotch } from "./noise-notch.js";
+import { createNoiseNotch, isNearNotch } from "./noise-notch.js";
 
 const TARGET_SAMPLE_RATE = 16000;
 const FRAME_LENGTH = BOERSMA_FRAME_LENGTH_16K; // 1280 = 80 ms
@@ -154,19 +154,28 @@ function processChunk(msg) {
   if (frameMeta.length <= tracker.config.lookback) return;
   const meta = frameMeta.shift();
 
-  const voiced = decoded !== null && decoded !== undefined && decoded > 0;
+  // Ghost-voicing veto: never report a pitch AT an actively-notched
+  // interferer frequency (or its octave relatives) — see isNearNotch in
+  // noise-notch.js. The notch removes the interferer from the analysis
+  // stream, but its ringing against broadband rumble can leave weak
+  // periodicity there that the Viterbi bridges into sustained voicing.
+  let vetoed = decoded;
+  if (vetoed > 0 && isNearNotch(vetoed, noiseNotch.activeFreqs())) vetoed = null;
+  const voiced = vetoed !== null && vetoed !== undefined && vetoed > 0;
   self.postMessage({
     type: "pitch",
-    pitch: voiced ? decoded : null,
+    pitch: voiced ? vetoed : null,
     confidence: frameConfidence(voiced, meta),
     voiced,
     ts: performance.timeOrigin + performance.now(),
     contextTime: meta.contextTime,
     ...(_diag && inferMs !== null ? { inferMs } : {}),
-    // Field observability for the tonal-interferer notch: which
-    // frequencies are currently being notched (empty ⇒ no notches, the
-    // overwhelmingly common case). Diag-only, like inferMs.
-    ...(_diag && noiseNotch.activeFreqs().length > 0
+    // Active notch frequencies (empty ⇒ omitted, the overwhelmingly
+    // common case). Not diag-gated: the main thread relays these with
+    // the ML pitch-hint so the gender worker's sub-floor voicing probe
+    // can exclude actively-notched interferers (audio-utils
+    // subFloorVoiced). Also the notch's field-observability surface.
+    ...(noiseNotch.activeFreqs().length > 0
       ? { notchedFreqs: noiseNotch.activeFreqs() }
       : {}),
   });

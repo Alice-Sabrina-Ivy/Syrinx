@@ -28,11 +28,19 @@
 
 export const SR = 16000;
 
+// xorshift32 — replaces the original LCG (2026-07-19): the LCG's
+// lattice structure survives heavy low-passing as stable spectral
+// lines at ~72.7 Hz harmonics, which the persistent-peak notch
+// correctly identified as tonal interferers inside the "broadband"
+// sleep-noise generator. (That accident usefully emulated codec
+// birdies — now covered deliberately by sleepBirdies below.)
 function makeLcg(seed) {
-  let s = seed >>> 0;
+  let s = (seed >>> 0) || 0x9e3779b9;
   return () => {
-    s = (s * 1103515245 + 12345) & 0x7fffffff;
-    return s / 0x3fffffff - 1; // [-1, 1)
+    s ^= s << 13; s >>>= 0;
+    s ^= s >> 17;
+    s ^= s << 5; s >>>= 0;
+    return s / 0x7fffffff - 1; // [-1, 1)
   };
 }
 
@@ -236,6 +244,9 @@ export function notchCascade(x, freqs, q = 30) {
 export const NOISE_TYPES = {
   white,
   pink,
+  brown,
+  "sleep-noise": sleepNoise,
+  "sleep-birdies": sleepBirdies,
   "fan-hum": fanHum,
   "mains-complex": mainsComplex,
   crickets,
@@ -249,3 +260,48 @@ export const TONAL_FREQS = {
   "fan-hum": [120, 240, 360],
   "mains-complex": [60, 120, 180, 240],
 };
+
+// Brown (1/f^2, "deep"/sleep noise — integrated white, -6 dB/oct) and a
+// "sleep-video" variant (brown + gentle lowpass, matching the spectral
+// shape of YouTube sleep-noise content, which is never actually white).
+// Added 2026-07-19 after a field report: a "white noise" sleep video
+// triggered the meters — such content is low-frequency dominated, i.e.
+// the pink-rumble residual, not the measured-immune true-white case.
+export function brown(n, seed = 8) {
+  const rnd = makeLcg(seed);
+  const x = new Float32Array(n);
+  let acc = 0;
+  for (let i = 0; i < n; i++) {
+    acc += rnd();
+    acc *= 0.999; // leak so it doesn't wander off
+    x[i] = acc;
+  }
+  return normalizeRms(x);
+}
+
+export function sleepNoise(n, seed = 9) {
+  const rnd = makeLcg(seed);
+  const x = new Float32Array(n);
+  let acc = 0, lp = 0;
+  for (let i = 0; i < n; i++) {
+    acc += rnd();
+    acc *= 0.999;
+    lp += 0.08 * (acc - lp); // extra gentle lowpass (~200 Hz-ish corner)
+    x[i] = lp;
+  }
+  return normalizeRms(x);
+}
+
+// Sleep-noise + faint stable tonal lines — deliberately emulates lossy
+// audio codecs' "birdie" artifacts on noise content (YouTube sleep
+// videos): quasi-stable spectral lines a persistent-peak tracker WILL
+// promote. Guards the notch's ghost-voicing veto (a notch ringing
+// against surrounding rumble must not register as voice).
+export function sleepBirdies(n, seed = 10) {
+  const base = sleepNoise(n, seed);
+  for (let i = 0; i < n; i++) {
+    const t = i / SR;
+    base[i] += 0.12 * Math.sin(2 * Math.PI * 87 * t) + 0.08 * Math.sin(2 * Math.PI * 174 * t + 0.9);
+  }
+  return normalizeRms(base);
+}
