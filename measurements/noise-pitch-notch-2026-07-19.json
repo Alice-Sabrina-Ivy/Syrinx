@@ -1,0 +1,77 @@
+{
+ "mode": "pitch",
+ "frontend": "notch",
+ "vt": null,
+ "results": [
+  {
+   "noise": "clean",
+   "snr": 0,
+   "correct": 87,
+   "octUp": 0.3,
+   "octDown": 0.5,
+   "other": 9.9,
+   "null": 2.4,
+   "falseVoiced": null
+  },
+  {
+   "noise": "fan-hum",
+   "snr": 20,
+   "correct": 86.6,
+   "octUp": 0.3,
+   "octDown": 0.5,
+   "other": 10.2,
+   "null": 2.4,
+   "falseVoiced": 0
+  },
+  {
+   "noise": "fan-hum",
+   "snr": 10,
+   "correct": 86.1,
+   "octUp": 0.2,
+   "octDown": 0.6,
+   "other": 9.9,
+   "null": 3.1,
+   "falseVoiced": 0
+  },
+  {
+   "noise": "fan-hum",
+   "snr": 5,
+   "correct": 84.8,
+   "octUp": 0.2,
+   "octDown": 0.5,
+   "other": 9.2,
+   "null": 5.2,
+   "falseVoiced": 0
+  },
+  {
+   "noise": "mains-complex",
+   "snr": 20,
+   "correct": 86.5,
+   "octUp": 0.3,
+   "octDown": 0.5,
+   "other": 10.3,
+   "null": 2.4,
+   "falseVoiced": 0
+  },
+  {
+   "noise": "mains-complex",
+   "snr": 10,
+   "correct": 86.5,
+   "octUp": 0.3,
+   "octDown": 0.5,
+   "other": 10.3,
+   "null": 2.4,
+   "falseVoiced": 0
+  },
+  {
+   "noise": "mains-complex",
+   "snr": 5,
+   "correct": 86.5,
+   "octUp": 0.3,
+   "octDown": 0.5,
+   "other": 10.3,
+   "null": 2.4,
+   "falseVoiced": 0
+  }
+ ]
+}

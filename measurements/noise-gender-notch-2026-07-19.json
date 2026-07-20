@@ -1,0 +1,61 @@
+{
+ "mode": "gender",
+ "frontend": "notch",
+ "vt": null,
+ "results": [
+  {
+   "noise": "fan-hum",
+   "snr": 20,
+   "acc": 31,
+   "n": 31,
+   "meanDrift": 0.009,
+   "vadFalseRate": 100,
+   "meanNoiseScore": "0.04"
+  },
+  {
+   "noise": "fan-hum",
+   "snr": 10,
+   "acc": 31,
+   "n": 31,
+   "meanDrift": 0.009,
+   "vadFalseRate": 100,
+   "meanNoiseScore": "0.04"
+  },
+  {
+   "noise": "fan-hum",
+   "snr": 5,
+   "acc": 31,
+   "n": 31,
+   "meanDrift": 0.014,
+   "vadFalseRate": 100,
+   "meanNoiseScore": "0.04"
+  },
+  {
+   "noise": "mains-complex",
+   "snr": 20,
+   "acc": 31,
+   "n": 31,
+   "meanDrift": 0.006,
+   "vadFalseRate": 100,
+   "meanNoiseScore": "0.32"
+  },
+  {
+   "noise": "mains-complex",
+   "snr": 10,
+   "acc": 31,
+   "n": 31,
+   "meanDrift": 0.006,
+   "vadFalseRate": 100,
+   "meanNoiseScore": "0.32"
+  },
+  {
+   "noise": "mains-complex",
+   "snr": 5,
+   "acc": 31,
+   "n": 31,
+   "meanDrift": 0.006,
+   "vadFalseRate": 100,
+   "meanNoiseScore": "0.32"
+  }
+ ]
+}

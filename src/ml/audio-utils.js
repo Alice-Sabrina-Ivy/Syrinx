@@ -153,3 +153,50 @@ export function femaleScoreFromResult(result) {
   if (female == null) return null;
   return Math.max(0, Math.min(1, female));
 }
+
+// ---------------------------------------------------------------------------
+// Voiced-recency gate for the ML VAD (2026-07-19).
+//
+// The peak-amplitude VAD alone cannot tell steady noise from speech —
+// every synthetic noise type passed it in 100 % of noise-only windows,
+// so in a noisy room each speech pause fed masculine-leaning classifier
+// scores into the EMA (measurements/noise-robustness-oracle-2026-07-19.md
+// §4; amplitude statistics fundamentally can't separate a stationary
+// noise floor from a stationary vowel, so a noise-floor-margin VAD was
+// rejected too). Instead, gate on the PITCH worker's voicing decision,
+// relayed by the main thread (same pattern as the DSP pitch-hint): with
+// the tonal notch in front, pitch voicedness is a noise-robust speech
+// detector — hum, broadband, and insect noise all decode unvoiced,
+// while any actually-spoken window is voiced within a couple of hops.
+//
+// Fail-open on staleness: if no pitch message has arrived for staleMs
+// (pitch worker dead or not yet warm), the gate reports "stale" and the
+// caller falls back to peak-VAD-only — a broken pitch worker must
+// degrade the noise robustness, never silence the meter.
+export const VOICED_RECENCY_MS = 500;
+export const PITCH_HINT_STALE_MS = 2000;
+
+export function createVoicedRecencyGate({
+  recencyMs = VOICED_RECENCY_MS,
+  staleMs = PITCH_HINT_STALE_MS,
+} = {}) {
+  let lastHintTs = null;   // ts of the most recent pitch message (any)
+  let lastVoicedTs = null; // ts of the most recent VOICED pitch message
+
+  return {
+    // notePitchHint({ voiced, ts }) — call for every relayed pitch message.
+    notePitchHint(hint) {
+      if (!hint || typeof hint.ts !== "number") return;
+      lastHintTs = hint.ts;
+      if (hint.voiced) lastVoicedTs = hint.ts;
+    },
+    // shouldScore(nowTs) — "stale" (no live pitch feed: fail open),
+    // "voiced" (speech within recencyMs: score), or "unvoiced" (live
+    // feed says no speech: skip, counts toward the silence reset).
+    shouldScore(nowTs) {
+      if (lastHintTs === null || nowTs - lastHintTs > staleMs) return "stale";
+      if (lastVoicedTs !== null && nowTs - lastVoicedTs <= recencyMs) return "voiced";
+      return "unvoiced";
+    },
+  };
+}
