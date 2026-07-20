@@ -255,3 +255,24 @@ export function createNoiseNotch(sampleRate, opts = {}) {
     config: cfg,
   };
 }
+
+// isNearNotch(freqHz, activeFreqs, tolFrac): true when freqHz sits within
+// tolFrac of an active notch frequency or its half/double. Used by the
+// pitch worker's ghost-voicing veto: a high-Q notch ringing against
+// surrounding broadband rumble can manufacture weak periodicity AT (or at
+// octave relatives of) the notched frequency, which the Viterbi tracker
+// then strings into sustained voicing — observed on rumble containing
+// stable tonal lines (codec-birdie-like content, 2026-07-19). If we are
+// actively notching f as a non-speech interferer, a decoded pitch at f
+// (or f/2, 2f) is by definition the interferer or its ghost, never the
+// user. (A user genuinely phonating AT a hum frequency was already
+// indistinguishable by construction — documented limitation.)
+export function isNearNotch(freqHz, activeFreqs, tolFrac = 0.04) {
+  for (const f of activeFreqs) {
+    for (const rel of [0.5, 1, 2]) {
+      const target = f * rel;
+      if (Math.abs(freqHz - target) <= tolFrac * target) return true;
+    }
+  }
+  return false;
+}

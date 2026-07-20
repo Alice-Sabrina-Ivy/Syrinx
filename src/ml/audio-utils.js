@@ -200,3 +200,86 @@ export function createVoicedRecencyGate({
     },
   };
 }
+
+// ---------------------------------------------------------------------------
+// Sub-floor voicing probe (2026-07-19, Codex review on PR #90).
+//
+// The voiced-recency gate keys on the pitch worker, whose detector is
+// bounded to 75-400 Hz — so a speaker sustaining phonation BELOW the
+// floor (vocal fry, very low voices; real sessions carry 60-75 Hz
+// frames) would read "unvoiced" and the gender meter would stop
+// scoring them: a regression vs the peak-only VAD. Before skipping an
+// "unvoiced" window, the worker runs this probe: normalized
+// autocorrelation over lags covering SUBFLOOR_LO..SUBFLOOR_HI Hz on the
+// ML window itself. Genuine sub-floor phonation is strongly periodic
+// there; broadband noise is not. Stationary sub-floor HUM would also
+// pass — so lags near any actively-notched interferer frequency
+// (relayed with the pitch-hint) are excluded, keeping the noise win
+// the notch just bought.
+export const SUBFLOOR_LO_HZ = 40;
+export const SUBFLOOR_HI_HZ = 75;
+export const SUBFLOOR_CORR_THRESHOLD = 0.5;
+
+export function subFloorVoiced(window, sampleRate, notchedFreqs = []) {
+  const n = Math.min(window.length, Math.floor(sampleRate * 0.25)); // 0.25 s is >=10 periods at 40 Hz
+  const minLag = Math.floor(sampleRate / SUBFLOOR_HI_HZ);
+  const maxLag = Math.ceil(sampleRate / SUBFLOOR_LO_HZ);
+  if (n < 2 * maxLag) return false;
+  // Remove actively-notched interferers from the probe segment FIRST —
+  // lag exclusion cannot work (a tone's autocorrelation is a cosine,
+  // high at many lags, and any hum harmonic aliases into sub-floor lags
+  // via the subharmonic ambiguity). Wider, low-Q notches are fine here:
+  // we're deciding "is there NON-interferer periodicity", not preserving
+  // signal fidelity.
+  let seg = window.subarray(0, n);
+  if (notchedFreqs.length > 0) {
+    const x = Float32Array.from(seg);
+    let ePre = 0;
+    for (let i = 0; i < x.length; i++) ePre += x[i] * x[i];
+    for (const f0 of notchedFreqs) {
+      const w0 = (2 * Math.PI * f0) / sampleRate;
+      const alpha = Math.sin(w0) / (2 * 8); // Q=8 — wide, short ringing
+      const a0 = 1 + alpha, b1 = -2 * Math.cos(w0);
+      let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+      for (let i = 0; i < x.length; i++) {
+        const xi = x[i];
+        const yi = (xi + b1 * x1 + x2 - b1 * y1 - (1 - alpha) * y2) / a0;
+        x2 = x1; x1 = xi; y2 = y1; y1 = yi;
+        x[i] = yi;
+      }
+    }
+    // Normalized correlation is amplitude-blind — residual notch leakage
+    // still correlates with itself. If notching stripped ~all the energy,
+    // the window WAS the interferer: not sub-floor speech.
+    let ePost = 0;
+    for (let i = 0; i < x.length; i++) ePost += x[i] * x[i];
+    if (ePost < 0.1 * ePre) return false;
+    seg = x;
+  }
+  let e0 = 0;
+  for (let i = 0; i < n - maxLag; i++) e0 += seg[i] * seg[i];
+  if (e0 <= 0) return false;
+  const r = (lag) => {
+    let num = 0, e1 = 0;
+    for (let i = 0; i + lag < n; i++) {
+      num += seg[i] * seg[i + lag];
+      e1 += seg[i + lag] * seg[i + lag];
+    }
+    const denom = Math.sqrt(e0 * e1);
+    return denom > 0 ? num / denom : 0;
+  };
+  for (let lag = minLag; lag <= maxLag; lag++) {
+    const rl = r(lag);
+    if (rl < SUBFLOOR_CORR_THRESHOLD) continue;
+    // PEAKEDNESS: genuine periodicity has a LOCALIZED correlation peak —
+    // the half-period correlation is low (between glottal pulses).
+    // LF rumble correlates highly at these lags too, but MONOTONICALLY:
+    // its half-lag correlation is even HIGHER (smooth 1/f^2 signals
+    // decorrelate slowly). Requiring r(lag) to beat r(lag/2) by a margin
+    // separates fry from brown/pink/sleep noise, which amplitude and
+    // threshold alone cannot (measured: rumble passed a bare
+    // correlation test in 50-96 % of noise-only windows).
+    if (rl > r(Math.max(1, Math.round(lag / 2))) + 0.1) return true;
+  }
+  return false;
+}
