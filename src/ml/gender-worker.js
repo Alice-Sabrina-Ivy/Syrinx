@@ -39,6 +39,7 @@ import {
   windowPeak,
   ema,
   VAD_PEAK_THRESHOLD,
+  VAD_SILENCE_FLOOR,
   TARGET_SAMPLE_RATE,
   createVoicedRecencyGate,
   subFloorVoiced,
@@ -178,23 +179,22 @@ async function maybeInfer() {
   // voiced — RMS would falsely gate. After a sustained run of silent
   // windows, drop the EMA so a resumed utterance doesn't blend with a
   // stale pre-pause score.
+  // VAD (restructured 2026-07-20 — field report: quiet desktop mics froze
+  // the meter). Amplitude arm: only the true-silence floor is absolute;
+  // the old 0.05 threshold applies solely when the pitch feed is stale
+  // (legacy fallback), because real mics deliver speech peaks of
+  // 0.01-0.05 where 0.05 gated EVERYTHING. Speech-vs-noise otherwise
+  // rides the pitch-voicedness gate, which inherits the detector's
+  // adaptive mic-level handling — the two paths now share one notion of
+  // "loud enough". Sub-floor probe fails open for <75 Hz phonation
+  // (Codex PR #90), with actively-notched interferers excluded.
   const peak = windowPeak(windowCopy);
-  if (peak < VAD_PEAK_THRESHOLD) {
-    if (silenceTracker.noteSilent()) smoothedFemale = null;
-    lastInferenceMs = now;
-    return;
-  }
-  // Second VAD arm: loud enough, but is it SPEECH? Skip windows without
-  // recently-voiced pitch (steady noise passes the peak check above but
-  // decodes unvoiced on the notch-filtered pitch path). "stale" fails
-  // open to peak-only behavior. Before skipping, probe for SUB-FLOOR
-  // phonation (vocal fry / voices below the 75 Hz pitch floor read
-  // unvoiced upstream but are genuinely periodic at 40-75 Hz on this
-  // window — Codex review on PR #90); actively-notched interferer
-  // frequencies are excluded inside the probe so a stationary sub-floor
-  // hum can't reopen the noise hole.
-  if (voicedGate.shouldScore(performance.timeOrigin + performance.now()) === "unvoiced"
-      && !subFloorVoiced(windowCopy, TARGET_SAMPLE_RATE, notchedFreqs)) {
+  const verdict = voicedGate.shouldScore(performance.timeOrigin + performance.now());
+  const gatedOut =
+    peak < VAD_SILENCE_FLOOR ||
+    (verdict === "stale" && peak < VAD_PEAK_THRESHOLD) ||
+    (verdict === "unvoiced" && !subFloorVoiced(windowCopy, TARGET_SAMPLE_RATE, notchedFreqs));
+  if (gatedOut) {
     if (silenceTracker.noteSilent()) smoothedFemale = null;
     lastInferenceMs = now;
     return;

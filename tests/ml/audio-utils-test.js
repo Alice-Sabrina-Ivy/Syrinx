@@ -16,6 +16,7 @@ import {
   ema,
   VAD_RMS_THRESHOLD,
   VAD_PEAK_THRESHOLD,
+  VAD_SILENCE_FLOOR,
   RESET_AFTER_SILENT_INFERENCES,
   TARGET_SAMPLE_RATE,
   createVoicedRecencyGate,
@@ -385,6 +386,14 @@ check(
 check(
   `VOICED_RECENCY_MS covers several pitch hops but under a second`,
   VOICED_RECENCY_MS >= 100 && VOICED_RECENCY_MS < 1000,
+);
+check(
+  `VAD_SILENCE_FLOOR sits below the quietest real-mic speech (0.01 peak)`,
+  VAD_SILENCE_FLOOR < 0.01 && VAD_SILENCE_FLOOR > 0,
+);
+check(
+  `VAD_SILENCE_FLOOR is below the legacy stale-fallback threshold`,
+  VAD_SILENCE_FLOOR < VAD_PEAK_THRESHOLD,
 );
 
 console.log(`\n${passed} passed, ${failed} failed`);
