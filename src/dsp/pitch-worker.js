@@ -50,6 +50,7 @@
 import {
   createBoersmaAC,
   createPathTracker,
+  createHarmonicVoicingGuard,
   BOERSMA_FRAME_LENGTH_16K,
 } from "./boersma-ac.js";
 import { createNoiseNotch, isNearNotch } from "./noise-notch.js";
@@ -71,6 +72,16 @@ let tracker = null;
 // never does. measurements/noise-robustness-oracle-2026-07-19.md +
 // noise-notch-validation section.
 let noiseNotch = null;
+// Harmonic-structure voicing guard (SWIPE-flavored; see
+// createHarmonicVoicingGuard in boersma-ac.js). Vetoes sustained
+// voicing whose spectrum lacks >=2 harmonics of the decoded F0 — the
+// noise class that survives the notch (broadband shaped through the
+// pitch band, e.g. "white noise" videos through speaker/room
+// resonances). Debounced so transient weak speech frames pass.
+let harmonicGuard = null;
+// Delay line of analysis-buffer copies so the guard evaluates the
+// DECODED frame's audio (the tracker delays decoding by L hops).
+let bufferDelayLine = [];
 
 // Rolling 16 kHz analysis buffer. Newest samples at the tail; zeros at
 // the front until warm.
@@ -147,6 +158,8 @@ function processChunk(msg) {
     bestStrength: frameCandidates.voiced.length > 0 ? frameCandidates.voiced[0].strength : 0,
     unvoicedStrength: frameCandidates.unvoicedStrength,
   });
+  bufferDelayLine.push(Float32Array.from(buffer16k));
+  if (bufferDelayLine.length > tracker.config.lookback + 1) bufferDelayLine.shift();
   const decoded = tracker.emit(frameCandidates);
   const inferMs = _diag ? performance.now() - t0 : null;
 
@@ -161,6 +174,11 @@ function processChunk(msg) {
   // periodicity there that the Viterbi bridges into sustained voicing.
   let vetoed = decoded;
   if (vetoed > 0 && isNearNotch(vetoed, noiseNotch.activeFreqs())) vetoed = null;
+  // Harmonic-structure guard on the decoded frame's own audio (delay
+  // line front = the frame L hops back).
+  if (vetoed > 0 && !harmonicGuard.check(bufferDelayLine[0], vetoed, TARGET_SAMPLE_RATE)) {
+    vetoed = null;
+  }
   const voiced = vetoed !== null && vetoed !== undefined && vetoed > 0;
   self.postMessage({
     type: "pitch",
@@ -201,6 +219,8 @@ self.onmessage = (e) => {
       detector = createBoersmaAC(TARGET_SAMPLE_RATE, FRAME_LENGTH);
       tracker = createPathTracker();
       noiseNotch = createNoiseNotch(TARGET_SAMPLE_RATE);
+      harmonicGuard = createHarmonicVoicingGuard();
+      bufferDelayLine = [];
       buffer16k.fill(0);
       buffer16kFill = 0;
       frameMeta = [];
