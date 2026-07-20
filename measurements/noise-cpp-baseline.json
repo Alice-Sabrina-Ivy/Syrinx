@@ -1,0 +1,112 @@
+{
+ "mode": "cpp",
+ "frontend": "none",
+ "vt": null,
+ "results": [
+  {
+   "noise": "white",
+   "snr": 20,
+   "biasDb": -0.26
+  },
+  {
+   "noise": "white",
+   "snr": 10,
+   "biasDb": -0.55
+  },
+  {
+   "noise": "white",
+   "snr": 5,
+   "biasDb": -0.7
+  },
+  {
+   "noise": "pink",
+   "snr": 20,
+   "biasDb": -0.3
+  },
+  {
+   "noise": "pink",
+   "snr": 10,
+   "biasDb": -0.57
+  },
+  {
+   "noise": "pink",
+   "snr": 5,
+   "biasDb": -0.72
+  },
+  {
+   "noise": "fan-hum",
+   "snr": 20,
+   "biasDb": -0.16
+  },
+  {
+   "noise": "fan-hum",
+   "snr": 10,
+   "biasDb": -0.32
+  },
+  {
+   "noise": "fan-hum",
+   "snr": 5,
+   "biasDb": -0.43
+  },
+  {
+   "noise": "mains-complex",
+   "snr": 20,
+   "biasDb": -0.12
+  },
+  {
+   "noise": "mains-complex",
+   "snr": 10,
+   "biasDb": -0.15
+  },
+  {
+   "noise": "mains-complex",
+   "snr": 5,
+   "biasDb": -0.16
+  },
+  {
+   "noise": "babble",
+   "snr": 20,
+   "biasDb": -0.26
+  },
+  {
+   "noise": "babble",
+   "snr": 10,
+   "biasDb": -0.49
+  },
+  {
+   "noise": "babble",
+   "snr": 5,
+   "biasDb": -0.58
+  },
+  {
+   "noise": "crickets",
+   "snr": 20,
+   "biasDb": 0
+  },
+  {
+   "noise": "crickets",
+   "snr": 10,
+   "biasDb": 0
+  },
+  {
+   "noise": "crickets",
+   "snr": 5,
+   "biasDb": 0
+  },
+  {
+   "noise": "cicadas",
+   "snr": 20,
+   "biasDb": -0.14
+  },
+  {
+   "noise": "cicadas",
+   "snr": 10,
+   "biasDb": -0.34
+  },
+  {
+   "noise": "cicadas",
+   "snr": 5,
+   "biasDb": -0.47
+  }
+ ]
+}
