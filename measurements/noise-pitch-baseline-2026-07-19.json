@@ -1,0 +1,227 @@
+{
+ "mode": "pitch",
+ "frontend": "none",
+ "vt": null,
+ "results": [
+  {
+   "noise": "clean",
+   "snr": 0,
+   "correct": 87,
+   "octUp": 0.3,
+   "octDown": 0.5,
+   "other": 9.9,
+   "null": 2.4,
+   "falseVoiced": null
+  },
+  {
+   "noise": "white",
+   "snr": 20,
+   "correct": 86.3,
+   "octUp": 0.2,
+   "octDown": 0.5,
+   "other": 9.3,
+   "null": 3.6,
+   "falseVoiced": 0
+  },
+  {
+   "noise": "white",
+   "snr": 10,
+   "correct": 80.9,
+   "octUp": 0.1,
+   "octDown": 0.5,
+   "other": 7.4,
+   "null": 11.1,
+   "falseVoiced": 0
+  },
+  {
+   "noise": "white",
+   "snr": 5,
+   "correct": 68,
+   "octUp": 0.1,
+   "octDown": 0.3,
+   "other": 4.1,
+   "null": 27.6,
+   "falseVoiced": 0
+  },
+  {
+   "noise": "pink",
+   "snr": 20,
+   "correct": 86.6,
+   "octUp": 0.2,
+   "octDown": 0.5,
+   "other": 9.6,
+   "null": 3.2,
+   "falseVoiced": 11.5
+  },
+  {
+   "noise": "pink",
+   "snr": 10,
+   "correct": 82.8,
+   "octUp": 0.3,
+   "octDown": 0.5,
+   "other": 7.8,
+   "null": 8.6,
+   "falseVoiced": 15.7
+  },
+  {
+   "noise": "pink",
+   "snr": 5,
+   "correct": 72.4,
+   "octUp": 0.4,
+   "octDown": 1.4,
+   "other": 6.3,
+   "null": 19.5,
+   "falseVoiced": 15.7
+  },
+  {
+   "noise": "fan-hum",
+   "snr": 20,
+   "correct": 73.6,
+   "octUp": 0.2,
+   "octDown": 15.6,
+   "other": 9,
+   "null": 1.6,
+   "falseVoiced": 89.4
+  },
+  {
+   "noise": "fan-hum",
+   "snr": 10,
+   "correct": 41.6,
+   "octUp": 0.1,
+   "octDown": 46,
+   "other": 12.1,
+   "null": 0.2,
+   "falseVoiced": 100
+  },
+  {
+   "noise": "fan-hum",
+   "snr": 5,
+   "correct": 32,
+   "octUp": 0.1,
+   "octDown": 49.1,
+   "other": 18.9,
+   "null": 0,
+   "falseVoiced": 100
+  },
+  {
+   "noise": "mains-complex",
+   "snr": 20,
+   "correct": 85.6,
+   "octUp": 0.2,
+   "octDown": 0.8,
+   "other": 9.2,
+   "null": 4.2,
+   "falseVoiced": 0
+  },
+  {
+   "noise": "mains-complex",
+   "snr": 10,
+   "correct": 71.4,
+   "octUp": 0.3,
+   "octDown": 8.6,
+   "other": 6.4,
+   "null": 13.3,
+   "falseVoiced": 0
+  },
+  {
+   "noise": "mains-complex",
+   "snr": 5,
+   "correct": 48.4,
+   "octUp": 0.2,
+   "octDown": 15.7,
+   "other": 4.3,
+   "null": 31.4,
+   "falseVoiced": 0
+  },
+  {
+   "noise": "babble",
+   "snr": 20,
+   "correct": 87,
+   "octUp": 0.3,
+   "octDown": 0.5,
+   "other": 9.9,
+   "null": 2.4,
+   "falseVoiced": 0
+  },
+  {
+   "noise": "babble",
+   "snr": 10,
+   "correct": 87,
+   "octUp": 0.3,
+   "octDown": 0.5,
+   "other": 9.9,
+   "null": 2.4,
+   "falseVoiced": 0
+  },
+  {
+   "noise": "babble",
+   "snr": 5,
+   "correct": 87,
+   "octUp": 0.3,
+   "octDown": 0.5,
+   "other": 9.9,
+   "null": 2.4,
+   "falseVoiced": 0
+  },
+  {
+   "noise": "crickets",
+   "snr": 20,
+   "correct": 86.6,
+   "octUp": 0.3,
+   "octDown": 0.4,
+   "other": 9.5,
+   "null": 3.2,
+   "falseVoiced": 3
+  },
+  {
+   "noise": "crickets",
+   "snr": 10,
+   "correct": 81.9,
+   "octUp": 0.3,
+   "octDown": 0.4,
+   "other": 8.8,
+   "null": 8.6,
+   "falseVoiced": 3
+  },
+  {
+   "noise": "crickets",
+   "snr": 5,
+   "correct": 73.4,
+   "octUp": 0.6,
+   "octDown": 0.3,
+   "other": 8.3,
+   "null": 17.4,
+   "falseVoiced": 3
+  },
+  {
+   "noise": "cicadas",
+   "snr": 20,
+   "correct": 86.4,
+   "octUp": 0.2,
+   "octDown": 0.5,
+   "other": 9.3,
+   "null": 3.6,
+   "falseVoiced": 0
+  },
+  {
+   "noise": "cicadas",
+   "snr": 10,
+   "correct": 81.4,
+   "octUp": 0.2,
+   "octDown": 0.4,
+   "other": 7.2,
+   "null": 10.8,
+   "falseVoiced": 0
+  },
+  {
+   "noise": "cicadas",
+   "snr": 5,
+   "correct": 70.3,
+   "octUp": 0.1,
+   "octDown": 0.1,
+   "other": 4.2,
+   "null": 25.2,
+   "falseVoiced": 0
+  }
+ ]
+}

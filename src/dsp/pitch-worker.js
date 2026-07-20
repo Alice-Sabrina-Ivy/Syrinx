@@ -52,6 +52,7 @@ import {
   createPathTracker,
   BOERSMA_FRAME_LENGTH_16K,
 } from "./boersma-ac.js";
+import { createNoiseNotch } from "./noise-notch.js";
 
 const TARGET_SAMPLE_RATE = 16000;
 const FRAME_LENGTH = BOERSMA_FRAME_LENGTH_16K; // 1280 = 80 ms
@@ -62,6 +63,14 @@ let ready = false;
 
 let detector = null;
 let tracker = null;
+// Persistent-peak tonal-interferer notch (fan hum, mains harmonics) —
+// applied to the resampled stream BEFORE the analysis buffer. Tonal
+// noise is the one measured pitch catastrophe (octave capture + false
+// voicing); the tracker only notches narrow peaks that stay
+// frequency-stable for >=5 s at ~90 % duty, which measured speech
+// never does. measurements/noise-robustness-oracle-2026-07-19.md +
+// noise-notch-validation section.
+let noiseNotch = null;
 
 // Rolling 16 kHz analysis buffer. Newest samples at the tail; zeros at
 // the front until warm.
@@ -129,7 +138,7 @@ function processChunk(msg) {
   const incoming = new Float32Array(msg.buffer);
   if (incoming.length === 0) return;
   const t0 = _diag ? performance.now() : 0;
-  appendToBuffer(resampleLinear(incoming, inputSampleRate, TARGET_SAMPLE_RATE));
+  appendToBuffer(noiseNotch.process(resampleLinear(incoming, inputSampleRate, TARGET_SAMPLE_RATE)));
   if (buffer16kFill < FRAME_LENGTH) return;
 
   const frameCandidates = detector.candidates(buffer16k);
@@ -154,6 +163,12 @@ function processChunk(msg) {
     ts: performance.timeOrigin + performance.now(),
     contextTime: meta.contextTime,
     ...(_diag && inferMs !== null ? { inferMs } : {}),
+    // Field observability for the tonal-interferer notch: which
+    // frequencies are currently being notched (empty ⇒ no notches, the
+    // overwhelmingly common case). Diag-only, like inferMs.
+    ...(_diag && noiseNotch.activeFreqs().length > 0
+      ? { notchedFreqs: noiseNotch.activeFreqs() }
+      : {}),
   });
 }
 
@@ -176,6 +191,7 @@ self.onmessage = (e) => {
       _diag = msg.diag === true;
       detector = createBoersmaAC(TARGET_SAMPLE_RATE, FRAME_LENGTH);
       tracker = createPathTracker();
+      noiseNotch = createNoiseNotch(TARGET_SAMPLE_RATE);
       buffer16k.fill(0);
       buffer16kFill = 0;
       frameMeta = [];

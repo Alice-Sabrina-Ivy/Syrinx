@@ -18,6 +18,8 @@ import {
   VAD_PEAK_THRESHOLD,
   RESET_AFTER_SILENT_INFERENCES,
   TARGET_SAMPLE_RATE,
+  createVoicedRecencyGate,
+  VOICED_RECENCY_MS,
 } from "../../src/ml/audio-utils.js";
 
 let passed = 0;
@@ -328,6 +330,23 @@ console.log("\nSilenceTracker");
   );
 }
 
+console.log("\ncreateVoicedRecencyGate — pitch-voicedness VAD arm");
+
+{
+  const g = createVoicedRecencyGate();
+  check("no pitch feed yet -> stale (fail open)", g.shouldScore(1000) === "stale");
+  g.notePitchHint({ voiced: false, ts: 900 });
+  check("live feed, never voiced -> unvoiced", g.shouldScore(1000) === "unvoiced");
+  g.notePitchHint({ voiced: true, ts: 1000 });
+  check("voiced just now -> voiced", g.shouldScore(1100) === "voiced");
+  check("voiced within recency window -> voiced", g.shouldScore(1499) === "voiced");
+  g.notePitchHint({ voiced: false, ts: 1600 });
+  check("recency expired, feed live -> unvoiced", g.shouldScore(1600) === "unvoiced");
+  check("feed silent past staleMs -> stale (fail open)", g.shouldScore(4000) === "stale");
+  g.notePitchHint({ voiced: true, ts: 4100 });
+  check("recovers from stale on next voiced hint", g.shouldScore(4200) === "voiced");
+}
+
 console.log("\nconstants");
 
 check(
@@ -337,6 +356,10 @@ check(
 check(
   `RESET_AFTER_SILENT_INFERENCES is a positive integer`,
   Number.isInteger(RESET_AFTER_SILENT_INFERENCES) && RESET_AFTER_SILENT_INFERENCES > 0,
+);
+check(
+  `VOICED_RECENCY_MS covers several pitch hops but under a second`,
+  VOICED_RECENCY_MS >= 100 && VOICED_RECENCY_MS < 1000,
 );
 
 console.log(`\n${passed} passed, ${failed} failed`);

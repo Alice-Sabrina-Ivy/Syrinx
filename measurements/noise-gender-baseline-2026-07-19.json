@@ -1,0 +1,196 @@
+{
+ "mode": "gender",
+ "frontend": "none",
+ "vt": null,
+ "results": [
+  {
+   "noise": "white",
+   "snr": 20,
+   "acc": 31,
+   "n": 31,
+   "meanDrift": 0.013,
+   "vadFalseRate": 100,
+   "meanNoiseScore": "0.21"
+  },
+  {
+   "noise": "white",
+   "snr": 10,
+   "acc": 31,
+   "n": 31,
+   "meanDrift": 0.025,
+   "vadFalseRate": 100,
+   "meanNoiseScore": "0.21"
+  },
+  {
+   "noise": "white",
+   "snr": 5,
+   "acc": 31,
+   "n": 31,
+   "meanDrift": 0.048,
+   "vadFalseRate": 100,
+   "meanNoiseScore": "0.21"
+  },
+  {
+   "noise": "pink",
+   "snr": 20,
+   "acc": 31,
+   "n": 31,
+   "meanDrift": 0.013,
+   "vadFalseRate": 100,
+   "meanNoiseScore": "0.16"
+  },
+  {
+   "noise": "pink",
+   "snr": 10,
+   "acc": 31,
+   "n": 31,
+   "meanDrift": 0.013,
+   "vadFalseRate": 100,
+   "meanNoiseScore": "0.16"
+  },
+  {
+   "noise": "pink",
+   "snr": 5,
+   "acc": 31,
+   "n": 31,
+   "meanDrift": 0.028,
+   "vadFalseRate": 100,
+   "meanNoiseScore": "0.16"
+  },
+  {
+   "noise": "fan-hum",
+   "snr": 20,
+   "acc": 31,
+   "n": 31,
+   "meanDrift": 0.007,
+   "vadFalseRate": 100,
+   "meanNoiseScore": "0.04"
+  },
+  {
+   "noise": "fan-hum",
+   "snr": 10,
+   "acc": 31,
+   "n": 31,
+   "meanDrift": 0.01,
+   "vadFalseRate": 100,
+   "meanNoiseScore": "0.04"
+  },
+  {
+   "noise": "fan-hum",
+   "snr": 5,
+   "acc": 31,
+   "n": 31,
+   "meanDrift": 0.01,
+   "vadFalseRate": 100,
+   "meanNoiseScore": "0.04"
+  },
+  {
+   "noise": "mains-complex",
+   "snr": 20,
+   "acc": 31,
+   "n": 31,
+   "meanDrift": 0.009,
+   "vadFalseRate": 100,
+   "meanNoiseScore": "0.32"
+  },
+  {
+   "noise": "mains-complex",
+   "snr": 10,
+   "acc": 31,
+   "n": 31,
+   "meanDrift": 0.011,
+   "vadFalseRate": 100,
+   "meanNoiseScore": "0.32"
+  },
+  {
+   "noise": "mains-complex",
+   "snr": 5,
+   "acc": 31,
+   "n": 31,
+   "meanDrift": 0.012,
+   "vadFalseRate": 100,
+   "meanNoiseScore": "0.32"
+  },
+  {
+   "noise": "babble",
+   "snr": 20,
+   "acc": 31,
+   "n": 31,
+   "meanDrift": 0.012,
+   "vadFalseRate": 100,
+   "meanNoiseScore": "0.09"
+  },
+  {
+   "noise": "babble",
+   "snr": 10,
+   "acc": 31,
+   "n": 31,
+   "meanDrift": 0.052,
+   "vadFalseRate": 100,
+   "meanNoiseScore": "0.09"
+  },
+  {
+   "noise": "babble",
+   "snr": 5,
+   "acc": 30,
+   "n": 31,
+   "meanDrift": 0.155,
+   "vadFalseRate": 100,
+   "meanNoiseScore": "0.09"
+  },
+  {
+   "noise": "crickets",
+   "snr": 20,
+   "acc": 31,
+   "n": 31,
+   "meanDrift": 0.007,
+   "vadFalseRate": 100,
+   "meanNoiseScore": "0.25"
+  },
+  {
+   "noise": "crickets",
+   "snr": 10,
+   "acc": 31,
+   "n": 31,
+   "meanDrift": 0.009,
+   "vadFalseRate": 100,
+   "meanNoiseScore": "0.25"
+  },
+  {
+   "noise": "crickets",
+   "snr": 5,
+   "acc": 31,
+   "n": 31,
+   "meanDrift": 0.015,
+   "vadFalseRate": 100,
+   "meanNoiseScore": "0.25"
+  },
+  {
+   "noise": "cicadas",
+   "snr": 20,
+   "acc": 31,
+   "n": 31,
+   "meanDrift": 0.016,
+   "vadFalseRate": 100,
+   "meanNoiseScore": "0.37"
+  },
+  {
+   "noise": "cicadas",
+   "snr": 10,
+   "acc": 31,
+   "n": 31,
+   "meanDrift": 0.035,
+   "vadFalseRate": 100,
+   "meanNoiseScore": "0.37"
+  },
+  {
+   "noise": "cicadas",
+   "snr": 5,
+   "acc": 31,
+   "n": 31,
+   "meanDrift": 0.058,
+   "vadFalseRate": 100,
+   "meanNoiseScore": "0.37"
+  }
+ ]
+}

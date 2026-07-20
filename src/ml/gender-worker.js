@@ -40,6 +40,7 @@ import {
   ema,
   VAD_PEAK_THRESHOLD,
   TARGET_SAMPLE_RATE,
+  createVoicedRecencyGate,
 } from "./audio-utils.js";
 
 // We don't ship the model in the bundle — fetch from the Hub at runtime.
@@ -111,6 +112,14 @@ let inferenceInProgress = false;
 let lastInferenceMs = 0;
 let smoothedFemale = null;              // EMA over recent inferences
 const silenceTracker = new SilenceTracker();
+// Pitch-voicedness gate (see createVoicedRecencyGate in audio-utils.js):
+// the peak VAD alone passes 100 % of noise-only windows for every noise
+// type measured, so pauses in a noisy room fed masculine-leaning scores
+// into the EMA. The main thread relays each pitch message here as
+// { type: "pitch-hint", voiced, ts }; windows without recent voiced
+// pitch are treated as silence. Fails OPEN if the pitch feed goes
+// stale. measurements/noise-robustness-oracle-2026-07-19.md §4.
+const voicedGate = createVoicedRecencyGate();
 
 // Sentinel error class so the catch branch can distinguish a hang-induced
 // timeout from a real inference error. Only timeouts get the recover-and-
@@ -167,6 +176,15 @@ async function maybeInfer() {
   // stale pre-pause score.
   const peak = windowPeak(windowCopy);
   if (peak < VAD_PEAK_THRESHOLD) {
+    if (silenceTracker.noteSilent()) smoothedFemale = null;
+    lastInferenceMs = now;
+    return;
+  }
+  // Second VAD arm: loud enough, but is it SPEECH? Skip windows without
+  // recently-voiced pitch (steady noise passes the peak check above but
+  // decodes unvoiced on the notch-filtered pitch path). "stale" fails
+  // open to peak-only behavior.
+  if (voicedGate.shouldScore(performance.timeOrigin + performance.now()) === "unvoiced") {
     if (silenceTracker.noteSilent()) smoothedFemale = null;
     lastInferenceMs = now;
     return;
@@ -280,6 +298,9 @@ self.onmessage = (e) => {
       break;
     case "audioPort":
       attachAudioPort(msg.port);
+      break;
+    case "pitch-hint":
+      voicedGate.notePitchHint(msg);
       break;
   }
 };
