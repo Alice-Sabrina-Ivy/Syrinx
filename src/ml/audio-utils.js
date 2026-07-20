@@ -88,10 +88,23 @@ export function windowPeak(samples) {
   return peak;
 }
 
-// Peak threshold below which we consider a window non-speech. Calibrated
-// to admit normal indoor speech (peaks 0.1-0.5) while rejecting quiet
-// rooms and breath sounds (peaks ≤ 0.02).
+// LEGACY absolute peak threshold — since 2026-07-20 applied ONLY on the
+// stale-fallback path (pitch feed dead >2 s). It was calibrated on
+// near-full-scale corpus recordings ("normal indoor speech peaks
+// 0.1-0.5"), but real desktop mics with AGC off deliver speech peaks of
+// 0.01-0.05 full-scale (the documented fact behind boersma-ac.js's
+// adaptive globalPeak fix) — so as a primary gate it silently froze the
+// gender meter on quiet mics while the adaptive pitch path kept
+// working (field report: desktop meter stuck while mobile updated;
+// oracle repro at peak 0.03: ZERO windows scored). The primary
+// amplitude gate is now VAD_SILENCE_FLOOR + the mic-level-adaptive
+// pitch-voicedness gate.
 export const VAD_PEAK_THRESHOLD = 0.05;
+// True silence floor, always applied: comfortably below the quietest
+// real-mic speech (0.01 peak) and well above electret/ADC noise. Its
+// only job is keeping actual silence and electronics hiss out of the
+// classifier when the voiced gate fails open.
+export const VAD_SILENCE_FLOOR = 0.008;
 
 // Legacy RMS threshold — kept exported because tests reference it, but
 // the worker now gates on `windowPeak` against `VAD_PEAK_THRESHOLD`.
