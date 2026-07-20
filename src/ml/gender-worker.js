@@ -41,6 +41,7 @@ import {
   VAD_PEAK_THRESHOLD,
   TARGET_SAMPLE_RATE,
   createVoicedRecencyGate,
+  subFloorVoiced,
 } from "./audio-utils.js";
 
 // We don't ship the model in the bundle — fetch from the Hub at runtime.
@@ -120,6 +121,9 @@ const silenceTracker = new SilenceTracker();
 // pitch are treated as silence. Fails OPEN if the pitch feed goes
 // stale. measurements/noise-robustness-oracle-2026-07-19.md §4.
 const voicedGate = createVoicedRecencyGate();
+// Active notch frequencies from the latest pitch-hint — consumed by the
+// sub-floor voicing probe below.
+let notchedFreqs = [];
 
 // Sentinel error class so the catch branch can distinguish a hang-induced
 // timeout from a real inference error. Only timeouts get the recover-and-
@@ -183,8 +187,14 @@ async function maybeInfer() {
   // Second VAD arm: loud enough, but is it SPEECH? Skip windows without
   // recently-voiced pitch (steady noise passes the peak check above but
   // decodes unvoiced on the notch-filtered pitch path). "stale" fails
-  // open to peak-only behavior.
-  if (voicedGate.shouldScore(performance.timeOrigin + performance.now()) === "unvoiced") {
+  // open to peak-only behavior. Before skipping, probe for SUB-FLOOR
+  // phonation (vocal fry / voices below the 75 Hz pitch floor read
+  // unvoiced upstream but are genuinely periodic at 40-75 Hz on this
+  // window — Codex review on PR #90); actively-notched interferer
+  // frequencies are excluded inside the probe so a stationary sub-floor
+  // hum can't reopen the noise hole.
+  if (voicedGate.shouldScore(performance.timeOrigin + performance.now()) === "unvoiced"
+      && !subFloorVoiced(windowCopy, TARGET_SAMPLE_RATE, notchedFreqs)) {
     if (silenceTracker.noteSilent()) smoothedFemale = null;
     lastInferenceMs = now;
     return;
@@ -301,6 +311,7 @@ self.onmessage = (e) => {
       break;
     case "pitch-hint":
       voicedGate.notePitchHint(msg);
+      if (Array.isArray(msg.notchedFreqs)) notchedFreqs = msg.notchedFreqs;
       break;
   }
 };

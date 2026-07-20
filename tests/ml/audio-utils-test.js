@@ -20,6 +20,7 @@ import {
   TARGET_SAMPLE_RATE,
   createVoicedRecencyGate,
   VOICED_RECENCY_MS,
+  subFloorVoiced,
 } from "../../src/ml/audio-utils.js";
 
 let passed = 0;
@@ -328,6 +329,30 @@ console.log("\nSilenceTracker");
     "default threshold === RESET_AFTER_SILENT_INFERENCES",
     t.noteSilent() === true,
   );
+}
+
+console.log("\nsubFloorVoiced — below-pitch-floor phonation probe (Codex PR #90)");
+
+{
+  const SR = 16000, n = 12000;
+  const mk = (fn) => { const x = new Float32Array(n); for (let i = 0; i < n; i++) x[i] = fn(i / SR); return x; };
+  const fry65 = mk((t) => { const ph = t % (1 / 65); return 0.15 * Math.exp(-ph * 300) * Math.sin(2 * Math.PI * 800 * ph); });
+  const low60 = mk((t) => 0.1 * (Math.sin(2 * Math.PI * 60 * t) + 0.6 * Math.sin(2 * Math.PI * 120 * t) + 0.4 * Math.sin(2 * Math.PI * 180 * t)));
+  const hum60 = mk((t) => 0.1 * Math.sin(2 * Math.PI * 60 * t));
+  const hum120 = mk((t) => 0.1 * Math.sin(2 * Math.PI * 120 * t));
+  const fryPlusHum = mk((t) => { const ph = t % (1 / 65); return 0.15 * Math.exp(-ph * 300) * Math.sin(2 * Math.PI * 800 * ph) + 0.08 * Math.sin(2 * Math.PI * 120 * t); });
+  let s7 = 5; const noise = mk(() => { s7 = (s7 * 1103515245 + 12345) & 0x7fffffff; return 0.05 * (s7 / 0x3fffffff - 1); });
+  // brown-like rumble: leaky-integrated noise (monotone AC — peakedness must reject)
+  let acc = 0, s8 = 11;
+  const rumble = mk(() => { s8 = (s8 * 1103515245 + 12345) & 0x7fffffff; acc = 0.999 * acc + (s8 / 0x3fffffff - 1); return 0.02 * acc; });
+  check("65 Hz fry pulses -> voiced", subFloorVoiced(fry65, SR) === true);
+  check("60 Hz harmonic voice, none notched -> voiced", subFloorVoiced(low60, SR) === true);
+  check("60 Hz hum, 60 notched -> NOT voiced (energy check)", subFloorVoiced(hum60, SR, [60]) === false);
+  check("harmonic hum, all notched -> NOT voiced", subFloorVoiced(low60, SR, [60, 120, 180]) === false);
+  check("120 Hz hum, 120 notched (subharmonic ambiguity) -> NOT voiced", subFloorVoiced(hum120, SR, [120]) === false);
+  check("fry + notched 120 Hz hum -> voiced (fry survives the notch)", subFloorVoiced(fryPlusHum, SR, [120]) === true);
+  check("white noise -> NOT voiced", subFloorVoiced(noise, SR) === false);
+  check("brown rumble -> NOT voiced (monotone AC fails peakedness)", subFloorVoiced(rumble, SR) === false);
 }
 
 console.log("\ncreateVoicedRecencyGate — pitch-voicedness VAD arm");
