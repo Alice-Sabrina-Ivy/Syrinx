@@ -219,3 +219,65 @@ node scripts/noise-augment-oracle.js pitch  [--frontend=notch] [--vt=N] \
 node scripts/noise-augment-oracle.js gender [--frontend=notch] [--subset=N]
 node scripts/noise-augment-oracle.js cpp
 ```
+
+## 7. Implementation validation (same day)
+
+Both build items shipped and validated against this oracle
+(`--frontend=tracker`, `--vad=voiced`; noisy pitch cells now prepend an
+8 s noise-only lead — realistic session condition and the tracker's
+promotion time; applied to all configs identically).
+
+**Persistent-peak notch** ([src/dsp/noise-notch.js](../src/dsp/noise-notch.js),
+wired into pitch-worker.js; 512 ms observation window, narrowness +
+relative-floor + min-separation peak criteria, ≥5 s stability at ≥90 %
+duty to promote, ≤4 notches, Q=30): the REAL implementation lands within
+0.4 pp of the oracle-informed upper bound everywhere —
+
+| condition | baseline | real tracker | upper bound |
+|---|---|---|---|
+| fan-hum +10 correct | 41.5 | **85.9** | 86.1 |
+| fan-hum +5 correct | 31.7 | **84.7** | 84.8 |
+| mains-complex +5 correct | 48.4 | **86.1** | 86.5 |
+| fan-hum false-voiced | 100 % | **0–1.1 %** | 0 % |
+| clean correct | 87.0 | **87.0** | 87.0 |
+| white/pink/babble/crickets/cicadas | — | unchanged (±0.5 pp) | — |
+
+Bonus: the tracker also eliminates the residual crickets-carrier
+false-voicing (3.0 → 0.0 %). Unit guards
+([tests/dsp/noise-notch-test.js](../tests/dsp/noise-notch-test.js),
+10 checks): promotion timing, >20 dB attenuation, voice-band
+passthrough, glide/vibrato/speech-proxy never notched, demotion,
+notch cap. Accepted edge (documented in the module): a note held
+rock-stable ±2 Hz for >5 s continuously would be notched; vibrato or
+any prosodic movement defeats this, and the 512 ms observation window
+resolves vibrato explicitly.
+
+**Pitch-voicedness ML VAD** (`createVoicedRecencyGate` in
+[src/ml/audio-utils.js](../src/ml/audio-utils.js); main thread relays
+pitch messages to the ML worker as `pitch-hint`, mirroring the DSP
+pitch-hint; fails OPEN if the pitch feed goes stale >2 s). Chosen over
+a noise-floor-margin amplitude VAD after a design dead-end worth
+recording: amplitude statistics cannot separate a stationary noise
+floor from a stationary vowel (any margin that spares the quietest
+vowel window also spares steady noise), while post-notch pitch
+voicedness separates them for free. Noise-only VAD pass (steady-state
+half of a 20 s noise-only run, was 100 % everywhere):
+
+| noise | pass rate after |
+|---|---|
+| white, fan-hum, mains-complex, crickets, cicadas | **0 %** |
+| pink | 91 % (residual: pink's in-band rumble genuinely false-voices the detector on ~16 % of hops — a pre-existing detector-level limitation, noted below) |
+| babble | 100 % (by design — babble IS speech; out of scope) |
+
+Speech accuracy with the gate: clean 31/31; all +20/+10 dB cells
+31/31; at the extreme +5 dB cells, babble 30→29/31 and cicadas
+31→30/31 (single boundary-speaker flips — the gate skips speech
+windows whose trailing 500 ms lacked confirmed pitch, so very-low-SNR
+EMA trajectories shift slightly). Accepted: the trade removes the
+100 %-of-pauses masculine drag in every noisy room.
+
+**Residuals / follow-ups:** pink-rumble false-voicing (both the pitch
+trace and, via it, the ML gate) is the remaining broadband gap;
+field-recorded noise validation (real fans, real insects, real rooms)
+before closing the arc; `notchedFreqs` is surfaced in diag pitch
+messages for field observability.

@@ -52,6 +52,7 @@ import { computeCPP, CPP_INPUT_LEN } from "../src/dsp/cpp.js";
 import {
   SR, NOISE_TYPES, TONAL_FREQS, babble, mix, notchCascade,
 } from "./noise-synth.js";
+import { createNoiseNotch } from "../src/dsp/noise-notch.js";
 
 const args = Object.fromEntries(
   process.argv.slice(3).map((a) => {
@@ -69,6 +70,11 @@ const NOISE_LIST = (args.noises || "white,pink,fan-hum,mains-complex,babble,cric
 const HOP = 400;
 const N = BOERSMA_FRAME_LENGTH_16K;
 const TAIL_SEC = 3;
+// Noise-only lead prepended to every noisy pitch cell (--lead=N). Gives
+// the persistent-peak tracker its promotion time — and is the realistic
+// condition anyway (ambient noise precedes speech in a session). Applied
+// identically to ALL front-ends so comparisons stay apples-to-apples.
+const LEAD_SEC = args.lead != null ? parseFloat(args.lead) : 8;
 
 function to16k(t) {
   return t.sampleRate === SR ? t.samples : resampleLinear(t.samples, t.sampleRate, SR);
@@ -77,6 +83,21 @@ function to16k(t) {
 function applyFrontend(signal, noiseName) {
   if (FRONTEND === "notch" && TONAL_FREQS[noiseName]) {
     return notchCascade(signal, TONAL_FREQS[noiseName]);
+  }
+  if (FRONTEND === "tracker") {
+    // The REAL production front-end (src/dsp/noise-notch.js), streamed
+    // chunk-by-chunk exactly as the pitch worker applies it — including
+    // its detection warm-up (first minTrackSec unprotected), so this
+    // measures the shippable implementation, not the oracle-informed
+    // upper bound.
+    const notch = createNoiseNotch(SR);
+    const out = new Float32Array(signal.length);
+    for (let i = 0; i < signal.length; i += 400) {
+      const chunk = Float32Array.from(signal.subarray(i, Math.min(i + 400, signal.length)));
+      notch.process(chunk);
+      out.set(chunk, i);
+    }
+    return out;
   }
   return signal;
 }
@@ -142,24 +163,25 @@ async function runPitch() {
     const agg = { correct: 0, "octave-up": 0, "octave-down": 0, other: 0, null: 0, voiced: 0 };
     let tailHops = 0, tailVoiced = 0;
     for (const tr of fda) {
-      let sig, tailStart;
+      let sig, tailStart, lead = 0;
       if (noiseName === "clean") {
         sig = tr.sig; tailStart = tr.sig.length;
       } else {
-        const noise = makeNoise(noiseName, Math.min(tr.sig.length + TAIL_SEC * SR, 30 * SR), hillSrc);
-        ({ mixed: sig, tailStart } = mix(tr.sig, noise, snr, TAIL_SEC));
+        const noise = makeNoise(noiseName, Math.min(tr.sig.length + (TAIL_SEC + LEAD_SEC) * SR, 40 * SR), hillSrc);
+        ({ mixed: sig, tailStart, lead } = mix(tr.sig, noise, snr, TAIL_SEC, LEAD_SEC));
       }
       sig = applyFrontend(sig, noiseName);
       const decoded = runTrack(sig);
       const centerOffMs = (N / 2) / SR * 1000;
       for (let k = 0; k < decoded.length; k++) {
         const sampleEnd = (k + 1) * HOP;
+        if (sampleEnd <= lead) continue; // noise-only warm-up region
         if (sampleEnd > tailStart) {
           tailHops++;
           if (decoded[k] > 0) tailVoiced++;
           continue;
         }
-        const tMs = sampleEnd / SR * 1000 - centerOffMs;
+        const tMs = (sampleEnd - lead) / SR * 1000 - centerOffMs;
         const idx = Math.round(tMs / tr.refHopMs);
         if (idx < 0 || idx >= tr.ref.length) continue;
         const truth = tr.ref[idx];
@@ -210,8 +232,47 @@ async function runGender() {
 
   const WINDOW_SAMPLES = Math.floor(0.75 * SR);
   const HOP_SAMPLES = Math.floor(0.150 * SR);
+  const VOICED_RECENCY_HOPS = Math.ceil(500 / 25); // 500 ms at the 25 ms pitch hop
+
+  // Production VAD since 2026-07-19 = peak amplitude AND recently-voiced
+  // pitch (relayed pitch-hint; audio-utils createVoicedRecencyGate).
+  // Simulate by running the production pitch chain (notch + AC + L=2
+  // tracker) over the same signal and gating windows on any voiced hop
+  // in the trailing 500 ms. --vad=peak measures the retired peak-only VAD.
+  const VAD_MODE = args.vad || "voiced";
+
+  function voicedTimeline(sig) {
+    const notch = createNoiseNotch(SR);
+    const ac = createBoersmaAC(SR, N);
+    const pt = createPathTracker();
+    const buf = new Float32Array(N);
+    let fill = 0;
+    const out = [];
+    for (let i = 0; i + 400 <= sig.length; i += 400) {
+      const chunk = Float32Array.from(sig.subarray(i, i + 400));
+      notch.process(chunk);
+      buf.copyWithin(0, 400, N);
+      buf.set(chunk, N - 400);
+      fill = Math.min(N, fill + 400);
+      if (fill < N) { pt.emit({ voiced: [], unvoicedStrength: ac.config.voicingThreshold }); out.push(false); continue; }
+      out.push(pt.emit(ac.candidates(buf)) > 0);
+    }
+    const L2 = pt.config.lookback;
+    const tail = pt.flush().map((v) => v > 0);
+    const vals = out.slice(L2).concat(tail);
+    return out.map((_, k) => vals[k] ?? false);
+  }
+
+  function recentlyVoiced(timeline, samplePos) {
+    const hop = Math.floor(samplePos / 400);
+    for (let k = Math.max(0, hop - VOICED_RECENCY_HOPS); k <= Math.min(hop, timeline.length - 1); k++) {
+      if (timeline[k]) return true;
+    }
+    return false;
+  }
 
   async function scoreTrack(sig) {
+    const timeline = VAD_MODE === "voiced" ? voicedTimeline(sig) : null;
     const ring = new RingWindow(WINDOW_SAMPLES);
     let smoothed = null;
     let pos = 0;
@@ -221,6 +282,7 @@ async function runGender() {
       if (!ring.isFull()) continue;
       const win = ring.snapshot();
       if (windowPeak(win) < VAD_PEAK_THRESHOLD) continue;
+      if (timeline && !recentlyVoiced(timeline, pos)) continue;
       const female = femaleScoreFromResult(await classifier(win, { sampling_rate: SR }));
       if (female == null) continue;
       smoothed = ema(smoothed, female, 0.2);
@@ -238,8 +300,10 @@ async function runGender() {
     for (const snr of SNRS) {
       let acc = 0, drift = 0, nDrift = 0;
       for (const sp of speakers) {
-        const noise = makeNoise(noiseName, Math.min(sp.sig.length, 30 * SR), fdaSrc);
-        let { mixed } = mix(sp.sig, noise, snr, 0);
+        const noise = makeNoise(noiseName, Math.min(sp.sig.length + LEAD_SEC * SR, 40 * SR), fdaSrc);
+        // Same noise-only lead as the pitch cells: warms the voiced-gate's
+        // notch tracker before speech, as in a real session.
+        let { mixed } = mix(sp.sig, noise, snr, 0, LEAD_SEC);
         mixed = applyFrontend(mixed, noiseName);
         const s = await scoreTrack(mixed);
         if (s != null) {
@@ -248,10 +312,14 @@ async function runGender() {
           if (c != null) { drift += Math.abs(s - c); nDrift++; }
         }
       }
-      // VAD false-trigger on noise-only audio (10 s)
-      const noiseOnly = makeNoise(noiseName, 10 * SR, fdaSrc);
+      // VAD false-trigger on noise-only audio. 20 s, evaluated over the
+      // last 10 s — the first half is warm-up so the voiced-gate's notch
+      // tracker (5 s promotion for tonal types) is judged at steady state,
+      // matching a session where the noise has been present for a while.
+      const noiseOnly = makeNoise(noiseName, 20 * SR, fdaSrc);
       // scale like a +10 dB-SNR mix against typical speech (activeRms ~0.1)
       const scaled = Float32Array.from(noiseOnly, (v) => v * 0.03);
+      const timelineN = VAD_MODE === "voiced" ? voicedTimeline(scaled) : null;
       const ringN = new RingWindow(WINDOW_SAMPLES);
       let vadWindows = 0, vadPassed = 0, noiseScores = [];
       let p = 0;
@@ -259,9 +327,11 @@ async function runGender() {
         ringN.append(scaled.subarray(p, Math.min(p + HOP_SAMPLES, scaled.length)));
         p += HOP_SAMPLES;
         if (!ringN.isFull()) continue;
+        if (p < scaled.length / 2) continue; // warm-up half
         vadWindows++;
         const win = ringN.snapshot();
         if (windowPeak(win) < VAD_PEAK_THRESHOLD) continue;
+        if (timelineN && !recentlyVoiced(timelineN, p)) continue;
         vadPassed++;
         const f = femaleScoreFromResult(await classifier(win, { sampling_rate: SR }));
         if (f != null) noiseScores.push(f);
