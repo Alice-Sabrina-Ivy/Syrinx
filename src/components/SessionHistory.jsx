@@ -281,6 +281,16 @@ function SessionTraces({ sessionId }) {
   const resCanvasRef = useRef(null);
   const pitchContainerRef = useRef(null);
   const resContainerRef = useRef(null);
+  // Re-draw on container resize (rotation, window resize) — the canvases
+  // are CSS-stretched, so without this the bitmaps distort until the
+  // card is collapsed and re-expanded.
+  const [resizeTick, setResizeTick] = useState(0);
+  useEffect(() => {
+    const obs = new ResizeObserver(() => setResizeTick((t) => t + 1));
+    if (pitchContainerRef.current) obs.observe(pitchContainerRef.current);
+    if (resContainerRef.current) obs.observe(resContainerRef.current);
+    return () => obs.disconnect();
+  }, []);
 
   useEffect(() => {
     db.frames
@@ -303,7 +313,7 @@ function SessionTraces({ sessionId }) {
     canvas.height = rect.height * dpr;
 
     drawStaticPitchTrace(canvas, frames, dpr);
-  }, [frames]);
+  }, [frames, resizeTick]);
 
   // Draw resonance trace
   useEffect(() => {
@@ -318,7 +328,7 @@ function SessionTraces({ sessionId }) {
     canvas.height = rect.height * dpr;
 
     drawStaticResonanceTrace(canvas, frames, dpr);
-  }, [frames]);
+  }, [frames, resizeTick]);
 
   if (!frames) {
     return (

@@ -219,6 +219,10 @@ export function useAudioPipeline() {
   // referenced directly.
   const handleAnalysisResultRef = useRef(null);
 
+  // Recent AudioWorklet process()-throw timestamps (see capture onError):
+  // transient recovered errors are tolerated; repeats escalate.
+  const processErrorTimesRef = useRef([]);
+
   // Guards against a second start() call slipping through during the
   // ~1 s getUserMedia permission prompt — the audioCtxRef.current early-
   // return below isn't set until createCaptureSource resolves, and the UI
@@ -233,6 +237,13 @@ export function useAudioPipeline() {
   // dead zone — start captures the ref, the post-render effect populates
   // it once stop is defined.
   const stopRef = useRef(null);
+
+  // Bumped at every stop(); worker message handlers capture the value at
+  // start() time and drop anything arriving after their generation ended
+  // (a message already in the main-thread queue when terminate() runs
+  // still fires its handler — previously repopulating just-cleared refs
+  // and briefly flashing stale state into the next session).
+  const pipelineGenRef = useRef(0);
 
   const start = useCallback(async () => {
     if (startingRef.current) return;
@@ -317,15 +328,22 @@ export function useAudioPipeline() {
         onInitAck: (ack) => setCaptureStatus(ack),
         onError: (err) => {
           pushError({ source: "capture", ...err });
-          // Mid-stream capture failures (AudioWorklet process throw, MSTP
-          // copyTo throw, MSTP read-loop reject) silently halt audio
-          // delivery. Without surfacing here the UI just freezes — the
-          // status indicator stays "running" forever with no chunks
-          // arriving. stop() tears down the pipeline (workers, audio
-          // context, tracks); the trailing setState overrides the idle
-          // status to error. React batches the two state updates into a
-          // single render, so the error message lands on the cleaned-up
-          // state.
+          // Mid-stream capture failures (MSTP copyTo throw, MSTP
+          // read-loop reject, worklet init errors) silently halt audio
+          // delivery — teardown + error state is correct for those.
+          // The one exception: the AudioWorklet's process() handler
+          // deliberately SURVIVES a thrown quantum (capture-processor.js
+          // returns true and keeps delivering) — tearing the session
+          // down for a one-off recovered glitch loses a session to a
+          // ~3 ms hiccup. Those only escalate when they repeat (>=3
+          // within 10 s ⇒ something is actually wrong with delivery).
+          if (err.where === "process") {
+            const now = performance.now();
+            processErrorTimesRef.current = processErrorTimesRef.current
+              .filter((t) => now - t < 10000);
+            processErrorTimesRef.current.push(now);
+            if (processErrorTimesRef.current.length < 3) return;
+          }
           stopRef.current?.();
           setState((s) => ({
             ...s,
@@ -336,6 +354,8 @@ export function useAudioPipeline() {
       });
       captureSrcRef.current = captureSrc;
       audioCtxRef.current = captureSrc.audioCtx; // null on mstp path
+      const myGen = pipelineGenRef.current;
+      const genAlive = () => pipelineGenRef.current === myGen;
 
       // Diagnostic snapshot — captured once at start. Path-specific
       // fields (baseLatency / outputLatency / ctxCreatedAtEpochMs)
@@ -427,6 +447,7 @@ export function useAudioPipeline() {
       );
 
       pitchWorker.onmessage = (e) => {
+        if (!genAlive()) return; // late message after stop()
         const msg = e.data;
         if (!msg || !msg.type) return;
         if (msg.type === "pitch") {
@@ -501,6 +522,7 @@ export function useAudioPipeline() {
       };
 
       mlWorker.onmessage = (e) => {
+        if (!genAlive()) return; // late message after stop()
         const msg = e.data;
         if (!msg || !msg.type) return;
         if (msg.type === "score") {
@@ -573,6 +595,7 @@ export function useAudioPipeline() {
       };
 
       worker.onmessage = (e) => {
+        if (!genAlive()) return; // late message after stop()
         const msg = e.data;
         if (!msg || !msg.type) return;
 
@@ -716,6 +739,7 @@ export function useAudioPipeline() {
   }, []);
 
   const stop = useCallback(() => {
+    pipelineGenRef.current++; // invalidate in-flight worker messages
     if (ctxSamplerRef.current) {
       clearInterval(ctxSamplerRef.current);
       ctxSamplerRef.current = null;

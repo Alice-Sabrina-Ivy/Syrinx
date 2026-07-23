@@ -54,6 +54,7 @@ import {
   BOERSMA_FRAME_LENGTH_16K,
 } from "./boersma-ac.js";
 import { createNoiseNotch, isNearNotch } from "./noise-notch.js";
+import { createStreamingResampler } from "../ml/audio-utils.js";
 
 const TARGET_SAMPLE_RATE = 16000;
 const FRAME_LENGTH = BOERSMA_FRAME_LENGTH_16K; // 1280 = 80 ms
@@ -102,23 +103,13 @@ function status(s, message, extra) {
   });
 }
 
-// Linear-interpolation resampler (same as the SwiftF0-era worker and
-// gender-worker; speech energy above 8 kHz is minimal and the mic chain
-// already low-passes).
-function resampleLinear(samples, srIn, srOut) {
-  if (srIn === srOut) return samples;
-  const ratio = srOut / srIn;
-  const n = Math.floor(samples.length * ratio);
-  const out = new Float32Array(n);
-  for (let i = 0; i < n; i++) {
-    const srcF = i / ratio;
-    const i0 = Math.floor(srcF);
-    const i1 = Math.min(i0 + 1, samples.length - 1);
-    const t = srcF - i0;
-    out[i] = samples[i0] * (1 - t) + samples[i1] * t;
-  }
-  return out;
-}
+// Streaming linear resampler (audio-utils createStreamingResampler,
+// 2026-07-20): carries fractional phase + the previous chunk's last
+// sample across chunks. The old per-chunk resampleLinear restarted its
+// phase every 25 ms, splicing ~0.8 source samples out of every chunk
+// boundary at 44.1 kHz — a measured +0.094 % (~1.6 cent) pitch bias.
+// Instantiated in init once inputSampleRate is known.
+let resample = null;
 
 function appendToBuffer(incoming) {
   const k = incoming.length;
@@ -149,7 +140,7 @@ function processChunk(msg) {
   const incoming = new Float32Array(msg.buffer);
   if (incoming.length === 0) return;
   const t0 = _diag ? performance.now() : 0;
-  appendToBuffer(noiseNotch.process(resampleLinear(incoming, inputSampleRate, TARGET_SAMPLE_RATE)));
+  appendToBuffer(noiseNotch.process(resample(incoming)));
   if (buffer16kFill < FRAME_LENGTH) return;
 
   const frameCandidates = detector.candidates(buffer16k);
@@ -221,6 +212,7 @@ self.onmessage = (e) => {
       noiseNotch = createNoiseNotch(TARGET_SAMPLE_RATE);
       harmonicGuard = createHarmonicVoicingGuard();
       bufferDelayLine = [];
+      resample = createStreamingResampler(inputSampleRate, TARGET_SAMPLE_RATE);
       buffer16k.fill(0);
       buffer16kFill = 0;
       frameMeta = [];

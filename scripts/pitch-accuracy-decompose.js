@@ -18,7 +18,8 @@
 // Usage: node scripts/pitch-accuracy-decompose.js
 
 import { readFileSync } from "node:fs";
-import { createBoersmaAC, createPathTracker, BOERSMA_FRAME_LENGTH_16K as N } from "../src/dsp/boersma-ac.js";
+import { createBoersmaAC, createPathTracker, createHarmonicVoicingGuard, BOERSMA_FRAME_LENGTH_16K as N } from "../src/dsp/boersma-ac.js";
+import { createNoiseNotch, isNearNotch } from "../src/dsp/noise-notch.js";
 import { pushAndMedianPitch, PITCH_SMOOTH_LEN } from "../src/audio/pitchSmoothing.js";
 import { createPaintGate } from "../src/audio/pitchPaintGate.js";
 
@@ -37,12 +38,24 @@ function readWav(p) {
 const samples = readWav(SESSION);
 const pf = JSON.parse(readFileSync(PRAAT, "utf8")).files.find((f) => f.path === SESSION);
 
+// Full production chain since 2026-07-20: persistent-peak notch +
+// ghost-voicing veto + harmonic voicing guard (harness parity pass —
+// earlier displayed-accuracy numbers predate all three).
 const ac = createBoersmaAC(SR, N), pt = createPathTracker();
+const notch = createNoiseNotch(SR);
+const guard = createHarmonicVoicingGuard();
+const delayLine = [];
 const buf = new Float32Array(N);
 const decoded = [];
 for (let i = 0; i + HOP <= samples.length; i += HOP) {
-  buf.copyWithin(0, HOP, N); buf.set(samples.subarray(i, i + HOP), N - HOP);
-  const v = pt.emit(ac.candidates(buf));
+  const chunk = Float32Array.from(samples.subarray(i, i + HOP));
+  notch.process(chunk);
+  buf.copyWithin(0, HOP, N); buf.set(chunk, N - HOP);
+  delayLine.push(Float32Array.from(buf));
+  if (delayLine.length > pt.config.lookback + 1) delayLine.shift();
+  let v = pt.emit(ac.candidates(buf));
+  if (v > 0 && isNearNotch(v, notch.activeFreqs())) v = null;
+  if (v > 0 && !guard.check(delayLine[0], v, SR)) v = null;
   if (v !== undefined) decoded.push(v ?? 0);
 }
 decoded.push(...pt.flush().map((v) => v ?? 0));
