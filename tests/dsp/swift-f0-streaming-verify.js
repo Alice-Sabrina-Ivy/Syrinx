@@ -18,7 +18,7 @@
 //
 // Usage: node tests/dsp/swift-f0-streaming-verify.js
 
-import { writeFileSync } from "fs";
+import { writeFileSync, mkdirSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import { loadAllCorpora } from "./data/corpora.js";
@@ -293,6 +293,11 @@ const jsonOut = {
   perTrack: perTrackAcc,
 };
 
-const jsonPath = join(ROOT, "measurements", "swift-f0-streaming-verify-2026-05-06.json");
+// Write to build/ (gitignored): this script runs on every `npm run
+// test:dsp`, and it used to overwrite the HISTORICAL 2026-05-06
+// measurement record in measurements/ with fresh timestamps on every
+// test run (caught twice sweeping unrelated commits, 2026-07-19/20).
+const jsonPath = join(ROOT, "build", "swift-f0-streaming-verify.json");
+mkdirSync(dirname(jsonPath), { recursive: true });
 writeFileSync(jsonPath, JSON.stringify(jsonOut, null, 2));
 console.log(`\nJSON saved to: ${jsonPath}`);
