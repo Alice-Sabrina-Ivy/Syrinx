@@ -296,3 +296,50 @@ export function subFloorVoiced(window, sampleRate, notchedFreqs = []) {
   }
   return false;
 }
+
+// ---------------------------------------------------------------------------
+// Streaming linear resampler (2026-07-20).
+//
+// Per-chunk resampleLinear restarts its fractional read position at 0
+// for every chunk, so at non-integer ratios (44.1 kHz mics -> 16 kHz)
+// ~0.8 source samples are spliced out at every 25 ms boundary — a
+// measured +0.094 % pitch bias (~1.6 cents high) plus boundary phase
+// glitches. This factory carries the fractional position AND the last
+// sample of the previous chunk across calls, making the chunked output
+// sample-identical to resampling the whole stream at once. Outputs
+// whose interpolation would need the NEXT chunk's first sample are
+// deferred to the next call (zero added latency beyond one sample).
+export function createStreamingResampler(srIn, srOut) {
+  if (srIn === srOut) return (chunk) => chunk;
+  const step = srIn / srOut; // input samples per output sample
+  let pos = 0;               // next output's read position, relative to
+                             //   the current chunk start (may be in
+                             //   [-1, 0): interpolates from `prev`)
+  let prev = 0;
+  let hasPrev = false;
+  return (chunk) => {
+    const n = chunk.length;
+    if (n === 0) return new Float32Array(0);
+    const out = new Float32Array(Math.ceil((n - pos) / step) + 2);
+    let m = 0;
+    while (pos <= n - 1) {
+      const i0 = Math.floor(pos);
+      const frac = pos - i0;
+      let s0, s1;
+      if (i0 < 0) {
+        if (!hasPrev) { pos += step; continue; }
+        s0 = prev; s1 = chunk[0];
+      } else if (i0 + 1 <= n - 1) {
+        s0 = chunk[i0]; s1 = chunk[i0 + 1];
+      } else {
+        break; // needs next chunk's first sample — defer
+      }
+      out[m++] = s0 * (1 - frac) + s1 * frac;
+      pos += step;
+    }
+    pos -= n;
+    prev = chunk[n - 1];
+    hasPrev = true;
+    return out.subarray(0, m);
+  };
+}

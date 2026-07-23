@@ -130,6 +130,22 @@ export function ResonanceMeter({
 
     function draw() {
       const dpr = window.devicePixelRatio || 1;
+      // DPR-change guard: dragging the window between monitors changes
+      // devicePixelRatio WITHOUT firing ResizeObserver (CSS size
+      // unchanged), leaving the backing store sized for the old dpr
+      // while the layout math below uses the new one — clipped plots
+      // and oversized labels until a real resize. Re-sync per frame.
+      {
+        const c = containerRef.current;
+        if (c) {
+          const rect = c.getBoundingClientRect();
+          const bw = Math.round(rect.width * dpr), bh = Math.round(rect.height * dpr);
+          if (bw > 0 && bh > 0 && (canvas.width !== bw || canvas.height !== bh)) {
+            canvas.width = bw;
+            canvas.height = bh;
+          }
+        }
+      }
       const w = canvas.width;
       const h = canvas.height;
 

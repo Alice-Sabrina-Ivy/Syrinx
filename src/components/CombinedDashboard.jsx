@@ -282,6 +282,32 @@ export function CombinedDashboard({
     };
   }, [frameCallbackRef]);
 
+  // "Delete all data" (DataManagement overlay) aborts — not finalizes —
+  // any in-progress recording: the session row is about to be wiped, so
+  // finalizing would just write into the void while the flush interval
+  // keeps attaching frames to a deleted session id. Drop everything
+  // in-memory and reset the UI.
+  useEffect(() => {
+    const abort = () => {
+      if (sessionIdRef.current === null) return;
+      sessionIdRef.current = null;
+      frameBufferRef.current = [];
+      if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+      if (flushIntervalRef.current) { clearInterval(flushIntervalRef.current); flushIntervalRef.current = null; }
+      if (frameCallbackRef) frameCallbackRef.current = null;
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+        try { mediaRecorderRef.current.stop(); } catch { /* already stopping */ }
+      }
+      mediaRecorderRef.current = null;
+      audioChunksRef.current = [];
+      recordingStartRef.current = null;
+      setRecording(false);
+      setElapsed(0);
+    };
+    window.addEventListener("syrinx:abort-recording", abort);
+    return () => window.removeEventListener("syrinx:abort-recording", abort);
+  }, [frameCallbackRef]);
+
   const formatTime = (secs) => {
     const m = Math.floor(secs / 60);
     const s = secs % 60;

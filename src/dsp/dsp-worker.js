@@ -32,6 +32,12 @@ let LPC_ORDER = 10;
 // Pre-computed FIR anti-alias filter for decimation (re-computed on 'init' message).
 // Initialize with default decimation factor so the worker is ready before 'init'.
 let antiAliasFilter = null; // populated below after designLowPassFIR is defined
+// Cache for adaptive-decimation FIR designs (keyed by effective factor).
+// At 16/32 kHz input the adaptive path lowers the factor on EVERY
+// formant frame (~5x/s) and used to re-run designLowPassFIR each time —
+// identical result, recurring allocation + trig in the zero-GC hot
+// path. Cleared on init (sample-rate change invalidates the designs).
+const _firCache = new Map();
 
 // Pre-allocated ring buffer to avoid GC pressure from repeated allocations.
 // Uses a fixed-size buffer with a write position; oldest data is overwritten.
@@ -208,6 +214,7 @@ self.onmessage = (e) => {
     // Previous 0.4/factor was too aggressive at low decimation factors (e.g.
     // at 16kHz/factor=2, cutoff was 3200 Hz, truncating female F2/F3).
     antiAliasFilter = designLowPassFIR(0.45 / decimationFactor, decimationFactor * 16 + 1);
+    _firCache.clear(); // sample rate changed; cached designs are stale
     ringCapacity = windowSize * 2;
     ringBuffer = new Float32Array(ringCapacity);
     ringLen = 0;
@@ -348,7 +355,12 @@ function extractFormants(buffer, detectedPitch) {
     }
     if (effectiveDecFactor !== decimationFactor) {
       effectiveTargetSR = sampleRate / effectiveDecFactor;
-      effectiveFilter = designLowPassFIR(0.45 / effectiveDecFactor, effectiveDecFactor * 16 + 1);
+      let cached = _firCache.get(effectiveDecFactor);
+      if (!cached) {
+        cached = designLowPassFIR(0.45 / effectiveDecFactor, effectiveDecFactor * 16 + 1);
+        _firCache.set(effectiveDecFactor, cached);
+      }
+      effectiveFilter = cached;
     }
     // At 16 kHz with factor=1, targetSR=16000 → need higher LPC order to model
     // the wider bandwidth (up to 8 kHz). Praat uses nFormant=5 at 11 kHz,
