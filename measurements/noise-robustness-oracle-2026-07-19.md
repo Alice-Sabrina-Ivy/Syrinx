@@ -435,3 +435,22 @@ now a permanent part of the acceptance surface — corpus-level signals
 masked this for two months, the same lesson as the globalPeak fix
 ("corpus/session WAVs sit near full scale, which masked this in every
 harness").
+
+## 11. Harness-parity re-validation of displayed accuracy (2026-07-20)
+
+The displayed-accuracy harnesses (`pitch-median-window-sweep`,
+`pitch-accuracy-decompose`) predated the notch + ghost veto + harmonic
+guard; CLAUDE.md's "~96–98 % displayed band accuracy" numbers were
+therefore measured on a chain production no longer runs. Both harnesses
+now run the full production chain. Re-validation (K=3, best alignment):
+
+| recording | pre-guard chain (recorded) | full current chain |
+|---|---|---|
+| 2026-05-26 | 96.3 % | 96.0 % |
+| 2026-05-07 | 98.2 % | 98.1 % |
+| 2025-09-08 | 97.9 % | 98.1 % |
+
+Deltas −0.3/−0.1/+0.2 pp — within run noise, matching the corpus-level
+guard-cost prediction (~0.1 pp). The published claim stands verified
+through the actual shipped chain; the harnesses stay in parity from
+here on.

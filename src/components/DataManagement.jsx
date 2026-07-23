@@ -129,6 +129,12 @@ export function DataManagement({ onClose }) {
 
   async function deleteAllData() {
     setStatus("Deleting...");
+    // Abort any in-progress recording BEFORE wiping: the dashboard stays
+    // mounted under this overlay and would otherwise keep flushing
+    // frames against a deleted session id every second (orphan rows,
+    // invisible in History, undeletable except by another wipe) and
+    // later no-op-finalize the vanished session.
+    window.dispatchEvent(new CustomEvent("syrinx:abort-recording"));
     await db.frames.clear();
     await db.sessions.clear();
     await db.settings.clear();

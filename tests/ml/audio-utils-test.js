@@ -22,6 +22,7 @@ import {
   createVoicedRecencyGate,
   VOICED_RECENCY_MS,
   subFloorVoiced,
+  createStreamingResampler,
 } from "../../src/ml/audio-utils.js";
 
 let passed = 0;
@@ -330,6 +331,50 @@ console.log("\nSilenceTracker");
     "default threshold === RESET_AFTER_SILENT_INFERENCES",
     t.noteSilent() === true,
   );
+}
+
+console.log("\ncreateStreamingResampler — chunked output matches whole-signal resampling");
+
+{
+  const SRIN = 44100, SROUT = 16000, SECS = 3;
+  const sig = new Float32Array(SRIN * SECS);
+  for (let i = 0; i < sig.length; i++) sig[i] = 0.3 * Math.sin(2 * Math.PI * 300 * i / SRIN) + 0.1 * Math.sin(2 * Math.PI * 731 * i / SRIN);
+  const whole = resampleLinear(sig, SRIN, SROUT);
+  // stream in the awkward chunk sizes a 25 ms cadence produces at 44.1 kHz
+  const rs = createStreamingResampler(SRIN, SROUT);
+  const parts = [];
+  let pos = 0, flip = false;
+  while (pos < sig.length) {
+    const n = Math.min(flip ? 1103 : 1102, sig.length - pos);
+    parts.push(...rs(sig.subarray(pos, pos + n)));
+    pos += n;
+    flip = !flip;
+  }
+  const streamed = Float32Array.from(parts);
+  const m = Math.min(whole.length, streamed.length) - 2; // whole-signal clamps its tail
+  check(`output length matches within 2 samples (${whole.length} vs ${streamed.length})`,
+    Math.abs(whole.length - streamed.length) <= 2);
+  let maxErr = 0;
+  for (let i = 0; i < m; i++) maxErr = Math.max(maxErr, Math.abs(whole[i] - streamed[i]));
+  check(`chunked === whole-signal (max |Δ| ${maxErr.toExponential(2)})`, maxErr < 1e-5);
+}
+{
+  // exact-ratio path (48 kHz): also identical
+  const SRIN = 48000, SROUT = 16000;
+  const sig = new Float32Array(SRIN);
+  for (let i = 0; i < sig.length; i++) sig[i] = 0.3 * Math.sin(2 * Math.PI * 220 * i / SRIN);
+  const whole = resampleLinear(sig, SRIN, SROUT);
+  const rs = createStreamingResampler(SRIN, SROUT);
+  const parts = [];
+  for (let pos = 0; pos < sig.length; pos += 1200) parts.push(...rs(sig.subarray(pos, pos + 1200)));
+  const streamed = Float32Array.from(parts);
+  let maxErr = 0;
+  const m = Math.min(whole.length, streamed.length) - 2;
+  for (let i = 0; i < m; i++) maxErr = Math.max(maxErr, Math.abs(whole[i] - streamed[i]));
+  check(`48 kHz exact ratio also matches (max |Δ| ${maxErr.toExponential(2)})`, maxErr < 1e-6);
+  const same = createStreamingResampler(16000, 16000);
+  const input = new Float32Array([1, 2, 3]);
+  check("same-rate returns input identity", same(input) === input);
 }
 
 console.log("\nsubFloorVoiced — below-pitch-floor phonation probe (Codex PR #90)");
