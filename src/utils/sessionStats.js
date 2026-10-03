@@ -5,6 +5,23 @@
 
 import { DEFAULT_PITCH_TARGET, DEFAULT_F2_TARGET } from "./constants.js";
 
+// Linear-interpolated percentile of an ascending-sorted numeric array.
+function percentileSorted(sorted, p) {
+  if (!sorted.length) return null;
+  const idx = (sorted.length - 1) * p;
+  const lo = Math.floor(idx);
+  const hi = Math.min(lo + 1, sorted.length - 1);
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo);
+}
+
+// Pitch Range percentiles. A raw min/max over every recorded voiced
+// frame reads ~75–400 Hz (the detector's search limits) on almost any
+// session, because a handful of stray octave excursions always land in
+// the recorded f0. p5..p95 is the range the voice actually spent its
+// time in.
+export const PITCH_RANGE_LOW_PCT = 0.05;
+export const PITCH_RANGE_HIGH_PCT = 0.95;
+
 // Compute summary statistics from recorded frames
 export function computeSummaryStats(frames) {
   const voicedFrames = frames.filter((f) => f.voiced && f.f0 !== null);
@@ -41,6 +58,11 @@ export function computeSummaryStats(frames) {
   const frameDurationMs = 25;
   const voicedDurationSeconds = Math.round((voicedFrames.length * frameDurationMs) / 1000);
 
+  // Typed-array sort is numeric and avoids Math.min(...arr)-style spread
+  // (engine arg-count limits on long sessions: 60+ minutes of voiced
+  // frames at ~40 fps = >100K values).
+  const f0Sorted = Float64Array.from(f0Values).sort();
+
   return {
     avgF0: avg(f0Values),
     medianF0: med(f0Values),
@@ -50,11 +72,8 @@ export function computeSummaryStats(frames) {
     avgF3: avg(f3Values),
     avgSpectralTilt: avg(tiltValues),
     avgHnr: avg(hnrValues),
-    // reduce instead of Math.min(...arr) — the spread operator can overflow
-    // engine arg-count limits on long sessions (60+ minutes of voiced
-    // frames at ~40 fps = >100K args).
-    pitchRangeLow: f0Values.length ? f0Values.reduce((m, v) => v < m ? v : m, Infinity) : null,
-    pitchRangeHigh: f0Values.length ? f0Values.reduce((m, v) => v > m ? v : m, -Infinity) : null,
+    pitchRangeLow: percentileSorted(f0Sorted, PITCH_RANGE_LOW_PCT),
+    pitchRangeHigh: percentileSorted(f0Sorted, PITCH_RANGE_HIGH_PCT),
     pitchStdev: stdev(f0Values),
     pctTimeInPitchTarget: f0Values.length
       ? Math.round((pitchInTarget.length / f0Values.length) * 100)
