@@ -67,6 +67,18 @@ export function CombinedDashboard({
   // intervals (the refs get overwritten by the second call).
   const startingRef = useRef(false);
 
+  // False once the dashboard unmounts (pipeline stopped / errored).
+  // startRecording awaits IndexedDB twice before it installs the frame
+  // callback, intervals and MediaRecorder; an unmount during those awaits
+  // finds nothing to finalize yet, so startRecording must notice and back
+  // out itself — otherwise it leaks the intervals + a frame callback and
+  // may start a MediaRecorder on the already-stopped stream.
+  const mountedRef = useRef(false);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
   // Flush buffered frames to IndexedDB
   const flushFrames = useCallback(async () => {
     const buffer = frameBufferRef.current;
@@ -106,6 +118,7 @@ export function CombinedDashboard({
       // direction would keep recording mic audio against the user's
       // expressed setting.
       const settings = await db.settings.get("default");
+      if (!mountedRef.current) return;
       const recordAudio = !!settings?.recordAudio;
 
       // Create session in DB
@@ -114,6 +127,12 @@ export function CombinedDashboard({
         sessionType: "freeform",
         notes: "",
       });
+      if (!mountedRef.current) {
+        // Unmounted while the row was being created: nothing will ever
+        // finalize it, so remove it instead of leaving an empty session.
+        db.sessions.delete(id).catch((err) => console.error("Failed to remove abandoned session:", err));
+        return;
+      }
       sessionIdRef.current = id;
       releaseLockRef.current = holdRecordingLock(id);
 
