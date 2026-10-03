@@ -1,10 +1,11 @@
-import { useState, useRef, lazy, Suspense } from "react";
+import { useState, useRef, useEffect, lazy, Suspense } from "react";
 import { useAudioPipeline } from "./audio/useAudioPipeline";
 import { PitchTrace } from "./components/PitchTrace";
 import { CombinedDashboard } from "./components/CombinedDashboard";
 import { SessionHistory } from "./components/SessionHistory";
 import { DataManagement } from "./components/DataManagement";
 import { DIAG_ENABLED } from "./diag/diag";
+import { repairInterruptedSessions } from "./utils/sessionRepair";
 
 // Diagnostic overlay is dynamically imported and only rendered when the
 // ?diag=1 URL flag is present. Production users get zero bundle impact —
@@ -80,6 +81,16 @@ function App() {
     frameCallbackRef,
     streamRef,
   } = useAudioPipeline();
+
+  // One-shot repair of sessions a previous visit never finalized (tab
+  // close / crash / mobile discard) — see utils/sessionRepair.js. A
+  // History list that already loaded re-queries via the same event a
+  // normal finalize dispatches.
+  useEffect(() => {
+    repairInterruptedSessions().then((n) => {
+      if (n > 0) window.dispatchEvent(new CustomEvent("syrinx:session-finalized"));
+    });
+  }, []);
 
   function dismissWelcome() {
     localStorage.setItem(WELCOME_KEY, "1");
