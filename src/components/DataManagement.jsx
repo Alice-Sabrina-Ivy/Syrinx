@@ -2,6 +2,23 @@
 
 import { useState, useRef, useEffect } from "react";
 import db from "../db";
+import {
+  exportHeader,
+  createFrameSerializer,
+  EXPORT_FOOTER,
+  stripSessionForExport,
+  iterateExportRecords,
+} from "../utils/exportFormat";
+
+// Export assembly: frame lines are concatenated into ~1 MB strings, and
+// every ~32 MB of those are folded into a Blob (the browser's blob store,
+// off the JS heap). Never one giant string — the old JSON.stringify of
+// every frame hit V8's max string length (RangeError at ~2.58 M frames,
+// ~18 h recorded).
+const EXPORT_CHUNK_CHARS = 1 << 20;
+const EXPORT_COLLAPSE_CHARS = 32 << 20;
+// Frames per bulkAdd during import.
+const IMPORT_BATCH = 5000;
 
 export function DataManagement({ onClose }) {
   const [recordAudio, setRecordAudio] = useState(false);
@@ -35,23 +52,41 @@ export function DataManagement({ onClose }) {
     setStatus("Exporting...");
     try {
       const sessions = await db.sessions.toArray();
-      const frames = await db.frames.toArray();
       const settings = await db.settings.toArray();
 
-      // Strip audioBlob from sessions (too large for JSON)
-      // eslint-disable-next-line no-unused-vars
-      const sessionsClean = sessions.map(({ audioBlob, ...rest }) => rest);
-
-      const data = {
-        version: 1,
+      // Same version-1 schema as before, laid out one frame record per
+      // line (see utils/exportFormat.js) and assembled from parts. Frames
+      // are streamed per session off an IndexedDB cursor, so neither the
+      // frame rows nor their JSON are ever materialized all at once.
+      // audioBlob is stripped from sessions (JSON can't carry it).
+      let parts = [exportHeader({
         exportedAt: new Date().toISOString(),
         settings,
-        sessions: sessionsClean,
-        frames,
+        sessions: sessions.map(stripSessionForExport),
+      })];
+      let pendingChars = 0;
+      let chunk = "";
+      const frameLine = createFrameSerializer();
+      const pushChunk = () => {
+        if (!chunk) return;
+        parts.push(chunk);
+        pendingChars += chunk.length;
+        chunk = "";
+        if (pendingChars >= EXPORT_COLLAPSE_CHARS) {
+          parts = [new Blob(parts)];
+          pendingChars = 0;
+        }
       };
+      for (const session of sessions) {
+        await db.frames.where("sessionId").equals(session.id).each((frame) => {
+          chunk += frameLine(frame);
+          if (chunk.length >= EXPORT_CHUNK_CHARS) pushChunk();
+        });
+      }
+      pushChunk();
+      parts.push(EXPORT_FOOTER);
 
-      const json = JSON.stringify(data);
-      const blob = new Blob([json], { type: "application/json" });
+      const blob = new Blob(parts, { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -73,51 +108,58 @@ export function DataManagement({ onClose }) {
     setImporting(true);
     setStatus("Importing...");
     try {
-      const text = await file.text();
-      const data = JSON.parse(text);
-
-      if (!data.version || !data.sessions || !data.frames) {
-        throw new Error("Invalid export file format");
-      }
+      // Raw bytes up front (compact, off the JS string heap), then parsed
+      // record by record — synchronously — inside the transaction. An
+      // IndexedDB transaction auto-commits at the first await on anything
+      // that isn't an IndexedDB request, so the file can't be streamed
+      // from disk mid-transaction; reading it first keeps the import
+      // atomic while still never building one giant string (file.text()
+      // hit the same max-string-length wall as the old export) or one
+      // giant frames array. Older single-line exports fall back to a
+      // whole-document JSON.parse inside iterateExportRecords.
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      let sessionCount = 0;
 
       // Single rw transaction: a failure mid-import (quota, malformed
       // row, tab close) rolls everything back instead of committing a
       // partial import that a retry would then duplicate.
       await db.transaction("rw", db.settings, db.sessions, db.frames, async () => {
-        // Import settings
-        if (data.settings?.length) {
-          for (const s of data.settings) {
-            await db.settings.put(s);
+        const idMap = {};
+        let batch = [];
+        for (const rec of iterateExportRecords(bytes)) {
+          if (rec.type === "header") {
+            const { settings, sessions } = rec.header;
+            // Import settings
+            for (const s of settings ?? []) {
+              await db.settings.put(s);
+            }
+            // Import sessions (strip auto-increment id, let Dexie assign new ones)
+            for (const session of sessions) {
+              const { id: oldId, ...rest } = session;
+              const newId = await db.sessions.add(rest);
+              idMap[oldId] = newId;
+            }
+            sessionCount = sessions.length;
+            continue;
+          }
+          // Frames with remapped sessionIds. Frames referencing a
+          // session that isn't in the export are dropped — falling back
+          // to the original id would attach them to whatever unrelated
+          // local session happens to own that id.
+          // eslint-disable-next-line no-unused-vars
+          const { id, sessionId, ...rest } = rec.frame;
+          const newSessionId = idMap[sessionId];
+          if (newSessionId === undefined) continue;
+          batch.push({ ...rest, sessionId: newSessionId });
+          if (batch.length >= IMPORT_BATCH) {
+            await db.frames.bulkAdd(batch);
+            batch = [];
           }
         }
-
-        // Import sessions (strip auto-increment id, let Dexie assign new ones)
-        const idMap = {};
-        for (const session of data.sessions) {
-          const { id: oldId, ...rest } = session;
-          const newId = await db.sessions.add(rest);
-          idMap[oldId] = newId;
-        }
-
-        // Import frames with remapped sessionIds. Frames referencing a
-        // session that isn't in the export are dropped — falling back to
-        // the original id would attach them to whatever unrelated local
-        // session happens to own that id.
-        const frameBatch = data.frames
-          .filter(({ sessionId }) => idMap[sessionId] !== undefined)
-          // eslint-disable-next-line no-unused-vars
-          .map(({ id, sessionId, ...rest }) => ({
-            ...rest,
-            sessionId: idMap[sessionId],
-          }));
-
-        // Batch in chunks of 5000 to avoid memory issues
-        for (let i = 0; i < frameBatch.length; i += 5000) {
-          await db.frames.bulkAdd(frameBatch.slice(i, i + 5000));
-        }
+        if (batch.length > 0) await db.frames.bulkAdd(batch);
       });
 
-      setStatus(`Imported ${data.sessions.length} sessions!`);
+      setStatus(`Imported ${sessionCount} sessions!`);
       setTimeout(() => setStatus(null), 3000);
     } catch (err) {
       setStatus(`Import failed: ${err.message}`);
