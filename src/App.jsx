@@ -228,27 +228,32 @@ function App() {
 
             {/* Tab content */}
             <div className="flex-1 flex flex-col min-h-0">
-              {activeTab === "dashboard" && (
-                <CombinedDashboard
-                  voiced={voiced}
-                  holding={holding}
-                  pitch={pitch}
-                  formants={formants}
-                  spectralTilt={spectralTilt}
-                  hnr={hnr}
-                  vocalWeight={vocalWeight}
-                  modelStatus={modelStatus}
-                  modelError={modelError}
-                  modelProgress={modelProgress}
-                  pitchTraceRef={pitchTraceRef}
-                  formantTrailRef={formantTrailRef}
-                  genderTraceRef={genderTraceRef}
-                  dspGateRef={dspGateRef}
-                  sessionRef={sessionRef}
-                  frameCallbackRef={frameCallbackRef}
-                  streamRef={streamRef}
-                />
-              )}
+              {/* Always mounted while the pipeline runs: it owns the
+                  session recording, and unmounting it finalizes the
+                  recording — switching to Pitch/History used to end the
+                  session silently. Inactive, it renders nothing (its
+                  canvases unmount, so no hidden rAF loops) and keeps its
+                  recording state + intervals running. */}
+              <CombinedDashboard
+                active={activeTab === "dashboard"}
+                voiced={voiced}
+                holding={holding}
+                pitch={pitch}
+                formants={formants}
+                spectralTilt={spectralTilt}
+                hnr={hnr}
+                vocalWeight={vocalWeight}
+                modelStatus={modelStatus}
+                modelError={modelError}
+                modelProgress={modelProgress}
+                pitchTraceRef={pitchTraceRef}
+                formantTrailRef={formantTrailRef}
+                genderTraceRef={genderTraceRef}
+                dspGateRef={dspGateRef}
+                sessionRef={sessionRef}
+                frameCallbackRef={frameCallbackRef}
+                streamRef={streamRef}
+              />
 
               {activeTab === "pitch" && (
                 <div className="flex-1 flex flex-col min-h-0">

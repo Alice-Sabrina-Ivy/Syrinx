@@ -2,6 +2,13 @@
 // thermometer side by side (stacked on mobile), with vocal-weight + HNR
 // stats + session controls below. Handles session recording: buffers
 // frames and writes to IndexedDB every ~1s.
+//
+// App keeps this component mounted for the whole time the pipeline runs
+// (so a recording survives switching to the Pitch / History tabs) and
+// passes active=false while another tab is showing: it then renders
+// nothing — the canvases unmount, so no rAF loops run hidden, and they
+// remount + size themselves fresh from the live refs when shown again —
+// while the recording state, timer, and flush interval keep running.
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { PitchTrace } from "./PitchTrace";
@@ -15,6 +22,7 @@ import db from "../db";
 const FRAME_FLUSH_INTERVAL = 1000; // Flush buffered frames every 1s
 
 export function CombinedDashboard({
+  active = true,
   voiced,
   holding,
   pitch,
@@ -204,8 +212,8 @@ export function CombinedDashboard({
     //   1. Stop & Save button — recorder is still active, we call stop()
     //      and await onstop. The browser flushes any pending data via a
     //      final dataavailable event before firing onstop.
-    //   2. Audio pipeline torn down first (Stop Listening, status→error,
-    //      tab change unmount) — useAudioPipeline.stop() ends the mic
+    //   2. Audio pipeline torn down first (Stop Listening, status→error
+    //      unmount) — useAudioPipeline.stop() ends the mic
     //      tracks, the recorder auto-transitions to "inactive", and the
     //      browser dispatches its final dataavailable event before
     //      firing stop. By the time we run, audioChunksRef is fully
@@ -253,10 +261,9 @@ export function CombinedDashboard({
     releaseLockRef.current?.();
     releaseLockRef.current = null;
 
-    // Announce completion so a SessionHistory that mounted DURING the
-    // async finalize (tab switch away from the dashboard is exactly what
-    // unmount-finalize means) re-queries and picks up the endedAt +
-    // stats it read too early.
+    // Announce completion so a SessionHistory that loaded DURING the
+    // async finalize re-queries and picks up the endedAt + stats it read
+    // too early.
     window.dispatchEvent(new CustomEvent("syrinx:session-finalized"));
   }, [frameCallbackRef]);
 
@@ -296,10 +303,15 @@ export function CombinedDashboard({
   // any in-progress recording: the session row is about to be wiped, so
   // finalizing would just write into the void while the flush interval
   // keeps attaching frames to a deleted session id. Drop everything
-  // in-memory and reset the UI.
+  // in-memory and reset the UI. Deleting the in-progress session itself
+  // from History (reachable mid-recording now that tab switches don't
+  // end it) sends the same event with detail.sessionId; other sessions'
+  // deletes leave the recording alone.
   useEffect(() => {
-    const abort = () => {
+    const abort = (e) => {
       if (sessionIdRef.current === null) return;
+      const target = e?.detail?.sessionId;
+      if (target != null && target !== sessionIdRef.current) return;
       sessionIdRef.current = null;
       frameBufferRef.current = [];
       if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
@@ -357,6 +369,10 @@ export function CombinedDashboard({
     formants.f2 >= DEFAULT_F2_TARGET.low;
 
   const statOpacity = !voiced && !holding ? "opacity-40" : holding ? "opacity-50" : "";
+
+  // Another tab is showing: stay mounted (recording continues), render
+  // nothing. After all hooks — the hook order must not change.
+  if (!active) return null;
 
   return (
     <div className="flex-1 flex flex-col w-full max-w-6xl min-h-0">
