@@ -30,11 +30,11 @@ export function SessionHistory() {
         });
     };
     load();
-    // Switching tabs mid-recording unmounts the dashboard, whose cleanup
-    // finalizes the session asynchronously (flush → recorder stop →
-    // stats → sessions.update). This component's initial query races
-    // that update and shows the just-ended session without duration/
-    // stats — re-query when the finalize announces completion.
+    // A session can finalize asynchronously (flush → recorder stop →
+    // stats → sessions.update) while this list is mounted — e.g. the
+    // start-up repair of interrupted sessions — so the initial query can
+    // show it without duration/stats. Re-query when a finalize announces
+    // completion.
     window.addEventListener("syrinx:session-finalized", load);
     return () => {
       cancelled = true;
@@ -43,6 +43,10 @@ export function SessionHistory() {
   }, []);
 
   async function deleteSession(id) {
+    // If this is the dashboard's in-progress recording (History is
+    // reachable mid-recording), stop it first — otherwise its flush
+    // interval keeps writing frames against the deleted id.
+    window.dispatchEvent(new CustomEvent("syrinx:abort-recording", { detail: { sessionId: id } }));
     await db.frames.where("sessionId").equals(id).delete();
     await db.sessions.delete(id);
     setSessions((prev) => prev.filter((s) => s.id !== id));
@@ -141,7 +145,7 @@ function SessionCard({ session, expanded, onToggle, onDelete }) {
             </span>
           </div>
           <span className="text-xs text-neutral-500 font-mono tabular-nums">
-            {formatDuration(session.durationSeconds)}
+            {session.endedAt == null ? "recording…" : formatDuration(session.durationSeconds)}
           </span>
         </div>
 
