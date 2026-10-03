@@ -42,6 +42,9 @@ export function CombinedDashboard({
   const [recording, setRecording] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [notes, setNotes] = useState("");
+  // Shown under the session controls when a recording can't start
+  // (IndexedDB unavailable — site data blocked, some private modes).
+  const [recordError, setRecordError] = useState(null);
   const timerRef = useRef(null);
   const startTimeRef = useRef(null);
 
@@ -107,6 +110,7 @@ export function CombinedDashboard({
   const startRecording = useCallback(async () => {
     if (startingRef.current || sessionIdRef.current !== null) return;
     startingRef.current = true;
+    setRecordError(null);
     try {
       const now = Date.now();
       recordingStartRef.current = now;
@@ -190,6 +194,14 @@ export function CombinedDashboard({
         setElapsed(Math.floor((Date.now() - startTimeRef.current) / 1000));
       }, 1000);
       setRecording(true);
+    } catch (err) {
+      // Only the two IndexedDB awaits above can reject, and both run
+      // before anything is installed — nothing to unwind, just say so
+      // instead of an unhandled rejection and a button that does nothing.
+      console.error("Failed to start recording:", err);
+      if (mountedRef.current) {
+        setRecordError("Couldn't start recording — session storage is unavailable in this browser.");
+      }
     } finally {
       startingRef.current = false;
     }
@@ -538,6 +550,9 @@ export function CombinedDashboard({
             className="bg-neutral-800/60 border border-neutral-700 rounded-lg px-3 py-1.5 text-sm text-neutral-300 placeholder:text-neutral-600 focus:outline-none focus:border-neutral-500 w-48 sm:w-56"
           />
         </div>
+        {recordError && (
+          <p role="alert" className="text-xs text-red-400 text-center mt-2">{recordError}</p>
+        )}
       </div>
     </div>
   );

@@ -52,9 +52,18 @@ function App() {
   // pattern as a cascading-render risk. The initializer runs once before
   // first paint, so first-visit users see the welcome overlay
   // immediately rather than after a render-then-update flicker.
-  const [showWelcome, setShowWelcome] = useState(
-    () => typeof window !== "undefined" && !localStorage.getItem(WELCOME_KEY),
-  );
+  // localStorage access THROWS (SecurityError) when site data is blocked
+  // — uncaught here it white-screened the app (no error boundary). Then
+  // there is nowhere to remember the dismissal: show the welcome once per
+  // page load.
+  const [showWelcome, setShowWelcome] = useState(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return !localStorage.getItem(WELCOME_KEY);
+    } catch {
+      return true;
+    }
+  });
   const [showSettings, setShowSettings] = useState(false);
   // Ref for session metadata (notes, elapsed, recording state) —
   // kept in sync by CombinedDashboard, readable by a future save/export feature.
@@ -93,7 +102,11 @@ function App() {
   }, []);
 
   function dismissWelcome() {
-    localStorage.setItem(WELCOME_KEY, "1");
+    try {
+      localStorage.setItem(WELCOME_KEY, "1");
+    } catch {
+      // Site data blocked — dismissal lasts for this page load only.
+    }
     setShowWelcome(false);
     start();
   }
