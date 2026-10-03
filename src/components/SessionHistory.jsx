@@ -14,6 +14,10 @@ export function SessionHistory() {
   const [sessions, setSessions] = useState([]);
   const [expandedId, setExpandedId] = useState(null);
   const [loading, setLoading] = useState(true);
+  // IndexedDB can be unavailable (site data blocked, some private modes):
+  // without a catch the query rejected silently and the list showed
+  // "Loading sessions..." forever.
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -25,6 +29,14 @@ export function SessionHistory() {
         .then((all) => {
           if (!cancelled) {
             setSessions(all);
+            setError(null);
+            setLoading(false);
+          }
+        })
+        .catch((err) => {
+          console.error("Failed to load sessions:", err);
+          if (!cancelled) {
+            setError("Session storage unavailable");
             setLoading(false);
           }
         });
@@ -57,6 +69,19 @@ export function SessionHistory() {
     return (
       <div className="flex-1 flex items-center justify-center">
         <p className="text-neutral-500 animate-pulse">Loading sessions...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-red-400 mb-1">{error}</p>
+          <p className="text-neutral-600 text-sm">
+            Your browser is blocking site storage, so sessions can&apos;t be saved or shown.
+          </p>
+        </div>
       </div>
     );
   }
@@ -301,12 +326,17 @@ function SessionTraces({ sessionId }) {
     return () => obs.disconnect();
   }, [hasTraces]);
 
+  const [framesError, setFramesError] = useState(false);
   useEffect(() => {
     db.frames
       .where("sessionId")
       .equals(sessionId)
       .sortBy("timestampMs")
-      .then(setFrames);
+      .then(setFrames)
+      .catch((err) => {
+        console.error("Failed to load session frames:", err);
+        setFramesError(true);
+      });
   }, [sessionId]);
 
   // Draw pitch trace
@@ -338,6 +368,12 @@ function SessionTraces({ sessionId }) {
 
     drawStaticResonanceTrace(canvas, frames, dpr);
   }, [frames, resizeTick]);
+
+  if (framesError) {
+    return (
+      <p className="text-xs text-red-400/80 mt-3">Couldn&apos;t load traces (session storage unavailable)</p>
+    );
+  }
 
   if (!frames) {
     return (
