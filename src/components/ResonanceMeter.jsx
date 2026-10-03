@@ -65,6 +65,16 @@ const LERP_RATE = 0.3;
 const HISTORY_DOTS = 10;
 const HISTORY_AGE_MS = 6000;
 
+// Recency horizon for the bar/indicator/readout. genderTraceRef keeps its
+// last entry until a NEW score arrives, but the worker posts nothing
+// while its VAD gates windows out (and silently resets its EMA after
+// ~2.1 s of them) — so without an age check the meter kept painting the
+// pre-pause score at full color whenever the DSP gate opened again,
+// e.g. under non-voice noise above -50 dB. Scores land every ~150 ms
+// during speech (slower where inference overruns the hop), so 1.5 s is
+// a pause, not a slow inference.
+const SCORE_STALE_MS = 1500;
+
 export function ResonanceMeter({
   genderTraceRef,
   dspGateRef,
@@ -224,7 +234,12 @@ export function ResonanceMeter({
       const holding = gate.holding;
       const idle = !voiced && !holding;
       const data = genderTraceRef?.current ?? [];
-      const latest = data.length > 0 ? data[data.length - 1] : null;
+      // Entry `time` is the worker's epoch ms (performance.timeOrigin +
+      // now()) — compare against the same epoch clock, as the history
+      // strip below does.
+      const now = Math.round(performance.timeOrigin + performance.now());
+      const newest = data.length > 0 ? data[data.length - 1] : null;
+      const latest = newest && now - newest.time <= SCORE_STALE_MS ? newest : null;
       const targetScore = idle ? null : (latest?.score ?? null);
       const targetConf = idle ? 0 : (latest?.confidence ?? 0);
 
@@ -280,7 +295,6 @@ export function ResonanceMeter({
       ctx.strokeRect(barLeft + 0.5, plotTop + 0.5, barWidth - 1, plotHeight - 1);
 
       // History strip — last HISTORY_DOTS recent inferences
-      const now = Math.round(performance.timeOrigin + performance.now());
       const colCx = barRight + 8 * dpr + historyColW / 2;
 
       // Collect up to HISTORY_DOTS most recent points within HISTORY_AGE_MS,
