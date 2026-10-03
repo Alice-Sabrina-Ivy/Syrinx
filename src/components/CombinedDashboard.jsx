@@ -269,8 +269,18 @@ export function CombinedDashboard({
 
   // Stop recording + compute summary stats (button-click path).
   const stopRecording = useCallback(async () => {
-    await finalizeRecordingDb();
-    setRecording(false);
+    try {
+      await finalizeRecordingDb();
+      // The notes now live on the finalized session row — clear the
+      // input so they don't carry into the next session. Only after a
+      // successful finalize: on failure the text stays put.
+      setNotes("");
+    } finally {
+      // finalize tore the recording down (intervals, frame callback)
+      // before anything could throw — never leave the button on
+      // "Stop & Save" for a recording that no longer exists.
+      setRecording(false);
+    }
   }, [finalizeRecordingDb]);
 
   // Stash the latest finalize fn in a ref so the unmount cleanup can call
@@ -327,6 +337,7 @@ export function CombinedDashboard({
       releaseLockRef.current = null;
       setRecording(false);
       setElapsed(0);
+      setNotes(""); // the session they annotated is gone
     };
     window.addEventListener("syrinx:abort-recording", abort);
     return () => window.removeEventListener("syrinx:abort-recording", abort);
