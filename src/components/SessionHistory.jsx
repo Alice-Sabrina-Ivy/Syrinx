@@ -283,14 +283,19 @@ function SessionTraces({ sessionId }) {
   const resContainerRef = useRef(null);
   // Re-draw on container resize (rotation, window resize) — the canvases
   // are CSS-stretched, so without this the bitmaps distort until the
-  // card is collapsed and re-expanded.
+  // card is collapsed and re-expanded. Keyed on the containers EXISTING:
+  // they only render once frames have loaded, so a mount-time ([] deps)
+  // effect ran while "Loading traces..." was showing, found both refs
+  // null, and observed nothing.
   const [resizeTick, setResizeTick] = useState(0);
+  const hasTraces = !!frames && frames.length > 0;
   useEffect(() => {
+    if (!hasTraces) return;
     const obs = new ResizeObserver(() => setResizeTick((t) => t + 1));
     if (pitchContainerRef.current) obs.observe(pitchContainerRef.current);
     if (resContainerRef.current) obs.observe(resContainerRef.current);
     return () => obs.disconnect();
-  }, []);
+  }, [hasTraces]);
 
   useEffect(() => {
     db.frames
