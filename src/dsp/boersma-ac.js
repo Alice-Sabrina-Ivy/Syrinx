@@ -25,21 +25,33 @@
 // scripts/pitch-shootout-extract.js.
 
 export const BOERSMA_DEFAULTS = {
-  minPitchHz: 75,        // speech-scoped search range = the pitch trace's
-  maxPitchHz: 400,       // display range exactly (constants.js
-                         // PITCH_DISPLAY_RANGE 75-400). Floor raised
+  minPitchHz: 75,        // search floor = the pitch trace's display floor
+                         // (constants.js PITCH_DISPLAY_RANGE.low). Raised
                          // 60->75 on 2026-06-10 to match the display: at
                          // 60 the trace painted 60-75 Hz detections under
-                         // the chart (the display floor was 75). Corpus
-                         // cost of dropping 60-75 Hz is negligible (FDA
-                         // 0.13%, PTDB 0.97%, Hillenbrand/vocadito ~0);
-                         // 3.6% of the low-voice session's frames sat
-                         // there and now render as honest gaps instead of
-                         // under-chart artifacts. Ceiling was cut 600->400
-                         // earlier the same day (removed the 3-4x
-                         // harmonic-lock error surface). measurements/
-                         // pitch-range-60-400-2026-06-10.md +
+                         // the chart. Corpus cost of dropping 60-75 Hz is
+                         // negligible (FDA 0.13%, PTDB 0.97%, Hillenbrand/
+                         // vocadito ~0). measurements/
                          // pitch-trace-floor-2026-06-10.md
+  maxPitchHz: 800,       // search ceiling = 2x the 400 Hz DISPLAY ceiling
+                         // (2026-10-03; was 400 = the display ceiling).
+                         // With the search capped at the display ceiling,
+                         // phonation above it (sirens, break excursions)
+                         // had no fundamental candidate and decoded as a
+                         // CONFIDENT half-pitch value inside the display:
+                         // 69 % of the user's true >400 Hz frames posted
+                         // at half, 43 % painted at half. At 800 they
+                         // decode at their true F0 and the pitch worker
+                         // posts every decode above PITCH_DISPLAY_RANGE.
+                         // high as unvoiced (pitch-worker.js); 2x makes
+                         // the guarantee structural — a true F0 in
+                         // (400, 1600) can only alias to a half value
+                         // ABOVE 400, which is nulled too. 600 leaves
+                         // 600-800 Hz aliasing into 300-400. The 600->400
+                         // cut of 2026-06-10 (3-4x harmonic-lock surface)
+                         // is not undone: those locks now land above 400
+                         // and post as unvoiced instead of painting.
+                         // measurements/pitch-ceiling-2026-10-03.md
   voicingThreshold: 0.35, // tuned (Praat default 0.45). 0.45→0.40 by the
                           // stage-A sweep (frame-local, 50-600 Hz,
                           // boersma-ac-tuning-2026-06-09.md); 0.40→0.35
@@ -80,10 +92,19 @@ export const BOERSMA_DEFAULTS = {
   // Prominence-based (peak vs. the valleys half a comb-spacing away), so
   // it is insensitive to the formant envelope and to broadband noise
   // (noise lowers both odd and even prominence -> no penalty).
+  // maxPartnerHz: only pairs whose 2f partner lies inside the DISPLAY
+  // range (PITCH_DISPLAY_RANGE.high 400 x 1.05) are arbitrated. Coupling
+  // with the 800 Hz search ceiling (maxPitchHz above): at 800 an octave
+  // rule could pair every female F0 with a 400-800 Hz partner and push it
+  // up out of the display (pitch-ceiling-2026-10-03.md §8 — phase-1 SHR
+  // rule, Hillenbrand women -5.6 pp unrestricted). Arbitration was
+  // measured at the 400 Hz search, where no partner can exceed 400, so
+  // this restriction reproduces exactly the measured domain.
   octaveEvidence: {
     lowThrDb: -15, lowPenalty: 0.05,
     highThrDb: -3, highPenalty: 0.03,
     fMaxHz: 3500, maxMultiple: 16,
+    maxPartnerHz: 420,
   },
   peakFloor: 0.15,        // ignore AC maxima weaker than this (rNorm)
   maxCandidates: 15,
@@ -229,6 +250,7 @@ export function createBoersmaAC(sampleRate, frameLength, opts = {}) {
   // Octave-arbitration state (pre-allocated; no per-frame allocation
   // beyond the candidate objects candidates() already creates).
   const oe = cfg.octaveEvidence || null;
+  const partnerMaxHz = oe && oe.maxPartnerHz != null ? oe.maxPartnerHz : Infinity;
   const binHz = sampleRate / fftSize;
   const spec = oe ? new Float64Array(Math.min(fftSize / 2, Math.ceil((oe.fMaxHz * 1.1) / binHz) + 2)) : null;
   const pen = new Float64Array(maxLag + 1); // >= max local-maxima count
@@ -321,14 +343,16 @@ export function createBoersmaAC(sampleRate, frameLength, opts = {}) {
     if (oe && cands.length > 1) {
       // Octave arbitration (see BOERSMA_DEFAULTS.octaveEvidence). Pairs
       // are found on the pre-penalty strengths; penalties are summed and
-      // applied afterwards so the result is order-independent.
+      // applied afterwards so the result is order-independent. Partners
+      // above maxPartnerHz are never paired (display-range domain only).
       const m = cands.length;
       for (let i = 0; i < m; i++) pen[i] = 0;
       for (let i = 0; i < m; i++) {
         const f = cands[i].freq;
         let u = -1;
         for (let j = 0; j < m; j++) {
-          if (j !== i && Math.abs(cands[j].freq / (2 * f) - 1) < 0.05
+          if (j !== i && cands[j].freq <= partnerMaxHz
+            && Math.abs(cands[j].freq / (2 * f) - 1) < 0.05
             && (u < 0 || cands[j].strength > cands[u].strength)) u = j;
         }
         if (u < 0) continue;

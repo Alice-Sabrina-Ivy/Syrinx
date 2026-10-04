@@ -9,6 +9,7 @@
 import {
   createBoersmaAC,
   createPathTracker,
+  BOERSMA_DEFAULTS,
   BOERSMA_FRAME_LENGTH_16K,
 } from "../../src/dsp/boersma-ac.js";
 
@@ -38,17 +39,28 @@ check("300 Hz pure tone", near(ac.detect(tone(300)).pitch, 300, 2));
 check("85 Hz low tone (low male / creaky speech)", near(ac.detect(tone(85)).pitch, 85, 1));
 check("65 Hz tone below the 75 Hz search floor is not reported as 65",
   (() => { const r = ac.detect(tone(65)); return r.pitch === null || r.pitch >= 75; })());
-check("450 Hz tone above the 400 Hz search ceiling is not reported as 450",
-  (() => { const r = ac.detect(tone(450)); return r.pitch === null || r.pitch < 410; })());
+// Search ceiling = 2x the 400 Hz display ceiling (2026-10-03): phonation
+// above 400 must decode at its TRUE F0 (the pitch worker then posts it as
+// unvoiced), never as a half-pitch value inside the display range — the
+// old 400 Hz ceiling decoded every >400 Hz frame at half.
+for (const f of [450, 520, 640]) {
+  check(`${f} Hz harmonic tone decodes at ${f}, not octave-down ${f / 2}`,
+    near(ac.detect(tone(f, [0.6, 0.3, 0.15])).pitch, f, f * 0.01));
+}
+check("900 Hz tone above the 800 Hz search ceiling is not reported as 900",
+  (() => { const r = ac.detect(tone(900)); return r.pitch === null || r.pitch < 820; })());
 // Top-of-range regression (2026-07-19): the candidate scan used to start
 // at minLag+1, so the lag bin of maxPitchHz itself could never be a local
 // max — any F0 above ~395 Hz had no fundamental candidate and decoded as
 // a CONFIDENT octave-down (396→198, 400→200) via the 2x-period
 // subharmonic peak. Harmonic-rich stimulus: the subharmonic trap needs
 // harmonics to be attractive, same as real voices near the ceiling.
-for (const f of [396, 398, 400]) {
-  check(`${f} Hz harmonic tone at the range ceiling is not octave-down`,
-    near(ac.detect(tone(f, [0.6, 0.3, 0.15])).pitch, f, 2.5));
+// Same bug class at the 800 Hz search ceiling (minLag = 20 samples
+// exactly at 16 kHz), plus the old 400 Hz edge (now mid-range — a
+// window-correction or interpolation artifact there must not return).
+for (const f of [396, 398, 400, 796, 798, 800]) {
+  check(`${f} Hz harmonic tone ${f > 400 ? "at the search ceiling" : "at the display ceiling"} is not octave-down`,
+    near(ac.detect(tone(f, [0.6, 0.3, 0.15])).pitch, f, f * 0.00625));
 }
 // The cutover motivation: fundamental weaker than the 2nd harmonic
 // (breathy/pressed phonation). SwiftF0 confidently reported 2×F0 here.
@@ -282,6 +294,33 @@ console.log("\noctave arbitration — rumble vs. odd-multiple evidence (2026-10-
   const hi = decodedCorrectFrac(220), lo = decodedCorrectFrac(110);
   check("220 Hz voice + 90 Hz rumble (-10 dB) decodes at 220, not 110 (>= 80 % of frames)", hi >= 0.8, `${(100 * hi).toFixed(1)} %`);
   check("110 Hz voice + same rumble stays at 110 (no octave-up, >= 95 %)", lo >= 0.95, `${(100 * lo).toFixed(1)} %`);
+}
+{
+  // Coupling with the 800 Hz search ceiling (2026-10-03): arbitration only
+  // pairs f with a 2f partner inside the display range (maxPartnerHz 420).
+  // A 250 Hz voice with very weak odd partials and H1 (-25 dB) has a
+  // strong 500 Hz candidate; arbitrating that pair would push the voice
+  // up out of the display (posted unvoiced above 400). Unrestricted, the
+  // same frame decodes 500 — the restriction is what keeps it at 250.
+  // measurements/pitch-ceiling-2026-10-03.md §8
+  let s = 3;
+  const rnd = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296 - 0.5; };
+  const x = new Float32Array(N);
+  for (let i = 0; i < N; i++) {
+    let v = 0;
+    for (let k = 1; k * 250 < 7000; k++) {
+      const db = -6 * Math.log2(k) + (k === 1 ? -25 : k & 1 ? -25 : 0);
+      v += Math.pow(10, db / 20) * Math.sin(2 * Math.PI * k * 250 * i / SR + k);
+    }
+    x[i] = 0.1 * v + 0.02 * rnd();
+  }
+  const unrestricted = createBoersmaAC(SR, N, {
+    octaveEvidence: { ...BOERSMA_DEFAULTS.octaveEvidence, maxPartnerHz: Infinity },
+  });
+  check("250 Hz voice with a strong 500 Hz partner is not pushed to 500 (maxPartnerHz)",
+    near(createBoersmaAC(SR, N).detect(x).pitch, 250, 2.5));
+  check("…and the case is live: without maxPartnerHz the same frame decodes ~500",
+    near(unrestricted.detect(x).pitch, 500, 5));
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

@@ -53,6 +53,7 @@ import {
   SR, NOISE_TYPES, TONAL_FREQS, babble, mix, notchCascade,
 } from "./noise-synth.js";
 import { createNoiseNotch, isNearNotch } from "../src/dsp/noise-notch.js";
+import { PITCH_DISPLAY_RANGE } from "../src/utils/constants.js";
 
 const args = Object.fromEntries(
   process.argv.slice(3).map((a) => {
@@ -154,6 +155,9 @@ async function runPitch() {
       if (delayLine.length > L2 + 1) delayLine.shift();
       if (fill < N) { pt.emit({ voiced: [], unvoicedStrength: ac.config.voicingThreshold }); out.push(null); continue; }
       let v = pt.emit(ac.candidates(buf));
+      // pitch-worker parity (2026-10-03): decodes above the display
+      // ceiling are posted as unvoiced, before the harmonic guard.
+      if (v > PITCH_DISPLAY_RANGE.high) v = null;
       if (v > 0 && !guard.check(delayLine[0], v, SR)) v = null;
       out.push(v);
     }
@@ -282,6 +286,7 @@ async function runGender() {
       let decoded = pt.emit(ac.candidates(buf));
       // ghost-voicing veto + harmonic guard, as in pitch-worker
       if (decoded > 0 && isNearNotch(decoded, notch.activeFreqs())) decoded = null;
+      if (decoded > PITCH_DISPLAY_RANGE.high) decoded = null; // pitch-worker parity (2026-10-03)
       if (decoded > 0 && !gGuard.check(gDelay[0], decoded, SR)) decoded = null;
       out.push(decoded > 0);
     }

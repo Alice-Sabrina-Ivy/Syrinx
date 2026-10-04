@@ -39,7 +39,15 @@
 
 export const NOTCH_DEFAULTS = {
   bandLoHz: 50,          // search band: covers mains fundamentals up to
-  bandHiHz: 460,         //   just past the pitch ceiling
+  bandHiHz: 460,         //   just past the 400 Hz DISPLAY ceiling. The
+                         //   detector searches to 800 since 2026-10-03,
+                         //   but decodes above 400 post as unvoiced, so a
+                         //   460-800 Hz tonal interferer can no longer
+                         //   paint (synthetic 520/640 Hz whines: 100 %
+                         //   painted at HALF pitch with the old 400 Hz
+                         //   search ceiling, 0 % now). Not widened: a
+                         //   wider band would also promote held sung
+                         //   notes in that range to notches.
   observeEveryChunks: 4, // ~100 ms at the 25 ms chunk cadence
   obsLen: 8192,          // 512 ms observation window (1.95 Hz resolution
                          //   — long enough to RESOLVE vibrato: a sung
