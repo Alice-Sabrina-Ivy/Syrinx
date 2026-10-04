@@ -48,9 +48,14 @@ export function SessionHistory() {
     // show it without duration/stats. Re-query when a finalize announces
     // completion.
     window.addEventListener("syrinx:session-finalized", load);
+    // Delete-all / import in the settings overlay (which renders OVER
+    // this still-mounted list) — without this the list kept showing
+    // deleted sessions and missed imported ones.
+    window.addEventListener("syrinx:data-changed", load);
     return () => {
       cancelled = true;
       window.removeEventListener("syrinx:session-finalized", load);
+      window.removeEventListener("syrinx:data-changed", load);
     };
   }, []);
 
