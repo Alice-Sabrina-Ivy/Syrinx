@@ -170,6 +170,18 @@ async function _createAudioContextSource(stream, opts) {
     opts.onError?.({ where: "track-ended", message: TRACK_ENDED_MESSAGE });
   };
   for (const t of tracks) t.addEventListener("ended", onTrackEnded);
+  // A track that ended before the listener existed (unplugged or revoked
+  // while addModule was fetching the worklet) never fires "ended" again —
+  // the source node would feed silence forever behind a "running" UI.
+  // Fail the start instead, as the MSTP path does before its first frame.
+  if (tracks.length === 0 || tracks.some((t) => t.readyState === "ended")) {
+    closed = true;
+    for (const t of tracks) t.removeEventListener("ended", onTrackEnded);
+    try { mediaSrc.disconnect(); } catch { /* ignore */ }
+    try { workletNode.disconnect(); } catch { /* ignore */ }
+    try { audioCtx.close(); } catch { /* ignore */ }
+    throw new Error(TRACK_ENDED_MESSAGE);
+  }
 
   // A context created outside a user-activation window (strict autoplay
   // configs; activation expiring during the multi-second getUserMedia
