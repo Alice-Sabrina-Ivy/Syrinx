@@ -22,12 +22,25 @@ import { computeSummaryStats } from "./sessionStats";
 const APP_STARTED_AT = Date.now();
 const LOCK_PREFIX = "syrinx-recording-";
 
+// Sessions recording in THIS tab right now (History labels only these
+// "recording…"; an unfinalized row that isn't live — interrupted, or
+// imported mid-recording — shows no duration until repaired).
+const liveSessionIds = new Set();
+export function isLiveSession(sessionId) {
+  return liveSessionIds.has(sessionId);
+}
+
 // Hold the "recording in progress" lock for a session. Returns a release
 // function (idempotent; safe to call before the lock is even granted).
 export function holdRecordingLock(sessionId) {
-  let release = () => {};
+  liveSessionIds.add(sessionId);
+  let releaseLock = () => {};
+  const release = () => {
+    liveSessionIds.delete(sessionId);
+    releaseLock();
+  };
   if (typeof navigator === "undefined" || !navigator.locks?.request) return release;
-  const held = new Promise((resolve) => { release = resolve; });
+  const held = new Promise((resolve) => { releaseLock = resolve; });
   navigator.locks
     .request(LOCK_PREFIX + sessionId, () => held)
     .catch(() => { /* locks unavailable (e.g. opaque origin) — best effort */ });
