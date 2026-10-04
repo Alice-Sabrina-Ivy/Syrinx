@@ -175,6 +175,14 @@ console.log("\npost-gap register re-acquisition (2026-10-03)");
   check("level defined immediately after the accept", g.level() !== null && Math.abs(g.level() - 225) < 2,
     `level ${g.level()}`);
   check("octave-down frame right after the accept is suppressed", g.push(112.5) === false);
+}
+{
+  // Octave-up on its own fresh gate: in the block above it would be the
+  // SECOND frame after the accept (the x0.5 frame already refilled the ring),
+  // which the old gate also suppressed (2026-10-04 review follow-up).
+  const g = established(createPaintGate(), 110, 30);
+  gap(g, REACQUIRE_GAP_FRAMES);
+  for (let i = 0; i < REACQUIRE_SUSTAIN; i++) g.push(225);
   check("octave-up frame right after the accept is suppressed", g.push(450) === false);
 }
 {
