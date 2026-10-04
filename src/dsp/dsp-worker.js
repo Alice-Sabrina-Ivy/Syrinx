@@ -1,16 +1,25 @@
 // dsp-worker.js — Web Worker that performs DSP analysis off the main thread
-// Formant extraction (Burg LPC, src/dsp/formants.js), spectral tilt, HNR,
-// intensity, CPP. Pitch detection lives in pitch-worker.js (Boersma-AC);
-// the main thread relays the latest pitch back via "pitch-hint" messages so
-// this worker can use it for pitch-adaptive formant analysis (Praat-style
-// male-vs-female analysis rate + formant ceiling selection).
+// Formant extraction (Burg LPC, src/dsp/formants.js), spectral tilt, HNR
+// (window-corrected AC, src/dsp/hnr.js), intensity, CPP. Pitch detection
+// lives in pitch-worker.js (Boersma-AC); the main thread relays the latest
+// pitch back via "pitch-hint" messages so this worker can use it for
+// pitch-adaptive formant analysis (Praat-style male-vs-female analysis rate
+// + formant ceiling selection).
 
 import { computeCPP, resetCppState } from "./cpp.js";
 import { configureFormants, extractFormants } from "./formants.js";
+import { computeHNR } from "./hnr.js";
 
 const WINDOW_MS = 50;
 let sampleRate = 48000;
 let windowSize = Math.floor(sampleRate * WINDOW_MS / 1000);
+// HNR uses a longer frame than the 50 ms analysis window: 70 ms = 5.25
+// periods of the 75 Hz floor, which keeps the window-corrected ACF's
+// ~4.8-period resonance below the search range (see hnr.js). Taken from
+// the ring buffer (capacity 2 x WINDOW_MS = 100 ms, steady-state fill
+// 100 ms with 25 ms chunks).
+const HNR_WINDOW_MS = 70;
+let hnrSize = Math.floor(sampleRate * HNR_WINDOW_MS / 1000);
 
 // Pre-allocated ring buffer to avoid GC pressure from repeated allocations.
 // Uses a fixed-size buffer with a write position; oldest data is overwritten.
@@ -42,10 +51,6 @@ let _lastKnownPitch = null;
 const _tiltRe = new Float64Array(2048);
 const _tiltIm = new Float64Array(2048);
 
-// HNR: 4096-point FFT (fixed, accommodates 2048 samples zero-padded)
-const _hnrRe = new Float64Array(4096);
-const _hnrIm = new Float64Array(4096);
-
 function processChunk(buffer, contextTime) {
   const chunkReceiveTime = performance.now();
   // Wall-clock receipt time, used by the main thread (diag mode) to compute
@@ -75,7 +80,9 @@ function processChunk(buffer, contextTime) {
   if (analysisCount % 6 === 0) {
     formants = extractFormants(window, _lastKnownPitch);
     spectralTilt = computeSpectralTilt(window, sampleRate);
-    hnr = computeHNR(window, sampleRate);
+    hnr = ringLen >= hnrSize
+      ? computeHNR(ringBuffer.subarray(ringLen - hnrSize, ringLen), sampleRate)
+      : null;
   }
   // CPP runs every frame (not throttled like the others). Original
   // 6th-frame cadence dropped during the WS2 methodology investigation
@@ -150,6 +157,7 @@ self.onmessage = (e) => {
     sampleRate = e.data.sampleRate;
     if (e.data.diag) _diag = true;
     windowSize = Math.floor(sampleRate * WINDOW_MS / 1000);
+    hnrSize = Math.floor(sampleRate * HNR_WINDOW_MS / 1000);
     // Formant extractor (src/dsp/formants.js): decimation, anti-alias FIR
     // and zero-GC scratch buffers for this sample rate / window length.
     configureFormants(sampleRate, windowSize);
@@ -317,43 +325,4 @@ function computeSpectralTilt(buffer, sr) {
   return 10 * Math.log10(lowEnergy / highEnergy);
 }
 
-// --- HNR: Harmonics-to-Noise Ratio (FFT-based autocorrelation) ---
-
-function computeHNR(buffer, sr) {
-  const maxN = 2048;
-  const n = Math.min(buffer.length, maxN);
-  const offset = buffer.length - n;
-  const fftLen = 4096; // Fixed: 2048 samples zero-padded to 4096
-  const re = _hnrRe;
-  const im = _hnrIm;
-
-  // Zero-fill and load signal
-  re.fill(0);
-  im.fill(0);
-  for (let i = 0; i < n; i++) re[i] = buffer[offset + i];
-
-  fft(re, im);
-
-  // Power spectrum in-place
-  for (let i = 0; i < fftLen; i++) {
-    re[i] = re[i] * re[i] + im[i] * im[i];
-    im[i] = 0;
-  }
-
-  fft(re, im);
-  const r0 = re[0] / fftLen;
-  if (r0 === 0) return null;
-
-  const minLag = Math.floor(sr / 600);
-  const maxLag = Math.min(Math.floor(sr / 75), Math.floor(n / 2));
-  let maxVal = 0;
-
-  for (let lag = minLag; lag < maxLag; lag++) {
-    const normalized = (re[lag] / fftLen) / r0;
-    if (normalized > maxVal) maxVal = normalized;
-  }
-
-  if (maxVal <= 0) return null;
-  maxVal = Math.min(maxVal, 0.99);
-  return 10 * Math.log10(maxVal / (1 - maxVal));
-}
+// HNR lives in hnr.js (window-corrected autocorrelation, 2026-10-03).
