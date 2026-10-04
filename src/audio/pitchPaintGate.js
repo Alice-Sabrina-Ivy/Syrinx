@@ -150,8 +150,16 @@ export function createPaintGate({
       ? Math.abs(semitones(Math.max(...win), Math.min(...win)))
       : 0;
     if (win.length >= need && spread < excursionSemi) {
-      // Sustained, internally-consistent new level — accept it.
+      // Sustained, internally-consistent new level — accept it. The ring
+      // is padded to MIN_RING_FOR_LEVEL with the accepted run's median
+      // (2026-10-04): a re-acquisition accept holds only REACQUIRE_SUSTAIN
+      // (4) values < MIN_RING_FOR_LEVEL (5), so level() was null on the
+      // next frame and that frame painted ungated — any value, an octave
+      // error included (review finding; measurements/pitch-display-gate-
+      // redesign-2026-10-03.md §2026-10-04).
       ring = win.slice(-levelRingLen);
+      const accepted = median(ring);
+      while (ring.length < MIN_RING_FOR_LEVEL) ring.push(accepted);
       onStreak = win.length;
       offRun = [];
       return painted();

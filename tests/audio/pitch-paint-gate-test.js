@@ -164,6 +164,34 @@ console.log("\npost-gap register re-acquisition (2026-10-03)");
     firstTrue(out) === REACQUIRE_SUSTAIN - 1, `first paint at ${firstTrue(out)}`);
 }
 {
+  // 2026-10-04 review finding: a re-acquisition accept left only
+  // REACQUIRE_SUSTAIN (4) values in the level ring, under the 5 the level
+  // needs, so the very next frame was ungated and painted ANY value — an
+  // octave error included. The level must be defined right after the accept.
+  const g = established(createPaintGate(), 110, 30);
+  gap(g, REACQUIRE_GAP_FRAMES);
+  const acc = []; for (let i = 0; i < REACQUIRE_SUSTAIN; i++) acc.push(g.push(225));
+  check("re-acquisition accept paints on its last frame", acc[REACQUIRE_SUSTAIN - 1] === true);
+  check("level defined immediately after the accept", g.level() !== null && Math.abs(g.level() - 225) < 2,
+    `level ${g.level()}`);
+  check("octave-down frame right after the accept is suppressed", g.push(112.5) === false);
+  check("octave-up frame right after the accept is suppressed", g.push(450) === false);
+}
+{
+  const g = established(createPaintGate(), 110, 30);
+  gap(g, REACQUIRE_GAP_FRAMES);
+  for (let i = 0; i < REACQUIRE_SUSTAIN; i++) g.push(225);
+  check("on-level frame right after the accept keeps painting", g.push(226) === true);
+}
+{
+  // Same with a slightly wobbly accepted run: the pad value is the run's median.
+  const g = established(createPaintGate(), 110, 30);
+  gap(g, REACQUIRE_GAP_FRAMES);
+  [222, 228, 224, 226].forEach((hz) => g.push(hz));
+  check("pad uses the accepted run's median", Math.abs(g.level() - 226) < 0.01, `level ${g.level()}`);
+  check("x0.5 of a wobbly accepted run is suppressed", g.push(113) === false);
+}
+{
   // Held frames count as gap frames (consonant bridged by the pitch hold).
   const g = established(createPaintGate(), 110, 30);
   for (let i = 0; i < REACQUIRE_GAP_FRAMES; i++) g.push(110, { fresh: false });
