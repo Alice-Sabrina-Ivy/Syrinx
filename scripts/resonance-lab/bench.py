@@ -132,7 +132,11 @@ def leaderboard():
     json.dump(rows, open(os.path.join(RESULTS, "leaderboard.json"), "w"), indent=1)
     L = ["# Resonance-validity leaderboard", "",
          "Scores oriented larger = more feminine-typical. G = candidate's own men-women gap (test-clean speaker medians).",
-         "R2/R3/R5/R6 in units of G. Pass rubric: " + "; ".join(f"**{k}** {v}" for k, v in RUBRIC.items()), ""]
+         "R2/R3/R5/R6 in units of G. 'pitch-alone flips' = share of men (+12 st PSOLA) / women (-12 st) "
+         "readouts crossing the men/women midpoint, base rate of the unmanipulated crops in brackets — the "
+         "tail that a median-slope R2 can hide for saturating scores. Additivity = (dPitch-only + dFormant-only) "
+         "/ dCombined (1 = additive, << 1 = the score needs both cues at once). Toward-class = median move of men "
+         "toward female / women toward male, in G (a saturating score is flat the other way). Pass rubric: " + "; ".join(f"**{k}** {v}" for k, v in RUBRIC.items()), ""]
     for split, quick in (("test", False), ("test", True), ("dev", False), ("dev", True)):
         rs = [r for r in rows if r["split"] == split and r["quick"] == quick]
         if not rs:
@@ -141,9 +145,10 @@ def leaderboard():
         r1s = "r1_test" if split == "test" else "r1_dev"
         ms = "manip_test" if split == "test" else "manip_dev"
         L += ["| candidate | R1 AUC 2s | **5s** | utt | spk | R2 leak praat | world | R3 sens praat | world | "
-              "sign±5% praat | world | R3@+8st sens | sign | R4 | R5 flicker | held SD | t-stable s | "
+              "sign±5% praat | world | R3@+8st sens | sign | pitch-alone flips M+12st / F−12st (base) | "
+              "M→F +12st×1.15 additivity | toward-class Δ/G pitch M+12 / F−12 | formant M×1.15 / F×0.85 | R4 | R5 flicker | held SD | t-stable s | "
               "R6 S−L | R−L | S−R | R−L pitch-corr | order | R7 boys pos | girls pos | R8 ms/s | MB | PASS |",
-              "|" + "---|" * 28]
+              "|" + "---|" * 32]
         for r in sorted(rs, key=lambda r: r["name"]):
             a = r["R1"][r1s]
             m = r["R2R3"][ms]
@@ -160,6 +165,11 @@ def leaderboard():
                 _f(m.get("praat_R3")) + flag("R3"), _f(m.get("world_R3")),
                 _f(m.get("praat_sign5")), _f(m.get("world_sign5")),
                 _f(m.get("praat_R3hi")), _f(m.get("praat_sign5hi")),
+                f"{_f(m.get('praat_men_p+12_cross'))} / {_f(m.get('praat_women_p-12_cross'))} "
+                f"({_f(m.get('men_orig_cross'))} / {_f(m.get('women_orig_cross'))})",
+                _f(m.get("praat_mf+12_f1.15_additivity")),
+                f"{_f(m.get('praat_toward_m_p+12'))} / {_f(m.get('praat_toward_f_p-12'))}",
+                f"{_f(m.get('praat_toward_m_f1.15'))} / {_f(m.get('praat_toward_f_f0.85'))}",
                 _f(r4.get("R4")) + flag("R4"), _f(r5.get("flicker")), _f(r5.get("held_sd")),
                 _f(r5.get("time_to_stable_s"), 1),
                 _f(r6.get("S_minus_L")), _f(r6.get("R_minus_L")), _f(r6.get("S_minus_R")),

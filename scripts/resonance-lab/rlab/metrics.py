@@ -186,19 +186,34 @@ def manip_metrics(win, man, agg, G, mid, ref_sexes=("m", "f")):
             out[f"{eng}_sign5hi{sfx}"] = float(sg.mean()) if len(sg) else np.nan
         # pitch-alone flips and combined-move crossings relative to the corpus midpoint
         men, wom = e[e.sex == "m"], e[e.sex == "f"]
+        # TOWARD-other-class median deltas / G. A saturating score (e.g. a classifier probability)
+        # is flat in the same-class direction, which dilutes the symmetric slopes above; these
+        # one-sided figures expose the leak/sensitivity where the score can actually move.
+        for lab, sub, kind, val in (("m_p+12", men, "pitch", 12), ("f_p-12", wom, "pitch", -12),
+                                    ("m_p+8", men, "pitch", 8), ("f_p-8", wom, "pitch", -8),
+                                    ("m_f1.15", men, "formant", 1.15), ("f_f0.85", wom, "formant", 0.85),
+                                    ("m_f1.05", men, "formant", 1.05), ("f_f0.95", wom, "formant", 0.95)):
+            sel = sub[(sub.kind == kind) & ((sub.st == val) if kind == "pitch" else np.isclose(sub.fs, val))]
+            out[f"{eng}_toward_{lab}"] = float(np.nanmedian(sel.delta)) / G * (1 if lab[0] == "m" else -1) \
+                if len(sel) else np.nan
         p12 = men[men.cond == "p+12"].r
         out[f"{eng}_men_p+12_cross"] = float((p12 > mid).mean()) if len(p12) else np.nan
         w12 = wom[wom.cond == "p-12"].r
         out[f"{eng}_women_p-12_cross"] = float((w12 < mid).mean()) if len(w12) else np.nan
-        for cond, sub, fs, gt in (("mf+12_f1.15", men, 1.15, True), ("fm-12_f0.85", wom, 0.85, False)):
+        for cond, sub, st, fs, gt in (("mf+12_f1.15", men, 12, 1.15, True), ("fm-12_f0.85", wom, -12, 0.85, False)):
             c = sub[sub.cond == cond]
             if len(c):
                 out[f"{eng}_{cond}_cross"] = float(((c.r > mid) if gt else (c.r < mid)).mean())
-                fo = sub[(sub.kind == "formant") & np.isclose(sub.fs, fs)].set_index("src_item").delta
-                cd = c.set_index("src_item").delta
-                share = (fo / cd).replace([np.inf, -np.inf], np.nan)
-                out[f"{eng}_{cond}_resonance_share"] = float(np.nanmedian(share)) if len(share) else np.nan
-                out[f"{eng}_{cond}_delta_over_G"] = float(np.nanmedian(cd)) / G
+                # ratios of MEDIAN deltas (per-item ratios are heavy-tailed): how much of the combined
+                # move each cue produces alone, and whether the two add up (additivity 1 = additive,
+                # < 1 = the score needs both cues together)
+                mc = float(np.nanmedian(c.delta))
+                mf_ = float(np.nanmedian(sub[(sub.kind == "formant") & np.isclose(sub.fs, fs)].delta))
+                mp_ = float(np.nanmedian(sub[(sub.kind == "pitch") & (sub.st == st)].delta))
+                out[f"{eng}_{cond}_delta_over_G"] = mc / G
+                out[f"{eng}_{cond}_resonance_share"] = mf_ / mc if mc else np.nan
+                out[f"{eng}_{cond}_pitch_share"] = mp_ / mc if mc else np.nan
+                out[f"{eng}_{cond}_additivity"] = (mf_ + mp_) / mc if mc else np.nan
     return out
 
 
