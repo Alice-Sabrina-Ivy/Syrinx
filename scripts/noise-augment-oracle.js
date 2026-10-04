@@ -116,6 +116,19 @@ function classify(reported, truth) {
   return "other";
 }
 
+// postFilter(decoded, notch, guard, frameBuf): pitch-worker processChunk's
+// post-decode chain, in its order — ghost veto at the notch state of decode
+// time (skipped when no notch runs), decodes above the display ceiling
+// posted as unvoiced BEFORE the guard (2026-10-03), then the debounced
+// harmonic guard on the decoded frame's own buffer. Shared by the decode
+// loops AND the end-of-stream tracker flush.
+function postFilter(v, notch, guard, frameBuf) {
+  if (v > 0 && notch && isNearNotch(v, notch.activeLines())) v = null;
+  if (v > PITCH_DISPLAY_RANGE.high) v = null;
+  if (v > 0 && !guard.check(frameBuf, v, SR)) v = null;
+  return v;
+}
+
 function makeNoise(name, len, sources) {
   if (name === "babble") return babble(len, sources);
   const gen = NOISE_TYPES[name];
@@ -162,16 +175,16 @@ async function runPitch() {
       delayLine.push(Float32Array.from(buf));
       if (delayLine.length > L2 + 1) delayLine.shift();
       if (fill < N) { pt.emit({ voiced: [], unvoicedStrength: ac.config.voicingThreshold }); out.push(null); continue; }
-      let v = pt.emit(ac.candidates(buf));
-      if (v > 0 && notch && isNearNotch(v, notch.activeLines())) v = null; // ghost veto, as pitch-worker
-      // pitch-worker parity (2026-10-03): decodes above the display
-      // ceiling are posted as unvoiced, before the harmonic guard.
-      if (v > PITCH_DISPLAY_RANGE.high) v = null;
-      if (v > 0 && !guard.check(delayLine[0], v, SR)) v = null;
-      out.push(v);
+      out.push(postFilter(pt.emit(ac.candidates(buf)), notch, guard, delayLine[0]));
     }
-    // re-align tracker delay (L=2) like ac-tuning-sweep does
-    const tail = pt.flush();
+    // re-align tracker delay (L=2) like ac-tuning-sweep does. The flushed
+    // trailing frames go through the SAME ghost veto -> above-range null ->
+    // harmonic guard as the loop (2026-10-04): they used to be appended raw,
+    // so every track's last L hops — always inside the noise-only tail —
+    // skipped all three and supplied essentially all of the reported tail
+    // false-voicing (e.g. pink +10 dB 0.8 % -> 0.0 %).
+    // measurements/noise-notch-held-note-robustness-2026-10-04.md §2
+    const tail = pt.flush().map((v, j) => postFilter(v, notch, guard, delayLine[1 + j]));
     const vals = out.slice(L2).concat(tail);
     return out.map((_, k) => vals[k] ?? null);
   }
@@ -292,15 +305,12 @@ async function runGender() {
       if (gDelay.length > pt.config.lookback + 1) gDelay.shift();
       fill = Math.min(N, fill + 400);
       if (fill < N) { pt.emit({ voiced: [], unvoicedStrength: ac.config.voicingThreshold }); out.push(false); continue; }
-      let decoded = pt.emit(ac.candidates(buf));
-      // ghost-voicing veto + harmonic guard, as in pitch-worker
-      if (decoded > 0 && isNearNotch(decoded, notch.activeLines())) decoded = null;
-      if (decoded > PITCH_DISPLAY_RANGE.high) decoded = null; // pitch-worker parity (2026-10-03)
-      if (decoded > 0 && !gGuard.check(gDelay[0], decoded, SR)) decoded = null;
-      out.push(decoded > 0);
+      // ghost-voicing veto + above-range null + harmonic guard, as in pitch-worker
+      out.push(postFilter(pt.emit(ac.candidates(buf)), notch, gGuard, gDelay[0]) > 0);
     }
     const L2 = pt.config.lookback;
-    const tail = pt.flush().map((v) => v > 0);
+    // flushed trailing frames through the same post-decode chain (2026-10-04)
+    const tail = pt.flush().map((v, j) => postFilter(v, notch, gGuard, gDelay[1 + j]) > 0);
     const vals = out.slice(L2).concat(tail);
     return { voiced: out.map((_, k) => vals[k] ?? false), notchFreqs: freqs };
   }
