@@ -2,17 +2,27 @@
 // thermometer side by side (stacked on mobile), with vocal-weight + HNR
 // stats + session controls below. Handles session recording: buffers
 // frames and writes to IndexedDB every ~1s.
+//
+// App keeps this component mounted for the whole time the pipeline runs
+// (so a recording survives switching to the Pitch / History tabs) and
+// passes active=false while another tab is showing: it then renders
+// nothing — the canvases unmount, so no rAF loops run hidden, and they
+// remount + size themselves fresh from the live refs when shown again —
+// while the recording state, timer, and flush interval keep running.
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { PitchTrace } from "./PitchTrace";
 import { ResonanceMeter } from "./ResonanceMeter";
 import { VocalWeightGauge } from "./VocalWeightGauge";
 import { DEFAULT_PITCH_TARGET, DEFAULT_F2_TARGET } from "../utils/constants";
+import { computeSummaryStats } from "../utils/sessionStats";
+import { holdRecordingLock } from "../utils/sessionRepair";
 import db from "../db";
 
 const FRAME_FLUSH_INTERVAL = 1000; // Flush buffered frames every 1s
 
 export function CombinedDashboard({
+  active = true,
   voiced,
   holding,
   pitch,
@@ -32,6 +42,9 @@ export function CombinedDashboard({
   const [recording, setRecording] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [notes, setNotes] = useState("");
+  // Shown under the session controls when a recording can't start
+  // (IndexedDB unavailable — site data blocked, some private modes).
+  const [recordError, setRecordError] = useState(null);
   const timerRef = useRef(null);
   const startTimeRef = useRef(null);
 
@@ -45,12 +58,39 @@ export function CombinedDashboard({
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
 
+  // Releases the "recording in progress" Web Lock for the current session
+  // (see sessionRepair.js — another tab's start-up repair skips sessions
+  // whose lock is held, so a live recording is never "repaired").
+  const releaseLockRef = useRef(null);
+
   // Re-entry guard for startRecording: `recording` state only flips
   // after the awaited db.sessions.add resolves, so a double-click (or a
   // slow IndexedDB open) could otherwise run startRecording twice —
   // orphaning the first session row and leaking its timer + flush
   // intervals (the refs get overwritten by the second call).
   const startingRef = useRef(false);
+
+  // Same guard for stopRecording: `recording` stays true (button still
+  // reads "Stop & Save") for the whole async finalize — a frames
+  // read-back that takes hundreds of ms on a long session. A second
+  // click would otherwise run stopRecording again: its finalize returns
+  // early, it clears the notes before the first finalize has written
+  // them, and a third click could start a new recording mid-finalize.
+  // `stopping` mirrors the ref for rendering (button disabled, "Saving…").
+  const stoppingRef = useRef(false);
+  const [stopping, setStopping] = useState(false);
+
+  // False once the dashboard unmounts (pipeline stopped / errored).
+  // startRecording awaits IndexedDB twice before it installs the frame
+  // callback, intervals and MediaRecorder; an unmount during those awaits
+  // finds nothing to finalize yet, so startRecording must notice and back
+  // out itself — otherwise it leaks the intervals + a frame callback and
+  // may start a MediaRecorder on the already-stopped stream.
+  const mountedRef = useRef(false);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   // Flush buffered frames to IndexedDB
   const flushFrames = useCallback(async () => {
@@ -78,8 +118,9 @@ export function CombinedDashboard({
 
   // Start recording
   const startRecording = useCallback(async () => {
-    if (startingRef.current || sessionIdRef.current !== null) return;
+    if (startingRef.current || stoppingRef.current || sessionIdRef.current !== null) return;
     startingRef.current = true;
+    setRecordError(null);
     try {
       const now = Date.now();
       recordingStartRef.current = now;
@@ -91,6 +132,7 @@ export function CombinedDashboard({
       // direction would keep recording mic audio against the user's
       // expressed setting.
       const settings = await db.settings.get("default");
+      if (!mountedRef.current) return;
       const recordAudio = !!settings?.recordAudio;
 
       // Create session in DB
@@ -99,7 +141,14 @@ export function CombinedDashboard({
         sessionType: "freeform",
         notes: "",
       });
+      if (!mountedRef.current) {
+        // Unmounted while the row was being created: nothing will ever
+        // finalize it, so remove it instead of leaving an empty session.
+        db.sessions.delete(id).catch((err) => console.error("Failed to remove abandoned session:", err));
+        return;
+      }
       sessionIdRef.current = id;
+      releaseLockRef.current = holdRecordingLock(id);
 
       // Set up frame callback
       frameCallbackRef.current = (frame) => {
@@ -158,6 +207,14 @@ export function CombinedDashboard({
         setElapsed(Math.floor((Date.now() - startTimeRef.current) / 1000));
       }, 1000);
       setRecording(true);
+    } catch (err) {
+      // Only the two IndexedDB awaits above can reject, and both run
+      // before anything is installed — nothing to unwind, just say so
+      // instead of an unhandled rejection and a button that does nothing.
+      console.error("Failed to start recording:", err);
+      if (mountedRef.current) {
+        setRecordError("Couldn't start recording — session storage is unavailable in this browser.");
+      }
     } finally {
       startingRef.current = false;
     }
@@ -176,9 +233,10 @@ export function CombinedDashboard({
   // navigates away or stops the audio pipeline mid-record — still gets
   // endedAt + summary stats written. Sets sessionIdRef.current = null up
   // front so concurrent calls (button + unmount race) deduplicate.
+  // Resolves true only for the call that actually finalized.
   const finalizeRecordingDb = useCallback(async () => {
     const sessionId = sessionIdRef.current;
-    if (!sessionId) return;
+    if (!sessionId) return false;
     sessionIdRef.current = null;
 
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
@@ -199,8 +257,8 @@ export function CombinedDashboard({
     //   1. Stop & Save button — recorder is still active, we call stop()
     //      and await onstop. The browser flushes any pending data via a
     //      final dataavailable event before firing onstop.
-    //   2. Audio pipeline torn down first (Stop Listening, status→error,
-    //      tab change unmount) — useAudioPipeline.stop() ends the mic
+    //   2. Audio pipeline torn down first (Stop Listening, status→error
+    //      unmount) — useAudioPipeline.stop() ends the mic
     //      tracks, the recorder auto-transitions to "inactive", and the
     //      browser dispatches its final dataavailable event before
     //      firing stop. By the time we run, audioChunksRef is fully
@@ -245,18 +303,36 @@ export function CombinedDashboard({
     });
 
     recordingStartRef.current = null;
+    releaseLockRef.current?.();
+    releaseLockRef.current = null;
 
-    // Announce completion so a SessionHistory that mounted DURING the
-    // async finalize (tab switch away from the dashboard is exactly what
-    // unmount-finalize means) re-queries and picks up the endedAt +
-    // stats it read too early.
+    // Announce completion so a SessionHistory that loaded DURING the
+    // async finalize re-queries and picks up the endedAt + stats it read
+    // too early.
     window.dispatchEvent(new CustomEvent("syrinx:session-finalized"));
+    return true;
   }, [frameCallbackRef]);
 
   // Stop recording + compute summary stats (button-click path).
   const stopRecording = useCallback(async () => {
-    await finalizeRecordingDb();
-    setRecording(false);
+    if (stoppingRef.current) return;
+    stoppingRef.current = true;
+    setStopping(true);
+    try {
+      // The notes now live on the finalized session row — clear the
+      // input so they don't carry into the next session. Only after a
+      // successful finalize by THIS call: on failure the text stays put.
+      if (await finalizeRecordingDb()) setNotes("");
+    } finally {
+      // finalize tore the recording down (intervals, frame callback)
+      // before anything could throw — never leave the button on
+      // "Stop & Save" for a recording that no longer exists.
+      stoppingRef.current = false;
+      if (mountedRef.current) {
+        setStopping(false);
+        setRecording(false);
+      }
+    }
   }, [finalizeRecordingDb]);
 
   // Stash the latest finalize fn in a ref so the unmount cleanup can call
@@ -289,10 +365,15 @@ export function CombinedDashboard({
   // any in-progress recording: the session row is about to be wiped, so
   // finalizing would just write into the void while the flush interval
   // keeps attaching frames to a deleted session id. Drop everything
-  // in-memory and reset the UI.
+  // in-memory and reset the UI. Deleting the in-progress session itself
+  // from History (reachable mid-recording now that tab switches don't
+  // end it) sends the same event with detail.sessionId; other sessions'
+  // deletes leave the recording alone.
   useEffect(() => {
-    const abort = () => {
+    const abort = (e) => {
       if (sessionIdRef.current === null) return;
+      const target = e?.detail?.sessionId;
+      if (target != null && target !== sessionIdRef.current) return;
       sessionIdRef.current = null;
       frameBufferRef.current = [];
       if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
@@ -304,12 +385,36 @@ export function CombinedDashboard({
       mediaRecorderRef.current = null;
       audioChunksRef.current = [];
       recordingStartRef.current = null;
+      releaseLockRef.current?.();
+      releaseLockRef.current = null;
       setRecording(false);
       setElapsed(0);
+      setNotes(""); // the session they annotated is gone
     };
     window.addEventListener("syrinx:abort-recording", abort);
     return () => window.removeEventListener("syrinx:abort-recording", abort);
   }, [frameCallbackRef]);
+
+  // Page going away (tab close, navigation) or into the background (where
+  // mobile browsers may discard it without another event): flush the
+  // buffered frames, best-effort, so the start-up repair
+  // (sessionRepair.js) has them. Deliberately NOT a finalize — a mobile
+  // tab switch fires visibilitychange→hidden and is not the end of the
+  // session.
+  useEffect(() => {
+    const flushIfRecording = () => {
+      if (sessionIdRef.current !== null) flushFrames();
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") flushIfRecording();
+    };
+    window.addEventListener("pagehide", flushIfRecording);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("pagehide", flushIfRecording);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [flushFrames]);
 
   const formatTime = (secs) => {
     const m = Math.floor(secs / 60);
@@ -328,10 +433,17 @@ export function CombinedDashboard({
 
   const statOpacity = !voiced && !holding ? "opacity-40" : holding ? "opacity-50" : "";
 
+  // Another tab is showing: stay mounted (recording continues), render
+  // nothing. After all hooks — the hook order must not change.
+  if (!active) return null;
+
   return (
-    <div className="flex-1 flex flex-col w-full max-w-6xl min-h-0">
+    // min-h-0 only at lg: below lg the parent scrolls, and these must not
+    // shrink below their content (shrinking is what let the traces row
+    // overflow onto the stats + session controls).
+    <div className="flex-1 flex flex-col w-full max-w-6xl lg:min-h-0">
       {/* Two scrolling traces: pitch (left) + resonance (right), stacked on mobile */}
-      <div className="lg:flex-1 flex flex-col lg:flex-row gap-3 min-h-0">
+      <div className="lg:flex-1 flex flex-col lg:flex-row gap-3 lg:min-h-0">
         {/* Pitch trace — 50% */}
         <div className="lg:w-1/2 min-h-[180px] lg:min-h-0">
           <PitchTrace
@@ -427,7 +539,8 @@ export function CombinedDashboard({
           <div className="flex items-center gap-2">
             <button
               onClick={recording ? stopRecording : startRecording}
-              className={`flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-medium transition-colors cursor-pointer border ${
+              disabled={stopping}
+              className={`flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-medium transition-colors cursor-pointer border disabled:opacity-60 disabled:cursor-wait ${
                 recording
                   ? "bg-red-500/15 text-red-400 border-red-500/30 hover:bg-red-500/25"
                   : "bg-neutral-800/60 text-neutral-300 border-neutral-700 hover:bg-neutral-700/60"
@@ -438,7 +551,7 @@ export function CombinedDashboard({
                   recording ? "bg-red-400 animate-pulse" : "bg-neutral-500"
                 }`}
               />
-              {recording ? "Stop & Save" : "Save Session"}
+              {stopping ? "Saving…" : recording ? "Stop & Save" : "Save Session"}
             </button>
 
             {/* Recording indicator + timer */}
@@ -462,68 +575,10 @@ export function CombinedDashboard({
             className="bg-neutral-800/60 border border-neutral-700 rounded-lg px-3 py-1.5 text-sm text-neutral-300 placeholder:text-neutral-600 focus:outline-none focus:border-neutral-500 w-48 sm:w-56"
           />
         </div>
+        {recordError && (
+          <p role="alert" className="text-xs text-red-400 text-center mt-2">{recordError}</p>
+        )}
       </div>
     </div>
   );
-}
-
-// Compute summary statistics from recorded frames
-function computeSummaryStats(frames) {
-  const voicedFrames = frames.filter((f) => f.voiced && f.f0 !== null);
-  const f0Values = voicedFrames.map((f) => f.f0);
-  const f2Values = voicedFrames.filter((f) => f.f2 !== null).map((f) => f.f2);
-  const f1Values = voicedFrames.filter((f) => f.f1 !== null).map((f) => f.f1);
-  const f3Values = voicedFrames.filter((f) => f.f3 !== null).map((f) => f.f3);
-  const tiltValues = voicedFrames.filter((f) => f.spectralTilt !== null).map((f) => f.spectralTilt);
-  const hnrValues = voicedFrames.filter((f) => f.hnr !== null).map((f) => f.hnr);
-
-  const avg = (arr) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
-  const med = (arr) => {
-    if (!arr.length) return null;
-    const sorted = [...arr].sort((a, b) => a - b);
-    const mid = Math.floor(sorted.length / 2);
-    return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-  };
-  const stdev = (arr) => {
-    if (arr.length < 2) return null;
-    const mean = avg(arr);
-    const variance = arr.reduce((sum, v) => sum + (v - mean) ** 2, 0) / (arr.length - 1);
-    return Math.sqrt(variance);
-  };
-
-  // Time in target calculations
-  const pitchInTarget = f0Values.filter(
-    (f0) => f0 >= DEFAULT_PITCH_TARGET.low && f0 <= DEFAULT_PITCH_TARGET.high
-  );
-  const f2InTarget = f2Values.filter((f2) => f2 >= DEFAULT_F2_TARGET.low);
-
-  // Estimate voiced duration. DSP analysis runs once per chunk arrival
-  // (default chunkMs = 25), not once per WINDOW_MS — so frames are ~25 ms
-  // apart in steady state. The earlier 50 ms constant double-counted.
-  const frameDurationMs = 25;
-  const voicedDurationSeconds = Math.round((voicedFrames.length * frameDurationMs) / 1000);
-
-  return {
-    avgF0: avg(f0Values),
-    medianF0: med(f0Values),
-    avgF1: avg(f1Values),
-    avgF2: avg(f2Values),
-    medianF2: med(f2Values),
-    avgF3: avg(f3Values),
-    avgSpectralTilt: avg(tiltValues),
-    avgHnr: avg(hnrValues),
-    // reduce instead of Math.min(...arr) — the spread operator can overflow
-    // engine arg-count limits on long sessions (60+ minutes of voiced
-    // frames at ~40 fps = >100K args).
-    pitchRangeLow: f0Values.length ? f0Values.reduce((m, v) => v < m ? v : m, Infinity) : null,
-    pitchRangeHigh: f0Values.length ? f0Values.reduce((m, v) => v > m ? v : m, -Infinity) : null,
-    pitchStdev: stdev(f0Values),
-    pctTimeInPitchTarget: f0Values.length
-      ? Math.round((pitchInTarget.length / f0Values.length) * 100)
-      : null,
-    pctTimeInResonanceTarget: f2Values.length
-      ? Math.round((f2InTarget.length / f2Values.length) * 100)
-      : null,
-    voicedDurationSeconds,
-  };
 }
