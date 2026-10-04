@@ -3,11 +3,13 @@
 // pipeline directly so the hot path stays untouched.
 //
 // Sections:
-//   1. Per-frame timing breakdown (current value + p95 over last 5s)
-//   2. Voicedness sparkline + pitch / RMS overlay (last 5s)
+//   1. Per-frame timing breakdown (current value + p95 + drift over the
+//      whole ~30 s frame ring — the header shows the actual window)
+//   2. Voicedness sparkline + pitch / RMS overlay (last 5 s of the ring)
 //   3. Audio context introspection (static, captured at start)
 //   4. Tap-to-display latency tracker
-//   5. "Snapshot last 5s" download button
+//   5. Snapshot download button (full ~30 s ring + 10 min low-res
+//      timeline + inference rings — see diag.js snapshot())
 //
 // The component is dynamically imported by App.jsx only when DIAG_ENABLED
 // so its Tailwind classes and helper code don't ship in production bundles.
@@ -22,6 +24,9 @@ import {
 } from "./diag";
 
 const REFRESH_HZ = 10; // overlay refresh rate; cheap because we read from refs
+// The sparkline plots only this much of the ~30 s ring (RING_CAP 1200 at
+// ~40 fps) — it used to plot the whole ring under a "Last 5s" label.
+const SPARKLINE_WINDOW_MS = 5000;
 
 function fmtMs(v, digits = 1) {
   if (v === null || v === undefined || !Number.isFinite(v)) return "—";
@@ -209,6 +214,11 @@ export default function DiagnosticOverlay() {
   }, []);
 
   const frames = diagState?.frames.toArray() ?? [];
+  // Anchored on the newest frame's own timestamp (not Date.now()) so
+  // render stays pure.
+  const sparkFrames = frames.length
+    ? frames.filter((fr) => fr.tEpochMs >= frames[frames.length - 1].tEpochMs - SPARKLINE_WINDOW_MS)
+    : frames;
   const stats = getTimingStats();
   const audio = diagState?.audio;
   const status = getStatus();
@@ -308,9 +318,9 @@ export default function DiagnosticOverlay() {
             <span className="text-orange-400">rms×4</span>
           </span>
         </div>
-        <Sparkline frames={frames} />
+        <Sparkline frames={sparkFrames} />
         <div className="grid grid-cols-3 gap-2 mt-1 text-[9px] text-neutral-400 font-mono">
-          <div>n={frames.length}</div>
+          <div>n={sparkFrames.length}</div>
           <div>queue={frames.length ? frames[frames.length - 1].pendingChunks : "—"}</div>
           <div>hidden={diagState?.framesWhileHidden ?? 0}</div>
         </div>
@@ -351,8 +361,9 @@ export default function DiagnosticOverlay() {
       <button
         onClick={downloadSnapshot}
         className="w-full bg-cyan-700 hover:bg-cyan-600 text-white text-[11px] py-1.5 rounded transition-colors"
+        title="Full-rate frame ring (~30 s) + 1 Hz low-res timeline (10 min) + inference rings, as JSON"
       >
-        Snapshot last 5s ↓
+        Snapshot ↓ (~30 s full-rate + 10 min low-res)
       </button>
     </div>
   );
