@@ -111,8 +111,13 @@ function App() {
     start();
   }
 
+  // h-dvh, not h-screen: on phones 100vh is the viewport with the URL bar
+  // HIDDEN, so with it showing the bottom row (Stop Listening) sat below
+  // the fold of a page that can't scroll. Every browser Tailwind 4
+  // supports (Safari 16.4+, Chrome 111+, Firefox 128+) has dvh, so no
+  // vh fallback is needed.
   return (
-    <div className="h-screen flex flex-col px-4 py-4 overflow-hidden">
+    <div className="h-dvh flex flex-col px-4 py-4 overflow-hidden">
       {/* Diagnostic overlay (only when ?diag=1) */}
       {DiagnosticOverlay && (
         <Suspense fallback={null}>
@@ -239,8 +244,13 @@ function App() {
               ))}
             </nav>
 
-            {/* Tab content */}
-            <div className="flex-1 flex flex-col min-h-0">
+            {/* Tab content. Scrolls below lg: the stacked dashboard
+                (pitch 180 px + meter 260 px minimums + stats + controls)
+                is taller than a phone's tab area (< ~870 px viewport), and
+                with nothing scrolling the meter overflowed onto the stats
+                and session controls. At lg the side-by-side layout fills
+                the height as before. */}
+            <div className="flex-1 flex flex-col min-h-0 overflow-y-auto lg:overflow-y-visible">
               {/* Always mounted while the pipeline runs: it owns the
                   session recording, and unmounting it finalizes the
                   recording — switching to Pitch/History used to end the

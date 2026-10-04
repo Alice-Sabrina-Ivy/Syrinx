@@ -417,9 +417,12 @@ export function CombinedDashboard({
   if (!active) return null;
 
   return (
-    <div className="flex-1 flex flex-col w-full max-w-6xl min-h-0">
+    // min-h-0 only at lg: below lg the parent scrolls, and these must not
+    // shrink below their content (shrinking is what let the traces row
+    // overflow onto the stats + session controls).
+    <div className="flex-1 flex flex-col w-full max-w-6xl lg:min-h-0">
       {/* Two scrolling traces: pitch (left) + resonance (right), stacked on mobile */}
-      <div className="lg:flex-1 flex flex-col lg:flex-row gap-3 min-h-0">
+      <div className="lg:flex-1 flex flex-col lg:flex-row gap-3 lg:min-h-0">
         {/* Pitch trace — 50% */}
         <div className="lg:w-1/2 min-h-[180px] lg:min-h-0">
           <PitchTrace
