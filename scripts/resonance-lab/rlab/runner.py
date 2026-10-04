@@ -1,5 +1,6 @@
 """Score a candidate over benchmark item sets, with on-disk caching."""
 import os
+import sys
 import json
 import time
 import shutil
@@ -40,12 +41,9 @@ def _init(spec):
     for k in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS"):
         os.environ[k] = "1"
     _CAND = load_candidate(spec)
-    try:
-        import torch
-        torch.set_num_threads(1)
-    except Exception:
-        pass
     _CAND.setup()
+    if "torch" in sys.modules:          # only if the candidate uses it (importing torch costs ~10 s/worker)
+        sys.modules["torch"].set_num_threads(1)
 
 
 def _job(args):
