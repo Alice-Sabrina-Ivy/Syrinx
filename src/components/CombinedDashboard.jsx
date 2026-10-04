@@ -70,6 +70,16 @@ export function CombinedDashboard({
   // intervals (the refs get overwritten by the second call).
   const startingRef = useRef(false);
 
+  // Same guard for stopRecording: `recording` stays true (button still
+  // reads "Stop & Save") for the whole async finalize — a frames
+  // read-back that takes hundreds of ms on a long session. A second
+  // click would otherwise run stopRecording again: its finalize returns
+  // early, it clears the notes before the first finalize has written
+  // them, and a third click could start a new recording mid-finalize.
+  // `stopping` mirrors the ref for rendering (button disabled, "Saving…").
+  const stoppingRef = useRef(false);
+  const [stopping, setStopping] = useState(false);
+
   // False once the dashboard unmounts (pipeline stopped / errored).
   // startRecording awaits IndexedDB twice before it installs the frame
   // callback, intervals and MediaRecorder; an unmount during those awaits
@@ -108,7 +118,7 @@ export function CombinedDashboard({
 
   // Start recording
   const startRecording = useCallback(async () => {
-    if (startingRef.current || sessionIdRef.current !== null) return;
+    if (startingRef.current || stoppingRef.current || sessionIdRef.current !== null) return;
     startingRef.current = true;
     setRecordError(null);
     try {
@@ -220,9 +230,10 @@ export function CombinedDashboard({
   // navigates away or stops the audio pipeline mid-record — still gets
   // endedAt + summary stats written. Sets sessionIdRef.current = null up
   // front so concurrent calls (button + unmount race) deduplicate.
+  // Resolves true only for the call that actually finalized.
   const finalizeRecordingDb = useCallback(async () => {
     const sessionId = sessionIdRef.current;
-    if (!sessionId) return;
+    if (!sessionId) return false;
     sessionIdRef.current = null;
 
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
@@ -296,21 +307,28 @@ export function CombinedDashboard({
     // async finalize re-queries and picks up the endedAt + stats it read
     // too early.
     window.dispatchEvent(new CustomEvent("syrinx:session-finalized"));
+    return true;
   }, [frameCallbackRef]);
 
   // Stop recording + compute summary stats (button-click path).
   const stopRecording = useCallback(async () => {
+    if (stoppingRef.current) return;
+    stoppingRef.current = true;
+    setStopping(true);
     try {
-      await finalizeRecordingDb();
       // The notes now live on the finalized session row — clear the
       // input so they don't carry into the next session. Only after a
-      // successful finalize: on failure the text stays put.
-      setNotes("");
+      // successful finalize by THIS call: on failure the text stays put.
+      if (await finalizeRecordingDb()) setNotes("");
     } finally {
       // finalize tore the recording down (intervals, frame callback)
       // before anything could throw — never leave the button on
       // "Stop & Save" for a recording that no longer exists.
-      setRecording(false);
+      stoppingRef.current = false;
+      if (mountedRef.current) {
+        setStopping(false);
+        setRecording(false);
+      }
     }
   }, [finalizeRecordingDb]);
 
@@ -518,7 +536,8 @@ export function CombinedDashboard({
           <div className="flex items-center gap-2">
             <button
               onClick={recording ? stopRecording : startRecording}
-              className={`flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-medium transition-colors cursor-pointer border ${
+              disabled={stopping}
+              className={`flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-medium transition-colors cursor-pointer border disabled:opacity-60 disabled:cursor-wait ${
                 recording
                   ? "bg-red-500/15 text-red-400 border-red-500/30 hover:bg-red-500/25"
                   : "bg-neutral-800/60 text-neutral-300 border-neutral-700 hover:bg-neutral-700/60"
@@ -529,7 +548,7 @@ export function CombinedDashboard({
                   recording ? "bg-red-400 animate-pulse" : "bg-neutral-500"
                 }`}
               />
-              {recording ? "Stop & Save" : "Save Session"}
+              {stopping ? "Saving…" : recording ? "Stop & Save" : "Save Session"}
             </button>
 
             {/* Recording indicator + timer */}
