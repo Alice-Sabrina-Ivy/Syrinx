@@ -40,7 +40,8 @@
 #   ref at that hop's content time; the run ends at an unpainted hop or a
 #   painted in-range hop; hops without a ref neither start nor end a run.
 #   conn12: reference-free connected painted pairs >= 12 st per painted
-#   minute, as rendered (a line break removes the pair).
+#   minute, as rendered (a line break removes the pair; paintA uses its own
+#   brkA column since 2026-10-04).
 #   Switches: Alice runs >= 200 ms in one register (T >= 160, L < 140, frames
 #   <= 100 ms apart) preceded within 1 s by the other register; latency =
 #   first displayed-correct frame - run start ("never" = none in the run).
@@ -124,7 +125,14 @@ def events(R, conv, cols, L, hop, stage, spk_code):
 
 
 def conn12(cols, stage, hop):
-    p = cols[stage]; brk = cols.get("brk", np.zeros_like(p)) if stage == "paint" else np.zeros_like(p)
+    # Line breaks are per display pass: brk for paint, brkA for paintA (run.mjs
+    # records brkA since 2026-10-04; before that paintA ignored its breaks and
+    # over-counted connected pairs the live trace never stroked). A paintA run
+    # without brkA cannot be scored -> NaN.
+    p = cols[stage]; bk = "brkA" if stage == "paintA" else "brk"
+    if bk not in cols and stage == "paintA":
+        return dict(conn12=float("nan"), pmin=float(np.sum(p > 0) * hop / 60))
+    brk = cols.get(bk, np.zeros_like(p))
     a, b = p[:-1], p[1:]
     both = (a > 0) & (b > 0) & ~(brk[1:] > 0)
     j = np.abs(12 * np.log2(np.where(both, b / np.where(a > 0, a, 1), 1)))

@@ -15,7 +15,8 @@
 //        [--max-seconds=N]
 // Output: <out>/<tag>/<name>.hops.f32 (Float32, column-major; columns in
 // <name>.meta.json) — DET_COLS + DISP_COLS of lib/chain.mjs, plus
-// paintA / roA / styleA (alice-only display pass) when --refs is given.
+// paintA / roA / styleA / brkA (alice-only display pass; brkA since
+// 2026-10-04) when --refs is given.
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { readWav } from "./lib/wav.mjs";
 import { resolve } from "node:path";
@@ -57,8 +58,8 @@ async function runOne(S, name, wavPath) {
   if (REFS && existsSync(resolve(REFS, `${name}.spk.json`))) {
     const spk = JSON.parse(readFileSync(resolve(REFS, `${name}.spk.json`), "utf8"));
     const DA = await driveHook(S.hookPath, buildFrames(W, { mask: aliceMask(W, spk), floorDb: tenthPercentile(W.col.inten) }), W.n);
-    cols.paintA = DA.paint; cols.roA = DA.ro; cols.styleA = DA.style;
-    names.push("paintA", "roA", "styleA");
+    cols.paintA = DA.paint; cols.roA = DA.ro; cols.styleA = DA.style; cols.brkA = DA.brk;
+    names.push("paintA", "roA", "styleA", "brkA");
   }
   const t2 = Date.now();
   mkdirSync(OUT, { recursive: true });

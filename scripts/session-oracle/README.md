@@ -107,3 +107,13 @@ node scripts/session-oracle/corpus.mjs --report=base,head
 - The tap is observation-only: with `SO_TAP=0` the posted pitch, confidence,
   notch count, intensity, painted, readout, style and recorded columns are
   identical (5 min of 2026-05-26).
+
+## Fixes (2026-10-04)
+
+- `conn12` for the alice-only pass (`paintA`) ignored that pass's line breaks
+  and over-counted connected ≥ 12 st pairs the trace never stroked (63 per
+  33 painted minutes on the combined chain vs 0 as rendered). `run.mjs` now
+  records `brkA`; `analyze.py` scores `paintA` against it (NaN for older runs
+  without the column). The committed measurements quote only the `paint`
+  pass's `conn12`, so no published number changes. All other columns of a
+  re-run are bit-identical.
