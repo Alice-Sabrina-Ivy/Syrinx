@@ -7,7 +7,10 @@ import { defineConfig, globalIgnores } from 'eslint/config'
 export default defineConfig([
   // 'dist' is the Vite template default; this project builds to 'docs'
   // (GitHub Pages), which holds committed bundles that must not be linted.
-  globalIgnores(['dist', 'docs']),
+  // 'build' is the gitignored local scratch dir (measurement probes,
+  // prototype .mjs harnesses) — not project code; linting it made
+  // `npm run lint` fail on whatever scratch happened to be on disk.
+  globalIgnores(['dist', 'docs', 'build']),
   {
     files: ['**/*.{js,jsx}'],
     extends: [
