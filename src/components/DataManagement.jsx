@@ -205,7 +205,13 @@ export function DataManagement({ onClose }) {
                 Audio uses ~10MB per 30 minutes
               </p>
             </div>
+            {/* A toggle switch to assistive tech: role + on/off state +
+                accessible name (it was a bare, unlabeled <button>). */}
             <button
+              type="button"
+              role="switch"
+              aria-checked={recordAudio}
+              aria-label="Record audio with sessions"
               onClick={toggleRecordAudio}
               className={`relative w-10 h-5 rounded-full transition-colors cursor-pointer ${
                 recordAudio ? "bg-purple-600" : "bg-neutral-700"
