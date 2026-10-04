@@ -28,7 +28,9 @@
 #          [--sessions=2025-09-08,...] [--root="C:/Coding Projects/private-session/sessions"]
 #          [--penn] [--threads=4]          compute PENN (~20 min/session on CPU)
 #          [--penn-from=DIR]               reuse <DIR>/<session>.penn.npz (t, f0)
-#          [--praat-from=DIR]              reuse <DIR>/<session>.npz (ac_t/ac_f0/...)
+#          [--praat-from=DIR]              reuse <DIR>/<session>.praat.npz (the Praat cache
+#                                          this script writes; legacy <DIR>/<session>.npz
+#                                          with ac_t/ac_f0/... keys also accepted)
 #          [--no-arb]
 import sys, os, json, time
 import numpy as np, pandas as pd, soundfile as sf
@@ -127,7 +129,14 @@ for s in SESSIONS:
     x, sr = sf.read(f"{ROOT}/{s}/session.wav", dtype="float64")
     if sr != 16000: raise SystemExit(f"{s}: expected 16 kHz session audio")
     if "praat-from" in A:
-        r = np.load(f"{A['praat-from']}/{s}.npz"); r = {k: r[k] for k in r.files}
+        # Reuse the cache this script writes (<DIR>/<session>.praat.npz);
+        # <DIR>/<session>.npz with ac_t/ac_f0/... keys (the phase-1 scratch
+        # cache layout) is still accepted. Before 2026-10-04 only the latter
+        # was read, so the script could not reuse its own cache.
+        pc = f"{A['praat-from']}/{s}.praat.npz"
+        if not os.path.exists(pc): pc = f"{A['praat-from']}/{s}.npz"
+        r = np.load(pc); r = {k: r[k] for k in r.files}
+        if "ac_t" not in r: raise SystemExit(f"{pc}: not a Praat cache (no ac_t) - pass the dir holding <session>.praat.npz")
     else:
         r = praat(x, sr)
         np.savez_compressed(f"{OUT}/{s}.praat.npz", **r)

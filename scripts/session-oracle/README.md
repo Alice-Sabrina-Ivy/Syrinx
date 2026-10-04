@@ -53,6 +53,7 @@ additionally need `torch` + `penn` (CPU is fine, ~20 min per session).
 # 1. references (Praat AC/SHS/CC + consensus + strict + arbiters; PENN optional)
 python scripts/session-oracle/build_refs.py --penn            # full rebuild (~20 min/session for PENN)
 python scripts/session-oracle/build_refs.py --penn-from=DIR   # reuse <DIR>/<session>.penn.npz (t, f0)
+python scripts/session-oracle/build_refs.py --praat-from=build/session-oracle/refs --penn-from=DIR  # + reuse the Praat cache
 
 # 2. run the production chain of any src tree over the four sessions
 node --import ./scripts/session-oracle/lib/register.mjs scripts/session-oracle/run.mjs \
@@ -125,3 +126,9 @@ node scripts/session-oracle/corpus.mjs --report=base,head
   tap-only columns (`fl`/`c0f`/`uv`/`dec`, all-zero placeholders) of untapped
   runs. Check: 5 min of 2026-05-26, tapped vs untapped — every non-tap column
   identical, **including `paintA` / `roA` / `styleA` / `brkA`**.
+- `build_refs.py --praat-from=DIR` read `<DIR>/<session>.npz`, but the script
+  caches Praat contours as `<session>.praat.npz` (`<session>.npz` is its
+  reference output, without `ac_t`), so it could not reuse its own cache. It
+  now reads `<DIR>/<session>.praat.npz`, falling back to the legacy layout.
+  `--praat-from=build/session-oracle/refs` reproduces `t`, `spk`, `cal`, `ac`,
+  `shs`, `cc` and `strict` of the cached refs bit-exactly (2026-05-07).
