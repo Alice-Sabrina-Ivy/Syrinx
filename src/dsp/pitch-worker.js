@@ -161,12 +161,14 @@ function processChunk(msg) {
   const meta = frameMeta.shift();
 
   // Ghost-voicing veto: never report a pitch AT an actively-notched
-  // interferer frequency (or its octave relatives) — see isNearNotch in
-  // noise-notch.js. The notch removes the interferer from the analysis
-  // stream, but its ringing against broadband rumble can leave weak
-  // periodicity there that the Viterbi bridges into sustained voicing.
+  // interferer line (or its octave) — see isNearNotch in noise-notch.js.
+  // The notch rarely removes an interferer completely (unpromoted
+  // harmonics, wobble outside the notch, rumble), and the residual is
+  // still periodic at the line frequency. Narrow (+-2 %, widened only for
+  // wobbling lines) since 2026-10-03: the old +-4 % window around f/2, f
+  // and 2f blanked real voice across whole registers.
   let vetoed = decoded;
-  if (vetoed > 0 && isNearNotch(vetoed, noiseNotch.activeFreqs())) vetoed = null;
+  if (vetoed > 0 && isNearNotch(vetoed, noiseNotch.activeLines())) vetoed = null;
   // Above the display range: post as UNVOICED. The detector searches to
   // 2x the display ceiling (boersma-ac.js maxPitchHz 800) precisely so
   // that phonation above 400 Hz decodes at its true F0 here instead of

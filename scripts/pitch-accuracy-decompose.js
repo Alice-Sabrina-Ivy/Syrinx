@@ -54,7 +54,7 @@ for (let i = 0; i + HOP <= samples.length; i += HOP) {
   delayLine.push(Float32Array.from(buf));
   if (delayLine.length > pt.config.lookback + 1) delayLine.shift();
   let v = pt.emit(ac.candidates(buf));
-  if (v > 0 && isNearNotch(v, notch.activeFreqs())) v = null;
+  if (v > 0 && isNearNotch(v, notch.activeLines())) v = null;
   if (v > 0 && !guard.check(delayLine[0], v, SR)) v = null;
   if (v !== undefined) decoded.push(v ?? 0);
 }

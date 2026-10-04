@@ -22,16 +22,39 @@
 //     the raw (pre-notch) rolling buffer and find narrow peaks in
 //     [BAND_LO, BAND_HI] with >= PROMINENCE x the band's median power
 //   - match peaks to tracks within MATCH_HZ; a track PROMOTES to an
-//     active notch after MIN_TRACK_SEC with duty >= PROMOTE_DUTY, and
-//     DEMOTES after MISS_SEC of absence
+//     active notch after MIN_TRACK_SEC with duty >= PROMOTE_DUTY (only
+//     on an observation that actually saw it), and DEMOTES after
+//     MISS_SEC of absence
+//   - ONSET-BORN tracks need ONSET_MIN_TRACK_SEC instead (see "Held
+//     notes" below)
 //   - at most MAX_NOTCHES active (strongest first); each is a biquad
 //     notch (RBJ, Q = NOTCH_Q -> ~4 Hz wide at 120 Hz), state carried
-//     across chunks, cascade rebuilt only when the active set changes
+//     across chunks. Sections are keyed by TRACK ID: a surviving track
+//     keeps its filter state and is retuned in place when it drifts
+//     > RETUNE_HZ. (The original freq.toFixed(0) key rebuilt the whole
+//     cascade, resetting every section, whenever any track's EMA crossed
+//     a 1 Hz rounding boundary or two tracks swapped power order:
+//     measured 43 rebuilds and 117 leak chunks > +10 dB, max +16 dB, on
+//     a 120 Hz hum wobbling +-0.6 Hz.)
 //
-// Known accepted edge: a voice holding a note rock-stable (±2 Hz, no
-// vibrato) for > MIN_TRACK_SEC continuously would get notched and its
-// trace would gap until the note moves. Measured speech never does
-// this; documented as the trade for hum immunity.
+// Held notes (2026-10-03, measurements/noise-notch-voice-safety-
+// 2026-10-03.md): a voice-training user holding a steady note (even
+// 25 c vibrato is < 2 Hz at 120 Hz) for > MIN_TRACK_SEC used to be
+// promoted to a notch, after which the worker's ghost veto blanked the
+// note (prod: 49.5 % of held-note frames reported vs 94.0 % with no
+// notch; breathy notes go blank once notched even without the veto —
+// notching H1 leaves too little periodicity). A held note starts at a
+// sound onset, while a hum is normally present before the voice, so a
+// track first seen while the 50 Hz-4 kHz band energy is >= ONSET_DB
+// above its ONSET_HIST_SEC running minimum is ONSET-BORN and must
+// persist ONSET_MIN_TRACK_SEC (20 s) before notching. A weak, young
+// (< ONSET_HIST_SEC old) track — typically a noise peak — whose peak
+// power jumps >= ONSET_DB at an onset is re-born onset-born, so a note
+// cannot "adopt" a noise track's age and not-onset-born status.
+// Accepted trades: a note held longer than
+// ONSET_MIN_TRACK_SEC is still notched (and its trace may gap until it
+// moves), and an interferer that SWITCHES ON mid-session (fan, fridge
+// compressor) is notched after ~20 s instead of ~5 s.
 //
 // Detection runs on RAW audio, filtering on the OUTPUT stream — a
 // notched interferer must stay visible to the tracker or the notch
@@ -66,6 +89,15 @@ export const NOTCH_DEFAULTS = {
   missSec: 2,            // absent this long -> demote/drop
   maxNotches: 4,
   notchQ: 30,            // ~4 Hz -3 dB width at 120 Hz
+  // onset-born promotion delay (2026-10-03; see "Held notes" above).
+  // Sweep: 6/10/15 dB identical on held notes and on all four sessions;
+  // 10 s too short for 14 s holds, 15 s blanks 15-20 s holds, 20 s keeps
+  // every hold <= 20 s at the no-notch ceiling.
+  onsetDb: 10,
+  onsetHistSec: 2,
+  onsetMinTrackSec: 20,
+  retuneHz: 0.5,         // retune a live section in place when its track
+                         //   drifted more than this (filter state kept)
 };
 
 // In-place iterative radix-2 FFT (same shape as boersma-ac.js's).
@@ -104,6 +136,10 @@ class Biquad {
     this.b0 = b0; this.b1 = b1; this.b2 = b2; this.a1 = a1; this.a2 = a2;
     this.x1 = 0; this.x2 = 0; this.y1 = 0; this.y2 = 0;
   }
+  // retune in place: new coefficients, filter state (x1..y2) kept
+  setCoefficients(o) {
+    this.b0 = o.b0; this.b1 = o.b1; this.b2 = o.b2; this.a1 = o.a1; this.a2 = o.a2;
+  }
   processInPlace(x) {
     let { x1, x2, y1, y2 } = this;
     const { b0, b1, b2, a1, a2 } = this;
@@ -131,7 +167,10 @@ function makeNotch(f0, sampleRate, q) {
 //     active notches applied IN PLACE (the caller's array is modified
 //     and returned). Zero added latency (causal IIR).
 //   activeFreqs(): current notched frequencies (Hz, rounded 0.1) —
-//     diagnostic surface.
+//     diagnostic surface (relayed to the main thread as notchedFreqs).
+//   activeLines(): [{ freq, dev }] per notched interferer — the track's
+//     current frequency estimate and its wobble (EMA of |peak - estimate|,
+//     Hz); input to isNearNotch (the worker's ghost veto).
 export function createNoiseNotch(sampleRate, opts = {}) {
   const cfg = { ...NOTCH_DEFAULTS, ...opts };
   const N = cfg.fftSize;
@@ -152,12 +191,13 @@ export function createNoiseNotch(sampleRate, opts = {}) {
   let chunkCounter = 0;
   let obsPerSec = null;
 
-  // tracks: { freq, power, hits, misses, obsSeen, firstObs, lastSeenObs, active }
+  // tracks: { id, freq, dev, power, hits, firstObs, lastSeenObs, active, onsetBorn }
   let tracks = [];
   let obsIndex = 0;
+  let nextTrackId = 1;
+  const energyHist = [];   // band energy of recent observations (onset rule)
 
-  let cascade = [];        // [{ freq, biquad }]
-  let cascadeKey = "";
+  let cascade = [];        // [{ id, freq, biquad }], ascending track id
 
   function observe() {
     obsIndex++;
@@ -165,6 +205,17 @@ export function createNoiseNotch(sampleRate, opts = {}) {
     re.fill(0); im.fill(0);
     for (let i = 0; i < bufferLength; i++) re[i] = raw[i] * window[i];
     fft(re, im);
+    // onset detector: broadband (bandLo..4 kHz) energy vs its running min
+    let bandEnergy = 0;
+    const onsetHiBin = Math.floor(4000 / binHz);
+    for (let b = loBin; b < onsetHiBin; b++) bandEnergy += re[b] * re[b] + im[b] * im[b];
+    energyHist.push(bandEnergy);
+    if (energyHist.length > Math.ceil(cfg.onsetHistSec * (obsPerSec ?? 10))) energyHist.shift();
+    let minEnergy = Infinity;
+    for (const e of energyHist) if (e < minEnergy) minEnergy = e;
+    const onsetRatio = Math.pow(10, cfg.onsetDb / 10);
+    const onsetHistObs = Math.ceil(cfg.onsetHistSec * (obsPerSec ?? 10));
+    const onsetNow = energyHist.length > 1 && bandEnergy >= minEnergy * onsetRatio;
     const power = new Float64Array(hiBin - loBin + 1);
     for (let b = loBin; b <= hiBin; b++) {
       power[b - loBin] = re[b] * re[b] + im[b] * im[b];
@@ -205,37 +256,60 @@ export function createNoiseNotch(sampleRate, opts = {}) {
         const d = Math.abs(t.freq - pk.freq);
         if (d < bestD && !t._seen) { best = t; bestD = d; }
       }
+      if (best && onsetNow && !best.active && pk.power >= best.power * onsetRatio
+          && obsIndex - best.firstObs < onsetHistObs) {
+        // a weak, YOUNG track (a noise peak born < onsetHistSec ago) adopted
+        // by a sound starting now: restart it as a new onset-born track.
+        // (Older tracks keep their history: re-birthing a long-lived weak
+        // hum line resets its diluted duty and notched a real room hum
+        // that production never promoted — measured on session 05-07.)
+        best.firstObs = obsIndex; best.hits = 0; best.onsetBorn = true;
+        best.freq = pk.freq; best.dev = 0;
+      }
       if (best) {
+        best.dev = 0.9 * best.dev + 0.1 * Math.abs(pk.freq - best.freq); // wobble estimate
         best.freq = 0.9 * best.freq + 0.1 * pk.freq; // slow EMA — stability IS the criterion
         best.power = pk.power;
         best.hits++;
         best.lastSeenObs = obsIndex;
         best._seen = true;
       } else {
-        tracks.push({ freq: pk.freq, power: pk.power, hits: 1, firstObs: obsIndex, lastSeenObs: obsIndex, active: false, _seen: true });
+        tracks.push({ id: nextTrackId++, freq: pk.freq, dev: 0, power: pk.power, hits: 1, firstObs: obsIndex, lastSeenObs: obsIndex, active: false, _seen: true, onsetBorn: onsetNow });
       }
     }
 
     // promote / demote / prune
     const missObs = Math.ceil(cfg.missSec * (obsPerSec ?? 10));
     const minObs = Math.ceil(cfg.minTrackSec * (obsPerSec ?? 10));
+    const onsetMinObs = Math.ceil(cfg.onsetMinTrackSec * (obsPerSec ?? 10));
     tracks = tracks.filter((t) => obsIndex - t.lastSeenObs <= missObs || t.active);
     for (const t of tracks) {
       const span = obsIndex - t.firstObs + 1;
       const duty = t.hits / span;
-      if (!t.active && span >= minObs && duty >= cfg.promoteDuty) t.active = true;
+      // promote only on an observation that actually saw the peak (a note
+      // that just ended must not promote on its trailing duty)
+      if (!t.active && t._seen && span >= (t.onsetBorn ? onsetMinObs : minObs) && duty >= cfg.promoteDuty) t.active = true;
       if (t.active && obsIndex - t.lastSeenObs > missObs) { t.active = false; t.hits = 0; t.firstObs = obsIndex; }
     }
 
-    // rebuild cascade if the active set changed materially
+    // update the cascade: the strongest maxNotches active tracks, one
+    // section per track id. Surviving sections keep their filter state (no
+    // rebuild transient); a section is retuned in place only when its track
+    // drifted > retuneHz; only entering tracks get fresh sections.
     const actives = tracks.filter((t) => t.active)
       .sort((a, b) => b.power - a.power)
-      .slice(0, cfg.maxNotches);
-    const key = actives.map((t) => t.freq.toFixed(0)).join(",");
-    if (key !== cascadeKey) {
-      cascadeKey = key;
-      cascade = actives.map((t) => ({ freq: t.freq, biquad: makeNotch(t.freq, sampleRate, cfg.notchQ) }));
-    }
+      .slice(0, cfg.maxNotches)
+      .sort((a, b) => a.id - b.id);
+    const byId = new Map(cascade.map((c) => [c.id, c]));
+    cascade = actives.map((t) => {
+      const c = byId.get(t.id);
+      if (!c) return { id: t.id, freq: t.freq, biquad: makeNotch(t.freq, sampleRate, cfg.notchQ) };
+      if (Math.abs(c.freq - t.freq) > cfg.retuneHz) {
+        c.biquad.setCoefficients(makeNotch(t.freq, sampleRate, cfg.notchQ));
+        c.freq = t.freq;
+      }
+      return c;
+    });
   }
 
   function process(chunk) {
@@ -260,26 +334,45 @@ export function createNoiseNotch(sampleRate, opts = {}) {
   return {
     process,
     activeFreqs: () => cascade.map((n) => Math.round(n.freq * 10) / 10),
+    activeLines: () => cascade.map((n) => {
+      const t = tracks.find((x) => x.id === n.id);
+      return t ? { freq: t.freq, dev: t.dev } : { freq: n.freq, dev: 0 };
+    }),
     config: cfg,
   };
 }
 
-// isNearNotch(freqHz, activeFreqs, tolFrac): true when freqHz sits within
-// tolFrac of an active notch frequency or its half/double. Used by the
-// pitch worker's ghost-voicing veto: a high-Q notch ringing against
-// surrounding broadband rumble can manufacture weak periodicity AT (or at
-// octave relatives of) the notched frequency, which the Viterbi tracker
-// then strings into sustained voicing — observed on rumble containing
-// stable tonal lines (codec-birdie-like content, 2026-07-19). If we are
-// actively notching f as a non-speech interferer, a decoded pitch at f
-// (or f/2, 2f) is by definition the interferer or its ghost, never the
-// user. (A user genuinely phonating AT a hum frequency was already
-// indistinguishable by construction — documented limitation.)
-export function isNearNotch(freqHz, activeFreqs, tolFrac = 0.04) {
-  for (const f of activeFreqs) {
-    for (const rel of [0.5, 1, 2]) {
-      const target = f * rel;
-      if (Math.abs(freqHz - target) <= tolFrac * target) return true;
+// isNearNotch(freqHz, lines, opts): ghost-voicing veto test. lines =
+// notch.activeLines() ([{ freq, dev }]; bare numbers are accepted as
+// { freq, dev: 0 }). True when freqHz is within r * tolHz of r * freq
+// for r in `rels`, with tolHz = max(tolFrac * freq, wobbleK * dev).
+//
+// Why a veto at all: a notch rarely removes a real interferer completely
+// — in continuous speech often only its strongest line is promoted, and a
+// slowly-wobbling line slips partly outside the Q = 30 notch — so the
+// residual (its other harmonics, plus rumble) is still periodic at the
+// interferer frequency and decodes as sustained "voice" in every pause
+// that the harmonic guard accepts (it IS harmonic). Measured without any
+// veto: 78 % of speech pauses painted after a fan switches on mid-
+// session, 56 % false voicing on a +-1.5 Hz wobbling fan, 61 % on a
+// wobbling rich hum (measurements/noise-notch-voice-safety-2026-10-03.md).
+//
+// Why narrow (2026-10-03; was +-4 % around f/2, f and 2f of the
+// rounded section frequency): that blanked REAL voice in three 8 %-wide
+// bands per notch — a 120 Hz hum covered both of a voice-training user's
+// registers — costing 16-21 pp of speech accuracy in fan-hum / mains
+// noise (FDA fan-hum +10 dB: 69.3 % correct vs 85.5 % with no veto).
+// The decoded ghost sits within ~+-2 % of the line (the notch's phase
+// response and LF rumble perturb its period), or at the line's octave
+// (mains-style stacks with unpromoted even harmonics). wobbleK * dev
+// widens the window only for lines whose frequency is measurably moving.
+export function isNearNotch(freqHz, lines, { tolFrac = 0.02, wobbleK = 6, rels = [1, 2] } = {}) {
+  for (const ln of lines) {
+    const f = typeof ln === "number" ? ln : ln.freq;
+    const dev = typeof ln === "number" ? 0 : ln.dev;
+    const tolHz = Math.max(tolFrac * f, wobbleK * dev);
+    for (const r of rels) {
+      if (Math.abs(freqHz - r * f) <= r * tolHz) return true;
     }
   }
   return false;

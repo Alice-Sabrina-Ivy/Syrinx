@@ -142,19 +142,28 @@ async function runPitch() {
     const ac = createBoersmaAC(SR, N, detectorOpts);
     const pt = createPathTracker();
     const guard = createHarmonicVoicingGuard(); // production-parity
+    // --frontend=tracker: the production notch runs per chunk inside the
+    // decode loop so the ghost veto sees the notch state at decode time,
+    // exactly as in pitch-worker.js (2026-10-03: the previous whole-signal
+    // pre-pass never applied the veto, so this oracle's tonal-noise rows
+    // described a chain production was not running).
+    const notch = FRONTEND === "tracker" ? createNoiseNotch(SR) : null;
     const L2 = pt.config.lookback;
     const buf = new Float32Array(N);
     const delayLine = [];
     let fill = 0;
     const out = [];
     for (let i = 0; i + HOP <= sig.length; i += HOP) {
+      const chunk = Float32Array.from(sig.subarray(i, i + HOP));
+      if (notch) notch.process(chunk);
       buf.copyWithin(0, HOP, N);
-      buf.set(sig.subarray(i, i + HOP), N - HOP);
+      buf.set(chunk, N - HOP);
       fill = Math.min(N, fill + HOP);
       delayLine.push(Float32Array.from(buf));
       if (delayLine.length > L2 + 1) delayLine.shift();
       if (fill < N) { pt.emit({ voiced: [], unvoicedStrength: ac.config.voicingThreshold }); out.push(null); continue; }
       let v = pt.emit(ac.candidates(buf));
+      if (v > 0 && notch && isNearNotch(v, notch.activeLines())) v = null; // ghost veto, as pitch-worker
       // pitch-worker parity (2026-10-03): decodes above the display
       // ceiling are posted as unvoiced, before the harmonic guard.
       if (v > PITCH_DISPLAY_RANGE.high) v = null;
@@ -180,7 +189,7 @@ async function runPitch() {
         const noise = makeNoise(noiseName, Math.min(tr.sig.length + (TAIL_SEC + LEAD_SEC) * SR, 40 * SR), hillSrc);
         ({ mixed: sig, tailStart, lead } = mix(tr.sig, noise, snr, TAIL_SEC, LEAD_SEC));
       }
-      sig = applyFrontend(sig, noiseName);
+      if (FRONTEND !== "tracker") sig = applyFrontend(sig, noiseName); // tracker runs inside runTrack
       const decoded = runTrack(sig);
       const centerOffMs = (N / 2) / SR * 1000;
       for (let k = 0; k < decoded.length; k++) {
@@ -285,7 +294,7 @@ async function runGender() {
       if (fill < N) { pt.emit({ voiced: [], unvoicedStrength: ac.config.voicingThreshold }); out.push(false); continue; }
       let decoded = pt.emit(ac.candidates(buf));
       // ghost-voicing veto + harmonic guard, as in pitch-worker
-      if (decoded > 0 && isNearNotch(decoded, notch.activeFreqs())) decoded = null;
+      if (decoded > 0 && isNearNotch(decoded, notch.activeLines())) decoded = null;
       if (decoded > PITCH_DISPLAY_RANGE.high) decoded = null; // pitch-worker parity (2026-10-03)
       if (decoded > 0 && !gGuard.check(gDelay[0], decoded, SR)) decoded = null;
       out.push(decoded > 0);
