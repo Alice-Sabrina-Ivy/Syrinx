@@ -106,7 +106,8 @@ node scripts/session-oracle/corpus.mjs --report=base,head
   the consensus / strict / arbiter tracks with 0 mismatches.
 - The tap is observation-only: with `SO_TAP=0` the posted pitch, confidence,
   notch count, intensity, painted, readout, style and recorded columns are
-  identical (5 min of 2026-05-26).
+  identical (5 min of 2026-05-26; the alice-only columns too since the
+  2026-10-04 lookback fix below).
 
 ## Fixes (2026-10-04)
 
@@ -117,3 +118,10 @@ node scripts/session-oracle/corpus.mjs --report=base,head
   without the column). The committed measurements quote only the `paint`
   pass's `conn12`, so no published number changes. All other columns of a
   re-run are bit-identical.
+- `SO_TAP=0` runs stored `lookback: null` (only the tap reported the tracker's
+  L), so the alice-only mask silently used L = 0 and `analyze.py` crashed.
+  `lib/chain.mjs` now falls back to the src tree's `PATH_DEFAULTS.lookback`
+  (what the worker's `createPathTracker()` uses) and `analyze.py` drops the
+  tap-only columns (`fl`/`c0f`/`uv`/`dec`, all-zero placeholders) of untapped
+  runs. Check: 5 min of 2026-05-26, tapped vs untapped — every non-tap column
+  identical, **including `paintA` / `roA` / `styleA` / `brkA`**.

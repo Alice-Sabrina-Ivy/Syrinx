@@ -54,7 +54,14 @@ export async function loadSrc(srcDir) {
   await import(pathToFileURL(resolve(src, "dsp/pitch-worker.js")).href);
   globalThis.self = D;
   await import(pathToFileURL(resolve(src, "dsp/dsp-worker.js")).href);
-  return { src, P, D, hookPath: resolve(src, "audio/useAudioPipeline.js") };
+  // The worker builds its tracker with createPathTracker() (no options), so
+  // its decode delay is PATH_DEFAULTS.lookback. Read it from the same src
+  // tree as the fallback when the tap is off (SO_TAP=0): before 2026-10-04
+  // L stayed null untapped — the alice-only mask silently used L = 0 and
+  // analyze.py crashed on lookback: null.
+  const bac = await import(pathToFileURL(resolve(src, "dsp/boersma-ac.js")).href);
+  const defaultLookback = bac.PATH_DEFAULTS?.lookback ?? null;
+  return { src, P, D, defaultLookback, hookPath: resolve(src, "audio/useAudioPipeline.js") };
 }
 
 // Run both workers over `samples` (Float32Array at `sr`). Returns the
@@ -88,6 +95,8 @@ export function runWorkers(S, samples, sr, { chunkMs = 25 } = {}) {
   globalThis.self = P; P.posts = [];
   P.onmessage({ data: { type: "init", inputSampleRate: sr } });
   const pp = {}; P.onmessage({ data: { type: "audioPort", port: pp } });
+  if (L === null) L = S.defaultLookback; // untapped (SO_TAP=0): worker's default
+  if (L === null) throw new Error("tracker lookback unknown (no tap and no PATH_DEFAULTS.lookback in this src tree)");
   globalThis.self = D; D.posts = [];
   D.onmessage({ data: { type: "init", sampleRate: sr } });
   const dp = {}; D.onmessage({ data: { type: "port", port: dp } });

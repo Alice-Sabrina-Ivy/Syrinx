@@ -71,11 +71,24 @@ def load_refs(s):
     return R
 
 
+TAP_ONLY = ("fl", "c0f", "uv", "dec")  # filled only by lib/tap-boersma.mjs
+
+
 def load_run(tag, s):
     d = f"{RUNS}/{tag}"
     m = json.load(open(f"{d}/{s}.meta.json")); n = m["nHops"]
     t = np.fromfile(f"{d}/{s}.hops.f32", dtype=np.float32).reshape(len(m["cols"]), n)
-    return m, {c: t[i].astype(float) for i, c in enumerate(m["cols"])}
+    cols = {c: t[i].astype(float) for i, c in enumerate(m["cols"])}
+    if m.get("tap") is False:  # SO_TAP=0: tap-only columns are all-zero placeholders, not data
+        for c in TAP_ONLY: cols.pop(c, None)
+    if m.get("lookback") is None:
+        # Untapped runs written before 2026-10-04 stored lookback: null (and
+        # their alice-only pass used L = 0 — re-run them). The worker's
+        # tracker default has been L = 2 since 2026-06-09.
+        print(f"WARNING {tag}/{s}: lookback null in meta (untapped run before 2026-10-04); assuming 2 - "
+              f"its paintA/roA columns were built with L = 0, re-run", file=sys.stderr)
+        m["lookback"] = 2
+    return m, cols
 
 
 def stage_index(t, stage, L, hop):
@@ -238,7 +251,7 @@ if __name__ == "__main__":
                     k = f"{pool}|{conv}|alice|{st}|160-400"
                     if k in RES[t]["tables"]:
                         row.append(f"{st} {f(pct(RES[t], k, 'cor'))}/{f(pct(RES[t], k, 'half'))}/{f(pct(RES[t], k, 'null'))}")
-                print(f"{t:10s} n={RES[t]['tables'][f'{pool}|{conv}|alice|dec|160-400'][0]:6d} | " + " | ".join(row))
+                print(f"{t:10s} n={RES[t]['tables'][f'{pool}|{conv}|alice|post|160-400'][0]:6d} | " + " | ".join(row))
         print(f"\n### Alice low 75-160 and bands, {conv}, POOLED: up(x2) dec/post/paint/ro and correct")
         for t in TAGS:
             g = lambda st, b, c: f(pct(RES[t], f"POOLED|{conv}|alice|{st}|{b}", c))
