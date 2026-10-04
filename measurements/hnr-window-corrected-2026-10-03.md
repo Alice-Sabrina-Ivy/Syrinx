@@ -98,6 +98,17 @@ and the hnr-test guard fails there (80 Hz, true 20 dB: +1.5…+1.7 dB; 25 dB:
 +8…+9 dB with 28–40 dB frame scatter). At 70 ms the band sits at ~66–71 Hz,
 below the 75 Hz floor.
 
+**Residual (found in review, 2026-10-04):** 70 ms reduces but does not
+remove the low-F0 error. At true HNR ≥ 30 dB (48 kHz, production 70 ms /
+25 ms framing), stationary clean voices at F0 ≈ 77–85 Hz read +0.5…+2.9 dB
+high on average with a 2–5 dB per-frame SD; a few frames per second hit the
+40 dB cap (the corrected true-period peak lands just above r = 1 and is
+reflected). At F0 ≈ 151–155 Hz the 2T peak, just under maxLag, can out-score
+T after correction (frames up to +4.7 dB). 90–400 Hz shows 0.3–0.9 dB SD.
+At 25 dB the mean stays ≤ +0.75 dB, inside the hnr-test tolerance, which
+checks means only up to 25 dB. Revisit path: a Gaussian window or derating
+peaks within a few lags of maxLag.
+
 ## 4. Real speech vs Praat
 
 **Calliope sessions** (2025-09-08, 2026-05-26, 2026-06-09; Alice / Sarah

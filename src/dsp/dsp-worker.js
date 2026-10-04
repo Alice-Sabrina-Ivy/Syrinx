@@ -14,8 +14,9 @@ const WINDOW_MS = 50;
 let sampleRate = 48000;
 let windowSize = Math.floor(sampleRate * WINDOW_MS / 1000);
 // HNR uses a longer frame than the 50 ms analysis window: 70 ms = 5.25
-// periods of the 75 Hz floor, which keeps the window-corrected ACF's
-// ~4.8-period resonance below the search range (see hnr.js). Taken from
+// periods of the 75 Hz floor, which moves the window-corrected ACF's
+// main ~4.8-period resonance below the search range (residual ~80 Hz
+// scatter at very high HNR remains — see hnr.js). Taken from
 // the ring buffer (capacity 2 x WINDOW_MS = 100 ms, steady-state fill
 // 100 ms with 25 ms chunks).
 const HNR_WINDOW_MS = 70;

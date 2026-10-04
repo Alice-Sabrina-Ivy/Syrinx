@@ -23,12 +23,14 @@ const MAX_LPC_ORDER = 16;
 // 8 kHz → 8, 11.025/12 kHz → 12, 16 kHz → 16. The SAME rule serves both the
 // male (pitch hint < MALE_PITCH_HZ) and female/unknown branches — the order
 // tracks the analysis bandwidth, not the speaker. Before 2026-10-03 the male
-// branch used a fixed order 10, correct only at 8 kHz analysis (16 kHz
-// capture) and under-fitted at the 12 kHz analysis rate of 48 kHz capture:
+// branch used a fixed order 10, close to right only at 8 kHz analysis
+// (16 kHz capture; the rule now gives 8 there, measured slightly better)
+// and under-fitted at the 12 kHz analysis rate of 48 kHz capture:
 // Hillenbrand men F2 mean error 265 → 107 Hz, gross (>20 %) 17.6 → 7.4 %
 // (measurements/formant-lpc-order-2026-10-03.md). With one rule, an
 // octave-down pitch hint on a high voice changes only the 5000/5500 Hz
-// pole-selection ceiling at 44.1/48 kHz.
+// pole-selection ceiling at 44.1/48 kHz (at 16/32 kHz capture the hint
+// still selects the analysis rate, and so the order).
 export function lpcOrderForRate(analysisSR) {
   return Math.min(MAX_LPC_ORDER, Math.ceil(5 * analysisSR / 11000) * 2);
 }
