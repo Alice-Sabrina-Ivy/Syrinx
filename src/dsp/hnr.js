@@ -23,8 +23,16 @@
 // 60 ms that lands at F0 ~ 77-83 Hz,
 // where stationary clean voices (true HNR 20 / 25 dB) read +1.5 / +9 dB
 // high with frame-to-frame scatter of 28-40 dB — squarely on low male
-// voices sustaining a vowel. At 70 ms the band sits at ~66-71 Hz, below
-// the search floor. Cost: on running speech 70 ms reads 0.3-0.65 dB below
+// voices sustaining a vowel. At 70 ms the main band sits at ~66-71 Hz,
+// below the search floor — but this REDUCES rather than removes the
+// ~80 Hz error: at true HNR >= 30 dB, stationary clean voices at ~77-85 Hz
+// still read +0.5..+2.9 dB high on average with 2-5 dB frame-to-frame
+// scatter (a few frames per second hit the 40 dB cap, when the corrected
+// true-period peak lands just above r = 1 and reflects), and at F0
+// ~151-155 Hz a 2T peak just under maxLag can out-score T (frames up to
+// +4.7 dB). At 25 dB the mean error stays <= +0.75 dB (hnr-test bound).
+// Real fix if it ever matters: a Gaussian window (Praat's alternative) or
+// derating peaks within a few lags of maxLag. Cost: on running speech 70 ms reads 0.3-0.65 dB below
 // Praat to_harmonicity_ac (more F0/amplitude change inside the longer
 // frame), uniformly across F0 (no F0 confound), vs ~0 dB at 60 ms.
 // measurements/hnr-window-corrected-2026-10-03.md.
