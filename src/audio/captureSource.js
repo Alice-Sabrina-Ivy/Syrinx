@@ -41,6 +41,16 @@ export function supportsMSTPAudio() {
   return isMSTPSupported;
 }
 
+// A mic track that ends on its own — device unplugged, Bluetooth headset
+// dropped, permission revoked — fires "ended" and stops producing audio,
+// but nothing errors: the MSTP reader just reports done and the
+// AudioWorklet keeps delivering silence, so the session sat "running"
+// and "waiting for voice" forever. Both paths now route it to onError,
+// whose existing handler stops the pipeline and shows the error. (A
+// track.stop() by this page does NOT fire "ended".)
+const TRACK_ENDED_MESSAGE =
+  "microphone disconnected (the input device was unplugged, turned off, or access was revoked)";
+
 // Pick the capture kind. forceKind overrides for diagnostic comparison
 // (?capture=mstp / ?capture=audiocontext). Without an override, route to
 // MSTP wherever the runtime supports it and fall back to AudioContext
@@ -85,7 +95,9 @@ function pickKind(forceKind) {
  *   - sampleRate: number | null — request specific sample rate
  *   - forceKind: "mstp" | "audiocontext" | null — diag override
  *   - onInitAck(ack): callback when capture source's init-ack arrives
- *   - onError(err): callback when capture source surfaces an error
+ *   - onError(err): callback when capture source surfaces an error —
+ *     including the mic track ending mid-session (unplug, Bluetooth
+ *     drop, permission revoke): where "track-ended" / "mstp-track-ended"
  */
 export async function createCaptureSource(stream, opts = {}) {
   const kind = pickKind(opts.forceKind);
@@ -147,6 +159,18 @@ async function _createAudioContextSource(stream, opts) {
   workletNode.connect(muteNode);
   muteNode.connect(audioCtx.destination);
 
+  // Mic track ending on its own (see TRACK_ENDED_MESSAGE). Reported once;
+  // listeners removed in close().
+  const tracks = stream.getAudioTracks();
+  let closed = false;
+  let endedReported = false;
+  const onTrackEnded = () => {
+    if (closed || endedReported) return;
+    endedReported = true;
+    opts.onError?.({ where: "track-ended", message: TRACK_ENDED_MESSAGE });
+  };
+  for (const t of tracks) t.addEventListener("ended", onTrackEnded);
+
   // A context created outside a user-activation window (strict autoplay
   // configs; activation expiring during the multi-second getUserMedia
   // prompt) starts "suspended" and never calls process() — no chunks, no
@@ -187,6 +211,8 @@ async function _createAudioContextSource(stream, opts) {
       return channel.port2;
     },
     close() {
+      closed = true;
+      for (const t of tracks) t.removeEventListener("ended", onTrackEnded);
       try { mediaSrc.disconnect(); } catch { /* ignore */ }
       try { workletNode.disconnect(); } catch { /* ignore */ }
       try { audioCtx.close(); } catch { /* ignore */ }
@@ -235,6 +261,24 @@ async function _createMstpSource(stream, opts) {
   let resolveReady, rejectReady;
   const readyPromise = new Promise((res, rej) => { resolveReady = res; rejectReady = rej; });
 
+  // Mic track ending on its own (see TRACK_ENDED_MESSAGE): surfaces from
+  // the read loop (done:true while not stopped) and/or the track's
+  // "ended" event — reported once. Before the first frame the factory is
+  // still awaiting readyPromise, so reject that (start() reports it)
+  // instead of calling onError mid-construction.
+  let endedReported = false;
+  const reportTrackEnded = (where) => {
+    if (stopped || endedReported) return;
+    endedReported = true;
+    if (trackStartedEpochMs === null) {
+      rejectReady(new Error(TRACK_ENDED_MESSAGE));
+      return;
+    }
+    opts.onError?.({ where, message: TRACK_ENDED_MESSAGE });
+  };
+  const onTrackEnded = () => reportTrackEnded("track-ended");
+  track.addEventListener("ended", onTrackEnded);
+
   // Read loop — async IIFE so it doesn't block the factory's resolution.
   // Each `await reader.read()` yields to the event loop, so React renders
   // and other main-thread work can interleave between frames.
@@ -242,7 +286,12 @@ async function _createMstpSource(stream, opts) {
     try {
       while (!stopped) {
         const { value: frame, done } = await reader.read();
-        if (done) return;
+        if (done) {
+          // close() cancels the reader with stopped=true (silent);
+          // otherwise the stream ended because the track did.
+          reportTrackEnded("mstp-track-ended");
+          return;
+        }
         const wallMs = performance.timeOrigin + performance.now();
 
         if (trackStartedEpochMs === null) {
@@ -359,6 +408,7 @@ async function _createMstpSource(stream, opts) {
     ]);
   } catch (err) {
     stopped = true;
+    track.removeEventListener("ended", onTrackEnded);
     try { reader.cancel(); } catch { /* ignore */ }
     throw err;
   }
@@ -391,6 +441,7 @@ async function _createMstpSource(stream, opts) {
     },
     close() {
       stopped = true;
+      track.removeEventListener("ended", onTrackEnded);
       try { reader.cancel(); } catch { /* ignore */ }
       try { track.stop(); } catch { /* ignore */ }
       consumerPorts.length = 0;
