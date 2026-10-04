@@ -109,6 +109,9 @@ export function CombinedDashboard({
           timestampMs: ts,
           voiced: frame.voiced,
           f0: frame.f0,
+          // Live-trace paint decision (non-indexed field: no Dexie schema
+          // bump). SessionHistory draws its trace from painted frames.
+          painted: frame.painted,
           f1: frame.f1,
           f2: frame.f2,
           f3: frame.f3,

@@ -10,6 +10,9 @@ import {
   ONSET_CONFIRM_FRAMES,
   EXCURSION_SEMI,
   EXCURSION_SUSTAIN,
+  REACQUIRE_GAP_FRAMES,
+  REACQUIRE_SUSTAIN,
+  REACQUIRE_WINDOW,
 } from "../../src/audio/pitchPaintGate.js";
 
 let passed = 0, failed = 0;
@@ -23,6 +26,8 @@ function established(g, hz = 100, frames = 20) {
   for (let i = 0; i < frames; i++) g.push(hz);
   return g;
 }
+const gap = (g, n) => { for (let i = 0; i < n; i++) g.resetSegment(); };
+const firstTrue = (arr) => arr.indexOf(true);
 
 console.log("onset confirmation");
 {
@@ -118,9 +123,100 @@ console.log("\nresetSegment keeps level; reset clears it");
   check("level cleared after reset", g.level() === null);
 }
 
+console.log("\nheld values never feed the gate (2026-10-03)");
+{
+  // A held (stale) value an octave off the level must neither paint nor
+  // move the level, however long the hold lasts.
+  const g = established(createPaintGate(), 100);
+  const out = [];
+  for (let i = 0; i < 30; i++) out.push(g.push(205, { fresh: false }));
+  check("held off-level values never paint", out.every((p) => p === false));
+  check("held values do not move the level", Math.abs(g.level() - 100) < 1, `level ${g.level()}`);
+  check("held value reports lastReason 'hold'", g.lastReason() === "hold");
+}
+{
+  // On-level held values still bridge the trace once continuity is confirmed...
+  const g = established(createPaintGate(), 100);
+  check("held on-level value bridges (paints)", g.push(101, { fresh: false }) === true);
+  // ...but not right after a break (no continuity yet).
+  g.resetSegment();
+  check("held value right after a break does not paint", g.push(101, { fresh: false }) === false);
+}
+
+console.log("\npost-gap register re-acquisition (2026-10-03)");
+{
+  // Safety voice -> target voice across a word gap: accepted after
+  // REACQUIRE_SUSTAIN frames instead of EXCURSION_SUSTAIN.
+  const g = established(createPaintGate(), 110, 30);
+  gap(g, REACQUIRE_GAP_FRAMES);
+  const out = []; for (let i = 0; i < 12; i++) out.push(g.push(225));
+  check(`target word after a ${REACQUIRE_GAP_FRAMES}-frame gap paints at frame ${REACQUIRE_SUSTAIN}`,
+    firstTrue(out) === REACQUIRE_SUSTAIN - 1, `first paint at ${firstTrue(out)}`);
+  check("keeps painting after re-acquisition", out.slice(REACQUIRE_SUSTAIN - 1).every((p) => p));
+  check("level moved to the new register", Math.abs(g.level() - 225) < 2, `level ${g.level()}`);
+}
+{
+  // Symmetric (transmasculine direction): target -> low voice.
+  const g = established(createPaintGate(), 225, 30);
+  gap(g, REACQUIRE_GAP_FRAMES);
+  const out = []; for (let i = 0; i < 12; i++) out.push(g.push(110));
+  check("low word after a gap re-acquired just as fast (gender-symmetric)",
+    firstTrue(out) === REACQUIRE_SUSTAIN - 1, `first paint at ${firstTrue(out)}`);
+}
+{
+  // Held frames count as gap frames (consonant bridged by the pitch hold).
+  const g = established(createPaintGate(), 110, 30);
+  for (let i = 0; i < REACQUIRE_GAP_FRAMES; i++) g.push(110, { fresh: false });
+  const out = []; for (let i = 0; i < 12; i++) out.push(g.push(225));
+  check("held frames arm re-acquisition like a gap", firstTrue(out) === REACQUIRE_SUSTAIN - 1,
+    `first paint at ${firstTrue(out)}`);
+}
+{
+  // A single dropped frame does NOT arm it (mid-word voicing flicker).
+  const g = established(createPaintGate(), 110, 30);
+  gap(g, REACQUIRE_GAP_FRAMES - 1);
+  const out = []; for (let i = 0; i < EXCURSION_SUSTAIN + 4; i++) out.push(g.push(225));
+  check(`shorter gap: needs the full EXCURSION_SUSTAIN (${EXCURSION_SUSTAIN})`,
+    firstTrue(out) === EXCURSION_SUSTAIN - 1, `first paint at ${firstTrue(out)}`);
+}
+{
+  // Onset harmonic lock right after a gap (REACQUIRE_SUSTAIN-1 frames at
+  // 2x / 3x) stays suppressed — the level is kept, not cleared.
+  for (const mul of [2, 3]) {
+    const g = established(createPaintGate(), 110, 30);
+    gap(g, 4);
+    const lock = []; for (let i = 0; i < REACQUIRE_SUSTAIN - 1; i++) lock.push(g.push(110 * mul));
+    const back = []; for (let i = 0; i < 6; i++) back.push(g.push(110));
+    check(`post-gap ${REACQUIRE_SUSTAIN - 1}-frame x${mul} onset lock does not paint`, lock.every((p) => !p));
+    check(`true pitch paints after the lock (x${mul})`, back[back.length - 1] === true);
+  }
+}
+{
+  // The short sustain only covers the first REACQUIRE_WINDOW painted frames
+  // after the gap; later in the segment a lock needs the full
+  // EXCURSION_SUSTAIN (mid-word protection unchanged).
+  const g = established(createPaintGate(), 110, 30);
+  gap(g, REACQUIRE_GAP_FRAMES);
+  for (let i = 0; i < ONSET_CONFIRM_FRAMES - 1 + REACQUIRE_WINDOW; i++) g.push(110);
+  const out = []; for (let i = 0; i < REACQUIRE_SUSTAIN + 1; i++) out.push(g.push(220));
+  check("after the window, a REACQUIRE_SUSTAIN-length lock is suppressed", out.every((p) => !p));
+}
+{
+  // Mid-segment harmonic lock of median length (4 frames) never paints.
+  const g = established(createPaintGate(), 100);
+  const out = [300, 300, 300, 300].map((hz) => g.push(hz));
+  check("mid-segment 4-frame x3 lock suppressed", out.every((p) => !p));
+  check("suppressed fresh off-level value reports lastReason 'offlevel'", g.lastReason() === "offlevel");
+  g.push(100); g.push(100);
+  check("lastReason 'paint' once painting resumes", g.push(100) === true && g.lastReason() === "paint");
+}
+
 console.log("\nconstants sane");
 check("EXCURSION_SEMI between prosody max (9) and octave (12)", EXCURSION_SEMI > 9 && EXCURSION_SEMI < 12);
-check("EXCURSION_SUSTAIN outlasts typical harmonic lock (>12 frames)", EXCURSION_SUSTAIN > 12);
+check("EXCURSION_SUSTAIN outlasts the median harmonic lock (4 frames) by 2x", EXCURSION_SUSTAIN >= 8);
+check("REACQUIRE_SUSTAIN outlasts a 3-frame onset lock and is below EXCURSION_SUSTAIN",
+  REACQUIRE_SUSTAIN > ONSET_CONFIRM_FRAMES && REACQUIRE_SUSTAIN < EXCURSION_SUSTAIN);
+check("REACQUIRE_GAP_FRAMES ignores single dropped frames", REACQUIRE_GAP_FRAMES >= 2);
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);

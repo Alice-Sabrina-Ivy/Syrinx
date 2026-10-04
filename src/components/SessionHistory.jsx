@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import db from "../db";
+import { EXCURSION_SEMI } from "../audio/pitchPaintGate";
 import {
   DEFAULT_PITCH_TARGET,
   DEFAULT_F2_TARGET,
@@ -467,16 +468,30 @@ function drawStaticPitchTrace(canvas, frames, dpr) {
   ctx.rect(plotLeft, plotTop, plotRight - plotLeft, plotBottom - plotTop);
   ctx.clip();
 
+  // Draw what the live trace showed: frames recorded since 2026-10-03
+  // carry the paint-gate decision (`painted`); a recorded-but-unpainted
+  // frame (octave excursion the live gate suppressed) is a gap here too.
+  // Legacy frames (no field) draw as before. Stats keep using voiced/f0.
   let inSegment = false;
+  let lastDrawnF0 = null;
   for (let i = 0; i < frames.length; i++) {
     const f = frames[i];
-    if (!f.voiced || f.f0 == null) {
+    if (!f.voiced || f.f0 == null || f.painted === false) {
       if (inSegment) { ctx.stroke(); inSegment = false; }
+      lastDrawnF0 = null;
       continue;
     }
     const x = msToX(f.timestampMs);
     const y = hzToY(f.f0);
     const inTarget = f.f0 >= targetLow && f.f0 <= targetHigh;
+    // Octave-class step: start a new segment rather than stroking a
+    // near-vertical connecting line (same rule as the live trace).
+    if (inSegment && lastDrawnF0 !== null &&
+        Math.abs(12 * Math.log2(f.f0 / lastDrawnF0)) >= EXCURSION_SEMI) {
+      ctx.stroke();
+      inSegment = false;
+    }
+    lastDrawnF0 = f.f0;
 
     if (!inSegment) {
       ctx.beginPath();

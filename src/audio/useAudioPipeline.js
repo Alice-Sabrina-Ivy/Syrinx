@@ -14,7 +14,7 @@ import {
   PITCH_SMOOTH_LEN,
 } from "./pitchSmoothing";
 import { createGateState, evaluateFrameGate } from "./pitchGate";
-import { createPaintGate } from "./pitchPaintGate";
+import { createPaintGate, EXCURSION_SEMI } from "./pitchPaintGate";
 import { createCaptureSource } from "./captureSource";
 import { VocalWeightAggregator } from "./vocal-weight-aggregator";
 import { VocalWeightBaseline } from "./vocal-weight-baseline";
@@ -192,6 +192,13 @@ export function useAudioPipeline() {
   const paintGateRef = useRef(createPaintGate());
   const displayVoicedRef = useRef(false);
   const unpitchedFramesRef = useRef(0);
+  // Readout staleness guard (2026-10-03): set when the paint gate
+  // suppresses a FRESH off-level pitch (a register change being confirmed,
+  // or a harmonic lock). While set, the readout/note name show "—" instead
+  // of falling back to the last painted value — which, on a register
+  // switch, is the OTHER register (the "readout an octave low" report).
+  // Cleared by the next painted frame.
+  const heldReadoutStaleRef = useRef(false);
   const lastVoicedRef = useRef({
     pitch: null,
     noteName: null,
@@ -775,6 +782,7 @@ export function useAudioPipeline() {
     paintGateRef.current.reset();
     displayVoicedRef.current = false;
     unpitchedFramesRef.current = 0;
+    heldReadoutStaleRef.current = false;
     // Without this reset the next session's initial silence "holds" the
     // PREVIOUS session's pitch/note/formants in the dim style for up to
     // 5 s before the first utterance.
@@ -975,14 +983,15 @@ export function useAudioPipeline() {
         // Hold last voiced values (display goes to reduced opacity)
         dspGateRef.current = { voiced: false, holding: true };
         const held = lastVoicedRef.current;
+        const heldStale = heldReadoutStaleRef.current;
         const vw = buildVocalWeightState(cppAggregate);
         throttledSetState((s) => ({
           ...s,
           voiced: false,
           holding: true,
-          pitch: held.pitch,
+          pitch: heldStale ? null : held.pitch,
           intensity,
-          noteName: held.noteName,
+          noteName: heldStale ? null : held.noteName,
           formants: held.formants,
           spectralTilt: held.spectralTilt,
           hnr: held.hnr,
@@ -1015,7 +1024,7 @@ export function useAudioPipeline() {
       // Notify frame callback (session recording) even during silence
       if (frameCallbackRef.current) {
         frameCallbackRef.current({
-          voiced: false, f0: null, f1: null, f2: null, f3: null,
+          voiced: false, f0: null, painted: false, f1: null, f2: null, f3: null,
           intensity, spectralTilt: null, hnr: null,
         });
       }
@@ -1090,13 +1099,22 @@ export function useAudioPipeline() {
     // non-painted frames the display drops from the dim "holding" style
     // to inactive grey; in between it holds dim, so brief suppressions
     // (onset confirm, short excursions) don't strobe the readout.
+    //
+    // Held values (hold path: detector null, hold window open) are pushed
+    // with fresh: false — they may bridge the trace on-level but never
+    // move the gate's level or count toward a register change
+    // (pitchPaintGate.js "Register re-acquisition").
     let displayPitched = false;
     if (framePitched) {
-      displayPitched = paintGateRef.current.push(smoothedPitch);
+      displayPitched = paintGateRef.current.push(smoothedPitch, { fresh: hasPitch });
+      if (!displayPitched && hasPitch && paintGateRef.current.lastReason() === "offlevel") {
+        heldReadoutStaleRef.current = true;
+      }
     } else {
       paintGateRef.current.resetSegment();
     }
     if (displayPitched) {
+      heldReadoutStaleRef.current = false;
       displayVoicedRef.current = true;
       unpitchedFramesRef.current = 0;
     } else {
@@ -1106,6 +1124,10 @@ export function useAudioPipeline() {
       }
     }
     const displayHolding = !displayPitched && displayVoicedRef.current;
+    // Dim held readout only while it is not known-stale (see
+    // heldReadoutStaleRef): never show the other register's last value
+    // while a fresh off-level pitch is suppressed.
+    const showHeldReadout = displayHolding && !heldReadoutStaleRef.current;
 
     const noteInfo = displayPitched ? hzToNote(smoothedPitch) : null;
     const noteName = noteInfo?.name || null;
@@ -1114,6 +1136,20 @@ export function useAudioPipeline() {
     // Update history buffers (always, at full rate — canvas reads these).
     // A pitchless or unconfirmed-onset frame renders as a trace gap even
     // though audio is present — the trace draws confirmed pitch only.
+    //
+    // Octave-class line break: a painted point ≥ EXCURSION_SEMI from the
+    // previous painted point (an accepted register change, or a value
+    // painted before the level engages) is preceded by a gap entry so the
+    // canvas starts a new segment instead of stroking a near-vertical
+    // connecting line — the 06-10 "spike line" artefact, now prevented by
+    // construction rather than only by suppression.
+    if (displayPitched) {
+      const prev = pitchTraceRef.current[pitchTraceRef.current.length - 1];
+      if (prev && prev.voiced && prev.pitch !== null &&
+          Math.abs(12 * Math.log2(smoothedPitch / prev.pitch)) >= EXCURSION_SEMI) {
+        pitchTraceRef.current.push({ time: now, pitch: null, voiced: false });
+      }
+    }
     pitchTraceRef.current.push(
       displayPitched
         ? { time: now, pitch: smoothedPitch, voiced: true }
@@ -1154,6 +1190,10 @@ export function useAudioPipeline() {
       frameCallbackRef.current({
         voiced: hasPitch,
         f0: hasPitch ? smoothedPitch : null,
+        // Display decision for this frame (what the live trace painted).
+        // Session history draws its trace from painted frames so it
+        // matches what was shown; stats keep using voiced/f0.
+        painted: displayPitched,
         f1: f1,
         f2: f2,
         f3: f3,
@@ -1171,9 +1211,9 @@ export function useAudioPipeline() {
       ...s,
       voiced: displayPitched,
       holding: displayHolding,
-      pitch: displayPitched ? smoothedPitch : (displayHolding ? lastVoicedRef.current.pitch : null),
+      pitch: displayPitched ? smoothedPitch : (showHeldReadout ? lastVoicedRef.current.pitch : null),
       intensity,
-      noteName: displayPitched ? noteName : (displayHolding ? lastVoicedRef.current.noteName : null),
+      noteName: displayPitched ? noteName : (showHeldReadout ? lastVoicedRef.current.noteName : null),
       formants: smoothedFormants,
       spectralTilt: currentTilt,
       hnr: currentHnr,
