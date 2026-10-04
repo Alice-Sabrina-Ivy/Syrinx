@@ -63,10 +63,11 @@ Live demo: https://alice-sabrina-ivy.github.io/Syrinx/
 
 - **Dev server:** `npm run dev` (HTTP localhost only)
 - **Dev server (LAN-accessible HTTPS, for phone testing):** `npm run dev:mobile` — see "Mobile testing" below
-- **Production build:** `npm run build` (outputs to `docs/`)
+- **Production build:** `npm run build` (outputs to `dist/`, untracked — CI deploys it; see §Deployment)
 - **Lint:** `npm run lint`
 - **Preview production build:** `npm run preview`
-- **Core DSP regression bundle:** `npm run test:dsp`
+- **Unit tests (what CI runs):** `npm run test:unit` — every self-contained `tests/**/*-test.js` plus a few regression scripts ([scripts/run-unit-tests.mjs](scripts/run-unit-tests.mjs); `--list` shows what runs and what's skipped and why). A new `*-test.js` joins CI automatically: keep it self-contained (committed fixtures; skip gracefully when gitignored corpora are absent) or add it to the runner's SKIP list with the reason.
+- **Core DSP regression bundle:** `npm run test:dsp` (needs the gitignored PTDB/FDA corpora; local only)
 
 No test framework is set up. Test files are runnable Node scripts that print pass/fail and exit non-zero on failure.
 
@@ -79,7 +80,7 @@ No test framework is set up. Test files are runnable Node scripts that print pas
 - **CPP / vocal weight**: `node tests/dsp/cpp-test.js`, `node tests/audio/vocal-weight-aggregator-test.js`, `node tests/audio/vocal-weight-baseline-test.js`
 - **ML / gender**: `node tests/ml/audio-utils-test.js`, `node tests/ml/perceived-voice-hillenbrand-test.js` (accepts `--model=<HF_id>`)
 - **Data / sessions**: `node tests/data/export-import-test.js`, `node tests/data/session-stats-test.js`
-- **Everything**: `npm run lint` and `npm run build` before any ship claim.
+- **Everything**: `npm run lint`, `npm run test:unit` and `npm run build` before any ship claim (CI runs exactly these on every PR and before every deploy).
 
 ### Mobile testing
 
@@ -268,7 +269,7 @@ History arrays live in Refs (not React state), read directly by `requestAnimatio
 
 ## Measurements & empirical results
 
-Tuning sweeps, latency benchmarks, and other measurement artifacts live in `measurements/` at the repo root (NOT `docs/` — that's Vite build output, overwritten on deploy).
+Tuning sweeps, latency benchmarks, and other measurement artifacts live in `measurements/` at the repo root (NOT `dist/` — that's untracked Vite build output).
 
 - **Naming:** `<topic>-<kind>-<YYYY-MM-DD>.{md,csv,txt}`
 - **Belongs here:** baselines captured before tuning work, sweep results, latency/throughput measurements, before/after comparisons for any empirically-driven change.
@@ -332,4 +333,4 @@ Next capture-architecture work item (see §Capture architecture). Testable on th
 
 ## Deployment
 
-GitHub Actions (`.github/workflows/deploy.yml`) builds and deploys to GitHub Pages on push to `main`. Build output goes to `docs/`. Vite base path is `/Syrinx/` (uppercase S). This project is hosted on **GitHub** (`gh` CLI for PRs/issues); the Forgejo instance described in the user-level notes is not used here. See ARCHITECTURE.md for the full design document and roadmap.
+GitHub Actions deploys to GitHub Pages on every push to `main` ([.github/workflows/deploy.yml](.github/workflows/deploy.yml)): `npm ci` → lint → `npm run test:unit` → build → `actions/upload-pages-artifact` (from `dist/`) → `actions/deploy-pages`, so a failing lint or unit test never reaches the live site. Repo Settings → Pages → Source must be **GitHub Actions** (switched from the legacy "deploy from branch main:/docs" on 2026-10-04 — the old workflow committed ~24 MB of build output back to `main` on every merge and triggered GitHub's legacy pages build twice per merge). Pull requests run the same lint + unit tests + build ([.github/workflows/ci.yml](.github/workflows/ci.yml)). Runners are pinned to `ubuntu-24.04` and Node 24 (the version used locally); bump deliberately. Vite base path is `/Syrinx/` (uppercase S). This project is hosted on **GitHub** (`gh` CLI for PRs/issues); the Forgejo instance described in the user-level notes is not used here. See ARCHITECTURE.md for the full design document and roadmap.
