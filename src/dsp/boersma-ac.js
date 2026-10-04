@@ -53,11 +53,38 @@ export const BOERSMA_DEFAULTS = {
                           // pending a real-noise oracle. measurements/
                           // pitch-l2-retune-2026-07-19.md
   silenceThreshold: 0.03, // Praat default (fraction of global peak)
-  octaveCost: 0.01,       // Praat default. DO NOT RAISE — higher values
+  octaveCost: 0.015,      // Praat default 0.01 -> 0.015 (2026-10-03,
+                          // with octaveEvidence below; measurements/
+                          // pitch-octave-arbitration-2026-10-03.md).
+                          // Still DO NOT RAISE materially — larger values
                           // are a high-octave bias that re-creates the
                           // weak-H1 octave-up failure on low-F0 voices
                           // (stage-A: 0.2 -> 48.5 % octave-up in the
-                          // user-session 80-110 Hz band).
+                          // user-session 80-110 Hz band). 0.015 alone
+                          // measured +0.07/+0.13 pp (consensus/strict
+                          // refs) Alice 75-160 Hz octave-up.
+  // Spectral octave arbitration for (f, 2f) candidate pairs (2026-10-03).
+  // Low-frequency energy (room rumble <140 Hz, LF speech energy) inflates
+  // the autocorrelation at the 2T lag, so a real F0 2f can lose to its
+  // subharmonic f by a few hundredths. For every candidate f that has a
+  // 2f partner, oddEvenProminenceDb(f) compares the peak prominence of
+  // the partials at ODD multiples 3f, 5f, ... with the EVEN multiples
+  // 2f, 4f, ... (f itself is skipped — that is where rumble lives):
+  //   <= lowThrDb  : odd multiples absent -> f is a subharmonic of a real
+  //                  2f -> f.strength -= lowPenalty
+  //   >= highThrDb : odd multiples as prominent as even -> f is a real F0
+  //                  -> partner 2f.strength -= highPenalty (symmetric
+  //                  octave-up guard; it is what keeps the low-voice
+  //                  octave-up cost inside +0.3 pp — without it +0.30/
+  //                  +0.41 pp)
+  // Prominence-based (peak vs. the valleys half a comb-spacing away), so
+  // it is insensitive to the formant envelope and to broadband noise
+  // (noise lowers both odd and even prominence -> no penalty).
+  octaveEvidence: {
+    lowThrDb: -15, lowPenalty: 0.05,
+    highThrDb: -3, highPenalty: 0.03,
+    fMaxHz: 3500, maxMultiple: 16,
+  },
   peakFloor: 0.15,        // ignore AC maxima weaker than this (rNorm)
   maxCandidates: 15,
   // Silence-term reference (globalPeak) transient rejection, 2026-10-03 —
@@ -120,7 +147,9 @@ function fft(re, im, invert) {
 
 // Linear autocorrelation of x (length n) for lags [0, maxLag] via FFT
 // with zero padding. Writes into out (length maxLag+1).
-function autocorrFFT(x, n, fftSize, scratch, out, maxLag) {
+// If powOut is given, the frame's one-sided power spectrum bins
+// [0, powOut.length) are copied there (reused by the octave arbitration).
+function autocorrFFT(x, n, fftSize, scratch, out, maxLag, powOut) {
   const { re, im } = scratch;
   re.fill(0); im.fill(0);
   for (let i = 0; i < n; i++) re[i] = x[i];
@@ -129,6 +158,7 @@ function autocorrFFT(x, n, fftSize, scratch, out, maxLag) {
     const p = re[i] * re[i] + im[i] * im[i];
     re[i] = p; im[i] = 0;
   }
+  if (powOut) for (let i = 0; i < powOut.length; i++) powOut[i] = re[i];
   fft(re, im, true);
   for (let t = 0; t <= maxLag; t++) out[t] = re[t];
 }
@@ -196,6 +226,46 @@ export function createBoersmaAC(sampleRate, frameLength, opts = {}) {
   const rW = new Float64Array(maxLag + 1);
   const rNorm = new Float64Array(maxLag + 1);
 
+  // Octave-arbitration state (pre-allocated; no per-frame allocation
+  // beyond the candidate objects candidates() already creates).
+  const oe = cfg.octaveEvidence || null;
+  const binHz = sampleRate / fftSize;
+  const spec = oe ? new Float64Array(Math.min(fftSize / 2, Math.ceil((oe.fMaxHz * 1.1) / binHz) + 2)) : null;
+  const pen = new Float64Array(maxLag + 1); // >= max local-maxima count
+  const DB = 10 / Math.LN10;
+  // max power within [x - half, x + half]
+  function peakPow(x, half) {
+    let lo = Math.floor((x - half) / binHz), hi = Math.ceil((x + half) / binHz);
+    if (lo < 1) lo = 1;
+    if (hi > spec.length - 1) hi = spec.length - 1;
+    let m = 1e-30;
+    for (let b = lo; b <= hi; b++) if (spec[b] > m) m = spec[b];
+    return m;
+  }
+  function meanPow(x, half) {
+    let lo = Math.floor((x - half) / binHz), hi = Math.ceil((x + half) / binHz);
+    if (lo < 1) lo = 1;
+    if (hi > spec.length - 1) hi = spec.length - 1;
+    let s = 0;
+    for (let b = lo; b <= hi; b++) s += spec[b];
+    return s / (hi - lo + 1) + 1e-30;
+  }
+  // mean prominence (dB) of the partials at odd multiples m*f (m = 3, 5,
+  // ...) minus that at even multiples (m = 2, 4, ...), m <= maxMultiple,
+  // m*f < fMaxHz. Prominence = peak (±min(3 %, 0.2 f)) over the mean
+  // level of the valleys at (m ± 0.5) f (±0.1 f).
+  function oddEvenProminenceDb(f) {
+    let so = 0, no = 0, se = 0, ne = 0;
+    for (let m = 2; m <= oe.maxMultiple && m * f < oe.fMaxHz; m++) {
+      const x = m * f;
+      const half = Math.min(0.03 * x, 0.2 * f);
+      const v = 0.5 * (meanPow(x - 0.5 * f, 0.1 * f) + meanPow(x + 0.5 * f, 0.1 * f));
+      const prom = DB * Math.log(peakPow(x, half) / v);
+      if (m & 1) { so += prom; no++; } else { se += prom; ne++; }
+    }
+    return (no ? so / no : 0) - (ne ? se / ne : 0);
+  }
+
   // Window autocorrelation, computed once.
   autocorrFFT(window, n, fftSize, scratch, rW, maxLag);
   const rW0 = rW[0];
@@ -219,7 +289,7 @@ export function createBoersmaAC(sampleRate, frameLength, opts = {}) {
     if (localPeak === 0) return { voiced: [], unvoicedStrength: cfg.voicingThreshold };
 
     for (let i = 0; i < n; i++) windowed[i] = (buffer[i] - mean) * window[i];
-    autocorrFFT(windowed, n, fftSize, scratch, rX, maxLag);
+    autocorrFFT(windowed, n, fftSize, scratch, rX, maxLag, spec);
     const r0 = rX[0];
     if (r0 <= 0) return { voiced: [], unvoicedStrength: cfg.voicingThreshold };
     for (let t = 0; t <= maxLag; t++) rNorm[t] = (rX[t] / r0) / (rW[t] / rW0);
@@ -247,6 +317,26 @@ export function createBoersmaAC(sampleRate, frameLength, opts = {}) {
         const strength = r - cfg.octaveCost * Math.log2(cfg.minPitchHz * lag / sampleRate);
         cands.push({ freq, strength, r });
       }
+    }
+    if (oe && cands.length > 1) {
+      // Octave arbitration (see BOERSMA_DEFAULTS.octaveEvidence). Pairs
+      // are found on the pre-penalty strengths; penalties are summed and
+      // applied afterwards so the result is order-independent.
+      const m = cands.length;
+      for (let i = 0; i < m; i++) pen[i] = 0;
+      for (let i = 0; i < m; i++) {
+        const f = cands[i].freq;
+        let u = -1;
+        for (let j = 0; j < m; j++) {
+          if (j !== i && Math.abs(cands[j].freq / (2 * f) - 1) < 0.05
+            && (u < 0 || cands[j].strength > cands[u].strength)) u = j;
+        }
+        if (u < 0) continue;
+        const ev = oddEvenProminenceDb(f);
+        if (ev <= oe.lowThrDb) pen[i] += oe.lowPenalty;
+        else if (ev >= oe.highThrDb) pen[u] += oe.highPenalty;
+      }
+      for (let i = 0; i < m; i++) cands[i].strength -= pen[i];
     }
     let bestR = 0;
     for (const c of cands) if (c.r > bestR) bestR = c.r;

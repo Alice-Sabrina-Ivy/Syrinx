@@ -231,5 +231,58 @@ console.log("\npath tracker — decode delay, stability, flush");
   check("sustained octave shift tracks to 220", near(out[out.length - 1], 220, 5));
 }
 
+console.log("\noctave arbitration — rumble vs. odd-multiple evidence (2026-10-03)");
+{
+  // Room rumble (narrowband noise ~90 Hz) inflates the autocorrelation at
+  // the 2T lag of a ~220 Hz voice, so the subharmonic 110 Hz candidate
+  // wins by a few hundredths — the "trace at half my pitch" report.
+  // octaveEvidence penalizes a subharmonic whose odd multiples (3f, 5f,
+  // ...) carry no partials. Low-voice control: a real 110 Hz voice under
+  // the same rumble must stay at 110 (its odd multiples exist).
+  // measurements/pitch-octave-arbitration-2026-10-03.md
+  function voicePlusRumble(f0, seedInit) {
+    let seed = seedInit;
+    const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+    const gauss = () => Math.sqrt(-2 * Math.log(rnd() || 1e-9)) * Math.cos(2 * Math.PI * rnd());
+    const n = Math.round(1.2 * SR), v = new Float32Array(n), w = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      let s = 0;
+      for (let k = 1; k * f0 < 7000; k++) s += Math.pow(10, (-12 * Math.log2(k)) / 20) * Math.sin(2 * Math.PI * k * f0 * i / SR);
+      v[i] = s;
+    }
+    const r = Math.exp(-Math.PI * 60 / SR), th = 2 * Math.PI * 90 / SR, a1 = 2 * r * Math.cos(th), a2 = -r * r;
+    let y1 = 0, y2 = 0, z1 = 0, z2 = 0;
+    for (let i = 0; i < n; i++) {
+      const y = gauss() + a1 * y1 + a2 * y2; y2 = y1; y1 = y;
+      const z = y + a1 * z1 + a2 * z2; z2 = z1; z1 = z; w[i] = z;
+    }
+    const rms = (a) => Math.sqrt(a.reduce((q, x) => q + x * x, 0) / a.length);
+    const rv = rms(v), g = (rv / rms(w)) * Math.pow(10, -10 / 20); // rumble 10 dB below voice
+    const out = new Float32Array(n);
+    for (let i = 0; i < n; i++) out[i] = 0.1 * (v[i] + g * w[i]) / rv;
+    return out;
+  }
+  function decodedCorrectFrac(f0) {
+    let ok = 0, tot = 0;
+    for (const s of [7919, 15838, 23757, 31676]) {
+      const x = voicePlusRumble(f0, s);
+      const det = createBoersmaAC(SR, N), pt = createPathTracker();
+      const buf = new Float32Array(N);
+      let fill = 0, k2 = 0;
+      for (let k = 0; (k + 1) * 400 <= x.length; k++) {
+        buf.copyWithin(0, 400); buf.set(x.subarray(k * 400, (k + 1) * 400), N - 400);
+        fill += 400; if (fill < N) continue;
+        const d = pt.emit(det.candidates(buf));
+        if (d === null || k2++ < 2) continue;
+        tot++; if (d > 0 && Math.abs(d / f0 - 1) < 0.05) ok++;
+      }
+    }
+    return ok / tot;
+  }
+  const hi = decodedCorrectFrac(220), lo = decodedCorrectFrac(110);
+  check("220 Hz voice + 90 Hz rumble (-10 dB) decodes at 220, not 110 (>= 80 % of frames)", hi >= 0.8, `${(100 * hi).toFixed(1)} %`);
+  check("110 Hz voice + same rumble stays at 110 (no octave-up, >= 95 %)", lo >= 0.95, `${(100 * lo).toFixed(1)} %`);
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);
