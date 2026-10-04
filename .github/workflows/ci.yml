@@ -1,0 +1,32 @@
+name: CI
+
+# Pull-request checks: the same lint + unit tests + build that gate the
+# Pages deploy on main (deploy.yml), so a PR shows red before it merges.
+# Corpus-scale oracles (npm run test:dsp, the session oracle, the noise
+# oracle) need gitignored data and stay local — see CLAUDE.md.
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+# A newer push to the same PR supersedes the running check.
+concurrency:
+  group: ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run test:unit
+      - run: npm run build
