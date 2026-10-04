@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import db from "../db";
+import { isLiveSession } from "../utils/sessionRepair";
 import {
   DEFAULT_PITCH_TARGET,
   DEFAULT_F2_TARGET,
@@ -175,7 +176,9 @@ function SessionCard({ session, expanded, onToggle, onDelete }) {
             </span>
           </div>
           <span className="text-xs text-neutral-500 font-mono tabular-nums">
-            {session.endedAt == null ? "recording…" : formatDuration(session.durationSeconds)}
+            {session.endedAt == null && isLiveSession(session.id)
+              ? "recording…"
+              : formatDuration(session.durationSeconds)}
           </span>
         </div>
 
