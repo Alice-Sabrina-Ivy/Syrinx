@@ -18,6 +18,12 @@ import {
 const EXPORT_CHUNK_CHARS = 1 << 20;
 const EXPORT_COLLAPSE_CHARS = 32 << 20;
 
+// Tells views that cache DB contents (SessionHistory, mounted under this
+// overlay) to reload after a bulk change — delete-all or import.
+function announceDataChanged() {
+  window.dispatchEvent(new CustomEvent("syrinx:data-changed"));
+}
+
 export function DataManagement({ onClose }) {
   const [recordAudio, setRecordAudio] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -133,6 +139,7 @@ export function DataManagement({ onClose }) {
         }),
       );
 
+      announceDataChanged();
       setStatus(
         `Imported ${counts.accepted} session${counts.accepted === 1 ? "" : "s"} · ` +
         `skipped ${counts.skipped} already present · ` +
@@ -155,10 +162,21 @@ export function DataManagement({ onClose }) {
     // invisible in History, undeletable except by another wipe) and
     // later no-op-finalize the vanished session.
     window.dispatchEvent(new CustomEvent("syrinx:abort-recording"));
-    await db.frames.clear();
-    await db.sessions.clear();
-    await db.settings.clear();
-    await db.exerciseResults.clear();
+    try {
+      await db.frames.clear();
+      await db.sessions.clear();
+      await db.settings.clear();
+      await db.exerciseResults.clear();
+    } catch (err) {
+      setStatus(`Delete failed: ${err.message}`);
+      return;
+    } finally {
+      // Even a partial wipe changed what History shows.
+      announceDataChanged();
+    }
+    // The settings row (and its recordAudio flag) is gone — reflect the
+    // default in the toggle instead of a stale "on".
+    setRecordAudio(false);
     setStatus("All data deleted");
     setTimeout(() => setStatus(null), 2000);
   }
