@@ -7,7 +7,7 @@ import {
   createFrameSerializer,
   EXPORT_FOOTER,
   stripSessionForExport,
-  iterateExportRecords,
+  importExport,
 } from "../utils/exportFormat";
 
 // Export assembly: frame lines are concatenated into ~1 MB strings, and
@@ -17,8 +17,6 @@ import {
 // ~18 h recorded).
 const EXPORT_CHUNK_CHARS = 1 << 20;
 const EXPORT_COLLAPSE_CHARS = 32 << 20;
-// Frames per bulkAdd during import.
-const IMPORT_BATCH = 5000;
 
 export function DataManagement({ onClose }) {
   const [recordAudio, setRecordAudio] = useState(false);
@@ -118,49 +116,29 @@ export function DataManagement({ onClose }) {
       // giant frames array. Older single-line exports fall back to a
       // whole-document JSON.parse inside iterateExportRecords.
       const bytes = new Uint8Array(await file.arrayBuffer());
-      let sessionCount = 0;
 
       // Single rw transaction: a failure mid-import (quota, malformed
       // row, tab close) rolls everything back instead of committing a
-      // partial import that a retry would then duplicate.
-      await db.transaction("rw", db.settings, db.sessions, db.frames, async () => {
-        const idMap = {};
-        let batch = [];
-        for (const rec of iterateExportRecords(bytes)) {
-          if (rec.type === "header") {
-            const { settings, sessions } = rec.header;
-            // Import settings
-            for (const s of settings ?? []) {
-              await db.settings.put(s);
-            }
-            // Import sessions (strip auto-increment id, let Dexie assign new ones)
-            for (const session of sessions) {
-              const { id: oldId, ...rest } = session;
-              const newId = await db.sessions.add(rest);
-              idMap[oldId] = newId;
-            }
-            sessionCount = sessions.length;
-            continue;
-          }
-          // Frames with remapped sessionIds. Frames referencing a
-          // session that isn't in the export are dropped — falling back
-          // to the original id would attach them to whatever unrelated
-          // local session happens to own that id.
-          // eslint-disable-next-line no-unused-vars
-          const { id, sessionId, ...rest } = rec.frame;
-          const newSessionId = idMap[sessionId];
-          if (newSessionId === undefined) continue;
-          batch.push({ ...rest, sessionId: newSessionId });
-          if (batch.length >= IMPORT_BATCH) {
-            await db.frames.bulkAdd(batch);
-            batch = [];
-          }
-        }
-        if (batch.length > 0) await db.frames.bulkAdd(batch);
-      });
+      // partial import that a retry would then duplicate. Merge policy
+      // (dedupe sessions by startedAt, reject ones without it, settings
+      // merged field-wise without overwriting local values or importing
+      // recordAudio) lives in importExport — utils/exportFormat.js.
+      const counts = await db.transaction("rw", db.settings, db.sessions, db.frames, () =>
+        importExport(bytes, {
+          getSettings: (id) => db.settings.get(id),
+          putSettings: (row) => db.settings.put(row),
+          sessionStartTimes: () => db.sessions.orderBy("startedAt").keys(),
+          addSession: (row) => db.sessions.add(row),
+          addFrames: (rows) => db.frames.bulkAdd(rows),
+        }),
+      );
 
-      setStatus(`Imported ${sessionCount} sessions!`);
-      setTimeout(() => setStatus(null), 3000);
+      setStatus(
+        `Imported ${counts.accepted} session${counts.accepted === 1 ? "" : "s"} · ` +
+        `skipped ${counts.skipped} already present · ` +
+        `rejected ${counts.rejected} without a start time`,
+      );
+      setTimeout(() => setStatus(null), 6000);
     } catch (err) {
       setStatus(`Import failed: ${err.message}`);
     } finally {

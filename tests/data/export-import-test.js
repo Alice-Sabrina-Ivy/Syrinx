@@ -20,6 +20,10 @@ import {
   isLineLayout,
   iterateExportRecords,
   parseExport,
+  classifyImportSession,
+  isImportableSettingsRow,
+  mergeImportedSettings,
+  importExport,
 } from "../../src/utils/exportFormat.js";
 
 let failures = 0;
@@ -151,6 +155,90 @@ const expected = { version: EXPORT_VERSION, exportedAt, settings, sessions, fram
     const r = throwsMatching(() => parseExport(enc.encode(text)), re);
     check(`rejects: ${name}`, r === true, r === true ? "" : r);
   }
+}
+
+// --- 7. Import policy: dedupe, settings merge, rejects ------------------------------
+{
+  // classifyImportSession
+  const known = new Set([100]);
+  check("session with existing startedAt → skipped", classifyImportSession({ startedAt: 100 }, known) === "skipped");
+  check("new session → accepted (and remembered)", classifyImportSession({ startedAt: 200 }, known) === "accepted" && known.has(200));
+  check("same startedAt twice in one file → second skipped", classifyImportSession({ startedAt: 200 }, known) === "skipped");
+  check("missing / non-numeric / NaN startedAt → rejected",
+    ["x", null, undefined, NaN, Infinity].every((v) => classifyImportSession({ startedAt: v }, known) === "rejected") &&
+    classifyImportSession({}, known) === "rejected" && classifyImportSession(null, known) === "rejected");
+
+  // mergeImportedSettings
+  const local = { id: "default", recordAudio: false, targetF0Low: 150, createdAt: 5 };
+  const imported = { id: "default", recordAudio: true, targetF0Low: 165, displayName: "Ivy", createdAt: 1 };
+  const merged = mergeImportedSettings(local, imported);
+  check("settings merge keeps every local value", merged.targetF0Low === 150 && merged.createdAt === 5 && merged.recordAudio === false);
+  check("settings merge fills fields the local row lacks", merged.displayName === "Ivy");
+  check("settings merge never imports recordAudio (no local row)", !("recordAudio" in mergeImportedSettings(undefined, imported)));
+  check("settings merge never turns recordAudio on (local row lacks it)",
+    !("recordAudio" in mergeImportedSettings({ id: "default", targetF0Low: 150 }, imported)));
+  check("settings merge with nothing new → null (no write)", mergeImportedSettings({ ...local, displayName: "x" }, imported) === null);
+  check("settings row validity", isImportableSettingsRow({ id: "default" }) && !isImportableSettingsRow({}) && !isImportableSettingsRow(null) && !isImportableSettingsRow({ id: {} }));
+}
+
+// In-memory store with the same surface DataManagement backs with Dexie.
+function memoryStore() {
+  const settings = new Map(), sessions = new Map(), frames = [];
+  let nextId = 1;
+  return {
+    settings, sessions, frames,
+    getSettings: async (id) => settings.get(id),
+    putSettings: async (row) => { settings.set(row.id, row); },
+    sessionStartTimes: async () => [...sessions.values()].map((s) => s.startedAt).sort((a, b) => a - b),
+    addSession: async (row) => { const id = nextId++ * 10; sessions.set(id, { ...row, id }); return id; },
+    addFrames: async (rows) => { frames.push(...rows); },
+  };
+}
+
+{
+  const file = bytesOf(serializeExport({ exportedAt, settings, sessions, frames }));
+  const store = memoryStore();
+  const c1 = await importExport(file, store, { batchSize: 64 });
+  check("fresh import: every session accepted", c1.accepted === 2 && c1.skipped === 0 && c1.rejected === 0, JSON.stringify(c1));
+  check("fresh import: every frame imported, ids stripped, sessionIds remapped",
+    store.frames.length === frames.length && store.frames.every((f) => !("id" in f) && store.sessions.has(f.sessionId)) &&
+    store.frames.filter((f) => f.sessionId === 10).length === 200 && store.frames.filter((f) => f.sessionId === 20).length === 50);
+  check("fresh import: session rows keep their fields under fresh ids",
+    store.sessions.get(10).startedAt === sessions[0].startedAt && store.sessions.get(10).notes === sessions[0].notes);
+  check("fresh import: imported recordAudio is NOT applied", !store.settings.get("default").recordAudio && store.settings.get("default").targetF0Low === 165);
+
+  // Importing your own backup again changes nothing.
+  const c2 = await importExport(file, store);
+  check("re-import of the same backup: all skipped, no new sessions/frames",
+    c2.accepted === 0 && c2.skipped === 2 && store.sessions.size === 2 && store.frames.length === frames.length, JSON.stringify(c2));
+
+  // Local recordAudio=true is never turned off or on by import either.
+  store.settings.set("default", { id: "default", recordAudio: true });
+  await importExport(file, store);
+  check("local recordAudio=true survives import", store.settings.get("default").recordAudio === true);
+}
+
+{
+  // Rejected and duplicate sessions drop their frames; valid ones import.
+  const mixedSessions = [
+    { id: 1, startedAt: 5000 },
+    { id: 2 },                       // no startedAt → rejected
+    { id: 3, startedAt: "yesterday" },// non-numeric → rejected
+    { id: 4, startedAt: 5000 },      // duplicate within file → skipped
+    { id: 5, startedAt: 9000 },
+  ];
+  const mixedFrames = [1, 2, 3, 4, 5, 6].map((sid, i) => ({ id: i + 1, sessionId: sid, timestampMs: i, voiced: false, f0: null }));
+  const store = memoryStore();
+  const c = await importExport(bytesOf(serializeExport({ exportedAt, settings: [], sessions: mixedSessions, frames: mixedFrames })), store);
+  check("mixed file: counts", c.accepted === 2 && c.skipped === 1 && c.rejected === 2, JSON.stringify(c));
+  check("mixed file: only accepted sessions' frames imported (orphan session 6 dropped too)",
+    store.frames.length === 2 && store.frames.every((f) => store.sessions.has(f.sessionId)));
+
+  // Malformed file: throws before any write for a bad header.
+  const store2 = memoryStore();
+  let threw = false;
+  try { await importExport(enc.encode("{\"version\":1,\"frames\":[\n]}\n"), store2); } catch { threw = true; }
+  check("malformed header: import throws, nothing written", threw && store2.sessions.size === 0 && store2.settings.size === 0);
 }
 
 // --- 6. Scale: no giant string, linear time ---------------------------------------------

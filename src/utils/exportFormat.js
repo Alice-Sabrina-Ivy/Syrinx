@@ -1,6 +1,7 @@
-// exportFormat.js — Pure serialize/parse logic for the JSON data export.
-// Kept free of Dexie / DOM so tests/data/export-import-test.js can run it
-// in plain Node.
+// exportFormat.js — Pure serialize/parse logic for the JSON data export,
+// plus the import merge policy (importExport, bottom of file). Kept free
+// of Dexie / DOM so tests/data/export-import-test.js can run it in plain
+// Node.
 //
 // Line layout (written since 2026-10). Still ONE valid JSON document with
 // the version-1 top-level schema — any JSON.parse reads it — but laid out
@@ -221,4 +222,100 @@ export function parseExport(bytes) {
     else frames.push(rec.frame);
   }
   return { ...header, frames };
+}
+
+// ---------------------------------------------------------------------------
+// Import policy. Importing used to add every session under a fresh id
+// (re-importing your own backup doubled everything), put settings rows
+// verbatim (overwriting the local "default" row — including the
+// privacy-relevant recordAudio flag), and accept sessions without a
+// numeric startedAt, which History can't order or label (invisible).
+
+// "accepted" | "skipped" (its startedAt already exists locally or earlier
+// in this file — startedAt is the session's identity across devices and
+// backups) | "rejected" (no numeric startedAt). Accepted startedAt values
+// are added to `knownStartedAt`.
+export function classifyImportSession(session, knownStartedAt) {
+  if (!session || typeof session !== "object" || !Number.isFinite(session.startedAt)) {
+    return "rejected";
+  }
+  if (knownStartedAt.has(session.startedAt)) return "skipped";
+  knownStartedAt.add(session.startedAt);
+  return "accepted";
+}
+
+export function isImportableSettingsRow(row) {
+  return !!row && typeof row === "object" &&
+    (typeof row.id === "string" || typeof row.id === "number");
+}
+
+// Field-wise merge of an imported settings row into the local one: only
+// fills fields the local row doesn't have — never overwrites a local
+// value — and never imports recordAudio (whether THIS device records mic
+// audio is decided on this device). Returns the row to write, or null
+// when there is nothing new.
+export function mergeImportedSettings(local, imported) {
+  const merged = { ...(local ?? {}) };
+  let changed = !local;
+  for (const [key, value] of Object.entries(imported)) {
+    if (key === "recordAudio") continue;
+    if (merged[key] === undefined) {
+      merged[key] = value;
+      changed = true;
+    }
+  }
+  return changed ? merged : null;
+}
+
+// The import itself, against a minimal async `store`:
+//   getSettings(id) / putSettings(row) / sessionStartTimes() /
+//   addSession(row) -> new id / addFrames(rows)
+// DataManagement backs it with Dexie inside ONE rw transaction (every
+// store call returns an IndexedDB request promise, so the transaction
+// stays alive and a throw anywhere rolls the whole import back); the
+// tests back it with Maps. Returns { accepted, skipped, rejected }
+// session counts.
+export async function importExport(bytes, store, { batchSize = 5000 } = {}) {
+  const counts = { accepted: 0, skipped: 0, rejected: 0 };
+  const idMap = {};
+  let batch = [];
+  for (const rec of iterateExportRecords(bytes)) {
+    if (rec.type === "header") {
+      const { settings, sessions } = rec.header;
+      // Settings: field-wise merge that never overwrites a local value
+      // and never imports recordAudio (mergeImportedSettings).
+      for (const s of settings ?? []) {
+        if (!isImportableSettingsRow(s)) continue;
+        const merged = mergeImportedSettings(await store.getSettings(s.id), s);
+        if (merged) await store.putSettings(merged);
+      }
+      // Sessions: skip ones already here (same startedAt — e.g.
+      // re-importing your own backup), reject ones without a numeric
+      // startedAt; the rest get fresh ids from the store.
+      const knownStartedAt = new Set(await store.sessionStartTimes());
+      for (const session of sessions) {
+        const verdict = classifyImportSession(session, knownStartedAt);
+        counts[verdict]++;
+        if (verdict !== "accepted") continue;
+        const { id: oldId, ...rest } = session;
+        idMap[oldId] = await store.addSession(rest);
+      }
+      continue;
+    }
+    // Frames with remapped sessionIds. Frames referencing a session that
+    // isn't in the export, or was skipped/rejected, are dropped — falling
+    // back to the original id would attach them to whatever unrelated
+    // local session happens to own that id.
+    // eslint-disable-next-line no-unused-vars
+    const { id, sessionId, ...rest } = rec.frame;
+    const newSessionId = idMap[sessionId];
+    if (newSessionId === undefined) continue;
+    batch.push({ ...rest, sessionId: newSessionId });
+    if (batch.length >= batchSize) {
+      await store.addFrames(batch);
+      batch = [];
+    }
+  }
+  if (batch.length > 0) await store.addFrames(batch);
+  return counts;
 }
