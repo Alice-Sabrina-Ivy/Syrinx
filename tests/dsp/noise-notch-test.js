@@ -262,27 +262,27 @@ console.log("\nisNearNotch (narrow, track-referenced ghost veto)");
 // with <= 25 c vibrato or <= 15 c drift, modal and breathy (production
 // before 2026-10-03: notched ~5 s in, then blanked by the ghost veto).
 // Drives pitch-worker.js in-process with a fake worker `self` at 16 kHz.
+const posts = [];
+globalThis.self = { postMessage: (m) => posts.push(m) };
+await import("../../src/dsp/pitch-worker.js");
+const worker = globalThis.self;
+function workerRun(x) {
+  posts.length = 0;
+  worker.onmessage({ data: { type: "init", inputSampleRate: SR } });
+  const port = {};
+  worker.onmessage({ data: { type: "audioPort", port } });
+  for (let c = 0; c + CHUNK <= x.length; c += CHUNK) {
+    const chunk = Float32Array.from(x.subarray(c, c + CHUNK));
+    port.onmessage({ data: { buffer: chunk.buffer, contextTime: (c + CHUNK) / SR } });
+  }
+  return posts.filter((p) => p.type === "pitch");
+}
 console.log(`\nheld notes stay on the trace (real pitch worker, ${HOLD} s holds)`);
 {
-  const posts = [];
-  globalThis.self = { postMessage: (m) => posts.push(m) };
-  await import("../../src/dsp/pitch-worker.js");
-  const worker = globalThis.self;
-  async function workerRun(x) {
-    posts.length = 0;
-    worker.onmessage({ data: { type: "init", inputSampleRate: SR } });
-    const port = {};
-    worker.onmessage({ data: { type: "audioPort", port } });
-    for (let c = 0; c + CHUNK <= x.length; c += CHUNK) {
-      const chunk = Float32Array.from(x.subarray(c, c + CHUNK));
-      port.onmessage({ data: { buffer: chunk.buffer, contextTime: (c + CHUNK) / SR } });
-    }
-    return posts.filter((p) => p.type === "pitch");
-  }
   for (const f0 of [120, 220]) {
     for (const [label, mod] of [["25 c vibrato", { vibCents: 25 }], ["15 c drift", { driftCents: 15 }], ["steady, breathy", { h1h2: 12, hnr: 12 }]]) {
       const { x, f0At } = heldVoice({ f0, dur: HOLD, ...mod, seed: 3 * f0 + label.length });
-      const msgs = await workerRun(x);
+      const msgs = workerRun(x);
       let n = 0, ok = 0, notchedSeen = false;
       for (const m of msgs) {
         // posted pitch describes the 80 ms frame centred 40 ms before
@@ -297,6 +297,150 @@ console.log(`\nheld notes stay on the trace (real pitch worker, ${HOLD} s holds)
         `${(100 * ok / n).toFixed(1)} % (notch ${notchedSeen ? "promoted" : "never promoted"})`);
     }
   }
+}
+
+// ---- 2026-10-04: held-note robustness (in-sound latch + new-note re-births)
+// The 2026-10-03 onset-born rule keyed on "first seen AT an onset". Three
+// routine exercise shapes escaped it and were notched ~5 s in, then blanked
+// by the ghost veto (real worker, measurements/noise-notch-held-note-
+// robustness-2026-10-04.md): a hold that slides / steps > matchHz mid-note,
+// speech running into a hold with < 0.3 s gaps, and repeated same-pitch
+// holds with short breaths. Synthesized here over a -70 dB noise floor
+// (real rooms are never digitally silent; digital silence is handled
+// separately — see the stream-start checks below).
+
+// voiceTrack({ dur, f0At(t) -> Hz | 0, ampAt(t) -> [0,1], h1h2, hnr, vibCents,
+// seed }): harmonic source as heldVoice, 5.5 Hz vibrato, aspiration noise,
+// -70 dB floor everywhere.
+function voiceTrack({ dur, f0At, ampAt, h1h2 = 6, hnr = 25, vibCents = 15, amp = 0.15, seed = 11 }) {
+  const n = Math.round(dur * SR);
+  const x = new Float32Array(n);
+  let s = seed >>> 0 || 1;
+  const rnd = () => { s ^= s << 13; s >>>= 0; s ^= s >> 17; s ^= s << 5; s >>>= 0; return s / 0x7fffffff - 1; };
+  const noiseAmp = amp * Math.pow(10, -hnr / 20);
+  let ph = 0;
+  for (let i = 0; i < n; i++) {
+    const t = i / SR;
+    const f0 = f0At(t), a = ampAt(t);
+    let v = 0;
+    if (f0 > 0 && a > 0) {
+      ph += 2 * Math.PI * f0 * Math.pow(2, vibCents * Math.sin(2 * Math.PI * 5.5 * t) / 1200) / SR;
+      const nh = Math.floor(3800 / f0);
+      for (let k = 1; k <= nh; k++) v += Math.pow(10, (k === 1 ? 0 : -h1h2 - 6 * Math.log2(k / 2)) / 20) * Math.sin(k * ph);
+      v = a * (amp * v / 2 + noiseAmp * rnd());
+    }
+    x[i] = v + 0.0003 * rnd();
+  }
+  return x;
+}
+const ramp = (t, a, b, r = 0.05) => (t < a || t > b ? 0 : Math.max(0, Math.min(1, (t - a) / r, (b - t) / r)));
+// speech-like syllables in [a, b): 0.12-0.3 s, F0 random-walking +-4 st
+// around `center` with a +-2 st contour per syllable, 40-120 ms gaps
+function syllables(a, b, center, seed) {
+  let s = seed;
+  const rnd = () => { s ^= s << 13; s >>>= 0; s ^= s >> 17; s ^= s << 5; s >>>= 0; return s / 0xffffffff; };
+  const out = []; let t = a, st = 0;
+  while (t < b - 0.1) {
+    const e = Math.min(b, t + 0.12 + 0.18 * rnd());
+    st = Math.max(-4, Math.min(4, st + (rnd() - 0.5) * 3));
+    out.push({ a: t, b: e, f: center * Math.pow(2, st / 12), c: (rnd() - 0.5) * 4 });
+    t = e + 0.04 + 0.08 * rnd();
+  }
+  out[out.length - 1].b = b;
+  return out;
+}
+function holdScore(msgs, f0At, spans) {
+  let n = 0, ok = 0, notched = false;
+  for (const m of msgs) {
+    const t = m.contextTime - 0.04;
+    if (m.notchedFreqs) notched = true;
+    if (!spans.some(([a, b]) => t >= a + 0.3 && t <= b - 0.1)) continue;
+    n++;
+    if (m.pitch > 0 && Math.abs(m.pitch / f0At(t) - 1) < 0.08) ok++;
+  }
+  return { pct: 100 * ok / n, notched };
+}
+const scoreCheck = (name, r) => check(`${name}: >= 95 % of hold frames at pitch, never notched`, r.pct >= 95 && !r.notched,
+  `${r.pct.toFixed(1)} %${r.notched ? ", notch promoted" : ""}`);
+
+console.log("\nmid-hold glide / step: the moved line is born inside the sound (onset-born)");
+for (const [label, f0b, g] of [["220 -> 228 Hz glide (1.5 s) after 4 s", 228, 1.5], ["220 -> 224 Hz step after 4 s", 224, 0.05], ["180 -> 186 Hz glide (1 s) after 4 s", 186, 1]]) {
+  const f0a = label.startsWith("180") ? 180 : 220;
+  const c = 1200 * Math.log2(f0b / f0a);
+  const f0At = (t) => (t < 1 || t > 17 ? 0 : f0a * Math.pow(2, (t < 5 ? 0 : t < 5 + g ? c * (t - 5) / g : c) / 1200));
+  const x = voiceTrack({ dur: 18, f0At, ampAt: (t) => ramp(t, 1, 17), seed: f0b });
+  scoreCheck(label, holdScore(workerRun(x), f0At, [[1, 17]]));
+}
+
+console.log("\nspeech running straight into a hold (in-sound latch)");
+for (const gap of [0, 0.06]) for (const [f0, h1h2, hnr] of [[220, 6, 25], [120, 12, 12]]) {
+  const syl = syllables(1, 4, f0, 7 + f0);
+  const h0 = 4 + gap;
+  const f0At = (t) => {
+    if (t >= h0 && t <= h0 + 12) return f0;
+    const q = syl.find((y) => t >= y.a && t <= y.b);
+    return q ? q.f * Math.pow(2, q.c * ((t - q.a) / (q.b - q.a) - 0.5) / 12) : 0;
+  };
+  const ampAt = (t) => (t >= h0 ? ramp(t, h0, h0 + 12, gap ? 0.05 : 0.02) : (syl.some((y) => t >= y.a && t <= y.b) ? ramp(t, syl.find((y) => t >= y.a && t <= y.b).a, syl.find((y) => t >= y.a && t <= y.b).b, 0.02) : 0));
+  const x = voiceTrack({ dur: h0 + 13, f0At, ampAt, h1h2, hnr, seed: 31 + f0 });
+  scoreCheck(`3 s speech, ${gap * 1000} ms gap, 12 s hold at ${f0} Hz${h1h2 > 6 ? " (breathy)" : ""}`, holdScore(workerRun(x), f0At, [[h0, h0 + 12]]));
+}
+
+console.log("\nphonation shortly after the stream starts (chunk-level onset)");
+for (const f0 of [120, 220]) {
+  const f0At = (t) => (t >= 0.15 && t <= 16.15 ? f0 : 0);
+  const x = voiceTrack({ dur: 17, f0At, ampAt: (t) => ramp(t, 0.15, 16.15, 0.02), seed: 5 + f0 });
+  scoreCheck(`${f0} Hz, 16 s hold from t = 0.15 s`, holdScore(workerRun(x), f0At, [[0.15, 16.15]]));
+}
+// NOT covered (documented limitation): phonation already sounding in the
+// stream's first chunk has no pre-onset reference — the same signal as a
+// hum present at stream start, which keeps its 5 s promotion (below).
+
+console.log("\nrepeated same-pitch holds separated by short breaths (new-note re-birth)");
+for (const [label, breathNoiseDb] of [["silent 0.5 s breaths", null], ["0.5 s breaths with audible inhalation (-20 dB)", -20]]) for (const f0 of [120, 220]) {
+  const spans = [[1, 11], [11.5, 21.5], [22, 32]];
+  const f0At = (t) => (spans.some(([a, b]) => t >= a && t <= b) ? f0 : 0);
+  const x = voiceTrack({ dur: 33, f0At, ampAt: (t) => Math.max(...spans.map(([a, b]) => ramp(t, a, b))), vibCents: 0, seed: 17 + f0 });
+  if (breathNoiseDb !== null) {
+    let s = 99, hp = 0, prev = 0;
+    const g = 0.15 / Math.SQRT2 * Math.pow(10, breathNoiseDb / 20) * Math.sqrt(3);
+    for (const [a, b] of [[11, 11.5], [21.5, 22]]) for (let i = Math.floor(a * SR); i < b * SR; i++) {
+      s ^= s << 13; s >>>= 0; s ^= s >> 17; s ^= s << 5; s >>>= 0;
+      const w = s / 0x7fffffff - 1; hp = 0.9 * (hp + w - prev); prev = w;
+      x[i] += ramp(i / SR, a, b) * g * hp;
+    }
+  }
+  scoreCheck(`${f0} Hz 3 x 10 s, ${label}`, holdScore(workerRun(x), f0At, spans));
+}
+
+console.log("\ninterferers keep their promotion (real worker)");
+{
+  // first time a notch sits within 3 % of 120 Hz
+  const firstNotch = (msgs, after = 0) => {
+    for (const m of msgs) if (m.contextTime > after && m.notchedFreqs?.some((f) => Math.abs(f / 120 - 1) < 0.03)) return m.contextTime - after;
+    return null;
+  };
+  const hum = (t) => 0.03 * (Math.sin(2 * Math.PI * 120 * t) + 0.25 * Math.sin(2 * Math.PI * 240 * t + 1.1) + 0.12 * Math.sin(2 * Math.PI * 360 * t + 2.3));
+  // hum present from the first sample, speech-like voicing from 3 s with pauses
+  const syl = syllables(3, 30, 200, 3);
+  const pauses = (t) => Math.floor(t / 4) % 2 === 1 && (t % 4) > 2.8; // 1.2 s pause every 8 s
+  const f0At = (t) => { const q = syl.find((y) => t >= y.a && t <= y.b); return q && !pauses(t) ? q.f : 0; };
+  const sp = voiceTrack({ dur: 30, f0At, ampAt: (t) => (f0At(t) > 0 ? 1 : 0), vibCents: 0, seed: 41 });
+  const x1 = Float32Array.from(sp, (v, i) => v + hum(i / SR));
+  const t1 = firstNotch(workerRun(x1));
+  check("hum present at stream start, speech from 3 s: notched within ~5.6 s", t1 !== null && t1 <= 5.6, `t=${t1?.toFixed(2)}`);
+  // hum switching on at 10 s DURING the speech: onset-born, 20 s — and the
+  // speech pauses (latch release / offsets) must not keep restarting it
+  const x2 = Float32Array.from(sp.length < 40 * SR ? new Float32Array(40 * SR).map((_, i) => (i < sp.length ? sp[i] : 0)) : sp, (v, i) => v + (i >= 10 * SR ? hum(i / SR) : 0));
+  const t2 = firstNotch(workerRun(x2), 10);
+  check(`hum switching on mid-speech: notched ~${NOTCH_DEFAULTS.onsetMinTrackSec} s after it starts (not reset by speech pauses)`,
+    t2 !== null && t2 >= NOTCH_DEFAULTS.onsetMinTrackSec - 0.5 && t2 <= NOTCH_DEFAULTS.onsetMinTrackSec + 2, `t=${t2?.toFixed(2)}`);
+  // stream that begins with 100 ms of digital zeros, hum then present: the
+  // zeros are not a pre-onset floor (capture start), hum keeps ~5 s
+  const x3 = new Float32Array(10 * SR);
+  for (let i = Math.round(0.1 * SR); i < x3.length; i++) x3[i] = hum(i / SR) + 0.0003 * Math.sin(i * 1.7);
+  const t3 = firstNotch(workerRun(x3));
+  check("hum after 100 ms of stream-start digital silence: notched within ~5.7 s", t3 !== null && t3 <= 5.7, `t=${t3?.toFixed(2)}`);
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);
