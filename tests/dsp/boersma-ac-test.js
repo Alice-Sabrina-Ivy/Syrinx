@@ -114,6 +114,78 @@ console.log("\ndetector — real-mic levels (adaptive global peak)");
   check("quiet mic (peak 0.02) 100 Hz tone is voiced", near(r.pitch, 100, 1));
 }
 
+console.log("\ndetector — silence-term reference vs transients (2026-10-03)");
+{
+  // Regression: the running-max reference latched onto any loud frame, so
+  // one click/pop/bump far above a quiet AGC-off voice vetoed the voice
+  // via the silence term for 30-50 s. measurements/
+  // pitch-globalpeak-transient-2026-10-03.md
+  const HOP = 400;
+  // Quiet AGC-off mic: 200 Hz harmonic voice at peak ~0.02, mic floor.
+  // `events` adds content into the stream; returns per-frame detect().
+  const stream = (sec, events) => {
+    const x = new Float32Array(sec * SR);
+    let seed = 7;
+    const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x3fffffff - 1; };
+    for (let i = 0; i < x.length; i++) {
+      let v = 0;
+      for (let h = 1; h <= 4; h++) v += Math.sin(2 * Math.PI * 200 * h * i / SR) / h;
+      x[i] = 0.0095 * v + 2e-4 * rnd();
+    }
+    events(x, rnd);
+    const det = createBoersmaAC(SR, N);
+    const out = [];
+    for (let e = N; e <= x.length; e += HOP) out.push({ end: e, r: det.detect(x.subarray(e - N, e)) });
+    return out;
+  };
+  const after = (frames, t) => frames.filter((f) => f.end - N > t * SR);
+  // 1. a single full-scale click (5 ms decaying noise burst) at 1.0 s
+  {
+    const fr = stream(4, (x, rnd) => { for (let i = 0; i < 80; i++) x[SR + i] += rnd() * Math.exp(-i / 16); });
+    const post = after(fr, 1.01);
+    const voiced = post.filter((f) => f.r.voiced).length;
+    check("quiet voice stays voiced after a full-scale click (no 30 s latch)", voiced === post.length, `${voiced}/${post.length}`);
+  }
+  // 2. a plosive pop (80 ms LF pressure pulse, peak 1.0) at 1.0 s
+  {
+    const fr = stream(4, (x) => {
+      for (let i = 0; i < 1280; i++) x[SR + i] += i < 240 ? Math.sin(Math.PI * i / 240) : i < 880 ? -0.4 * Math.sin(Math.PI * (i - 240) / 640) : 0;
+    });
+    const post = after(fr, 1.09);
+    const voiced = post.filter((f) => f.r.voiced).length;
+    check("quiet voice stays voiced after a full-scale plosive pop", voiced === post.length, `${voiced}/${post.length}`);
+  }
+  // 3. a desk bump (400 ms decaying 55+130 Hz thump, peak 1.0) at 1.0 s
+  {
+    const fr = stream(4, (x) => {
+      for (let i = 0; i < 0.4 * SR; i++) { const t = i / SR; x[SR + i] += 1.15 * (1 - Math.exp(-t / 0.002)) * Math.exp(-t / 0.07) * (0.6 * Math.sin(2 * Math.PI * 55 * t) + 0.4 * Math.sin(2 * Math.PI * 130 * t + 1)); }
+    });
+    const post = after(fr, 1.4);
+    const voiced = post.filter((f) => f.r.voiced).length;
+    check("quiet voice stays voiced after a full-scale desk bump", voiced === post.length, `${voiced}/${post.length}`);
+  }
+  // 4. the silence term itself still works: after 2 s of LOUD voice
+  //    (peak 0.5), the same voice at -40 dB is rejected as silence.
+  {
+    const det = createBoersmaAC(SR, N);
+    const frame = (amp, k) => { const b = new Float32Array(N); for (let i = 0; i < N; i++) { const n = k * HOP + i; let v = 0; for (let h = 1; h <= 4; h++) v += Math.sin(2 * Math.PI * 200 * h * n / SR) / h; b[i] = amp * v; } return b; };
+    let k = 0;
+    for (; k < 80; k++) det.detect(frame(0.24, k));
+    const loud = det.detect(frame(0.24, k++));
+    const faint = det.detect(frame(0.0024, k++));
+    check("sustained loud voice sets the reference (loud frame voiced)", loud.voiced);
+    check("frame 40 dB below a sustained voice is unvoiced (silence term intact)", !faint.voiced);
+  }
+  // 5. a sustained loud APERIODIC sound (1 s of white noise, peak ~0.5)
+  //    is not a reference for the quiet voice that follows it.
+  {
+    const fr = stream(4, (x, rnd) => { for (let i = 0; i < SR; i++) x[SR + i] += 0.5 * rnd(); });
+    const post = after(fr, 2.01);
+    const voiced = post.filter((f) => f.r.voiced).length;
+    check("quiet voice voiced after 1 s of loud aperiodic noise", voiced === post.length, `${voiced}/${post.length}`);
+  }
+}
+
 console.log("\ncandidates — shape");
 {
   const c = ac.candidates(tone(150));

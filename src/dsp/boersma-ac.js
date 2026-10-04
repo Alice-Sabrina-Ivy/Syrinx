@@ -60,6 +60,16 @@ export const BOERSMA_DEFAULTS = {
                           // user-session 80-110 Hz band).
   peakFloor: 0.15,        // ignore AC maxima weaker than this (rNorm)
   maxCandidates: 15,
+  // Silence-term reference (globalPeak) transient rejection, 2026-10-03 —
+  // see the globalPeak comment in createBoersmaAC. An event raises the
+  // reference only if it fills >= referenceRank PERIODIC frames of the
+  // last referenceWindow frames; referenceGain re-centres that rank
+  // statistic on the old running max for sustained speech.
+  // measurements/pitch-globalpeak-transient-2026-10-03.md
+  referenceWindow: 12,      // frames (300 ms at the 25 ms hop)
+  referenceRank: 5,
+  referenceGain: 1.2,
+  referencePeriodicR: 0.35, // frame counts if its best in-range AC peak r >= this
 };
 
 // Production frame length at 16 kHz: 80 ms. Response center sits 40 ms
@@ -143,7 +153,43 @@ export function createBoersmaAC(sampleRate, frameLength, opts = {}) {
   // any voiced candidate — a clean 100 Hz tone at peak 0.02 decoded
   // UNVOICED. Corpus/session WAVs sit near full scale, which masked this
   // in every harness; caught from live-use report 2026-06-09.
+  //
+  // Transient rejection (2026-10-03): the running max used to take EVERY
+  // frame's localPeak, so one click / plosive pop / desk bump far above a
+  // quiet AGC-off voice (e.g. 1.0 vs speech peaks 0.03) latched the
+  // reference for 30-50 s and the silence term vetoed the voice the whole
+  // time (transient oracle: 34-50 % of voiced frames lost after ONE click
+  // at speech peak 0.03; real sessions ran on a transient-set reference
+  // 11-24 % of the time). Now a frame contributes only if its own AC is
+  // periodic (best in-range peak r >= referencePeriodicR; transients are
+  // aperiodic), and the contribution is the referenceRank-th largest such
+  // frame peak over the last referenceWindow frames, x referenceGain — an
+  // impulse appears in at most ~4 frames (80 ms window, 25 ms hop) and
+  // its window-edge frames are the only periodic ones, so it can never
+  // fill 5 periodic slots. Sustained speech does, and the gain puts the
+  // rank-5 level back on the old running max (median ratio ~1.0 on all
+  // four sessions). Decay (0.999/frame) and the 1e-4 floor unchanged, so
+  // long-silence and soft-onset behaviour match the old tracker.
   let globalPeak = 1e-4;
+  const refW = cfg.referenceWindow;
+  const refRing = new Float64Array(refW); // gated frame peaks (0 = aperiodic)
+  const refTmp = new Float64Array(refW);
+  let refPos = 0, refFill = 0;
+  function updateReference(localPeak, bestR) {
+    refRing[refPos] = bestR >= cfg.referencePeriodicR ? localPeak : 0;
+    refPos = (refPos + 1) % refW;
+    if (refFill < refW) refFill++;
+    for (let i = 0; i < refFill; i++) refTmp[i] = refRing[i];
+    const rank = Math.min(cfg.referenceRank, refFill);
+    let level = 0;
+    for (let k = 0; k < rank; k++) { // rank-th largest; W, rank tiny
+      let bi = 0;
+      for (let i = 1; i < refFill; i++) if (refTmp[i] > refTmp[bi]) bi = i;
+      level = refTmp[bi];
+      refTmp[bi] = -1;
+    }
+    globalPeak = Math.max(cfg.referenceGain * level, globalPeak * 0.999, 1e-4);
+  }
   const scratch = { re: new Float64Array(fftSize), im: new Float64Array(fftSize) };
   const windowed = new Float64Array(n);
   const rX = new Float64Array(maxLag + 1);
@@ -171,18 +217,12 @@ export function createBoersmaAC(sampleRate, frameLength, opts = {}) {
       if (v > localPeak) localPeak = v;
     }
     if (localPeak === 0) return { voiced: [], unvoicedStrength: cfg.voicingThreshold };
-    globalPeak = Math.max(localPeak, globalPeak * 0.999, 1e-4);
 
     for (let i = 0; i < n; i++) windowed[i] = (buffer[i] - mean) * window[i];
     autocorrFFT(windowed, n, fftSize, scratch, rX, maxLag);
     const r0 = rX[0];
     if (r0 <= 0) return { voiced: [], unvoicedStrength: cfg.voicingThreshold };
     for (let t = 0; t <= maxLag; t++) rNorm[t] = (rX[t] / r0) / (rW[t] / rW0);
-
-    const unvoicedStrength = cfg.voicingThreshold + Math.max(
-      0,
-      2 - (localPeak / globalPeak) / (cfg.silenceThreshold / (1 + cfg.voicingThreshold)),
-    );
 
     const cands = [];
     // Scan from minLag exactly (rNorm is computed for all lags 0..maxLag,
@@ -208,6 +248,13 @@ export function createBoersmaAC(sampleRate, frameLength, opts = {}) {
         cands.push({ freq, strength, r });
       }
     }
+    let bestR = 0;
+    for (const c of cands) if (c.r > bestR) bestR = c.r;
+    updateReference(localPeak, bestR);
+    const unvoicedStrength = cfg.voicingThreshold + Math.max(
+      0,
+      2 - (localPeak / globalPeak) / (cfg.silenceThreshold / (1 + cfg.voicingThreshold)),
+    );
     cands.sort((x, y) => y.strength - x.strength);
     if (cands.length > cfg.maxCandidates) cands.length = cfg.maxCandidates;
     return { voiced: cands, unvoicedStrength };
