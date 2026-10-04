@@ -65,15 +65,23 @@ const LERP_RATE = 0.3;
 const HISTORY_DOTS = 10;
 const HISTORY_AGE_MS = 6000;
 
-// Recency horizon for the bar/indicator/readout. genderTraceRef keeps its
+// Recency rules for the bar/indicator/readout. genderTraceRef keeps its
 // last entry until a NEW score arrives, but the worker posts nothing
 // while its VAD gates windows out (and silently resets its EMA after
 // ~2.1 s of them) — so without an age check the meter kept painting the
 // pre-pause score at full color whenever the DSP gate opened again,
-// e.g. under non-voice noise above -50 dB. Scores land every ~150 ms
-// during speech (slower where inference overruns the hop), so 1.5 s is
-// a pause, not a slow inference.
+// e.g. under non-voice noise above -50 dB. Two rules, so the designed
+// 5 s silence hold (gate `holding`) still shows the last value:
+//   - SCORE_STALE_MS: the gate has been OPEN this long and no score has
+//     arrived since it opened -> the open gate isn't voice the worker
+//     will score (noise) -> blank. Scores land every ~150 ms during
+//     speech (slower where inference overruns the hop), so 1.5 s is not
+//     a slow inference; a speech onset gets its first score well inside.
+//   - SCORE_MAX_AGE_MS: never show a score older than the hold horizon
+//     (SILENCE_HOLD_MS 5 s + a margin), e.g. at the onset of the next
+//     utterance after a long pause, before its first score lands.
 const SCORE_STALE_MS = 1500;
+const SCORE_MAX_AGE_MS = 6000;
 
 export function ResonanceMeter({
   genderTraceRef,
@@ -88,6 +96,10 @@ export function ResonanceMeter({
   // Animation state — kept in refs so the rAF loop doesn't re-render React.
   const displayScoreRef = useRef(null);
   const displayConfRef = useRef(0);
+  // When the DSP gate last went from not-voiced to voiced (epoch ms) —
+  // see SCORE_STALE_MS.
+  const gateOpenedAtRef = useRef(0);
+  const gateWasVoicedRef = useRef(false);
 
   // Resize handling
   useEffect(() => {
@@ -238,8 +250,14 @@ export function ResonanceMeter({
       // now()) — compare against the same epoch clock, as the history
       // strip below does.
       const now = Math.round(performance.timeOrigin + performance.now());
+      if (voiced && !gateWasVoicedRef.current) gateOpenedAtRef.current = now;
+      gateWasVoicedRef.current = voiced;
       const newest = data.length > 0 ? data[data.length - 1] : null;
-      const latest = newest && now - newest.time <= SCORE_STALE_MS ? newest : null;
+      const unscoredOpen = voiced && newest
+        && newest.time < gateOpenedAtRef.current
+        && now - gateOpenedAtRef.current > SCORE_STALE_MS;
+      const latest = newest && !unscoredOpen && now - newest.time <= SCORE_MAX_AGE_MS
+        ? newest : null;
       const targetScore = idle ? null : (latest?.score ?? null);
       const targetConf = idle ? 0 : (latest?.confidence ?? 0);
 
