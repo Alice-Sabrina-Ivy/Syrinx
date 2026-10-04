@@ -468,9 +468,12 @@ function drawStaticPitchTrace(canvas, frames, dpr) {
   ctx.rect(plotLeft, plotTop, plotRight - plotLeft, plotBottom - plotTop);
   ctx.clip();
 
-  // Draw what the live trace showed: frames recorded since 2026-10-03
+  // Draw the live trace's voiced frames: frames recorded since 2026-10-03
   // carry the paint-gate decision (`painted`); a recorded-but-unpainted
   // frame (octave excursion the live gate suppressed) is a gap here too.
+  // Frames the live trace bridged with the 400 ms pitch hold are recorded
+  // voiced:false and are gaps here (29 % of live-painted hops on the
+  // private-session sessions, 2026-10-04) — history is not an exact replica.
   // Legacy frames (no field) draw as before. Stats keep using voiced/f0.
   let inSegment = false;
   let lastDrawnF0 = null;

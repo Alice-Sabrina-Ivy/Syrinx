@@ -1191,8 +1191,11 @@ export function useAudioPipeline() {
         voiced: hasPitch,
         f0: hasPitch ? smoothedPitch : null,
         // Display decision for this frame (what the live trace painted).
-        // Session history draws its trace from painted frames so it
-        // matches what was shown; stats keep using voiced/f0.
+        // Session history draws frames that are voiced AND painted, so
+        // gate-suppressed excursions are gaps there too; hold-bridged
+        // frames (painted live, recorded voiced:false above) are also gaps
+        // in history — it is not an exact replica of the live trace
+        // (2026-10-04). Stats keep using voiced/f0.
         painted: displayPitched,
         f1: f1,
         f2: f2,
