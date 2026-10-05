@@ -59,10 +59,34 @@
 //   3. EXCURSION_SUSTAIN 16 → 8 (200 ms) mid-segment: halves the blank
 //      on an in-word register change / fast glide-and-hold, with no
 //      measurable octave-up or spike cost on the sessions or corpora.
+//
+// Faster re-acquisition (2026-10-04, measurements/pitch-display-
+// reacquire-2026-10-04.md). Attributing the remaining target-voice blanks
+// on her sessions showed the slow pickups were (a) in-word register
+// changes (no gap, so the mid-segment sustain applied) and (b) the display
+// median, which after a word gap still held the previous word's values:
+// the first new-register frame painted the OLD register (or blanked) and
+// the off-level run started a frame late. Two changes, measured with the
+// same oracles + the female/male corpora (gender-symmetric):
+//   4. The hook restarts the display median when a word opens an octave-
+//      class jump away from it after a gap (pitchSmoothing.js
+//      smoothingBufferFor; seeded, so the painted value stays a real
+//      detection — review fix, same file §10), and push() takes the frame's RAW fresh
+//      pitch: an off-level run is accepted only if the raw value of the
+//      accepting frame agrees with the run (< EXCURSION_SEMI from its
+//      median). Without that check the restarted median let a 3-frame
+//      post-gap onset lock reach REACQUIRE_SUSTAIN (the median carries
+//      a lock one frame past its end) and reseed the level on the wrong
+//      octave; with it, an accept needs REACQUIRE_SUSTAIN (resp.
+//      EXCURSION_SUSTAIN) consecutive raw frames in the new register, so
+//      onset locks shorter than that still never paint — and the same
+//      check stops a median-extended mid-segment lock from painting.
+//   5. EXCURSION_SUSTAIN 8 → 7 (175 ms) mid-segment. With the raw check a
+//      mid-word lock must last >= 8 raw frames to paint, as before.
 
 export const ONSET_CONFIRM_FRAMES = 3;   // continuity frames before painting
 export const EXCURSION_SEMI = 9.5;       // semitones from level = "off-level"
-export const EXCURSION_SUSTAIN = 8;      // off-level frames to accept a new level (mid-segment)
+export const EXCURSION_SUSTAIN = 7;      // off-level frames to accept a new level (mid-segment)
 export const LEVEL_RING_LEN = 15;        // painted-value window for the level median
 export const REACQUIRE_GAP_FRAMES = 2;   // frames without a fresh pitch that arm re-acquisition
 export const REACQUIRE_SUSTAIN = 4;      // off-level frames to accept a new level right after a gap
@@ -102,10 +126,12 @@ export function createPaintGate({
     return true;
   }
 
-  // push(pitch, { fresh }): pitch is a finite smoothed pitch. fresh=false
-  // marks a HELD value (detector null, pitch-hold window open). Returns
-  // true if this value should be painted as voiced.
-  function push(pitch, { fresh = true } = {}) {
+  // push(pitch, { fresh, raw }): pitch is a finite smoothed pitch.
+  // fresh=false marks a HELD value (detector null, pitch-hold window
+  // open). raw is this frame's unsmoothed fresh detection (null/omitted =
+  // no raw check — callers that feed raw values directly may omit it).
+  // Returns true if this value should be painted as voiced.
+  function push(pitch, { fresh = true, raw = null } = {}) {
     const est = level();
     const onLevel = est === null || Math.abs(semitones(pitch, est)) < excursionSemi;
 
@@ -149,7 +175,14 @@ export function createPaintGate({
     const spread = win.length > 1
       ? Math.abs(semitones(Math.max(...win), Math.min(...win)))
       : 0;
-    if (win.length >= need && spread < excursionSemi) {
+    // Raw agreement (2026-10-04): the accepting frame's RAW pitch must be
+    // in the run's register. The display median carries a run one frame
+    // past its end (an onset lock of 3 raw frames gives 4 off-level
+    // smoothed values), so without this a lock that already ended — the
+    // raw value back on the old level — could be accepted and reseed the
+    // level on the wrong octave.
+    const rawOk = raw === null || Math.abs(semitones(raw, median(win))) < excursionSemi;
+    if (win.length >= need && spread < excursionSemi && rawOk) {
       // Sustained, internally-consistent new level — accept it. The ring
       // is padded to MIN_RING_FOR_LEVEL with the accepted run's median
       // (2026-10-04): a re-acquisition accept holds only REACQUIRE_SUSTAIN
