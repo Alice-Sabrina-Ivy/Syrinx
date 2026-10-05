@@ -9,6 +9,7 @@
 import {
   createBoersmaAC,
   createPathTracker,
+  BOERSMA_DEFAULTS,
   BOERSMA_FRAME_LENGTH_16K,
 } from "../../src/dsp/boersma-ac.js";
 
@@ -38,17 +39,28 @@ check("300 Hz pure tone", near(ac.detect(tone(300)).pitch, 300, 2));
 check("85 Hz low tone (low male / creaky speech)", near(ac.detect(tone(85)).pitch, 85, 1));
 check("65 Hz tone below the 75 Hz search floor is not reported as 65",
   (() => { const r = ac.detect(tone(65)); return r.pitch === null || r.pitch >= 75; })());
-check("450 Hz tone above the 400 Hz search ceiling is not reported as 450",
-  (() => { const r = ac.detect(tone(450)); return r.pitch === null || r.pitch < 410; })());
+// Search ceiling = 2x the 400 Hz display ceiling (2026-10-03): phonation
+// above 400 must decode at its TRUE F0 (the pitch worker then posts it as
+// unvoiced), never as a half-pitch value inside the display range — the
+// old 400 Hz ceiling decoded every >400 Hz frame at half.
+for (const f of [450, 520, 640]) {
+  check(`${f} Hz harmonic tone decodes at ${f}, not octave-down ${f / 2}`,
+    near(ac.detect(tone(f, [0.6, 0.3, 0.15])).pitch, f, f * 0.01));
+}
+check("900 Hz tone above the 800 Hz search ceiling is not reported as 900",
+  (() => { const r = ac.detect(tone(900)); return r.pitch === null || r.pitch < 820; })());
 // Top-of-range regression (2026-07-19): the candidate scan used to start
 // at minLag+1, so the lag bin of maxPitchHz itself could never be a local
 // max — any F0 above ~395 Hz had no fundamental candidate and decoded as
 // a CONFIDENT octave-down (396→198, 400→200) via the 2x-period
 // subharmonic peak. Harmonic-rich stimulus: the subharmonic trap needs
 // harmonics to be attractive, same as real voices near the ceiling.
-for (const f of [396, 398, 400]) {
-  check(`${f} Hz harmonic tone at the range ceiling is not octave-down`,
-    near(ac.detect(tone(f, [0.6, 0.3, 0.15])).pitch, f, 2.5));
+// Same bug class at the 800 Hz search ceiling (minLag = 20 samples
+// exactly at 16 kHz), plus the old 400 Hz edge (now mid-range — a
+// window-correction or interpolation artifact there must not return).
+for (const f of [396, 398, 400, 796, 798, 800]) {
+  check(`${f} Hz harmonic tone ${f > 400 ? "at the search ceiling" : "at the display ceiling"} is not octave-down`,
+    near(ac.detect(tone(f, [0.6, 0.3, 0.15])).pitch, f, f * 0.00625));
 }
 // The cutover motivation: fundamental weaker than the 2nd harmonic
 // (breathy/pressed phonation). SwiftF0 confidently reported 2×F0 here.
@@ -114,6 +126,78 @@ console.log("\ndetector — real-mic levels (adaptive global peak)");
   check("quiet mic (peak 0.02) 100 Hz tone is voiced", near(r.pitch, 100, 1));
 }
 
+console.log("\ndetector — silence-term reference vs transients (2026-10-03)");
+{
+  // Regression: the running-max reference latched onto any loud frame, so
+  // one click/pop/bump far above a quiet AGC-off voice vetoed the voice
+  // via the silence term for 30-50 s. measurements/
+  // pitch-globalpeak-transient-2026-10-03.md
+  const HOP = 400;
+  // Quiet AGC-off mic: 200 Hz harmonic voice at peak ~0.02, mic floor.
+  // `events` adds content into the stream; returns per-frame detect().
+  const stream = (sec, events) => {
+    const x = new Float32Array(sec * SR);
+    let seed = 7;
+    const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x3fffffff - 1; };
+    for (let i = 0; i < x.length; i++) {
+      let v = 0;
+      for (let h = 1; h <= 4; h++) v += Math.sin(2 * Math.PI * 200 * h * i / SR) / h;
+      x[i] = 0.0095 * v + 2e-4 * rnd();
+    }
+    events(x, rnd);
+    const det = createBoersmaAC(SR, N);
+    const out = [];
+    for (let e = N; e <= x.length; e += HOP) out.push({ end: e, r: det.detect(x.subarray(e - N, e)) });
+    return out;
+  };
+  const after = (frames, t) => frames.filter((f) => f.end - N > t * SR);
+  // 1. a single full-scale click (5 ms decaying noise burst) at 1.0 s
+  {
+    const fr = stream(4, (x, rnd) => { for (let i = 0; i < 80; i++) x[SR + i] += rnd() * Math.exp(-i / 16); });
+    const post = after(fr, 1.01);
+    const voiced = post.filter((f) => f.r.voiced).length;
+    check("quiet voice stays voiced after a full-scale click (no 30 s latch)", voiced === post.length, `${voiced}/${post.length}`);
+  }
+  // 2. a plosive pop (80 ms LF pressure pulse, peak 1.0) at 1.0 s
+  {
+    const fr = stream(4, (x) => {
+      for (let i = 0; i < 1280; i++) x[SR + i] += i < 240 ? Math.sin(Math.PI * i / 240) : i < 880 ? -0.4 * Math.sin(Math.PI * (i - 240) / 640) : 0;
+    });
+    const post = after(fr, 1.09);
+    const voiced = post.filter((f) => f.r.voiced).length;
+    check("quiet voice stays voiced after a full-scale plosive pop", voiced === post.length, `${voiced}/${post.length}`);
+  }
+  // 3. a desk bump (400 ms decaying 55+130 Hz thump, peak 1.0) at 1.0 s
+  {
+    const fr = stream(4, (x) => {
+      for (let i = 0; i < 0.4 * SR; i++) { const t = i / SR; x[SR + i] += 1.15 * (1 - Math.exp(-t / 0.002)) * Math.exp(-t / 0.07) * (0.6 * Math.sin(2 * Math.PI * 55 * t) + 0.4 * Math.sin(2 * Math.PI * 130 * t + 1)); }
+    });
+    const post = after(fr, 1.4);
+    const voiced = post.filter((f) => f.r.voiced).length;
+    check("quiet voice stays voiced after a full-scale desk bump", voiced === post.length, `${voiced}/${post.length}`);
+  }
+  // 4. the silence term itself still works: after 2 s of LOUD voice
+  //    (peak 0.5), the same voice at -40 dB is rejected as silence.
+  {
+    const det = createBoersmaAC(SR, N);
+    const frame = (amp, k) => { const b = new Float32Array(N); for (let i = 0; i < N; i++) { const n = k * HOP + i; let v = 0; for (let h = 1; h <= 4; h++) v += Math.sin(2 * Math.PI * 200 * h * n / SR) / h; b[i] = amp * v; } return b; };
+    let k = 0;
+    for (; k < 80; k++) det.detect(frame(0.24, k));
+    const loud = det.detect(frame(0.24, k++));
+    const faint = det.detect(frame(0.0024, k++));
+    check("sustained loud voice sets the reference (loud frame voiced)", loud.voiced);
+    check("frame 40 dB below a sustained voice is unvoiced (silence term intact)", !faint.voiced);
+  }
+  // 5. a sustained loud APERIODIC sound (1 s of white noise, peak ~0.5)
+  //    is not a reference for the quiet voice that follows it.
+  {
+    const fr = stream(4, (x, rnd) => { for (let i = 0; i < SR; i++) x[SR + i] += 0.5 * rnd(); });
+    const post = after(fr, 2.01);
+    const voiced = post.filter((f) => f.r.voiced).length;
+    check("quiet voice voiced after 1 s of loud aperiodic noise", voiced === post.length, `${voiced}/${post.length}`);
+  }
+}
+
 console.log("\ncandidates — shape");
 {
   const c = ac.candidates(tone(150));
@@ -157,6 +241,86 @@ console.log("\npath tracker — decode delay, stability, flush");
   for (const f of seq) { const v = pt.emit(ac.candidates(f)); if (v !== null) out.push(v); }
   out.push(...pt.flush());
   check("sustained octave shift tracks to 220", near(out[out.length - 1], 220, 5));
+}
+
+console.log("\noctave arbitration — rumble vs. odd-multiple evidence (2026-10-03)");
+{
+  // Room rumble (narrowband noise ~90 Hz) inflates the autocorrelation at
+  // the 2T lag of a ~220 Hz voice, so the subharmonic 110 Hz candidate
+  // wins by a few hundredths — the "trace at half my pitch" report.
+  // octaveEvidence penalizes a subharmonic whose odd multiples (3f, 5f,
+  // ...) carry no partials. Low-voice control: a real 110 Hz voice under
+  // the same rumble must stay at 110 (its odd multiples exist).
+  // measurements/pitch-octave-arbitration-2026-10-03.md
+  function voicePlusRumble(f0, seedInit) {
+    let seed = seedInit;
+    const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+    const gauss = () => Math.sqrt(-2 * Math.log(rnd() || 1e-9)) * Math.cos(2 * Math.PI * rnd());
+    const n = Math.round(1.2 * SR), v = new Float32Array(n), w = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      let s = 0;
+      for (let k = 1; k * f0 < 7000; k++) s += Math.pow(10, (-12 * Math.log2(k)) / 20) * Math.sin(2 * Math.PI * k * f0 * i / SR);
+      v[i] = s;
+    }
+    const r = Math.exp(-Math.PI * 60 / SR), th = 2 * Math.PI * 90 / SR, a1 = 2 * r * Math.cos(th), a2 = -r * r;
+    let y1 = 0, y2 = 0, z1 = 0, z2 = 0;
+    for (let i = 0; i < n; i++) {
+      const y = gauss() + a1 * y1 + a2 * y2; y2 = y1; y1 = y;
+      const z = y + a1 * z1 + a2 * z2; z2 = z1; z1 = z; w[i] = z;
+    }
+    const rms = (a) => Math.sqrt(a.reduce((q, x) => q + x * x, 0) / a.length);
+    const rv = rms(v), g = (rv / rms(w)) * Math.pow(10, -10 / 20); // rumble 10 dB below voice
+    const out = new Float32Array(n);
+    for (let i = 0; i < n; i++) out[i] = 0.1 * (v[i] + g * w[i]) / rv;
+    return out;
+  }
+  function decodedCorrectFrac(f0) {
+    let ok = 0, tot = 0;
+    for (const s of [7919, 15838, 23757, 31676]) {
+      const x = voicePlusRumble(f0, s);
+      const det = createBoersmaAC(SR, N), pt = createPathTracker();
+      const buf = new Float32Array(N);
+      let fill = 0, k2 = 0;
+      for (let k = 0; (k + 1) * 400 <= x.length; k++) {
+        buf.copyWithin(0, 400); buf.set(x.subarray(k * 400, (k + 1) * 400), N - 400);
+        fill += 400; if (fill < N) continue;
+        const d = pt.emit(det.candidates(buf));
+        if (d === null || k2++ < 2) continue;
+        tot++; if (d > 0 && Math.abs(d / f0 - 1) < 0.05) ok++;
+      }
+    }
+    return ok / tot;
+  }
+  const hi = decodedCorrectFrac(220), lo = decodedCorrectFrac(110);
+  check("220 Hz voice + 90 Hz rumble (-10 dB) decodes at 220, not 110 (>= 80 % of frames)", hi >= 0.8, `${(100 * hi).toFixed(1)} %`);
+  check("110 Hz voice + same rumble stays at 110 (no octave-up, >= 95 %)", lo >= 0.95, `${(100 * lo).toFixed(1)} %`);
+}
+{
+  // Coupling with the 800 Hz search ceiling (2026-10-03): arbitration only
+  // pairs f with a 2f partner inside the display range (maxPartnerHz 420).
+  // A 250 Hz voice with very weak odd partials and H1 (-25 dB) has a
+  // strong 500 Hz candidate; arbitrating that pair would push the voice
+  // up out of the display (posted unvoiced above 400). Unrestricted, the
+  // same frame decodes 500 — the restriction is what keeps it at 250.
+  // measurements/pitch-ceiling-2026-10-03.md §8
+  let s = 3;
+  const rnd = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296 - 0.5; };
+  const x = new Float32Array(N);
+  for (let i = 0; i < N; i++) {
+    let v = 0;
+    for (let k = 1; k * 250 < 7000; k++) {
+      const db = -6 * Math.log2(k) + (k === 1 ? -25 : k & 1 ? -25 : 0);
+      v += Math.pow(10, db / 20) * Math.sin(2 * Math.PI * k * 250 * i / SR + k);
+    }
+    x[i] = 0.1 * v + 0.02 * rnd();
+  }
+  const unrestricted = createBoersmaAC(SR, N, {
+    octaveEvidence: { ...BOERSMA_DEFAULTS.octaveEvidence, maxPartnerHz: Infinity },
+  });
+  check("250 Hz voice with a strong 500 Hz partner is not pushed to 500 (maxPartnerHz)",
+    near(createBoersmaAC(SR, N).detect(x).pitch, 250, 2.5));
+  check("…and the case is live: without maxPartnerHz the same frame decodes ~500",
+    near(unrestricted.detect(x).pitch, 500, 5));
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

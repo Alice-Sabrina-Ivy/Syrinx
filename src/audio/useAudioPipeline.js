@@ -12,9 +12,11 @@ import {
 import {
   pushAndMedianPitch,
   PITCH_SMOOTH_LEN,
+  createSmoothingGapTracker,
+  smoothingBufferFor,
 } from "./pitchSmoothing";
 import { createGateState, evaluateFrameGate } from "./pitchGate";
-import { createPaintGate } from "./pitchPaintGate";
+import { createPaintGate, EXCURSION_SEMI } from "./pitchPaintGate";
 import { createCaptureSource } from "./captureSource";
 import { VocalWeightAggregator } from "./vocal-weight-aggregator";
 import { VocalWeightBaseline } from "./vocal-weight-baseline";
@@ -158,6 +160,10 @@ export function useAudioPipeline() {
 
   // Smoothing buffers
   const pitchSmoothRef = useRef([]);
+  // Tracks gaps of >= SMOOTH_RESET_GAP_FRAMES frames without a fresh
+  // detection; after one, a register-switch value restarts the display
+  // median (pitchSmoothing.js smoothingBufferFor, 2026-10-04).
+  const smoothGapRef = useRef(createSmoothingGapTracker());
   const f1SmoothRef = useRef([]);
   const f2SmoothRef = useRef([]);
   const f3SmoothRef = useRef([]);
@@ -196,6 +202,13 @@ export function useAudioPipeline() {
   const paintGateRef = useRef(createPaintGate());
   const displayVoicedRef = useRef(false);
   const unpitchedFramesRef = useRef(0);
+  // Readout staleness guard (2026-10-03): set when the paint gate
+  // suppresses a FRESH off-level pitch (a register change being confirmed,
+  // or a harmonic lock). While set, the readout/note name show "—" instead
+  // of falling back to the last painted value — which, on a register
+  // switch, is the OTHER register (the "readout an octave low" report).
+  // Cleared by the next painted frame.
+  const heldReadoutStaleRef = useRef(false);
   const lastVoicedRef = useRef({
     pitch: null,
     noteName: null,
@@ -791,6 +804,7 @@ export function useAudioPipeline() {
       streamRef.current = null;
     }
     pitchSmoothRef.current = [];
+    smoothGapRef.current.reset();
     f1SmoothRef.current = [];
     f2SmoothRef.current = [];
     f3SmoothRef.current = [];
@@ -799,6 +813,7 @@ export function useAudioPipeline() {
     paintGateRef.current.reset();
     displayVoicedRef.current = false;
     unpitchedFramesRef.current = 0;
+    heldReadoutStaleRef.current = false;
     // Without this reset the next session's initial silence "holds" the
     // PREVIOUS session's pitch/note/formants in the dim style for up to
     // 5 s before the first utterance.
@@ -913,6 +928,9 @@ export function useAudioPipeline() {
       pitchTs: latestPitch.ts,
     });
     const { pitch, hasPitch, isQuiet } = gate;
+    // Counted on every frame (silence frames included): true on a fresh
+    // detection right after a gap — see smoothingBufferFor below.
+    const freshAfterGap = smoothGapRef.current.frame(hasPitch);
 
     // Push CPP into the vocal-weight aggregator gated on CONFIRMED
     // PITCH, not the silence gate (changed 2026-06-10). CPP measures
@@ -999,14 +1017,15 @@ export function useAudioPipeline() {
         // Hold last voiced values (display goes to reduced opacity)
         dspGateRef.current = { voiced: false, holding: true };
         const held = lastVoicedRef.current;
+        const heldStale = heldReadoutStaleRef.current;
         const vw = buildVocalWeightState(cppAggregate);
         throttledSetState((s) => ({
           ...s,
           voiced: false,
           holding: true,
-          pitch: held.pitch,
+          pitch: heldStale ? null : held.pitch,
           intensity,
-          noteName: held.noteName,
+          noteName: heldStale ? null : held.noteName,
           formants: held.formants,
           spectralTilt: held.spectralTilt,
           hnr: held.hnr,
@@ -1039,7 +1058,7 @@ export function useAudioPipeline() {
       // Notify frame callback (session recording) even during silence
       if (frameCallbackRef.current) {
         frameCallbackRef.current({
-          voiced: false, f0: null, f1: null, f2: null, f3: null,
+          voiced: false, f0: null, painted: false, f1: null, f2: null, f3: null,
           intensity, spectralTilt: null, hnr: null,
         });
       }
@@ -1072,6 +1091,14 @@ export function useAudioPipeline() {
     // — held values (SwiftF0 null but audio still loud enough) don't
     // enter the buffer so they can't stale-shift the median.
     let smoothedPitch = null;
+    // A fresh detection an octave-class jump from the buffer median right
+    // after a gap (a register switch) starts a new median instead of being
+    // medianed against the previous word's values; a new or empty buffer is
+    // seeded with the value so the median is always a real detection, never
+    // the mean of two (pitchSmoothing.js smoothingBufferFor; measurements/
+    // pitch-display-reacquire-2026-10-04.md §10). Held values never reach
+    // this (hasPitch is false).
+    if (hasPitch) pitchSmoothRef.current = smoothingBufferFor(pitchSmoothRef.current, pitch, freshAfterGap);
     if (effectivePitch !== null) {
       smoothedPitch = hasPitch
         ? pushAndMedianPitch(pitchSmoothRef.current, pitch, PITCH_SMOOTH_LEN)
@@ -1115,13 +1142,25 @@ export function useAudioPipeline() {
     // non-painted frames the display drops from the dim "holding" style
     // to inactive grey; in between it holds dim, so brief suppressions
     // (onset confirm, short excursions) don't strobe the readout.
+    //
+    // Held values (hold path: detector null, hold window open) are pushed
+    // with fresh: false — they may bridge the trace on-level but never
+    // move the gate's level or count toward a register change
+    // (pitchPaintGate.js "Register re-acquisition").
     let displayPitched = false;
     if (framePitched) {
-      displayPitched = paintGateRef.current.push(smoothedPitch);
+      // raw: the unsmoothed fresh detection — the gate accepts a register
+      // change only when it agrees with the off-level run (pitchPaintGate.js
+      // "Faster re-acquisition").
+      displayPitched = paintGateRef.current.push(smoothedPitch, { fresh: hasPitch, raw: hasPitch ? pitch : null });
+      if (!displayPitched && hasPitch && paintGateRef.current.lastReason() === "offlevel") {
+        heldReadoutStaleRef.current = true;
+      }
     } else {
       paintGateRef.current.resetSegment();
     }
     if (displayPitched) {
+      heldReadoutStaleRef.current = false;
       displayVoicedRef.current = true;
       unpitchedFramesRef.current = 0;
     } else {
@@ -1131,6 +1170,10 @@ export function useAudioPipeline() {
       }
     }
     const displayHolding = !displayPitched && displayVoicedRef.current;
+    // Dim held readout only while it is not known-stale (see
+    // heldReadoutStaleRef): never show the other register's last value
+    // while a fresh off-level pitch is suppressed.
+    const showHeldReadout = displayHolding && !heldReadoutStaleRef.current;
 
     const noteInfo = displayPitched ? hzToNote(smoothedPitch) : null;
     const noteName = noteInfo?.name || null;
@@ -1139,6 +1182,20 @@ export function useAudioPipeline() {
     // Update history buffers (always, at full rate — canvas reads these).
     // A pitchless or unconfirmed-onset frame renders as a trace gap even
     // though audio is present — the trace draws confirmed pitch only.
+    //
+    // Octave-class line break: a painted point ≥ EXCURSION_SEMI from the
+    // previous painted point (an accepted register change, or a value
+    // painted before the level engages) is preceded by a gap entry so the
+    // canvas starts a new segment instead of stroking a near-vertical
+    // connecting line — the 06-10 "spike line" artefact, now prevented by
+    // construction rather than only by suppression.
+    if (displayPitched) {
+      const prev = pitchTraceRef.current[pitchTraceRef.current.length - 1];
+      if (prev && prev.voiced && prev.pitch !== null &&
+          Math.abs(12 * Math.log2(smoothedPitch / prev.pitch)) >= EXCURSION_SEMI) {
+        pitchTraceRef.current.push({ time: now, pitch: null, voiced: false });
+      }
+    }
     pitchTraceRef.current.push(
       displayPitched
         ? { time: now, pitch: smoothedPitch, voiced: true }
@@ -1179,6 +1236,13 @@ export function useAudioPipeline() {
       frameCallbackRef.current({
         voiced: hasPitch,
         f0: hasPitch ? smoothedPitch : null,
+        // Display decision for this frame (what the live trace painted).
+        // Session history draws frames that are voiced AND painted, so
+        // gate-suppressed excursions are gaps there too; hold-bridged
+        // frames (painted live, recorded voiced:false above) are also gaps
+        // in history — it is not an exact replica of the live trace
+        // (2026-10-04). Stats keep using voiced/f0.
+        painted: displayPitched,
         f1: f1,
         f2: f2,
         f3: f3,
@@ -1196,9 +1260,9 @@ export function useAudioPipeline() {
       ...s,
       voiced: displayPitched,
       holding: displayHolding,
-      pitch: displayPitched ? smoothedPitch : (displayHolding ? lastVoicedRef.current.pitch : null),
+      pitch: displayPitched ? smoothedPitch : (showHeldReadout ? lastVoicedRef.current.pitch : null),
       intensity,
-      noteName: displayPitched ? noteName : (displayHolding ? lastVoicedRef.current.noteName : null),
+      noteName: displayPitched ? noteName : (showHeldReadout ? lastVoicedRef.current.noteName : null),
       formants: smoothedFormants,
       spectralTilt: currentTilt,
       hnr: currentHnr,

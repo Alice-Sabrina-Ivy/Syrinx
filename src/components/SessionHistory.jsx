@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import db from "../db";
+import { EXCURSION_SEMI } from "../audio/pitchPaintGate";
+import { isLiveSession } from "../utils/sessionRepair";
 import {
   DEFAULT_PITCH_TARGET,
   DEFAULT_F2_TARGET,
@@ -14,6 +16,10 @@ export function SessionHistory() {
   const [sessions, setSessions] = useState([]);
   const [expandedId, setExpandedId] = useState(null);
   const [loading, setLoading] = useState(true);
+  // IndexedDB can be unavailable (site data blocked, some private modes):
+  // without a catch the query rejected silently and the list showed
+  // "Loading sessions..." forever.
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -25,24 +31,41 @@ export function SessionHistory() {
         .then((all) => {
           if (!cancelled) {
             setSessions(all);
+            setError(null);
+            setLoading(false);
+          }
+        })
+        .catch((err) => {
+          console.error("Failed to load sessions:", err);
+          if (!cancelled) {
+            setError("Session storage unavailable");
             setLoading(false);
           }
         });
     };
     load();
-    // Switching tabs mid-recording unmounts the dashboard, whose cleanup
-    // finalizes the session asynchronously (flush → recorder stop →
-    // stats → sessions.update). This component's initial query races
-    // that update and shows the just-ended session without duration/
-    // stats — re-query when the finalize announces completion.
+    // A session can finalize asynchronously (flush → recorder stop →
+    // stats → sessions.update) while this list is mounted — e.g. the
+    // start-up repair of interrupted sessions — so the initial query can
+    // show it without duration/stats. Re-query when a finalize announces
+    // completion.
     window.addEventListener("syrinx:session-finalized", load);
+    // Delete-all / import in the settings overlay (which renders OVER
+    // this still-mounted list) — without this the list kept showing
+    // deleted sessions and missed imported ones.
+    window.addEventListener("syrinx:data-changed", load);
     return () => {
       cancelled = true;
       window.removeEventListener("syrinx:session-finalized", load);
+      window.removeEventListener("syrinx:data-changed", load);
     };
   }, []);
 
   async function deleteSession(id) {
+    // If this is the dashboard's in-progress recording (History is
+    // reachable mid-recording), stop it first — otherwise its flush
+    // interval keeps writing frames against the deleted id.
+    window.dispatchEvent(new CustomEvent("syrinx:abort-recording", { detail: { sessionId: id } }));
     await db.frames.where("sessionId").equals(id).delete();
     await db.sessions.delete(id);
     setSessions((prev) => prev.filter((s) => s.id !== id));
@@ -53,6 +76,19 @@ export function SessionHistory() {
     return (
       <div className="flex-1 flex items-center justify-center">
         <p className="text-neutral-500 animate-pulse">Loading sessions...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-red-400 mb-1">{error}</p>
+          <p className="text-neutral-600 text-sm">
+            Your browser is blocking site storage, so sessions can&apos;t be saved or shown.
+          </p>
+        </div>
       </div>
     );
   }
@@ -141,7 +177,9 @@ function SessionCard({ session, expanded, onToggle, onDelete }) {
             </span>
           </div>
           <span className="text-xs text-neutral-500 font-mono tabular-nums">
-            {formatDuration(session.durationSeconds)}
+            {session.endedAt == null && isLiveSession(session.id)
+              ? "recording…"
+              : formatDuration(session.durationSeconds)}
           </span>
         </div>
 
@@ -283,21 +321,31 @@ function SessionTraces({ sessionId }) {
   const resContainerRef = useRef(null);
   // Re-draw on container resize (rotation, window resize) — the canvases
   // are CSS-stretched, so without this the bitmaps distort until the
-  // card is collapsed and re-expanded.
+  // card is collapsed and re-expanded. Keyed on the containers EXISTING:
+  // they only render once frames have loaded, so a mount-time ([] deps)
+  // effect ran while "Loading traces..." was showing, found both refs
+  // null, and observed nothing.
   const [resizeTick, setResizeTick] = useState(0);
+  const hasTraces = !!frames && frames.length > 0;
   useEffect(() => {
+    if (!hasTraces) return;
     const obs = new ResizeObserver(() => setResizeTick((t) => t + 1));
     if (pitchContainerRef.current) obs.observe(pitchContainerRef.current);
     if (resContainerRef.current) obs.observe(resContainerRef.current);
     return () => obs.disconnect();
-  }, []);
+  }, [hasTraces]);
 
+  const [framesError, setFramesError] = useState(false);
   useEffect(() => {
     db.frames
       .where("sessionId")
       .equals(sessionId)
       .sortBy("timestampMs")
-      .then(setFrames);
+      .then(setFrames)
+      .catch((err) => {
+        console.error("Failed to load session frames:", err);
+        setFramesError(true);
+      });
   }, [sessionId]);
 
   // Draw pitch trace
@@ -329,6 +377,12 @@ function SessionTraces({ sessionId }) {
 
     drawStaticResonanceTrace(canvas, frames, dpr);
   }, [frames, resizeTick]);
+
+  if (framesError) {
+    return (
+      <p className="text-xs text-red-400/80 mt-3">Couldn&apos;t load traces (session storage unavailable)</p>
+    );
+  }
 
   if (!frames) {
     return (
@@ -467,16 +521,34 @@ function drawStaticPitchTrace(canvas, frames, dpr) {
   ctx.rect(plotLeft, plotTop, plotRight - plotLeft, plotBottom - plotTop);
   ctx.clip();
 
+  // Draw the live trace's voiced frames: frames recorded since 2026-10-03
+  // carry the paint-gate decision (`painted`); a recorded-but-unpainted
+  // frame (octave excursion the live gate suppressed) is a gap here too.
+  // Frames the live trace bridged with the 400 ms pitch hold are recorded
+  // voiced:false and are gaps here (a sizeable share of live-painted
+  // hops on the private session recordings, 2026-10-04) — history is
+  // not an exact replica.
+  // Legacy frames (no field) draw as before. Stats keep using voiced/f0.
   let inSegment = false;
+  let lastDrawnF0 = null;
   for (let i = 0; i < frames.length; i++) {
     const f = frames[i];
-    if (!f.voiced || f.f0 == null) {
+    if (!f.voiced || f.f0 == null || f.painted === false) {
       if (inSegment) { ctx.stroke(); inSegment = false; }
+      lastDrawnF0 = null;
       continue;
     }
     const x = msToX(f.timestampMs);
     const y = hzToY(f.f0);
     const inTarget = f.f0 >= targetLow && f.f0 <= targetHigh;
+    // Octave-class step: start a new segment rather than stroking a
+    // near-vertical connecting line (same rule as the live trace).
+    if (inSegment && lastDrawnF0 !== null &&
+        Math.abs(12 * Math.log2(f.f0 / lastDrawnF0)) >= EXCURSION_SEMI) {
+      ctx.stroke();
+      inSegment = false;
+    }
+    lastDrawnF0 = f.f0;
 
     if (!inSegment) {
       ctx.beginPath();

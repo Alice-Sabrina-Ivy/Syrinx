@@ -1,43 +1,55 @@
 name: Deploy to GitHub Pages
 
+# Builds the site from main and deploys it with GitHub's Pages actions
+# (repo Settings → Pages → Source: "GitHub Actions"). Replaced the old
+# build-then-commit-docs/ loop, which committed ~24 MB of build output back
+# to main on every merge and triggered GitHub's legacy "pages build and
+# deployment" workflow twice per merge (one run always cancelled).
+
 on:
   push:
     branches: [main]
   workflow_dispatch:
-    inputs:
-      branch:
-        description: 'Branch to build and deploy'
-        required: false
-        default: 'main'
 
 permissions:
-  contents: write
+  contents: read
 
+# One deployment at a time; a newer push queues behind the in-flight one
+# instead of cancelling a deployment halfway through.
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
-  build-and-deploy:
-    runs-on: ubuntu-latest
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
-          ref: ${{ inputs.branch || github.ref_name }}
-
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 20
+          node-version: 24
           cache: npm
-
       - run: npm ci
+      # A broken main never reaches the live site.
+      - run: npm run lint
+      - run: npm run test:unit
       - run: npm run build
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: dist
 
-      - name: Commit docs/ to branch
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/
-          git diff --cached --quiet && echo "No changes to commit" && exit 0
-          git commit -m "Build: update docs/ from $(git rev-parse --short HEAD) [skip ci]"
-          git push
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

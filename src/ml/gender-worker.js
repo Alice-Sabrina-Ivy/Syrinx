@@ -32,7 +32,7 @@
 
 import { pipeline, env } from "@huggingface/transformers";
 import {
-  resampleLinear,
+  createStreamingResampler,
   RingWindow,
   SilenceTracker,
   femaleScoreFromResult,
@@ -104,6 +104,17 @@ const INFERENCE_TIMEOUT_MS = 2500;
 const DEFAULT_MODEL_ID = "Alice-Sabrina-Ivy/voice-gender-classifier-onnx-q8-v2";
 
 let inputSampleRate = 48000;
+// Streaming linear resampler (audio-utils createStreamingResampler —
+// the same one pitch-worker.js uses since 2026-07-20): carries the
+// fractional read phase + the previous chunk's last sample across
+// chunks. The per-chunk resampleLinear it replaces restarted its phase
+// every chunk, splicing ~2.26 input samples out of every 25 ms boundary
+// at 44.1 kHz (0.18 % time compression + a waveform discontinuity per
+// chunk); integer-ratio rates (48/32/96 kHz) are bit-identical either
+// way. No score bias was measured, only splice jitter:
+// measurements/gender-resampler-continuity-2026-10-03.md.
+// Instantiated in init once inputSampleRate is known.
+let resample = null;
 let classifier = null;
 let modelStatus = "idle";               // idle | loading | ready | error
 let _diag = false;                      // populated by init.diag, gates inferMs reporting
@@ -289,10 +300,9 @@ async function loadModel(modelId) {
 function attachAudioPort(port) {
   port.onmessage = (e) => {
     const { buffer } = e.data;
-    if (!buffer) return;
+    if (!buffer || !resample) return;
     const incoming = new Float32Array(buffer);
-    const resampled = resampleLinear(incoming, inputSampleRate, TARGET_SAMPLE_RATE);
-    ring.append(resampled);
+    ring.append(resample(incoming));
     maybeInfer();
   };
 }
@@ -304,6 +314,7 @@ self.onmessage = (e) => {
     case "init":
       if (typeof msg.inputSampleRate === "number") inputSampleRate = msg.inputSampleRate;
       _diag = msg.diag === true;
+      resample = createStreamingResampler(inputSampleRate, TARGET_SAMPLE_RATE);
       loadModel(msg.modelId || DEFAULT_MODEL_ID);
       break;
     case "audioPort":

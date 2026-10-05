@@ -10,7 +10,9 @@ import basicSsl from '@vitejs/plugin-basic-ssl'
 // the firewall + cert-warning workflow.
 export default defineConfig(({ mode }) => ({
   base: '/Syrinx/',
-  build: { outDir: 'docs' },
+  // Build output is untracked; .github/workflows/deploy.yml uploads it to
+  // GitHub Pages. (Was outDir 'docs' committed to main until 2026-10-04.)
+  build: { outDir: 'dist' },
   plugins: [
     react(),
     tailwindcss(),
@@ -37,7 +39,7 @@ export default defineConfig(({ mode }) => ({
   // package lets Vite serve the original node_modules/onnxruntime-web/
   // directory directly in dev, where ORT's relative path resolution works.
   // optimizeDeps is dev-only — production (Rollup) builds correctly emit
-  // hashed .wasm assets in docs/assets/ regardless of this setting.
+  // hashed .wasm assets in dist/assets/ regardless of this setting.
   // entries: scan only the app's own index.html — the default globs every
   // .html under the root, including copies inside build/.
   optimizeDeps: {

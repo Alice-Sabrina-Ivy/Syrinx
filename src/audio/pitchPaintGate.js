@@ -23,29 +23,74 @@
 //     private session recording real speech stayed under EXCURSION_SEMI
 //     from its established level — never an octave.)
 //   - OFF-LEVEL (≥ EXCURSION_SEMI): an octave-class jump. NOT painted
-//     (rendered as a gap) unless it sustains a consistent new level for
-//     EXCURSION_SUSTAIN frames — then accepted as a genuine register
-//     change and the level is reseeded there. Harmonic locks (typically a
-//     few frames) never reach the sustain count, so they never paint;
-//     genuine sustained octave changes do, after a confirmation delay.
+//     (rendered as a gap) unless it sustains a consistent new level —
+//     then accepted as a genuine register change and the level is
+//     reseeded there. Harmonic locks (typically a few frames) mostly never
+//     reach the sustain count; genuine register changes do.
 //   The painted VALUE is always the real detected pitch — this only
 //   gates WHEN to paint, never alters the number (unlike the octave-
 //   locking reconcileHarmonic removed 2026-05-09).
 //
-// Sweep behind the constants: scripts/pitch-excursion-fix-sweep.js (the
-// 2026-06-10 excursion-break measurement is private, kept outside this
-// repo). SEMI 9.5 sits in the gap between the measured prosody maximum and
-// the octave (12); SUSTAIN 16 (~400 ms)
-// outlasts the harmonic-lock tail while keeping genuine-register-change
-// latency acceptable for speech (the reported failure mode — you don't
-// jump octaves between words). Smooth pitch glides are unaffected: each
-// step stays within SEMI of the moving level, so they never trip the
-// off-level branch.
+// Register re-acquisition (2026-10-03, measurements/pitch-display-gate-
+// redesign-2026-10-03.md). The 06-10 gate kept its level across every
+// gap and needed 16 off-level frames (400 ms) to accept a new one, and
+// it let HELD values (the pitch-hold bridge over detector null gaps)
+// into the level as if fresh. For a speaker who alternates registers an
+// octave apart between words, the level stayed anchored on the previous
+// word's register: target-voice words showed blank (or, via the readout
+// fallback, the stale low value an octave down) for much of their
+// length (measured on the private session recordings, well below an
+// ungated display). Three changes, each measured against the consensus
+// and strict references on the private session recordings + the PTDB/
+// FDA/Hillenbrand/vocadito guard corpora:
+//   1. Held values do not feed the gate. push(pitch, { fresh: false })
+//      may paint (on-level, continuity confirmed) to bridge consonants,
+//      but never enters the level ring / counters, and counts as a gap
+//      frame.
+//   2. Post-gap re-acquisition. After ≥ REACQUIRE_GAP_FRAMES consecutive
+//      frames without a fresh pitch (word boundary, consonant), an
+//      off-level run needs only REACQUIRE_SUSTAIN consistent frames to
+//      be accepted, for the first REACQUIRE_WINDOW painted frames of the
+//      new segment. The level is KEPT (not cleared): a 2–3-frame onset
+//      harmonic lock after a gap is still suppressed — clearing the
+//      level instead (tested) painted those onset locks and raised
+//      low-voice octave-up (private session recordings).
+//   3. EXCURSION_SUSTAIN 16 → 8 (200 ms) mid-segment: halves the blank
+//      on an in-word register change / fast glide-and-hold, with no
+//      measurable octave-up or spike cost on the sessions or corpora.
+//
+// Faster re-acquisition (2026-10-04, measurements/pitch-display-
+// reacquire-2026-10-04.md). Attributing the remaining target-voice blanks
+// on the private session recordings showed the slow pickups were (a)
+// in-word register changes (no gap, so the mid-segment sustain applied)
+// and (b) the display median, which after a word gap still held the
+// previous word's values: the first new-register frame painted the OLD
+// register (or blanked) and the off-level run started a frame late. Two
+// changes, measured with the same oracles + the female/male corpora
+// (gender-symmetric):
+//   4. The hook restarts the display median when a word opens an octave-
+//      class jump away from it after a gap (pitchSmoothing.js
+//      smoothingBufferFor; seeded, so the painted value stays a real
+//      detection — review fix, same file §10), and push() takes the frame's RAW fresh
+//      pitch: an off-level run is accepted only if the raw value of the
+//      accepting frame agrees with the run (< EXCURSION_SEMI from its
+//      median). Without that check the restarted median let a 3-frame
+//      post-gap onset lock reach REACQUIRE_SUSTAIN (the median carries
+//      a lock one frame past its end) and reseed the level on the wrong
+//      octave; with it, an accept needs REACQUIRE_SUSTAIN (resp.
+//      EXCURSION_SUSTAIN) consecutive raw frames in the new register, so
+//      onset locks shorter than that still never paint — and the same
+//      check stops a median-extended mid-segment lock from painting.
+//   5. EXCURSION_SUSTAIN 8 → 7 (175 ms) mid-segment. With the raw check a
+//      mid-word lock must last >= 8 raw frames to paint, as before.
 
 export const ONSET_CONFIRM_FRAMES = 3;   // continuity frames before painting
 export const EXCURSION_SEMI = 9.5;       // semitones from level = "off-level"
-export const EXCURSION_SUSTAIN = 16;     // off-level frames to accept a new level
+export const EXCURSION_SUSTAIN = 7;      // off-level frames to accept a new level (mid-segment)
 export const LEVEL_RING_LEN = 15;        // painted-value window for the level median
+export const REACQUIRE_GAP_FRAMES = 2;   // frames without a fresh pitch that arm re-acquisition
+export const REACQUIRE_SUSTAIN = 4;      // off-level frames to accept a new level right after a gap
+export const REACQUIRE_WINDOW = 8;       // painted frames after the gap during which REACQUIRE_SUSTAIN applies
 const MIN_RING_FOR_LEVEL = 5;            // need this many before the gate engages
 
 function median(arr) {
@@ -61,16 +106,48 @@ export function createPaintGate({
   excursionSemi = EXCURSION_SEMI,
   excursionSustain = EXCURSION_SUSTAIN,
   levelRingLen = LEVEL_RING_LEN,
+  reacquireGapFrames = REACQUIRE_GAP_FRAMES,
+  reacquireSustain = REACQUIRE_SUSTAIN,
+  reacquireWindow = REACQUIRE_WINDOW,
 } = {}) {
   let ring = [];        // recent painted pitches; median = established level
   let onStreak = 0;     // consecutive on-level frames (onset/continuity)
-  let offRun = [];       // consecutive off-level candidate values
+  let offRun = [];      // consecutive off-level candidate values (sliding window)
+  let gapFrames = 0;    // consecutive frames without a fresh pitch
+  let reacquire = false;     // post-gap re-acquisition armed
+  let paintedSinceGap = 0;   // painted frames since re-acquisition was armed
+  let lastReason = null;     // why the last push did/didn't paint (readout policy)
 
-  // push(pitch): pitch is a finite number (a fresh or held smoothed
-  // pitch). Returns true if this value should be painted as voiced.
-  function push(pitch) {
-    const est = ring.length >= MIN_RING_FOR_LEVEL ? median(ring) : null;
+  const level = () => (ring.length >= MIN_RING_FOR_LEVEL ? median(ring) : null);
+
+  function painted() {
+    if (reacquire && ++paintedSinceGap >= reacquireWindow) reacquire = false;
+    lastReason = "paint";
+    return true;
+  }
+
+  // push(pitch, { fresh, raw }): pitch is a finite smoothed pitch.
+  // fresh=false marks a HELD value (detector null, pitch-hold window
+  // open). raw is this frame's unsmoothed fresh detection (null/omitted =
+  // no raw check — callers that feed raw values directly may omit it).
+  // Returns true if this value should be painted as voiced.
+  function push(pitch, { fresh = true, raw = null } = {}) {
+    const est = level();
     const onLevel = est === null || Math.abs(semitones(pitch, est)) < excursionSemi;
+
+    if (!fresh) {
+      // Held value: may bridge the trace across a consonant if it sits on
+      // the level and continuity is confirmed, but never touches gate
+      // state — a stale value must not anchor the level or count toward
+      // a register change — and it counts as a gap frame.
+      gapFrames++;
+      const ok = onLevel && onStreak >= onsetConfirm;
+      lastReason = ok ? "paint" : "hold";
+      return ok;
+    }
+
+    if (gapFrames >= reacquireGapFrames) { reacquire = true; paintedSinceGap = 0; }
+    gapFrames = 0;
 
     if (onLevel) {
       onStreak++;
@@ -78,48 +155,63 @@ export function createPaintGate({
       if (onStreak >= onsetConfirm) {
         ring.push(pitch);
         if (ring.length > levelRingLen) ring.shift();
-        return true;
+        return painted();
       }
+      lastReason = "onset";
       return false;
     }
 
     // Off-level: an octave-class departure from the established level.
     // offRun is a SLIDING window of the last excursionSustain off-level
-    // values (2026-07-19; was unbounded). Unbounded, a fast wide glide
-    // (≥ excursionSemi spanned WITHIN the off-level portion — ~2-octave
-    // sirens in ≲500 ms) left mid-glide values in the run forever, so
-    // the min–max consistency check below could never pass and the held
-    // target note stayed suppressed until the next unvoiced gap.
-    // Windowed, the accept asks "were the LAST ~400 ms internally
-    // consistent" — mid-glide values scroll out once the target holds.
-    // Harmonic locks are unaffected: they are typically shorter than
-    // excursionSustain, so they still never fill the window. Also
-    // bounds the previously O(run-length) spread computation.
+    // values (2026-07-19; was unbounded — a fast wide glide left
+    // mid-glide values in the run forever and the held target note never
+    // passed the consistency check). The accept asks "were the last
+    // `need` frames internally consistent" — `need` is reacquireSustain
+    // right after a gap, excursionSustain mid-segment.
     offRun.push(pitch);
     if (offRun.length > excursionSustain) offRun.shift();
-    const spread = offRun.length > 1
-      ? Math.abs(semitones(Math.max(...offRun), Math.min(...offRun)))
+    const need = reacquire ? reacquireSustain : excursionSustain;
+    const win = offRun.length > need ? offRun.slice(-need) : offRun;
+    const spread = win.length > 1
+      ? Math.abs(semitones(Math.max(...win), Math.min(...win)))
       : 0;
-    if (offRun.length >= excursionSustain && spread < excursionSemi) {
-      // Sustained, internally-consistent new level — accept it.
-      ring = offRun.slice(-levelRingLen);
-      onStreak = offRun.length;
+    // Raw agreement (2026-10-04): the accepting frame's RAW pitch must be
+    // in the run's register. The display median carries a run one frame
+    // past its end (an onset lock of 3 raw frames gives 4 off-level
+    // smoothed values), so without this a lock that already ended — the
+    // raw value back on the old level — could be accepted and reseed the
+    // level on the wrong octave.
+    const rawOk = raw === null || Math.abs(semitones(raw, median(win))) < excursionSemi;
+    if (win.length >= need && spread < excursionSemi && rawOk) {
+      // Sustained, internally-consistent new level — accept it. The ring
+      // is padded to MIN_RING_FOR_LEVEL with the accepted run's median
+      // (2026-10-04): a re-acquisition accept holds only REACQUIRE_SUSTAIN
+      // (4) values < MIN_RING_FOR_LEVEL (5), so level() was null on the
+      // next frame and that frame painted ungated — any value, an octave
+      // error included (review finding; measurements/pitch-display-gate-
+      // redesign-2026-10-03.md §2026-10-04).
+      ring = win.slice(-levelRingLen);
+      const accepted = median(ring);
+      while (ring.length < MIN_RING_FOR_LEVEL) ring.push(accepted);
+      onStreak = win.length;
       offRun = [];
-      return true;
+      return painted();
     }
     // Transient excursion (harmonic lock) — suppress.
     onStreak = 0;
+    lastReason = "offlevel";
     return false;
   }
 
   // Call when the trace breaks (no pitch this frame). The established
-  // level PERSISTS across brief gaps — speech has unvoiced micro-gaps
-  // between words/phonemes every few hundred ms, and resetting the level
-  // there would disable the gate for the onsets right after them. Only
-  // the continuity/excursion counters reset.
+  // level PERSISTS across gaps (re-acquisition makes a register change
+  // after the gap cheap instead); the continuity/excursion counters
+  // reset and the frame counts toward arming re-acquisition.
   function resetSegment() {
     onStreak = 0;
     offRun = [];
+    gapFrames++;
+    lastReason = null;
   }
 
   // Call on prolonged silence / mic stop — the established level is no
@@ -128,13 +220,21 @@ export function createPaintGate({
     ring = [];
     onStreak = 0;
     offRun = [];
+    gapFrames = 0;
+    reacquire = false;
+    paintedSinceGap = 0;
+    lastReason = null;
   }
 
   return {
     push,
     resetSegment,
     reset,
+    // "paint" | "onset" | "offlevel" | "hold" | null — the readout uses
+    // "offlevel" to avoid showing a stale held value from the other
+    // register while a fresh off-level pitch is being confirmed.
+    lastReason: () => lastReason,
     // Test/diagnostic accessor.
-    level: () => (ring.length >= MIN_RING_FOR_LEVEL ? median(ring) : null),
+    level,
   };
 }

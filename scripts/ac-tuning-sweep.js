@@ -19,7 +19,6 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { loadAllCorpora } from "../tests/dsp/data/corpora.js";
 import { resampleLinear } from "../tests/dsp/swift-f0-adapter.js";
 import { createBoersmaAC, createPathTracker } from "../src/dsp/boersma-ac.js";
-import { sessionPath } from "./session-data.js";
 
 const SR = 16000;
 const HOP = Math.round(SR * 0.025); // 400 samples = 25 ms
@@ -29,8 +28,10 @@ const FLIP_TOL = 0.2;
 // AC_SESSION_WAV overrides for held-out-session validation (any path
 // present in praat-contours.json); AC_SESSION_ONLY=1 skips the corpora
 // for fast session-only cells.
+// $SYRINX_SESSIONS_DIR = the private session recordings (local only; see CLAUDE.md).
+const SESSIONS_DIR = (process.env.SYRINX_SESSIONS_DIR ?? "").replace(/\\/g, "/").replace(/\/+$/, "");
 const SESSION_WAV = process.env.AC_SESSION_WAV
-  || sessionPath("2026-05-26/session.wav");
+  || (SESSIONS_DIR && `${SESSIONS_DIR}/2026-05-26/session.wav`);
 const SESSION_ONLY = process.env.AC_SESSION_ONLY === "1";
 const PRAAT_CONTOURS = "build/pitch-compare/praat-contours.json";
 
@@ -214,9 +215,10 @@ const STAGES = {
   },
   // Stage F (2026-07-19): frameLength × voicingThreshold interaction at
   // the deployed operating point, with the minLag fix in place. Stage D
-  // found fl1280 beats fl1536 on FDA and PTDB (and on the private session
-  // band), at the cost of hillenbrand NULLS (+0.9) — while vt0.35's
-  // main effect is cutting nulls on every corpus. Test whether the two
+  // found fl1280 beats fl1536 on the session band and octave-up (private
+  // session recording), FDA and PTDB, at the cost of hillenbrand NULLS
+  // (+0.9) — while vt0.35's main effect is cutting nulls on every
+  // corpus. Test whether the two
   // levers compose; fl1408/fl1152 probe the window axis around the 1280
   // point.
   F: () => {
@@ -267,6 +269,7 @@ if (!SESSION_ONLY) {
   }
 }
 console.log("Loading session WAV + Praat reference …");
+if (!SESSION_WAV) throw new Error("set SYRINX_SESSIONS_DIR to the folder holding the private session recordings (see CLAUDE.md)");
 const sessRaw = readWav(SESSION_WAV);
 const sessSig = sessRaw.sampleRate === SR ? sessRaw.samples : resampleLinear(sessRaw.samples, sessRaw.sampleRate, SR);
 const praatDoc = JSON.parse(readFileSync(PRAAT_CONTOURS, "utf8"));

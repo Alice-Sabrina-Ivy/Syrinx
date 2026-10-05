@@ -5,9 +5,13 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  // 'dist' is the Vite template default; this project builds to 'docs'
-  // (GitHub Pages), which holds committed bundles that must not be linted.
-  globalIgnores(['dist', 'docs']),
+  // 'dist' is the Vite build output (untracked, deployed by CI since #97);
+  // 'docs' is the legacy pre-2026-10-04 build dir, ignored in case a stale
+  // local copy is still on disk.
+  // 'build' is the gitignored local scratch dir (measurement probes,
+  // prototype .mjs harnesses) — not project code; linting it made
+  // `npm run lint` fail on whatever scratch happened to be on disk.
+  globalIgnores(['dist', 'docs', 'build']),
   {
     files: ['**/*.{js,jsx}'],
     extends: [

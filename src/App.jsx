@@ -1,4 +1,4 @@
-import { useState, useRef, lazy, Suspense } from "react";
+import { useState, useRef, useEffect, lazy, Suspense } from "react";
 import { useAudioPipeline } from "./audio/useAudioPipeline";
 import { PitchTrace } from "./components/PitchTrace";
 import { CombinedDashboard } from "./components/CombinedDashboard";
@@ -6,6 +6,7 @@ import { SessionHistory } from "./components/SessionHistory";
 import { DataManagement } from "./components/DataManagement";
 import { DIAG_ENABLED } from "./diag/diag";
 import { RESONANCE_LAB_ENABLED } from "./resonance-lab/flag";
+import { repairInterruptedSessions } from "./utils/sessionRepair";
 
 // Diagnostic overlay is dynamically imported and only rendered when the
 // ?diag=1 URL flag is present. Production users get zero bundle impact —
@@ -59,9 +60,18 @@ function App() {
   // pattern as a cascading-render risk. The initializer runs once before
   // first paint, so first-visit users see the welcome overlay
   // immediately rather than after a render-then-update flicker.
-  const [showWelcome, setShowWelcome] = useState(
-    () => typeof window !== "undefined" && !localStorage.getItem(WELCOME_KEY),
-  );
+  // localStorage access THROWS (SecurityError) when site data is blocked
+  // — uncaught here it white-screened the app (no error boundary). Then
+  // there is nowhere to remember the dismissal: show the welcome once per
+  // page load.
+  const [showWelcome, setShowWelcome] = useState(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return !localStorage.getItem(WELCOME_KEY);
+    } catch {
+      return true;
+    }
+  });
   const [showSettings, setShowSettings] = useState(false);
   // Ref for session metadata (notes, elapsed, recording state) —
   // kept in sync by CombinedDashboard, readable by a future save/export feature.
@@ -89,14 +99,33 @@ function App() {
     streamRef,
   } = useAudioPipeline();
 
+  // One-shot repair of sessions a previous visit never finalized (tab
+  // close / crash / mobile discard) — see utils/sessionRepair.js. A
+  // History list that already loaded re-queries via the same event a
+  // normal finalize dispatches.
+  useEffect(() => {
+    repairInterruptedSessions().then((n) => {
+      if (n > 0) window.dispatchEvent(new CustomEvent("syrinx:session-finalized"));
+    });
+  }, []);
+
   function dismissWelcome() {
-    localStorage.setItem(WELCOME_KEY, "1");
+    try {
+      localStorage.setItem(WELCOME_KEY, "1");
+    } catch {
+      // Site data blocked — dismissal lasts for this page load only.
+    }
     setShowWelcome(false);
     start();
   }
 
+  // h-dvh, not h-screen: on phones 100vh is the viewport with the URL bar
+  // HIDDEN, so with it showing the bottom row (Stop Listening) sat below
+  // the fold of a page that can't scroll. Every browser Tailwind 4
+  // supports (Safari 16.4+, Chrome 111+, Firefox 128+) has dvh, so no
+  // vh fallback is needed.
   return (
-    <div className="h-screen flex flex-col px-4 py-4 overflow-hidden">
+    <div className="h-dvh flex flex-col px-4 py-4 overflow-hidden">
       {/* Diagnostic overlay (only when ?diag=1) */}
       {DiagnosticOverlay && (
         <Suspense fallback={null}>
@@ -223,29 +252,39 @@ function App() {
               ))}
             </nav>
 
-            {/* Tab content */}
-            <div className="flex-1 flex flex-col min-h-0">
-              {activeTab === "dashboard" && (
-                <CombinedDashboard
-                  voiced={voiced}
-                  holding={holding}
-                  pitch={pitch}
-                  formants={formants}
-                  spectralTilt={spectralTilt}
-                  hnr={hnr}
-                  vocalWeight={vocalWeight}
-                  modelStatus={modelStatus}
-                  modelError={modelError}
-                  modelProgress={modelProgress}
-                  pitchTraceRef={pitchTraceRef}
-                  formantTrailRef={formantTrailRef}
-                  genderTraceRef={genderTraceRef}
-                  dspGateRef={dspGateRef}
-                  sessionRef={sessionRef}
-                  frameCallbackRef={frameCallbackRef}
-                  streamRef={streamRef}
-                />
-              )}
+            {/* Tab content. Scrolls below lg: the stacked dashboard
+                (pitch 180 px + meter 260 px minimums + stats + controls)
+                is taller than a phone's tab area (< ~870 px viewport), and
+                with nothing scrolling the meter overflowed onto the stats
+                and session controls. At lg the side-by-side layout fills
+                the height as before. */}
+            <div className="flex-1 flex flex-col min-h-0 overflow-y-auto lg:overflow-y-visible">
+              {/* Always mounted while the pipeline runs: it owns the
+                  session recording, and unmounting it finalizes the
+                  recording — switching to Pitch/History used to end the
+                  session silently. Inactive, it renders nothing (its
+                  canvases unmount, so no hidden rAF loops) and keeps its
+                  recording state + intervals running. */}
+              <CombinedDashboard
+                active={activeTab === "dashboard"}
+                voiced={voiced}
+                holding={holding}
+                pitch={pitch}
+                formants={formants}
+                spectralTilt={spectralTilt}
+                hnr={hnr}
+                vocalWeight={vocalWeight}
+                modelStatus={modelStatus}
+                modelError={modelError}
+                modelProgress={modelProgress}
+                pitchTraceRef={pitchTraceRef}
+                formantTrailRef={formantTrailRef}
+                genderTraceRef={genderTraceRef}
+                dspGateRef={dspGateRef}
+                sessionRef={sessionRef}
+                frameCallbackRef={frameCallbackRef}
+                streamRef={streamRef}
+              />
 
               {activeTab === "pitch" && (
                 <div className="flex-1 flex flex-col min-h-0">

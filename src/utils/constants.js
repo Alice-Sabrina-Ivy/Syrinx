@@ -3,12 +3,15 @@
 // Default target pitch range for voice feminization (Hz)
 export const DEFAULT_PITCH_TARGET = { low: 165, high: 255 };
 
-// Y-axis display range for pitch trace (Hz). Matches the detector's
-// search range exactly (boersma-ac.js minPitchHz 75 / maxPitchHz 400) so
-// every reportable pitch lands inside the plot. Keep these in sync: a
-// detector floor BELOW this display floor paints valid low detections
-// under the chart (2026-06-10 report — fixed by raising the detector
-// floor to 75 to match, rather than widening the display).
+// Y-axis display range for pitch trace (Hz) — also the REPORTED pitch
+// range: the floor matches the detector's search floor (boersma-ac.js
+// minPitchHz 75; a detector floor below this paints valid low detections
+// under the chart — 2026-06-10 report), and the pitch worker posts any
+// decode above `high` as unvoiced. The detector itself searches to 2x
+// `high` (maxPitchHz 800) so above-range phonation is recognized as such
+// instead of aliasing to a half-pitch value inside the plot
+// (measurements/pitch-ceiling-2026-10-03.md). Raising `high` means
+// raising maxPitchHz to keep the 2x relationship.
 export const PITCH_DISPLAY_RANGE = { low: 75, high: 400 };
 
 // F2 resonance target range for voice feminization (Hz)
