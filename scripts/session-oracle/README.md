@@ -103,9 +103,10 @@ node scripts/session-oracle/corpus.mjs --report=base,head
 - On origin/main (f92b11a) src the runner reproduces the phase-1
   `chain-harness.js` baseline bit-exactly on every worker column
   (frame-local, decoded, posted, confidence, notch count) and the DSP
-  intensity of all 429 019 hops; painted differs on 26 hops, all on the
-  400 ms hold boundary where the chain harness's unrounded timestamps
-  refuse a hold the real hook (which rounds) allows.
+  intensity on every hop of the private session recordings; painted
+  differs only on a handful of hops, all on the 400 ms hold boundary
+  where the chain harness's unrounded timestamps refuse a hold the real
+  hook (which rounds) allows.
 - `analyze.py` then reproduces the phase-1 production baseline exactly
   (results on the private session recordings are kept outside this
   repository).
