@@ -81,3 +81,42 @@ VARIANTS.N12 = { tree: "cand", opts: { latch: false, binDip: true, shortGap: { s
 // its pre-dip median in 2 consecutive observations while the band is still
 // down (a beating / amplitude-modulated hum's trough met a speech pause)
 VARIANTS.N13 = { tree: "cand", opts: { latch: false, binDip: true, shortGap: { sec: 0.1, db: 18 }, revokeRebirth: { afterSec: 0.7, persist: 3, recover: 2 }, handoff: { cents: 160, heldSec: 1, heldDuty: 0.7, lostSec: 1.5, youngSec: 0.6, bandHold: true, revokeSec: 0.7, ownClock: true, persist: 3 } } };
+
+// ---- round 2 (2026-10-04, after the round-1 review) — cand2-notch.js ----
+// R1 = cb00425 exactly (tree r1); R2h = cb00425 with the glide / step
+// handoff off; R2q = R2h + the quiet-window line gate on breath re-births
+// (cb00425's revokes kept); R2 = R2h + quiet gate, cb00425's revokes
+// replaced by the quiet-window STEADY revoke of the whole re-birth chain.
+VARIANTS.R1 = { tree: "r1" };
+VARIANTS.R1c = { tree: "cand2", opts: {} };                       // must == R1
+VARIANTS.R2h = { tree: "cand2", opts: { handoffCents: 0 } };
+VARIANTS.R2q = { tree: "cand2", opts: { handoffCents: 0, quietGate: true } };
+VARIANTS.R2 = { tree: "cand2", opts: { handoffCents: 0, quietGate: true, n13Revokes: false } };
+// R3 = R2 with a run-scoped STEADY verdict: 3 consecutive prominent windows
+// (100 ms span), each within 3 dB of the previous and the last within 3 dB of
+// the first (a reverberant release tail decays >= 7.5 dB / 100 ms at RT60
+// <= 0.8 s); no permanent flag
+VARIANTS.R3 = { tree: "cand2", opts: { handoffCents: 0, quietGate: true, n13Revokes: false, steadyWin: 3, quietDecayDb: 3 } };
+VARIANTS.R3q = { tree: "cand2", opts: { handoffCents: 0, quietGate: true, steadyWin: 3, quietDecayDb: 3 } };
+// R4 = R3 with a 5-window (200 ms span) STEADY verdict: a room mode / comb
+// ringing in the release tail can hold ~150 ms before it decays
+VARIANTS.R4 = { tree: "cand2", opts: { handoffCents: 0, quietGate: true, n13Revokes: false, steadyWin: 5, quietDecayDb: 3 } };
+// R5 = R4 + a line decaying >= 6 dB over 3 quiet windows counts as absent
+// (a reverberant release tail never drops under the prominence floor
+// inside a 0.25-0.5 s breath)
+VARIANTS.R5 = { tree: "cand2", opts: { handoffCents: 0, quietGate: true, n13Revokes: false, steadyWin: 5, quietDecayDb: 3, decayEligDb: 6 } };
+// R6 = R5 with (a) decay-absence only for a FAST decay (>= 6 dB over the
+// last 3 windows / 100 ms: a beat sliding into its null over 300 ms is not a
+// release tail) and (b) PROVISIONAL re-births while the quiet run lasts:
+// confirmed when the run ends, cancelled when the line comes back >= 3 dB
+// over its minimum inside the same run (an equal-amplitude beat null); the
+// track cannot promote while provisional
+VARIANTS.R6 = { tree: "cand2", opts: { handoffCents: 0, quietGate: true, n13Revokes: false, steadyWin: 5, quietDecayDb: 3, decayEligDb: 6, decaySpan: 3, prov: true, returnDb: 3 } };
+// R7 = R6 with a stricter "came back": >= 6 dB over its minimum AND >= 20 x
+// the local floor (13 dB; a noise bin crossing the 10 dB absence threshold
+// cancelled a reverberant breath's re-birth)
+VARIANTS.R7 = { tree: "cand2", opts: { handoffCents: 0, quietGate: true, n13Revokes: false, steadyWin: 5, quietDecayDb: 3, decayEligDb: 6, decaySpan: 3, prov: true, returnDb: 6, returnK: 20 } };
+// R8 = R7, decay-absence also needs an AVERAGE decay >= 3 dB per 50 ms hop
+// since the run's first window (a release tail decays from the moment the
+// note stops; a 1:1 beat slides slowly, then plunges into its null)
+VARIANTS.R8 = { tree: "cand2", opts: { handoffCents: 0, quietGate: true, n13Revokes: false, steadyWin: 5, quietDecayDb: 3, decayEligDb: 6, decaySpan: 3, prov: true, returnDb: 6, returnK: 20, decayRateDb: 3 } };

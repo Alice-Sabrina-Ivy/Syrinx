@@ -183,5 +183,64 @@ export function heldScenarios() {
     out.push({ name: `dynamics/${f0}/${qual}`, family: "dynamics", holds: [[1, 15]], promoF: [[f0, f0]], dur: 16,
       build: buildTimeline([hd], 16, { qual, vibCents: 10, wanderCents: 3, seed }) });
   }
+  // 7. round 2 (2026-10-04): the round-1 review's held-note adversaries —
+  // a step after a 0.15 / 0.2 s catch breath (2 x 10 s, +30..+150 c), a 3 x 8 s
+  // ladder through short breaths, abrupt-release catch breaths (10-30 ms
+  // ramps), and repeated holds in a reverberant room (Schroeder reverb,
+  // RT60 0.3 / 0.6 s: the release tail rings into the breath)
+  for (const f0 of [120, 220]) for (const step of [30, 50, 100, 150]) for (const B of [0.15, 0.2]) {
+    seed++;
+    const parts = []; let t = 1;
+    for (let k = 0; k < 2; k++) { const f = cents(f0, step * k); parts.push({ kind: "hold", a: t, b: t + 10, vowel: "a", f0At: () => f }); t += 10 + B; }
+    const end = t - B;
+    out.push({ name: `breathstep/${f0}/+${step}c/breath${B}s`, family: "breathstep", holds: parts.map((p) => [p.a, p.b]), promoF: [[f0, cents(f0, step)]], dur: end + 1,
+      build: buildTimeline(parts, end + 1, { vibCents: 10, wanderCents: 3, seed }) });
+  }
+  for (const f0 of [180, 220]) for (const step of [100, 200, 300]) for (const B of [0.15, 0.25, 0.4]) {
+    seed++;
+    const parts = []; let t = 1;
+    for (let k = 0; k < 3; k++) { const f = cents(f0, step * k); parts.push({ kind: "hold", a: t, b: t + 8, vowel: "a", f0At: () => f }); t += 8 + B; }
+    const end = t - B;
+    out.push({ name: `ladder/${f0}/${step}c/breath${B}s`, family: "ladder", holds: parts.map((p) => [p.a, p.b]), promoF: [[f0, cents(f0, 2 * step)]], dur: end + 1,
+      build: buildTimeline(parts, end + 1, { vibCents: 10, wanderCents: 3, seed }) });
+  }
+  for (const f0 of [120, 220]) for (const B of [0.15, 0.2]) for (const ramp of [0.01, 0.03]) for (const qual of ["modal", "breathy"]) {
+    seed++;
+    const parts = []; let t = 1;
+    for (let k = 0; k < 3; k++) { parts.push({ kind: "hold", a: t, b: t + 10, vowel: "a", ramp, f0At: () => f0 }); t += 10 + B; }
+    const end = t - B;
+    out.push({ name: `abrupt/${f0}/breath${B}s/r${ramp}/${qual}`, family: "abrupt", holds: parts.map((p) => [p.a, p.b]), promoF: [[f0, f0]], dur: end + 1,
+      build: buildTimeline(parts, end + 1, { qual, vibCents: 10, wanderCents: 3, seed }) });
+  }
+  for (const f0 of [120, 220]) for (const B of [0.25, 0.5, 1]) for (const rt of [0.3, 0.6]) {
+    seed++;
+    const parts = []; let t = 1;
+    for (let k = 0; k < 3; k++) { parts.push({ kind: "hold", a: t, b: t + 10, vowel: "a", f0At: () => f0 }); t += 10 + B; }
+    const end = t - B;
+    const base = buildTimeline(parts, end + 1, { vibCents: 10, wanderCents: 3, seed });
+    out.push({ name: `repeatreverb/${f0}/breath${B}s/rt${rt}`, family: "repeatreverb", holds: parts.map((p) => [p.a, p.b]), promoF: [[f0, f0]], dur: end + 1,
+      build: (sr) => { const r = base(sr); r.x = schroeder(r.x, sr, rt); return r; } });
+  }
   return out;
+}
+
+// Schroeder reverb (4 parallel combs + 2 series allpasses), wet at -3 dB re
+// dry: a living-room-like release tail for the round-2 reverb family.
+function schroeder(x, sr, rt60) {
+  const combs = [0.0297, 0.0371, 0.0411, 0.0437].map((d) => ({ L: Math.round(d * sr), g: Math.pow(10, -3 * d / rt60) }));
+  const wet = new Float32Array(x.length);
+  for (const c of combs) {
+    const buf = new Float32Array(c.L); let p = 0;
+    for (let i = 0; i < x.length; i++) { const y = buf[p]; buf[p] = x[i] + c.g * y; p = (p + 1) % c.L; wet[i] += y / 4; }
+  }
+  for (const [d, g] of [[0.005, 0.7], [0.0017, 0.7]]) {
+    const L = Math.max(1, Math.round(d * sr)), buf = new Float32Array(L); let p = 0;
+    for (let i = 0; i < wet.length; i++) { const z = buf[p]; const v = wet[i] + g * z; buf[p] = v; wet[i] = z - g * v; p = (p + 1) % L; }
+  }
+  let ed = 0, ew = 0;
+  for (let i = 0; i < x.length; i++) { ed += x[i] * x[i]; ew += wet[i] * wet[i]; }
+  const k = ew > 0 ? Math.sqrt(0.5 * ed / ew) : 0;
+  const y = new Float32Array(x.length);
+  for (let i = 0; i < x.length; i++) y[i] = x[i] + k * wet[i];
+  return y;
 }

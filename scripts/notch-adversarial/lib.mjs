@@ -2,7 +2,8 @@
 // adversarial suite). Each tree under build/notch-adv/trees/<name>/src
 // (built by setup.sh) is a copy of src/ whose dsp/noise-notch.js is:
 //   bc42 = bc42ad0's module, head = 6f8be18's (the in-sound latch, reverted
-//   in round 1), cand = cand-notch.js (option flags; globalThis.__NOTCH_OPTS
+//   in round 1), r1 = cb00425's (round 1, N13), cand2 = cand2-notch.js
+//   (round 2 option flags), cand = cand-notch.js (option flags; globalThis.__NOTCH_OPTS
 //   selects the variant), and SRC = the repo's src/ (the shipped module).
 // Every pitch-worker.js copy is otherwise byte-identical to production.
 import { pathToFileURL, fileURLToPath } from "node:url";
@@ -15,7 +16,7 @@ const ROOT = path.resolve(HERE, "../..");
 const posts = [];
 globalThis.self = { postMessage: (m) => posts.push(m) };
 const H = {};
-for (const [k, p] of [["bc42", "../../build/notch-adv/trees/bc42/src"], ["head", "../../build/notch-adv/trees/head/src"], ["cand", "../../build/notch-adv/trees/cand/src"], ["src", "../../src"]]) {
+for (const [k, p] of [["bc42", "../../build/notch-adv/trees/bc42/src"], ["head", "../../build/notch-adv/trees/head/src"], ["cand", "../../build/notch-adv/trees/cand/src"], ["r1", "../../build/notch-adv/trees/r1/src"], ["cand2", "../../build/notch-adv/trees/cand2/src"], ["src", "../../src"]]) {
   await import(pathToFileURL(path.join(HERE, p, "dsp/pitch-worker.js")).href);
   H[k] = globalThis.self.onmessage;
 }
