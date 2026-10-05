@@ -11,7 +11,9 @@ Work dir `build/steady/` (gitignored). Inputs:
   `paint` = painted trace),
 - session references `build/session-oracle/refs` (`scripts/session-oracle/build_refs.py`),
 - corpus references `build/pb/data` (`scripts/pitch-benchmark/export_corpora.mjs`),
-- the precision pass's 96 synthetic held notes `build/prec/sc_base_*.json` (`scripts/pitch-precision/synth-chain.mjs`).
+- the precision pass's 96 synthetic held notes `build/prec/sc_base_*.json` (`scripts/pitch-precision/synth-chain.mjs`),
+- `hook-check.mjs --session=` reads the private session recordings at
+  `$SYRINX_SESSIONS_DIR/<session>/session.wav` (`--sessions-root=DIR` or `--wav=PATH` override).
 
 | file | role |
 |---|---|

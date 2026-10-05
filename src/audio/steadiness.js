@@ -2,8 +2,8 @@
 //
 // "How steadily is the voice holding pitch over the last second": the
 // standard deviation, in semitones, of the pitch worker's POSTED pitch
-// values over a rolling ~1 s window — the 1-s pitch SD a voice coach
-// tracks. Pure module (no React, no worker globals); the hook feeds it
+// values over a rolling ~1 s window — the 1-s pitch SD tracked in voice
+// training. Pure module (no React, no worker globals); the hook feeds it
 // every pitch-worker message, reads it once per DSP frame, and publishes
 // it with its other ~5 fps throttled readouts.
 //
@@ -26,7 +26,7 @@
 //   * Population SD of 12·log2(f): unit-free (the same reading at 100 Hz
 //     and 300 Hz for the same musical wobble), gender-symmetric.
 //   * Deliberate vibrato and slides are reported as movement, as the
-//     coach's 1-s SD does — the module does not try to separate them.
+//     training 1-s SD does — the module does not try to separate them.
 //   * The measured noise floor is ~0.05 st (synthetic held notes), so
 //     readings below ~0.1 st are not distinguishable from each other;
 //     formatSteadiness() renders them as "<0.1".

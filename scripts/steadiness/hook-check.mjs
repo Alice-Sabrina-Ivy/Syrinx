@@ -18,6 +18,8 @@
 // Usage (repo root):
 //   node --import ./scripts/session-oracle/lib/register.mjs scripts/steadiness/hook-check.mjs \
 //        --session=2026-05-26 [--max-seconds=N] [--src=src] [--attr=build/session-oracle/attr/base]
+//        [--sessions-root=DIR]   default $SYRINX_SESSIONS_DIR (the private session
+//                                recordings; see CLAUDE.md)
 //        [--out=build/steady/hook]
 //   ... --wav=PATH --name=NAME
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
@@ -29,7 +31,9 @@ import { driveHookMessages, loadSteadiness } from "./chainlib.mjs";
 const args = Object.fromEntries(process.argv.slice(2).map((a) => { const m = a.match(/^--([^=]+)(?:=(.*))?$/); return [m[1], m[2] ?? "1"]; }));
 const SRC = args.src ?? "src";
 const name = args.name ?? args.session;
-const wav = args.wav ?? `${args["sessions-root"] ?? "C:/Coding Projects/private-session/sessions"}/${args.session}/session.wav`;
+const SESSIONS_DIR = args["sessions-root"] ?? process.env.SYRINX_SESSIONS_DIR;
+if (!args.wav && !SESSIONS_DIR) throw new Error("set SYRINX_SESSIONS_DIR to the folder holding the private session recordings (see CLAUDE.md)");
+const wav = args.wav ?? `${SESSIONS_DIR}/${args.session}/session.wav`;
 const OUT = resolve(args.out ?? "build/steady/hook");
 const S = await loadSrc(SRC);
 const mod = await loadSteadiness(SRC);
