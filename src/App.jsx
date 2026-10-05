@@ -64,6 +64,8 @@ function App() {
     voiced,
     holding,
     pitch,
+    steadiness,
+    steadinessHeld,
     formants,
     spectralTilt,
     hnr,
@@ -222,6 +224,8 @@ function App() {
                   voiced={voiced}
                   holding={holding}
                   pitch={pitch}
+                  steadiness={steadiness}
+                  steadinessHeld={steadinessHeld}
                   formants={formants}
                   spectralTilt={spectralTilt}
                   hnr={hnr}
@@ -247,6 +251,8 @@ function App() {
                       voiced={voiced}
                       holding={holding}
                       pitch={pitch}
+                      steadiness={steadiness}
+                      steadinessHeld={steadinessHeld}
                     />
                   </div>
                 </div>

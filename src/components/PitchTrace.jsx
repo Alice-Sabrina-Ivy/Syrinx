@@ -3,6 +3,7 @@
 
 import { useRef, useEffect } from "react";
 import { hzToNote } from "../utils/pitchUtils";
+import { SteadinessReadout } from "./SteadinessReadout";
 import {
   DEFAULT_PITCH_TARGET,
   PITCH_DISPLAY_RANGE,
@@ -10,7 +11,15 @@ import {
   COLORS,
 } from "../utils/constants";
 
-export function PitchTrace({ pitchTraceRef, voiced, holding, pitch, compact = false }) {
+export function PitchTrace({
+  pitchTraceRef,
+  voiced,
+  holding,
+  pitch,
+  steadiness = null,
+  steadinessHeld = false,
+  compact = false,
+}) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
 
@@ -271,9 +280,9 @@ export function PitchTrace({ pitchTraceRef, voiced, holding, pitch, compact = fa
         <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
       </div>
 
-      {/* Hz + Note readout (hidden in compact mode) */}
+      {/* Hz + Note + steadiness readout (hidden in compact mode) */}
       {!compact && (
-        <div className="mt-3 flex items-baseline justify-center gap-3">
+        <div className="mt-3 flex flex-wrap items-baseline justify-center gap-x-3 gap-y-1">
           <span
             className={`text-3xl font-light tabular-nums transition-opacity duration-300 ${
               !voiced && !holding
@@ -300,6 +309,7 @@ export function PitchTrace({ pitchTraceRef, voiced, holding, pitch, compact = fa
               </span>
             </span>
           )}
+          <SteadinessReadout value={steadiness} held={steadinessHeld} variant="inline" />
         </div>
       )}
     </div>
