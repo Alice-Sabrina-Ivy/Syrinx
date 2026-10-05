@@ -1,6 +1,7 @@
 // vocal-weight-aggregator.js — Time-windowed CPP aggregation buffer.
 //
-// CPP arrives per-DSP-frame at ~6.7 Hz (every 150 ms). The displayed
+// CPP arrives on every DSP frame (~40 fps, 25 ms chunks; it ran every
+// 6th frame, ~6.7 Hz, until c57b2a2 on 2026-05-10). The displayed
 // vocal-weight gauge needs ≥1 s of voiced-frame aggregation to wash
 // out vowel-modulated variance — see
 // measurements/vocal-weight-cpps-audit-2026-05-09.md §3.
@@ -29,15 +30,26 @@ export const AGGREGATE_WINDOW_MS = 1000;
 export const EMIT_INTERVAL_MS = 250;
 export const HARD_RESET_UNVOICED_MS = 2000;
 // MIN_VOICED_FRAMES is the minimum count of voiced+valid-CPP frames
-// in the 1-s window required for the aggregator to emit. Original
-// audit value was 6 (~900 ms of voiced phonation per aggregate);
-// WS1 corpus measurement (2026-05-10) showed conversational speech
-// at 60-80 % voiced fraction under-emitted at 6, pushing combined
-// median calibration to 64.78 s (vs audit's 30 s spec). Reduced to
-// 4 (~600 ms voiced per aggregate, ~67 % voiced content) which
-// brings median calibration to 39.4 s on the same corpus.
-// See measurements/calibration-timing-corpus-2026-05-10.json for
-// the pre/post-tune distributions.
+// in the 1-s window required for the aggregator to emit.
+//
+// What 4 means TODAY: CPP runs on every DSP frame (25 ms chunks, ~40
+// fps) since c57b2a2, so 4 frames = 100 ms of pitched phonation in the
+// 1-s window (~10 % voiced content).
+//
+// History: the 6 -> 4 tune (e533b2e, 2026-05-10) was measured while CPP
+// still ran every 6th frame (~6.7 Hz), where 4 frames meant ~600 ms
+// (~60 % voiced content); c57b2a2 switched CPP to every frame seven
+// minutes later without revisiting the floor, and the 2026-05-10
+// calibration-timing JSON predates both commits.
+//
+// Re-measured 2026-10-03 under the current chain (Boersma-AC hasPitch
+// gating, CPP every frame): emits built from < 300 ms of voicing are
+// 20-24 % of emits on the speech corpora and read 0.4-1.1 sigma heavier
+// than their neighbours (phrase-edge windows), but restoring the original
+// 600 ms intent (24 frames) only cuts the needle's >1 sigma excursions by
+// 3.5-8 pp while lengthening median calibration by +46 s (FDA) and +66 s
+// (PTDB-TUG; one PTDB speaker never calibrates). Kept at 4 deliberately.
+// measurements/vocal-weight-floor-and-register-2026-10-03.md.
 export const MIN_VOICED_FRAMES = 4;
 
 export class VocalWeightAggregator {
@@ -54,8 +66,8 @@ export class VocalWeightAggregator {
 
     // Frame ring: { time, cpp, voiced }. Plain array; entries are
     // dropped from the head when older than windowMs. Per-frame cost
-    // is small (~7 entries at 1 s × 6.7 Hz cadence) so a plain array
-    // is fine — no GC concern.
+    // is small (~40 entries at 1 s × 40 fps) so a plain array is
+    // fine — no GC concern.
     this._frames = [];
 
     // Time of last emit (used to throttle to emitIntervalMs cadence).

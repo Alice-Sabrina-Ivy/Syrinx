@@ -20,8 +20,9 @@
 //   node scripts/pitch-shootout-extract.js --corpora OUT.json
 //   node scripts/pitch-shootout-extract.js --wav=PATH OUT.json
 //
-// Outputs go under build/pitch-compare/ (gitignored scratch);
-// aggregates belong in measurements/ via the analysis script.
+// Outputs go under build/pitch-compare/ (gitignored scratch); corpus
+// aggregates belong in measurements/ via the analysis script. Results on
+// private session recordings (--wav=) never go into measurements/.
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { loadAllCorpora } from "../tests/dsp/data/corpora.js";

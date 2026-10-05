@@ -15,7 +15,12 @@ Usage:
   python -u scripts/pitch-shootout-analyze.py \
       build/pitch-compare/shootout-corpora.json \
       build/pitch-compare/shootout-session.json \
-      measurements/pitch-detector-shootout-2026-06-09.json
+      build/pitch-compare/shootout-analysis.json
+
+The session dataset comes from a private session recording, so the output
+holds private-session results: write it under the gitignored build/ (or the
+user's private project), never into measurements/. Only the corpus blocks
+may be copied into a public measurement file.
 """
 
 import json

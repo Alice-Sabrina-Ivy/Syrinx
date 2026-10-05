@@ -3,14 +3,14 @@
 //
 // Replaces SwiftF0 (ONNX CNN), cut over 2026-06-09. SwiftF0 confidently
 // reported 2×F0 on weak-fundamental phonation (H2 louder than H1 —
-// routine in voice training): 25.6 % octave-up / 19.1 % null in the
-// user's 80–110 Hz register on real session audio, vs 4.1 % / 0.4 % for
-// the tuned AC detector, at corpus parity or better on two of four
+// routine in voice training) in the user's 80–110 Hz register on real
+// session audio, far more often than the tuned AC detector (private
+// measurement), at corpus parity or better on two of four
 // ground-truth corpora and ~25–50× less compute (0.21 ms/frame pure JS
 // vs 5–11 ms browser-WASM inference). Decision data:
-// measurements/swift-f0-vs-praat-sessions-2026-06-09.md,
-// measurements/pitch-detector-shootout-2026-06-09.md,
-// measurements/boersma-ac-tuning-2026-06-09.md.
+// measurements/boersma-ac-tuning-2026-06-09.md (the 2026-06-09 session
+// comparison and detector shootout are private measurements, kept outside
+// this repo).
 //
 // Streaming protocol (cadence unchanged from the SwiftF0 era):
 //   Each capture chunk arrives at ~25 ms cadence with `contextTime`
@@ -173,13 +173,13 @@ function processChunk(msg) {
   // 2x the display ceiling (boersma-ac.js maxPitchHz 800) precisely so
   // that phonation above 400 Hz decodes at its true F0 here instead of
   // aliasing to a confident half-pitch value inside the display range
-  // (2026-10-03: 43 % of the user's true >400 Hz frames painted at half
-  // with the old 400 Hz search ceiling). Applied BEFORE the harmonic
-  // guard so these frames never advance its fail streak (posting them
-  // after the guard let spurious high decodes build a streak that then
-  // vetoed correct low-voice frames: PTDB male -0.8 pp). Unvoiced keeps
-  // the pitch !== null <=> confidence >= 0.5 invariant (frameConfidence
-  // below) and every consumer's range assumption (trace, readout,
+  // (2026-10-03: with the old 400 Hz search ceiling a large share of such
+  // frames on the private session recordings painted at half). Applied
+  // BEFORE the harmonic guard so these frames never advance its fail
+  // streak (posting them after the guard let spurious high decodes build
+  // a streak that then vetoed correct low-voice frames: PTDB male
+  // -0.8 pp). Unvoiced keeps the pitch !== null <=> confidence >= 0.5
+  // invariant (frameConfidence below) and every consumer's range assumption (trace, readout,
   // session stats, formant/ML hints) unchanged.
   // measurements/pitch-ceiling-2026-10-03.md
   if (vetoed > PITCH_DISPLAY_RANGE.high) vetoed = null;

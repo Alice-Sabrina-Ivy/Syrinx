@@ -21,7 +21,11 @@ Usage:
   python -u scripts/compare-praat-swift-sessions.py \
       build/pitch-compare/praat-contours.json \
       build/pitch-compare/swift-contours.json \
-      measurements/swift-f0-vs-praat-sessions-2026-06-09.json
+      build/pitch-compare/swift-vs-praat-sessions.json
+
+The inputs are private session recordings, so the output is a private-session
+result: keep it under the gitignored build/ (or the user's private project),
+never in measurements/.
 """
 
 import json

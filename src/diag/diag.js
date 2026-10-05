@@ -548,8 +548,7 @@ export function getTimingStats() {
 }
 
 // Snapshot the entire ring buffer + audio info as a JSON-serializable blob.
-// Used by the "Snapshot last 5s" button in the overlay AND the mobile
-// diag harness. The lowRes array carries the long-session timeline;
+// Used by the overlay's Snapshot button AND the mobile diag harness. The lowRes array carries the long-session timeline;
 // the high-res frames array carries the last ~30 s.
 export function snapshot() {
   if (!diagState) return null;

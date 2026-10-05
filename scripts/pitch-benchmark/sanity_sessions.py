@@ -1,8 +1,8 @@
 # sanity_sessions.py — score_sessions.py's loader + nearest-hop mapping, scored
 # against the session oracle's own `cons` reference at the oracle's alignment
-# (offset 0, worker stage), must reproduce the committed 2026-10-03 table:
-# Alice 160-400 Hz, pooled, posted: base 88.01 / 8.59 half / 1.14 null,
-# combined 91.37 / 5.14 / 1.39.
+# (offset 0, worker stage), must reproduce the session-oracle analyze.py
+# pooled target-band (160-400 Hz) posted row for base / disp (the values
+# are kept in the user's private project, not in this repo).
 import os, sys, numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import score_sessions as S

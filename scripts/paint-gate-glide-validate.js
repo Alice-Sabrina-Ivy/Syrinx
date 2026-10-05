@@ -14,14 +14,14 @@
 //    gate): painted frames, connected pairs ≥ 9 st (visible vertical
 //    lines), octave-class pairs ≥ 12 st, and 80–110 Hz band correct%
 //    at best alignment. These are the metrics the excursion break was
-//    tuned on (pitch-excursion-break-2026-06-10.md) — they must not
+//    tuned on (2026-06-10; private measurement, kept outside this repo) — they must not
 //    regress.
 // 2. Synthetic gate-level scenarios (sequences fed straight to
 //    createPaintGate, i.e. post-median values):
 //    - fast glides (octave in 4/8/12 frames) then a held target note:
 //      recovery latency + suppressed-hold-frame count (the bug).
-//    - harmonic-lock bursts (median run 4, p90 11 frames per the 06-10
-//      data). Contract since 2026-10-03 (EXCURSION_SUSTAIN 16 -> 8,
+//    - harmonic-lock bursts of 4-15 frames (synthetic; typical lock
+//      lengths). Contract since 2026-10-03 (EXCURSION_SUSTAIN 16 -> 8,
 //      pitch-display-gate-redesign-2026-10-03.md): locks SHORTER than
 //      EXCURSION_SUSTAIN never paint (octave-class painted frames must
 //      stay 0); a lock of >= EXCURSION_SUSTAIN frames is accepted as a
@@ -39,7 +39,9 @@ import { pushAndMedianPitch, PITCH_SMOOTH_LEN } from "../src/audio/pitchSmoothin
 import { createPaintGate, EXCURSION_SEMI, EXCURSION_SUSTAIN } from "../src/audio/pitchPaintGate.js";
 
 const SR = 16000, HOP = 400;
-const SESSION = "C:/Coding Projects/private-session/sessions/2026-05-26/session.wav";
+// $SYRINX_SESSIONS_DIR = the private session recordings (local only; see CLAUDE.md).
+const SESSIONS_DIR = (process.env.SYRINX_SESSIONS_DIR ?? "").replace(/\\/g, "/").replace(/\/+$/, "");
+const SESSION = SESSIONS_DIR && `${SESSIONS_DIR}/2026-05-26/session.wav`;
 const PRAAT = "build/pitch-compare/praat-contours.json";
 const stt = (a, b) => 12 * Math.log2(a / b);
 
@@ -126,6 +128,7 @@ function readWav(p) {
   for (let i = 0; i < s.length; i++) s[i] = b.readInt16LE(ds + i * 2) / 32768;
   return s;
 }
+if (!SESSION) throw new Error("set SYRINX_SESSIONS_DIR to the folder holding the private session recordings (see CLAUDE.md)");
 const samples = readWav(SESSION);
 const pf = JSON.parse(readFileSync(PRAAT, "utf8")).files.find((f) => f.path === SESSION);
 

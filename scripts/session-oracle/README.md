@@ -31,13 +31,19 @@ Decision data: [measurements/target-voice-combined-validation-2026-10-03.md](../
 | `subharmonic.py` | spectral odd-multiple arbiter |
 | `analyze.py` | band tables, switch latency, spike events, arbiter checks |
 | `corpus.mjs` | FDA / PTDB-TUG / Hillenbrand / vocadito through the same chain, per file, worker + displayed level |
+| `lowband-attr.mjs`, `lowband_attr.py`, `lowband_score.py` | low-register voicing pass (2026-10-04): per-hop stage dump (top-8 candidates, unvoiced strength, decode, guard verdict, posted, painted) over sessions + corpora; stage attribution of misses; band / octave / VDE / max(F,M) scores |
+| `noise-fv.mjs` | noise-only false voicing through the real chain, every committed noise-synth class, posted + painted (`--seeds=N` pools generator seeds) |
+| `session_fv.py` | real-session false voicing: hops >= 0.3 s from any Praat AC / CC / R1 voicing, posted + painted. Run with every voicing / guard change |
+| `guard-probe.mjs`, `guard_probe.py` | every harmonic-guard call of the real worker with per-harmonic prominence under the production and inter-harmonic floors; frame-level rule-design table |
+| `lowband/` | the 2026-10-04 variant trees (`variants.py`), runner (`run_variant.sh`), guard table (`table.py`) and summary (`summary.py`) — private measurement, kept outside this repo |
 
 ## Data
 
-- Sessions: `C:/Coding Projects/private-session/sessions/<YYYY-MM-DD>/session.wav`
-  (16 kHz mono) and the private-session frame table
+- Sessions: `$SYRINX_SESSIONS_DIR/<YYYY-MM-DD>/session.wav`
+  (16 kHz mono) and the session label table
   `acoustic/frames_enrollment-2026-05-07-v2.parquet` (speaker labels
-  alice / second / outside, private-session `f0_hz` = Praat AC 100–500, "R1").
+  alice / outside / unknown plus one label for the second voice in the
+  recordings, code `second` here; session-label `f0_hz` = Praat AC 100–500, "R1").
   Sessions 2025-09-08, 2026-05-07, 2026-05-26 are tuning sessions;
   **2026-06-09 is held out**. Not in the repo (personal recordings).
 - Corpora: `tests/dsp/data/` (`corpora.js` loaders; PTDB-TUG and FDA audio are
@@ -82,7 +88,7 @@ node scripts/session-oracle/corpus.mjs --report=base,head
   `cons_arb` = `cons` minus frames whose octave the arbiter disputes. `r1` =
   session-label R1 alone (what the 2026-10-03 detector-octave file called
   "strict"). PENN runs only on Alice spans with any reference ≥ 140 Hz plus
-  ~150 s of second voice, so `cons` outside those spans is a 2-of-2 AC/SHS
+  ~150 s of the second voice, so `cons` outside those spans is a 2-of-2 AC/SHS
   agreement.
 - **Alignment** (phase-1 alignment sweep): the value describing audio at
   reference time t is at hop `round((t + 0.040 + lag·hop + δ)/hop − 1)`,
@@ -100,9 +106,9 @@ node scripts/session-oracle/corpus.mjs --report=base,head
   intensity of all 429 019 hops; painted differs on 26 hops, all on the
   400 ms hold boundary where the chain harness's unrounded timestamps
   refuse a hold the real hook (which rounds) allows.
-- `analyze.py` then reproduces the phase-1 production baseline exactly:
-  Alice 160–400 Hz decoded 88.37 % correct / 8.92 % half (cons, pooled),
-  displayed 58.52 % correct / 32.71 % blank.
+- `analyze.py` then reproduces the phase-1 production baseline exactly
+  (results on the private session recordings are kept outside this
+  repository).
 - `build_refs.py` reproduces the cached phase-1 Praat contours bit-exactly and
   the consensus / strict / arbiter tracks with 0 mismatches.
 - The tap is observation-only: with `SO_TAP=0` the posted pitch, confidence,
@@ -113,8 +119,8 @@ node scripts/session-oracle/corpus.mjs --report=base,head
 ## Fixes (2026-10-04)
 
 - `conn12` for the alice-only pass (`paintA`) ignored that pass's line breaks
-  and over-counted connected ≥ 12 st pairs the trace never stroked (63 per
-  33 painted minutes on the combined chain vs 0 as rendered). `run.mjs` now
+  and over-counted connected ≥ 12 st pairs the trace never stroked (vs 0 as
+  rendered). `run.mjs` now
   records `brkA`; `analyze.py` scores `paintA` against it (NaN for older runs
   without the column). The committed measurements quote only the `paint`
   pass's `conn12`, so no published number changes. All other columns of a

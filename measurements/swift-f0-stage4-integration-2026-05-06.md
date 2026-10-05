@@ -4,7 +4,7 @@
 **Branch:** `pitch-test-corpus-expansion`
 **Stages:** 4.5 (build verification) + 4.4 (mobile-diag baseline)
 **Predecessors:** [swift-f0-stage3-validation-2026-05-06.md](swift-f0-stage3-validation-2026-05-06.md), [swift-f0-stage3-4-3-5-validation-2026-05-06.md](swift-f0-stage3-4-3-5-validation-2026-05-06.md)
-**Raw outputs:** [swift-f0-streaming-verify-2026-05-06.json](swift-f0-streaming-verify-2026-05-06.json), [swift-f0-stage4-mobile-diag-baseline-2026-05-06.json](swift-f0-stage4-mobile-diag-baseline-2026-05-06.json) (promoted from `mobile-diag-runs/`)
+**Raw outputs:** [swift-f0-streaming-verify-2026-05-06.json](swift-f0-streaming-verify-2026-05-06.json), the Stage 4.4 mobile-diag snapshot (a live-mic capture; private measurement, kept outside this repo — the timing summary below is reproduced here)
 
 ## Executive summary
 
@@ -71,7 +71,7 @@ chunkArrival drift well within tolerance (≤ 0.2 ms/s threshold). The audio cap
 | inferMs p95    | 16.5 ms |
 | inferMs p99    | 23.1 ms |
 | inferMs max    | 241.4 ms (one-time spike, likely first-inference warmup or GC) |
-| voiced fraction | 307 / 1089 = 28 % (low — phone was in quiet environment) |
+| voiced fraction | low (phone was in quiet environment) |
 
 **Hop-budget check:** Production inference at 11.2 ms median = **45 % CPU at the 25 ms hop budget**, with 55 % headroom. p99 23.1 ms is just under budget. The single 241 ms max spike doesn't sustain — it doesn't appear in the running rate (1089 inferences in 25 s = average 23 ms per inference, dominated by the typical-case 11 ms median).
 

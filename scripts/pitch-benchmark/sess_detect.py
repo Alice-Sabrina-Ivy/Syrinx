@@ -1,7 +1,7 @@
 # sess_detect.py — offline detectors on the user sessions.
 #   Praat rows run on the whole session file (cheap, full-utterance Viterbi).
 #   Slow rows (pyin, penn, crepe_*, swift_offline) run on the speaker-labelled
-#   spans only: contiguous private-session alice/second frames, gaps < 0.5 s merged,
+#   spans only: contiguous alice / second-voice labelled frames, gaps < 0.5 s merged,
 #   padded 0.3 s each side (the build_refs.py spans_of convention) — every
 #   scored frame lies inside a span, with >= 0.3 s of context.
 # Usage: python sess_detect.py DET [--sessions=a,b] [--procs=N] [--threads=T]
@@ -11,18 +11,25 @@ import numpy as np, pandas as pd, soundfile as sf
 
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
 import detectors as D
-from paths import OUT, SESSIONS_ROOT, PARQ
+from paths import OUT, SESSIONS_ROOT, PARQ, sessions_root
 A = dict((a[2:].split("=", 1) + ["1"])[:2] for a in sys.argv[1:] if a.startswith("--"))
 POS = [a for a in sys.argv[1:] if not a.startswith("--")]
 DET = POS[0] if POS else ""
 ROOT = SESSIONS_ROOT
 SESSIONS = A.get("sessions", "2025-09-08,2026-05-07,2026-05-26,2026-06-09").split(",")
 FULL = DET.startswith("praat")
+# Raw speaker labels -> codes: alice 1, outside 3, unknown / empty 0; the one
+# remaining label in the files is the second voice in the recordings -> 2.
+SPK = {"alice": 1, "outside": 3}
+
+
+def spk_code(v):
+    return SPK.get(v, 0 if not isinstance(v, str) or v in ("", "unknown") else 2)
 
 
 def spans(s):
     df = pd.read_parquet(f"{ROOT}/{s}/{PARQ}", columns=["timestamp_s", "speaker"])
-    t = df.timestamp_s.values[df.speaker.isin(["alice", "second"]).values]
+    t = df.timestamp_s.values[df.speaker.map(spk_code).isin([1, 2]).values]
     sp = []
     for v in t:
         if sp and v - sp[-1][1] < 0.5: sp[-1][1] = v
@@ -44,6 +51,7 @@ def _one(args):
 
 
 if __name__ == "__main__":
+    sessions_root()  # clear message when SYRINX_SESSIONS_DIR is unset
     procs = int(A.get("procs", 4)); threads = int(A.get("threads", 1))
     od = os.path.join(OUT, "sess", DET); os.makedirs(od, exist_ok=True)
     for s in SESSIONS:

@@ -1,5 +1,5 @@
 // run.mjs — session oracle runner: drives the REAL pitch worker, DSP worker
-// and main-thread display decision (lib/chain.mjs) over private-session session
+// and main-thread display decision (lib/chain.mjs) over the private session
 // WAVs (or any WAV) and saves the per-hop decoded / posted / painted /
 // readout series for analyze.py.
 //
@@ -7,7 +7,8 @@
 //   node --import ./scripts/session-oracle/lib/register.mjs scripts/session-oracle/run.mjs \
 //        [--src=src] [--tag=head] [--out=build/session-oracle/runs]
 //        [--sessions=2025-09-08,2026-05-07,2026-05-26,2026-06-09]
-//        [--sessions-root="C:/Coding Projects/private-session/sessions"]
+//        [--sessions-root=DIR]          default $SYRINX_SESSIONS_DIR (the private
+//                                       session recordings; see CLAUDE.md)
 //        [--wav=PATH --name=NAME]       ad-hoc file instead of sessions
 //        [--refs=build/session-oracle/refs]  enables the alice-only display
 //                                       pass (needs <refs>/<session>.spk.json
@@ -28,14 +29,14 @@ const args = Object.fromEntries(process.argv.slice(2).map((a) => {
 const SRC = args.src ?? "src";
 const TAG = args.tag ?? "head";
 const OUT = resolve(args.out ?? "build/session-oracle/runs", TAG);
-const ROOT = args["sessions-root"] ?? "C:/Coding Projects/private-session/sessions";
+const ROOT = args["sessions-root"] ?? process.env.SYRINX_SESSIONS_DIR;
 const REFS = args.refs ? resolve(args.refs) : null;
 const MAXSEC = Number(args["max-seconds"] ?? 0);
 const SESSIONS = ["2025-09-08", "2026-05-07", "2026-05-26", "2026-06-09"];
 
 // Alice-only display mask: keep display hop k iff the reference frame at its
 // CONTENT time (window centre of the consumed message's frame,
-// (k+1)*chunk - L*chunk - 40 ms) is labelled alice in the private-session parquet.
+// (k+1)*chunk - L*chunk - 40 ms) is labelled alice in the session-label parquet.
 function aliceMask(W, spk) {
   const m = new Uint8Array(W.n), hop = W.C / W.sr;
   for (let k = 0; k < W.n; k++) {
@@ -77,4 +78,7 @@ async function runOne(S, name, wavPath) {
 
 const S = await loadSrc(SRC);
 if (args.wav) await runOne(S, args.name ?? "file", args.wav);
-else for (const s of (args.sessions ?? SESSIONS.join(",")).split(",")) await runOne(S, s, `${ROOT}/${s}/session.wav`);
+else {
+  if (!ROOT) throw new Error("set SYRINX_SESSIONS_DIR to the folder holding the private session recordings (see CLAUDE.md)");
+  for (const s of (args.sessions ?? SESSIONS.join(",")).split(",")) await runOne(S, s, `${ROOT}/${s}/session.wav`);
+}

@@ -8,7 +8,7 @@
 #   praat_ac      parselmouth to_pitch_ac, Praat defaults (floor 75, ceiling 600,
 #                 15 cand., silence .03, voicing .45, octave .01, jump .35,
 #                 v/uv .14, 10 ms step) — full-utterance Viterbi
-#   praat_ac_cal  same, floor 100 / ceiling 500 (the private-session config)
+#   praat_ac_cal  same, floor 100 / ceiling 500 (the session labels' config)
 #   praat_cc      parselmouth to_pitch_cc, Praat defaults (75-600)
 #   pyin          librosa.pyin fmin 65, fmax 800, 16 kHz, hop 160 (10 ms),
 #                 frame 1024 (64 ms), centred frames; voiced_flag as voicing

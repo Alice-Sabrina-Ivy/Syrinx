@@ -8,12 +8,12 @@
 # defaults build/session-oracle/runs/base (origin/main), .../disp (the
 # 2026-10-03 branch src) and <WORK>/out/sess_runs/new600.
 #
-# References (private-session 10 ms parquet grid, $SO_REFS/<s>.npz, default build/session-oracle/refs):
+# References (session-label 10 ms parquet grid, $SO_REFS/<s>.npz, default build/session-oracle/refs):
 #   ac   Praat AC 50-600 (cached, build_refs.py)      } reference voters
 #   shs  Praat SHS ceiling 600 (cached)                }
 #   penn PENN FCNF0++ raw pitch (no voicing gate), recomputed by sess_detect.py
 #        on every alice/second span with the 2026-10-03 setup (the cached
-#        refs only cover Alice >= 140 Hz spans + ~150 s of second voice); agreement
+#        refs only cover Alice >= 140 Hz spans + ~150 s of the second voice); agreement
 #        with the cached PENN on the overlap is printed as a sanity check.
 #   UNANIMOUS  ac, shs, penn all > 0 and pairwise within 5 %; ref = geometric mean.
 #              One frame set for every detector.
@@ -21,12 +21,12 @@
 #              within 5 %, ref = their geometric mean (no AC voter).
 #              neural (PENN, CREPE, SwiftF0): frames where ac & shs agree, ref =
 #              their geometric mean (PENN excluded from its own reference).
-#   Only frames labelled alice / second (private-session enrollment-v2 speaker labels)
+#   Only frames labelled alice / second (session enrollment-v2 speaker labels)
 #   and refs >= 75 Hz are scored.
 # Detector time conventions as in score_corpora.py; Syrinx from the
 # session-oracle runs (post: window centre (k+1)*hop - 40 ms; paint: minus
 # L*hop + 30 ms more). Offset sweep -100..+100 ms (5 ms) on the unanimous
-# Alice+second voice frames, pooled over the four sessions, maximising RPA.
+# Alice + second-voice frames, pooled over the four sessions, maximising RPA.
 import sys, os, json
 import numpy as np
 

@@ -25,14 +25,15 @@
 // Why freeze (2026-06-10 accuracy pass): the sliding window
 // mean-reverted — a sustained lighter passage pulled μ up to meet it,
 // so the gauge drifted back toward center as if the change hadn't
-// happened. Measured on the 2026-05-26 session: over a 24 s sustained-
-// lighter run the sliding gauge moved 0.38→0.20 (toward heavier!),
-// while the frozen gauge held 0.74→0.64 (correctly lighter). Freezing
+// happened. Measured on a private session recording: over a sustained
+// lighter run the sliding gauge moved toward heavier, while the frozen
+// gauge stayed correctly lighter. Freezing
 // also fixes sensitivity drift — a continuously-recomputed σ deadened
 // the gauge whenever recent speech was varied. Gauge-vs-CPP fidelity
 // (fraction of needle motion explained by the current voice rather
-// than baseline drift) rose 0.795→0.956. Trade-off: the first 30 s
-// must be reasonably representative — an unusual warm-up (throat-clear,
+// than baseline drift) rose substantially on a private session
+// recording. Trade-off: the first 30 s must be reasonably
+// representative — an unusual warm-up (throat-clear,
 // deliberately heavy start) miscalibrates the whole session with no
 // recovery until restart. The "Calibrating…" UI implicitly asks for
 // normal speech; accepted as the zero-interaction cost.
@@ -66,9 +67,9 @@ export const BASELINE_VOICED_MS = 30000;   // 30 s of cumulative voiced content
 // Gauge spans ±BASELINE_SIGMA·σ from μ. Widened 2→3 on 2026-06-10
 // alongside the μ/σ freeze (below): a frozen σ measured over the calm
 // first 30 s underestimates full-session CPP spread, so a ±2σ span
-// clamped 17.7 % of later frames on the 2026-05-26 session. ±3σ brings
-// clamp to 7.1 % (≈ the old sliding-window's 5.5 %) while still using
-// 81 % of the gauge range. measurements/vocal-weight-accuracy-pass-
+// clamped many later frames on a private session recording; ±3σ brings
+// the clamp rate close to the old sliding window's while still using
+// most of the gauge range. measurements/vocal-weight-accuracy-pass-
 // 2026-06-10.md.
 export const BASELINE_SIGMA = 3;
 export const BASELINE_MIN_SAMPLES = 8;     // floor for σ to be meaningful

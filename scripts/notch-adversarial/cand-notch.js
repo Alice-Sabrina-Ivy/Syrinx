@@ -29,8 +29,9 @@
 //
 // Detection principle: an interferer is a narrow spectral peak that is
 // FREQUENCY-STABLE for a long time at high duty cycle. Real speech F0
-// and harmonics move constantly (session prosody p99 deviation is
-// 8.3 st; even a held note carries vibrato/drift); a fan or mains hum
+// and harmonics move constantly (real speech wanders several semitones
+// around its running level — measured on a private session recording;
+// even a held note carries vibrato/drift); a fan or mains hum
 // sits within ±2–3 Hz for minutes. We deliberately do NOT use the
 // detector's own voicing decisions as the "silence" reference — under
 // strong hum the detector calls everything voiced (that's the failure
@@ -101,8 +102,8 @@
 // (no 10 dB dip in the preceding 2 s) is now onset-born like any switch-on
 // (~20 s; the shipped rule promoted it at ~5 s by accident of the same gap
 // that blanked speech->hold): synthetic dense-speech probe 88.4 -> 79.7 %
-// correct over 30 s; (3) the session-05-07 120 Hz line is no longer notched
-// (69 s; posted accuracy in those windows 84 -> 94 %, pause voicing equal).
+// correct over 30 s; (3) a weak real room-hum line on a private session
+// recording is no longer notched (results kept outside this repo).
 //
 // Detection runs on RAW audio, filtering on the OUTPUT stream — a
 // notched interferer must stay visible to the tracker or the notch
@@ -448,7 +449,8 @@ export function createNoiseNotch(sampleRate, opts = {}) {
         // by a sound starting now: restart it as a new onset-born track.
         // (Older tracks keep their history: re-birthing a long-lived weak
         // hum line resets its diluted duty and notched a real room hum
-        // that production never promoted — measured on session 05-07.)
+        // that production never promoted — measured on a private session
+        // recording.)
         best.firstObs = obsIndex; best.noteObs = obsIndex; best.hits = 0; best.onsetBorn = true; best.bornFloor = floorMs; best.bornOnset = true; DBG?.push({ ev: 'young', obs: obsIndex, f: best.freq, id: best.id });
         best.freq = pk.freq; best.dev = 0;
       }
@@ -500,8 +502,9 @@ export function createNoiseNotch(sampleRate, opts = {}) {
     // new-note re-births of unpromoted onset-born tracks (2026-10-04) restart
     // the onset-born DELAY clock (noteObs) only — duty keeps the track's whole
     // history, so a weak, intermittently masked hum line keeps its diluted
-    // duty (restarting firstObs/hits too promoted the session-05-07 room-hum
-    // line at 440 s, where production never notched; -3.6 pp posted there):
+    // duty (restarting firstObs/hits too promoted a weak room-hum line on a
+    // private session recording that production never notched, costing
+    // posted accuracy there):
     //  - latch released (band energy back near the pre-onset floor): such a
     //    line cannot be an interferer that switched on with the sound — it
     //    would hold the energy above that floor;

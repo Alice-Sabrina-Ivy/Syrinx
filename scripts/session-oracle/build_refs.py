@@ -1,16 +1,16 @@
 # build_refs.py — independent F0 references for the session oracle, on the
-# private-session parquet's 10 ms frame grid (2026-10-03 half-pitch investigation
+# session-label parquet's 10 ms frame grid (2026-10-03 half-pitch investigation
 # conventions, consolidated from the phase-1 scratch compute_refs.py /
 # compute_penn.py / export_refs.py / export_arb2.py).
 #
 # Per session it writes <out>/<session>.npz with, on the parquet grid:
-#   t, spk (1 alice, 2 second, 3 outside, 0 unknown — private-session labels)
-#   cal     private-session f0_hz (Praat AC 100-500 in the private sessions' enrollment run; "R1")
+#   t, spk (1 alice, 2 second voice, 3 outside, 0 unknown — session labels)
+#   cal     session-label f0_hz (Praat AC 100-500 in the labels' enrollment run; "R1")
 #   ac      Praat AC 50-600 (parselmouth defaults)        } independent of
 #   shs     Praat SHS (spectral, ceiling 600)              } the detector
 #   cc      Praat CC 50-600                                }
 #   penn    PENN FCNF0++ (neural) on the PENN spans (0 elsewhere): Alice spans
-#           where any reference >= 140 Hz + the first ~150 s of second voice voiced
+#           where any reference >= 140 Hz + the first ~150 s of the second voice voiced
 #           speech, 10 ms hop, fmax 600 (optional; requires torch + penn)
 #   cons    CONSENSUS: majority over the AC family (cal / Praat AC; the family
 #           supports a value if either member is within 5 %), SHS and PENN;
@@ -25,7 +25,8 @@
 # display pass).
 #
 # Usage: python scripts/session-oracle/build_refs.py [--out=build/session-oracle/refs]
-#          [--sessions=2025-09-08,...] [--root="C:/Coding Projects/private-session/sessions"]
+#          [--sessions=2025-09-08,...] [--root=DIR]  (default $SYRINX_SESSIONS_DIR,
+#                                          the private session recordings)
 #          [--penn] [--threads=4]          compute PENN (~20 min/session on CPU)
 #          [--penn-from=DIR]               reuse <DIR>/<session>.penn.npz (t, f0)
 #          [--praat-from=DIR]              reuse <DIR>/<session>.praat.npz (the Praat cache
@@ -40,10 +41,16 @@ from subharmonic import shr
 
 A = dict((a[2:].split("=", 1) + ["1"])[:2] for a in sys.argv[1:] if a.startswith("--"))
 OUT = A.get("out", "build/session-oracle/refs"); os.makedirs(OUT, exist_ok=True)
-ROOT = A.get("root", "C:/Coding Projects/private-session/sessions")
+ROOT = A.get("root") or os.environ.get("SYRINX_SESSIONS_DIR")  # the private session recordings (see CLAUDE.md)
 SESSIONS = A.get("sessions", "2025-09-08,2026-05-07,2026-05-26,2026-06-09").split(",")
 PARQ = "acoustic/frames_enrollment-2026-05-07-v2.parquet"
-SPK = {"alice": 1, "second": 2, "outside": 3}
+# Raw speaker labels -> codes: alice 1, outside 3, unknown / empty 0; the one
+# remaining label in the files is the second voice in the recordings -> 2.
+SPK = {"alice": 1, "outside": 3}
+
+
+def spk_code(v):
+    return SPK.get(v, 0 if not isinstance(v, str) or v in ("", "unknown") else 2)
 
 
 def agree(x, y, tol=0.05):
@@ -120,11 +127,13 @@ def compute_penn(x, sr, spans):
     return np.concatenate(T), np.concatenate(F)
 
 
+if not ROOT:
+    raise SystemExit("set SYRINX_SESSIONS_DIR to the folder holding the private session recordings (see CLAUDE.md)")
 for s in SESSIONS:
     t0 = time.time()
     df = pd.read_parquet(f"{ROOT}/{s}/{PARQ}")
     t = df.timestamp_s.values
-    spk = df.speaker.map(lambda v: SPK.get(v, 0)).values.astype(np.int8)
+    spk = df.speaker.map(spk_code).values.astype(np.int8)
     cal = df.f0_hz.fillna(0).values.astype(float)
     x, sr = sf.read(f"{ROOT}/{s}/session.wav", dtype="float64")
     if sr != 16000: raise SystemExit(f"{s}: expected 16 kHz session audio")

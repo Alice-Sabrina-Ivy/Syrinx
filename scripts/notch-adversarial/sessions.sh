@@ -1,6 +1,6 @@
 #!/bin/bash
 # sessions.sh TAG_A SRC_A TAG_B SRC_B — session oracle (scripts/session-
-# oracle/, the 4 private-session sessions) on two src trees, then analyze.py A B.
+# oracle/, the 4 private sessions) on two src trees, then analyze.py A B.
 # e.g. bash scripts/notch-adversarial/sessions.sh r1b build/notch-adv/otree/bc42/src r1s src
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"; cd "$ROOT"
 R=build/notch-adv/res/or; mkdir -p $R

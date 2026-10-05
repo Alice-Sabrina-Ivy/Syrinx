@@ -25,8 +25,10 @@ import { pushAndMedianPitch } from "../src/audio/pitchSmoothing.js";
 import { createPaintGate } from "../src/audio/pitchPaintGate.js";
 
 const SR = 16000, HOP = 400;
+// $SYRINX_SESSIONS_DIR = the private session recordings (local only; see CLAUDE.md).
+const SESSIONS_DIR = (process.env.SYRINX_SESSIONS_DIR ?? "").replace(/\\/g, "/").replace(/\/+$/, "");
 const SESSION = (process.argv.find((a) => a.startsWith("--wav=")) || "").slice(6)
-  || "C:/Coding Projects/private-session/sessions/2026-05-26/session.wav";
+  || (SESSIONS_DIR && `${SESSIONS_DIR}/2026-05-26/session.wav`);
 const PRAAT = "build/pitch-compare/praat-contours.json";
 
 function readWav(p) {
@@ -37,6 +39,7 @@ function readWav(p) {
   for (let i = 0; i < s.length; i++) s[i] = b.readInt16LE(ds + i * 2) / 32768;
   return s;
 }
+if (!SESSION) throw new Error("set SYRINX_SESSIONS_DIR to the folder holding the private session recordings (see CLAUDE.md)");
 const samples = readWav(SESSION);
 const pf = JSON.parse(readFileSync(PRAAT, "utf8")).files.find((f) => f.path === SESSION);
 

@@ -84,7 +84,7 @@ if SS:
                         ("LOFO", "LEAVE-ONE-FAMILY-OUT (AC family vs SHS & PENN; neural vs AC & SHS)")):
         print(f"## Sessions — {title}: ±5 % correct / oct-down / oct-up / null (pooled over 4 sessions)\n")
         cols = [("alice|pooled|75-160", "Alice 75-160"), ("alice|pooled|160-260", "Alice 160-260"), ("alice|pooled|260-400", "Alice 260-400"),
-                ("alice|pooled|>=400", "Alice ≥400"), ("alice|HO|160-400", "Alice 160-400 held-out"), ("second|pooled|all", "second voice (all)")]
+                ("alice|pooled|>=400", "Alice ≥400"), ("alice|HO|160-400", "Alice 160-400 held-out"), ("second|pooled|all", "Second voice (all)")]
         print("| detector | ref | offset ms | " + " | ".join(c[1] for c in cols) + " |")
         print("|---|---|---|" + "---|" * len(cols))
         for d in [k for k in NAMES if k in SS]:
@@ -102,7 +102,7 @@ if SS:
 
     print("## Sessions — cross view: every detector against BOTH two-voter references (±5 % correct / null)\n")
     print("A detector is circular against a reference that contains its own family's voter: AC family (Syrinx, Praat, pYIN) vs AC&SHS; PENN vs SHS&PENN. Non-circular cells are the fair cross-family comparison.\n")
-    cols = [("alice|pooled|75-160", "Alice 75-160"), ("alice|pooled|160-260", "Alice 160-260"), ("alice|pooled|260-400", "Alice 260-400"), ("alice|HO|160-400", "Alice 160-400 HO"), ("second|pooled|all", "second voice")]
+    cols = [("alice|pooled|75-160", "Alice 75-160"), ("alice|pooled|160-260", "Alice 160-260"), ("alice|pooled|260-400", "Alice 260-400"), ("alice|HO|160-400", "Alice 160-400 HO"), ("second|pooled|all", "Second voice")]
     for kk, title in (("X_Lac", "reference = SHS & PENN agree (no AC voter)"), ("X_Lnn", "reference = Praat AC & SHS agree (no neural voter)")):
         print(f"**{title}**\n")
         print("| detector | circular? | " + " | ".join(c[1] for c in cols) + " |")
@@ -141,6 +141,6 @@ if os.path.exists(TP):
         t = T.get(key, {}).get("cpu_ms_per_s")
         extra = ""
         if key == "syrinx_new" and "syrinx_main" in T: extra = f" (main {T['syrinx_main']['cpu_ms_per_s']:.0f})"
-        if key == "praat_ac" and "praat_ac_cal" in T: extra = f" (private-session {T['praat_ac_cal']['cpu_ms_per_s']:.0f})"
+        if key == "praat_ac" and "praat_ac_cal" in T: extra = f" (100-500: {T['praat_ac_cal']['cpu_ms_per_s']:.0f})"
         print(f"| {name} | {causal} | {lat} | {('%.0f' % t) if t is not None else '-'}{extra} | {model} | {br} |")
     print()

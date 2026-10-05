@@ -12,6 +12,8 @@ import {
 import {
   pushAndMedianPitch,
   PITCH_SMOOTH_LEN,
+  createSmoothingGapTracker,
+  smoothingBufferFor,
 } from "./pitchSmoothing";
 import { createGateState, evaluateFrameGate } from "./pitchGate";
 import { createPaintGate, EXCURSION_SEMI } from "./pitchPaintGate";
@@ -154,6 +156,10 @@ export function useAudioPipeline() {
 
   // Smoothing buffers
   const pitchSmoothRef = useRef([]);
+  // Tracks gaps of >= SMOOTH_RESET_GAP_FRAMES frames without a fresh
+  // detection; after one, a register-switch value restarts the display
+  // median (pitchSmoothing.js smoothingBufferFor, 2026-10-04).
+  const smoothGapRef = useRef(createSmoothingGapTracker());
   const f1SmoothRef = useRef([]);
   const f2SmoothRef = useRef([]);
   const f3SmoothRef = useRef([]);
@@ -774,6 +780,7 @@ export function useAudioPipeline() {
       streamRef.current = null;
     }
     pitchSmoothRef.current = [];
+    smoothGapRef.current.reset();
     f1SmoothRef.current = [];
     f2SmoothRef.current = [];
     f3SmoothRef.current = [];
@@ -897,6 +904,9 @@ export function useAudioPipeline() {
       pitchTs: latestPitch.ts,
     });
     const { pitch, hasPitch, isQuiet } = gate;
+    // Counted on every frame (silence frames included): true on a fresh
+    // detection right after a gap — see smoothingBufferFor below.
+    const freshAfterGap = smoothGapRef.current.frame(hasPitch);
 
     // Push CPP into the vocal-weight aggregator gated on CONFIRMED
     // PITCH, not the silence gate (changed 2026-06-10). CPP measures
@@ -904,8 +914,8 @@ export function useAudioPipeline() {
     // pitched is exactly a frame where CPP is meaningful; the old
     // !isQuiet gate let breath/fricatives/background noise (loud but
     // unpitched) into the aggregate, dragging it toward "heavy/breathy."
-    // On the 2026-05-26 session this cut Praat-unvoiced contamination of
-    // the gauge feed from 59.5 % to 45.9 %. Frames are pushed regardless
+    // On a private session recording this cut Praat-unvoiced
+    // contamination of the gauge feed. Frames are pushed regardless
     // of the silent/voiced branch below — the aggregator's hard-reset
     // rule depends on observing unpitched gaps. Only the aggregator's
     // emit result drives the gauge state update further down.
@@ -1057,6 +1067,14 @@ export function useAudioPipeline() {
     // — held values (SwiftF0 null but audio still loud enough) don't
     // enter the buffer so they can't stale-shift the median.
     let smoothedPitch = null;
+    // A fresh detection an octave-class jump from the buffer median right
+    // after a gap (a register switch) starts a new median instead of being
+    // medianed against the previous word's values; a new or empty buffer is
+    // seeded with the value so the median is always a real detection, never
+    // the mean of two (pitchSmoothing.js smoothingBufferFor; measurements/
+    // pitch-display-reacquire-2026-10-04.md §10). Held values never reach
+    // this (hasPitch is false).
+    if (hasPitch) pitchSmoothRef.current = smoothingBufferFor(pitchSmoothRef.current, pitch, freshAfterGap);
     if (effectivePitch !== null) {
       smoothedPitch = hasPitch
         ? pushAndMedianPitch(pitchSmoothRef.current, pitch, PITCH_SMOOTH_LEN)
@@ -1091,8 +1109,9 @@ export function useAudioPipeline() {
     // level — so transient 2x/3x/4x harmonic locks never paint, while
     // genuine register changes do. This replaced a consecutive-delta jump
     // break that the display median's octave ramps defeated (the
-    // "testing 1 2 3" connected spike lines; see pitchPaintGate.js +
-    // measurements/pitch-excursion-break-2026-06-10.md). Recording stays
+    // "testing 1 2 3" connected spike lines; see pitchPaintGate.js; the
+    // 2026-06-10 excursion-break measurement is private, kept outside this
+    // repo). Recording stays
     // per-frame truthful — this only governs the trace/readout.
     //
     // VOICED_FALL_FRAMES hysteresis: after this many consecutive
@@ -1106,7 +1125,10 @@ export function useAudioPipeline() {
     // (pitchPaintGate.js "Register re-acquisition").
     let displayPitched = false;
     if (framePitched) {
-      displayPitched = paintGateRef.current.push(smoothedPitch, { fresh: hasPitch });
+      // raw: the unsmoothed fresh detection — the gate accepts a register
+      // change only when it agrees with the off-level run (pitchPaintGate.js
+      // "Faster re-acquisition").
+      displayPitched = paintGateRef.current.push(smoothedPitch, { fresh: hasPitch, raw: hasPitch ? pitch : null });
       if (!displayPitched && hasPitch && paintGateRef.current.lastReason() === "offlevel") {
         heldReadoutStaleRef.current = true;
       }

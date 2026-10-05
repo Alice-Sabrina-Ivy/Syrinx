@@ -11,8 +11,9 @@
 //
 // Detection principle: an interferer is a narrow spectral peak that is
 // FREQUENCY-STABLE for a long time at high duty cycle. Real speech F0
-// and harmonics move constantly (session prosody p99 deviation is
-// 8.3 st; even a held note carries vibrato/drift); a fan or mains hum
+// and harmonics move constantly (real speech wanders several semitones
+// around its running level — measured on a private session recording;
+// even a held note carries vibrato/drift); a fan or mains hum
 // sits within ±2–3 Hz for minutes. We deliberately do NOT use the
 // detector's own voicing decisions as the "silence" reference — under
 // strong hum the detector calls everything voiced (that's the failure
@@ -413,7 +414,8 @@ export function createNoiseNotch(sampleRate, opts = {}) {
         // by a sound starting now: restart it as a new onset-born track.
         // (Older tracks keep their history: re-birthing a long-lived weak
         // hum line resets its diluted duty and notched a real room hum
-        // that production never promoted — measured on session 05-07.)
+        // that production never promoted — measured on a private session
+        // recording.)
         best.firstObs = obsIndex; best.hits = 0; best.onsetBorn = true;
         best.coh = undefined; best.voiceBorn = false; best.pow0 = undefined; best.p3 = undefined; best.jumped = false;
         best.freq = pk.freq; best.dev = 0;

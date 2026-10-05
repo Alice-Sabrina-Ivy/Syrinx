@@ -11,8 +11,8 @@ HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
 os.environ["OMP_NUM_THREADS"] = "1"
 import torch; torch.set_num_threads(1)
 import detectors as D, swift
-from paths import OUT, TMP, SESSIONS_ROOT
-x, sr = sf.read(f"{SESSIONS_ROOT}/2026-05-26/session.wav", dtype="float32", start=600 * 16000, stop=660 * 16000)
+from paths import OUT, TMP, sessions_root
+x, sr = sf.read(f"{sessions_root()}/2026-05-26/session.wav", dtype="float32", start=600 * 16000, stop=660 * 16000)
 os.makedirs(TMP, exist_ok=True); os.makedirs(OUT, exist_ok=True)
 sf.write(os.path.join(TMP, "clip60.wav"), x, sr, subtype="PCM_16")
 res = {}
