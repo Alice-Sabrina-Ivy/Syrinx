@@ -29,7 +29,7 @@
 //            windows that DO pass the voicedness gate)
 //
 // Input formats accepted:
-//   - Top-level snapshot (overlay's "Snapshot last 5s" button).
+//   - Top-level snapshot (overlay's Snapshot button).
 //   - {summary, snapshot} wrapper (mobile-diag-capture output).
 //   - {snapshot} wrapper (desktop-diag-capture variants).
 
