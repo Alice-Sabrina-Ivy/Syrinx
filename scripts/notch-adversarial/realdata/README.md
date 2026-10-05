@@ -6,7 +6,8 @@ envelope vs mechanically steady motors, mains and electronics). Every earlier
 notch decision ran on synthetic noise (`scripts/noise-synth.js`); these
 scripts build **real** noise and **real** held-voice corpora plus end-to-end
 mixes, with loaders for the JS suite. Decision record:
-[measurements/notch-realdata-corpora-2026-10-05.md](../../../measurements/notch-realdata-corpora-2026-10-05.md).
+[measurements/notch-realdata-corpora-2026-10-05.md](../../../measurements/notch-realdata-corpora-2026-10-05.md);
+discrimination results: [measurements/notch-voice-machine-discrimination-2026-10-05.md](../../../measurements/notch-voice-machine-discrimination-2026-10-05.md).
 
 **No audio is committed.** Everything lands under `build/notchvd/` (gitignored;
 `NOTCHVD_ROOT` overrides): `dl/` raw download cache, `data/` 16 kHz mono
@@ -48,6 +49,9 @@ node   $R/mix-parity.mjs                       # JS renderMix == Python render (
 | `probe.mjs` | the real `src/` pitch worker over noise-only clips: notch promotion time / lines / false voicing |
 | `build_index.py` | manifests + census + probe + exact-duplicate detection -> `data/index_*.json`, `data/summary.md` |
 | `build_mixes.py`, `mix-parity.mjs` | evaluation streams as clip-layer specs, pre-rendered |
+| `linefeat.py` | DISCRIMINATE phase: per tracked line (notch peak finder, 80-400 Hz), 25 ms phase-vocoder IF + amplitude at f and 2f (64 ms Hann DFT bins), per-1 s-window micro-variation features; voice / noise / mix modes, white-noise degradation, window length, extra partners -> `build/notchvd/linefeat/*.csv` |
+| `linefeat_analyze.py` | AUC / 99 %-voice operating points per feature, confound check, degraded voice, grouped-CV logistic combinations, per-class tables |
+| `linefeat_rules.py` | explicit causal "confidently machine" rules (pooled cross-harmonic coherence, evidence floor `--minwin`), grouped-CV threshold selection, per-class + mix + supplement evaluation |
 | `realdata.mjs` | JS loader: `loadIndex`, `readClip`, `readWav`, `loadF0`, `resample` (16 -> 48 kHz polyphase), `renderMix` |
 
 ## Records

@@ -45,7 +45,7 @@ interaction.
 | `fda.mjs` | FDA speech (real voices) × interferer: noise-only, from t = 0, switch-on mid-speech, switch-on in a pause. |
 | `grid.mjs` | the 2026-10-03 held-note main / requirement grids through the real worker. |
 | `oracles.sh A B`, `sessions.sh`, `extra-preload.mjs` | committed oracles (noise-augment pitch + gender, voicing shootout) and the session oracle on two notch modules. |
-| `realdata/` | (2026-10-05) REAL noise + REAL held-voice corpora, census of the real noise, end-to-end mixes and JS loaders for the voice-vs-machine discrimination phase — [realdata/README.md](realdata/README.md), [measurements/notch-realdata-corpora-2026-10-05.md](../../measurements/notch-realdata-corpora-2026-10-05.md). |
+| `realdata/` | (2026-10-05) REAL noise + REAL held-voice corpora, census of the real noise, end-to-end mixes and JS loaders for the voice-vs-machine discrimination phase — [realdata/README.md](realdata/README.md), [measurements/notch-realdata-corpora-2026-10-05.md](../../measurements/notch-realdata-corpora-2026-10-05.md). Line discrimination (`linefeat*.py`, shared mid-band FM across partials): [measurements/notch-voice-machine-discrimination-2026-10-05.md](../../measurements/notch-voice-machine-discrimination-2026-10-05.md). |
 | `agg-held.mjs`, `agg-int.mjs`, `agg-noise.mjs` | tables + the round-1 strict-rule check vs `B`. |
 | `parity.mjs A B` | message-level equality of two variants. |
 
