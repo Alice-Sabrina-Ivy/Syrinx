@@ -18,7 +18,7 @@
 //                vertical lines; target ~0)
 //   painted    — painted-frame count (over-suppression guard vs the
 //                current production chain)
-//   band80-110 — correct% vs Praat in the user's register (accuracy guard)
+//   band80-110 — correct% vs Praat in the 80-110 Hz low band (accuracy guard)
 //
 // Usage: node scripts/pitch-excursion-fix-sweep.js
 

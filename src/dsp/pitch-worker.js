@@ -3,7 +3,7 @@
 //
 // Replaces SwiftF0 (ONNX CNN), cut over 2026-06-09. SwiftF0 confidently
 // reported 2×F0 on weak-fundamental phonation (H2 louder than H1 —
-// routine in voice training) in the user's 80–110 Hz register on real
+// routine in voice training) in the 80–110 Hz low register on real
 // session audio, far more often than the tuned AC detector (private
 // measurement), at corpus parity or better on two of four
 // ground-truth corpora and ~25–50× less compute (0.21 ms/frame pure JS

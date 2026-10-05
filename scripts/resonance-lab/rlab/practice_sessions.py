@@ -20,7 +20,7 @@ import os
 import numpy as np
 import pandas as pd
 import soundfile as sf
-from .paths import SESSION_ATTRIB, SR, sessions_dir
+from .paths import SR, session_attrib_dir, sessions_dir
 from .f0 import track_from_frames
 
 LABELS = "frames_enrollment-2026-05-07-v2.parquet"
@@ -40,23 +40,24 @@ def wav_path(s):
     return os.path.join(sessions_dir(), s, "session.wav")
 
 
-def _consensus_fn():
-    src = open(os.path.join(SESSION_ATTRIB, "analyze.py")).read()
+def _consensus_fn(attrib):
+    src = open(os.path.join(attrib, "analyze.py")).read()
     ns = {}
     exec(src[src.index("def consensus"):src.index("def stage_index")], {"np": np}, ns)
     return ns["consensus"]
 
 
 def session_frames(s):
-    consensus = _consensus_fn()
+    attrib = session_attrib_dir()
+    consensus = _consensus_fn(attrib)
     df = pd.read_parquet(labels_path(s))
-    r = np.load(os.path.join(SESSION_ATTRIB, "refs", f"{s}.npz"))
+    r = np.load(os.path.join(attrib, "refs", f"{s}.npz"))
     t = df.timestamp_s.values
     for m in ["ac", "shs", "cc"]:
         rt, rf = r[m + "_t"], r[m + "_f0"]
         df[m] = rf[np.clip(np.round((t - rt[0]) / 0.01).astype(int), 0, len(rf) - 1)]
     df["cal"] = df.f0_hz.fillna(0).values
-    p = np.load(os.path.join(SESSION_ATTRIB, "refs", f"{s}.penn.npz"))
+    p = np.load(os.path.join(attrib, "refs", f"{s}.penn.npz"))
     o = np.argsort(p["t"])
     pt, pf = p["t"][o], p["f0"][o]
     j = np.clip(np.searchsorted(pt, t), 1, len(pt) - 1)

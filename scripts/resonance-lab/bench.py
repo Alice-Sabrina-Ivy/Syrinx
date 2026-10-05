@@ -30,7 +30,7 @@ RUBRIC = {
     "R3": "resonance sensitivity (slope vs ln formant scale) x ln1.15 / G in [0.5, 1.5] AND sign accuracy at +-5 % >= 0.90 "
           "(Praat Change-gender, test-clean)",
     "R4": "Hillenbrand median within-speaker across-vowel SD / G_hill <= 0.5",
-    "R6": "private-session ordering second > alice_raised > alice_low (5 s readouts)",
+    "R6": "private-session pre-registered ordering of the three session groups (rlab/metrics.py; 5 s readouts)",
 }
 
 

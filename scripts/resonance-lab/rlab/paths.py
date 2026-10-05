@@ -51,9 +51,37 @@ def sessions_dir():
     return SESSIONS_DIR.replace("\\", "/").rstrip("/")
 
 
-# Octave-robust consensus F0 references for the private sessions, computed by the
-# 2026-10-03 session-attribution investigation (AC / SHS / PENN family majority).
-SESSION_ATTRIB = "C:/Coding Projects/Syrinx/build/investigate-2026-10-03/session-attribution"
+# Octave-robust consensus F0 references for the private sessions (refs/<session>.npz +
+# analyze.py; session-derived, local-only), computed by the 2026-10-03 session-attribution
+# investigation (AC / SHS / PENN family majority). Folder: $SYRINX_SESSION_ATTRIB_DIR, else
+# the gitignored build/investigate-2026-10-03/session-attribution of this checkout or, from
+# a linked worktree, of the main checkout. Resolved lazily via session_attrib_dir().
+_ATTRIB_SUB = os.path.join("build", "investigate-2026-10-03", "session-attribution")
+SESSION_ATTRIB_HINT = ("set SYRINX_SESSION_ATTRIB_DIR to the folder holding the session-attribution "
+                       "consensus F0 references for the private session recordings "
+                       "(see scripts/resonance-lab/README.md)")
+
+
+def _main_checkout():
+    """Root of the main checkout when REPO is a linked git worktree, else REPO."""
+    dotgit = os.path.join(REPO, ".git")
+    if not os.path.isfile(dotgit):
+        return REPO
+    with open(dotgit, encoding="utf-8") as f:   # "gitdir: <main>/.git/worktrees/<name>"
+        gitdir = os.path.normpath(os.path.join(REPO, f.read().split(":", 1)[1].strip()))
+    return os.path.dirname(os.path.dirname(os.path.dirname(gitdir)))
+
+
+def session_attrib_dir():
+    """Folder of the session consensus F0 references; raises with a clear message when absent."""
+    env = os.environ.get("SYRINX_SESSION_ATTRIB_DIR", "")
+    roots = [env] if env else [os.path.join(REPO, _ATTRIB_SUB), os.path.join(_main_checkout(), _ATTRIB_SUB)]
+    for root in roots:
+        if os.path.isdir(root):
+            return root.replace("\\", "/").rstrip("/")
+    raise RuntimeError(SESSION_ATTRIB_HINT)
+
+
 ECAPA_ONNX = os.path.join(REPO, "node_modules", "@huggingface", "transformers", ".cache",
                           "Alice-Sabrina-Ivy", "voice-gender-classifier-onnx-q8-v2", "onnx",
                           "model_quantized.onnx")
