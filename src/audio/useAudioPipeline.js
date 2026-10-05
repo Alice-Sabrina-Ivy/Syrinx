@@ -12,6 +12,7 @@ import {
 import {
   pushAndMedianPitch,
   PITCH_SMOOTH_LEN,
+  createSmoothingGapTracker,
 } from "./pitchSmoothing";
 import { createGateState, evaluateFrameGate } from "./pitchGate";
 import { createPaintGate, EXCURSION_SEMI } from "./pitchPaintGate";
@@ -154,6 +155,9 @@ export function useAudioPipeline() {
 
   // Smoothing buffers
   const pitchSmoothRef = useRef([]);
+  // Restarts the display median after a gap of >= SMOOTH_RESET_GAP_FRAMES
+  // frames without a fresh detection (pitchSmoothing.js, 2026-10-04).
+  const smoothGapRef = useRef(createSmoothingGapTracker());
   const f1SmoothRef = useRef([]);
   const f2SmoothRef = useRef([]);
   const f3SmoothRef = useRef([]);
@@ -774,6 +778,7 @@ export function useAudioPipeline() {
       streamRef.current = null;
     }
     pitchSmoothRef.current = [];
+    smoothGapRef.current.reset();
     f1SmoothRef.current = [];
     f2SmoothRef.current = [];
     f3SmoothRef.current = [];
@@ -897,6 +902,9 @@ export function useAudioPipeline() {
       pitchTs: latestPitch.ts,
     });
     const { pitch, hasPitch, isQuiet } = gate;
+    // Counted on every frame (silence frames included): true on a fresh
+    // detection right after a gap — the median restarts below.
+    const restartSmoothing = smoothGapRef.current.frame(hasPitch);
 
     // Push CPP into the vocal-weight aggregator gated on CONFIRMED
     // PITCH, not the silence gate (changed 2026-06-10). CPP measures
@@ -1057,6 +1065,11 @@ export function useAudioPipeline() {
     // — held values (SwiftF0 null but audio still loud enough) don't
     // enter the buffer so they can't stale-shift the median.
     let smoothedPitch = null;
+    // A fresh detection after a gap starts a new median instead of being
+    // medianed against the previous word's values (pitchSmoothing.js
+    // createSmoothingGapTracker; measurements/pitch-display-reacquire-
+    // 2026-10-04.md). Held values never reach this (hasPitch is false).
+    if (restartSmoothing) pitchSmoothRef.current = [];
     if (effectivePitch !== null) {
       smoothedPitch = hasPitch
         ? pushAndMedianPitch(pitchSmoothRef.current, pitch, PITCH_SMOOTH_LEN)
@@ -1106,7 +1119,10 @@ export function useAudioPipeline() {
     // (pitchPaintGate.js "Register re-acquisition").
     let displayPitched = false;
     if (framePitched) {
-      displayPitched = paintGateRef.current.push(smoothedPitch, { fresh: hasPitch });
+      // raw: the unsmoothed fresh detection — the gate accepts a register
+      // change only when it agrees with the off-level run (pitchPaintGate.js
+      // "Faster re-acquisition").
+      displayPitched = paintGateRef.current.push(smoothedPitch, { fresh: hasPitch, raw: hasPitch ? pitch : null });
       if (!displayPitched && hasPitch && paintGateRef.current.lastReason() === "offlevel") {
         heldReadoutStaleRef.current = true;
       }

@@ -48,3 +48,32 @@ export function pushAndMedianPitch(historyArr, value, maxLen = PITCH_SMOOTH_LEN)
   if (historyArr.length > maxLen) historyArr.shift();
   return median(historyArr);
 }
+
+// Restart the median after a gap (2026-10-04, measurements/pitch-display-
+// reacquire-2026-10-04.md). The hook used to keep the median buffer across
+// short gaps (it was dropped only when the 400 ms pitch hold expired), so
+// the first frames of a new word were medianed against the previous
+// word's values: after a register switch the first new-register frame
+// painted the OLD register (or was suppressed) and the paint gate saw the
+// new register one frame late. A frame with a fresh detection that
+// follows >= SMOOTH_RESET_GAP_FRAMES frames without one starts a fresh
+// median. Same gap notion as the paint gate's REACQUIRE_GAP_FRAMES (a
+// single dropped frame inside a word does not restart it). The onset
+// protection the old median provided is kept by the paint gate's
+// raw-agreement accept check (pitchPaintGate.js).
+export const SMOOTH_RESET_GAP_FRAMES = 2;
+
+export function createSmoothingGapTracker(gapFrames = SMOOTH_RESET_GAP_FRAMES) {
+  let run = 0; // consecutive frames without a fresh detection
+  return {
+    // Call once per display frame, before smoothing; hasFresh = this frame
+    // carries a fresh detection. Returns true when the median buffer
+    // should be cleared before this frame's value is pushed.
+    frame(hasFresh) {
+      const restart = hasFresh && run >= gapFrames;
+      run = hasFresh ? 0 : run + 1;
+      return restart;
+    },
+    reset() { run = 0; },
+  };
+}
