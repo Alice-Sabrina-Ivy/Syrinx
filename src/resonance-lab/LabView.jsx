@@ -1,4 +1,4 @@
-// LabView.jsx — the resonance lab view (lazy; only with ?resonance=lab).
+// LabView.jsx — the resonance lab view (lazy chunk; opening it starts the lab).
 //
 // A research instrument, not a coach: four calibration-free resonance
 // readouts side by side on one neutral axis ("larger / darker" <->
@@ -8,6 +8,7 @@
 
 import { useEffect, useState } from "react";
 import { subscribe, resetReadings, downloadReadings } from "./labPipeline.js";
+import { requestResonanceLab } from "./labRequest.js";
 
 const U_MIN = -1.0;
 const U_MAX = 2.2;
@@ -99,6 +100,8 @@ function stability(snap) {
 export default function LabView() {
   const [s, setS] = useState(null);
   useEffect(() => subscribe(setS), []);
+  // First open of the tab starts the lab (now if listening, else at the next start).
+  useEffect(() => { requestResonanceLab(); }, []);
   if (!s) return null;
   const ref = s.reference;
   const snap = s.snapshot;

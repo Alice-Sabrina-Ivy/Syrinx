@@ -1,6 +1,6 @@
-// labPipeline.js — main-thread side of the resonance lab (?resonance=lab only).
+// labPipeline.js — main-thread side of the resonance lab (started once its tab is opened).
 //
-// Dynamically imported by useAudioPipeline when the flag is set: spawns the
+// Dynamically imported by useAudioPipeline once the lab tab has been opened: spawns the
 // lab worker, hands it one extra consumer port on the existing capture
 // source (the production workers' ports are untouched), and keeps a small
 // observable store the lazy LabView reads.
