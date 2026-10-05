@@ -1,5 +1,5 @@
 # session_fv.py — real-session false voicing (2026-10-04 low-register voicing
-# pass, measurements/pitch-low-register-voicing-2026-10-04.md). The synthetic
+# pass; private measurement, kept outside this repo). The synthetic
 # noise oracles (noise-fv.mjs, noise-augment-oracle.js) cannot see the noise
 # that actually reaches the pitch worker in a practice room: low-level room
 # rumble, distant voices, breath and fry between phrases. This scores every

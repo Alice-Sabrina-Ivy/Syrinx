@@ -1,6 +1,6 @@
 # lowband_attr.py — stage attribution of reference-voiced frames the Syrinx
-# chain does not report correctly (2026-10-04 low-register voicing pass,
-# measurements/pitch-low-register-voicing-2026-10-04.md). Reads the per-hop
+# chain does not report correctly (2026-10-04 low-register voicing pass;
+# private measurement, kept outside this repo). Reads the per-hop
 # dumps of lowband-attr.mjs.
 #
 # Usage: python scripts/session-oracle/lowband_attr.py TAG [TAG...]

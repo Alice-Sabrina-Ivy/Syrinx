@@ -1,5 +1,5 @@
 # variants.py NAME PATCH[=VAL] ... — candidate src trees for the low-register
-# voicing pass (2026-10-04, measurements/pitch-low-register-voicing-2026-10-04.md):
+# voicing pass (2026-10-04; private measurement, kept outside this repo):
 # copies ./src to build/trees/NAME/src and applies named patches to
 # boersma-ac.js / pitch-worker.js (each asserts its anchor matched exactly
 # once). The trees are scored by run_variant.sh + table.py. Patch names are

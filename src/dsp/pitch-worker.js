@@ -3,14 +3,14 @@
 //
 // Replaces SwiftF0 (ONNX CNN), cut over 2026-06-09. SwiftF0 confidently
 // reported 2×F0 on weak-fundamental phonation (H2 louder than H1 —
-// routine in voice training): 25.6 % octave-up / 19.1 % null in the
-// user's 80–110 Hz register on real session audio, vs 4.1 % / 0.4 % for
-// the tuned AC detector, at corpus parity or better on two of four
+// routine in voice training) in the user's 80–110 Hz register on real
+// session audio, far more often than the tuned AC detector (private
+// measurement), at corpus parity or better on two of four
 // ground-truth corpora and ~25–50× less compute (0.21 ms/frame pure JS
 // vs 5–11 ms browser-WASM inference). Decision data:
-// measurements/swift-f0-vs-praat-sessions-2026-06-09.md,
-// measurements/pitch-detector-shootout-2026-06-09.md,
-// measurements/boersma-ac-tuning-2026-06-09.md.
+// measurements/boersma-ac-tuning-2026-06-09.md (the 2026-06-09 session
+// comparison and detector shootout are private measurements, kept outside
+// this repo).
 //
 // Streaming protocol (cadence unchanged from the SwiftF0 era):
 //   Each capture chunk arrives at ~25 ms cadence with `contextTime`

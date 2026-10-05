@@ -1,5 +1,5 @@
 # summary.py BASE TAG... — one row per variant of the low-register voicing
-# pass (2026-10-04, measurements/pitch-low-register-voicing-2026-10-04.md):
+# pass (2026-10-04; private measurement, kept outside this repo):
 # the gains and every guard as deltas vs BASE (pp). Inputs: lowband_score
 # cache (table.py fills build/score_cache2), session_fv.py, noise-fv.mjs
 # 4-seed results (build/session-oracle/noisefv4) and the CPU per chunk the

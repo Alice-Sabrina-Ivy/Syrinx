@@ -1,5 +1,5 @@
 # lowband_score.py — guard metrics for the low-register voicing pass
-# (2026-10-04, measurements/pitch-low-register-voicing-2026-10-04.md), from
+# (2026-10-04; private measurement, kept outside this repo), from
 # lowband-attr.mjs dumps: per group x band x stage (post = worker-posted,
 # paint = live trace) the ±5 % correct (C5), 50-cent RPA, null, octave-down
 # (x1/2, x1/3), octave-up (x2, x3/x4) and other shares, plus VDE on the

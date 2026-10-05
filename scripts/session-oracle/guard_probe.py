@@ -1,6 +1,6 @@
 # guard_probe.py — frame-level design table for harmonic-voicing-guard rules
-# (2026-10-04 low-register voicing pass, measurements/
-# pitch-low-register-voicing-2026-10-04.md). Reads guard-probe.mjs dumps
+# (2026-10-04 low-register voicing pass; private measurement, kept outside this repo).
+# Reads guard-probe.mjs dumps
 # (every guard call of the REAL pitch worker: decoded f0, the production
 # verdict, peak/floor dB at k*f0 for k = 1..8 under the production ±35 %
 # floor `P` and the inter-harmonic floor `I`) and labels each call against

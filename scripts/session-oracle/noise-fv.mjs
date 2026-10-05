@@ -1,7 +1,7 @@
 // noise-fv.mjs — noise-only false voicing through the REAL production chain
 // (lib/chain.mjs: pitch worker incl. notch / ghost veto / above-range null /
 // harmonic guard, DSP worker, handleAnalysisResult), 2026-10-04 low-register
-// voicing pass (measurements/pitch-low-register-voicing-2026-10-04.md).
+// voicing pass (private measurement, kept outside this repo).
 // Every committed noise-synth class (+ babble and the resonant Q5 / Q2
 // variants of voicing-robustness-shootout.js), 30 s at RMS 0.03 (the
 // shootout's ambient scale), 16 kHz. Reports % of hops the worker POSTED
