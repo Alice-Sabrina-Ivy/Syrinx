@@ -101,8 +101,8 @@
 // (no 10 dB dip in the preceding 2 s) is now onset-born like any switch-on
 // (~20 s; the shipped rule promoted it at ~5 s by accident of the same gap
 // that blanked speech->hold): synthetic dense-speech probe 88.4 -> 79.7 %
-// correct over 30 s; (3) the session-05-07 120 Hz line is no longer notched
-// (69 s; posted accuracy in those windows 84 -> 94 %, pause voicing equal).
+// correct over 30 s; (3) a weak real room-hum line on a private session
+// recording is no longer notched (results kept outside this repo).
 //
 // Detection runs on RAW audio, filtering on the OUTPUT stream — a
 // notched interferer must stay visible to the tracker or the notch
@@ -500,8 +500,9 @@ export function createNoiseNotch(sampleRate, opts = {}) {
     // new-note re-births of unpromoted onset-born tracks (2026-10-04) restart
     // the onset-born DELAY clock (noteObs) only — duty keeps the track's whole
     // history, so a weak, intermittently masked hum line keeps its diluted
-    // duty (restarting firstObs/hits too promoted the session-05-07 room-hum
-    // line at 440 s, where production never notched; -3.6 pp posted there):
+    // duty (restarting firstObs/hits too promoted a weak room-hum line on a
+    // private session recording that production never notched, costing
+    // posted accuracy there):
     //  - latch released (band energy back near the pre-onset floor): such a
     //    line cannot be an interferer that switched on with the sound — it
     //    would hold the energy above that floor;

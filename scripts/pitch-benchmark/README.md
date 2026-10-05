@@ -39,7 +39,7 @@ references (`$SO_REFS`, default `build/session-oracle/refs`, from
 | `swift.py` | SwiftF0 offline and the retired production stream (corpora or one WAV) |
 | `sess_detect.py` | offline trackers on the session spans |
 | `score_corpora.py`, `score_sessions.py` | metrics, offset sweep, reference conventions |
-| `sanity_baseline.py`, `sanity_sessions.py`, `mireval_check.py` | reproduction checks against the committed oracles and mir_eval |
+| `sanity_baseline.py`, `sanity_sessions.py`, `mireval_check.py` | reproduction checks against the committed corpus oracles, the private session-oracle table and mir_eval |
 | `timing.py`, `timing_syrinx.py` | CPU per second of audio |
 | `make_tables.py` | the measurement's §5 tables |
 
@@ -79,7 +79,7 @@ for s in 2025-09-08 2026-05-07 2026-05-26 2026-06-09; do
   python scripts/pitch-benchmark/swift.py stream --wav="$SYRINX_SESSIONS_DIR/$s/session.wav" --name=$s; done
 # 3. sanity, scoring, tables
 python scripts/pitch-benchmark/sanity_baseline.py   # must print the 2026-10-03 committed corpus numbers
-python scripts/pitch-benchmark/sanity_sessions.py   # must print 88.01 / 91.37 (session-oracle convention)
+python scripts/pitch-benchmark/sanity_sessions.py   # must reproduce the session-oracle target-band table (kept in the private project, not in this repo)
 python scripts/pitch-benchmark/score_corpora.py     # PENN voicing 0.10; --penn-thr=X to change
 python scripts/pitch-benchmark/score_sessions.py --dets=syrinx_main,syrinx_new,syrinx_new600,syrinx_main_disp,syrinx_new_disp,syrinx_new600_disp,praat_ac,praat_ac_cal,praat_cc,pyin,penn,crepe_tiny,swift_offline,swift_stream,swift_offline_g09,penn_ungated,crepe_tiny_ungated,swift_offline_ungated,pyin_ungated
 $VPY scripts/pitch-benchmark/mireval_check.py
