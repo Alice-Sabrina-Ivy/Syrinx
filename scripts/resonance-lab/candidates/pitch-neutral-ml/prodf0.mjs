@@ -1,7 +1,7 @@
 // Production-detector F0 tracks for the pitch-neutral-ml robustness variant.
 // Emulates src/dsp/pitch-worker.js on 16 kHz input (no resampling needed): 25 ms chunks ->
 // persistent-peak notch -> 1280-sample rolling buffer -> Boersma-AC candidates -> L=2 path
-// tracker -> notch veto + harmonic voicing guard. Each decoded frame is attributed to the
+// tracker -> notch veto -> above-400 Hz null -> harmonic voicing guard. Each decoded frame is attributed to the
 // centre of its 80 ms analysis buffer (end of chunk k minus 40 ms), then mapped onto the
 // benchmark's 10 ms grid (t_j = 0.005 + 0.01 j) by nearest frame (<= 12.5 ms away).
 //   node prodf0.mjs jobs.json      jobs = [{audio: in.f32, out: out.f32, n10: <grid length>}]
@@ -13,6 +13,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.resolve(here, "../../../../src/dsp");
 const B = await import(pathToFileURL(path.join(SRC, "boersma-ac.js")).href);
 const N = await import(pathToFileURL(path.join(SRC, "noise-notch.js")).href);
+const { PITCH_DISPLAY_RANGE } = await import(pathToFileURL(path.join(SRC, "../utils/constants.js")).href);
 const SR = 16000, CH = 400, FL = B.BOERSMA_FRAME_LENGTH_16K;
 
 function track(x, n10) {
@@ -33,7 +34,8 @@ function track(x, n10) {
     if (times.length <= tr.config.lookback) continue;
     const t = times.shift();
     let v = d;
-    if (v > 0 && N.isNearNotch(v, notch.activeFreqs())) v = null;
+    if (v > 0 && N.isNearNotch(v, notch.activeLines())) v = null;
+    if (v > PITCH_DISPLAY_RANGE.high) v = null; // pitch-worker.js: above-range decodes post unvoiced, before the guard
     if (v > 0 && !guard.check(delay[0], v, SR)) v = null;
     out.push([t, v > 0 ? v : 0]);
   }
