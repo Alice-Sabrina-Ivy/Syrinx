@@ -3,8 +3,8 @@
 Standalone diagnostic utility for identifying persistent narrowband
 tonal sources in a recording environment. **Not integrated into
 Syrinx production.** Use this when SwiftF0 pitch detection is
-reporting suspiciously wrong values (e.g., reporting 175 Hz when
-the user's actual F0 is 85-95 Hz) — the probe identifies tonal
+reporting suspiciously wrong values (e.g., reporting about twice
+the speaker's actual F0) — the probe identifies tonal
 interference sources that could be confusing the model.
 
 Background: see the negative-finding investigation at commit
