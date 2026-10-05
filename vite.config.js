@@ -17,6 +17,15 @@ export default defineConfig(({ mode }) => ({
     ...(mode === 'mobile' ? [basicSsl()] : []),
   ],
   worker: { format: 'es' },
+  // build/ is the gitignored scratch dir for measurement runs and can hold
+  // hundreds of thousands of files (corpora, nested worktrees). Vite's
+  // watcher doesn't read .gitignore, so without this the dev server spends
+  // minutes crawling it and requests hang. Same for the corpus audio.
+  server: {
+    watch: {
+      ignored: ['**/build/**', '**/tests/dsp/data/**', '**/tests/ml/data/**'],
+    },
+  },
   // Transformers.js loads ONNX runtime + model weights at runtime; let it
   // self-manage rather than pre-bundling its WASM/ONNX assets. Same applies
   // to onnxruntime-web (used directly by pitch-worker.js) — when Vite pre-
@@ -29,5 +38,10 @@ export default defineConfig(({ mode }) => ({
   // directory directly in dev, where ORT's relative path resolution works.
   // optimizeDeps is dev-only — production (Rollup) builds correctly emit
   // hashed .wasm assets in docs/assets/ regardless of this setting.
-  optimizeDeps: { exclude: ['@huggingface/transformers', 'onnxruntime-web'] },
+  // entries: scan only the app's own index.html — the default globs every
+  // .html under the root, including copies inside build/.
+  optimizeDeps: {
+    entries: ['index.html'],
+    exclude: ['@huggingface/transformers', 'onnxruntime-web'],
+  },
 }))
