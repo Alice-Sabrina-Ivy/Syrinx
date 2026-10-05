@@ -1,4 +1,4 @@
-// lab-worker.js — resonance lab worker (only spawned with ?resonance=lab).
+// lab-worker.js — resonance lab worker (spawned once the user opens the lab tab).
 //
 // An extra capture consumer: receives the same 25 ms chunks as the
 // production workers on its own MessagePort and runs the four finalists

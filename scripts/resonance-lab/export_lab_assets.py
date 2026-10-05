@@ -1,5 +1,5 @@
 """Export the four resonance-lab finalists' parameters + population reference bands to
-public/resonance-lab/ (lab-only static assets; fetched only with ?resonance=lab).
+public/resonance-lab/ (lab-only static assets; fetched only once the user opens the Resonance lab tab).
 
   le_ens_h64.json   3-seed MLP ensemble (learned-envelope/models/mlp_band500_h64{,_s1,_s2}.json)
   vtln_warp.json    model-warp GMM (vtln-warp/models/mw_ct_k32_sat2_s4_b800.npz), float32 values

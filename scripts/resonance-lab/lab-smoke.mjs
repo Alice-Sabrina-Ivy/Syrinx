@@ -1,11 +1,13 @@
 // lab-smoke.mjs — headless smoke test of the resonance lab against the BUILT app
-// (docs/, served by `vite preview`), with and without ?resonance=lab.
+// (dist/, served by `vite preview`). The lab tab is visible to everyone; the lab
+// itself starts only once the tab is opened.
 //
 //   npm run build && node scripts/resonance-lab/lab-smoke.mjs --wav=<48 kHz speech wav> [--seconds=40] [--shot=out.png]
 //
-// No-flag run: asserts that no lab chunk / worker / asset is requested and only the three
-// production workers start. Flag run: opens the "Resonance lab" tab, waits, prints the
-// lab's readout text and saves a screenshot.
+// Run 1 (tab never opened): asserts that no lab chunk / worker / asset is requested and
+// only the three production workers start. Run 2: opens the "Resonance lab" tab while
+// listening, waits, prints the lab's readout text and saves a screenshot. Run 3: opens the
+// tab BEFORE listening, then starts — the lab must start with the pipeline.
 //
 // Process hygiene (CLAUDE.md hard rule 2): Chrome is launched by puppeteer with a fresh
 // temporary --user-data-dir and closed via browser.close() (PID-scoped); the preview
@@ -54,7 +56,7 @@ async function startServer() {
   throw new Error("preview server did not start");
 }
 
-async function run(url, { lab }) {
+async function run(url, { lab, tabFirst = false }) {
   const page = await browser.newPage();
   const requests = [];
   const workers = [];
@@ -73,6 +75,13 @@ async function run(url, { lab }) {
     if (b) b.click();
     return !!b;
   }, texts);
+  if (tabFirst) {
+    // Get Started first if the welcome overlay is up, then the tab, then start.
+    await clickText(["Get Started"]);
+    await sleep(1000);
+    log("lab tab clicked before listening:", await clickText(["Resonance lab"]));
+    await sleep(1500);
+  }
   // click until the pipeline is running (a click before hydration is a no-op)
   let running = false;
   for (let attempt = 0; attempt < 5 && !running; attempt++) {
@@ -83,8 +92,8 @@ async function run(url, { lab }) {
   log("pipeline running:", running);
   await sleep(1500);
   if (lab) {
-    log("lab tab clicked:", await clickText(["Resonance lab"]));
-    await sleep(SECONDS * 1000);
+    if (!tabFirst) log("lab tab clicked:", await clickText(["Resonance lab"]));
+    await sleep((tabFirst ? Math.min(SECONDS, 20) : SECONDS) * 1000);
   } else {
     await sleep(8000);
   }
@@ -109,21 +118,26 @@ const base = `http://localhost:${PORT}/Syrinx/`;
 const off = await run(base, { lab: false });
 const labHits = off.requests.filter((u) => /LabView|labPipeline|lab-worker|resonance-lab/.test(u));
 const offWorkers = off.workers.map((u) => u.split("/").pop());
-console.log("NO FLAG: workers", offWorkers);
-console.log("NO FLAG: lab requests", labHits.length ? labHits : "none");
-console.log("NO FLAG: page errors", off.errors.length ? off.errors : "none");
+console.log("TAB NOT OPENED: workers", offWorkers);
+console.log("TAB NOT OPENED: lab requests", labHits.length ? labHits : "none");
+console.log("TAB NOT OPENED: page errors", off.errors.length ? off.errors : "none");
 const offOk = labHits.length === 0 && off.workers.length === 3 && !off.workers.some((u) => u.includes("lab-worker"));
 
-const on = await run(`${base}?resonance=lab`, { lab: true });
-console.log("FLAG: workers", on.workers.map((u) => u.split("/").pop()));
-console.log("FLAG: lab requests", on.requests.filter((u) => /LabView|labPipeline|lab-worker|resonance-lab/.test(u)).map((u) => u.replace(base, "")));
-console.log("FLAG: page errors", on.errors.length ? on.errors : "none");
+const on = await run(base, { lab: true });
+console.log("TAB OPENED: workers", on.workers.map((u) => u.split("/").pop()));
+console.log("TAB OPENED: lab requests", on.requests.filter((u) => /LabView|labPipeline|lab-worker|resonance-lab/.test(u)).map((u) => u.replace(base, "")));
+console.log("TAB OPENED: page errors", on.errors.length ? on.errors : "none");
 const i = on.text.indexOf("Resonance lab");
-console.log("FLAG: lab view text:\n" + on.text.slice(i, i + 2500));
-console.log("FLAG: " + (on.text.match(/Lab cost here[^\n]*/) ?? ["(no cost line yet)"])[0]);
+console.log("TAB OPENED: lab view text:\n" + on.text.slice(i, i + 2500));
+console.log("TAB OPENED: " + (on.text.match(/Lab cost here[^\n]*/) ?? ["(no cost line yet)"])[0]);
 const onOk = on.workers.some((u) => u.includes("lab-worker")) && /Pitch \d+ Hz|Voiced so far [1-9]/.test(on.text);
+
+const first = await run(base, { lab: true, tabFirst: true });
+console.log("TAB FIRST: workers", first.workers.map((u) => u.split("/").pop()));
+console.log("TAB FIRST: page errors", first.errors.length ? first.errors : "none");
+const firstOk = first.workers.some((u) => u.includes("lab-worker")) && /Pitch \d+ Hz|Voiced so far [1-9]/.test(first.text);
 await browser.close();
 browser = null;
-console.log(`\nno-flag isolation: ${offOk ? "PASS" : "FAIL"}; lab view live: ${onOk ? "PASS" : "FAIL"}`);
+console.log(`\nisolation until the tab is opened: ${offOk ? "PASS" : "FAIL"}; lab live after opening: ${onOk ? "PASS" : "FAIL"}; tab opened before listening: ${firstOk ? "PASS" : "FAIL"}`);
 cleanup(); // the preview server child would otherwise keep the event loop alive
-process.exit(offOk && onOk ? 0 : 1);
+process.exit(offOk && onOk && firstOk ? 0 : 1);
