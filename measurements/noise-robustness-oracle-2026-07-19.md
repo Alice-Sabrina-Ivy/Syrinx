@@ -222,22 +222,6 @@ node scripts/noise-augment-oracle.js cpp
 
 ## 7. Implementation validation (same day)
 
-> **Note (2026-10-03):** the tonal-noise rows in this section and in §9
-> describe a chain production was NOT running. The oracle's pitch mode
-> with `--frontend=tracker` ran the notch over the whole signal first,
-> then decoded with bare AC + tracker + guard and **never applied the
-> ghost-voicing veto** (`isNearNotch`) that pitch-worker.js applies. The
-> production-exact chain measured FDA fan-hum +10 dB at **69.3 %**
-> correct, not 85.5–85.9 % (the veto's ±4 % windows around f/2, f, 2f of
-> every notch blanked real voice). The oracle now runs the notch per
-> chunk and applies the veto as the worker does, and the veto was
-> narrowed — see
-> [noise-notch-voice-safety-2026-10-03.md](noise-notch-voice-safety-2026-10-03.md)
-> (§2 "The committed oracle never applied the veto", §7a for the
-> production-exact before/after grid). Broadband rows (white, pink,
-> brown, babble, crickets, cicadas …) are unaffected: the notch never
-> activates there.
-
 Both build items shipped and validated against this oracle
 (`--frontend=tracker`, `--vad=voiced`; noisy pitch cells now prepend an
 8 s noise-only lead — realistic session condition and the tracker's
@@ -403,9 +387,7 @@ pitch + gender modes mirror it. Guard unit cases in
 boersma-ac-test.js (25/25).
 
 **Final matrix through the full production chain** (notch + ghost veto
-+ harmonic guard — but see the 2026-10-03 note at the top of §7: the
-oracle's pitch mode omitted the ghost veto, so tonal-noise speech
-accuracy here overstates what production delivered):
++ harmonic guard):
 
 - Pitch noise-only false-voicing: **≤ 0.7 % for every class** (pink
   was 10.8 %; resonant-noise 0.1 %); speech accuracy at +10 dB within
