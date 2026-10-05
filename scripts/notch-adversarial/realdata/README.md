@@ -14,8 +14,16 @@ discrimination results: [measurements/notch-voice-machine-discrimination-2026-10
 float32 WAVs at the recording's original level, per-source manifests, census,
 indexes. Licenses are per clip in the manifests; several sources are
 non-commercial or research-only (ESC-50 CC BY-NC, DCASE CC BY-NC-SA, some
-Freesound CC BY-NC, Hillenbrand / FDA research use, private-session private) — local
-research use only, never redistributed.
+Freesound CC BY-NC, Hillenbrand / FDA research use) — local research use only,
+never redistributed.
+
+**Private session recordings (opt-in).** `fetch_voice.py --sources=...,sessions`
+cuts voiced runs (and "outside"-labelled steady runs, into corpus A) from the
+private session recordings (`SYRINX_SESSIONS_DIR`; CLAUDE.md, "Private session
+data"). It is never in the default sources. A build that includes it feeds
+those clips into the indexes, the `voice_in_noise` "other" programs and every
+analysis, so nothing computed on such a build is committed; the committed
+results use the public sources only.
 
 ## Rebuild (repo root; ~1.5 GB download, ~3 GB data incl. mixes)
 
@@ -26,7 +34,7 @@ python $R/fetch_noise.py --sources=mssnsd,demand,esc50,dcase,freesound --jobs=3
 # corpus B — real voice (PTDB-TUG / FDA audio are gitignored: copy them read-only
 # from the main checkout's tests/dsp/data first)
 node   $R/export_refs.mjs                      # corpus F0 refs via tests/dsp/data/corpora.js
-python $R/fetch_voice.py --sources=vocalset,vocadito,hillenbrand,ptdb,fda,sessions,voiced,pvqd --jobs=3
+python $R/fetch_voice.py --sources=vocalset,vocadito,hillenbrand,ptdb,fda,voiced,pvqd --jobs=3
 node   $R/render_synth.mjs                     # synthetic held notes (suite scenarios) as source `synthetic`
 # census + labels, shipped-notch probe, indexes, mixes
 python $R/census.py --jobs=4 --png=tonal       # data/census/noise_census.json (+ spectrogram PNGs)
@@ -44,7 +52,7 @@ node   $R/mix-parity.mjs                       # JS renderMix == Python render (
 | `common.py` | layout, 16 kHz mono conversion (first channel, polyphase), clip writer, per-source manifests, cached fetch (curl fallback for hosts that 403 python-requests) |
 | `remotezip.py` | read single members of a remote ZIP over HTTP Range (VocalSet 2.1 GB, DCASE 1-1.9 GB, DEMAND ~100 MB zips — only the needed files are transferred) |
 | `fetch_noise.py` | corpus A: MS-SNSD, DEMAND (ch01), ESC-50 machine / tonal classes, DCASE 2020 T2 (MIMII + ToyADMOS), Freesound HQ previews (search-page scrape, per-sound license) |
-| `fetch_voice.py`, `heldseg.py`, `export_refs.mjs`, `render_synth.mjs` | corpus B: VocalSet long tones, vocadito, Hillenbrand, PTDB-TUG, FDA, VOICED, PVQD, private-session sessions (+ "outside"-speaker steady runs into corpus A), the suite's synthetic held notes; held-segment detection |
+| `fetch_voice.py`, `heldseg.py`, `export_refs.mjs`, `render_synth.mjs` | corpus B: VocalSet long tones, vocadito, Hillenbrand, PTDB-TUG, FDA, VOICED, PVQD, the opt-in private `sessions` source (above), the suite's synthetic held notes; held-segment detection |
 | `census.py` | tonal-line census with the notch's own peak finder + line-envelope demodulation; labels |
 | `probe.mjs` | the real `src/` pitch worker over noise-only clips: notch promotion time / lines / false voicing |
 | `build_index.py` | manifests + census + probe + exact-duplicate detection -> `data/index_*.json`, `data/summary.md` |

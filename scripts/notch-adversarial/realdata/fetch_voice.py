@@ -2,7 +2,8 @@
 # corpora as voiced-speech references).
 #
 #   node scripts/notch-adversarial/realdata/export_refs.mjs     # once (refs)
-#   python scripts/notch-adversarial/realdata/fetch_voice.py [--sources=vocalset,vocadito,hillenbrand,ptdb,fda,sessions] [--jobs=4]
+#   python scripts/notch-adversarial/realdata/fetch_voice.py [--sources=vocalset,vocadito,hillenbrand,ptdb,fda] [--jobs=4]
+#   (opt-in, local only: add `sessions` to --sources; see the source list)
 #
 # Writes build/notchvd/data/voice/<source>/<id>.wav (16 kHz mono float32,
 # original level), <id>.f0.json sidecars ({hop, ref: {hopMs, f0} | null,
@@ -28,13 +29,17 @@
 #   voiced      VOICED (Cesari et al. 2018; PhysioNet, ODC-By 1.0): 208 ~5 s
 #               sustained /a/, 8 kHz (57 healthy, rest pathological;
 #               `diagnosis` per record).
-#   sessions    the 4 private-session sessions (Alice's own recordings; local only):
-#               alice / second voiced runs from the parquet (Praat AC 100-500
-#               F0 + speaker labels), cut with 0.5 s context: every run that
-#               contains a held stretch >= 0.5 s, and every voiced run >= 1.5
-#               s (glides / sirens). "outside"-labelled steady runs >= 1 s are
-#               written to the NOISE corpus (source sessions_outside) — they
-#               may be real room tonal sources, TV or music (census decides).
+#   sessions    OPT-IN, never in the default --sources: the private session
+#               recordings (local only; folder from SYRINX_SESSIONS_DIR or
+#               --sessions-root, see CLAUDE.md "Private session data"). Voiced
+#               runs of the user and of the second voice (speaker codes 1 / 2)
+#               from the session label files (Praat AC 100-500 F0 + speaker
+#               labels), cut with 0.5 s context: every run that contains a held
+#               stretch >= 0.5 s, and every voiced run >= 1.5 s (glides /
+#               sirens). "outside"-labelled steady runs >= 1 s are written to the
+#               NOISE corpus (source sessions_outside; the census decides what
+#               they are). Anything computed with this source stays out of
+#               measurements/ in this repo.
 import os, re, json, glob
 from concurrent.futures import ThreadPoolExecutor
 import numpy as np, soundfile as sf
@@ -43,7 +48,7 @@ from heldseg import held_segments, praat_f0
 
 A = args()
 JOBS = int(A.get("jobs", 4))
-SOURCES = A.get("sources", "vocalset,vocadito,hillenbrand,ptdb,fda,sessions").split(",")
+SOURCES = A.get("sources", "vocalset,vocadito,hillenbrand,ptdb,fda").split(",")
 TD = os.path.join(REPO, "tests/dsp/data")
 REFS = os.path.join(DL, "corpora")
 
@@ -137,15 +142,28 @@ def src_fda():
     with ThreadPoolExecutor(JOBS) as ex: return list(ex.map(one, sorted(R)))
 
 # --------------------------------------------------------------------------
-CAL_ROOT = A.get("sessions-root", "C:/Coding Projects/private-session/sessions")
-CAL_SESSIONS = ["2025-09-08", "2026-05-07", "2026-05-26", "2026-06-09"]
+# the private session recordings (opt-in source `sessions`; local only, see CLAUDE.md)
+SESSIONS_DIR = A.get("sessions-root") or os.environ.get("SYRINX_SESSIONS_DIR")
+SESSION_IDS = ["2025-09-08", "2026-05-07", "2026-05-26", "2026-06-09"]
+PARQ = "acoustic/frames_enrollment-2026-05-07-v2.parquet"
+# raw speaker labels -> codes: alice 1, outside 3, unknown / empty 0; the one
+# remaining label in the files is the second voice in the recordings -> 2
+SPK = {"alice": 1, "outside": 3}
+SPK_KEY = {1: "alice", 2: "second"}
+
+def spk_code(v):
+    return SPK.get(v, 0 if not isinstance(v, str) or v in ("", "unknown") else 2)
+
 def src_sessions():
     import pandas as pd
+    if not SESSIONS_DIR:
+        raise SystemExit("set SYRINX_SESSIONS_DIR to the folder holding the private session recordings (see CLAUDE.md)")
+    root = SESSIONS_DIR.replace("\\", "/").rstrip("/")
     voice, noise = [], []
-    for s in CAL_SESSIONS:
-        d = pd.read_parquet(f"{CAL_ROOT}/{s}/acoustic/frames_enrollment-2026-05-07-v2.parquet", columns=["timestamp_s", "speaker", "f0_hz"])
-        t = d.timestamp_s.values; f = np.nan_to_num(d.f0_hz.values); sp = d.speaker.values
-        x, sr = sf.read(f"{CAL_ROOT}/{s}/session.wav", always_2d=True); x = to16k_mono(x, sr)
+    for s in SESSION_IDS:
+        d = pd.read_parquet(f"{root}/{s}/{PARQ}", columns=["timestamp_s", "speaker", "f0_hz"])
+        t = d.timestamp_s.values; f = np.nan_to_num(d.f0_hz.values); sp = np.array([spk_code(v) for v in d.speaker.values])
+        x, sr = sf.read(f"{root}/{s}/session.wav", always_2d=True); x = to16k_mono(x, sr)
         v = f > 0; runs = []; k = 0; n = len(f)
         while k < n:
             if not v[k]: k += 1; continue
@@ -155,26 +173,26 @@ def src_sessions():
         for a, b in runs:
             dur = t[b - 1] - t[a] + 0.01; who = sp[a]
             held = held_segments(t[a:b], f[a:b])
-            if who in ("alice", "second") and (held or dur >= 1.5):
+            if who in (1, 2) and (held or dur >= 1.5):
                 c0, c1 = max(0.0, t[a] - 0.5), min(len(x) / SR, t[b - 1] + 0.51)
                 seg = x[int(c0 * SR):int(c1 * SR)]
-                cid = f"sessions__{s}_{who}_{t[a]:08.2f}"
+                cid = f"sessions__{s}_{SPK_KEY[who]}_{t[a]:08.2f}"
                 # held / ref times relative to the cut
                 hs = [[round(h[0] - c0, 3), round(h[1] - c0, 3), *h[2:]] for h in held]
                 d0 = os.path.join(DATA, "voice", "sessions"); os.makedirs(d0, exist_ok=True)
-                json.dump(dict(ref=dict(hopMs=10, t0=round(float(t[a] - c0), 4), f0=[round(float(q), 2) for q in f[a:b]], basis="private-session parquet f0_hz (Praat AC 100-500)"), praat=None),
+                json.dump(dict(ref=dict(hopMs=10, t0=round(float(t[a] - c0), 4), f0=[round(float(q), 2) for q in f[a:b]], basis="session label f0_hz (Praat AC 100-500)"), praat=None),
                           open(os.path.join(d0, cid + ".f0.json"), "w"))
                 voice.append(write_clip("voice", "sessions", cid, seg, dict(
-                    **{"class": "session_held" if held else "session_long_voiced"}, gender="f", speaker=who, session=s,
-                    session_t0=round(float(c0), 3), url=f"{CAL_ROOT}/{s}/session.wav", license="private (Alice's own sessions; local only)",
-                    attribution="private-session sessions", orig_sr=sr, orig_channels=1, codec="pcm", notes=f"voiced run {t[a]:.2f}-{t[b-1]+0.01:.2f} s, 0.5 s context",
+                    **{"class": "session_held" if held else "session_long_voiced"}, gender="unknown", speaker=SPK_KEY[who], session=s,
+                    session_t0=round(float(c0), 3), url=f"$SYRINX_SESSIONS_DIR/{s}/session.wav", license="private (local only)",
+                    attribution="the private session recordings", orig_sr=sr, orig_channels=1, codec="pcm", notes=f"voiced run {t[a]:.2f}-{t[b-1]+0.01:.2f} s, 0.5 s context",
                     held=hs, held_basis="session_labels", f0_median=round(float(np.median(f[a:b])), 1),
                     held_sec=round(sum(h[1] - h[0] for h in held), 2), f0_path=f"voice/sessions/{cid}.f0.json")))
-            elif who == "outside" and held and max(h[1] - h[0] for h in held) >= 1.0:
+            elif who == 3 and held and max(h[1] - h[0] for h in held) >= 1.0:
                 c0, c1 = max(0.0, t[a] - 1.0), min(len(x) / SR, t[b - 1] + 1.01)
                 noise.append(write_clip("noise", "sessions_outside", f"sessions_outside__{s}_{t[a]:08.2f}", x[int(c0 * SR):int(c1 * SR)], dict(
-                    **{"class": "session_outside_steady"}, session=s, session_t0=round(float(c0), 3), url=f"{CAL_ROOT}/{s}/session.wav",
-                    license="private (local only)", attribution="private-session sessions", orig_sr=sr, orig_channels=1, codec="pcm",
+                    **{"class": "session_outside_steady"}, session=s, session_t0=round(float(c0), 3), url=f"$SYRINX_SESSIONS_DIR/{s}/session.wav",
+                    license="private (local only)", attribution="the private session recordings", orig_sr=sr, orig_channels=1, codec="pcm",
                     notes=f"'outside'-labelled steady voiced run {t[a]:.2f}-{t[b-1]+0.01:.2f} s (median {np.median(f[a:b]):.1f} Hz), 1 s context; unknown provenance",
                     held=held)))
         print(f"sessions {s}: voice {len(voice)} outside {len(noise)}", flush=True)

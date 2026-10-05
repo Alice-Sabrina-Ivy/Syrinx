@@ -9,6 +9,8 @@ Branch `notch-voice-discrimination`. Follows
 [scripts/notch-adversarial/cand3-notch.js](../scripts/notch-adversarial/cand3-notch.js),
 real-data oracle in
 [scripts/notch-adversarial/realdata/](../scripts/notch-adversarial/realdata/README.md).
+Every real-data result here is on the public corpora. Results on the private
+session recordings are kept outside this repository.
 
 ## Decision
 
@@ -29,7 +31,7 @@ Everything else is bc42ad0's. The ship rule holds:
 | ship rule | result |
 |---|---|
 | interferer handling no worse than bc42ad0 in every cell, synthetic | **0 failing cells**. Every metric identical to bc42ad0 in all 1 320 `r2int` / `int` cells, all 168 `handoff-adv` cells, all 600 grid cells and all 32 `dense` cells. FDA: 108 / 109 identical, the 109th notches 0.1 s later with identical metrics. |
-| interferer handling no worse than bc42ad0 in every cell, real | **0 failing streams** on 279 noise-only clips and 504 gated sources (gated: identical in 504 / 504). On 798 voice-in-noise mixes, the 3 streams the rule flags are bc42ad0 notching **the voice** (§4c). |
+| interferer handling no worse than bc42ad0 in every cell, real | **0 failing streams** on 279 noise-only clips and 504 gated sources (gated: identical in 504 / 504). On 784 voice-in-noise mixes, the 3 streams the rule flags are bc42ad0 notching **the voice** (§4c). |
 | held notes at least as good as R8 overall | **91.20 %** of hold frames at pitch over the 1 196-scenario held suite (16 + 48 kHz), vs R8 82.61 % and bc42ad0 75.33 %. No scenario is more than 1 pp below bc42ad0. |
 
 **What it does not fix.** Repeated same-pitch holds separated by breaths
@@ -209,14 +211,18 @@ metric identical.
 
 ### 4c. Real-noise oracle (`realeval.mjs`, real worker, 16 kHz)
 
+Voice in noise: the 784 data-phase streams whose voice program is public
+(recounted 2026-10-05 from the per-stream results; a public-only rebuild draws
+the `other` programs afresh).
+
 | set | streams | bc42ad0 | R8 | V14 |
 |---|---|---|---|---|
 | noise-only, painted FV (mean promotion [never]) | 279 | 10.1 % (10.0 s [143]) | 10.2 %; 1 stream +11 pp (ballast) | 10.1 %; **0 fail** (278 identical) |
 | gated real sources, painted FV from switch-on +21 s ([never]) | 504 | 15.0 % [223] | 21.3 % [416]; **227 fail** | 15.0 % [223]; **identical 504 / 504** |
 | real VocalSet held series, hold frames at pitch | 192 | 99.4 % (notched onto the voice 1 / 192) | identical | identical |
-| voice in real noise (+10 / 0 dB), voice frames painted at pitch | 798 | 52.4 % | identical 798 / 798 | **52.5 %** |
+| voice in real noise (+10 / 0 dB), voice frames painted at pitch | 784 | 52.4 % | identical 784 / 784 | **52.5 %** |
 
-**Voice in noise, stream by stream.** 785 / 798 streams are identical to
+**Voice in noise, stream by stream.** 771 / 784 streams are identical to
 bc42ad0. The 13 that differ:
 
 - **7 streams gain on the voice.**
@@ -246,7 +252,7 @@ source **switches on** and then cuts out:
   bc42ad0. The source is present from the start, so its line is not
   onset-born, and R8's re-births never apply.
   - All 279 noise-only clips: R8 = bc42ad0 in 277.
-  - All 798 voice-in-noise mixes: identical in 798 / 798.
+  - All 784 voice-in-noise mixes: identical in 784 / 784.
 - **Arranged.** Real sources switched on at 2 s and cut out briefly (the
   `noise_gated` mixes): R8 fails 227 / 504 streams, 54 of 84 sources.
   - Never notched in 416 vs 223 for bc42ad0.
@@ -256,8 +262,6 @@ source **switches on** and then cuts out:
   - bc42ad0 never notched 191 / 192 real VocalSet same-pitch hold series. Real
     long tones last 2–3.5 s and their duty falls below 0.9 across real gaps.
   - The repeated-holds failure needs ≥ 8 s holds, which no open corpus has.
-  - Alice's own holds are absent: none of hers produced a trackable line in
-    the data phase.
 
 ### 4e. Committed oracles and sessions (bc42ad0 module vs `V14`, otherwise identical trees)
 
@@ -268,7 +272,7 @@ source **switches on** and then cuts out:
 | same, vocadito × fan-hum / mains-complex / sleep-birdies | byte-identical |
 | `noise-augment-oracle.js gender` | byte-identical |
 | `voicing-robustness-shootout.js` | byte-identical |
-| session oracle, 4 recorded practice sessions | `.hops.f32` **byte-identical on all 4 sessions**, so every `analyze.py` row is equal. For example, the primary user's 160–400 Hz cons pooled: posted / painted 91.37 / 78.73 %; strict 96.01 / 82.97 %. The second speaker's 160–400 Hz painted 85.30 %. |
+| session oracle, 4 private sessions | `.hops.f32` **byte-identical on all 4 sessions**, so every `analyze.py` row is equal (results on the private session recordings are kept outside this repository) |
 | `boersma-ac-test` 41 / 41, `pitch-worker-above-range-test` 7 / 7, `pitch-paint-gate-test` 43 / 43, `pitch-gate-test` 26 / 26, `eslint .`, `vite build` (to a scratch outDir) | pass |
 
 ## 5. Tests (`tests/dsp/noise-notch-test.js`)
@@ -322,8 +326,8 @@ checks, (r3) at 128 Hz from 0.15 s, and (r4) at 128 Hz. On `V14`: **77 passed, 0
   - 1 / 192 real hold series;
   - 3 real voice-in-noise programs (all fixed here).
 
-  The wins in §4a are synthetic, plus test (r3)'s looped real tone. Alice's
-  own long holds are still unrecorded.
+  The wins in §4a are synthetic, plus test (r3)'s looped real tone. Real long
+  holds (≥ 5 s) are still unrecorded.
 - **The verdict needs shared modulation.** 2.5 c is the floor:
   - A voice with < ~2.5 c of shared 0.5–8 Hz modulation (3 c of slow wander
     alone, a very straight tone) gets no verdict and keeps bc42ad0's timing.
@@ -358,7 +362,7 @@ for s in noise gated held vin; do bash $S/shards.sh $R/real_$s 6 $RD/realeval.mj
 for s in noise gated held vin; do node $RD/agg-real.mjs $R/real_$s --vars=B,R8,SRC --fails=20; done
 for s in noise gated held; do bash $S/shards.sh $R/cls_$s 6 $RD/linecls.mjs --set=$s --vcorr=0.7 --vcoh=2.5; done
 bash $S/shards.sh $R/cls_voice 6 $RD/linecls.mjs --set=voice --deg=inf,20,10,0 --vcorr=0.7 --vcoh=2.5
-bash $S/oracles.sh bc42 src; bash $S/sessions.sh fb42 build/notch-adv/otree/bc42/src fsrc src
+bash $S/oracles.sh bc42 src    # (sessions.sh needs the private session recordings, not in this repo)
 node tests/dsp/noise-notch-test.js
 # candidate variants V1-V14 (variants.mjs) run the same way with --variants=...
 ```

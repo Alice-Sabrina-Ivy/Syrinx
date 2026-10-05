@@ -7,13 +7,14 @@
 //   node scripts/notch-adversarial/realdata/linecls.mjs --set=voice|noise|held|gated [--deg=inf,20,10,0]
 //        [--shard=i/n] [--out=F] [--vcorr=0.5 --vcoh=2 --mcorr=0.15 --mcoh=1]
 // voice: typical real held voice (PVQD CAPE-V < 20, VOICED healthy, VocalSet,
-//   vocadito, the private session runs; ids listed in data/exclude_voice_ids.txt
-//   are skipped — the data phase's mis-attributed 12-TET reference tone);
+//   vocadito, + the opt-in private `sessions` source when it was fetched —
+//   local only); ids listed in data/exclude_voice_ids.txt (local, gitignored)
+//   are skipped — e.g. a tone mis-attributed to a voice run;
 //   a voice line = a track within +-3 % of k x the held
 //   F0 (k = 1..8) while inside the held segment; white noise at --deg dB vs
 //   the held-segment RMS (seeded). noise: every non-duplicate noise clip >= 10 s
-//   (first 90 s; DEMAND rooms with talkers and the private sessions' "outside"
-//   runs that are not 12-TET reference tones excluded), every track in 80-400 Hz. held:
+//   (first 90 s; DEMAND rooms with talkers and opt-in "outside" runs without
+//   the census `equal_tempered` flag excluded), every track in 80-400 Hz. held:
 //   held_series mixes (voice lines). gated: noise_gated mixes (machine lines).
 import { writeFileSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";

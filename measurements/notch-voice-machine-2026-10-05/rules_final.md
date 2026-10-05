@@ -1,4 +1,4 @@
-evidence floor: >= 3 window(s) per line (dropped 1600 voice / 825 machine lines)
+evidence floor: >= 3 window(s) per line (dropped 1575 voice / 810 machine lines)
 
 # Explicit 'confidently machine' rules (voice_deg / noise)
 
@@ -57,15 +57,15 @@ voice-like machine lines by group: motors/pumps/appliances 59, vehicles/engines/
 | - program held_series | 115 | 28 | 0.9% (2.0% of 51 with >= 3 win) | 0.0% |
 | - program sing | 1 | 45 | 0.0% (nan% of 0 with >= 3 win) | 0.0% |
 | - program sustained_a | 23 | 23 | 0.0% (0.0% of 14 with >= 3 win) | 0.0% |
-| SNR +0: machine lines, first <= 5 lead-phase windows | 1135 | 20 | 67.9% (89.3% of 863 with >= 3 win) | 0.0% |
-| SNR +0: machine lines, first <= 5 voice-phase windows | 759 | 20 | 70.8% (84.2% of 638 with >= 3 win) | 0.0% |
+| SNR +0: machine lines, first <= 5 lead-phase windows | 1110 | 20 | 67.7% (89.3% of 842 with >= 3 win) | 0.0% |
+| SNR +0: machine lines, first <= 5 voice-phase windows | 743 | 20 | 70.5% (84.0% of 624 with >= 3 win) | 0.0% |
 | SNR +10: voice lines (held-program harmonics) | 274 | 36 | 0.0% (0.0% of 116 with >= 3 win) | 0.0% |
 | - program clinical | 110 | 36 | 0.0% (0.0% of 39 with >= 3 win) | 0.0% |
 | - program held_series | 136 | 37 | 0.0% (0.0% of 64 with >= 3 win) | 0.0% |
 | - program sing | 1 | 49 | 0.0% (nan% of 0 with >= 3 win) | 0.0% |
 | - program sustained_a | 27 | 29 | 0.0% (0.0% of 13 with >= 3 win) | 0.0% |
-| SNR +10: machine lines, first <= 5 lead-phase windows | 1124 | 20 | 68.2% (89.2% of 860 with >= 3 win) | 0.0% |
-| SNR +10: machine lines, first <= 5 voice-phase windows | 685 | 21 | 61.5% (82.7% of 509 with >= 3 win) | 0.0% |
+| SNR +10: machine lines, first <= 5 lead-phase windows | 1099 | 20 | 68.2% (89.2% of 840 with >= 3 win) | 0.0% |
+| SNR +10: machine lines, first <= 5 voice-phase windows | 672 | 21 | 61.9% (82.9% of 502 with >= 3 win) | 0.0% |
 
 | noise_gated (R8 adversary on real sources) | lines | called machine (first 5 windows) | called machine (on-windows only) |
 |---|---|---|---|

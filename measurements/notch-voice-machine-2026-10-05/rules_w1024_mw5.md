@@ -1,4 +1,4 @@
-evidence floor: >= 5 window(s) per line (dropped 2095 voice / 1328 machine lines)
+evidence floor: >= 5 window(s) per line (dropped 2070 voice / 1313 machine lines)
 
 # Explicit 'confidently machine' rules (voice_deg / noise)
 
@@ -38,6 +38,11 @@ voice lines (typical, clean + degradations) 97; machine lines 568 (promotable 22
 
 machine lines NOT called machine: 19 — noise proxy >= B (undecided, falls back to timing): 1; shared modulation >= A at low noise (machine looks voice-like): 18
 voice-like machine lines by group: mains/electrical 8, motors/pumps/appliances 6, fans/HVAC 3, DEMAND rooms/outdoor 1
+
+## Supplements (clean): voice lines called machine by the rule
+
+- synthetic suite holds (synth.mjs): 198 of 364 lines (54.4%); by family synthetic_dynamics 2/14, synthetic_repeat 96/180, synthetic_steady 98/156, synthetic_vowelchange 2/14
+- clinical / atypical real voice (PVQD severity >= 20, VOICED pathological): 0 of 11 lines (0.0%)
 
 ## The rule on the mixes
 

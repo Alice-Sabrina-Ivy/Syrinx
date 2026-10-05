@@ -20,9 +20,11 @@
 #                                  the same singer) with 0.15-1 s gaps, >= 30 s
 #                     speech       FDA / PTDB utterances of one speaker with
 #                                  0.3-1.5 s pauses, >= 20 s
-#                     other        vocadito song | private-session held/long-voiced
-#                                  runs of one session | PVQD (CAPE-V severity
+#                     other        vocadito song | PVQD (CAPE-V severity
 #                                  < 20: vowels + sentences) | VOICED healthy /a/
+#                                  (+ held / long-voiced runs of one session
+#                                  when the opt-in private `sessions` source
+#                                  was fetched — local only, never committed)
 #                   SNR = voice active RMS (2 %-of-peak rule, noise-synth.js
 #                   activeRms) / noise RMS over the stream; voice active RMS
 #                   normalised to 0.1 (-20 dBFS).
@@ -133,10 +135,10 @@ def programs(voice, rng):
         items = [(r["path"], 0.0, r["dur"], {})]
         lay, dur, _ = seg_layers(items, [0.5], rng, 15, fade=0.01)
         P["other"].append(dict(name=r["id"], layers=lay, dur=dur, holds=[[q[0], q[1], q[2]] for q in r["held"]], kind="sing"))
-    cal = collections.defaultdict(list)
+    sess = collections.defaultdict(list)   # opt-in private source (empty in a public build)
     for r in voice:
-        if r["source"] == "sessions": cal[r["session"]].append(r)
-    for s, rs in sorted(cal.items()):
+        if r["source"] == "sessions": sess[r["session"]].append(r)
+    for s, rs in sorted(sess.items()):
         rs = sorted(rs, key=lambda r: r["session_t0"])
         for i in range(0, len(rs), 8):
             ch = rs[i:i + 8]

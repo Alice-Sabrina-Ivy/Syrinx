@@ -25,6 +25,9 @@ VFILE, NFILE, OUTN = A.get("voice", "voice_deg"), A.get("noise", "noise"), A.get
 OUT = []
 P = lambda s="": (OUT.append(s), print(s))
 
+# `sessions` / `sessions_outside` exist only in a build that opted into the
+# private session recordings (fetch_voice.py; local only): results computed
+# with them never go into measurements/ (CLAUDE.md, "Private session data")
 REAL = ["vocalset", "pvqd", "voiced", "vocadito", "sessions", "hillenbrand", "ptdb", "fda"]
 # per-window features (linefeat.feats) + derived
 FEATS = ["corr_mid", "coh_mid", "fm_mid", "fm2_mid", "mid_fast", "corr_fast", "coh_fast", "fm_fast", "fm_d1", "fm_std",
@@ -82,9 +85,12 @@ def load():
         if r["source"] == "voiced": return r.get("diagnosis") == "healthy"
         return True
     v["typical"] = v["id"].map(typical)
-    # a 12-TET reference tone (196.0 / 392.0 Hz, G3 within 0.4 c, 0.6 / 0.15 c
-    # mid-band modulation) mis-attributed to a private-session 'alice' run: not a voice
-    v = v[v["id"] != "sessions__2026-05-07_alice_01854.71"].copy()
+    # clips listed in data/exclude_voice_ids.txt (local, gitignored; shared
+    # with linecls.mjs) are not voice material, e.g. a tone mis-attributed to a
+    # voice run
+    xp = os.path.join(DATA, "exclude_voice_ids.txt")
+    excl = set(open(xp, encoding="utf-8").read().split()) if os.path.exists(xp) else set()
+    v = v[~v["id"].isin(excl)].copy()
     v["grp"] = v["id"].map(lambda i: f"vocalset:{VI[i].get('singer')}" if VI[i]["source"] == "vocalset" else i)
     n["mgroup"] = [mgroup_of(i, c) for i, c in zip(n["id"], n["cls"])]
     n["grp"] = n["id"]
@@ -196,11 +202,12 @@ def main():
     real = v[v["source"].isin(REAL)]
     syn = v[v["source"] == "synthetic"]
     mach = n[n["mgroup"] != "sessions outside (other)"]
+    nx = int((n["mgroup"] == "sessions outside (other)").sum())
     clean = real[np.isinf(real["deg"])]
     rt = clean[clean["typical"]]
     P(f"# Voice line vs machine line — micro-variation features ({VFILE} / {NFILE})\n")
     P(f"Windows (1 s): real voice {len(clean)} ({clean['id'].nunique()} clips; typical {len(rt)}), synthetic {int(np.isinf(syn['deg']).sum())}, "
-      f"machine {len(mach)} ({mach['id'].nunique()} clips); excluded 'sessions outside (other)' {int((n['mgroup']=='sessions outside (other)').sum())}.")
+      f"machine {len(mach)} ({mach['id'].nunique()} clips)" + (f"; excluded 'sessions outside (other)' {nx}" if nx else "") + ".")
     P("Typical voice windows by source: " + ", ".join(f"{k} {c}" for k, c in rt["source"].value_counts().items()))
     P("Machine windows by group: " + ", ".join(f"{k} {c}" for k, c in mach["mgroup"].value_counts().items()))
 
