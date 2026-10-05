@@ -91,8 +91,9 @@ now exhausted**: the Maryn chain has no further correlation headroom.
 - **No weight ground truth exists**, so "accuracy" here means Praat-CPPS
   correlation (a proxy) + internal consistency, not validated weight.
 - **Aggregate CPP spread is tiny on consumer-mic running speech**. The
-  gauge resolves weight from a very small dynamic range — inherently
-  sensitive to measurement noise. Pushing Praat correlation past ~0.5 within a single corpus
+  gauge resolves weight
+  from a sub-1-dB dynamic range — inherently sensitive to measurement
+  noise. Pushing Praat correlation past ~0.5 within a single corpus
   appears to require either spectral-tilt fusion (the deferred step 4) or
   perceptual-rating calibration (rejected on interaction grounds).
 - Per-corpus correlations remain moderate (0.27–0.72). The gauge is a
