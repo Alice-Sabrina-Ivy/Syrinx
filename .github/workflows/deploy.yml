@@ -9,28 +9,34 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches: [main]
+    # Measurement notes and Markdown never change the built site (no unit
+    # test reads them either), so a push touching only those skips the run.
+    paths-ignore:
+      - 'measurements/**'
+      - '**/*.md'
   workflow_dispatch:
 
 permissions:
   contents: read
 
-# One deployment at a time; a newer push queues behind the in-flight one
-# instead of cancelling a deployment halfway through.
-concurrency:
-  group: pages
-  cancel-in-progress: false
-
 jobs:
   build:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    # A newer push to main supersedes a build that is still queued or
+    # running, so an outdated main is never built and deployed first
+    # (2026-10-05: during a runner outage a stale run sat ahead of the
+    # merge that superseded it).
+    concurrency:
+      group: pages-build
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
-      - run: npm ci
+      - run: npm ci --no-audit --no-fund
       # A broken main never reaches the live site.
       - run: npm run lint
       - run: npm run test:unit
@@ -44,6 +50,11 @@ jobs:
     needs: build
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    # One deployment at a time and never cancelled halfway; a newer deploy
+    # waits, and GitHub drops an older one that is still waiting.
+    concurrency:
+      group: pages-deploy
+      cancel-in-progress: false
     permissions:
       pages: write
       id-token: write
