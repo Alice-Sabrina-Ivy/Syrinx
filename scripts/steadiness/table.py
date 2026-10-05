@@ -1,5 +1,6 @@
 # table.py — one-line-per-config summary of score.py JSON output.
 # Usage: python scripts/steadiness/table.py build/steady/score_X.json [cfg ...]
+# Column prefixes: A = alice, S = second voice (speaker code 2).
 import json, sys
 import numpy as np
 D = json.load(open(sys.argv[1]))

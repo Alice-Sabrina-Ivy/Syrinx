@@ -1,6 +1,7 @@
 # table2.py — trim-selection table: corpora / vocadito against their clean
 # (untrimmed) references, synthetic truth, sessions (report rates; agreement
 # vs Praat AC trimmed as configured by score.py --reftrim).
+# Column prefixes: A = alice, S = second voice (speaker code 2).
 import json, sys
 import numpy as np
 D = json.load(open(sys.argv[1]))
