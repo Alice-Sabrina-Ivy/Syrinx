@@ -28,6 +28,8 @@ const BASE = { windowSec: 1.0, minCoverage: 0.5, trimSemitones: 3, wideTrimSemit
 const C = {
   base: {},
   untrimmed: { trimSemitones: 1e9 },
+  // the untrimmed control at the trim grid's coverage (0.6), for the §2 table
+  untrimmed06: { trimSemitones: 1e9, minCoverage: 0.6 },
   w075: { windowSec: 0.75, minValues: 6 },
   w15: { windowSec: 1.5, minValues: 12 },
   cov03: { minCoverage: 0.3 }, cov04: { minCoverage: 0.4 }, cov06: { minCoverage: 0.6 }, cov07: { minCoverage: 0.7 }, cov08: { minCoverage: 0.8 },

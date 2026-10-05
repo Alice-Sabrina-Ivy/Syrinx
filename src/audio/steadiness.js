@@ -20,7 +20,9 @@
 //   * Robust trim around the window median (trimmedSpread): octave-class
 //     and voicing-boundary frames otherwise dominate the SD. A window the
 //     trim cannot clean up (a register switch, an octave-error run) is not
-//     reported ("—") rather than reported as a wrong "steady" number.
+//     reported ("—") rather than reported as a wrong "steady" number —
+//     and it also ends the post-note hold (below), so the previous note's
+//     reading is never shown across a switch.
 //   * Population SD of 12·log2(f): unit-free (the same reading at 100 Hz
 //     and 300 Hz for the same musical wobble), gender-symmetric.
 //   * Deliberate vibrato and slides are reported as movement, as the
@@ -29,9 +31,20 @@
 //     readings below ~0.1 st are not distinguishable from each other;
 //     formatSteadiness() renders them as "<0.1".
 //
-// Hot-path cost: push() is O(1) into preallocated ring buffers; the
-// window statistic (one sort of <= ~60 values) runs at most every
-// updateSec of audio time. No allocation after construction.
+// Hot-path cost: push() is O(1) into preallocated ring buffers and does
+// not allocate; the window statistic (one sort of <= ~60 values into a
+// preallocated scratch array) runs on the first read() after new
+// messages (updateSec 0) — the hook reads once per DSP frame. read()
+// allocates only a small result object when the reading changes.
+
+// Post-voice dim hold (seconds). Named so a future change is one edit;
+// the value is pending the user's decision (measurement file §9).
+export const HOLD_SEC = 1.5;
+
+// Why trimmedSpread returned null (written to its optional `info` arg).
+export const SPREAD_OK = "ok";
+export const SPREAD_FEW = "few";     // fewer than minValues values (before or after the trim)
+export const SPREAD_REFUSED = "refused"; // the two-stage trim refused the window
 
 export const STEADINESS_DEFAULTS = Object.freeze({
   // Rolling window length (audio seconds).
@@ -59,33 +72,49 @@ export const STEADINESS_DEFAULTS = Object.freeze({
   updateSec: 0,
   // EMA weight of the newest reading (1 = no display smoothing).
   emaAlpha: 1,
-  // After the window stops qualifying, keep showing the last reading
+  // After the window stops qualifying for lack of voiced coverage (the
+  // voice stopped or went sparse), keep showing the last reading
   // (flagged held, rendered dim) for this long, so a note can be read
-  // after it ends. 0 disables.
-  holdSec: 1.5,
+  // after it ends. A trim refusal with coverage OK (register switch,
+  // octave-error run during continuous phonation) does NOT hold: it
+  // clears the reading to "—". 0 disables.
+  holdSec: HOLD_SEC,
 });
 
 const CAPACITY = 512; // > windowSec / message interval for any sane cadence
 
 // One trim stage: SD of the values within `width` of the median `med`
-// (sorted `s`, length n).
-function trimStage(s, n, med, width) {
+// (sorted `s`, length n), written into `out` (reused, no allocation).
+function trimStage(s, n, med, width, out) {
   let k = 0, sum = 0;
   for (let i = 0; i < n; i++) {
     if (Math.abs(s[i] - med) <= width) { k++; sum += s[i]; }
   }
-  if (k < 2) return { sd: NaN, kept: k, dropped: (n - k) / n };
+  out.kept = k;
+  out.dropped = (n - k) / n;
+  if (k < 2) { out.sd = NaN; return out; }
   const mean = sum / k;
   let ss = 0;
   for (let i = 0; i < n; i++) {
     if (Math.abs(s[i] - med) <= width) { const d = s[i] - mean; ss += d * d; }
   }
-  return { sd: Math.sqrt(ss / k), kept: k, dropped: (n - k) / n };
+  out.sd = Math.sqrt(ss / k);
+  return out;
 }
+const stageA = { sd: NaN, kept: 0, dropped: 0 };
+const stageB = { sd: NaN, kept: 0, dropped: 0 };
+function done(info, sd, reason) {
+  if (info) info.reason = reason;
+  return sd;
+}
+const pickOpt = (opts, k) => (opts && opts[k] !== undefined ? opts[k] : STEADINESS_DEFAULTS[k]);
 
 // Population SD (semitones) of `values[0..n)` after the robust trim, or
 // null if the window does not qualify. `scratch` is a Float64Array of at
-// least n (sorted in place). Exported for tests and offline scoring.
+// least n (sorted in place). If `info` is an object, info.reason is set
+// to SPREAD_OK, SPREAD_FEW or SPREAD_REFUSED (the tracker holds the last
+// reading on SPREAD_FEW like a coverage failure, but clears it on
+// SPREAD_REFUSED). Exported for tests and offline scoring.
 //
 // Two stages around the window median:
 //   1. inner trim (trimSemitones): if it drops at most maxTrimFraction of
@@ -96,20 +125,31 @@ function trimStage(s, n, med, width) {
 //      used, unless it drops more than maxWideTrimFraction — then the
 //      window is a register switch or an octave-error run, and null.
 //      wideTrimSemitones null disables stage 2 (stage-1 failure = null).
-export function trimmedSpread(values, n, opts = STEADINESS_DEFAULTS, scratch = null) {
-  const { trimSemitones, wideTrimSemitones, maxTrimFraction, maxWideTrimFraction, minValues } = { ...STEADINESS_DEFAULTS, ...opts };
-  if (n < minValues || n === 0) return null;
-  const s = scratch && scratch.length >= n ? scratch.subarray(0, n) : new Float64Array(n);
-  for (let i = 0; i < n; i++) s[i] = values[i];
-  s.sort();
+export function trimmedSpread(values, n, opts = STEADINESS_DEFAULTS, scratch = null, info = null) {
+  const trimSemitones = pickOpt(opts, "trimSemitones");
+  const wideTrimSemitones = pickOpt(opts, "wideTrimSemitones");
+  const maxTrimFraction = pickOpt(opts, "maxTrimFraction");
+  const maxWideTrimFraction = pickOpt(opts, "maxWideTrimFraction");
+  const minValues = pickOpt(opts, "minValues");
+  if (n < minValues || n === 0) return done(info, null, SPREAD_FEW);
+  // Sorted copy of values[0, n) in the scratch array (`values` is not
+  // modified; without a large-enough scratch this allocates). Insertion
+  // sort: n is ~40 and it sorts only the used prefix without a view.
+  const s = scratch && scratch.length >= n ? scratch : new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    const v = values[i];
+    let j = i - 1;
+    while (j >= 0 && s[j] > v) { s[j + 1] = s[j]; j--; }
+    s[j + 1] = v;
+  }
   const med = n % 2 ? s[(n - 1) >> 1] : 0.5 * (s[n / 2 - 1] + s[n / 2]);
-  const a = trimStage(s, n, med, trimSemitones);
-  if (a.dropped <= maxTrimFraction) return a.kept >= minValues ? a.sd : null;
-  if (!(wideTrimSemitones > trimSemitones)) return null;
-  const b = trimStage(s, n, med, wideTrimSemitones);
+  const a = trimStage(s, n, med, trimSemitones, stageA);
+  if (a.dropped <= maxTrimFraction) return a.kept >= minValues ? done(info, a.sd, SPREAD_OK) : done(info, null, SPREAD_FEW);
+  if (!(wideTrimSemitones > trimSemitones)) return done(info, null, SPREAD_REFUSED);
+  const b = trimStage(s, n, med, wideTrimSemitones, stageB);
   const maxWide = typeof maxWideTrimFraction === "number" ? maxWideTrimFraction : maxTrimFraction;
-  if (b.dropped <= maxWide && b.kept >= minValues) return b.sd;
-  return null;
+  if (b.dropped <= maxWide) return b.kept >= minValues ? done(info, b.sd, SPREAD_OK) : done(info, null, SPREAD_FEW);
+  return done(info, null, SPREAD_REFUSED);
 }
 
 export function hzToSemitones(hz) {
@@ -125,6 +165,8 @@ export function createSteadinessTracker(options = {}) {
   const valueBuf = new Float64Array(CAPACITY);
   const scratch = new Float64Array(CAPACITY);
   const expectedCount = cfg.windowSec / cfg.expectedHopSec;
+  const info = { reason: SPREAD_OK };
+  const NONE = Object.freeze({ value: null, held: false });
   let head = 0;   // index of the oldest entry
   let count = 0;
   let latestT = -Infinity;
@@ -133,13 +175,13 @@ export function createSteadinessTracker(options = {}) {
   let fresh = null;       // latest qualifying reading (after EMA) or null
   let lastValid = null;
   let lastValidT = -Infinity;
-  let result = { value: null, held: false };
+  let result = NONE;
 
   function reset() {
     head = 0; count = 0;
     latestT = -Infinity; lastComputeT = -Infinity; dirty = false;
     fresh = null; lastValid = null; lastValidT = -Infinity;
-    result = { value: null, held: false };
+    result = NONE;
   }
 
   function push(pitchHz, timeSec) {
@@ -168,17 +210,33 @@ export function createSteadinessTracker(options = {}) {
     }
     const denom = Math.max(nAll, expectedCount);
     let sd = null;
-    if (nV / denom >= cfg.minCoverage) sd = trimmedSpread(valueBuf, nV, cfg, scratch);
+    let refused = false;
+    if (nV / denom >= cfg.minCoverage) {
+      sd = trimmedSpread(valueBuf, nV, cfg, scratch, info);
+      refused = info.reason === SPREAD_REFUSED;
+    }
     if (sd !== null) {
       fresh = fresh !== null && cfg.emaAlpha < 1 ? cfg.emaAlpha * sd + (1 - cfg.emaAlpha) * fresh : sd;
       lastValid = fresh; lastValidT = latestT;
-      result = { value: fresh, held: false };
+      setResult(fresh, false);
+    } else if (refused) {
+      // Enough voiced audio but the trim cannot clean the window up: a
+      // register switch / octave-error run during continuous phonation.
+      // Show "—", and drop the old note's reading so it is not held
+      // across the switch.
+      fresh = null; lastValid = null; lastValidT = -Infinity;
+      result = NONE;
     } else {
+      // Too little voiced audio (the voice stopped / went sparse): hold
+      // the last reading, dimmed, for holdSec.
       fresh = null;
-      result = lastValid !== null && latestT - lastValidT <= cfg.holdSec
-        ? { value: lastValid, held: true }
-        : { value: null, held: false };
+      if (lastValid !== null && latestT - lastValidT <= cfg.holdSec) setResult(lastValid, true);
+      else result = NONE;
     }
+  }
+
+  function setResult(value, held) {
+    if (result.value !== value || result.held !== held) result = { value, held };
   }
 
   function read() {

@@ -5,8 +5,9 @@
 // src/audio/steadiness.js via useAudioPipeline (`steadiness`,
 // `steadinessHeld`). Deliberately neutral: no colour judgement (it is
 // not a pass/fail and not gendered), "—" when there is not enough
-// voiced sound in the window, dim when the value is the last reading
-// held briefly after the window stopped qualifying. A small info button
+// voiced sound in the window or the window spans a jump the trim
+// refuses, dim when the value is the last reading held briefly after
+// the voice stopped. A small info button
 // opens a one-paragraph explainer (tap-friendly; also a hover title).
 
 import { useEffect, useId, useRef, useState } from "react";
@@ -17,7 +18,9 @@ const EXPLAINER =
   "(standard deviation) of your pitch, in semitones. Smaller means " +
   "steadier; 1 semitone is the step between neighbouring piano keys. " +
   "Vibrato and slides count as movement. Shows — until there is " +
-  "about a second of voiced sound, and dims briefly after you stop. " +
+  "about half a second of voiced sound, and during a jump to a new " +
+  "note or register (until the new note fills most of the second). " +
+  "After you stop, the last value stays, dimmed, for a moment. " +
   "Differences under about 0.1 st are within measurement noise.";
 
 export function SteadinessReadout({

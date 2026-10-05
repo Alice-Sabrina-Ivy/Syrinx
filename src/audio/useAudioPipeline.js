@@ -84,8 +84,9 @@ export function useAudioPipeline() {
     noteName: null,
     // Pitch steadiness (steadiness.js): SD in semitones of the posted
     // pitch over the last ~1 s, or null ("—") when the window holds too
-    // little voiced audio. steadinessHeld: the value is the last
-    // reading, kept briefly after the window stopped qualifying (dim).
+    // little voiced audio or spans a jump the trim refuses.
+    // steadinessHeld: the value is the last reading, kept briefly after
+    // the voice stopped (dim).
     steadiness: null,
     steadinessHeld: false,
     formants: { f1: null, f2: null, f3: null },
@@ -141,8 +142,9 @@ export function useAudioPipeline() {
     ts: 0,
   });
   // Steadiness tracker (steadiness.js) — fed every pitch-worker message
-  // (posted values, voiced or not) by handlePitchMessage; read at the
-  // throttled state cadence by handleAnalysisResult. Fresh per start().
+  // (posted values, voiced or not) by handlePitchMessage; read on every
+  // DSP frame by handleAnalysisResult (published on the throttled state
+  // cadence). Fresh per start().
   const steadinessRef = useRef(null);
   // Periodic AudioContext state sampler interval — set up in start(),
   // cleared in stop(). Diag-mode-only; the ref stays null in production.
@@ -934,8 +936,9 @@ export function useAudioPipeline() {
       pitchTs: latestPitch.ts,
     });
     const { pitch, hasPitch, isQuiet } = gate;
-    // Steadiness reading (cached; recomputed at most every 100 ms of
-    // audio inside the tracker). A stalled pitch worker reads "—".
+    // Steadiness reading (cached inside the tracker: recomputed on the
+    // first read after new pitch messages arrived, i.e. at most once per
+    // DSP frame). A stalled pitch worker reads "—".
     const steady = !gate.pitchStale && steadinessRef.current
       ? steadinessRef.current.read()
       : NO_STEADINESS;
