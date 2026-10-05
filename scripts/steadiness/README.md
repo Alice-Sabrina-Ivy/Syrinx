@@ -4,6 +4,7 @@ The live pitch-steadiness readout (2026-10-04): 1-s SD of the pitch worker's
 posted values, in semitones, from [src/audio/steadiness.js](../../src/audio/steadiness.js).
 Decision data (public-data results): [measurements/steadiness-readout-2026-10-04.md](../../measurements/steadiness-readout-2026-10-04.md).
 Session-scored output (`score.py`'s `sessions` block, `report.py ... sessions | best | bins`,
+the A / S speaker columns of `table.py` / `table2.py`, `stability.py`'s `sessions` row,
 `hook-check.mjs --session=`) is a private-session result: it stays in the gitignored `build/`
 and goes to the user's private project, never to `measurements/` (CLAUDE.md, Private session data).
 Background (why posted values, why a trim): [measurements/pitch-precision-steadiness-2026-10-04.md](../../measurements/pitch-precision-steadiness-2026-10-04.md).
@@ -24,7 +25,7 @@ Work dir `build/steady/` (gitignored). Inputs:
 | `synth-cases.mjs` | synthetic cases through the REAL workers + REAL hook: flat (jitter only), vibrato 4.5–6.5 Hz ±25–100 c, drift 0.5–4 st/s, sirens, ±7 / ±12 st jumps (abrupt / 80 ms), short notes, notes in pink / fan-hum / white noise at 20 / 10 / 5 dB, noise only (all noise-synth classes + babble + resonant, 4 seeds × 30 s) |
 | `sim.mjs` | runs the module over posted (or `--col=paint`) series for a configuration grid (one-factor-at-a-time, trim × drop-limit grid, two-stage trims, variations around the chosen recipe `rec`, `untrimmed06` = untrimmed control at coverage 0.6, and `defaults` = the module as committed, incl. the 1.5 s hold) |
 | `score.py` | readout vs reference on a 0.25 s grid. Sessions: Praat AC on own-speaker windows (disputed windows excluded), `--reftrim=3` (precision-pass convention) or `recipe` (same two-stage trim on the reference); categories held / speech-like / sparse / < 20 % voiced / reference-silent; best-window p5 / p10. Corpora: clean references untrimmed (`agree_raw`) and 3-st trimmed. Synthetic: truth contour |
-| `table.py`, `table2.py`, `report.py` | one-line-per-config summaries; markdown tables for the measurement file |
+| `table.py`, `table2.py`, `report.py` | one-line-per-config summaries / markdown tables on stdout (only public-set columns go into `measurements/`) |
 | `jumps.py` | synthetic jump / siren windows spanning both notes: "—" / held / large / small (`--sim=` to pick a sim dir) |
 | `stability.py` | display stability at the hook's 200 ms state cadence; number ↔ "—" flips per minute (`--sim=`) |
 | `hook-check.mjs` | real chain over a session: hook state == pure module bit for bit, display readout unchanged vs the session oracle's `driveHook`, posted values == the attr dump |
