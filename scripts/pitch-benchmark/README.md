@@ -79,7 +79,7 @@ for s in 2025-09-08 2026-05-07 2026-05-26 2026-06-09; do
   python scripts/pitch-benchmark/swift.py stream --wav="$SYRINX_SESSIONS_DIR/$s/session.wav" --name=$s; done
 # 3. sanity, scoring, tables
 python scripts/pitch-benchmark/sanity_baseline.py   # must print the 2026-10-03 committed corpus numbers
-python scripts/pitch-benchmark/sanity_sessions.py   # must print 88.01 / 91.37 (session-oracle convention)
+python scripts/pitch-benchmark/sanity_sessions.py   # must reproduce the session-oracle analyze.py pooled target-band posted row for base / disp (values kept in the private project)
 python scripts/pitch-benchmark/score_corpora.py     # PENN voicing 0.10; --penn-thr=X to change
 python scripts/pitch-benchmark/score_sessions.py --dets=syrinx_main,syrinx_new,syrinx_new600,syrinx_main_disp,syrinx_new_disp,syrinx_new600_disp,praat_ac,praat_ac_cal,praat_cc,pyin,penn,crepe_tiny,swift_offline,swift_stream,swift_offline_g09,penn_ungated,crepe_tiny_ungated,swift_offline_ungated,pyin_ungated
 $VPY scripts/pitch-benchmark/mireval_check.py

@@ -215,9 +215,10 @@ const STAGES = {
   },
   // Stage F (2026-07-19): frameLength × voicingThreshold interaction at
   // the deployed operating point, with the minLag fix in place. Stage D
-  // found fl1280 beats fl1536 on session band (+1.2), octave-up (−0.6),
-  // FDA and PTDB, at the cost of hillenbrand NULLS (+0.9) — while vt0.35's
-  // main effect is cutting nulls on every corpus. Test whether the two
+  // found fl1280 beats fl1536 on the session band and octave-up (private
+  // session recording), FDA and PTDB, at the cost of hillenbrand NULLS
+  // (+0.9) — while vt0.35's main effect is cutting nulls on every
+  // corpus. Test whether the two
   // levers compose; fl1408/fl1152 probe the window axis around the 1280
   // point.
   F: () => {

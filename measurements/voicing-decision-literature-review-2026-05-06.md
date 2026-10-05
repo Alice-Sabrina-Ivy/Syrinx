@@ -178,8 +178,8 @@ contribution was adding the HMM voicing layer on top.
 
 | Method | Signals used | Gate type | Thresholds | Temporal context | Real-speech robustness |
 |---|---|---|---|---|---|
-| **Syrinx pre-PR (OR)** | intensity (dB), voicedness (HMM-smoothed posterior) | Hard per-frame OR; suppress if EITHER fails | -50 dB, 0.5 | None at gate level | **Poor** — 88% of real speech suppressed; voicedness arm rejects 64% because it measures clean periodicity |
-| **Syrinx PR #74 (AND)** | intensity, voicedness | Hard per-frame AND; suppress only if BOTH fail | -50 dB, 0.5 | None at gate level | **Reasonable on tested captures** (76–78% speech kept, 100% noise suppressed) but voicedness arm dormant in practice (within 1pp of intensity-only). Codex's loud-unvoiced concern unvalidated |
+| **Syrinx pre-PR (OR)** | intensity (dB), voicedness (HMM-smoothed posterior) | Hard per-frame OR; suppress if EITHER fails | -50 dB, 0.5 | None at gate level | **Poor** — 88% of real speech suppressed on the TED-talk real-mic capture; the voicedness arm rejects most speech frames because it measures clean periodicity |
+| **Syrinx PR #74 (AND)** | intensity, voicedness | Hard per-frame AND; suppress only if BOTH fail | -50 dB, 0.5 | None at gate level | **Reasonable on tested captures** (76.4% speech kept on the TED-talk capture, 100% noise suppressed) but voicedness arm dormant in practice (within 1pp of intensity-only). Codex's loud-unvoiced concern unvalidated |
 | **Praat** | Local AC peak height, frame intensity vs **global absolute peak** | Soft scoring → global Viterbi | voicingThreshold=0.45, silenceThreshold=0.03 (ratio), voicedUnvoicedCost=0.14, octaveJumpCost=0.35 | Full-utterance Viterbi | High — production-grade in phonetics labs since 1993 |
 | **librosa.pyin** | YIN candidate-mass distribution only | HMM observation model with voiced/unvoiced state twins | switch_prob=0.01, Beta(2,18), no_trough_prob=0.01 | Full-sequence Viterbi over (2×M)-state HMM | High on music — voicing recall 92.5–95%, specificity 88.9–91.9%. **No intensity gating at all** |
 | **Original pYIN** (Mauch & Dixon 2014) | YIN candidate mass | HMM with twin voiced/unvoiced pitch states | switch_prob = 0.01 (P(no change)=0.99), Beta(α=1,β=18) for thresholds | Full-sequence Viterbi | Same as librosa numbers. Designed for clean singing |
@@ -204,7 +204,8 @@ decision) or use `voiced_prob` as a continuous confidence weight. Praat
 uses peak height as input to the path-finder, never as a hard suppress-
 the-frame gate. The 0.5 threshold in Syrinx's code has no precedent.
 The investigation that motivated PR #74 confirmed empirically why: median
-voicedness on real speech is 0.005–0.018, well below 0.5, so the
+voicedness on real-mic speech is far below 0.5 (~0.008 on the TED-talk
+capture of the PR #74 follow-up), so the
 threshold was structurally wrong for any real-world voice.
 
 **C. The intensity arm should compare against a global/recent peak, not absolute dB.**
@@ -219,8 +220,9 @@ unit-stable problem applies to absolute-dB gates.
 ## 7. Recommendation: Outcome 2 (different approach), staged
 
 **Stage 1 — ship PR #74 as a minimum-disruption fix.** The OR→AND change
-is strictly an improvement on every measured capture (76–78% speech
-kept vs 12% under OR; 100% noise suppressed in tested captures).
+is strictly an improvement on every measured capture (TED-talk capture:
+76.4% speech kept vs 11.9% under OR; 100% noise suppressed in tested
+captures).
 Codex's loud-unvoiced concern is real but the AND gate is empirically
 no worse than intensity-only on real-mic data (within 1pp). Path A
 loud-noise capture is still useful but isn't a blocker for this PR —

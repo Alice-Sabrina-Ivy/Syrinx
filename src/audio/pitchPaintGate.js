@@ -35,15 +35,14 @@
 // redesign-2026-10-03.md). The 06-10 gate kept its level across every
 // gap and needed 16 off-level frames (400 ms) to accept a new one, and
 // it let HELD values (the pitch-hold bridge over detector null gaps)
-// into the level as if fresh. For a speaker who alternates registers
-// between words (a transfeminine trainee switching ~110 Hz safety voice
-// ↔ ~225 Hz target voice) the level stayed anchored on the previous
+// into the level as if fresh. For a speaker who alternates registers an
+// octave apart between words, the level stayed anchored on the previous
 // word's register: target-voice words showed blank (or, via the readout
-// fallback, the stale low value an octave down) for most of their
-// length — target-voice displayed-correct 60 % vs 85 % with no gate on
-// her sessions. Three changes, each measured against the consensus and
-// strict references on all four of her sessions + the PTDB/FDA/
-// Hillenbrand/vocadito guard corpora:
+// fallback, the stale low value an octave down) for much of their
+// length (measured on the private session recordings, well below an
+// ungated display). Three changes, each measured against the consensus
+// and strict references on the private session recordings + the PTDB/
+// FDA/Hillenbrand/vocadito guard corpora:
 //   1. Held values do not feed the gate. push(pitch, { fresh: false })
 //      may paint (on-level, continuity confirmed) to bridge consonants,
 //      but never enters the level ring / counters, and counts as a gap
@@ -54,20 +53,21 @@
 //      be accepted, for the first REACQUIRE_WINDOW painted frames of the
 //      new segment. The level is KEPT (not cleared): a 2–3-frame onset
 //      harmonic lock after a gap is still suppressed — clearing the
-//      level instead (tested) painted those onset locks and cost +0.3–
-//      0.5 pp low-voice octave-up.
+//      level instead (tested) painted those onset locks and raised
+//      low-voice octave-up (private session recordings).
 //   3. EXCURSION_SUSTAIN 16 → 8 (200 ms) mid-segment: halves the blank
 //      on an in-word register change / fast glide-and-hold, with no
 //      measurable octave-up or spike cost on the sessions or corpora.
 //
 // Faster re-acquisition (2026-10-04, measurements/pitch-display-
 // reacquire-2026-10-04.md). Attributing the remaining target-voice blanks
-// on her sessions showed the slow pickups were (a) in-word register
-// changes (no gap, so the mid-segment sustain applied) and (b) the display
-// median, which after a word gap still held the previous word's values:
-// the first new-register frame painted the OLD register (or blanked) and
-// the off-level run started a frame late. Two changes, measured with the
-// same oracles + the female/male corpora (gender-symmetric):
+// on the private session recordings showed the slow pickups were (a)
+// in-word register changes (no gap, so the mid-segment sustain applied)
+// and (b) the display median, which after a word gap still held the
+// previous word's values: the first new-register frame painted the OLD
+// register (or blanked) and the off-level run started a frame late. Two
+// changes, measured with the same oracles + the female/male corpora
+// (gender-symmetric):
 //   4. The hook restarts the display median when a word opens an octave-
 //      class jump away from it after a gap (pitchSmoothing.js
 //      smoothingBufferFor; seeded, so the painted value stays a real
