@@ -32,7 +32,7 @@
 // ~151-155 Hz a 2T peak just under maxLag can out-score T (frames up to
 // +4.7 dB). At 25 dB the mean error stays <= +0.75 dB (hnr-test bound).
 // Real fix if it ever matters: a Gaussian window (Praat's alternative) or
-// derating peaks within a few lags of maxLag. Cost: on running speech 70 ms reads 0.3-0.65 dB below
+// derating peaks within a few lags of maxLag. Cost: on running speech 70 ms reads 0.4-0.65 dB below
 // Praat to_harmonicity_ac (more F0/amplitude change inside the longer
 // frame), uniformly across F0 (no F0 confound), vs ~0 dB at 60 ms.
 // measurements/hnr-window-corrected-2026-10-03.md.
