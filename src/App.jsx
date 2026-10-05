@@ -15,10 +15,15 @@ const DiagnosticOverlay = DIAG_ENABLED
   ? lazy(() => import("./diag/DiagnosticOverlay.jsx"))
   : null;
 
+// Experimental resonance lab view — a lazy chunk fetched only when the tab is
+// opened; opening it is also what starts the lab (resonance-lab/labRequest.js).
+const LabView = lazy(() => import("./resonance-lab/LabView.jsx"));
+
 const TABS = [
   { id: "dashboard", label: "Dashboard" },
   { id: "pitch", label: "Pitch" },
   { id: "history", label: "History" },
+  { id: "lab", label: "Resonance lab" },
 ];
 
 const WELCOME_KEY = "syrinx_welcomed";
@@ -298,6 +303,12 @@ function App() {
               )}
 
               {activeTab === "history" && <SessionHistory />}
+
+              {activeTab === "lab" && (
+                <Suspense fallback={null}>
+                  <LabView />
+                </Suspense>
+              )}
             </div>
 
             {/* Voice status + mic toggle (hidden on history tab) */}

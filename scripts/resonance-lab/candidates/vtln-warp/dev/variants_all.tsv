@@ -1,0 +1,26 @@
+mw_ct_s8	{"train_step": 8}
+mw_ct_s8_b450	{"train_step": 8, "band": [450, 5000]}
+mw_ct_s8_b600	{"train_step": 8, "band": [600, 5000]}
+mw_lift_s8	{"train_step": 8, "method": "lift"}
+mw_ct_s8_k8	{"train_step": 8, "K": 8}
+mw_ct_s8_k64	{"train_step": 8, "K": 64}
+mw_ct_s8	{"train_step": 8}
+mw_ct_s8_sat0	{"train_step": 8, "sat": 0}
+mw_lift_s8	{"train_step": 8, "method": "lift"}
+mw_ct_s8_b450	{"train_step": 8, "band": [450, 5000]}
+mw_ct_s8_f0c	{"train_step": 8, "arch": "mwf0", "f0_edges": [150.0, 210.0]}
+mw_ct_s8_k8	{"train_step": 8, "K": 8}
+mw_ct_s8_k64	{"train_step": 8, "K": 64}
+mw_ct_s8_e20	{"train_step": 8, "edb_rel": 20}
+mw_ct_s8_b300_3500	{"train_step": 8, "band": [300, 3500]}
+mw_ct_s8_b600	{"train_step": 8, "band": [600, 5000]}
+mw_ct_s8_b450_5500	{"train_step": 8, "band": [450, 5500]}
+mw_ct_s8_b450_km32	{"train_step": 8, "band": [450, 5000], "kmax": 32}
+mw_ct_s8_b450_k64	{"train_step": 8, "band": [450, 5000], "K": 64}
+mw_lift_s8_b450	{"train_step": 8, "band": [450, 5000], "method": "lift"}
+mw_ct_s8_b600_augpm8	{"train_step": 8, "band": [600, 5000], "aug": ["p+8", "p-8"]}
+mw_ct_s8_b450_augpm8	{"train_step": 8, "band": [450, 5000], "aug": ["p+8", "p-8"]}
+mw_ct_s8_b800	{"train_step": 8, "band": [800, 5000]}
+mw_ct_s8_b600_augpm8_k64	{"train_step": 8, "band": [600, 5000], "aug": ["p+8", "p-8"], "K": 64}
+mw_ct_s8_b1000	{"train_step": 8, "band": [1000, 5000]}
+mw_ct_s8_b800_k64	{"train_step": 8, "band": [800, 5000], "K": 64}
