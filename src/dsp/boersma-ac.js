@@ -33,9 +33,9 @@ export const BOERSMA_DEFAULTS = {
                          // the chart (the display floor was 75). Corpus
                          // cost of dropping 60-75 Hz is negligible (FDA
                          // 0.13%, PTDB 0.97%, Hillenbrand/vocadito ~0);
-                         // 3.6% of the low-voice session's frames sat
-                         // there and now render as honest gaps instead of
-                         // under-chart artifacts. Ceiling was cut 600->400
+                         // low-voice frames that sat there (private
+                         // session recording) now render as honest gaps
+                         // instead of under-chart artifacts. Ceiling was cut 600->400
                          // earlier the same day (removed the 3-4x
                          // harmonic-lock error surface). measurements/
                          // pitch-range-60-400-2026-06-10.md +
@@ -47,8 +47,8 @@ export const BOERSMA_DEFAULTS = {
                           // operating point (75-400 Hz, L=2 tracker):
                           // corpus nulls convert to correct with octave
                           // errors and flip rate flat-or-better on every
-                          // corpus + the session (band 93.9→94.2, band
-                          // nulls 0.4→0.1). 0.28-0.33 measured slightly
+                          // corpus (and on a private session recording).
+                          // 0.28-0.33 measured slightly
                           // better still on clean corpora — headroom
                           // pending a real-noise oracle. measurements/
                           // pitch-l2-retune-2026-07-19.md
@@ -56,8 +56,8 @@ export const BOERSMA_DEFAULTS = {
   octaveCost: 0.01,       // Praat default. DO NOT RAISE — higher values
                           // are a high-octave bias that re-creates the
                           // weak-H1 octave-up failure on low-F0 voices
-                          // (stage-A: 0.2 -> 48.5 % octave-up in the
-                          // user-session 80-110 Hz band).
+                          // (stage-A, measured on a private session
+                          // recording).
   peakFloor: 0.15,        // ignore AC maxima weaker than this (rNorm)
   maxCandidates: 15,
 };
@@ -65,9 +65,8 @@ export const BOERSMA_DEFAULTS = {
 // Production frame length at 16 kHz: 80 ms. Response center sits 40 ms
 // behind the latest sample. 1536→1280 on 2026-07-19 (stage-F sweep at
 // the deployed 75-400/L=2 operating point, minLag fix in place): with
-// vt 0.35, 1280 beats 1536 on the tuning session (band 94.2→95.4,
-// octave-up 4.1→3.4), BOTH held-out recordings (97.3→98.3, 98.1→98.6),
-// FDA (+1.0) and PTDB (+1.4) for BOTH genders, at the cost of ~1 pp on
+// vt 0.35, 1280 beats 1536 on FDA (+1.0) and PTDB (+1.4) for BOTH
+// genders (and on the private session recordings, tuning and held-out), at the cost of ~1 pp on
 // hillenbrand (isolated short vowels; symmetric across m/w, mostly
 // nulls) and −0.1 vocadito. 1152 pushes further but the hillenbrand/
 // vocadito cost steepens; 1408 is dominated. The 2026-06-09 stage-B
@@ -250,8 +249,8 @@ export const PATH_DEFAULTS = {
                             // at the 80 ms frame: 40 ms window center +
                             // 50 ms decode). L=4 (~140 ms) scores
                             // marginally better (2026-06-09 tuning at
-                            // the then-96 ms frame: session correct
-                            // 93.7 vs 93.4, flip 4.3 vs 5.0); L=2
+                            // the then-96 ms frame, on a private
+                            // session recording); L=2
                             // chosen for responsiveness (user decision
                             // 2026-06-09).
 };

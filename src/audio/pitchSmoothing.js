@@ -26,8 +26,8 @@
 // already suppresses single-frame octave flips upstream, and the long
 // median was measurably COSTING displayed accuracy — reconstructing the
 // production display chain against Praat references showed K=5 losing
-// 1.4–2.2 pp of 80–110 Hz band accuracy and 25 ms of display lag vs K=3
-// on the tuning session AND both held-out recordings, with K=3 painting
+// displayed band accuracy and 25 ms of display lag vs K=3 on the private
+// session recordings (tuning and held-out), with K=3 painting
 // no more spikes than K=5 (measurements/pitch-l2-retune-2026-07-19.md).
 // A 2-frame outlier now reaches the output by design — 1-frame flips are
 // the tracker's job, octave-class excursions are the paint gate's.

@@ -10,31 +10,32 @@
 // mechanism holds for any length > 1) ramps an instant octave jump
 // (100 → 380 Hz) through intermediate values whose step-to-step deltas
 // are each < 12 st, so the jump break never fired and the ramp painted
-// as a connected near-vertical line. Measured on the 2026-05-26 session:
-// of 1078 connected painted pairs ≥ 9 st apart, ZERO were ≥ 12 st steps —
-// every spike slipped through as a ramp. (scripts/pitch-excursion-
+// as a connected near-vertical line. Measured on a private session
+// recording: none of the connected painted pairs ≥ 9 st apart was a
+// single ≥ 12 st step — every spike slipped through as a ramp. (scripts/pitch-excursion-
 // measure.js)
 //
 // Mechanism — break against the established LEVEL, not the previous
 // frame. Track a robust median of recent painted pitches ("established
 // level"). A new value is:
 //   - ON-LEVEL  (< EXCURSION_SEMI from the level): normal prosody. Paints
-//     after the usual ONSET_CONFIRM_FRAMES continuity streak. (Session:
-//     real speech deviates from its established level p99 = 8.3 st,
-//     max 9.0 — never an octave.)
+//     after the usual ONSET_CONFIRM_FRAMES continuity streak. (On a
+//     private session recording real speech stayed under EXCURSION_SEMI
+//     from its established level — never an octave.)
 //   - OFF-LEVEL (≥ EXCURSION_SEMI): an octave-class jump. NOT painted
 //     (rendered as a gap) unless it sustains a consistent new level for
 //     EXCURSION_SUSTAIN frames — then accepted as a genuine register
-//     change and the level is reseeded there. Harmonic locks (median run
-//     ~4 frames) never reach the sustain count, so they never paint;
+//     change and the level is reseeded there. Harmonic locks (typically a
+//     few frames) never reach the sustain count, so they never paint;
 //     genuine sustained octave changes do, after a confirmation delay.
 //   The painted VALUE is always the real detected pitch — this only
 //   gates WHEN to paint, never alters the number (unlike the octave-
 //   locking reconcileHarmonic removed 2026-05-09).
 //
-// Sweep behind the constants: scripts/pitch-excursion-fix-sweep.js /
-// measurements/pitch-excursion-break-2026-06-10.md. SEMI 9.5 sits in the
-// gap between prosody max (9.0) and the octave (12); SUSTAIN 16 (~400 ms)
+// Sweep behind the constants: scripts/pitch-excursion-fix-sweep.js (the
+// 2026-06-10 excursion-break measurement is private, kept outside this
+// repo). SEMI 9.5 sits in the gap between the measured prosody maximum and
+// the octave (12); SUSTAIN 16 (~400 ms)
 // outlasts the harmonic-lock tail while keeping genuine-register-change
 // latency acceptable for speech (the reported failure mode — you don't
 // jump octaves between words). Smooth pitch glides are unaffected: each

@@ -1,5 +1,8 @@
 """Markdown tables for measurements/resonance-lab-benchmark-2026-10-04.md.
 
+The R6 columns are results on the private session recordings: drop them before pasting a
+table into measurements/ (public-data results only; see CLAUDE.md "Private session data").
+
   build/resonance-lab/venv/Scripts/python scripts/resonance-lab/lab_tables.py full     # every full test-split result
   build/resonance-lab/venv/Scripts/python scripts/resonance-lab/lab_tables.py live     # finalists: harness vs in-app lab path (--quick)
 """

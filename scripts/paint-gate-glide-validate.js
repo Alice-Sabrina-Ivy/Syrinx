@@ -14,7 +14,7 @@
 //    gate): painted frames, connected pairs ≥ 9 st (visible vertical
 //    lines), octave-class pairs ≥ 12 st, and 80–110 Hz band correct%
 //    at best alignment. These are the metrics the excursion break was
-//    tuned on (pitch-excursion-break-2026-06-10.md) — they must not
+//    tuned on (2026-06-10; private measurement, kept outside this repo) — they must not
 //    regress.
 // 2. Synthetic gate-level scenarios (sequences fed straight to
 //    createPaintGate, i.e. post-median values):

@@ -21,15 +21,15 @@ SwiftF0 replaced by a Praat-style window-corrected autocorrelation
 detector + bounded-Viterbi path tracker (`src/dsp/boersma-ac.js`), pure
 JS, no model fetch. Trigger: real-user-session validation showed SwiftF0
 confidently octave-upping on weak-fundamental phonation (H2 louder than
-H1 — routine in voice training): 25.6 % octave-up / 19.1 % null in the
-user's 80–110 Hz register, vs 4.1 % / 0.4 % for tuned AC, at corpus
-parity or better on two of four ground-truth corpora and ~25–50× less
-compute (0.21 ms/frame vs 5–11 ms browser-WASM).
+H1 — routine in voice training) in the user's 80–110 Hz register, far more
+often than tuned AC, which also held up on held-out sessions (private
+measurements, kept outside this repo), at corpus parity or better on two
+of four ground-truth corpora and ~25–50× less compute (0.21 ms/frame vs
+5–11 ms browser-WASM).
 
-Full decision data: [measurements/swift-f0-vs-praat-sessions-2026-06-09.md](measurements/swift-f0-vs-praat-sessions-2026-06-09.md),
-[measurements/pitch-detector-shootout-2026-06-09.md](measurements/pitch-detector-shootout-2026-06-09.md),
-[measurements/boersma-ac-tuning-2026-06-09.md](measurements/boersma-ac-tuning-2026-06-09.md).
-Held-out sessions: AC 96.5–97.5 % vs SwiftF0 70.9–84.4 % overall.
+Full decision data: [measurements/boersma-ac-tuning-2026-06-09.md](measurements/boersma-ac-tuning-2026-06-09.md)
+(the session comparison and detector shootout are private measurements,
+kept outside this repo).
 
 Two measurement-infrastructure findings from the tuning pass (both
 still binding for any future pitch evaluation):
@@ -45,8 +45,8 @@ still binding for any future pitch evaluation):
    measurement history should be read with this in mind.
 
 Post-cutover follow-ups: excursion-break + display-clip + 75 Hz floor
-(2026-06-10, `pitch-trace-clip-floor` branch;
-[measurements/pitch-excursion-break-2026-06-10.md](measurements/pitch-excursion-break-2026-06-10.md)).
+(2026-06-10, `pitch-trace-clip-floor` branch; the excursion-break
+measurement is private, kept outside this repo).
 The displayed 80–110 Hz band accuracy is ~94 % when scored at the
 correct ~150 ms attribution (98 ms worker latency + 5-frame display
 median lag); an earlier "81 %" figure was an attribution artifact.

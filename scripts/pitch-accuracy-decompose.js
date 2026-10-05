@@ -1,14 +1,14 @@
-// pitch-accuracy-decompose.js — What is the "19% not-correct" in the
-// session 80-110 Hz band actually made of, and is the 81% display
-// metric real or a measurement artifact? (2026-06-10, before deciding
+// pitch-accuracy-decompose.js — What is the not-correct share in the
+// session 80-110 Hz band actually made of, and is the display metric
+// real or a measurement artifact? (2026-06-10, before deciding
 // whether detector accuracy has real headroom worth tuning.)
 //
 // Reconstructs the production display series (AC + tracker + median-5 +
 // pitchPaintGate) over the 2026-05-26 session, then:
 //   1. Sweeps the attribution offset to find best Praat alignment — the
 //      5-frame median adds lag the excursion sweep's fixed offset didn't
-//      account for; if accuracy peaks at a larger offset, the 81% was an
-//      alignment artifact, not detector error.
+//      account for; if accuracy peaks at a larger offset, the earlier
+//      figure was an alignment artifact, not detector error.
 //   2. At best alignment, decomposes non-correct frames into octave-up,
 //      octave-down, near-miss (5-12%), gross-other, and reports correct
 //      at both 5% and 10% tolerance.

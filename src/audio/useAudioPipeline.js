@@ -920,8 +920,8 @@ export function useAudioPipeline() {
     // pitched is exactly a frame where CPP is meaningful; the old
     // !isQuiet gate let breath/fricatives/background noise (loud but
     // unpitched) into the aggregate, dragging it toward "heavy/breathy."
-    // On the 2026-05-26 session this cut Praat-unvoiced contamination of
-    // the gauge feed from 59.5 % to 45.9 %. Frames are pushed regardless
+    // On a private session recording this cut Praat-unvoiced
+    // contamination of the gauge feed. Frames are pushed regardless
     // of the silent/voiced branch below — the aggregator's hard-reset
     // rule depends on observing unpitched gaps. Only the aggregator's
     // emit result drives the gauge state update further down.
@@ -1106,8 +1106,9 @@ export function useAudioPipeline() {
     // level — so transient 2x/3x/4x harmonic locks never paint, while
     // genuine register changes do. This replaced a consecutive-delta jump
     // break that the display median's octave ramps defeated (the
-    // "testing 1 2 3" connected spike lines; see pitchPaintGate.js +
-    // measurements/pitch-excursion-break-2026-06-10.md). Recording stays
+    // "testing 1 2 3" connected spike lines; see pitchPaintGate.js; the
+    // 2026-06-10 excursion-break measurement is private, kept outside this
+    // repo). Recording stays
     // per-frame truthful — this only governs the trace/readout.
     //
     // VOICED_FALL_FRAMES hysteresis: after this many consecutive

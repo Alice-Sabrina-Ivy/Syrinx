@@ -21,13 +21,15 @@ Usage:
   python -u scripts/compare-praat-swift-sessions.py \
       build/pitch-compare/praat-contours.json \
       build/pitch-compare/swift-contours.json \
-      measurements/swift-f0-vs-praat-sessions-2026-06-09.json
+      build/pitch-compare/swift-vs-praat-sessions.json
 
-The WAVs are the private session recordings (see CLAUDE.md "Private session
-data"). The output JSON is committed, so each file path is written relative
-to SYRINX_SESSIONS_DIR ("$SYRINX_SESSIONS_DIR/<session>/session.wav"), never
-as the absolute local path. With the variable unset an absolute path is
-refused; a path outside the root is written verbatim with a warning.
+The inputs are private session recordings (see CLAUDE.md "Private session
+data"), so the output is a private-session result: keep it under the
+gitignored build/ (or the user's private project), never in measurements/.
+Each file path is written relative to SYRINX_SESSIONS_DIR
+("$SYRINX_SESSIONS_DIR/<session>/session.wav"), never as the absolute local
+path. With the variable unset an absolute path is refused; a path outside
+the root is written verbatim with a warning.
 """
 
 import json

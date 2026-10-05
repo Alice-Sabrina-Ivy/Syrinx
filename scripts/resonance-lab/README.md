@@ -7,6 +7,9 @@ resonance — and *only* resonance — for speakers it has never heard?"
 
 Code lives here (committed). Everything generated — converted audio, manipulated WAVs,
 F0 tracks, cached scores, results — lives under `build/resonance-lab/` (gitignored).
+Results on the `sessions` set (rubric item R6, the private session recordings) stay there
+or in the user's private project: never copy R6 scores, AUCs or orderings into
+`measurements/` (see CLAUDE.md "Private session data").
 
 ## Quick start
 
@@ -77,7 +80,7 @@ on F0 should say how they would behave with the production detector.
 | `manip_test` | 5 utts × 40 test-clean speakers (100 F + 100 M), cropped to ≤ 5 s, × 42 conditions | R2, R3, R3@+8 st, combos |
 | `manip_hill` | Hillenbrand 10 men + 10 women × 12 vowels (240 tokens) × 42 conditions | R2, R3 on steady vowels |
 | `synth` | all vowdata tokens (men/women/**boys/girls**) formant-synthesised, 2 s held | R5 held-vowel SD, R7 children |
-| `sessions` | private session clips (`$SYRINX_SESSIONS_DIR`): second 857, alice_low 500, alice_raised 74 | R6 |
+| `sessions` | private session clips (`$SYRINX_SESSIONS_DIR`; local-only, never committed): groups second / alice_low / alice_raised | R6 |
 | `r1_dev`, `manip_dev` | same recipes on dev-clean (80 manip sources) | `--split dev` tuning |
 | `train_dev` | all dev-clean utterances (never scored) | training pool |
 
@@ -138,8 +141,7 @@ on `r1_test`. `G_hill` likewise on Hillenbrand.
   men/women produced by the same synthesiser. Praat Burg also mis-tracks some of these
   static synthetic spectra (spurious extra poles), so formant-based candidates may read
   them worse than real voices.
-* The sessions R6 set is one trainee and one second adult voice on one room/mic chain; alice_raised has ~74
-  clips (~60 s voiced), mostly from 2025-09-08. Ordering "raised > low" assumes Alice's
-  raised register also carries some resonance change (weakly supported by Praat F3/F4 in
-  the 2026-10 brainstorm, AUC ~0.63-0.65); the pitch-corrected R−L column shows how much of
-  any raised-register shift is explained by pitch leak alone.
+* The sessions R6 set comes from one trainee's private recordings on one room/mic chain.
+  Ordering "raised > low" assumes the trainee's raised register also carries some
+  resonance change; the pitch-corrected R−L column shows how much of any raised-register
+  shift is explained by pitch leak alone.
