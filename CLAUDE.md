@@ -80,6 +80,7 @@ No test framework is set up. Test files are runnable Node scripts that print pas
 - **HNR** (`hnr.js`, called by `dsp-worker.js`): `node tests/dsp/hnr-test.js` (109 synthetic known-HNR checks at 44.1/48 kHz, F0 75–400 Hz, incl. the 80 Hz frame-length guard; also in `npm run test:dsp`)
 - **CPP / vocal weight**: `node tests/dsp/cpp-test.js`, `node tests/audio/vocal-weight-aggregator-test.js`, `node tests/audio/vocal-weight-baseline-test.js`
 - **ML / gender**: `node tests/ml/audio-utils-test.js`, `node tests/ml/perceived-voice-hillenbrand-test.js` (accepts `--model=<HF_id>`)
+- **Resonance lab** (`src/resonance-lab/`, experimental): `npm run test:resonance-lab` (JS finalists vs their Python/scored prototypes on fixed LibriSpeech fixtures + the lab's pitch path vs `prodf0.mjs`)
 - **Everything**: `npm run lint` and `npm run build` before any ship claim.
 
 ### Mobile testing
@@ -328,6 +329,10 @@ Tuning sweeps, latency benchmarks, and other measurement artifacts live in `meas
 3. **PENN model** (Direction C, ruled out 2026-05-13): 0 % octave-up at realistic SNRs but 6–7× slower on browser WASM, 24× larger model, needs COI headers. Verdict + re-evaluation scaffolding: `measurements/penn-direction-c-verdict-2026-05-13.md` on the `pitch-detection-penn` branch.
 
 **Effect on other features:** the vocal-weight gauge is unaffected (CPP is independent of pitch interpretation, and the gate uses confidence, which stays high on voiced speech regardless of pitch correctness). Only the pitch trace and note name are visibly wrong.
+
+### Resonance lab (experimental, branch `resonance-lab`)
+
+Calibration-free resonance feedback research. `?resonance=lab` adds a "Resonance lab" tab: four finalist readouts side by side (VTLN warp, resonance-weighted ECAPA head, learned envelope, formant scale), each on a neutral larger/darker ↔ smaller/brighter axis with LibriSpeech reference bands. One extra capture consumer + `src/resonance-lab/lab-worker.js`, both dynamically imported behind [src/resonance-lab/flag.js](src/resonance-lab/flag.js); **without the flag nothing is fetched or spawned** (verified: `node scripts/resonance-lab/lab-smoke.mjs --wav=<48 kHz speech>` after `npm run build`). The pnml finalist reuses the deployed q8-v2 model, patched in memory to also output its embedding (one inference, no second model). Benchmark harness: [scripts/resonance-lab/README.md](scripts/resonance-lab/README.md); results, verdict and limitations: [measurements/resonance-lab-benchmark-2026-10-04.md](measurements/resonance-lab-benchmark-2026-10-04.md). Verdict in one line: adults, running speech, in-session change — yes; absolute position across devices/rooms, children, held vowels — not established. Not a production feature; nothing in the production path changed.
 
 ### Firefox-mobile worker-MSTP capture path
 

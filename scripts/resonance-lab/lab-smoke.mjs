@@ -47,7 +47,7 @@ const log = (...a) => console.log(`[${new Date().toISOString().slice(11, 19)}]`,
 
 async function startServer() {
   server = spawn(process.execPath, [path.join(repo, "node_modules/vite/bin/vite.js"), "preview", "--port", String(PORT), "--strictPort"], { cwd: repo, stdio: "ignore" });
-  for (let i = 0; i < 50; i++) {
+  for (let i = 0; i < 300; i++) {
     try { const r = await fetch(`http://localhost:${PORT}/Syrinx/`); if (r.ok) return; } catch { /* not yet */ }
     await sleep(200);
   }
@@ -66,14 +66,21 @@ async function run(url, { lab }) {
   const cdp = await page.createCDPSession();
   await cdp.send("Emulation.setFocusEmulationEnabled", { enabled: true });
   log("goto", url);
-  await page.goto(url, { waitUntil: "load", timeout: 30000 });
+  await page.goto(url, { waitUntil: "domcontentloaded", timeout: 180000 });
   await page.bringToFront();
   const clickText = async (texts) => page.evaluate((ts) => {
     const b = [...document.querySelectorAll("button")].find((x) => ts.some((t) => x.textContent.includes(t)));
     if (b) b.click();
     return !!b;
   }, texts);
-  log("start clicked:", await clickText(["Get Started", "Start Listening"]));
+  // click until the pipeline is running (a click before hydration is a no-op)
+  let running = false;
+  for (let attempt = 0; attempt < 5 && !running; attempt++) {
+    log("start clicked:", await clickText(["Get Started", "Start Listening"]));
+    running = await page.waitForFunction(() => document.body.innerText.includes("Stop Listening"), { timeout: 4000 })
+      .then(() => true, () => false);
+  }
+  log("pipeline running:", running);
   await sleep(1500);
   if (lab) {
     log("lab tab clicked:", await clickText(["Resonance lab"]));
