@@ -4,7 +4,9 @@
 import { loadSrc, runWorkers } from "../session-oracle/lib/chain.mjs";
 import { readWav } from "../session-oracle/lib/wav.mjs";
 const trees = process.argv.slice(2);
-const { samples, sr } = readWav("C:/Coding Projects/private-session/sessions/2026-05-07/session.wav");
+const SESSIONS_DIR = process.env.SYRINX_SESSIONS_DIR; // the private session recordings (local only; see CLAUDE.md)
+if (!SESSIONS_DIR) throw new Error("set SYRINX_SESSIONS_DIR to the folder holding the private session recordings (see CLAUDE.md)");
+const { samples, sr } = readWav(`${SESSIONS_DIR}/2026-05-07/session.wav`);
 const clip = samples.subarray(600 * sr, 720 * sr);
 const S = [];
 for (const t of trees) S.push(await loadSrc(t));

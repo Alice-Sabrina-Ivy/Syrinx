@@ -526,7 +526,7 @@ function drawStaticPitchTrace(canvas, frames, dpr) {
   // frame (octave excursion the live gate suppressed) is a gap here too.
   // Frames the live trace bridged with the 400 ms pitch hold are recorded
   // voiced:false and are gaps here (29 % of live-painted hops on the
-  // private-session sessions, 2026-10-04) — history is not an exact replica.
+  // private sessions, 2026-10-04) — history is not an exact replica.
   // Legacy frames (no field) draw as before. Stats keep using voiced/f0.
   let inSegment = false;
   let lastDrawnF0 = null;

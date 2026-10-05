@@ -25,8 +25,8 @@ No data is committed. Everything is written under the work dir
 `logs/`, `trees/` (extracted src trees). Other inputs: session-oracle
 references (`$SO_REFS`, default `build/session-oracle/refs`, from
 `scripts/session-oracle/build_refs.py`) and session-oracle runs
-(`build/session-oracle/runs/<tag>`), the private-session session WAVs + parquet
-(`$SESSION_IDS`, personal recordings outside the repo), and
+(`build/session-oracle/runs/<tag>`), the private session WAVs + label parquet
+(`$SYRINX_SESSIONS_DIR`, personal recordings outside the repo), and
 `tests/dsp/data/swift-f0/model.onnx`.
 
 | file | role |
@@ -75,7 +75,7 @@ for d in praat_ac praat_ac_cal praat_cc; do python scripts/pitch-benchmark/sess_
 python scripts/pitch-benchmark/sess_detect.py pyin --procs=4; python scripts/pitch-benchmark/sess_detect.py penn --procs=5
 python scripts/pitch-benchmark/sess_detect.py swift_offline --procs=2; $VPY scripts/pitch-benchmark/sess_detect.py crepe_tiny --procs=4
 for s in 2025-09-08 2026-05-07 2026-05-26 2026-06-09; do
-  python scripts/pitch-benchmark/swift.py stream --wav="C:/Coding Projects/private-session/sessions/$s/session.wav" --name=$s; done
+  python scripts/pitch-benchmark/swift.py stream --wav="$SYRINX_SESSIONS_DIR/$s/session.wav" --name=$s; done
 # 3. sanity, scoring, tables
 python scripts/pitch-benchmark/sanity_baseline.py   # must print the 2026-10-03 committed corpus numbers
 python scripts/pitch-benchmark/sanity_sessions.py   # must print 88.01 / 91.37 (session-oracle convention)

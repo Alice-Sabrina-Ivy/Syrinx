@@ -20,7 +20,7 @@
 #               the display workstream's convention
 #     r1        session-label R1 alone (legacy: what the 2026-10-03 detector-octave
 #               file called "strict"; kept to reproduce its numbers)
-#   Speakers: private-session parquet labels (alice / second).
+#   Speakers: session-label parquet labels (alice / second).
 #   Stage alignment (phase-1 alignment sweep, session-attribution
 #   best_delta): the value describing audio at ref time t is at hop
 #   round((t + 0.040 + lag*hop + delta)/hop - 1), lag = L for display stages
@@ -258,7 +258,7 @@ if __name__ == "__main__":
             print(f"{t:10s} 75-110 up {g('dec','75-110','up')}/{g('paint','75-110','up')} | 110-160 up {g('dec','110-160','up')}/{g('paint','110-160','up')} | "
                   f"75-160 up dec {g('dec','75-160','up')} post {g('post','75-160','up')} paint {g('paint','75-160','up')} ro {g('ro','75-160','up')} | "
                   f"75-160 cor dec {g('dec','75-160','cor')} paint {g('paint','75-160','cor')} blank {g('paint','75-160','null')}")
-        print(f"\n### second voice, {conv}, POOLED: 160-400 dec/paint cor, half; >=400 post cor/half/null, paint half")
+        print(f"\n### Second voice, {conv}, POOLED: 160-400 dec/paint cor, half; >=400 post cor/half/null, paint half")
         for t in TAGS:
             g = lambda sp, st, b, c: f(pct(RES[t], f"POOLED|{conv}|{sp}|{st}|{b}", c))
             print(f"{t:10s} second 160-400 dec {g('second','dec','160-400','cor')}/{g('second','dec','160-400','half')} paint {g('second','paint','160-400','cor')}/{g('second','paint','160-400','half')} | "

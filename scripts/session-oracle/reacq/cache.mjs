@@ -117,7 +117,8 @@ function save(dir, name, W, meta = {}) {
 
 const t0 = Date.now();
 if (args.set === "sessions") {
-  const ROOT = args["sessions-root"] ?? "C:/Coding Projects/private-session/sessions";
+  const ROOT = args["sessions-root"] ?? process.env.SYRINX_SESSIONS_DIR;
+  if (!ROOT) throw new Error("set SYRINX_SESSIONS_DIR to the folder holding the private session recordings (see CLAUDE.md)");
   for (const s of (args.sessions ?? "2025-09-08,2026-05-07,2026-05-26,2026-06-09").split(",")) {
     const { samples, sr } = readWav(`${ROOT}/${s}/session.wav`);
     const W = runWorkers(S, samples, sr);

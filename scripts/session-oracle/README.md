@@ -39,10 +39,11 @@ Decision data: [measurements/target-voice-combined-validation-2026-10-03.md](../
 
 ## Data
 
-- Sessions: `C:/Coding Projects/private-session/sessions/<YYYY-MM-DD>/session.wav`
-  (16 kHz mono) and the private-session frame table
+- Sessions: `$SYRINX_SESSIONS_DIR/<YYYY-MM-DD>/session.wav`
+  (16 kHz mono) and the session label table
   `acoustic/frames_enrollment-2026-05-07-v2.parquet` (speaker labels
-  alice / second / outside, private-session `f0_hz` = Praat AC 100–500, "R1").
+  alice / outside / unknown plus one label for the second voice in the
+  recordings, code `second` here; session-label `f0_hz` = Praat AC 100–500, "R1").
   Sessions 2025-09-08, 2026-05-07, 2026-05-26 are tuning sessions;
   **2026-06-09 is held out**. Not in the repo (personal recordings).
 - Corpora: `tests/dsp/data/` (`corpora.js` loaders; PTDB-TUG and FDA audio are
@@ -87,7 +88,7 @@ node scripts/session-oracle/corpus.mjs --report=base,head
   `cons_arb` = `cons` minus frames whose octave the arbiter disputes. `r1` =
   session-label R1 alone (what the 2026-10-03 detector-octave file called
   "strict"). PENN runs only on Alice spans with any reference ≥ 140 Hz plus
-  ~150 s of second voice, so `cons` outside those spans is a 2-of-2 AC/SHS
+  ~150 s of the second voice, so `cons` outside those spans is a 2-of-2 AC/SHS
   agreement.
 - **Alignment** (phase-1 alignment sweep): the value describing audio at
   reference time t is at hop `round((t + 0.040 + lag·hop + δ)/hop − 1)`,

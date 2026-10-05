@@ -44,13 +44,13 @@ rows = [
     ("Alice strict 160-400 post C5", "alice_strict|post|160-400", "C5"),
     ("Alice strict 160-400 paint C5", "alice_strict|paint|160-400", "C5"),
     ("Alice strict 160-400 paint dn", "alice_strict|paint|160-400", "down"),
-    ("second voice 75-160 post C5", "second_cons|post|75-160", "C5"),
-    ("second voice 75-160 paint C5", "second_cons|paint|75-160", "C5"),
-    ("second voice 75-160 post up", "second_cons|post|75-160", "up"),
-    ("second voice 160-400 post C5", "second_cons|post|160-400", "C5"),
-    ("second voice 160-400 post dn", "second_cons|post|160-400", "down"),
-    ("second voice 160-400 paint C5", "second_cons|paint|160-400", "C5"),
-    ("second voice HO 160-400 post dn", "second_cons_HO|post|160-400", "down"),
+    ("Second voice 75-160 post C5", "second_cons|post|75-160", "C5"),
+    ("Second voice 75-160 paint C5", "second_cons|paint|75-160", "C5"),
+    ("Second voice 75-160 post up", "second_cons|post|75-160", "up"),
+    ("Second voice 160-400 post C5", "second_cons|post|160-400", "C5"),
+    ("Second voice 160-400 post dn", "second_cons|post|160-400", "down"),
+    ("Second voice 160-400 paint C5", "second_cons|paint|160-400", "C5"),
+    ("Second voice HO 160-400 post dn", "second_cons_HO|post|160-400", "down"),
 ]
 for cp in ("fda", "ptdb"):
     for g in ("m", "f"):

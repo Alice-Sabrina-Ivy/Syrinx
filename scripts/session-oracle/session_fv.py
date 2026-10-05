@@ -3,11 +3,11 @@
 # noise oracles (noise-fv.mjs, noise-augment-oracle.js) cannot see the noise
 # that actually reaches the pitch worker in a practice room: low-level room
 # rumble, distant voices, breath and fry between phrases. This scores every
-# hop of the four private-session sessions that lies >= GAP s from ANY frame a
+# hop of the four private sessions that lies >= GAP s from ANY frame a
 # reference tracker voices (Praat AC, Praat CC, session-label R1 — Praat SHS is
 # left out: it voices nearly everything) — audio no reference calls voiced —
 # and reports the % of those hops the worker POSTED voiced and the % of
-# display hops PAINTED, per speaker label (A alice, S second, O outside).
+# display hops PAINTED, per speaker label (A alice, S second voice, O outside).
 # The absolute level is not a pure false-voicing rate (quiet periodic audio
 # the Praat silence threshold drops is in it); the DELTA between src trees on
 # identical audio is the signal.

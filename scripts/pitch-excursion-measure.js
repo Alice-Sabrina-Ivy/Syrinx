@@ -23,7 +23,9 @@ import { pushAndMedianPitch, PITCH_SMOOTH_LEN } from "../src/audio/pitchSmoothin
 
 const SR = 16000, HOP = 400, N = BOERSMA_FRAME_LENGTH_16K;
 const ONSET_CONFIRM = 3, JUMP_BREAK_SEMI = 12;
-const SESSION = "C:/Coding Projects/private-session/sessions/2026-05-26/session.wav";
+// $SYRINX_SESSIONS_DIR = the private session recordings (local only; see CLAUDE.md).
+const SESSIONS_DIR = (process.env.SYRINX_SESSIONS_DIR ?? "").replace(/\\/g, "/").replace(/\/+$/, "");
+const SESSION = SESSIONS_DIR && `${SESSIONS_DIR}/2026-05-26/session.wav`;
 
 function readWav(p) {
   const b = readFileSync(p);
@@ -40,6 +42,7 @@ function readWav(p) {
 const st = (a, b) => 12 * Math.log2(a / b);
 function median(a) { const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; }
 
+if (!SESSION) throw new Error("set SYRINX_SESSIONS_DIR to the folder holding the private session recordings (see CLAUDE.md)");
 const samples = readWav(SESSION);
 const ac = createBoersmaAC(SR, N), pt = createPathTracker();
 const buf = new Float32Array(N);
