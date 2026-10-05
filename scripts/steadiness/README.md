@@ -2,7 +2,10 @@
 
 The live pitch-steadiness readout (2026-10-04): 1-s SD of the pitch worker's
 posted values, in semitones, from [src/audio/steadiness.js](../../src/audio/steadiness.js).
-Decision data and every number: [measurements/steadiness-readout-2026-10-04.md](../../measurements/steadiness-readout-2026-10-04.md).
+Decision data (public-data results): [measurements/steadiness-readout-2026-10-04.md](../../measurements/steadiness-readout-2026-10-04.md).
+Session-scored output (`score.py`'s `sessions` block, `report.py ... sessions | best | bins`,
+`hook-check.mjs --session=`) is a private-session result: it stays in the gitignored `build/`
+and goes to the user's private project, never to `measurements/` (CLAUDE.md, Private session data).
 Background (why posted values, why a trim): [measurements/pitch-precision-steadiness-2026-10-04.md](../../measurements/pitch-precision-steadiness-2026-10-04.md).
 
 Work dir `build/steady/` (gitignored). Inputs:

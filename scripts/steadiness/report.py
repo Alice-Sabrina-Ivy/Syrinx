@@ -1,4 +1,5 @@
-# report.py — markdown tables for measurements/steadiness-readout-2026-10-04.md
+# report.py — markdown tables for the steadiness measurement notes (stdout only;
+# the sessions / best / bins tables are private-session results — never into measurements/)
 # from score.py JSON. Usage: python scripts/steadiness/report.py JSON CFG [what]
 #   what: sessions | corpora | synth | prec | best | bins
 import json, sys
