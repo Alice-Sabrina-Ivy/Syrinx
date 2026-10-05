@@ -31,6 +31,11 @@ Decision data: [measurements/target-voice-combined-validation-2026-10-03.md](../
 | `subharmonic.py` | spectral odd-multiple arbiter |
 | `analyze.py` | band tables, switch latency, spike events, arbiter checks |
 | `corpus.mjs` | FDA / PTDB-TUG / Hillenbrand / vocadito through the same chain, per file, worker + displayed level |
+| `lowband-attr.mjs`, `lowband_attr.py`, `lowband_score.py` | low-register voicing pass (2026-10-04): per-hop stage dump (top-8 candidates, unvoiced strength, decode, guard verdict, posted, painted) over sessions + corpora; stage attribution of misses; band / octave / VDE / max(F,M) scores |
+| `noise-fv.mjs` | noise-only false voicing through the real chain, every committed noise-synth class, posted + painted (`--seeds=N` pools generator seeds) |
+| `session_fv.py` | real-session false voicing: hops >= 0.3 s from any Praat AC / CC / R1 voicing, posted + painted. Run with every voicing / guard change |
+| `guard-probe.mjs`, `guard_probe.py` | every harmonic-guard call of the real worker with per-harmonic prominence under the production and inter-harmonic floors; frame-level rule-design table |
+| `lowband/` | the 2026-10-04 variant trees (`variants.py`), runner (`run_variant.sh`), guard table (`table.py`) and summary (`summary.py`) — measurements/pitch-low-register-voicing-2026-10-04.md |
 
 ## Data
 
