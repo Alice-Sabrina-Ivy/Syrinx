@@ -6,8 +6,8 @@
 // `steadinessHeld`). Deliberately neutral: no colour judgement (it is
 // not a pass/fail and not gendered), "—" when there is not enough
 // voiced sound in the window or the window spans a jump the trim
-// refuses, dim when the value is the last reading held briefly after
-// the voice stopped. A small info button
+// refuses (dim styling for a held value exists but the post-voice hold
+// is off by default — HOLD_SEC 0). A small info button
 // opens a one-paragraph explainer (tap-friendly; also a hover title).
 
 import { useEffect, useId, useRef, useState } from "react";
@@ -20,7 +20,6 @@ const EXPLAINER =
   "Vibrato and slides count as movement. Shows — until there is " +
   "about half a second of voiced sound, and during a jump to a new " +
   "note or register (until the new note fills most of the second). " +
-  "After you stop, the last value stays, dimmed, for a moment. " +
   "Differences under about 0.1 st are within measurement noise.";
 
 export function SteadinessReadout({

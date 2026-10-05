@@ -4,8 +4,8 @@
 // standard deviation, in semitones, of the pitch worker's POSTED pitch
 // values over a rolling ~1 s window — the 1-s pitch SD a voice coach
 // tracks. Pure module (no React, no worker globals); the hook feeds it
-// every pitch-worker message and reads a cached value at its throttled
-// state cadence.
+// every pitch-worker message, reads it once per DSP frame, and publishes
+// it with its other ~5 fps throttled readouts.
 //
 // Recipe (decision data: measurements/steadiness-readout-2026-10-04.md;
 // background: measurements/pitch-precision-steadiness-2026-10-04.md):
@@ -37,9 +37,12 @@
 // messages (updateSec 0) — the hook reads once per DSP frame. read()
 // allocates only a small result object when the reading changes.
 
-// Post-voice dim hold (seconds). Named so a future change is one edit;
-// the value is pending the user's decision (measurement file §9).
-export const HOLD_SEC = 1.5;
+// Post-voice dim hold (seconds). 0 = off: the user chose a live-only
+// readout (2026-10-04, measurement file §10). After the voice stops the
+// reading clears to "—" as soon as the window's voiced coverage drops
+// below minCoverage (~0.4 s after the last voiced frame with the 1 s
+// window); nothing is shown dimmed. Set > 0 to re-enable the hold.
+export const HOLD_SEC = 0;
 
 // Why trimmedSpread returned null (written to its optional `info` arg).
 export const SPREAD_OK = "ok";
@@ -67,8 +70,8 @@ export const STEADINESS_DEFAULTS = Object.freeze({
   // Max fraction the outer trim may drop; beyond it the window is not
   // reported (null = same as maxTrimFraction).
   maxWideTrimFraction: 0.15,
-  // Recompute at most this often (audio seconds). The hook samples the
-  // value at its ~200 ms state cadence.
+  // Recompute at most this often (audio seconds); 0 = on the first read()
+  // after new messages (the hook reads once per DSP frame).
   updateSec: 0,
   // EMA weight of the newest reading (1 = no display smoothing).
   emaAlpha: 1,
@@ -77,7 +80,7 @@ export const STEADINESS_DEFAULTS = Object.freeze({
   // (flagged held, rendered dim) for this long, so a note can be read
   // after it ends. A trim refusal with coverage OK (register switch,
   // octave-error run during continuous phonation) does NOT hold: it
-  // clears the reading to "—". 0 disables.
+  // clears the reading to "—". 0 disables (the default, HOLD_SEC).
   holdSec: HOLD_SEC,
 });
 

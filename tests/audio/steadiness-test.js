@@ -167,12 +167,27 @@ console.log("tracker: register switch, hold, clock");
     afterRun.every((r) => r.value === null && !r.held),
     afterRun.filter((r) => r.value !== null).map((r) => r.t.toFixed(3)).slice(0, 5).join(","));
 
-  // Hold: after the voice stops, the last reading stays (held) for
-  // holdSec, then clears. Timeline fresh → held → "—", each phase
-  // contiguous, with the held phase lasting holdSec (lower AND upper
-  // bound, to one message).
-  check("holdSec default is the named HOLD_SEC (1.5 s)", STEADINESS_DEFAULTS.holdSec === HOLD_SEC && HOLD_SEC === 1.5);
-  const h = createSteadinessTracker();
+  // Default (user decision 2026-10-04): no post-voice hold. After the
+  // voice stops the reading stays fresh while the window is still >= 60 %
+  // voiced (~0.4 s), then clears straight to "—" — never held/dimmed.
+  check("holdSec default is the named HOLD_SEC (0: live-only readout)", STEADINESS_DEFAULTS.holdSec === HOLD_SEC && HOLD_SEC === 0);
+  {
+    const d = createSteadinessTracker();
+    const pre = feed(d, (t) => 200 * Math.pow(2, (0.2 * Math.sin(2 * Math.PI * 2 * t)) / 12), 2.0);
+    const post = feed(d, () => null, 3.0, 2.0);
+    const tl0 = [...pre, ...post].filter((r) => r.t > 1.0);
+    check("default: never a held reading after the voice stops", tl0.every((r) => !r.held));
+    const lastFresh0 = tl0.filter((r) => r.value !== null).pop();
+    check("default: clears to '—' once coverage drops (≈0.4 s after the note)",
+      lastFresh0 && near(lastFresh0.t, 2.4, 0.026) && post.filter((r) => r.t > 2.45).every((r) => r.value === null),
+      `last reading at ${lastFresh0?.t}`);
+  }
+
+  // Hold mechanics (opt-in, holdSec 1.5): after the voice stops, the last
+  // reading stays (held) for holdSec, then clears. Timeline fresh → held →
+  // "—", each phase contiguous, with the held phase lasting holdSec (lower
+  // AND upper bound, to one message).
+  const h = createSteadinessTracker({ holdSec: 1.5 });
   const before = feed(h, (t) => 200 * Math.pow(2, (0.2 * Math.sin(2 * Math.PI * 2 * t)) / 12), 2.0);
   const after = feed(h, () => null, 3.0, 2.0);
   const tl = [...before, ...after].filter((r) => r.t > 1.0);
