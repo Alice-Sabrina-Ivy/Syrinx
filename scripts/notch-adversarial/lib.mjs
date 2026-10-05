@@ -1,0 +1,49 @@
+// lib.mjs — drive the REAL pitch worker (2026-10-04 notch iteration round 1,
+// adversarial suite). Each tree under build/notch-adv/trees/<name>/src
+// (built by setup.sh) is a copy of src/ whose dsp/noise-notch.js is:
+//   bc42 = bc42ad0's module, head = 6f8be18's (the in-sound latch, reverted
+//   in round 1), cand = cand-notch.js (option flags; globalThis.__NOTCH_OPTS
+//   selects the variant), and SRC = the repo's src/ (the shipped module).
+// Every pitch-worker.js copy is otherwise byte-identical to production.
+import { pathToFileURL, fileURLToPath } from "node:url";
+import path from "node:path";
+import { pushAndMedianPitch, PITCH_SMOOTH_LEN } from "../../src/audio/pitchSmoothing.js";
+import { createPaintGate } from "../../src/audio/pitchPaintGate.js";
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const ROOT = path.resolve(HERE, "../..");
+const posts = [];
+globalThis.self = { postMessage: (m) => posts.push(m) };
+const H = {};
+for (const [k, p] of [["bc42", "../../build/notch-adv/trees/bc42/src"], ["head", "../../build/notch-adv/trees/head/src"], ["cand", "../../build/notch-adv/trees/cand/src"], ["src", "../../src"]]) {
+  await import(pathToFileURL(path.join(HERE, p, "dsp/pitch-worker.js")).href);
+  H[k] = globalThis.self.onmessage;
+}
+
+// runWorker(variant, x, sr): variant = { tree, opts? }. 25 ms chunks at sr.
+export function runWorker(variant, x, sr) {
+  posts.length = 0;
+  const h = H[variant.tree];
+  globalThis.__NOTCH_OPTS = variant.opts;
+  h({ data: { type: "init", inputSampleRate: sr } });
+  const port = {};
+  h({ data: { type: "audioPort", port } });
+  const C = Math.round(0.025 * sr);
+  for (let c = 0; c + C <= x.length; c += C) {
+    const chunk = Float32Array.from(x.subarray(c, c + C));
+    port.onmessage({ data: { buffer: chunk.buffer, contextTime: (c + C) / sr } });
+  }
+  globalThis.__NOTCH_OPTS = undefined;
+  return posts.filter((p) => p.type === "pitch").map((p) => ({ t: p.contextTime - 0.04, pitch: p.pitch, nf: p.notchedFreqs ?? null }));
+}
+
+// display replay (median-3 + paint gate; no hold bridging)
+export function displayed(msgs) {
+  const sm = []; const gate = createPaintGate();
+  return msgs.map((m) => {
+    if (!(m.pitch > 0)) { sm.length = 0; gate.resetSegment(); return 0; }
+    const v = pushAndMedianPitch(sm, m.pitch, PITCH_SMOOTH_LEN);
+    return gate.push(v) ? v : 0;
+  });
+}
+export const parseArgs = () => Object.fromEntries(process.argv.slice(2).map((a) => a.replace(/^--/, "").split("=")));

@@ -1,3 +1,21 @@
+// cand-notch.js — round-1 CANDIDATE notch module (2026-10-04; scratch, not
+// production). 6f8be18's noise-notch.js plus option flags read from
+// globalThis.__NOTCH_OPTS (variants.mjs): latch / offsetRebirth (6f8be18's
+// in-sound latch and offset re-birth, on by default), relGate (latch release
+// re-birth only when the line dips), prerollMs + floorK (capture pre-roll /
+// fade-in guards), lineFloorK + revoke (a latched line no louder than the
+// pre-onset floor is not a note), clearRel (a line that keeps its power
+// while the latch is released is not a note), binDip (line dip read off the
+// spectrum), shortGap (catch-breath offset), floorMin / floorStrict /
+// floorStable / floorTrust (pre-onset floor definitions), keepAlive /
+// keepMasked (no demotion of a line peak picking dropped), inherit (glide
+// inheritance), handoff (glide / step handoff: cents, heldSec, heldDuty,
+// lostSec, youngSec, bandHold, revokeSec, memSec, memTolHz), revokeRebirth
+// (breath re-birth revoke). globalThis.__NOTCH_DBG collects track events.
+// The shipped src/dsp/noise-notch.js is variant N12 (bc42ad0 + breath
+// re-birth with revoke + glide handoff), message-identical to this module
+// with VARIANTS.N12.opts (parity.mjs N12 SRC).
+//
 // noise-notch.js — Persistent-peak tonal-interferer tracker + streaming
 // notch chain for the pitch path (2026-07-19).
 //
@@ -25,9 +43,8 @@
 //     active notch after MIN_TRACK_SEC with duty >= PROMOTE_DUTY (only
 //     on an observation that actually saw it), and DEMOTES after
 //     MISS_SEC of absence
-//   - ONSET-BORN tracks need ONSET_MIN_TRACK_SEC instead (see "Held
-//     notes" below), timed from the note's latest start ("Breaths",
-//     "Glides")
+//   - ONSET-BORN tracks (first seen at an onset or inside a sound that
+//     began at one) need ONSET_MIN_TRACK_SEC instead (see "Held notes")
 //   - at most MAX_NOTCHES active (strongest first); each is a biquad
 //     notch (RBJ, Q = NOTCH_Q -> ~4 Hz wide at 120 Hz), state carried
 //     across chunks. Sections are keyed by TRACK ID: a surviving track
@@ -57,58 +74,35 @@
 // moves), and an interferer that SWITCHES ON mid-session (fan, fridge
 // compressor) is notched after ~20 s instead of ~5 s.
 //
-// Breaths (2026-10-04 round 1, measurements/noise-notch-held-note-
-// robustness-2026-10-04.md "Round 1"): same-pitch holds separated by
-// breaths piled onto one onset-born track (its age spans the breaths) and
-// were notched once the series passed 20 s. A SOUND OFFSET — the 50 Hz-
-// 4 kHz band energy of the last 0.3 s >= OFFSET_DB (or of the last 0.1 s
-// >= SHORT_GAP_DB) under the loudest 25 ms chunk of the preceding second —
-// followed within OFFSET_OBS observations by the line itself dipping
-// >= DIP_DB under its median power (read off the spectrum at the track
-// frequency, not from peak picking) while the band is >= DIP_DB under its
-// recent max restarts an unpromoted onset-born track's 20 s delay clock
-// (not its duty). Only onset-born tracks are affected and the line itself
-// must dip, so a stationary interferer (which keeps its power through
-// every pause) is never delayed. (6f8be18's in-sound latch, which also
-// covered glides, speech->hold and phonation 0.15 s into the stream, was
-// reverted in round 1: it blocked or delayed real hums — never notched
-// when present at stream start with speech in the first 0.6 s, weak hums
-// switching on mid-speech, ~20 s instead of ~5 s after capture pre-roll,
-// and hums switching on during dense speech by a 120 Hz voice.)
-//
-// Glides (2026-10-04 round 1, same file): a held note that slides or steps
-// > MATCH_HZ mid-hold spawned a track that was not onset-born (no onset at
-// that time) and was notched ~5 s later (shift family 73.6 % of hold frames
-// reported). A HANDOFF: a line born not at an onset, within HANDOFF_CENTS
-// of an unpromoted onset-born line that had been HELD (>= HANDOFF_HELD_SEC
-// at duty >= HANDOFF_HELD_DUTY) and has vanished within the last
-// HANDOFF_LOST_SEC (the child may be up to HANDOFF_YOUNG_SEC older than the
-// vanishing: a step's 512 ms window holds both pitches), is the same note
-// moved — it is onset-born, its 20 s clock starting at the move. (Taking
-// the PARENT's clock instead promoted voice lines on the spot: a mains
-// 180 Hz line that had switched on at an onset, masked for one observation
-// by a syllable, "handed off" to a 190 Hz speech peak 25 s later.) Not
-// while the band has dipped >= DIP_DB under its 2 s max (a moved note keeps
-// sounding; a note that ENDED does not hand off), and REVOKED (back to not
-// onset-born) when the line is still a picked peak REVOKE_SEC into a band
-// dip (REVOKE_PERSIST_OBS observations running): the sound it was handed off from ended and the line stayed — a room
-// hum the note had masked (min-separation) and then glided onto, not the
-// note. Without the band and revoke conditions 34 of 168 hum-beside-a-held-
-// note cells promoted later than bc42ad0 (up to 15 s). A handoff can only
-// delay a promotion (until the next pause revokes it), never advance one.
-//
-// A breath re-birth is REVOKED (the clock restored) when the line is still
-// a picked peak REVOKE_SEC after it, in REVOKE_PERSIST_OBS consecutive
-// observations, while the band has stayed down: the note was sitting on an
-// interferer within MATCH_HZ (one shared track), and what "dipped" was the
-// note, not the line (hum at 120 Hz under a 123 Hz held note: promoted
-// 4-8 s later than bc42ad0 without it). It is also revoked when the line
-// comes BACK to >= -dipDb of its pre-dip median in REVOKE_RECOVER_OBS
-// consecutive observations while the band is still down: a beating or
-// amplitude-modulated hum whose trough met a speech pause (weak2 suite,
-// two fans 0.5 Hz apart at +9/+18 dB: promoted ~10 s later than bc42ad0,
-// pause FV +20-31 pp, without it); a breath's ended note stays gone. A
-// rising band (the next note) confirms the re-birth.
+// In-sound latch + new-note re-births (2026-10-04, measurements/noise-
+// notch-held-note-robustness-2026-10-04.md). "First seen AT an onset"
+// missed three routine exercise shapes, each notched ~5 s in and then
+// blanked by the ghost veto (real worker, 16 kHz suite): a hold that
+// slides/steps > MATCH_HZ mid-note spawns a track 2+ s into the sound
+// (74.3 % of hold frames reported); speech running into a hold with
+// < 0.3 s gaps never dips 10 dB in a 512 ms window (66.6 %); repeated
+// same-pitch holds with short breaths pile onto one track (77.0 %).
+// Now (a) a chunk-level (25 ms) band-energy onset — or the observation-
+// level one — sets a LATCH that holds until the band energy has been back
+// within ONSET_DB of the pre-onset floor for LATCH_RELEASE_SEC; every
+// track born while latched is onset-born. (b) An unpromoted onset-born
+// track restarts its 20 s delay clock (not its duty) as a new note when the
+// latch releases, or when a SOUND OFFSET (>= OFFSET_DB under the last
+// second's max, so an audible inhalation still counts) is followed within
+// OFFSET_OBS observations by the line vanishing/weakening (>= DIP_DB under
+// its median power) while the band is >= DIP_DB under its recent max. All
+// three shapes: 100 % reported (= the no-notch ceiling, 16 and 48 kHz);
+// every interferer case of the suite, the committed oracles and the four
+// sessions' accuracy unchanged. Trades: (1) phonation already sounding in
+// the stream's first chunk has no pre-onset reference — the same signal as
+// a hum present at start, which keeps its 5 s promotion (making such tracks
+// onset-born: suite start-of-session speech 75.0 -> 68.3 % correct, pause
+// FV 5.0 -> 57.4 %); (2) an interferer switching on during DENSE speech
+// (no 10 dB dip in the preceding 2 s) is now onset-born like any switch-on
+// (~20 s; the shipped rule promoted it at ~5 s by accident of the same gap
+// that blanked speech->hold): synthetic dense-speech probe 88.4 -> 79.7 %
+// correct over 30 s; (3) the session-05-07 120 Hz line is no longer notched
+// (69 s; posted accuracy in those windows 84 -> 94 %, pause voicing equal).
 //
 // Detection runs on RAW audio, filtering on the OUTPUT stream — a
 // notched interferer must stay visible to the tracker or the notch
@@ -150,30 +144,17 @@ export const NOTCH_DEFAULTS = {
   onsetDb: 10,
   onsetHistSec: 2,
   onsetMinTrackSec: 20,
-  // breath re-births (2026-10-04 round 1; see "Breaths" above)
-  offsetDb: 20,          // sound offset: last 0.3 s this far under the last second's max
-  offsetSec: 0.3,
-  shortGapDb: 18,        // catch breath: last 0.1 s this far under it
-  shortGapSec: 0.1,
-  offsetObs: 5,          // observations after an offset to see the line dip
-  dipDb: 6,              // line and band dip depth
-  // glide / step handoff (2026-10-04 round 1; see "Glides" above)
-  handoffCents: 160,     // child within this of the vanished parent
-  handoffHeldSec: 1,     // parent held this long ...
-  handoffHeldDuty: 0.7,  //   at this duty (a note's H2 near the 460 Hz edge is picked at ~0.8) ...
-  handoffLostSec: 1.5,   // ... and last seen within this
-  handoffYoungSec: 0.6,  // child born at most this long before
-  revokeSec: 0.7,        // breath re-birth / handoff revoked if the line is
-                         //   still a peak this long into a band dip ...
-  revokePersistObs: 3,   // ... in this many consecutive observations (one
-                         //   sighting was the NEXT note's onset at the end
-                         //   of a 1 s breath's 512 ms window)
-  revokeRecoverObs: 2,   // breath re-birth also revoked when the line is back
-                         //   at >= -dipDb of its pre-dip median in this many
-                         //   consecutive observations while the band is
-                         //   still down (a beating / AM hum's trough met a
-                         //   speech pause: weak2 "beat" +9/+18 dB promoted
-                         //   ~10 s later than bc42ad0 without it)
+  // in-sound latch + sound-offset re-birth (2026-10-04; see "Held notes").
+  // Interferer-side cost of the alternatives (mid-session switch-on during
+  // FDA speech, promotion after onset; shipped 20.1 s): a line-level co-dip
+  // (line unseen + band -6 dB for 2 observations) also fired on hum lines
+  // masked by speech (hum-rich120 +10 dB: 29.1 s); offsetDb 15 fired in
+  // speech pauses (fan-drift +10 dB: 29.2 s); offsetDb 20 with a 0.3 s
+  // release window: identical to shipped on every interferer cell.
+  latchReleaseSec: 0.3,
+  offsetDb: 20,
+  offsetObs: 5,
+  dipDb: 6,
   retuneHz: 0.5,         // retune a live section in place when its track
                          //   drifted more than this (filter state kept)
 };
@@ -250,7 +231,11 @@ function makeNotch(f0, sampleRate, q) {
 //     current frequency estimate and its wobble (EMA of |peak - estimate|,
 //     Hz); input to isNearNotch (the worker's ghost veto).
 export function createNoiseNotch(sampleRate, opts = {}) {
-  const cfg = { ...NOTCH_DEFAULTS, ...opts };
+  const cfg = { ...NOTCH_DEFAULTS, latch: true, offsetRebirth: true, relGate: false, prerollMs: 1e-12,
+    floorK: 1, lineFloorK: 0, binDip: false, clearRel: false, revoke: null, keepAlive: false, floorMin: false, floorStrict: false, floorStable: 0, floorTrust: false, keepMasked: false, handoff: null, revokeRebirth: null, lineFloorAll: false, shortGap: null, inherit: false, inheritCents: 100,
+    ...(globalThis.__NOTCH_OPTS ?? {}), ...opts };
+  let S1 = 0, S2 = 0;
+  const DBG = globalThis.__NOTCH_DBG;
   const N = cfg.fftSize;
   const bufferLength = cfg.obsLen;            // dedicated observation buffer
   const raw = new Float32Array(bufferLength); // rolling RAW buffer
@@ -259,10 +244,16 @@ export function createNoiseNotch(sampleRate, opts = {}) {
   const window = new Float64Array(bufferLength);
   for (let i = 0; i < bufferLength; i++) {
     window[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (bufferLength - 1));
+    S1 += window[i]; S2 += window[i] * window[i];
   }
+  // unit conversions: peak-bin power of a sinusoid -> its mean square; band
+  // energy (one-sided sum of |X|^2) -> mean square
+  const lineMs = (P) => 2 * P / (S1 * S1);
+  const bandMs = (E) => 2 * E / (N * S2);
   const binHz = sampleRate / N;
   const loBin = Math.max(2, Math.floor(cfg.bandLoHz / binHz));
   const hiBin = Math.min(N / 2 - 2, Math.ceil(cfg.bandHiHz / binHz));
+  const onsetRatio = Math.pow(10, cfg.onsetDb / 10);
   const dipRatio = Math.pow(10, -cfg.dipDb / 10);
 
   // observation cadence: seconds per observation, derived at runtime
@@ -271,17 +262,17 @@ export function createNoiseNotch(sampleRate, opts = {}) {
   let obsPerSec = null;
 
   // tracks: { id, freq, dev, power, pw, refPow, hits, firstObs, noteObs,
-  //           lastSeenObs, active, onsetBorn, inherited, pend, prevNote,
-  //           rebornObs, rebRef, revSeen, recSeen, hoSeen }
+  //           lastSeenObs, active, onsetBorn, pend }
   let tracks = [];
   let obsIndex = 0;
   let nextTrackId = 1;
   const energyHist = [];   // band energy of recent observations (onset rule)
 
-  let cascade = [];        // [{ id, freq, biquad }], ascending track id
-  let downSince = null;    // first observation of the current band dip (handoff revoke)
+  let cascade = [];
+  const lineMem = [];
+  let downSince = null;     // handoff revoke: first obs of the current band dip       // handoff memSec option: dropped not-onset-born lines        // [{ id, freq, biquad }], ascending track id
 
-  // ---- sound offsets (breath re-births, 2026-10-04 round 1) ----
+  // ---- in-sound latch + sound-offset events (2026-10-04, see header) ----
   // Per-chunk 50 Hz - 4 kHz band energy: 2nd-order RBJ high-pass + two
   // 2nd-order low-passes on a scratch copy of the raw chunk.
   function rbj(type, f0) {
@@ -292,37 +283,71 @@ export function createNoiseNotch(sampleRate, opts = {}) {
   }
   const bandFilters = [rbj("hp", cfg.bandLoHz), rbj("lp", 4000), rbj("lp", 4000)];
   let chunkScratch = null;
-  const chunkRecent = [];  // chunk energies, last offsetSec
-  const chunkMaxRing = []; // chunk energies, last 1 s + offsetSec (offset reference)
-  let offsetFired = false;
-  const armed = [true, true]; // [offset, catch breath]
+  const chunkHist = [];    // chunk energies, last onsetHistSec (onset reference)
+  const chunkRecent = [];  // chunk energies, last latchReleaseSec (release/offset level)
+  const chunkMaxRing = []; // chunk energies, last 1 s + latchReleaseSec (offset reference)
+  let sawSound = false, lastChunkE = 0;
+  let latched = false;     // in a sound that began at an onset and has not ended
+  let latchFloorChunk;     // pre-onset floor, chunk units (undefined: unknown)
+  let latchFloorObs;       // pre-onset floor, observation units
+  let released = false;    // latch released since the last observation
+  let offsetFired = false, offsetArmed = true, shortArmed = true;
+  const kth = (arr, k) => { if (k <= 1) { let m = Infinity; for (const v of arr) if (v < m) m = v; return m; } const s2 = [...arr].sort((a, b) => a - b); return s2[Math.min(k, s2.length) - 1]; };
 
   function chunkStep(chunk) {
+    // exact digital silence BEFORE the stream's first real audio carries no
+    // level information and must not become the onset reference: a room hum
+    // that is simply PRESENT when audio starts flowing would otherwise read
+    // as switching on (onset-born, 20 s). Later digital silence is a floor.
+    let raw2 = 0;
+    for (let i = 0; i < chunk.length; i++) raw2 += chunk[i] * chunk[i];
+    if (raw2 / chunk.length >= cfg.prerollMs) sawSound = true;
     if (!chunkScratch || chunkScratch.length !== chunk.length) chunkScratch = new Float32Array(chunk.length);
     chunkScratch.set(chunk);
     for (const f of bandFilters) f.processInPlace(chunkScratch);
     let e = 0;
     for (let i = 0; i < chunkScratch.length; i++) e += chunkScratch[i] * chunkScratch[i];
     e = Math.max(1e-10, e / chunkScratch.length);
-    const relLen = Math.max(1, Math.round(cfg.offsetSec * sampleRate / chunk.length));
+    lastChunkE = e;
+    const histLen = Math.max(2, Math.round(cfg.onsetHistSec * sampleRate / chunk.length));
+    const relLen = Math.max(1, Math.round(cfg.latchReleaseSec * sampleRate / chunk.length));
+    // chunk-level onset (25 ms resolution): catches onsets the 512 ms
+    // observation windows smear — syllables after short gaps, phonation
+    // starting in the first observation window of the stream
+    if (cfg.latch && chunkHist.length >= Math.max(2, cfg.floorK) && !latched) {
+      const mn = kth(chunkHist, cfg.floorK);
+      const stable = !cfg.floorStable || mn <= kth(chunkHist, 1) * cfg.floorStable;
+      if (stable && e >= mn * onsetRatio) { latched = true; latchFloorChunk = cfg.floorMin ? kth(chunkHist, 1) : mn; chunkRecent.length = 0; }
+    }
+    if (sawSound) { chunkHist.push(e); if (chunkHist.length > histLen) chunkHist.shift(); }
     chunkRecent.push(e); if (chunkRecent.length > relLen) chunkRecent.shift();
+    // sound offset: the last latchReleaseSec sits >= offsetDb below the
+    // loudest chunk of the preceding second (a breath, even when audible
+    // inhalation keeps the level above the pre-onset floor). Re-armed once
+    // the level is back within offsetDb/2 of that maximum.
     const maxLen = Math.round(sampleRate / chunk.length);
     chunkMaxRing.push(e); if (chunkMaxRing.length > maxLen + relLen) chunkMaxRing.shift();
-    if (chunkRecent.length < relLen) return;
-    // offset: the last offsetSec (shortGapSec) sits >= offsetDb (shortGapDb)
-    // below the loudest chunk before it within the last second — a breath,
-    // even when audible inhalation keeps the level well above the room
-    // floor; re-armed once the level is back within half that depth
-    const rules = [[relLen, cfg.offsetDb], [Math.max(1, Math.round(cfg.shortGapSec * sampleRate / chunk.length)), cfg.shortGapDb]];
-    rules.forEach(([len, db], r) => {
-      let m = 0;
-      for (let i = chunkRecent.length - len; i < chunkRecent.length; i++) m += chunkRecent[i];
-      m /= len;
+    let recentMean = 0;
+    if (chunkRecent.length >= relLen) {
+      for (const v of chunkRecent) recentMean += v;
+      recentMean /= chunkRecent.length;
       let mx = 0;
-      for (let i = 0; i < chunkMaxRing.length - len; i++) if (chunkMaxRing[i] > mx) mx = chunkMaxRing[i];
-      if (armed[r] && mx > 0 && m <= mx * Math.pow(10, -db / 10)) { offsetFired = true; armed[r] = false; }
-      else if (!armed[r] && e >= mx * Math.pow(10, -db / 20)) armed[r] = true;
-    });
+      for (let i = 0; i < chunkMaxRing.length - relLen; i++) if (chunkMaxRing[i] > mx) mx = chunkMaxRing[i];
+      if (offsetArmed && mx > 0 && recentMean <= mx * Math.pow(10, -cfg.offsetDb / 10)) { offsetFired = true; offsetArmed = false; }
+      if (cfg.shortGap) {
+        const sl = Math.max(1, Math.round(cfg.shortGap.sec * sampleRate / chunk.length));
+        let sm = 0;
+        for (let i = chunkRecent.length - sl; i < chunkRecent.length; i++) sm += chunkRecent[i];
+        sm /= sl;
+        let mx2 = 0;
+        for (let i = 0; i < chunkMaxRing.length - sl; i++) if (chunkMaxRing[i] > mx2) mx2 = chunkMaxRing[i];
+        if (shortArmed && mx2 > 0 && sm <= mx2 * Math.pow(10, -cfg.shortGap.db / 10)) { offsetFired = true; shortArmed = false; }
+        else if (!shortArmed && e >= mx2 * Math.pow(10, -cfg.shortGap.db / 20)) shortArmed = true;
+      }
+      else if (!offsetArmed && e >= mx * Math.pow(10, -cfg.offsetDb / 20)) offsetArmed = true;
+      // latch release: back within onsetDb of the pre-onset floor
+      if (latched && latchFloorChunk !== undefined && recentMean <= latchFloorChunk * onsetRatio) { latched = false; released = true; }
+    }
   }
 
   function observe() {
@@ -341,16 +366,36 @@ export function createNoiseNotch(sampleRate, opts = {}) {
     if (energyHist.length > Math.ceil(cfg.onsetHistSec * (obsPerSec ?? 10))) energyHist.shift();
     let minEnergy = Infinity;
     for (const e of energyHist) if (e < minEnergy) minEnergy = e;
-    const onsetRatio = Math.pow(10, cfg.onsetDb / 10);
     const onsetHistObs = Math.ceil(cfg.onsetHistSec * (obsPerSec ?? 10));
     const onsetNow = energyHist.length > 1 && bandEnergy >= minEnergy * onsetRatio;
+    if (cfg.latch && onsetNow && !latched) {
+      latched = true; latchFloorObs = minEnergy; chunkRecent.length = 0;
+      const mn = chunkHist.length ? kth(chunkHist, cfg.floorMin ? 1 : cfg.floorK) : Infinity;
+      // chunk floor only when the chunk history actually holds the pre-onset
+      // level (it does not when the stream began with digital silence)
+      latchFloorChunk = mn < Infinity && lastChunkE >= mn * onsetRatio && (!cfg.floorStrict || (chunkHist.length >= cfg.floorK && lastChunkE >= kth(chunkHist, cfg.floorK) * onsetRatio
+        && (!cfg.floorStable || kth(chunkHist, cfg.floorK) <= kth(chunkHist, 1) * cfg.floorStable))) ? mn : undefined;
+    } else if (latched && latchFloorChunk === undefined && bandEnergy <= latchFloorObs * onsetRatio) {
+      latched = false; released = true;
+    }
+    const inSound = onsetNow || latched;
+    // latch floor as a mean square (chunk floor preferred; obs floor fallback)
+    const floorMs = latchFloorChunk !== undefined ? latchFloorChunk : latchFloorObs !== undefined ? bandMs(latchFloorObs) : 0;
+    // a line no stronger than the whole pre-onset floor could have been
+    // sounding before the onset: not evidence of a sound starting
+    const bornIn = (pk) => {
+      if (!inSound) return false;
+      if (!cfg.lineFloorK) return true;
+      if (onsetNow && !cfg.lineFloorAll) return true;
+      return lineMs(pk.power) > floorMs * cfg.lineFloorK;
+    };
     const power = new Float64Array(hiBin - loBin + 1);
     for (let b = loBin; b <= hiBin; b++) {
       power[b - loBin] = re[b] * re[b] + im[b] * im[b];
     }
-    // a track's line power read straight off the spectrum (max over +-1 Hz):
-    // independent of peak picking, whose min-separation drops a hum line
-    // next to a speech harmonic (which would read as "the line vanished")
+    // line power read straight off the spectrum at a track's frequency (max
+    // over +-1 Hz): independent of peak picking (min-separation, the 12-peak
+    // cap), which drops a hum line next to a speech harmonic
     const binPow = (f) => {
       const k0 = Math.round(f / binHz) - loBin, r = Math.max(1, Math.round(1 / binHz));
       let m = 0;
@@ -380,11 +425,15 @@ export function createNoiseNotch(sampleRate, opts = {}) {
     }
     rawPeaks.sort((x, y) => y.power - x.power);
     // min-separation: drop peaks close to a stronger accepted one
-    const peaks = [];
+    const peaks = [], masked = [];
     for (const pk of rawPeaks) {
       if (peaks.every((q) => Math.abs(q.freq - pk.freq) >= cfg.minSepHz)) peaks.push(pk);
+      else masked.push(pk);
     }
 
+    const missObsI = Math.ceil(cfg.missSec * (obsPerSec ?? 10));
+    const inheritFrom = (pk) => cfg.inherit && tracks.some((t) => t.onsetBorn && !t.active && obsIndex - t.lastSeenObs <= missObsI
+      && Math.abs(1200 * Math.log2(pk.freq / t.freq)) <= cfg.inheritCents);
     // associate with tracks
     for (const t of tracks) t._seen = false;
     for (const pk of peaks.slice(0, 12)) {
@@ -400,7 +449,7 @@ export function createNoiseNotch(sampleRate, opts = {}) {
         // (Older tracks keep their history: re-birthing a long-lived weak
         // hum line resets its diluted duty and notched a real room hum
         // that production never promoted — measured on session 05-07.)
-        best.firstObs = obsIndex; best.noteObs = obsIndex; best.hits = 0; best.onsetBorn = true;
+        best.firstObs = obsIndex; best.noteObs = obsIndex; best.hits = 0; best.onsetBorn = true; best.bornFloor = floorMs; best.bornOnset = true; DBG?.push({ ev: 'young', obs: obsIndex, f: best.freq, id: best.id });
         best.freq = pk.freq; best.dev = 0;
       }
       if (best) {
@@ -411,39 +460,61 @@ export function createNoiseNotch(sampleRate, opts = {}) {
         best.lastSeenObs = obsIndex;
         best._seen = true;
       } else {
-        tracks.push({ id: nextTrackId++, freq: pk.freq, dev: 0, power: pk.power, pw: [], hits: 1, firstObs: obsIndex, noteObs: obsIndex, lastSeenObs: obsIndex, active: false, _seen: true, onsetBorn: onsetNow, pend: 0 });
+        tracks.push({ id: nextTrackId++, freq: pk.freq, dev: 0, power: pk.power, pw: [], hits: 1, firstObs: obsIndex, noteObs: obsIndex, lastSeenObs: obsIndex, active: false, _seen: true, onsetBorn: bornIn(pk) || inheritFrom(pk), pend: 0, bornFloor: floorMs, bornOnset: onsetNow, bornTrusted: latchFloorChunk !== undefined });
+        DBG?.push({ ev: 'birth', obs: obsIndex, f: pk.freq, id: nextTrackId - 1, ob: tracks[tracks.length - 1].onsetBorn, onsetNow, latched, lineMs: lineMs(pk.power), floorMs });
       }
     }
 
-    // glide / step handoff (see "Glides"): a young line born not at an
-    // onset where a HELD unpromoted onset-born line just vanished, within
-    // handoffCents of it, is the same note moved — onset-born (own clock)
-    // — only while the band holds (a note that ENDED does not hand off)
-    if (bandEnergy >= recentMax * dipRatio) {
-      const ops = obsPerSec ?? 10;
-      const youngObs = Math.ceil(cfg.handoffYoungSec * ops), lostObs = Math.ceil(cfg.handoffLostSec * ops);
-      const heldObs = Math.ceil(cfg.handoffHeldSec * ops);
+    // handoff (round 1, option): a line born NOT at an onset right where an
+    // unpromoted onset-born line that had been HELD (>= heldSec at duty >=
+    // promoteDuty) vanished within lostSec, within `cents` of it, is the same
+    // note moved (a mid-hold glide / step): it inherits onset-born status and
+    // the parent's delay clock
+    if (cfg.handoff && (!cfg.handoff.bandHold || bandEnergy >= recentMax * dipRatio)) {
+      const H = cfg.handoff, ops = obsPerSec ?? 10;
       for (const c of tracks) {
-        if (c.onsetBorn || obsIndex - c.firstObs > youngObs) continue;
+        if (c.onsetBorn || obsIndex - c.firstObs > Math.ceil((H.youngSec ?? 0) * ops)) continue;
+        if (H.memSec && (lineMem.some((m) => obsIndex - m.obs <= Math.ceil(H.memSec * ops) && Math.abs(m.freq - c.freq) < (H.memTolHz ?? cfg.matchHz))
+          || tracks.some((t) => t !== c && !t.onsetBorn && Math.abs(t.freq - c.freq) < (H.memTolHz ?? cfg.matchHz)))) continue;
         const par = tracks.find((t) => t !== c && t.onsetBorn && !t.active && !t._seen
-          && obsIndex - t.lastSeenObs <= lostObs
-          && t.lastSeenObs - Math.max(t.firstObs, t.noteObs) + 1 >= heldObs
-          && t.hits / (t.lastSeenObs - t.firstObs + 1) >= cfg.handoffHeldDuty
-          && Math.abs(1200 * Math.log2(c.freq / t.freq)) <= cfg.handoffCents);
-        if (par) { c.onsetBorn = true; c.inherited = true; }
+          && obsIndex - t.lastSeenObs <= Math.ceil(H.lostSec * ops)
+          && t.lastSeenObs - Math.max(t.firstObs, t.noteObs) + 1 >= Math.ceil(H.heldSec * ops)
+          && t.hits / (t.lastSeenObs - t.firstObs + 1) >= (H.heldDuty ?? cfg.promoteDuty)
+          && Math.abs(1200 * Math.log2(c.freq / t.freq)) <= H.cents);
+        if (par) { c.onsetBorn = true; c.inh = true; if (!H.ownClock) c.noteObs = par.noteObs; DBG?.push({ ev: 'handoff', obs: obsIndex, f: c.freq, from: par.freq, id: c.id }); }
       }
     }
-
-    // per-track power reference: median of the last 9 sighting powers
+    // per-track power reference: median of the last 9 sighting powers (a
+    // decaying max was inflated by speech harmonics beating with a hum line,
+    // which then read as "dipped" in the next pause)
     for (const t of tracks) {
       if (t._seen) { t.pw.push(t.power); if (t.pw.length > 9) t.pw.shift(); }
       const sp = [...t.pw].sort((a, b) => a - b);
       t.refPow = sp[Math.floor(sp.length / 2)] ?? t.power;
     }
-    // breath re-birth (see "Breaths"): after a sound offset, an unpromoted
-    // onset-born line that dips >= dipDb under its median power while the
-    // band is >= dipDb under its recent max starts a new note — its delay
-    // clock (noteObs) restarts; duty keeps the track's whole history
+    // keep-alive: an ACTIVE line dropped by peak picking (min-separation next
+    // to a speech harmonic) but still at >= -dipDb of its median power on the
+    // spectrum is not absent
+    if (cfg.keepMasked) for (const t of tracks) if (t.active && !t._seen && masked.some((pk) => Math.abs(pk.freq - t.freq) < cfg.matchHz)) t.lastSeenObs = obsIndex;
+    if (cfg.keepAlive) for (const t of tracks) if (t.active && !t._seen && binPow(t.freq) >= t.refPow * dipRatio) t.lastSeenObs = obsIndex;
+    // new-note re-births of unpromoted onset-born tracks (2026-10-04) restart
+    // the onset-born DELAY clock (noteObs) only — duty keeps the track's whole
+    // history, so a weak, intermittently masked hum line keeps its diluted
+    // duty (restarting firstObs/hits too promoted the session-05-07 room-hum
+    // line at 440 s, where production never notched; -3.6 pp posted there):
+    //  - latch released (band energy back near the pre-onset floor): such a
+    //    line cannot be an interferer that switched on with the sound — it
+    //    would hold the energy above that floor;
+    //  - sound offset: within offsetObs observations the line is gone or
+    //    >= dipDb under its median power WHILE the band is >= dipDb under its
+    //    recent max (a hum line in a speech pause keeps its power; a hum line
+    //    masked by speech has the band up).
+    if (released) {
+      if (cfg.relGate) { for (const t of tracks) if (!t.active && t.onsetBorn) t.pend = cfg.offsetObs; }
+      else for (const t of tracks) if (!t.active && t.onsetBorn) { t.noteObs = obsIndex; DBG?.push({ ev: 'release', obs: obsIndex, f: t.freq, id: t.id }); }
+    }
+    released = false;
+    if (!cfg.offsetRebirth) offsetFired = false;
     if (offsetFired) {
       for (const t of tracks) if (!t.active && t.onsetBorn) t.pend = cfg.offsetObs;
       offsetFired = false;
@@ -451,48 +522,73 @@ export function createNoiseNotch(sampleRate, opts = {}) {
     for (const t of tracks) {
       if (!(t.pend > 0)) continue;
       t.pend--;
-      if (bandEnergy <= recentMax * dipRatio && binPow(t.freq) <= t.refPow * dipRatio) {
-        if (t.prevNote === undefined) { t.prevNote = t.noteObs; t.rebRef = t.refPow; }
-        t.rebornObs = obsIndex; t.revSeen = 0; t.recSeen = 0;
-        t.noteObs = obsIndex; t.pend = 0;
+      const dipped = cfg.binDip ? binPow(t.freq) <= t.refPow * dipRatio : (!t._seen || t.power <= t.refPow * dipRatio);
+      if (bandEnergy <= recentMax * dipRatio && dipped) {
+        if (cfg.revokeRebirth) { if (t.prevNote === undefined) { t.prevNote = t.noteObs; t.rebRef = t.refPow; } t.rebornObs = obsIndex; t.revSeen = 0; t.recSeen = 0; }
+        t.noteObs = obsIndex; t.pend = 0; DBG?.push({ ev: 'rebirth', obs: obsIndex, f: t.freq, id: t.id, seen: t._seen, p: t.power, ref: t.refPow, band: bandEnergy, rmax: recentMax });
       }
     }
 
+    // clear: while the latch is released (band back near the floor that
+    // preceded the sound) a line still at >= dipDb of its median power is not
+    // part of that sound — a stationary interferer, not a note
+    if (cfg.clearRel && cfg.latch && !latched && (!cfg.floorTrust || latchFloorChunk !== undefined)) {
+      for (const t of tracks) {
+        if (t.active || !t.onsetBorn || !t._seen) continue;
+        if (binPow(t.freq) > t.refPow * dipRatio) { t.onsetBorn = false; t.pend = 0; DBG?.push({ ev: 'clear', obs: obsIndex, f: t.freq, id: t.id }); }
+      }
+    }
+    // revoke: a line seen at a steady level (>= dipDb of its median power) no
+    // more than lineFloorK x the floor that preceded its sound cannot be what
+    // made the band rise >= onsetDb: not a note that started there
+    if (cfg.revoke) {
+      for (const t of tracks) {
+        if (t.active || !t.onsetBorn || !t._seen || !(t.bornFloor > 0)) continue;
+        if (cfg.revoke === "latch" && t.bornOnset) continue;
+        if (cfg.floorTrust && !t.bornTrusted) continue;
+        if (t.power >= t.refPow * dipRatio && lineMs(t.power) <= t.bornFloor * cfg.lineFloorK) { t.onsetBorn = false; t.pend = 0; DBG?.push({ ev: 'revoke', obs: obsIndex, f: t.freq, id: t.id }); }
+      }
+    }
     // promote / demote / prune
     const missObs = Math.ceil(cfg.missSec * (obsPerSec ?? 10));
     const minObs = Math.ceil(cfg.minTrackSec * (obsPerSec ?? 10));
     const onsetMinObs = Math.ceil(cfg.onsetMinTrackSec * (obsPerSec ?? 10));
-    // revoke a breath re-birth (see "Glides"): the line still a picked peak
-    // revokeSec after it, the band still down -> restore the clock; the band
-    // rising back (the next note) confirms it
-    const revokeObs = Math.ceil(cfg.revokeSec * (obsPerSec ?? 10));
-    for (const t of tracks) {
-      if (t.prevNote === undefined) continue;
-      if (bandEnergy >= recentMax * dipRatio || t.active || obsIndex - t.rebornObs > 3 * revokeObs) { t.prevNote = undefined; continue; }
-      t.revSeen = obsIndex - t.rebornObs >= revokeObs && t._seen ? t.revSeen + 1 : 0;
-      t.recSeen = binPow(t.freq) >= t.rebRef * dipRatio ? t.recSeen + 1 : 0;
-      if (t.revSeen >= cfg.revokePersistObs || t.recSeen >= cfg.revokeRecoverObs) { t.revSeen = 0; t.noteObs = t.prevNote; t.prevNote = undefined; }
-    }
-    // revoke a handoff (see "Glides"): an inherited line still a picked
-    // peak revokeSec into a band dip outlived the note it came from
-    if (bandEnergy < recentMax * dipRatio) { if (downSince === null) downSince = obsIndex; }
-    else { downSince = null; for (const t of tracks) t.hoSeen = 0; }
-    if (downSince !== null && obsIndex - downSince >= revokeObs) {
+    // revokeRebirth (option): a re-born line still a picked peak revokeSec
+    // after its re-birth while the band has stayed down is not a breath
+    // between notes but an interferer the note was sitting on: restore the
+    // clock. The band rising back (the next note) confirms the re-birth.
+    if (cfg.revokeRebirth) {
+      const ops = obsPerSec ?? 10, after = Math.ceil(cfg.revokeRebirth.afterSec * ops);
       for (const t of tracks) {
-        if (!t.inherited || t.active) continue;
-        t.hoSeen = t._seen ? (t.hoSeen ?? 0) + 1 : 0;
-        if (t.hoSeen >= cfg.revokePersistObs) { t.inherited = false; t.onsetBorn = false; }
+        if (t.prevNote === undefined) continue;
+        if (bandEnergy >= recentMax * dipRatio || t.active || obsIndex - t.rebornObs > 3 * after) { t.prevNote = undefined; continue; }
+        t.revSeen = obsIndex - t.rebornObs >= after && t._seen ? (t.revSeen ?? 0) + 1 : 0;
+        const R2 = cfg.revokeRebirth.recover;
+        if (R2) t.recSeen = binPow(t.freq) >= t.rebRef * dipRatio ? (t.recSeen ?? 0) + 1 : 0;
+        if (t.revSeen >= (cfg.revokeRebirth.persist ?? 1) || (R2 && t.recSeen >= R2)) { t.revSeen = 0; t.noteObs = t.prevNote; t.prevNote = undefined; DBG?.push({ ev: 'unrebirth', obs: obsIndex, f: t.freq, id: t.id }); }
       }
     }
+    // handoff revoke (option): an inherited line still a picked peak
+    // handoff.revokeSec into a band dip (the sound it was handed off from
+    // ended) is not that note — a hum it sat on: back to not onset-born
+    if (cfg.handoff?.revokeSec) {
+      const ops = obsPerSec ?? 10;
+      if (bandEnergy < recentMax * dipRatio) { if (downSince === null) downSince = obsIndex; } else { downSince = null; for (const t of tracks) t.hoSeen = 0; }
+      if (downSince !== null && obsIndex - downSince >= Math.ceil(cfg.handoff.revokeSec * ops))
+        for (const t of tracks) if (t.inh && !t.active && (t.hoSeen = t._seen ? (t.hoSeen ?? 0) + 1 : 0) >= (cfg.handoff.persist ?? 1)) { t.inh = false; t.onsetBorn = false; DBG?.push({ ev: 'unhandoff', obs: obsIndex, f: t.freq, id: t.id }); }
+    }
+    // line memory (handoff option): lines that were NOT onset-born, recently
+    // dropped — a child reappearing there is a returning line, not a moved note
+    if (cfg.handoff?.memSec) for (const t of tracks) if (!t.onsetBorn && !t.active && obsIndex - t.lastSeenObs > missObs) lineMem.push({ freq: t.freq, obs: obsIndex });
     tracks = tracks.filter((t) => obsIndex - t.lastSeenObs <= missObs || t.active);
     for (const t of tracks) {
       const span = obsIndex - t.firstObs + 1;
       const duty = t.hits / span;
-      // onset-born: timed from the current note (latest breath re-birth)
-      const timed = t.onsetBorn ? obsIndex - Math.max(t.noteObs, t.firstObs) + 1 : span;
+      // onset-born: timed from the current note (latest re-birth)
+      const timed = t.onsetBorn ? obsIndex - (t.inh && !cfg.handoff?.ownClock ? t.noteObs : Math.max(t.noteObs, t.firstObs)) + 1 : span;
       // promote only on an observation that actually saw the peak (a note
       // that just ended must not promote on its trailing duty)
-      if (!t.active && t._seen && timed >= (t.onsetBorn ? onsetMinObs : minObs) && duty >= cfg.promoteDuty) t.active = true;
+      if (!t.active && t._seen && timed >= (t.onsetBorn ? onsetMinObs : minObs) && duty >= cfg.promoteDuty) { t.active = true; DBG?.push({ ev: 'promote', obs: obsIndex, f: t.freq, id: t.id }); }
       if (t.active && obsIndex - t.lastSeenObs > missObs) { t.active = false; t.hits = 0; t.firstObs = obsIndex; }
     }
 
