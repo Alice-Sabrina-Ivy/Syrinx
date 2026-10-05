@@ -8,7 +8,7 @@ and scripts/swift-f0-session-extract.js on the same WAV files.
 Per file, on frames where Praat reports voicing:
   - classification of SwiftF0 output: correct (within 5 %), octave-up
     (ratio ~2 or ~3), octave-down, other, null
-  - stratified by Praat F0 band (the user's problem register is 80-110)
+  - stratified by Praat F0 band (80-110 Hz is the low band of interest)
   - octave-flip rate between consecutive SwiftF0 reports (the ladder
     signature), with Praat's own flip rate as control
   - spurious rate: SwiftF0 reports where Praat says unvoiced
