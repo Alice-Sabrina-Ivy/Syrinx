@@ -10,9 +10,9 @@ investigation (AC / SHS / PENN family majority; Praat alone octave-errs on Alice
 Clips = maximal runs of one speaker label (alice or second), >= 0.6 s, split into
 <= 8 s chunks, >= 0.3 s consensus-voiced. Group per clip:
   second                                  (a second adult voice in the recordings)
-  alice_low     median voiced F0 < 165 Hz (the recording tool's VOICE_STATE_SPLIT_DEFAULT)
+  alice_low     median voiced F0 < 165 Hz (low / mid voice-state split)
   alice_mid     165-185 Hz
-  alice_raised  >= 185 Hz (the recording tool's BREAK_FLOOR_HZ)      <- the trainee case
+  alice_raised  >= 185 Hz (raised-register floor)      <- the trainee case
 Alice clips whose voiced frames are < 60 % inside the clip's own F0 bucket are
 labelled alice_mixed (kept, excluded from the ordering metric).
 """
