@@ -7,6 +7,11 @@ name: CI
 
 on:
   pull_request:
+    # Measurement notes and Markdown never change the built site (no unit
+    # test reads them either), so a push touching only those skips the run.
+    paths-ignore:
+      - 'measurements/**'
+      - '**/*.md'
 
 permissions:
   contents: read
@@ -26,7 +31,7 @@ jobs:
         with:
           node-version: 24
           cache: npm
-      - run: npm ci
+      - run: npm ci --no-audit --no-fund
       - run: npm run lint
       - run: npm run test:unit
       - run: npm run build
