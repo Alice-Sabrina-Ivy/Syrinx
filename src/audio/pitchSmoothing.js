@@ -55,25 +55,51 @@ export function pushAndMedianPitch(historyArr, value, maxLen = PITCH_SMOOTH_LEN)
 // the first frames of a new word were medianed against the previous
 // word's values: after a register switch the first new-register frame
 // painted the OLD register (or was suppressed) and the paint gate saw the
-// new register one frame late. A frame with a fresh detection that
-// follows >= SMOOTH_RESET_GAP_FRAMES frames without one starts a fresh
-// median. Same gap notion as the paint gate's REACQUIRE_GAP_FRAMES (a
-// single dropped frame inside a word does not restart it). The onset
-// protection the old median provided is kept by the paint gate's
-// raw-agreement accept check (pitchPaintGate.js).
+// new register one frame late. Same gap notion as the paint gate's
+// REACQUIRE_GAP_FRAMES (a single dropped frame inside a word does not
+// count). The onset protection the old median provided is kept by the
+// paint gate's raw-agreement accept check (pitchPaintGate.js).
+//
+// Review fix (2026-10-04, same file §10). The first version cleared the
+// buffer after EVERY gap. That painted unsmoothed single frames and, on
+// the 2nd fresh frame, the MEAN of two detections (median() averages the
+// middle pair of an even-length buffer): held frames do not reset the
+// paint gate's onset streak, so after a 2-frame held gap a 1-frame flip
+// painted a value no detector frame posted (110 then 220 -> 165). Now:
+//   - restart only when the gap is followed by a fresh value an octave-
+//     class jump (>= SMOOTH_RESTART_SEMI, the paint gate's EXCURSION_SEMI)
+//     from the buffer median — the register-switch case that motivated
+//     the restart. Any other post-gap value is medianed against the
+//     previous word as before, so a 1-frame on-level outlier still never
+//     paints;
+//   - a restarted (or empty) buffer is SEEDED with the value: [x1] -> the
+//     next medians are x1 and median(x1, x1, x2) = x1. The buffer never
+//     holds two distinct values, so the median is always a real detection.
 export const SMOOTH_RESET_GAP_FRAMES = 2;
+export const SMOOTH_RESTART_SEMI = 9.5; // = pitchPaintGate EXCURSION_SEMI (test-asserted)
 
 export function createSmoothingGapTracker(gapFrames = SMOOTH_RESET_GAP_FRAMES) {
   let run = 0; // consecutive frames without a fresh detection
   return {
     // Call once per display frame, before smoothing; hasFresh = this frame
-    // carries a fresh detection. Returns true when the median buffer
-    // should be cleared before this frame's value is pushed.
+    // carries a fresh detection. Returns true when this fresh frame follows
+    // >= gapFrames frames without one (pass it to smoothingBufferFor).
     frame(hasFresh) {
-      const restart = hasFresh && run >= gapFrames;
+      const afterGap = hasFresh && run >= gapFrames;
       run = hasFresh ? 0 : run + 1;
-      return restart;
+      return afterGap;
     },
     reset() { run = 0; },
   };
+}
+
+// The buffer a fresh detection `value` should be pushed into: a new buffer
+// seeded with the value when the current one is empty, or when the value
+// follows a gap (afterGap, from the tracker) and departs >= restartSemi
+// semitones from the buffer median; otherwise the current buffer.
+export function smoothingBufferFor(historyArr, value, afterGap, restartSemi = SMOOTH_RESTART_SEMI) {
+  const m = median(historyArr);
+  if (m === null) return [value];
+  if (afterGap && Math.abs(12 * Math.log2(value / m)) >= restartSemi) return [value];
+  return historyArr;
 }

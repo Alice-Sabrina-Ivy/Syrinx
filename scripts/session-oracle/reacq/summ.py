@@ -65,7 +65,7 @@ if "brief" not in A:
 if "corpus" in A:
     CC = ["correct", "down2", "down3", "up2", "up3", "null", "other"]
     print("\n#### corpora, displayed (paint): correct / up2 / up3 / down / null ; events up/dn per voiced min ; brk per painted min")
-    for grp, band in [("ptdb_m", "<160"), ("ptdb_m", "75-125"), ("fda_m", "all"), ("hil_m", "all"), ("ptdb_f", "all"), ("fda_f", "all"), ("hil_f", "all"), ("voc", "all<400")]:
+    for grp, band in [("ptdb_m", "<160"), ("ptdb_m", "75-125"), ("fda_m", "all"), ("hil_m", "all"), ("ptdb_f", "all"), ("fda_f", "all"), ("hil_f", "all"), ("voc", "all<400"), ("v34", "all")]:
         row = []
         for t in TAGS:
             agg = {}; ev = {}

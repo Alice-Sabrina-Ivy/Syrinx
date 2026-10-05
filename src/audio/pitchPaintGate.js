@@ -68,8 +68,10 @@
 // the first new-register frame painted the OLD register (or blanked) and
 // the off-level run started a frame late. Two changes, measured with the
 // same oracles + the female/male corpora (gender-symmetric):
-//   4. The hook restarts the display median after a gap (pitchSmoothing.js
-//      createSmoothingGapTracker), and push() takes the frame's RAW fresh
+//   4. The hook restarts the display median when a word opens an octave-
+//      class jump away from it after a gap (pitchSmoothing.js
+//      smoothingBufferFor; seeded, so the painted value stays a real
+//      detection — review fix, same file §10), and push() takes the frame's RAW fresh
 //      pitch: an off-level run is accepted only if the raw value of the
 //      accepting frame agrees with the run (< EXCURSION_SEMI from its
 //      median). Without that check the restarted median let a 3-frame

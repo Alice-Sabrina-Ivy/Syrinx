@@ -5,7 +5,12 @@
 #   measured baseline) + pitchPaintGate.param.js as audio/pitchPaintGate.js +
 #   four observation/knob edits to audio/useAudioPipeline.js (resetSegment
 #   reason, gate inputs conf/inten/amb/raw, and the smResetGap median-restart
-#   knob, all inert with an empty config).
+#   knob, all inert with an empty config). Restart sub-knobs (review fix,
+#   §10 of the measurement file): smSeed = a restart, or any fresh value
+#   arriving on an empty buffer, starts the buffer as [x1], so the next
+#   medians are x1 and median(x1,x1,x2) = x1 (odd length, a real detection,
+#   never the mean of two); smCondSemi = restart only when the fresh value is
+#   >= that many semitones from the buffer median.
 import os, sys, shutil, subprocess, io, tarfile
 ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", ".."))
 REV = sys.argv[1] if len(sys.argv) > 1 else "5ebe609"
@@ -26,6 +31,6 @@ sub("displayPitched = paintGateRef.current.push(smoothedPitch, { fresh: hasPitch
 sub("    const { pitch, hasPitch, isQuiet } = gate;\n",
     "    const { pitch, hasPitch, isQuiet } = gate;\n    globalThis.__SMPREV = globalThis.__SMGAP || 0;\n    globalThis.__SMGAP = hasPitch ? 0 : (globalThis.__SMGAP || 0) + 1;\n")
 sub("    let smoothedPitch = null;\n    if (effectivePitch !== null) {",
-    "    let smoothedPitch = null;\n    {\n      const __g = globalThis.__PGV && globalThis.__PGV.smResetGap;\n      if (__g && hasPitch && globalThis.__SMPREV >= __g) pitchSmoothRef.current = [];\n    }\n    if (effectivePitch !== null) {")
+    "    let smoothedPitch = null;\n    {\n      const __P = globalThis.__PGV || {};\n      const __g = __P.smResetGap;\n      if (hasPitch && (__g || __P.smSeed)) {\n        const __m = median(pitchSmoothRef.current);\n        const __armed = __g && globalThis.__SMPREV >= __g;\n        const __off = __m === null || !__P.smCondSemi || Math.abs(12 * Math.log2(pitch / __m)) >= __P.smCondSemi;\n        if (__P.smSeed && __m === null) pitchSmoothRef.current = [pitch];\n        else if (__armed && __off) pitchSmoothRef.current = __P.smSeed ? [pitch] : [];\n      }\n    }\n    if (effectivePitch !== null) {")
 open(p, "w", encoding="utf8").write(s)
 print("built", OUT, "from", REV)
