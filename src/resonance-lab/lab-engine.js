@@ -19,6 +19,7 @@
 
 import { createBoersmaAC, createPathTracker, createHarmonicVoicingGuard, BOERSMA_FRAME_LENGTH_16K } from "../dsp/boersma-ac.js";
 import { createNoiseNotch, isNearNotch } from "../dsp/noise-notch.js";
+import { PITCH_DISPLAY_RANGE } from "../utils/constants.js";
 import { createStreamingResampler } from "../ml/audio-utils.js";
 import { createSampleRing } from "./ring.js";
 import { createSincResampler } from "./sinc-resampler.js";
@@ -121,7 +122,11 @@ export function createLabEngine(opts) {
     if (times.length <= tracker.config.lookback) return;
     const t = times.shift();
     let v = d;
-    if (v > 0 && isNearNotch(v, notch.activeFreqs())) v = null;
+    // Same order as src/dsp/pitch-worker.js processChunk: ghost veto against
+    // the notch's lines (with their wobble), above-display-range decodes
+    // posted unvoiced BEFORE the harmonic guard, then the guard.
+    if (v > 0 && isNearNotch(v, notch.activeLines())) v = null;
+    if (v > PITCH_DISPLAY_RANGE.high) v = null;
     if (v > 0 && !guard.check(delayLine[0], v, SR16)) v = null;
     decoded.push({ t, f0: v > 0 ? v : 0 });
   }
