@@ -84,8 +84,8 @@ console.log("\npushAndMedianPitch — single-frame outlier rejected by median");
 // worker's L=2 Viterbi tracker suppresses 1-frame octave flips before
 // the main thread sees them, and pitchPaintGate suppresses octave-class
 // excursions at painting. Reconstructing the full production display
-// chain shows K=3 painting no more spikes than K=5 while recovering
-// 1.4–2.2 pp of displayed band accuracy and 25 ms of display lag
+// chain shows K=3 displaying more accurately with 25 ms less display lag
+// on the private session recordings, painting no more spikes than K=5
 // (measurements/pitch-l2-retune-2026-07-19.md).
 
 console.log("\npushAndMedianPitch — two-frame sustained shift is accepted");

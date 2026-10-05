@@ -92,8 +92,8 @@ export function createPaintGate({
     // target note stayed suppressed until the next unvoiced gap.
     // Windowed, the accept asks "were the LAST ~400 ms internally
     // consistent" — mid-glide values scroll out once the target holds.
-    // Harmonic locks are unaffected: they run median 4 / p90 11 frames
-    // (< excursionSustain), so they still never fill the window. Also
+    // Harmonic locks are unaffected: they are typically shorter than
+    // excursionSustain, so they still never fill the window. Also
     // bounds the previously O(run-length) spread computation.
     offRun.push(pitch);
     if (offRun.length > excursionSustain) offRun.shift();

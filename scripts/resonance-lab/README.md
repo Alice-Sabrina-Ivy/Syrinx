@@ -9,7 +9,12 @@ Code lives here (committed). Everything generated — converted audio, manipulat
 F0 tracks, cached scores, results — lives under `build/resonance-lab/` (gitignored).
 Results on the `sessions` set (rubric item R6, the private session recordings) stay there
 or in the user's private project: never copy R6 scores, AUCs or orderings into
-`measurements/` (see CLAUDE.md "Private session data").
+`measurements/` (see CLAUDE.md "Private session data"). R6 also hides inside pass verdicts:
+`lab_tables.py` by default prints R6 columns and a result column that counts R6, so for a
+public note run it with `--public` (no R6 columns, result judged on R1–R4 only). The
+per-family summary scripts (`candidates/learned-envelope/summ.py`,
+`candidates/vtln-warp/dev/tsum.py`) and `leaderboard.md` print R6 values and a pass flag
+that includes R6; never paste their output as-is.
 
 ## Quick start
 

@@ -31,7 +31,7 @@
 // also fixes sensitivity drift — a continuously-recomputed σ deadened
 // the gauge whenever recent speech was varied. Gauge-vs-CPP fidelity
 // (fraction of needle motion explained by the current voice rather
-// than baseline drift) rose 0.795→0.956. Trade-off: the first 30 s
+// than baseline drift) rose clearly on the same recording. Trade-off: the first 30 s
 // must be reasonably representative — an unusual warm-up (throat-clear,
 // deliberately heavy start) miscalibrates the whole session with no
 // recovery until restart. The "Calibrating…" UI implicitly asks for

@@ -204,7 +204,7 @@ decision) or use `voiced_prob` as a continuous confidence weight. Praat
 uses peak height as input to the path-finder, never as a hard suppress-
 the-frame gate. The 0.5 threshold in Syrinx's code has no precedent.
 The investigation that motivated PR #74 confirmed empirically why: median
-voicedness on real speech is 0.005–0.018, well below 0.5, so the
+voicedness on live real speech is far below 0.5, so the
 threshold was structurally wrong for any real-world voice.
 
 **C. The intensity arm should compare against a global/recent peak, not absolute dB.**

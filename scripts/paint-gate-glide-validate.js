@@ -20,8 +20,8 @@
 //    createPaintGate, i.e. post-median values):
 //    - fast glides (octave in 4/8/12 frames) then a held target note:
 //      recovery latency + suppressed-hold-frame count (the bug).
-//    - harmonic-lock bursts (median run 4, p90 11 frames per the 06-10
-//      data): octave-class painted frames must stay 0.
+//    - harmonic-lock bursts of 4-15 frames (synthetic; typical lock
+//      lengths): octave-class painted frames must stay 0.
 //    - instant genuine register jump: accept latency must stay
 //      EXCURSION_SUSTAIN.
 //

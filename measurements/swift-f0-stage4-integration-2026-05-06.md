@@ -71,7 +71,7 @@ chunkArrival drift well within tolerance (≤ 0.2 ms/s threshold). The audio cap
 | inferMs p95    | 16.5 ms |
 | inferMs p99    | 23.1 ms |
 | inferMs max    | 241.4 ms (one-time spike, likely first-inference warmup or GC) |
-| voiced fraction | 307 / 1089 = 28 % (low — phone was in quiet environment) |
+| voiced fraction | low (phone was in quiet environment) |
 
 **Hop-budget check:** Production inference at 11.2 ms median = **45 % CPU at the 25 ms hop budget**, with 55 % headroom. p99 23.1 ms is just under budget. The single 241 ms max spike doesn't sustain — it doesn't appear in the running rate (1089 inferences in 25 s = average 23 ms per inference, dominated by the typical-case 11 ms median).
 

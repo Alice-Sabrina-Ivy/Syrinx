@@ -11,8 +11,8 @@
 //
 // Detection principle: an interferer is a narrow spectral peak that is
 // FREQUENCY-STABLE for a long time at high duty cycle. Real speech F0
-// and harmonics move constantly (session prosody p99 deviation is
-// 8.3 st; even a held note carries vibrato/drift); a fan or mains hum
+// and harmonics move constantly (prosody stays well inside an octave of
+// its level; even a held note carries vibrato/drift); a fan or mains hum
 // sits within ±2–3 Hz for minutes. We deliberately do NOT use the
 // detector's own voicing decisions as the "silence" reference — under
 // strong hum the detector calls everything voiced (that's the failure
