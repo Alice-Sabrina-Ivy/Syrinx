@@ -211,10 +211,9 @@ export function createBoersmaAC(sampleRate, frameLength, opts = {}) {
   // frame's localPeak, so one click / plosive pop / desk bump far above a
   // quiet AGC-off voice (e.g. 1.0 vs speech peaks 0.03) latched the
   // reference for 30-50 s and the silence term vetoed the voice the whole
-  // time (transient oracle: a large share — roughly a third to half — of
-  // voiced frames lost after ONE click at speech peak 0.03; real
-  // recordings ran on a transient-set reference
-  // part of the time). Now a frame contributes only if its own AC is
+  // time (transient oracle: a large share of voiced frames lost after ONE
+  // click at speech peak 0.03; real recordings ran on a transient-set
+  // reference part of the time). Now a frame contributes only if its own AC is
   // periodic (best in-range peak r >= referencePeriodicR; transients are
   // aperiodic), and the contribution is the referenceRank-th largest such
   // frame peak over the last referenceWindow frames, x referenceGain — an
