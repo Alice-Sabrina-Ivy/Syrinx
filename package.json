@@ -8,8 +8,9 @@
     "dev:mobile": "vite --mode mobile --host",
     "build": "vite build",
     "lint": "eslint .",
+    "test:unit": "node scripts/run-unit-tests.mjs",
     "preview": "vite preview",
-    "test:dsp": "node tests/dsp/swift-f0-streaming-verify.js && node tests/dsp/formant-accuracy-test.js && node tests/dsp/formant-debug.js && node tests/dsp/cpp-test.js"
+    "test:dsp": "node tests/dsp/swift-f0-streaming-verify.js && node tests/dsp/formant-accuracy-test.js && node tests/dsp/formant-debug.js && node tests/dsp/cpp-test.js && node tests/dsp/hnr-test.js"
   },
   "dependencies": {
     "@huggingface/transformers": "^4.2.0",

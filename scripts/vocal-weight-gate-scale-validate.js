@@ -27,7 +27,9 @@ import { computeCPP, resetCppState } from "../src/dsp/cpp.js";
 import { VocalWeightAggregator } from "../src/audio/vocal-weight-aggregator.js";
 
 const SR = 16000, HOP = 400, WINDOW = 800; // 25 ms hop, 50 ms CPP window
-const SESSION = "C:/Coding Projects/private-session/sessions/2026-05-26/session.wav";
+// $SYRINX_SESSIONS_DIR = the private session recordings (local only; see CLAUDE.md).
+const SESSIONS_DIR = (process.env.SYRINX_SESSIONS_DIR ?? "").replace(/\\/g, "/").replace(/\/+$/, "");
+const SESSION = SESSIONS_DIR && `${SESSIONS_DIR}/2026-05-26/session.wav`;
 const PRAAT = "build/pitch-compare/praat-contours.json";
 
 function readWav(p) {
@@ -44,6 +46,7 @@ function readWav(p) {
   return s;
 }
 
+if (!SESSION) throw new Error("set SYRINX_SESSIONS_DIR to the folder holding the private session recordings (see CLAUDE.md)");
 const samples = readWav(SESSION);
 const pf = JSON.parse(readFileSync(PRAAT, "utf8")).files.find((f) => f.path === SESSION);
 const praatVoicedAt = (tMs) => {

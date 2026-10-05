@@ -28,8 +28,10 @@ const FLIP_TOL = 0.2;
 // AC_SESSION_WAV overrides for held-out-session validation (any path
 // present in praat-contours.json); AC_SESSION_ONLY=1 skips the corpora
 // for fast session-only cells.
+// $SYRINX_SESSIONS_DIR = the private session recordings (local only; see CLAUDE.md).
+const SESSIONS_DIR = (process.env.SYRINX_SESSIONS_DIR ?? "").replace(/\\/g, "/").replace(/\/+$/, "");
 const SESSION_WAV = process.env.AC_SESSION_WAV
-  || "C:/Coding Projects/private-session/sessions/2026-05-26/session.wav";
+  || (SESSIONS_DIR && `${SESSIONS_DIR}/2026-05-26/session.wav`);
 const SESSION_ONLY = process.env.AC_SESSION_ONLY === "1";
 const PRAAT_CONTOURS = "build/pitch-compare/praat-contours.json";
 
@@ -266,6 +268,7 @@ if (!SESSION_ONLY) {
   }
 }
 console.log("Loading session WAV + Praat reference …");
+if (!SESSION_WAV) throw new Error("set SYRINX_SESSIONS_DIR to the folder holding the private session recordings (see CLAUDE.md)");
 const sessRaw = readWav(SESSION_WAV);
 const sessSig = sessRaw.sampleRate === SR ? sessRaw.samples : resampleLinear(sessRaw.samples, sessRaw.sampleRate, SR);
 const praatDoc = JSON.parse(readFileSync(PRAAT_CONTOURS, "utf8"));

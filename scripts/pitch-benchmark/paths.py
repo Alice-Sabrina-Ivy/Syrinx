@@ -7,8 +7,9 @@
 #   SO_REFS            session-oracle references (default
 #                      <repo>/build/session-oracle/refs, from
 #                      scripts/session-oracle/build_refs.py)
-#   SESSION_IDS  session WAVs + private-session parquet (personal recordings,
-#                      outside the repo)
+#   SYRINX_SESSIONS_DIR  the private session recordings: <date>/session.wav
+#                      + the session label files (parquet); local only,
+#                      outside the repo, no default (see CLAUDE.md)
 import os
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, "..", ".."))
@@ -18,6 +19,13 @@ OUT = os.path.join(WORK, "out")
 TMP = os.path.join(WORK, "tmp")
 SO_REFS = os.path.abspath(os.environ.get("SO_REFS", os.path.join(REPO, "build", "session-oracle", "refs")))
 SO_RUNS = os.path.join(REPO, "build", "session-oracle", "runs")
-SESSIONS_ROOT = os.environ.get("SESSION_IDS", "C:/Coding Projects/private-session/sessions")
+SESSIONS_ROOT = os.environ.get("SYRINX_SESSIONS_DIR")  # None when unset: use sessions_root()
 PARQ = "acoustic/frames_enrollment-2026-05-07-v2.parquet"
 SWIFT_MODEL = os.path.join(REPO, "tests", "dsp", "data", "swift-f0", "model.onnx")
+
+
+def sessions_root():
+    """The private session recordings folder; exits with a clear message when unset."""
+    if not SESSIONS_ROOT:
+        raise SystemExit("set SYRINX_SESSIONS_DIR to the folder holding the private session recordings (see CLAUDE.md)")
+    return SESSIONS_ROOT

@@ -89,7 +89,8 @@ const S = await loadSrc(SRC);
 const [shI, shN] = (args.shard ?? "0/1").split("/").map(Number);
 let items;
 if (SET === "sessions") {
-  const ROOT = args["sessions-root"] ?? "C:/Coding Projects/private-session/sessions";
+  const ROOT = args["sessions-root"] ?? process.env.SYRINX_SESSIONS_DIR;
+  if (!ROOT) throw new Error("set SYRINX_SESSIONS_DIR to the folder holding the private session recordings (see CLAUDE.md)");
   items = (args.sessions ?? "2025-09-08,2026-05-07,2026-05-26,2026-06-09").split(",").map((s) => ({ name: s, load: () => readWav(`${ROOT}/${s}/session.wav`) }));
 } else {
   const DATA = resolve(process.env.PITCH_BENCH_DIR ?? "build/pitch-benchmark", "data");

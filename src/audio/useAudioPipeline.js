@@ -12,6 +12,8 @@ import {
 import {
   pushAndMedianPitch,
   PITCH_SMOOTH_LEN,
+  createSmoothingGapTracker,
+  smoothingBufferFor,
 } from "./pitchSmoothing";
 import { createGateState, evaluateFrameGate } from "./pitchGate";
 import { createPaintGate, EXCURSION_SEMI } from "./pitchPaintGate";
@@ -170,6 +172,10 @@ export function useAudioPipeline() {
 
   // Smoothing buffers
   const pitchSmoothRef = useRef([]);
+  // Tracks gaps of >= SMOOTH_RESET_GAP_FRAMES frames without a fresh
+  // detection; after one, a register-switch value restarts the display
+  // median (pitchSmoothing.js smoothingBufferFor, 2026-10-04).
+  const smoothGapRef = useRef(createSmoothingGapTracker());
   const f1SmoothRef = useRef([]);
   const f2SmoothRef = useRef([]);
   const f3SmoothRef = useRef([]);
@@ -750,6 +756,7 @@ export function useAudioPipeline() {
       streamRef.current = null;
     }
     pitchSmoothRef.current = [];
+    smoothGapRef.current.reset();
     f1SmoothRef.current = [];
     f2SmoothRef.current = [];
     f3SmoothRef.current = [];
@@ -942,6 +949,9 @@ export function useAudioPipeline() {
     const steady = !gate.pitchStale && steadinessRef.current
       ? steadinessRef.current.read()
       : NO_STEADINESS;
+    // Counted on every frame (silence frames included): true on a fresh
+    // detection right after a gap — see smoothingBufferFor below.
+    const freshAfterGap = smoothGapRef.current.frame(hasPitch);
 
     // Push CPP into the vocal-weight aggregator gated on CONFIRMED
     // PITCH, not the silence gate (changed 2026-06-10). CPP measures
@@ -1106,6 +1116,14 @@ export function useAudioPipeline() {
     // — held values (SwiftF0 null but audio still loud enough) don't
     // enter the buffer so they can't stale-shift the median.
     let smoothedPitch = null;
+    // A fresh detection an octave-class jump from the buffer median right
+    // after a gap (a register switch) starts a new median instead of being
+    // medianed against the previous word's values; a new or empty buffer is
+    // seeded with the value so the median is always a real detection, never
+    // the mean of two (pitchSmoothing.js smoothingBufferFor; measurements/
+    // pitch-display-reacquire-2026-10-04.md §10). Held values never reach
+    // this (hasPitch is false).
+    if (hasPitch) pitchSmoothRef.current = smoothingBufferFor(pitchSmoothRef.current, pitch, freshAfterGap);
     if (effectivePitch !== null) {
       smoothedPitch = hasPitch
         ? pushAndMedianPitch(pitchSmoothRef.current, pitch, PITCH_SMOOTH_LEN)
@@ -1155,7 +1173,10 @@ export function useAudioPipeline() {
     // (pitchPaintGate.js "Register re-acquisition").
     let displayPitched = false;
     if (framePitched) {
-      displayPitched = paintGateRef.current.push(smoothedPitch, { fresh: hasPitch });
+      // raw: the unsmoothed fresh detection — the gate accepts a register
+      // change only when it agrees with the off-level run (pitchPaintGate.js
+      // "Faster re-acquisition").
+      displayPitched = paintGateRef.current.push(smoothedPitch, { fresh: hasPitch, raw: hasPitch ? pitch : null });
       if (!displayPitched && hasPitch && paintGateRef.current.lastReason() === "offlevel") {
         heldReadoutStaleRef.current = true;
       }
