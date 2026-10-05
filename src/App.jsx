@@ -5,6 +5,7 @@ import { CombinedDashboard } from "./components/CombinedDashboard";
 import { SessionHistory } from "./components/SessionHistory";
 import { DataManagement } from "./components/DataManagement";
 import { DIAG_ENABLED } from "./diag/diag";
+import { RESONANCE_LAB_ENABLED } from "./resonance-lab/flag";
 
 // Diagnostic overlay is dynamically imported and only rendered when the
 // ?diag=1 URL flag is present. Production users get zero bundle impact —
@@ -14,10 +15,17 @@ const DiagnosticOverlay = DIAG_ENABLED
   ? lazy(() => import("./diag/DiagnosticOverlay.jsx"))
   : null;
 
+// Experimental resonance lab view — only with ?resonance=lab (lazy chunk,
+// never fetched otherwise; same pattern as the diag overlay).
+const LabView = RESONANCE_LAB_ENABLED
+  ? lazy(() => import("./resonance-lab/LabView.jsx"))
+  : null;
+
 const TABS = [
   { id: "dashboard", label: "Dashboard" },
   { id: "pitch", label: "Pitch" },
   { id: "history", label: "History" },
+  ...(RESONANCE_LAB_ENABLED ? [{ id: "lab", label: "Resonance lab" }] : []),
 ];
 
 const WELCOME_KEY = "syrinx_welcomed";
@@ -253,6 +261,12 @@ function App() {
               )}
 
               {activeTab === "history" && <SessionHistory />}
+
+              {activeTab === "lab" && LabView && (
+                <Suspense fallback={null}>
+                  <LabView />
+                </Suspense>
+              )}
             </div>
 
             {/* Voice status + mic toggle (hidden on history tab) */}

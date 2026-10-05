@@ -40,6 +40,7 @@ import {
   pushVocalWeightEmit,
   resetVocalWeightCounters,
 } from "../diag/diag";
+import { RESONANCE_LAB_ENABLED } from "../resonance-lab/flag";
 
 // Silence-gate thresholds (SILENCE_THRESHOLD_DB, CONFIDENCE_THRESHOLD,
 // SILENCE_DEBOUNCE_FRAMES), pitch staleness, and the bounded pitch-hold
@@ -116,6 +117,9 @@ export function useAudioPipeline() {
   const workerRef = useRef(null);
   const mlWorkerRef = useRef(null);
   const pitchWorkerRef = useRef(null);
+  // Experimental resonance lab (?resonance=lab only): handle returned by
+  // the dynamically imported labPipeline; stays null without the flag.
+  const labRef = useRef(null);
   const streamRef = useRef(null);
   // Latest pitch from pitch-worker (SwiftF0). The DSP worker no longer
   // produces pitch since the Stage 4 cutover; each DSP analysis frame
@@ -446,6 +450,18 @@ export function useAudioPipeline() {
         [pitchPort],
       );
 
+      // Experimental resonance lab (?resonance=lab): one EXTRA capture
+      // consumer + lab worker, loaded on demand. Without the flag this
+      // block never runs and nothing is fetched (see resonance-lab/flag.js).
+      if (RESONANCE_LAB_ENABLED) {
+        import("../resonance-lab/labPipeline.js")
+          .then((lab) => {
+            if (!genAlive() || captureSrcRef.current !== captureSrc) return;
+            labRef.current = lab.startLab(captureSrc);
+          })
+          .catch((err) => console.error("resonance lab failed to start", err));
+      }
+
       pitchWorker.onmessage = (e) => {
         if (!genAlive()) return; // late message after stop()
         const msg = e.data;
@@ -718,6 +734,10 @@ export function useAudioPipeline() {
         captureSrcRef.current = null;
       }
       audioCtxRef.current = null;
+      if (labRef.current) {
+        labRef.current.stop();
+        labRef.current = null;
+      }
       for (const ref of [workerRef, mlWorkerRef, pitchWorkerRef]) {
         if (ref.current) {
           try { ref.current.terminate(); } catch { /* */ }
@@ -760,6 +780,10 @@ export function useAudioPipeline() {
     if (pitchWorkerRef.current) {
       pitchWorkerRef.current.terminate();
       pitchWorkerRef.current = null;
+    }
+    if (labRef.current) {
+      labRef.current.stop();
+      labRef.current = null;
     }
     latestPitchRef.current = { pitch: null, confidence: null, voiced: false, ts: 0 };
     if (streamRef.current) {

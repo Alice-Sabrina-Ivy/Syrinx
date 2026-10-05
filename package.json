@@ -9,6 +9,7 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
+    "test:resonance-lab": "node tests/resonance-lab/parity-test.js",
     "test:dsp": "node tests/dsp/swift-f0-streaming-verify.js && node tests/dsp/formant-accuracy-test.js && node tests/dsp/formant-debug.js && node tests/dsp/cpp-test.js && node tests/dsp/hnr-test.js"
   },
   "dependencies": {
