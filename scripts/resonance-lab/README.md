@@ -61,7 +61,7 @@ class MyCand(Candidate):
 The F0 track: two-pass Praat AC (pass 1 at 60-700 Hz, pass 2 at [0.75 q25, 1.5 q75] of
 pass 1 — per item, label-blind). Manipulated items get the source track × the intended
 pitch factor (timing is preserved by both engines; QA confirms the realised median within
-~1 %). private-session clips use the octave-robust consensus reference from the 2026-10-03
+~1 %). Session clips use the octave-robust consensus reference from the 2026-10-03
 session-attribution investigation. This is a better F0 than production's 75-400 Hz
 Boersma-AC will give at the extremes (e.g. men at −12 st ≈ 50 Hz) — candidates that lean
 on F0 should say how they would behave with the production detector.
@@ -77,7 +77,7 @@ on F0 should say how they would behave with the production detector.
 | `manip_test` | 5 utts × 40 test-clean speakers (100 F + 100 M), cropped to ≤ 5 s, × 42 conditions | R2, R3, R3@+8 st, combos |
 | `manip_hill` | Hillenbrand 10 men + 10 women × 12 vowels (240 tokens) × 42 conditions | R2, R3 on steady vowels |
 | `synth` | all vowdata tokens (men/women/**boys/girls**) formant-synthesised, 2 s held | R5 held-vowel SD, R7 children |
-| `sessions` | private-session session clips: second 857, alice_low 500, alice_raised 74 | R6 |
+| `sessions` | private session clips (`$SYRINX_SESSIONS_DIR`): second 857, alice_low 500, alice_raised 74 | R6 |
 | `r1_dev`, `manip_dev` | same recipes on dev-clean (80 manip sources) | `--split dev` tuning |
 | `train_dev` | all dev-clean utterances (never scored) | training pool |
 
@@ -120,7 +120,7 @@ on `r1_test`. `G_hill` likewise on Hillenbrand.
 | combos | Δ/G of the combined moves; "resonance share" = Δ(formant-only)/Δ(combo); share of sources crossing the men/women midpoint; also share of men flipped by **pitch alone** (+12 st) | reported |
 | **R4** vowel robustness | Hillenbrand median within-speaker across-vowel SD / G_hill; per-vowel offsets | ≤ 0.5 |
 | R5 stability | flicker = median within-utterance SD of window scores / G (test-clean); held SD = median SD over synthetic held vowels (0.75-2 s) / G; time-to-stable = voiced seconds until the cumulative readout stays within ±0.25 G of its 60 s value | reported |
-| **R6** real voices | private-session clip and 5 s readouts: S−L, R−L, S−R in G units, AUCs, ordering, and R−L corrected for the measured pitch leak × the raised-vs-low octave distance | second > alice_raised > alice_low |
+| **R6** real voices | Session clip and 5 s readouts: S−L, R−L, S−R in G units (S second voice, R alice_raised, L alice_low), AUCs, ordering, and R−L corrected for the measured pitch leak × the raised-vs-low octave distance | second > alice_raised > alice_low |
 | R7 high-F0 | synthetic boys/girls position relative to synthetic men (0) and women (1); AUC children vs men; AUC of top- vs bottom-F0-quartile test-clean women vs men; R3@+8 st for women | reported |
 | R8 cost | CPU ms per second of audio (single thread; JS bridges report extractor time only), model MB, JS-portability note | reported |
 
@@ -138,7 +138,7 @@ on `r1_test`. `G_hill` likewise on Hillenbrand.
   men/women produced by the same synthesiser. Praat Burg also mis-tracks some of these
   static synthetic spectra (spurious extra poles), so formant-based candidates may read
   them worse than real voices.
-* private-session R6 is one trainee and one coach on one room/mic chain; alice_raised has ~74
+* The sessions R6 set is one trainee and one second adult voice on one room/mic chain; alice_raised has ~74
   clips (~60 s voiced), mostly from 2025-09-08. Ordering "raised > low" assumes Alice's
   raised register also carries some resonance change (weakly supported by Praat F3/F4 in
   the 2026-10 brainstorm, AUC ~0.63-0.65); the pitch-corrected R−L column shows how much of

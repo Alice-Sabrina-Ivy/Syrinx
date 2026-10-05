@@ -20,10 +20,11 @@
 import { readFileSync } from "node:fs";
 import { createBoersmaAC, createPathTracker, BOERSMA_FRAME_LENGTH_16K } from "../src/dsp/boersma-ac.js";
 import { pushAndMedianPitch, PITCH_SMOOTH_LEN } from "../src/audio/pitchSmoothing.js";
+import { sessionPath } from "./session-data.js";
 
 const SR = 16000, HOP = 400, N = BOERSMA_FRAME_LENGTH_16K;
 const ONSET_CONFIRM = 3, JUMP_BREAK_SEMI = 12;
-const SESSION = "C:/Coding Projects/private-session/sessions/2026-05-26/session.wav";
+const SESSION = sessionPath("2026-05-26/session.wav");
 
 function readWav(p) {
   const b = readFileSync(p);

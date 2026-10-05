@@ -14,7 +14,7 @@ Item sets (manifests in build/resonance-lab/bench/manifests/<set>.parquet):
   manip_dev   2 utts/speaker dev-clean (80), same conditions (tuning split)
   manip_hill  Hillenbrand 10 men + 10 women x 12 vowels (240 tokens), same conditions     R2, R3 on vowels
   synth       formant-synthesized vowdata tokens, men/women/boys/girls, 2.0 s held        R5 held, R7 children
-  sessions    private-session session clips, second / alice_low / alice_mid / alice_raised        R6
+  sessions    private session clips ($SYRINX_SESSIONS_DIR), second / alice_low / alice_mid / alice_raised  R6
 """
 import os
 import sys
@@ -212,7 +212,8 @@ def build(setname, workers):
         vd = vd[np.isfinite(vd.F1) & np.isfinite(vd.F2) & np.isfinite(vd.F3) & np.isfinite(vd.f0)]
         jobs, fn = [(r,) for r in vd.to_dict("records")], job_synth
     elif setname == "sessions":
-        from rlab.paths import SESSION_IDS
+        from rlab.paths import SESSION_IDS, sessions_dir
+        sessions_dir()  # fail fast with a clear message when SYRINX_SESSIONS_DIR is unset
         jobs, fn = [(s,) for s in SESSION_IDS], job_sessions
     else:
         raise SystemExit(f"unknown set {setname}")

@@ -1,15 +1,18 @@
-"""private-session session clips (R6 real voices).
+"""Private session clips (R6 real voices).
 
-Frames: private-session 10 ms parquet with speaker labels (alice / second / ...).
+Session root: $SYRINX_SESSIONS_DIR (the private session recordings; see CLAUDE.md).
+Frames: the session label files (10 ms parquet) with raw speaker labels, normalised by
+speaker_label(): alice -> alice, outside -> outside, unknown / empty -> unknown, any
+other label -> second (the second voice in the recordings).
 F0: the octave-robust CONSENSUS reference from the 2026-10-03 session-attribution
 investigation (AC / SHS / PENN family majority; Praat alone octave-errs on Alice).
 
 Clips = maximal runs of one speaker label (alice or second), >= 0.6 s, split into
 <= 8 s chunks, >= 0.3 s consensus-voiced. Group per clip:
-  second                                   (second speaker)
-  alice_low     median voiced F0 < 165 Hz (private-session VOICE_STATE_SPLIT_DEFAULT)
+  second                                  (a second adult voice in the recordings)
+  alice_low     median voiced F0 < 165 Hz (the recording tool's VOICE_STATE_SPLIT_DEFAULT)
   alice_mid     165-185 Hz
-  alice_raised  >= 185 Hz (private-session BREAK_FLOOR_HZ)      <- the trainee case
+  alice_raised  >= 185 Hz (the recording tool's BREAK_FLOOR_HZ)      <- the trainee case
 Alice clips whose voiced frames are < 60 % inside the clip's own F0 bucket are
 labelled alice_mixed (kept, excluded from the ordering metric).
 """
@@ -17,11 +20,24 @@ import os
 import numpy as np
 import pandas as pd
 import soundfile as sf
-from .paths import SESSIONS_DIR, SESSION_ATTRIB, SR
+from .paths import SESSION_ATTRIB, SR, sessions_dir
 from .f0 import track_from_frames
 
-CAL = os.path.join(SESSIONS_DIR, "{}", "acoustic", "frames_enrollment-2026-05-07-v2.parquet")
-WAV = os.path.join(SESSIONS_DIR, "{}", "session.wav")
+LABELS = "frames_enrollment-2026-05-07-v2.parquet"
+# Raw speaker label -> normalised label; every label not listed is the second voice.
+_SPK = {"alice": "alice", "outside": "outside", "unknown": "unknown", "": "unknown"}
+
+
+def speaker_label(raw):
+    return _SPK.get(raw, "second")
+
+
+def labels_path(s):
+    return os.path.join(sessions_dir(), s, "acoustic", LABELS)
+
+
+def wav_path(s):
+    return os.path.join(sessions_dir(), s, "session.wav")
 
 
 def _consensus_fn():
@@ -33,7 +49,7 @@ def _consensus_fn():
 
 def session_frames(s):
     consensus = _consensus_fn()
-    df = pd.read_parquet(CAL.format(s))
+    df = pd.read_parquet(labels_path(s))
     r = np.load(os.path.join(SESSION_ATTRIB, "refs", f"{s}.npz"))
     t = df.timestamp_s.values
     for m in ["ac", "shs", "cc"]:
@@ -56,9 +72,9 @@ def bucket(f0):
 
 def build_clips(s, out_audio_dir, out_f0_dir, min_run=0.6, max_chunk=8.0, min_voiced=0.3):
     fr = session_frames(s)
-    x, sr = sf.read(WAV.format(s), dtype="float32")
+    x, sr = sf.read(wav_path(s), dtype="float32")
     assert sr == SR
-    spk = fr.speaker.astype(str).values
+    spk = fr.speaker.fillna("").astype(str).map(speaker_label).values
     t = fr.timestamp_s.values
     ref = fr.ref.values
     rows = []

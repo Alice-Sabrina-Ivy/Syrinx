@@ -22,9 +22,10 @@ import { createBoersmaAC, createPathTracker, createHarmonicVoicingGuard, BOERSMA
 import { createNoiseNotch, isNearNotch } from "../src/dsp/noise-notch.js";
 import { pushAndMedianPitch, PITCH_SMOOTH_LEN } from "../src/audio/pitchSmoothing.js";
 import { createPaintGate } from "../src/audio/pitchPaintGate.js";
+import { sessionPath } from "./session-data.js";
 
 const SR = 16000, HOP = 400;
-const SESSION = "C:/Coding Projects/private-session/sessions/2026-05-26/session.wav";
+const SESSION = sessionPath("2026-05-26/session.wav");
 const PRAAT = "build/pitch-compare/praat-contours.json";
 
 function readWav(p) {

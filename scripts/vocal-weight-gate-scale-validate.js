@@ -25,9 +25,10 @@ import { readFileSync } from "node:fs";
 import { createBoersmaAC, createPathTracker, BOERSMA_FRAME_LENGTH_16K } from "../src/dsp/boersma-ac.js";
 import { computeCPP, resetCppState } from "../src/dsp/cpp.js";
 import { VocalWeightAggregator } from "../src/audio/vocal-weight-aggregator.js";
+import { sessionPath } from "./session-data.js";
 
 const SR = 16000, HOP = 400, WINDOW = 800; // 25 ms hop, 50 ms CPP window
-const SESSION = "C:/Coding Projects/private-session/sessions/2026-05-26/session.wav";
+const SESSION = sessionPath("2026-05-26/session.wav");
 const PRAAT = "build/pitch-compare/praat-contours.json";
 
 function readWav(p) {

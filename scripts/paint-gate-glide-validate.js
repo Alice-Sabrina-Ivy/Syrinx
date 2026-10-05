@@ -31,9 +31,9 @@ import { readFileSync } from "node:fs";
 import { createBoersmaAC, createPathTracker, BOERSMA_FRAME_LENGTH_16K as N } from "../src/dsp/boersma-ac.js";
 import { pushAndMedianPitch, PITCH_SMOOTH_LEN } from "../src/audio/pitchSmoothing.js";
 import { createPaintGate, EXCURSION_SEMI, EXCURSION_SUSTAIN } from "../src/audio/pitchPaintGate.js";
+import { sessionPath } from "./session-data.js";
 
 const SR = 16000, HOP = 400;
-const SESSION = "C:/Coding Projects/private-session/sessions/2026-05-26/session.wav";
 const PRAAT = "build/pitch-compare/praat-contours.json";
 const stt = (a, b) => 12 * Math.log2(a / b);
 
@@ -105,6 +105,7 @@ for (const K of [4, 8, 11, 15]) {
 // ---------------------------------------------------------------- session
 
 if (process.argv.includes("--skip-session")) process.exit(0);
+const SESSION = sessionPath("2026-05-26/session.wav");
 
 console.log("\n=== 2026-05-26 session, production display chain ===");
 function readWav(p) {

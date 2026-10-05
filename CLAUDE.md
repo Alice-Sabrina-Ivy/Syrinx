@@ -277,6 +277,10 @@ Tuning sweeps, latency benchmarks, and other measurement artifacts live in `meas
 - **Belongs here:** baselines captured before tuning work, sweep results, latency/throughput measurements, before/after comparisons for any empirically-driven change.
 - **Does NOT belong here:** ad-hoc debugging logs, test fixtures (stay in `tests/`), production code.
 
+### Private session data
+
+The user's practice-session recordings and their label files (parquet) are **private and local-only**: never committed, never hard-coded. Scripts reach them only through the `SYRINX_SESSIONS_DIR` environment variable (the sessions root; JS via [scripts/session-data.js](scripts/session-data.js), the resonance lab via `rlab.paths.sessions_dir()`); unset, a script fails at the point of use with a message saying to set it. Measurement notes and JSON write such paths as `$SYRINX_SESSIONS_DIR/<session>/...`. Never write the name of the private project those recordings come from, or the names of other people heard in them, into the repo, commit messages or PRs: say "the private session recordings" and "a second voice in the recordings" (data key / group `second`; the resonance lab's test set is `sessions`).
+
 ### Current oracles
 
 - **Pitch:** `tests/dsp/boersma-ac-test.js` (frame-level, incl. the weak-H1 case), `scripts/pitch-shootout-extract.js` + `scripts/pitch-shootout-analyze.py` (corpus-level, fair per-detector attribution), `scripts/ac-tuning-sweep.js` (parameter sweeps), `scripts/pitch-accuracy-decompose.js` (displayed-accuracy attribution incl. smoothing lag). SwiftF0-era harnesses (`pitch-bucket-harness-swift.js`, `swift-f0-streaming-verify.js`, `swift-f0-threshold-sweep.js`, `swift-f0-adapter.js`) remain runnable for cross-detector comparisons; `swift-f0-streaming-verify.js` is still in `npm run test:dsp`.

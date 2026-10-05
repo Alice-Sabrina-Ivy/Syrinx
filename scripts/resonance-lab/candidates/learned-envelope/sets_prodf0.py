@@ -1,4 +1,4 @@
-"""Full-set R4 (Hillenbrand) and R6 (private-session) for a candidate, scored through the harness runner
+"""Full-set R4 (Hillenbrand) and R6 (private sessions) for a candidate, scored through the harness runner
 (used for the production-F0 variant, whose tracks exist for hill + sessions + the quick subsets).
   python sets_prodf0.py <candidate.py>
 """

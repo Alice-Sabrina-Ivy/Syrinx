@@ -35,9 +35,23 @@ def corpus_dir(sub):
 
 
 HILL = os.path.join(REPO, "tests", "dsp", "data")             # vowdata.dat + men/ + women/
-SESSIONS_DIR = "C:/Coding Projects/private-session/sessions"
+# Private session recordings (local-only, never committed): the root comes from the
+# SYRINX_SESSIONS_DIR environment variable (see CLAUDE.md "Private session data").
+# Resolved lazily via sessions_dir(), so importing rlab never needs it.
+SESSIONS_DIR = os.environ.get("SYRINX_SESSIONS_DIR", "")
 SESSION_IDS = ["2025-09-08", "2026-05-07", "2026-05-26", "2026-06-09"]
-# Octave-robust consensus F0 references for the private-session sessions, computed by the
+SESSIONS_HINT = ("set SYRINX_SESSIONS_DIR to the folder holding the private session recordings "
+                 "(see CLAUDE.md)")
+
+
+def sessions_dir():
+    """Root of the private session recordings; raises with a clear message when unset."""
+    if not SESSIONS_DIR:
+        raise RuntimeError(SESSIONS_HINT)
+    return SESSIONS_DIR.replace("\\", "/").rstrip("/")
+
+
+# Octave-robust consensus F0 references for the private sessions, computed by the
 # 2026-10-03 session-attribution investigation (AC / SHS / PENN family majority).
 SESSION_ATTRIB = "C:/Coding Projects/Syrinx/build/investigate-2026-10-03/session-attribution"
 ECAPA_ONNX = os.path.join(REPO, "node_modules", "@huggingface", "transformers", ".cache",

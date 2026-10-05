@@ -19,6 +19,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { loadAllCorpora } from "../tests/dsp/data/corpora.js";
 import { resampleLinear } from "../tests/dsp/swift-f0-adapter.js";
 import { createBoersmaAC, createPathTracker } from "../src/dsp/boersma-ac.js";
+import { sessionPath } from "./session-data.js";
 
 const SR = 16000;
 const HOP = Math.round(SR * 0.025); // 400 samples = 25 ms
@@ -29,7 +30,7 @@ const FLIP_TOL = 0.2;
 // present in praat-contours.json); AC_SESSION_ONLY=1 skips the corpora
 // for fast session-only cells.
 const SESSION_WAV = process.env.AC_SESSION_WAV
-  || "C:/Coding Projects/private-session/sessions/2026-05-26/session.wav";
+  || sessionPath("2026-05-26/session.wav");
 const SESSION_ONLY = process.env.AC_SESSION_ONLY === "1";
 const PRAAT_CONTOURS = "build/pitch-compare/praat-contours.json";
 
