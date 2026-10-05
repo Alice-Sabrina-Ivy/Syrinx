@@ -173,13 +173,13 @@ function processChunk(msg) {
   // 2x the display ceiling (boersma-ac.js maxPitchHz 800) precisely so
   // that phonation above 400 Hz decodes at its true F0 here instead of
   // aliasing to a confident half-pitch value inside the display range
-  // (2026-10-03: 43 % of the user's true >400 Hz frames painted at half
-  // with the old 400 Hz search ceiling). Applied BEFORE the harmonic
-  // guard so these frames never advance its fail streak (posting them
-  // after the guard let spurious high decodes build a streak that then
-  // vetoed correct low-voice frames: PTDB male -0.8 pp). Unvoiced keeps
-  // the pitch !== null <=> confidence >= 0.5 invariant (frameConfidence
-  // below) and every consumer's range assumption (trace, readout,
+  // (2026-10-03: with the old 400 Hz search ceiling a large share of such
+  // frames on the private session recordings painted at half). Applied
+  // BEFORE the harmonic guard so these frames never advance its fail
+  // streak (posting them after the guard let spurious high decodes build
+  // a streak that then vetoed correct low-voice frames: PTDB male
+  // -0.8 pp). Unvoiced keeps the pitch !== null <=> confidence >= 0.5
+  // invariant (frameConfidence below) and every consumer's range assumption (trace, readout,
   // session stats, formant/ML hints) unchanged.
   // measurements/pitch-ceiling-2026-10-03.md
   if (vetoed > PITCH_DISPLAY_RANGE.high) vetoed = null;

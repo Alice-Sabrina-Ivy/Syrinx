@@ -20,8 +20,8 @@
 //    createPaintGate, i.e. post-median values):
 //    - fast glides (octave in 4/8/12 frames) then a held target note:
 //      recovery latency + suppressed-hold-frame count (the bug).
-//    - harmonic-lock bursts (median run 4, p90 11 frames per the 06-10
-//      data). Contract since 2026-10-03 (EXCURSION_SUSTAIN 16 -> 8,
+//    - harmonic-lock bursts of 4-15 frames (synthetic; typical lock
+//      lengths). Contract since 2026-10-03 (EXCURSION_SUSTAIN 16 -> 8,
 //      pitch-display-gate-redesign-2026-10-03.md): locks SHORTER than
 //      EXCURSION_SUSTAIN never paint (octave-class painted frames must
 //      stay 0); a lock of >= EXCURSION_SUSTAIN frames is accepted as a

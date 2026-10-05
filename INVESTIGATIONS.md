@@ -47,9 +47,10 @@ still binding for any future pitch evaluation):
 Post-cutover follow-ups: excursion-break + display-clip + 75 Hz floor
 (2026-06-10, `pitch-trace-clip-floor` branch; the excursion-break
 measurement is private, kept outside this repo).
-The displayed 80–110 Hz band accuracy is ~94 % when scored at the
-correct ~150 ms attribution (98 ms worker latency + 5-frame display
-median lag); an earlier "81 %" figure was an attribution artifact.
+The displayed low-band session accuracy (private measurement) was
+underestimated by an attribution artifact; scored at the correct ~150 ms
+attribution (98 ms worker latency + 5-frame display median lag) it was
+materially higher.
 
 ### SwiftF0 era (2026-05-06 → 2026-06-09)
 

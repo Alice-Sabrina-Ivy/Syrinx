@@ -38,14 +38,16 @@ export const BOERSMA_DEFAULTS = {
                          // With the search capped at the display ceiling,
                          // phonation above it (sirens, break excursions)
                          // had no fundamental candidate and decoded as a
-                         // CONFIDENT half-pitch value inside the display:
-                         // 69 % of the user's true >400 Hz frames posted
-                         // at half, 43 % painted at half. At 800 they
+                         // CONFIDENT half-pitch value inside the display
+                         // (vocadito sung >= 400 Hz: 97.6 % posted at
+                         // half; the same failure was measured on the
+                         // private session recordings). At 800 they
                          // decode at their true F0 and the pitch worker
                          // posts every decode above PITCH_DISPLAY_RANGE.
                          // high as unvoiced (pitch-worker.js); 2x makes
-                         // the guarantee structural — a true F0 in
-                         // (400, 1600) can only alias to a half value
+                         // the guarantee structural — up to 800 the
+                         // fundamental is a candidate, and a true F0 in
+                         // (800, 1600) can only alias to a half value
                          // ABOVE 400, which is nulled too. 600 leaves
                          // 600-800 Hz aliasing into 300-400. The 600->400
                          // cut of 2026-06-10 (3-4x harmonic-lock surface)
@@ -87,8 +89,9 @@ export const BOERSMA_DEFAULTS = {
   //   >= highThrDb : odd multiples as prominent as even -> f is a real F0
   //                  -> partner 2f.strength -= highPenalty (symmetric
   //                  octave-up guard; it is what keeps the low-voice
-  //                  octave-up cost inside +0.3 pp — without it +0.30/
-  //                  +0.41 pp)
+  //                  octave-up cost near the +0.3 pp guard — measurably
+  //                  higher without it, on the private session
+  //                  recordings)
   // Prominence-based (peak vs. the valleys half a comb-spacing away), so
   // it is insensitive to the formant envelope and to broadband noise
   // (noise lowers both odd and even prominence -> no penalty).
@@ -208,8 +211,9 @@ export function createBoersmaAC(sampleRate, frameLength, opts = {}) {
   // frame's localPeak, so one click / plosive pop / desk bump far above a
   // quiet AGC-off voice (e.g. 1.0 vs speech peaks 0.03) latched the
   // reference for 30-50 s and the silence term vetoed the voice the whole
-  // time (transient oracle: most voiced frames lost after ONE click at
-  // speech peak 0.03; real recordings ran on a transient-set reference
+  // time (transient oracle: a large share — roughly a third to half — of
+  // voiced frames lost after ONE click at speech peak 0.03; real
+  // recordings ran on a transient-set reference
   // part of the time). Now a frame contributes only if its own AC is
   // periodic (best in-range peak r >= referencePeriodicR; transients are
   // aperiodic), and the contribution is the referenceRank-th largest such
