@@ -162,7 +162,7 @@ function runChain(sig, vt = null) {
     } else {
       v = pt.emit(ac.candidates(buf));
       if (v === undefined) v = null; // tracker warmup
-      if (v > 0 && isNearNotch(v, notch.activeFreqs())) v = null;
+      if (v > 0 && isNearNotch(v, notch.activeLines())) v = null;
     }
     if (!(v > 0)) { perHop.push({ f0: 0 }); continue; }
     const frameBuf = delayLine[0]; // buffer of the frame L hops back

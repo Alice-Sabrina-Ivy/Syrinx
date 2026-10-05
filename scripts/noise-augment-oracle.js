@@ -53,6 +53,7 @@ import {
   SR, NOISE_TYPES, TONAL_FREQS, babble, mix, notchCascade,
 } from "./noise-synth.js";
 import { createNoiseNotch, isNearNotch } from "../src/dsp/noise-notch.js";
+import { PITCH_DISPLAY_RANGE } from "../src/utils/constants.js";
 
 const args = Object.fromEntries(
   process.argv.slice(3).map((a) => {
@@ -115,6 +116,19 @@ function classify(reported, truth) {
   return "other";
 }
 
+// postFilter(decoded, notch, guard, frameBuf): pitch-worker processChunk's
+// post-decode chain, in its order — ghost veto at the notch state of decode
+// time (skipped when no notch runs), decodes above the display ceiling
+// posted as unvoiced BEFORE the guard (2026-10-03), then the debounced
+// harmonic guard on the decoded frame's own buffer. Shared by the decode
+// loops AND the end-of-stream tracker flush.
+function postFilter(v, notch, guard, frameBuf) {
+  if (v > 0 && notch && isNearNotch(v, notch.activeLines())) v = null;
+  if (v > PITCH_DISPLAY_RANGE.high) v = null;
+  if (v > 0 && !guard.check(frameBuf, v, SR)) v = null;
+  return v;
+}
+
 function makeNoise(name, len, sources) {
   if (name === "babble") return babble(len, sources);
   const gen = NOISE_TYPES[name];
@@ -141,24 +155,36 @@ async function runPitch() {
     const ac = createBoersmaAC(SR, N, detectorOpts);
     const pt = createPathTracker();
     const guard = createHarmonicVoicingGuard(); // production-parity
+    // --frontend=tracker: the production notch runs per chunk inside the
+    // decode loop so the ghost veto sees the notch state at decode time,
+    // exactly as in pitch-worker.js (2026-10-03: the previous whole-signal
+    // pre-pass never applied the veto, so this oracle's tonal-noise rows
+    // described a chain production was not running).
+    const notch = FRONTEND === "tracker" ? createNoiseNotch(SR) : null;
     const L2 = pt.config.lookback;
     const buf = new Float32Array(N);
     const delayLine = [];
     let fill = 0;
     const out = [];
     for (let i = 0; i + HOP <= sig.length; i += HOP) {
+      const chunk = Float32Array.from(sig.subarray(i, i + HOP));
+      if (notch) notch.process(chunk);
       buf.copyWithin(0, HOP, N);
-      buf.set(sig.subarray(i, i + HOP), N - HOP);
+      buf.set(chunk, N - HOP);
       fill = Math.min(N, fill + HOP);
       delayLine.push(Float32Array.from(buf));
       if (delayLine.length > L2 + 1) delayLine.shift();
       if (fill < N) { pt.emit({ voiced: [], unvoicedStrength: ac.config.voicingThreshold }); out.push(null); continue; }
-      let v = pt.emit(ac.candidates(buf));
-      if (v > 0 && !guard.check(delayLine[0], v, SR)) v = null;
-      out.push(v);
+      out.push(postFilter(pt.emit(ac.candidates(buf)), notch, guard, delayLine[0]));
     }
-    // re-align tracker delay (L=2) like ac-tuning-sweep does
-    const tail = pt.flush();
+    // re-align tracker delay (L=2) like ac-tuning-sweep does. The flushed
+    // trailing frames go through the SAME ghost veto -> above-range null ->
+    // harmonic guard as the loop (2026-10-04): they used to be appended raw,
+    // so every track's last L hops — always inside the noise-only tail —
+    // skipped all three and supplied essentially all of the reported tail
+    // false-voicing (e.g. pink +10 dB 0.8 % -> 0.0 %).
+    // measurements/noise-notch-held-note-robustness-2026-10-04.md §2
+    const tail = pt.flush().map((v, j) => postFilter(v, notch, guard, delayLine[1 + j]));
     const vals = out.slice(L2).concat(tail);
     return out.map((_, k) => vals[k] ?? null);
   }
@@ -176,7 +202,7 @@ async function runPitch() {
         const noise = makeNoise(noiseName, Math.min(tr.sig.length + (TAIL_SEC + LEAD_SEC) * SR, 40 * SR), hillSrc);
         ({ mixed: sig, tailStart, lead } = mix(tr.sig, noise, snr, TAIL_SEC, LEAD_SEC));
       }
-      sig = applyFrontend(sig, noiseName);
+      if (FRONTEND !== "tracker") sig = applyFrontend(sig, noiseName); // tracker runs inside runTrack
       const decoded = runTrack(sig);
       const centerOffMs = (N / 2) / SR * 1000;
       for (let k = 0; k < decoded.length; k++) {
@@ -279,14 +305,12 @@ async function runGender() {
       if (gDelay.length > pt.config.lookback + 1) gDelay.shift();
       fill = Math.min(N, fill + 400);
       if (fill < N) { pt.emit({ voiced: [], unvoicedStrength: ac.config.voicingThreshold }); out.push(false); continue; }
-      let decoded = pt.emit(ac.candidates(buf));
-      // ghost-voicing veto + harmonic guard, as in pitch-worker
-      if (decoded > 0 && isNearNotch(decoded, notch.activeFreqs())) decoded = null;
-      if (decoded > 0 && !gGuard.check(gDelay[0], decoded, SR)) decoded = null;
-      out.push(decoded > 0);
+      // ghost-voicing veto + above-range null + harmonic guard, as in pitch-worker
+      out.push(postFilter(pt.emit(ac.candidates(buf)), notch, gGuard, gDelay[0]) > 0);
     }
     const L2 = pt.config.lookback;
-    const tail = pt.flush().map((v) => v > 0);
+    // flushed trailing frames through the same post-decode chain (2026-10-04)
+    const tail = pt.flush().map((v, j) => postFilter(v, notch, gGuard, gDelay[1 + j]) > 0);
     const vals = out.slice(L2).concat(tail);
     return { voiced: out.map((_, k) => vals[k] ?? false), notchFreqs: freqs };
   }

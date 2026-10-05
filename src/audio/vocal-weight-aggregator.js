@@ -44,12 +44,11 @@ export const HARD_RESET_UNVOICED_MS = 2000;
 //
 // Re-measured 2026-10-03 under the current chain (Boersma-AC hasPitch
 // gating, CPP every frame): emits built from < 300 ms of voicing are
-// 14-24 % of emits on speech and read 0.4-1.2 sigma heavier than their
-// neighbours (phrase-edge windows), but restoring the original 600 ms
-// intent (24 frames) only cuts the needle's >1 sigma excursions by
-// 3.5-8 pp (Alice sessions 18.6 -> 15.0 %) while lengthening median
-// calibration by +20 s (Alice), +46 s (FDA) and +66 s (PTDB-TUG; one
-// PTDB speaker never calibrates). Kept at 4 deliberately.
+// 20-24 % of emits on the speech corpora and read 0.4-1.1 sigma heavier
+// than their neighbours (phrase-edge windows), but restoring the original
+// 600 ms intent (24 frames) only cuts the needle's >1 sigma excursions by
+// 3.5-8 pp while lengthening median calibration by +46 s (FDA) and +66 s
+// (PTDB-TUG; one PTDB speaker never calibrates). Kept at 4 deliberately.
 // measurements/vocal-weight-floor-and-register-2026-10-03.md.
 export const MIN_VOICED_FRAMES = 4;
 

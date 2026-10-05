@@ -3,14 +3,14 @@
 //
 // Replaces SwiftF0 (ONNX CNN), cut over 2026-06-09. SwiftF0 confidently
 // reported 2×F0 on weak-fundamental phonation (H2 louder than H1 —
-// routine in voice training): 25.6 % octave-up / 19.1 % null in the
-// user's 80–110 Hz register on real session audio, vs 4.1 % / 0.4 % for
-// the tuned AC detector, at corpus parity or better on two of four
+// routine in voice training) in the 80–110 Hz low register on real
+// session audio, far more often than the tuned AC detector (private
+// measurement), at corpus parity or better on two of four
 // ground-truth corpora and ~25–50× less compute (0.21 ms/frame pure JS
 // vs 5–11 ms browser-WASM inference). Decision data:
-// measurements/swift-f0-vs-praat-sessions-2026-06-09.md,
-// measurements/pitch-detector-shootout-2026-06-09.md,
-// measurements/boersma-ac-tuning-2026-06-09.md.
+// measurements/boersma-ac-tuning-2026-06-09.md (the 2026-06-09 session
+// comparison and detector shootout are private measurements, kept outside
+// this repo).
 //
 // Streaming protocol (cadence unchanged from the SwiftF0 era):
 //   Each capture chunk arrives at ~25 ms cadence with `contextTime`
@@ -34,7 +34,8 @@
 // SwiftF0-era inference timeout machinery is gone — the detector is a
 // synchronous pure function; there is nothing to hang.)
 //
-// `pitch`     — Hz, or null when the decoded frame is unvoiced
+// `pitch`     — Hz, or null when the decoded frame is unvoiced OR decodes
+//               above PITCH_DISPLAY_RANGE.high (see processChunk)
 // `confidence`— [0, 1]; preserves the SwiftF0-era invariant that
 //               pitch !== null ⟺ confidence ≥ 0.5, so the silence
 //               gate's voicedness arm (pitchGate.js, threshold 0.5)
@@ -55,6 +56,7 @@ import {
 } from "./boersma-ac.js";
 import { createNoiseNotch, isNearNotch } from "./noise-notch.js";
 import { createStreamingResampler } from "../ml/audio-utils.js";
+import { PITCH_DISPLAY_RANGE } from "../utils/constants.js";
 
 const TARGET_SAMPLE_RATE = 16000;
 const FRAME_LENGTH = BOERSMA_FRAME_LENGTH_16K; // 1280 = 80 ms
@@ -159,12 +161,28 @@ function processChunk(msg) {
   const meta = frameMeta.shift();
 
   // Ghost-voicing veto: never report a pitch AT an actively-notched
-  // interferer frequency (or its octave relatives) — see isNearNotch in
-  // noise-notch.js. The notch removes the interferer from the analysis
-  // stream, but its ringing against broadband rumble can leave weak
-  // periodicity there that the Viterbi bridges into sustained voicing.
+  // interferer line (or its octave) — see isNearNotch in noise-notch.js.
+  // The notch rarely removes an interferer completely (unpromoted
+  // harmonics, wobble outside the notch, rumble), and the residual is
+  // still periodic at the line frequency. Narrow (+-2 %, widened only for
+  // wobbling lines) since 2026-10-03: the old +-4 % window around f/2, f
+  // and 2f blanked real voice across whole registers.
   let vetoed = decoded;
-  if (vetoed > 0 && isNearNotch(vetoed, noiseNotch.activeFreqs())) vetoed = null;
+  if (vetoed > 0 && isNearNotch(vetoed, noiseNotch.activeLines())) vetoed = null;
+  // Above the display range: post as UNVOICED. The detector searches to
+  // 2x the display ceiling (boersma-ac.js maxPitchHz 800) precisely so
+  // that phonation above 400 Hz decodes at its true F0 here instead of
+  // aliasing to a confident half-pitch value inside the display range
+  // (2026-10-03: with the old 400 Hz search ceiling a large share of such
+  // frames on the private session recordings painted at half). Applied
+  // BEFORE the harmonic guard so these frames never advance its fail
+  // streak (posting them after the guard let spurious high decodes build
+  // a streak that then vetoed correct low-voice frames: PTDB male
+  // -0.8 pp). Unvoiced keeps the pitch !== null <=> confidence >= 0.5
+  // invariant (frameConfidence below) and every consumer's range assumption (trace, readout,
+  // session stats, formant/ML hints) unchanged.
+  // measurements/pitch-ceiling-2026-10-03.md
+  if (vetoed > PITCH_DISPLAY_RANGE.high) vetoed = null;
   // Harmonic-structure guard on the decoded frame's own audio (delay
   // line front = the frame L hops back).
   if (vetoed > 0 && !harmonicGuard.check(bufferDelayLine[0], vetoed, TARGET_SAMPLE_RATE)) {

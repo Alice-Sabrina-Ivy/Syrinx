@@ -16,9 +16,9 @@
 // Metrics per cell:
 //   connPairs  — painted consecutive pairs >= 9 st apart (the visible
 //                vertical lines; target ~0)
-//   painted    — painted-frame count (over-suppression guard; current
-//                production paints 73523)
-//   band80-110 — correct% vs Praat in the user's register (accuracy guard)
+//   painted    — painted-frame count (over-suppression guard vs the
+//                current production chain)
+//   band80-110 — correct% vs Praat in the 80-110 Hz low band (accuracy guard)
 //
 // Usage: node scripts/pitch-excursion-fix-sweep.js
 
@@ -27,7 +27,9 @@ import { createBoersmaAC, createPathTracker, BOERSMA_FRAME_LENGTH_16K } from "..
 import { pushAndMedianPitch, PITCH_SMOOTH_LEN } from "../src/audio/pitchSmoothing.js";
 
 const SR = 16000, HOP = 400, N = BOERSMA_FRAME_LENGTH_16K, ONSET_CONFIRM = 3, LEVEL_RING = 15;
-const SESSION = "C:/Coding Projects/private-session/sessions/2026-05-26/session.wav";
+// $SYRINX_SESSIONS_DIR = the private session recordings (local only; see CLAUDE.md).
+const SESSIONS_DIR = (process.env.SYRINX_SESSIONS_DIR ?? "").replace(/\\/g, "/").replace(/\/+$/, "");
+const SESSION = SESSIONS_DIR && `${SESSIONS_DIR}/2026-05-26/session.wav`;
 const PRAAT = "build/pitch-compare/praat-contours.json";
 
 function readWav(p) {
@@ -41,6 +43,7 @@ function readWav(p) {
 const stt = (a, b) => 12 * Math.log2(a / b);
 const median = (a) => { const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
 
+if (!SESSION) throw new Error("set SYRINX_SESSIONS_DIR to the folder holding the private session recordings (see CLAUDE.md)");
 const samples = readWav(SESSION);
 const pf = JSON.parse(readFileSync(PRAAT, "utf8")).files.find((f) => f.path === SESSION);
 

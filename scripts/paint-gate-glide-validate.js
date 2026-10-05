@@ -14,14 +14,20 @@
 //    gate): painted frames, connected pairs ≥ 9 st (visible vertical
 //    lines), octave-class pairs ≥ 12 st, and 80–110 Hz band correct%
 //    at best alignment. These are the metrics the excursion break was
-//    tuned on (pitch-excursion-break-2026-06-10.md) — they must not
+//    tuned on (2026-06-10; private measurement, kept outside this repo) — they must not
 //    regress.
 // 2. Synthetic gate-level scenarios (sequences fed straight to
 //    createPaintGate, i.e. post-median values):
 //    - fast glides (octave in 4/8/12 frames) then a held target note:
 //      recovery latency + suppressed-hold-frame count (the bug).
-//    - harmonic-lock bursts (median run 4, p90 11 frames per the 06-10
-//      data): octave-class painted frames must stay 0.
+//    - harmonic-lock bursts of 4-15 frames (synthetic; typical lock
+//      lengths). Contract since 2026-10-03 (EXCURSION_SUSTAIN 16 -> 8,
+//      pitch-display-gate-redesign-2026-10-03.md): locks SHORTER than
+//      EXCURSION_SUSTAIN never paint (octave-class painted frames must
+//      stay 0); a lock of >= EXCURSION_SUSTAIN frames is accepted as a
+//      register and paints its tail (8 / 11 / 15-frame locks: 1 / 4 / 8
+//      frames) — drawn as its own segment by the live trace's octave-
+//      class line break, never as a connecting spike line.
 //    - instant genuine register jump: accept latency must stay
 //      EXCURSION_SUSTAIN.
 //
@@ -33,7 +39,9 @@ import { pushAndMedianPitch, PITCH_SMOOTH_LEN } from "../src/audio/pitchSmoothin
 import { createPaintGate, EXCURSION_SEMI, EXCURSION_SUSTAIN } from "../src/audio/pitchPaintGate.js";
 
 const SR = 16000, HOP = 400;
-const SESSION = "C:/Coding Projects/private-session/sessions/2026-05-26/session.wav";
+// $SYRINX_SESSIONS_DIR = the private session recordings (local only; see CLAUDE.md).
+const SESSIONS_DIR = (process.env.SYRINX_SESSIONS_DIR ?? "").replace(/\\/g, "/").replace(/\/+$/, "");
+const SESSION = SESSIONS_DIR && `${SESSIONS_DIR}/2026-05-26/session.wav`;
 const PRAAT = "build/pitch-compare/praat-contours.json";
 const stt = (a, b) => 12 * Math.log2(a / b);
 
@@ -77,9 +85,11 @@ for (const [SPAN, G] of [[12, 4], [12, 8], [19, 8], [19, 16], [24, 16], [24, 24]
 }
 
 // Harmonic-lock bursts: 100 Hz established, lock at 380 Hz for K frames,
-// return to 100. No octave-class value may paint.
+// return to 100. Locks shorter than EXCURSION_SUSTAIN must not paint any
+// octave-class value; longer locks paint their tail (accepted register,
+// 2026-10-03 contract — see header).
 console.log("");
-for (const K of [4, 8, 11, 15]) {
+for (const K of [4, 7, 8, 11, 15]) {
   const seq = [];
   for (let i = 0; i < 30; i++) seq.push(100);
   for (let i = 0; i < K; i++) seq.push(380);
@@ -87,7 +97,10 @@ for (const K of [4, 8, 11, 15]) {
   const out = runGate(seq);
   let octPainted = 0;
   seq.forEach((hz, i) => { if (out[i] && Math.abs(stt(hz, 100)) >= EXCURSION_SEMI) octPainted++; });
-  console.log(`harmonic lock ${K} frames @380 Hz: octave-class painted ${octPainted} ${octPainted === 0 ? "(ok)" : "(REGRESSION)"}`);
+  const verdict = K < EXCURSION_SUSTAIN
+    ? (octPainted === 0 ? "(ok)" : "(REGRESSION: lock shorter than EXCURSION_SUSTAIN painted)")
+    : `(expected: >= EXCURSION_SUSTAIN lock accepted, tail ${K - EXCURSION_SUSTAIN + 1} frame(s) max)`;
+  console.log(`harmonic lock ${K} frames @380 Hz: octave-class painted ${octPainted} ${verdict}`);
 }
 
 // Instant genuine register change: 110 established, jump to 220, hold.
@@ -115,6 +128,7 @@ function readWav(p) {
   for (let i = 0; i < s.length; i++) s[i] = b.readInt16LE(ds + i * 2) / 32768;
   return s;
 }
+if (!SESSION) throw new Error("set SYRINX_SESSIONS_DIR to the folder holding the private session recordings (see CLAUDE.md)");
 const samples = readWav(SESSION);
 const pf = JSON.parse(readFileSync(PRAAT, "utf8")).files.find((f) => f.path === SESSION);
 

@@ -6,7 +6,7 @@ more WAV files and writes per-frame {t, f0} contours to JSON. Used as
 the reference ("known good") tracker for comparison against Syrinx's
 SwiftF0 streaming pipeline on real user session audio.
 
-Pitch floor 50 Hz (below the user's 85-95 Hz range so fry/creak isn't
+Pitch floor 50 Hz (below typical low-voice F0, so fry/creak isn't
 clipped), ceiling 600 Hz, 10 ms time step.
 
 Usage:

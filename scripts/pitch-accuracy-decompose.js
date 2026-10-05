@@ -1,14 +1,14 @@
-// pitch-accuracy-decompose.js — What is the "19% not-correct" in the
-// session 80-110 Hz band actually made of, and is the 81% display
-// metric real or a measurement artifact? (2026-06-10, before deciding
+// pitch-accuracy-decompose.js — What is the not-correct share in the
+// session 80-110 Hz band actually made of, and is the display metric
+// real or a measurement artifact? (2026-06-10, before deciding
 // whether detector accuracy has real headroom worth tuning.)
 //
 // Reconstructs the production display series (AC + tracker + median-5 +
 // pitchPaintGate) over the 2026-05-26 session, then:
 //   1. Sweeps the attribution offset to find best Praat alignment — the
 //      5-frame median adds lag the excursion sweep's fixed offset didn't
-//      account for; if accuracy peaks at a larger offset, the 81% was an
-//      alignment artifact, not detector error.
+//      account for; if accuracy peaks at a larger offset, the earlier
+//      figure was an alignment artifact, not detector error.
 //   2. At best alignment, decomposes non-correct frames into octave-up,
 //      octave-down, near-miss (5-12%), gross-other, and reports correct
 //      at both 5% and 10% tolerance.
@@ -24,7 +24,9 @@ import { pushAndMedianPitch, PITCH_SMOOTH_LEN } from "../src/audio/pitchSmoothin
 import { createPaintGate } from "../src/audio/pitchPaintGate.js";
 
 const SR = 16000, HOP = 400;
-const SESSION = "C:/Coding Projects/private-session/sessions/2026-05-26/session.wav";
+// $SYRINX_SESSIONS_DIR = the private session recordings (local only; see CLAUDE.md).
+const SESSIONS_DIR = (process.env.SYRINX_SESSIONS_DIR ?? "").replace(/\\/g, "/").replace(/\/+$/, "");
+const SESSION = SESSIONS_DIR && `${SESSIONS_DIR}/2026-05-26/session.wav`;
 const PRAAT = "build/pitch-compare/praat-contours.json";
 
 function readWav(p) {
@@ -35,6 +37,7 @@ function readWav(p) {
   for (let i = 0; i < s.length; i++) s[i] = b.readInt16LE(ds + i * 2) / 32768;
   return s;
 }
+if (!SESSION) throw new Error("set SYRINX_SESSIONS_DIR to the folder holding the private session recordings (see CLAUDE.md)");
 const samples = readWav(SESSION);
 const pf = JSON.parse(readFileSync(PRAAT, "utf8")).files.find((f) => f.path === SESSION);
 
@@ -54,7 +57,7 @@ for (let i = 0; i + HOP <= samples.length; i += HOP) {
   delayLine.push(Float32Array.from(buf));
   if (delayLine.length > pt.config.lookback + 1) delayLine.shift();
   let v = pt.emit(ac.candidates(buf));
-  if (v > 0 && isNearNotch(v, notch.activeFreqs())) v = null;
+  if (v > 0 && isNearNotch(v, notch.activeLines())) v = null;
   if (v > 0 && !guard.check(delayLine[0], v, SR)) v = null;
   if (v !== undefined) decoded.push(v ?? 0);
 }

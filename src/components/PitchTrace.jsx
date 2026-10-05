@@ -160,10 +160,12 @@ export function PitchTrace({ pitchTraceRef, voiced, holding, pitch, compact = fa
 
       // Clip the trace + glow dot to the plot rectangle so a pitch
       // outside the display range can never paint over the axis labels
-      // or below the chart. The detector range is kept in sync with
-      // PITCH_DISPLAY_RANGE (so this shouldn't fire), but the clip is a
-      // structural guarantee against the under-chart artifact recurring
-      // if the ranges ever drift apart again (2026-06-10).
+      // or below the chart. The pitch worker only posts values inside
+      // PITCH_DISPLAY_RANGE (detector floor = display floor; decodes
+      // above the display ceiling post as unvoiced, 2026-10-03), so this
+      // shouldn't fire, but the clip is a structural guarantee against
+      // the under-chart artifact recurring if the ranges ever drift
+      // apart again (2026-06-10).
       ctx.save();
       ctx.beginPath();
       ctx.rect(plotLeft, plotTop, plotRight - plotLeft, plotBottom - plotTop);
