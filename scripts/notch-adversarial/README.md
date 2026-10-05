@@ -26,6 +26,7 @@ interaction.
 | `P0`, `PH` | `cand-notch.js` reproducing `B` / `H` message-for-message |
 | `R1` | cb00425's module (round 1 = `N13`; tree `r1`) |
 | `R1c`, `R2h`, `R2q`, `R2`–`R8` | `cand2-notch.js` (round 2: cb00425 + flags): `R2h` handoff off; `R2q` + quiet-window line gate on breath re-births; `R2` the gate replacing cb00425's revokes with a quiet-window STEADY revoke; `R3`/`R4` run-scoped 3 / 5-window steady; `R5` + fast-decay counts as absent; `R6` + provisional re-births voided when the line comes back inside the pause; `R7` stricter "back" (+6 dB, 13 dB prominence); `R8` = the round-2 candidate (fast decay counts as absent only at >= 3 dB / 50 ms on average since the pause began). **Not shipped**: it never notches a tonal source that itself cuts out for 0.15-1 s every few seconds (`r2int.mjs --part=intermit`, bc42ad0 ~20 s), the repeated-holds signal by construction. The flag-free drop-in is [`r8-notch.js`](r8-notch.js) (parity with `R8`: 0 mismatches). Round 2 reverted `src/` to bc42ad0's module (`B`) |
+| `V0`–`V14` | `cand3-notch.js` (2026-10-05 voice-vs-machine CANDIDATE phase: `r8-notch.js` + per-track line coherence — shared mid-band FM of a line and its own 2nd partial, pooled over the last <= 5 1-s windows; `measurements/noise-notch-voice-discrimination-2026-10-05.md`): `V0` = `R8`, `VB0` = `B` (parity 0 mismatches); `V1` machine-confirmed lines promote at 5 s even if onset-born (fails the strict rule: synthetic `weak` / `weak2` / `step` FV cells, `handoff-adv`, 53 / 504 real gated streams); `V6`–`V10` voice timing + R8 re-births unless machine-confirmed (`V10`: + revoke, jump guard, reanchor; 99 / 504 real gated streams later than `B` — real sources re-birth while still undecided); `V11` = `B` + voice timing only; `V12` / `V13` re-births only for voice-confirmed lines (3 / 6 real gated streams fail); **`V14` = `V11` with the strict 0.7 / 2.5 c voice verdict = shipped** (`src/` parity: 0 mismatches in 75 980 messages) |
 
 `setup.sh` builds `build/notch-adv/trees/{bc42,head,cand,r1,cand2}/src` (copies of
 `src/` with that notch module). Re-run it after editing `src/`,
@@ -46,6 +47,8 @@ interaction.
 | `grid.mjs` | the 2026-10-03 held-note main / requirement grids through the real worker. |
 | `oracles.sh A B`, `sessions.sh`, `extra-preload.mjs` | committed oracles (noise-augment pitch + gender, voicing shootout) and the session oracle on two notch modules. |
 | `realdata/` | (2026-10-05) REAL noise + REAL held-voice corpora, census of the real noise, end-to-end mixes and JS loaders for the voice-vs-machine discrimination phase — [realdata/README.md](realdata/README.md), [measurements/notch-realdata-corpora-2026-10-05.md](../../measurements/notch-realdata-corpora-2026-10-05.md). Line discrimination (`linefeat*.py`, shared mid-band FM across partials): [measurements/notch-voice-machine-discrimination-2026-10-05.md](../../measurements/notch-voice-machine-discrimination-2026-10-05.md). |
+| `realdata/realeval.mjs`, `realdata/agg-real.mjs` | (2026-10-05) the REAL-noise oracle: the real worker over the real corpora — `noise` (279 noise-only clips: promotion, painted false voicing), `gated` (504 real stationary-tonal sources switched off 0.15–1 s every 5 / 8 s: the R8 failure class on real audio), `held` (192 real VocalSet same-pitch hold series), `vin` (798 real voice programs in real noise at +10 / 0 dB); per-stream strict rule vs `B` |
+| `realdata/linecls.mjs` | census of the ONLINE coherence verdict (`cand3-notch.js`, promotion disabled) on real voice / noise / mixes |
 | `agg-held.mjs`, `agg-int.mjs`, `agg-noise.mjs` | tables + the round-1 strict-rule check vs `B`. |
 | `parity.mjs A B` | message-level equality of two variants. |
 
@@ -70,4 +73,18 @@ for p in step masked beatpause shared intermit; do bash $S/shards.sh $R/r2_$p 4 
 node $S/agg-r2.mjs $R/r2_step $R/r2_masked $R/r2_beatpause $R/r2_shared $R/r2_intermit --fails
 node $S/parity.mjs R8 SRC 17 16000,48000      # with r8-notch.js copied over src/dsp/noise-notch.js
 bash $S/oracles.sh bc42 src; bash $S/sessions.sh r1b build/notch-adv/otree/bc42/src r1s src
+```
+
+### Voice-vs-machine candidate (2026-10-05)
+
+```bash
+bash scripts/notch-adversarial/setup.sh            # builds trees/cand3 too
+S=scripts/notch-adversarial; R=build/notch-adv/res7; RD=$S/realdata
+node $S/parity.mjs V14 SRC 13 16000,48000           # src/ == V14
+for s in noise gated held vin; do bash $S/shards.sh $R/real_$s 6 $RD/realeval.mjs --set=$s --variants=B,R8,SRC; done
+node $RD/agg-real.mjs $R/real_gated --vars=B,R8,SRC --fails=20
+for s in noise gated held; do bash $S/shards.sh $R/cls_$s 6 $RD/linecls.mjs --set=$s --vcorr=0.7 --vcoh=2.5; done
+bash $S/shards.sh $R/cls_voice 6 $RD/linecls.mjs --set=voice --deg=inf,20,10,0 --vcorr=0.7 --vcoh=2.5
+# synthetic suite as in round 2 with --variants=B,R8,SRC; merge.mjs joins runs of different variants
+node $RD/export_test_clips.mjs                       # tests/dsp/data/notch-real (committed)
 ```

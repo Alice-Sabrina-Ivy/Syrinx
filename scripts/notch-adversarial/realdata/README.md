@@ -52,6 +52,9 @@ node   $R/mix-parity.mjs                       # JS renderMix == Python render (
 | `linefeat.py` | DISCRIMINATE phase: per tracked line (notch peak finder, 80-400 Hz), 25 ms phase-vocoder IF + amplitude at f and 2f (64 ms Hann DFT bins), per-1 s-window micro-variation features; voice / noise / mix modes, white-noise degradation, window length, extra partners -> `build/notchvd/linefeat/*.csv` |
 | `linefeat_analyze.py` | AUC / 99 %-voice operating points per feature, confound check, degraded voice, grouped-CV logistic combinations, per-class tables |
 | `linefeat_rules.py` | explicit causal "confidently machine" rules (pooled cross-harmonic coherence, evidence floor `--minwin`), grouped-CV threshold selection, per-class + mix + supplement evaluation |
+| `realeval.mjs`, `agg-real.mjs` | CANDIDATE phase (2026-10-05): the real-noise oracle — real worker (`lib.mjs` variants) over `noise` / `gated` / `held` / `vin`; promotion, painted false voicing, voice frames at pitch; per-stream strict rule vs bc42ad0 |
+| `linecls.mjs` | census of the online line-coherence verdict (`cand3-notch.js`) on real voice (clean + white-noise degradations), real noise and the mixes |
+| `export_test_clips.mjs` | writes the three short real clips `tests/dsp/noise-notch-test.js` commits (`tests/dsp/data/notch-real/`: an MS-SNSD air-conditioner excerpt, CC0; VocalSet long tones of two singers, CC BY 4.0) |
 | `realdata.mjs` | JS loader: `loadIndex`, `readClip`, `readWav`, `loadF0`, `resample` (16 -> 48 kHz polyphase), `renderMix` |
 
 ## Records

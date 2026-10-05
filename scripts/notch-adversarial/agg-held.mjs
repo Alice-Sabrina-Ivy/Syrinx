@@ -7,8 +7,16 @@ import path from "node:path";
 const pos = process.argv.slice(2).filter((a) => !a.startsWith("--"));
 const args = Object.fromEntries(process.argv.slice(2).filter((a) => a.startsWith("--")).map((a) => { const [k, v = "1"] = a.replace(/^--/, "").split("="); return [k, v]; }));
 const rows = [];
-for (const d of pos) for (const f of readdirSync(d).filter((f) => f.endsWith(".json"))) rows.push(...JSON.parse(readFileSync(path.join(d, f))));
+// several DIRs: rows of the same scenario + rate are merged (later DIRs win
+// per variant), so variants run separately can be compared
+const byKey = new Map();
+for (const d of pos) for (const f of readdirSync(d).filter((f) => f.endsWith(".json"))) for (const r of JSON.parse(readFileSync(path.join(d, f)))) {
+  const k = `${r.name} ${r.sr}`;
+  if (byKey.has(k)) Object.assign(byKey.get(k).v, r.v); else { byKey.set(k, r); rows.push(r); }
+}
 const vars = args.vars ? args.vars.split(",") : Object.keys(rows[0].v);
+// only scenarios every listed variant ran (e.g. one variant at 16 kHz only)
+for (let i = rows.length - 1; i >= 0; i--) if (!vars.every((v) => rows[i].v[v]) || (args.sr && String(rows[i].sr) !== args.sr)) rows.splice(i, 1);
 const base = args.base || "B";
 const by = args.by || "family";
 // sub-family: repeat families split by breath length

@@ -56,20 +56,45 @@
 // moves), and an interferer that SWITCHES ON mid-session (fan, fridge
 // compressor) is notched after ~20 s instead of ~5 s.
 //
-// Known held-note gaps (2026-10-04, measurements/noise-notch-held-note-
-// robustness-2026-10-04.md "Round 2"): the 20 s clock runs from the
-// TRACK's first onset, so it is NOT renewed by (a) same-pitch holds
-// separated by breaths (one track spans the series: notched once it passes
-// 20 s), (b) a glide / step > MATCH_HZ mid-hold (the moved line is born
-// without an onset: ~5 s), (c) speech running into a hold with < ~0.3 s
-// gaps, (d) phonation in the stream's first observation windows. Three
-// rule sets that closed some of them were built and reverted (6f8be18's
-// in-sound latch, round 1's breath re-birth + glide handoff, round 2's
-// quiet-window breath re-birth): each delayed or blocked a real
-// interferer. (a) is signal-identical to a tonal source that itself cuts
-// out for 0.15-1 s every few seconds (bc42ad0 notches it at ~20 s; any
-// breath rule leaves it painted as voice), so closing it is a product
-// trade, not a detector fix.
+// Voice vs machine lines (2026-10-05, measurements/noise-notch-voice-
+// discrimination-2026-10-05.md): the onset rule above misses held notes
+// whose line is NOT born at an onset — a glide / step > MATCH_HZ mid-hold
+// (the moved line is new), speech running into a hold with < ~0.3 s gaps,
+// phonation in the stream's first observation windows — which were notched
+// ~5 s in (bc42ad0: 45-74 % of hold frames). A voice line is told from a
+// machine line directly: a voice's partials wander TOGETHER (F0 wander,
+// vibrato, tremor move every harmonic by the same cents), a motor / mains /
+// electronics line has no mid-band FM shared with its own 2nd partial
+// (measurements/notch-voice-machine-discrimination-2026-10-05.md: real
+// corpora, AUC 0.997 clean). Per 25 ms chunk each unpromoted line in
+// COH_LO_HZ..COH_HI_HZ is read at f and 2f (64 ms Hann DFT bins, phase-
+// vocoder instantaneous frequency); 1 s windows of the mid-band (0.5-8 Hz)
+// cents series pool over the last COH_POOL windows into pcorr (shared /
+// total modulation) and pcoh (shared modulation, cents). With >= 3 windows:
+//   - VOICE-confirmed (pcorr >= VOICE_CORR AND pcoh >= VOICE_COH): a line
+//     that was not onset-born is timed as onset-born (ONSET_MIN_TRACK_SEC
+//     from its first sighting) — unless its level rose >= COH_JUMP_DB over
+//     its first sightings (a louder source took over a pre-existing line:
+//     a note sung on a hum's track)
+//   - the voice timing is revoked when the line later reads MACHINE-
+//     confirmed (pcorr < MACHINE_CORR or pcoh < MACHINE_COH, pooled or in
+//     its latest window alone): a spin-up transient that settled, a note
+//     that ended over a hum
+//   - nothing else changes: undecided lines, machine lines and onset-born
+//     lines keep bc42ad0's timing.
+// The verdict is strict on purpose (0.7 / 2.5 c, not the 0.5 / 2 c of the
+// discrimination phase): ~2 % of real machine lines (mains buzz, electronics
+// whine, a ballast, a fan, a motor) still read voice-confirmed online, and
+// each one present before any onset is notched up to 20 s late instead of
+// 5 s.
+// Known held-note gaps that remain (bc42ad0's): same-pitch holds separated
+// by breaths share one onset-born track that is notched once the series
+// passes 20 s (64-85 % of hold frames) — signal-identical to a tonal source
+// that cuts out for 0.15-1 s every few seconds, and breath rules that close
+// it (round 2's R8, or R8 restricted to voice-confirmed lines) left real
+// gated sources painted (measured: 227 / 3-6 of 504 real noise_gated
+// streams); holds >= 20 s; a note whose line reads machine-like (synthetic
+// zero-wander tones; no real voice measured that steady).
 //
 // Detection runs on RAW audio, filtering on the OUTPUT stream — a
 // notched interferer must stay visible to the tracker or the notch
@@ -113,6 +138,19 @@ export const NOTCH_DEFAULTS = {
   onsetMinTrackSec: 20,
   retuneHz: 0.5,         // retune a live section in place when its track
                          //   drifted more than this (filter state kept)
+  // line coherence (2026-10-05; see "Voice vs machine lines" above)
+  cohLoHz: 80,           // lines measured: 80-400 Hz (the display band)
+  cohHiHz: 400,
+  cohWin: 1024,          // 64 ms Hann DFT at f and 2f per 25 ms chunk
+  cohWinChunks: 40,      // 1 s feature window (40 consecutive valid chunks)
+  cohGateDb: 10,         // chunk invalid when the line is this far under its running level
+  cohPool: 5,            // verdicts pool the last 5 windows ...
+  cohMinWin: 3,          // ... and need >= 3
+  machineCorr: 0.15,     // machine-confirmed: pcorr < this OR pcoh < machineCoh
+  machineCoh: 1,         //   (cents)
+  voiceCorr: 0.7,        // voice-confirmed: pcorr >= this AND pcoh >= voiceCoh
+  voiceCoh: 2.5,         //   (cents)
+  cohJumpDb: 6,          // no voice timing once a line rose this far over its first sightings
 };
 
 // In-place iterative radix-2 FFT (same shape as boersma-ac.js's).
@@ -206,13 +244,111 @@ export function createNoiseNotch(sampleRate, opts = {}) {
   let chunkCounter = 0;
   let obsPerSec = null;
 
-  // tracks: { id, freq, dev, power, hits, firstObs, lastSeenObs, active, onsetBorn }
+  // tracks: { id, freq, dev, power, hits, firstObs, lastSeenObs, active, onsetBorn,
+  //           voiceBorn, jumped, pow0, p3, coh }
   let tracks = [];
   let obsIndex = 0;
   let nextTrackId = 1;
   const energyHist = [];   // band energy of recent observations (onset rule)
 
   let cascade = [];        // [{ id, freq, biquad }], ascending track id
+
+  // ---- line coherence: voice vs machine lines (2026-10-05) --------------
+  // Per chunk and per unpromoted track in [cohLoHz, cohHiHz]: the Hann-
+  // windowed (cohWin samples) DFT coefficient at the track frequency f and
+  // at 2f on the window ending at the chunk boundary and on the one ending
+  // a chunk earlier; the phase advance is the instantaneous frequency of the
+  // line and of its 2nd partial. A chunk is valid while the latest (or the
+  // previous) observation saw the line and the line's 64 ms level is within
+  // cohGateDb of its running level (a breath / cut-out the 512 ms observation
+  // still covers carries no line); >= cohGateDb down for 0.5 s while still
+  // seen means a weaker source now holds the line (a note ended over a hum):
+  // the level and the windows restart. Over cohWinChunks consecutive valid
+  // chunks the mid-band (5-point moving average, linear trend removed) cents
+  // series m1 / m2 give one window's s12 = mean(m1 m2), s11 = mean(m1^2),
+  // s22 = mean(m2^2); the last cohPool windows pool to pcorr = S12 /
+  // sqrt(S11 S22) and pcoh = sign(S12) sqrt(|S12| / n) (cents). The
+  // estimator of scripts/notch-adversarial/realdata/linefeat.py (+ the gate).
+  // Cost: 4 x cohWin complex MACs per measured line per chunk.
+  let cohHann = null;
+  function cohDft(off, n, f) {
+    const w = 2 * Math.PI * f / sampleRate, cr = Math.cos(w), ci = -Math.sin(w);
+    let pr = 1, pi = 0, sr = 0, si = 0;
+    for (let i = 0; i < n; i++) {
+      const v = raw[off + i] * cohHann[i];
+      sr += v * pr; si += v * pi;
+      const nr = pr * cr - pi * ci; pi = pr * ci + pi * cr; pr = nr;
+    }
+    return [sr, si];
+  }
+  // [instantaneous frequency at f over the last k samples, line power]
+  function cohIF(f, k) {
+    const n = cfg.cohWin, a = cohDft(bufferLength - n, n, f), b = cohDft(bufferLength - n - k, n, f);
+    // X_cur conj(X_prev) in absolute-time phase: the extra e^{-2 pi i f k / sr}
+    let re_ = a[0] * b[0] + a[1] * b[1], im_ = a[1] * b[0] - a[0] * b[1];
+    const w = -2 * Math.PI * f * k / sampleRate, c = Math.cos(w), s = Math.sin(w);
+    const r2 = re_ * c - im_ * s; im_ = re_ * s + im_ * c; re_ = r2;
+    return [f + Math.atan2(im_, re_) / (2 * Math.PI * k / sampleRate), a[0] * a[0] + a[1] * a[1]];
+  }
+  function midSeries(c) {
+    const L = c.length - 4, s = new Float64Array(L);
+    for (let i = 0; i < L; i++) s[i] = (c[i] + c[i + 1] + c[i + 2] + c[i + 3] + c[i + 4]) / 5;
+    let sx = 0, sy = 0, sxx = 0, sxy = 0;
+    for (let i = 0; i < L; i++) { sx += i; sy += s[i]; sxx += i * i; sxy += i * s[i]; }
+    const den = L * sxx - sx * sx, sl = den ? (L * sxy - sx * sy) / den : 0, ic = (sy - sl * sx) / L;
+    for (let i = 0; i < L; i++) s[i] -= sl * i + ic;
+    return s;
+  }
+  function cohStep(k) {
+    if (rawFill < bufferLength || k <= 0) return;
+    if (!cohHann) {
+      cohHann = new Float64Array(cfg.cohWin);
+      for (let i = 0; i < cfg.cohWin; i++) cohHann[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (cfg.cohWin - 1));
+    }
+    for (const t of tracks) {
+      if (t.active || t.freq < cfg.cohLoHz || t.freq > cfg.cohHiHz) continue;
+      if (!t.coh) t.coh = { c1: [], c2: [], wins: [], lv: undefined, low: 0 };
+      const C = t.coh;
+      if (obsIndex - t.lastSeenObs > 1) { C.c1.length = 0; C.c2.length = 0; continue; }
+      const [f1, p1] = cohIF(t.freq, k), [f2] = cohIF(2 * t.freq, k);
+      const lv = 10 * Math.log10(p1 + 1e-30);
+      if (C.lv !== undefined && lv < C.lv - cfg.cohGateDb) {
+        C.c1.length = 0; C.c2.length = 0;
+        if (++C.low >= 20) { C.lv = lv; C.wins.length = 0; C.low = 0; }
+        continue;
+      }
+      C.low = 0;
+      C.lv = C.lv === undefined ? lv : 0.95 * C.lv + 0.05 * lv;
+      C.c1.push(1200 * Math.log2(Math.max(f1, 1e-3)));
+      C.c2.push(1200 * Math.log2(Math.max(f2, 1e-3)));
+      if (C.c1.length < cfg.cohWinChunks) continue;
+      const m1 = midSeries(C.c1), m2 = midSeries(C.c2);
+      let s12 = 0, s11 = 0, s22 = 0;
+      for (let i = 0; i < m1.length; i++) { s12 += m1[i] * m2[i]; s11 += m1[i] * m1[i]; s22 += m2[i] * m2[i]; }
+      C.wins.push([s12 / m1.length, s11 / m1.length, s22 / m1.length]);
+      if (C.wins.length > cfg.cohPool) C.wins.shift();
+      C.c1.length = 0; C.c2.length = 0;
+    }
+  }
+  const isMachine = (s12, s11, s22, n) => s12 / Math.max(1e-12, Math.sqrt(s11 * s22)) < cfg.machineCorr
+    || Math.sign(s12) * Math.sqrt(Math.abs(s12) / n) < cfg.machineCoh;
+  // "machine" | "voice" | null (undecided, or < cohMinWin windows)
+  function cohClass(t) {
+    const C = t.coh;
+    if (!C || C.wins.length < cfg.cohMinWin) return null;
+    let S12 = 0, S11 = 0, S22 = 0;
+    for (const [a, b, c] of C.wins) { S12 += a; S11 += b; S22 += c; }
+    if (isMachine(S12, S11, S22, C.wins.length)) return "machine";
+    const pcorr = S12 / Math.max(1e-12, Math.sqrt(S11 * S22)), pcoh = Math.sign(S12) * Math.sqrt(Math.abs(S12) / C.wins.length);
+    return pcorr >= cfg.voiceCorr && pcoh >= cfg.voiceCoh ? "voice" : null;
+  }
+  // the latest single window alone reads machine
+  function lastMachine(t) {
+    const w = t.coh?.wins;
+    if (!w || !w.length) return false;
+    const [a, b, c] = w[w.length - 1];
+    return isMachine(a, b, c, 1);
+  }
 
   function observe() {
     obsIndex++;
@@ -279,12 +415,17 @@ export function createNoiseNotch(sampleRate, opts = {}) {
         // hum line resets its diluted duty and notched a real room hum
         // that production never promoted — measured on session 05-07.)
         best.firstObs = obsIndex; best.hits = 0; best.onsetBorn = true;
+        best.coh = undefined; best.voiceBorn = false; best.pow0 = undefined; best.p3 = undefined; best.jumped = false;
         best.freq = pk.freq; best.dev = 0;
       }
       if (best) {
         best.dev = 0.9 * best.dev + 0.1 * Math.abs(pk.freq - best.freq); // wobble estimate
         best.freq = 0.9 * best.freq + 0.1 * pk.freq; // slow EMA — stability IS the criterion
         best.power = pk.power;
+        // a louder source taking over a pre-existing line (>= cohJumpDb over
+        // the median of its first 3 sightings): no voice timing for it
+        if (best.pow0 === undefined) { (best.p3 ??= []).push(pk.power); if (best.p3.length === 3) best.pow0 = [...best.p3].sort((a, b) => a - b)[1]; }
+        else if (pk.power >= best.pow0 * Math.pow(10, cfg.cohJumpDb / 10)) best.jumped = true;
         best.hits++;
         best.lastSeenObs = obsIndex;
         best._seen = true;
@@ -301,6 +442,14 @@ export function createNoiseNotch(sampleRate, opts = {}) {
     for (const t of tracks) {
       const span = obsIndex - t.firstObs + 1;
       const duty = t.hits / span;
+      // voice timing (see "Voice vs machine lines"): a voice-confirmed line
+      // that was not onset-born is timed as onset-born; revoked when it
+      // reads machine (pooled, or its latest window alone)
+      if (!t.active) {
+        const cls = cohClass(t);
+        if (cls === "voice" && !t.onsetBorn && !t.jumped) { t.onsetBorn = true; t.voiceBorn = true; }
+        if (t.voiceBorn && (cls === "machine" || lastMachine(t))) { t.onsetBorn = false; t.voiceBorn = false; }
+      }
       // promote only on an observation that actually saw the peak (a note
       // that just ended must not promote on its trailing duty)
       if (!t.active && t._seen && span >= (t.onsetBorn ? onsetMinObs : minObs) && duty >= cfg.promoteDuty) t.active = true;
@@ -341,6 +490,7 @@ export function createNoiseNotch(sampleRate, opts = {}) {
     if (obsPerSec == null && k > 0) obsPerSec = sampleRate / (k * cfg.observeEveryChunks);
     chunkCounter++;
     if (rawFill >= bufferLength && chunkCounter % cfg.observeEveryChunks === 0) observe();
+    if (obsIndex > 0) cohStep(Math.min(k, bufferLength - cfg.cohWin));
 
     for (const n of cascade) n.biquad.processInPlace(chunk);
     return chunk;

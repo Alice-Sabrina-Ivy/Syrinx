@@ -9,10 +9,16 @@
 // (measurements/noise-notch-voice-safety-2026-10-03.md), the 2026-10-04
 // held-note gaps as KNOWN LIMITATION lines, and interferer regression
 // guards against every held-note rule tried since (6f8be18's latch, round
-// 1, round 2: measurements/noise-notch-held-note-robustness-2026-10-04.md).
+// 1, round 2: measurements/noise-notch-held-note-robustness-2026-10-04.md),
+// and (2026-10-05) the voice-vs-machine line verdict: voice-timed glides /
+// speech -> hold / early phonation, its interferer guards, and REAL
+// recordings (tests/dsp/data/notch-real/: an MS-SNSD air conditioner, CC0;
+// VocalSet long tones, CC BY 4.0; measurements/noise-notch-voice-
+// discrimination-2026-10-05.md).
 //
 // Usage: node tests/dsp/noise-notch-test.js
 
+import { readFileSync } from "node:fs";
 import { createNoiseNotch, NOTCH_DEFAULTS, isNearNotch } from "../../src/dsp/noise-notch.js";
 
 let passed = 0, failed = 0;
@@ -314,27 +320,37 @@ console.log(`\nheld notes stay on the trace (real pitch worker, ${HOLD} s holds)
 // round 2's quiet-window breath re-birth): each delayed or blocked a real
 // interferer — round 2's only failure is a tonal source that itself cuts
 // out for 0.15-1 s every few seconds, which is signal-identical to repeated
-// steady holds. The module is bc42ad0's, so all four shapes are KNOWN
-// LIMITATIONS: measured and printed, not failing checks. The interferer
-// guards below keep any future held-note rule honest. Synthesized here over
-// a -70 dB noise floor.
+// steady holds. On bc42ad0 all four shapes were KNOWN LIMITATIONS. Since
+// 2026-10-05 the first three are closed for voices that carry shared
+// modulation (vibrato / wander) by the line-coherence voice timing (checks
+// below); repeated holds with breaths stay a known limitation. The
+// interferer guards below keep any held-note rule honest. Synthesized here
+// over a -70 dB noise floor.
 
 // voiceTrack({ dur, f0At(t) -> Hz | 0, ampAt(t) -> [0,1], h1h2, hnr, vibCents,
-// seed }): harmonic source as heldVoice, 5.5 Hz vibrato, aspiration noise,
-// -70 dB floor everywhere.
-function voiceTrack({ dur, f0At, ampAt, h1h2 = 6, hnr = 25, vibCents = 15, amp = 0.15, seed = 11 }) {
+// wanderCents, seed }): harmonic source as heldVoice, 5.5 Hz vibrato,
+// optional F0 wander (Ornstein-Uhlenbeck, 0.5 s time constant, rms
+// wanderCents — every real voice measured carries >= ~2.3 c of it,
+// measurements/notch-voice-machine-discrimination-2026-10-05.md), aspiration
+// noise, -70 dB floor everywhere.
+function voiceTrack({ dur, f0At, ampAt, h1h2 = 6, hnr = 25, vibCents = 15, wanderCents = 0, amp = 0.15, seed = 11 }) {
   const n = Math.round(dur * SR);
   const x = new Float32Array(n);
   let s = seed >>> 0 || 1;
   const rnd = () => { s ^= s << 13; s >>>= 0; s ^= s >> 17; s ^= s << 5; s >>>= 0; return s / 0x7fffffff - 1; };
+  let w = (seed * 7919) >>> 0 || 1;
+  const rndW = () => { w ^= w << 13; w >>>= 0; w ^= w >> 17; w ^= w << 5; w >>>= 0; return w / 0x7fffffff - 1; };
+  const ouA = Math.exp(-1 / (0.5 * SR)), ouS = wanderCents * Math.sqrt(3) * Math.sqrt(1 - ouA * ouA);
+  let ou = 0;
   const noiseAmp = amp * Math.pow(10, -hnr / 20);
   let ph = 0;
   for (let i = 0; i < n; i++) {
     const t = i / SR;
     const f0 = f0At(t), a = ampAt(t);
+    if (wanderCents > 0) ou = ouA * ou + ouS * rndW();
     let v = 0;
     if (f0 > 0 && a > 0) {
-      ph += 2 * Math.PI * f0 * Math.pow(2, vibCents * Math.sin(2 * Math.PI * 5.5 * t) / 1200) / SR;
+      ph += 2 * Math.PI * f0 * Math.pow(2, (vibCents * Math.sin(2 * Math.PI * 5.5 * t) + ou) / 1200) / SR;
       const nh = Math.floor(3800 / f0);
       for (let k = 1; k <= nh; k++) v += Math.pow(10, (k === 1 ? 0 : -h1h2 - 6 * Math.log2(k / 2)) / 20) * Math.sin(k * ph);
       v = a * (amp * v / 2 + noiseAmp * rnd());
@@ -373,16 +389,33 @@ function holdScore(msgs, f0At, spans) {
 // known limitation: report the measured value, never fail
 const knownLimit = (name, r) => console.log(`  · KNOWN LIMITATION ${name}: ${r.pct.toFixed(1)} % of hold frames at pitch${r.notched ? ", notch promoted" : ", never notched"}`);
 
-console.log("\nmid-hold glide / step (known limitation: the moved line is born without an onset)");
+// ---- 2026-10-05: voice vs machine lines (line coherence) ----------------
+// A voice's partials wander together; a machine line has no mid-band FM
+// shared with its own 2nd partial. A voice-confirmed line that was not born
+// at an onset gets the onset-born 20 s clock (measurements/noise-notch-
+// voice-discrimination-2026-10-05.md), which closes three of the 2026-10-04
+// gaps for any voice carrying vibrato or wander: a glide / step mid-hold,
+// speech running straight into a hold, phonation in the stream's first
+// observation windows. bc42ad0 notched all three ~5 s in (45-74 % of hold
+// frames reported). Each case below is also run with OU wander only (no
+// vibrato), the minimum every real voice measured carries.
+const HELD_MIN = 95;
+console.log("\nmid-hold glide / step: the moved line is voice-timed (real worker)");
 for (const [label, f0b, g] of [["220 -> 228 Hz glide (1.5 s) after 4 s", 228, 1.5], ["220 -> 224 Hz step after 4 s", 224, 0.05], ["180 -> 186 Hz glide (1 s) after 4 s", 186, 1]]) {
   const f0a = label.startsWith("180") ? 180 : 220;
   const c = 1200 * Math.log2(f0b / f0a);
   const f0At = (t) => (t < 1 || t > 17 ? 0 : f0a * Math.pow(2, (t < 5 ? 0 : t < 5 + g ? c * (t - 5) / g : c) / 1200));
-  const x = voiceTrack({ dur: 18, f0At, ampAt: (t) => ramp(t, 1, 17), seed: f0b });
-  knownLimit(label, holdScore(workerRun(x), f0At, [[1, 17]]));
+  for (const [vl, mod] of [["15 c vibrato", {}], ["10 c vibrato + 3 c wander", { vibCents: 10, wanderCents: 3 }], ["3 c wander, no vibrato", { vibCents: 0, wanderCents: 3 }]]) {
+    const x = voiceTrack({ dur: 18, f0At, ampAt: (t) => ramp(t, 1, 17), seed: f0b, ...mod });
+    const r = holdScore(workerRun(x), f0At, [[1, 17]]);
+    // 3 c of slow wander alone leaves < 2.5 c of shared 0.5-8 Hz modulation:
+    // no voice verdict, bc42ad0 timing (known)
+    if (mod.vibCents === 0) knownLimit(`${label}, ${vl} (too little shared modulation for a voice verdict)`, r);
+    else check(`${label}, ${vl}: >= ${HELD_MIN} % of hold frames at pitch`, r.pct >= HELD_MIN, `${r.pct.toFixed(1)} %${r.notched ? ", notch promoted" : ""}`);
+  }
 }
 
-console.log("\nspeech running straight into a hold (known limitation: no 10 dB dip before the hold)");
+console.log("\nspeech running straight into a hold: the hold's line is voice-timed (real worker)");
 for (const gap of [0, 0.06]) for (const [f0, h1h2, hnr] of [[220, 6, 25], [120, 12, 12]]) {
   const syl = syllables(1, 4, f0, 7 + f0);
   const h0 = 4 + gap;
@@ -392,22 +425,26 @@ for (const gap of [0, 0.06]) for (const [f0, h1h2, hnr] of [[220, 6, 25], [120, 
     return q ? q.f * Math.pow(2, q.c * ((t - q.a) / (q.b - q.a) - 0.5) / 12) : 0;
   };
   const ampAt = (t) => (t >= h0 ? ramp(t, h0, h0 + 12, gap ? 0.05 : 0.02) : (syl.some((y) => t >= y.a && t <= y.b) ? ramp(t, syl.find((y) => t >= y.a && t <= y.b).a, syl.find((y) => t >= y.a && t <= y.b).b, 0.02) : 0));
-  const x = voiceTrack({ dur: h0 + 13, f0At, ampAt, h1h2, hnr, seed: 31 + f0 });
-  knownLimit(`3 s speech, ${gap * 1000} ms gap, 12 s hold at ${f0} Hz${h1h2 > 6 ? " (breathy)" : ""}`, holdScore(workerRun(x), f0At, [[h0, h0 + 12]]));
+  const name = `3 s speech, ${gap * 1000} ms gap, 12 s hold at ${f0} Hz${h1h2 > 6 ? " (breathy)" : ""}`;
+  const r = holdScore(workerRun(voiceTrack({ dur: h0 + 13, f0At, ampAt, h1h2, hnr, seed: 31 + f0 })), f0At, [[h0, h0 + 12]]);
+  // a breathy synthetic note (H1-H2 12 dB, HNR 12 dB) has a 2nd partial too
+  // noisy for a voice verdict at 0.7 / 2.5 c: bc42ad0 timing (known)
+  if (h1h2 > 6) knownLimit(`${name} (2nd partial too noisy for a voice verdict)`, r);
+  else check(`${name}: >= ${HELD_MIN} % of hold frames at pitch`, r.pct >= HELD_MIN, `${r.pct.toFixed(1)} %${r.notched ? ", notch promoted" : ""}`);
 }
 
-console.log("\nphonation 0.15 s after the stream starts (known limitation: the first observation has no onset history)");
+console.log("\nphonation 0.15 s after the stream starts: the first line is voice-timed (real worker)");
 for (const f0 of [120, 220]) {
   const f0At = (t) => (t >= 0.15 && t <= 16.15 ? f0 : 0);
-  const x = voiceTrack({ dur: 17, f0At, ampAt: (t) => ramp(t, 0.15, 16.15, 0.02), seed: 5 + f0 });
-  knownLimit(`${f0} Hz, 16 s hold from t = 0.15 s`, holdScore(workerRun(x), f0At, [[0.15, 16.15]]));
+  const r = holdScore(workerRun(voiceTrack({ dur: 17, f0At, ampAt: (t) => ramp(t, 0.15, 16.15, 0.02), seed: 5 + f0 })), f0At, [[0.15, 16.15]]);
+  check(`${f0} Hz, 16 s hold from t = 0.15 s: >= ${HELD_MIN} % of hold frames at pitch`, r.pct >= HELD_MIN, `${r.pct.toFixed(1)} %${r.notched ? ", notch promoted" : ""}`);
 }
 
-console.log("\nrepeated same-pitch holds separated by breaths (known limitation: one track spans the series, notched once it passes 20 s)");
-for (const [label, breathNoiseDb] of [["silent 0.5 s breaths", null], ["0.5 s breaths with audible inhalation (-20 dB)", -20]]) for (const f0 of [120, 220]) {
+console.log("\nrepeated same-pitch holds separated by breaths (known limitation: one onset-born track spans the series, notched once it passes 20 s)");
+for (const [label, breathNoiseDb, mod] of [["silent 0.5 s breaths", null, { vibCents: 0 }], ["0.5 s breaths with audible inhalation (-20 dB)", -20, { vibCents: 0 }], ["silent 0.5 s breaths, 10 c vibrato + 3 c wander", null, { vibCents: 10, wanderCents: 3 }]]) for (const f0 of [120, 220]) {
   const spans = [[1, 11], [11.5, 21.5], [22, 32]];
   const f0At = (t) => (spans.some(([a, b]) => t >= a && t <= b) ? f0 : 0);
-  const x = voiceTrack({ dur: 33, f0At, ampAt: (t) => Math.max(...spans.map(([a, b]) => ramp(t, a, b))), vibCents: 0, seed: 17 + f0 });
+  const x = voiceTrack({ dur: 33, f0At, ampAt: (t) => Math.max(...spans.map(([a, b]) => ramp(t, a, b))), seed: 17 + f0, ...mod });
   if (breathNoiseDb !== null) {
     let s = 99, hp = 0, prev = 0;
     const g = 0.15 / Math.SQRT2 * Math.pow(10, breathNoiseDb / 20) * Math.sqrt(3);
@@ -418,6 +455,169 @@ for (const [label, breathNoiseDb] of [["silent 0.5 s breaths", null], ["0.5 s br
     }
   }
   knownLimit(`${f0} Hz 3 x 10 s, ${label}`, holdScore(workerRun(x), f0At, spans));
+}
+
+// ---- 2026-10-05: interferer guards for the voice timing --------------------
+// The voice verdict must not delay real interferers (strict rule vs bc42ad0;
+// limits = bc42ad0's promotion time on this synthesis + 0.3 s, measured with
+// the bc42ad0 module: (l) 5.45 / 5.45 s, (m) 21.45 s).
+const VM_LIM = { l: 5.75, m: 21.75 };
+console.log("\nvoice timing never holds back a hum (real worker)");
+{
+  const firstNotchNear = (msgs, after, lines) => {
+    for (const m of msgs) if (m.contextTime > after && m.notchedFreqs?.some((f) => lines.some((L) => Math.abs(f / L - 1) < 0.03))) return m.contextTime - after;
+    return null;
+  };
+  const humTrack = (n, fOf, a, on = 0) => {
+    const x = new Float32Array(n); let ph = 0;
+    for (let i = 0; i < n; i++) { const t = i / SR; if (t < on) continue; ph += 2 * Math.PI * fOf(t) / SR; x[i] = a * (Math.sin(ph) + 0.25 * Math.sin(2 * ph + 1.1) + 0.12 * Math.sin(3 * ph + 2.3)); }
+    return x;
+  };
+  // (l) a hum present from t = 0 with a louder 120.5 Hz note on its track
+  // (1-5 s, vibrato + wander), then the hum alone: the note makes the line
+  // voice-like, but the line was a hum first (its level jumped >= 6 dB when
+  // the note took it over) -> no voice timing; bc42ad0 notches it at 5.45 s
+  for (const lvl of [0.01, 0.03]) {
+    const f0At = (t) => (t >= 1 && t <= 5 ? 120.5 : 0);
+    const v = voiceTrack({ dur: 25, f0At, ampAt: (t) => ramp(t, 1, 5, 0.06), vibCents: 10, wanderCents: 3, amp: 0.2, seed: 91 });
+    const h = humTrack(v.length, () => 120, lvl * Math.SQRT2 / 1.032);
+    const t = firstNotchNear(workerRun(Float32Array.from(v, (s, i) => s + h[i])), 0, [120]);
+    check(`(l) hum (rms ${lvl}) under a 4 s 120.5 Hz note on its track: notched by ${VM_LIM.l} s`, t !== null && t <= VM_LIM.l, `t=${t?.toFixed(2)}`);
+  }
+  // (m) a fan spinning up (90 -> 120 Hz, 1 s time constant) after switching
+  // on in silence at 5 s, then steady, sparse speech from 10 s: the spin-up's
+  // curvature reads as shared FM (voice-like) until the fan settles. Here
+  // the line is onset-born (bc42ad0: 20 s); r2int.mjs --part=step spinup
+  // covers the not-onset-born case, where an unrevoked voice timing turned
+  // bc42ad0's 7.75 s into 21.45 s
+  {
+    const syl = syllables(10, 40, 210, 5);
+    const sparse = (t) => ((t - 10) % 6) > 4.8;
+    const f0At = (t) => { const q = syl.find((y) => t >= y.a && t <= y.b); return q && !sparse(t) ? q.f : 0; };
+    const v = voiceTrack({ dur: 40, f0At, ampAt: (t) => (f0At(t) > 0 ? 1 : 0), vibCents: 0, amp: 0.12, seed: 93 });
+    const fl = Float32Array.from({ length: v.length }, (_, i) => 0.001 * Math.sin(i * 1.3) * Math.sin(i * 0.77));
+    const h = humTrack(v.length, (t) => 120 - 30 * Math.exp(-(t - 5) / 1.0), 0.01 * Math.SQRT2 / 1.032, 5);
+    const t = firstNotchNear(workerRun(Float32Array.from(v, (s, i) => s + h[i] + fl[i])), 5, [110, 115, 120, 240]);
+    check(`(m) fan spinning up 90 -> 120 Hz after switching on, sparse speech: notched by ${VM_LIM.m} s after switch-on`, t !== null && t <= VM_LIM.m, `t=${t?.toFixed(2)}`);
+  }
+}
+
+// ---- 2026-10-05: REAL recordings (tests/dsp/data/notch-real/, README there:
+// MS-SNSD AirConditioner_10 excerpt, CC0; VocalSet long tones, CC BY 4.0) ----
+function readPcm16(path) {
+  const b = readFileSync(path);
+  let off = 12;
+  while (off < b.length - 8) {
+    const id = b.toString("ascii", off, off + 4), sz = b.readUInt32LE(off + 4);
+    if (id === "data") { const n = Math.floor(sz / 2), x = new Float32Array(n); for (let i = 0; i < n; i++) x[i] = b.readInt16LE(off + 8 + 2 * i) / 32768; return x; }
+    off += 8 + sz + (sz & 1);
+  }
+  throw new Error(`${path}: no data chunk`);
+}
+const REAL = new URL("./data/notch-real/", import.meta.url);
+const ac = readPcm16(new URL("ac114.wav", REAL));
+// its compressor stack: 114.6 Hz and harmonics (the excerpt's notched line is the 3rd)
+const AC_LINES = [114.6, 229.2, 343.8];
+// loop a clip to n samples with 20 ms crossfaded seams
+function loopTo(x, n) {
+  const F = Math.round(0.02 * SR), y = new Float32Array(n);
+  let o = 0;
+  while (o < n) {
+    for (let i = 0; i < x.length && o + i < n; i++) {
+      const g = o > 0 && i < F ? i / F : 1;
+      y[o + i] = g * x[i] + (o > 0 && i < F ? (1 - g) * x[x.length - F + i] : 0);
+    }
+    o += x.length - F;
+  }
+  return y;
+}
+// three real notes back to back -> one continuous same-pitch phrase (30 ms
+// crossfades), or with silent gaps
+function notes(path, len) {
+  const x = readPcm16(new URL(path, REAL)), L = Math.round(len * SR);
+  return [0, 1, 2].map((k) => x.subarray(k * L, (k + 1) * L));
+}
+function chain(parts, gap, start) {
+  const F = Math.round(0.03 * SR), G = Math.round(gap * SR);
+  let n = Math.round(start * SR); const spans = [];
+  const total = n + parts.reduce((a, p) => a + p.length + G, 0) + SR;
+  const y = new Float32Array(total);
+  parts.forEach((p, k) => {
+    if (k > 0 && gap === 0) n -= F;
+    const a = n;
+    for (let i = 0; i < p.length; i++) {
+      const env = Math.min(1, (i + 1) / F, (p.length - i) / F);
+      y[n + i] += env * p[i];
+    }
+    spans.push([a / SR, (a + p.length) / SR]);
+    n += p.length + G;
+  });
+  return { y, spans };
+}
+const realScore = (msgs, spans, f0) => holdScore(msgs, () => f0, spans);
+console.log("\nreal recordings (real worker)");
+{
+  const firstNotchNear = (msgs, after, lines) => {
+    for (const m of msgs) if (m.contextTime > after && m.notchedFreqs?.some((f) => lines.some((L) => Math.abs(f / L - 1) < 0.03))) return m.contextTime - after;
+    return null;
+  };
+  // (r1) the real air conditioner alone (114.6 Hz compressor line), 40 s:
+  // bc42ad0 notches it at 5.45 s
+  const acLong = loopTo(ac, 40 * SR);
+  const t1 = firstNotchNear(workerRun(acLong), 0, AC_LINES);
+  check("(r1) real air-conditioner noise from t = 0: notched by 5.75 s", t1 !== null && t1 <= 5.75, `t=${t1?.toFixed(2)}`);
+  // (r2) the same source switching fully off for 0.15 s every 5 s (the
+  // signal of repeated holds with catch breaths; round 2's R8 never notched
+  // it): bc42ad0 notches it ~20 s after it switches on
+  {
+    const n = 45 * SR, y = new Float32Array(n), g = Math.pow(10, -35 / 20) / Math.sqrt(acLong.reduce((a, v) => a + v * v, 0) / acLong.length);
+    const src = loopTo(ac, n);
+    let s = 3;
+    for (let i = 0; i < n; i++) {
+      const t = i / SR; let e = 0;
+      if (t >= 2) { const u = (t - 2) % 5; e = u > 4.85 ? 0 : Math.min(1, u / 0.02, (4.85 - u) / 0.02, (t - 2) / 0.02); }
+      s ^= s << 13; s >>>= 0; s ^= s >> 17; s ^= s << 5; s >>>= 0;
+      y[i] = e * g * src[i] + 3e-4 * Math.sqrt(3) * (s / 0x7fffffff - 1);
+    }
+    const t2 = firstNotchNear(workerRun(y), 2, AC_LINES);
+    check("(r2) the real air conditioner cutting out 0.15 s every 5 s: notched by 20.55 s after switch-on", t2 !== null && t2 <= 20.55, `t=${t2?.toFixed(2)}`);
+  }
+  // (r3) a REAL long hold: one real VocalSet long tone (female2 straight /a/,
+  // 262 Hz; male1 straight /e/, 128 Hz) looped 4x with 30 ms crossfades into
+  // a 10-14 s hold (real F0 micro-variation; real corpus holds are 2-3.5 s,
+  // too short for any notch), (a) with 3 s of speech-like syllables running
+  // straight into it, (b) from t = 0.15 s. bc42ad0 notched both ~5 s in.
+  for (const [file, len, k, f0] of [["vs_f2_262.wav", 3.5, 1, 262.5], ["vs_m1_128.wav", 2.75, 1, 128.3]]) {
+    const note = notes(file, len)[k];
+    for (const start of [4, 0.15]) {
+      const { y, spans } = chain([note, note, note, note], 0, start);
+      let x = y;
+      if (start > 1) {
+        const syl = syllables(1, start, f0, 3);
+        const sp = voiceTrack({ dur: y.length / SR, f0At: (t) => syl.find((q) => t >= q.a && t <= q.b)?.f ?? 0, ampAt: (t) => { const q = syl.find((r) => t >= r.a && t <= r.b); return q ? ramp(t, q.a, q.b, 0.02) : 0; }, vibCents: 10, wanderCents: 3, amp: 0.1, seed: 33 });
+        x = Float32Array.from(y, (v, i) => v + sp[i]);
+      }
+      const r = realScore(workerRun(x), [[spans[0][0], spans[3][1]]], f0);
+      check(`(r3) real ${f0} Hz hold (VocalSet ${file.slice(3, 5)}) ${start > 1 ? "after 3 s of speech" : "from t = 0.15 s"}: >= ${HELD_MIN} % of hold frames at pitch`, r.pct >= HELD_MIN, `${r.pct.toFixed(1)} %${r.notched ? ", notch promoted" : ""}`);
+    }
+  }
+  // (r4) the three real notes (0.3 s gaps) over the real air conditioner
+  // (+10 dB, 12 s noise lead): the compressor stack is notched at ~5.5 s and
+  // the notes keep at least bc42ad0's share of frames at pitch (bc42ad0:
+  // 58.6 % at 262 Hz — octave errors in this noise, not the notch — and
+  // 58.2 % at 128 Hz, where it notched the voice's own line)
+  for (const [file, len, f0, minPct] of [["vs_f2_262.wav", 3.5, 262.5, 57.5], ["vs_m1_128.wav", 2.75, 128.3, 90]]) {
+    const { y, spans } = chain(notes(file, len), 0.3, 12);
+    const nz = loopTo(ac, y.length);
+    let pv = 0, m = 0, pn = 0;
+    for (const [a, b] of spans) for (let i = Math.floor(a * SR); i < b * SR; i++) { pv += y[i] * y[i]; m++; }
+    for (let i = 0; i < nz.length; i++) pn += nz[i] * nz[i];
+    const g = Math.sqrt((pv / m) / (pn / nz.length) / 10);
+    const msgs = workerRun(Float32Array.from(y, (v, i) => v + g * nz[i]));
+    const t4 = firstNotchNear(msgs, 0, AC_LINES);
+    const r = realScore(msgs, spans, f0);
+    check(`(r4) real ${f0} Hz notes over the real air conditioner (+10 dB): line notched by 5.75 s, >= ${minPct} % of note frames at pitch`, t4 !== null && t4 <= 5.75 && r.pct >= minPct, `notched ${t4?.toFixed(2)} s, ${r.pct.toFixed(1)} %`);
+  }
 }
 
 console.log("\ninterferers keep their promotion (real worker)");

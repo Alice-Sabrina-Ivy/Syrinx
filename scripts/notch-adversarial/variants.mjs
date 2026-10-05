@@ -120,3 +120,55 @@ VARIANTS.R7 = { tree: "cand2", opts: { handoffCents: 0, quietGate: true, n13Revo
 // since the run's first window (a release tail decays from the moment the
 // note stops; a 1:1 beat slides slowly, then plunges into its null)
 VARIANTS.R8 = { tree: "cand2", opts: { handoffCents: 0, quietGate: true, n13Revokes: false, steadyWin: 5, quietDecayDb: 3, decayEligDb: 6, decaySpan: 3, prov: true, returnDb: 6, returnK: 20, decayRateDb: 3 } };
+
+// ---- 2026-10-05 voice-vs-machine CANDIDATE phase - cand3-notch.js ----
+// (r8-notch.js + per-track line coherence: shared mid-band FM of the line
+// and its 2nd partial over the last <= 5 1-s windows, >= 3 needed;
+// measurements/notch-voice-machine-discrimination-2026-10-05.md).
+// machine-confirmed = pcorr < 0.15 OR pcoh < 1 c; voice-confirmed = pcorr
+// >= 0.5 AND pcoh >= 2 c (V*s: >= 0.7 AND >= 2.5 c). Rules (coh flags):
+//   voice "onset"  a voice-confirmed track is timed as onset-born (20 s clock
+//                  from its first sighting) - glides / speech -> hold
+//   voice "block"  a voice-confirmed track never promotes
+//   machine        a machine-confirmed track promotes at 5 s even if
+//                  onset-born (switch-on / intermittent sources)
+//   rebirthGate    R8 breath re-births for every onset-born track ("any"),
+//                  only voice-confirmed ones ("voice") or all but machine-
+//                  confirmed ones ("notMachine")
+// V0 must == R8, VB0 must == B.
+VARIANTS.V0 = { tree: "cand3", opts: {} };
+VARIANTS.VB0 = { tree: "cand3", opts: { rebirth: false } };
+VARIANTS.V1 = { tree: "cand3", opts: { coh: { voice: "onset", machine: true, rebirthGate: "notMachine" } } };
+VARIANTS.V2 = { tree: "cand3", opts: { rebirth: false, coh: { voice: "block", machine: true } } };
+VARIANTS.V3 = { tree: "cand3", opts: { coh: { voice: "block", machine: true, rebirthGate: "notMachine" } } };
+VARIANTS.V4 = { tree: "cand3", opts: { coh: { voice: "onset", machine: false, rebirthGate: "voice" } } };
+VARIANTS.V4s = { tree: "cand3", opts: { coh: { voice: "onset", machine: false, rebirthGate: "voice", vCorr: 0.7, vCoh: 2.5 } } };
+VARIANTS.V5 = { tree: "cand3", opts: { coh: { voice: "onset", machine: true, rebirthGate: "voice" } } };
+VARIANTS.V6 = { tree: "cand3", opts: { coh: { voice: "onset", machine: false, rebirthGate: "notMachine" } } };
+// V7 = V6 + voiceRevoke: a voice-timed (not onset-born) line that later
+// reads machine-confirmed gets its 5 s timing back (r2int step spin-up: the
+// spin-up transient's curvature reads as shared FM)
+VARIANTS.V7 = { tree: "cand3", opts: { coh: { voice: "onset", machine: false, rebirthGate: "notMachine", voiceRevoke: true } } };
+// V8 = V7 + reanchor (a line >= 10 dB down for 0.5 s while still seen restarts
+// its coherence windows: a weaker source now holds it) + jumpGuard (no voice
+// timing for a line whose level rose >= onsetDb over its first sightings: a
+// louder source took over a pre-existing line, handoff-adv "stop" cells)
+VARIANTS.V8 = { tree: "cand3", opts: { coh: { voice: "onset", machine: false, rebirthGate: "notMachine", voiceRevoke: true, reanchor: true, jumpGuard: true } } };
+// V9 = V8 with a 6 dB jump guard (the hum 9 dB under a note on its track)
+VARIANTS.V9 = { tree: "cand3", opts: { coh: { voice: "onset", machine: false, rebirthGate: "notMachine", voiceRevoke: true, reanchor: true, jumpGuard: true, jumpDb: 6 } } };
+// V10 = V9 + voice timing also revoked when the latest single window reads
+// machine (a note glided onto a hum: the pooled windows still hold the glide)
+VARIANTS.V10 = { tree: "cand3", opts: { coh: { voice: "onset", machine: false, rebirthGate: "notMachine", voiceRevoke: true, reanchor: true, jumpGuard: true, jumpDb: 6, revokeLast: true } } };
+// real-data round (2026-10-05): V10's notMachine re-birth gate let real gated
+// sources re-birth while still undecided (< 3 windows) -> 99 / 504 real
+// noise_gated streams later than bc42ad0. V11 = no breath re-births at all
+// (bc42ad0 + voice timing / revoke / jump guard / reanchor); V12 = re-births
+// only for voice-confirmed lines, strict voice verdict (pcorr >= 0.7, pcoh
+// >= 2.5 c) everywhere; V13 = the same with the 0.5 / 2 c verdict
+const V10c = { voice: "onset", machine: false, voiceRevoke: true, reanchor: true, jumpGuard: true, jumpDb: 6, revokeLast: true };
+VARIANTS.V11 = { tree: "cand3", opts: { rebirth: false, coh: { ...V10c, rebirthGate: "any" } } };
+VARIANTS.V12 = { tree: "cand3", opts: { coh: { ...V10c, rebirthGate: "voice", vCorr: 0.7, vCoh: 2.5 } } };
+VARIANTS.V13 = { tree: "cand3", opts: { coh: { ...V10c, rebirthGate: "voice" } } };
+// V14 = V11 with the strict voice verdict (pcorr >= 0.7, pcoh >= 2.5 c):
+// bc42ad0 (no breath re-births) + voice timing for not-onset-born lines
+VARIANTS.V14 = { tree: "cand3", opts: { rebirth: false, coh: { ...V10c, rebirthGate: "any", vCorr: 0.7, vCoh: 2.5 } } };
