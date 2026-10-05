@@ -2,7 +2,8 @@
 
 Head-to-head of the Syrinx pitch chain against the trackers people actually
 use (Praat AC / CC, pYIN, PENN, CREPE, SwiftF0), on the same audio, scored the
-same way (2026-10-04). Decision data and every number:
+same way (2026-10-04). Decision data (corpus results; the session results
+are private, kept outside this repo):
 [measurements/pitch-detector-benchmark-2026-10-04.md](../../measurements/pitch-detector-benchmark-2026-10-04.md).
 
 - **Ground-truth corpora** (FDA, PTDB-TUG, vocadito, Hillenbrand) through the

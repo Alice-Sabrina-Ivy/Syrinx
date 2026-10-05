@@ -35,7 +35,7 @@ Decision data: [measurements/target-voice-combined-validation-2026-10-03.md](../
 | `noise-fv.mjs` | noise-only false voicing through the real chain, every committed noise-synth class, posted + painted (`--seeds=N` pools generator seeds) |
 | `session_fv.py` | real-session false voicing: hops >= 0.3 s from any Praat AC / CC / R1 voicing, posted + painted. Run with every voicing / guard change |
 | `guard-probe.mjs`, `guard_probe.py` | every harmonic-guard call of the real worker with per-harmonic prominence under the production and inter-harmonic floors; frame-level rule-design table |
-| `lowband/` | the 2026-10-04 variant trees (`variants.py`), runner (`run_variant.sh`), guard table (`table.py`) and summary (`summary.py`) — measurements/pitch-low-register-voicing-2026-10-04.md |
+| `lowband/` | the 2026-10-04 variant trees (`variants.py`), runner (`run_variant.sh`), guard table (`table.py`) and summary (`summary.py`) — private measurement, kept outside this repo |
 
 ## Data
 
@@ -106,9 +106,9 @@ node scripts/session-oracle/corpus.mjs --report=base,head
   intensity of all 429 019 hops; painted differs on 26 hops, all on the
   400 ms hold boundary where the chain harness's unrounded timestamps
   refuse a hold the real hook (which rounds) allows.
-- `analyze.py` then reproduces the phase-1 production baseline exactly:
-  Alice 160–400 Hz decoded 88.37 % correct / 8.92 % half (cons, pooled),
-  displayed 58.52 % correct / 32.71 % blank.
+- `analyze.py` then reproduces the phase-1 production baseline exactly
+  (results on the private session recordings are kept outside this
+  repository).
 - `build_refs.py` reproduces the cached phase-1 Praat contours bit-exactly and
   the consensus / strict / arbiter tracks with 0 mismatches.
 - The tap is observation-only: with `SO_TAP=0` the posted pitch, confidence,
@@ -119,8 +119,8 @@ node scripts/session-oracle/corpus.mjs --report=base,head
 ## Fixes (2026-10-04)
 
 - `conn12` for the alice-only pass (`paintA`) ignored that pass's line breaks
-  and over-counted connected ≥ 12 st pairs the trace never stroked (63 per
-  33 painted minutes on the combined chain vs 0 as rendered). `run.mjs` now
+  and over-counted connected ≥ 12 st pairs the trace never stroked (vs 0 as
+  rendered). `run.mjs` now
   records `brkA`; `analyze.py` scores `paintA` against it (NaN for older runs
   without the column). The committed measurements quote only the `paint`
   pass's `conn12`, so no published number changes. All other columns of a

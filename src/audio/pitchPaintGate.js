@@ -10,22 +10,22 @@
 // mechanism holds for any length > 1) ramps an instant octave jump
 // (100 → 380 Hz) through intermediate values whose step-to-step deltas
 // are each < 12 st, so the jump break never fired and the ramp painted
-// as a connected near-vertical line. Measured on the 2026-05-26 session:
-// of 1078 connected painted pairs ≥ 9 st apart, ZERO were ≥ 12 st steps —
-// every spike slipped through as a ramp. (scripts/pitch-excursion-
+// as a connected near-vertical line. Measured on a private session
+// recording: none of the connected painted pairs ≥ 9 st apart was a
+// single ≥ 12 st step — every spike slipped through as a ramp. (scripts/pitch-excursion-
 // measure.js)
 //
 // Mechanism — break against the established LEVEL, not the previous
 // frame. Track a robust median of recent painted pitches ("established
 // level"). A new value is:
 //   - ON-LEVEL  (< EXCURSION_SEMI from the level): normal prosody. Paints
-//     after the usual ONSET_CONFIRM_FRAMES continuity streak. (Session:
-//     real speech deviates from its established level p99 = 8.3 st,
-//     max 9.0 — never an octave.)
+//     after the usual ONSET_CONFIRM_FRAMES continuity streak. (On a
+//     private session recording real speech stayed under EXCURSION_SEMI
+//     from its established level — never an octave.)
 //   - OFF-LEVEL (≥ EXCURSION_SEMI): an octave-class jump. NOT painted
 //     (rendered as a gap) unless it sustains a consistent new level —
 //     then accepted as a genuine register change and the level is
-//     reseeded there. Harmonic locks (median run ~4 frames) mostly never
+//     reseeded there. Harmonic locks (typically a few frames) mostly never
 //     reach the sustain count; genuine register changes do.
 //   The painted VALUE is always the real detected pitch — this only
 //   gates WHEN to paint, never alters the number (unlike the octave-

@@ -1,6 +1,6 @@
 # guard_probe.py — frame-level design table for harmonic-voicing-guard rules
-# (2026-10-04 low-register voicing pass, measurements/
-# pitch-low-register-voicing-2026-10-04.md). Reads guard-probe.mjs dumps
+# (2026-10-04 low-register voicing pass; private measurement, kept outside this repo).
+# Reads guard-probe.mjs dumps
 # (every guard call of the REAL pitch worker: decoded f0, the production
 # verdict, peak/floor dB at k*f0 for k = 1..8 under the production ±35 %
 # floor `P` and the inter-harmonic floor `I`) and labels each call against
@@ -8,7 +8,7 @@
 #   A:/S:  Alice / second-voice session frames vs `cons` — cor_low (decode within
 #          5 % of a < 160 Hz reference), cor_tgt (>= 160 Hz), half_tgt
 #          (decode = half a >= 160 Hz reference), refUV (cons unvoiced)
-#   far    session decodes >= 0.3 s from any frame Praat AC / CC / session-label R1
+#   far    session decodes >= 0.3 s from any frame Praat AC / CC / session-label
 #          R1 voices (session_fv.py's population: room noise, distant voices)
 #   ptdbm:/fdam:/vocu: corpus frames (ground truth), N:<class> noise-fv classes
 # and prints, per rule, the fraction of each class's guard calls the rule

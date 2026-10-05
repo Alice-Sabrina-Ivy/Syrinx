@@ -4,7 +4,7 @@
 **Branch:** `pitch-test-corpus-expansion`
 **Stages:** 4.5 (build verification) + 4.4 (mobile-diag baseline)
 **Predecessors:** [swift-f0-stage3-validation-2026-05-06.md](swift-f0-stage3-validation-2026-05-06.md), [swift-f0-stage3-4-3-5-validation-2026-05-06.md](swift-f0-stage3-4-3-5-validation-2026-05-06.md)
-**Raw outputs:** [swift-f0-streaming-verify-2026-05-06.json](swift-f0-streaming-verify-2026-05-06.json), [swift-f0-stage4-mobile-diag-baseline-2026-05-06.json](swift-f0-stage4-mobile-diag-baseline-2026-05-06.json) (promoted from `mobile-diag-runs/`)
+**Raw outputs:** [swift-f0-streaming-verify-2026-05-06.json](swift-f0-streaming-verify-2026-05-06.json), the Stage 4.4 mobile-diag snapshot (a live-mic capture; private measurement, kept outside this repo — the timing summary below is reproduced here)
 
 ## Executive summary
 

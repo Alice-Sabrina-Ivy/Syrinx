@@ -1,5 +1,5 @@
 // lowband-attr.mjs — per-hop stage-attribution dump for the low-register
-// voicing pass (2026-10-04, measurements/pitch-low-register-voicing-2026-10-04.md).
+// voicing pass (2026-10-04; private measurement, kept outside this repo).
 // Same production chain as run.mjs / corpus.mjs (lib/chain.mjs: REAL pitch
 // worker, REAL DSP worker, REAL handleAnalysisResult), plus a richer
 // observation-only tap: every frame's top candidates (freq, strength), its

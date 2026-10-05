@@ -1,6 +1,6 @@
 // guard-probe.mjs — per-harmonic prominence of every frame the REAL pitch
 // worker hands to its harmonic voicing guard (2026-10-04 low-register
-// voicing pass, measurements/pitch-low-register-voicing-2026-10-04.md).
+// voicing pass; private measurement, kept outside this repo).
 // For each guard call (decoded frame, its f0 and its own delayed buffer) it
 // records peak/floor in dB at k*f0, k = 1..8, under two floors:
 //   prod  median of the ±35 %-of-k*f0 band (production harmonicStructureCount)
