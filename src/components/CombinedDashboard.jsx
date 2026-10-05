@@ -14,6 +14,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { PitchTrace } from "./PitchTrace";
 import { ResonanceMeter } from "./ResonanceMeter";
 import { VocalWeightGauge } from "./VocalWeightGauge";
+import { SteadinessReadout } from "./SteadinessReadout";
 import { DEFAULT_PITCH_TARGET, DEFAULT_F2_TARGET } from "../utils/constants";
 import { computeSummaryStats } from "../utils/sessionStats";
 import { holdRecordingLock } from "../utils/sessionRepair";
@@ -26,6 +27,8 @@ export function CombinedDashboard({
   voiced,
   holding,
   pitch,
+  steadiness,
+  steadinessHeld,
   formants,
   hnr,
   vocalWeight,
@@ -471,27 +474,32 @@ export function CombinedDashboard({
         </div>
       </div>
 
-      {/* Live stats — columnar layout: F0 | F2 + VocalWeight | HNR.
+      {/* Live stats — columnar layout: F0 + steadiness | F2 + VocalWeight | HNR.
           Perceived voice is shown by the thermometer above. */}
       <div className="flex-shrink-0 mt-3 px-2">
         <div className="flex items-end justify-center gap-x-3 sm:gap-x-6">
-          {/* Column 1: F0 value */}
-          <div className={`text-center shrink-0 pb-3 ${statOpacity} transition-opacity duration-300`}>
-            <span className="text-[10px] text-neutral-500 uppercase tracking-wider block">
-              F0
-            </span>
-            <span
-              className={`text-xl sm:text-2xl font-light tabular-nums ${
-                pitch !== null
-                  ? inPitchTarget
-                    ? "text-green-400"
-                    : "text-red-400"
-                  : "text-neutral-600"
-              }`}
-            >
-              {pitch !== null ? `${Math.round(pitch)}` : "\u2014"}
-              <span className="text-xs text-neutral-500 ml-0.5">Hz</span>
-            </span>
+          {/* Column 1: F0 value + pitch steadiness (last ~1 s) */}
+          <div className="text-center shrink-0">
+            <div className={`${statOpacity} transition-opacity duration-300`}>
+              <span className="text-[10px] text-neutral-500 uppercase tracking-wider block">
+                F0
+              </span>
+              <span
+                className={`text-xl sm:text-2xl font-light tabular-nums ${
+                  pitch !== null
+                    ? inPitchTarget
+                      ? "text-green-400"
+                      : "text-red-400"
+                    : "text-neutral-600"
+                }`}
+              >
+                {pitch !== null ? `${Math.round(pitch)}` : "—"}
+                <span className="text-xs text-neutral-500 ml-0.5">Hz</span>
+              </span>
+            </div>
+            <div className="mt-0.5">
+              <SteadinessReadout value={steadiness} held={steadinessHeld} />
+            </div>
           </div>
 
           {/* Column 2: F2 value + Vocal weight gauge */}
