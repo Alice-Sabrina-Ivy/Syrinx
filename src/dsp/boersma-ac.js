@@ -25,21 +25,35 @@
 // scripts/pitch-shootout-extract.js.
 
 export const BOERSMA_DEFAULTS = {
-  minPitchHz: 75,        // speech-scoped search range = the pitch trace's
-  maxPitchHz: 400,       // display range exactly (constants.js
-                         // PITCH_DISPLAY_RANGE 75-400). Floor raised
+  minPitchHz: 75,        // search floor = the pitch trace's display floor
+                         // (constants.js PITCH_DISPLAY_RANGE.low). Raised
                          // 60->75 on 2026-06-10 to match the display: at
                          // 60 the trace painted 60-75 Hz detections under
-                         // the chart (the display floor was 75). Corpus
-                         // cost of dropping 60-75 Hz is negligible (FDA
-                         // 0.13%, PTDB 0.97%, Hillenbrand/vocadito ~0);
-                         // low-voice frames that sat there (private
-                         // session recording) now render as honest gaps
-                         // instead of under-chart artifacts. Ceiling was cut 600->400
-                         // earlier the same day (removed the 3-4x
-                         // harmonic-lock error surface). measurements/
-                         // pitch-range-60-400-2026-06-10.md +
+                         // the chart. Corpus cost of dropping 60-75 Hz is
+                         // negligible (FDA 0.13%, PTDB 0.97%, Hillenbrand/
+                         // vocadito ~0). measurements/
                          // pitch-trace-floor-2026-06-10.md
+  maxPitchHz: 800,       // search ceiling = 2x the 400 Hz DISPLAY ceiling
+                         // (2026-10-03; was 400 = the display ceiling).
+                         // With the search capped at the display ceiling,
+                         // phonation above it (sirens, break excursions)
+                         // had no fundamental candidate and decoded as a
+                         // CONFIDENT half-pitch value inside the display
+                         // (vocadito sung >= 400 Hz: 97.6 % posted at
+                         // half; the same failure was measured on the
+                         // private session recordings). At 800 they
+                         // decode at their true F0 and the pitch worker
+                         // posts every decode above PITCH_DISPLAY_RANGE.
+                         // high as unvoiced (pitch-worker.js); 2x makes
+                         // the guarantee structural — up to 800 the
+                         // fundamental is a candidate, and a true F0 in
+                         // (800, 1600) can only alias to a half value
+                         // ABOVE 400, which is nulled too. 600 leaves
+                         // 600-800 Hz aliasing into 300-400. The 600->400
+                         // cut of 2026-06-10 (3-4x harmonic-lock surface)
+                         // is not undone: those locks now land above 400
+                         // and post as unvoiced instead of painting.
+                         // measurements/pitch-ceiling-2026-10-03.md
   voicingThreshold: 0.35, // tuned (Praat default 0.45). 0.45→0.40 by the
                           // stage-A sweep (frame-local, 50-600 Hz,
                           // boersma-ac-tuning-2026-06-09.md); 0.40→0.35
@@ -53,13 +67,60 @@ export const BOERSMA_DEFAULTS = {
                           // pending a real-noise oracle. measurements/
                           // pitch-l2-retune-2026-07-19.md
   silenceThreshold: 0.03, // Praat default (fraction of global peak)
-  octaveCost: 0.01,       // Praat default. DO NOT RAISE — higher values
+  octaveCost: 0.015,      // Praat default 0.01 -> 0.015 (2026-10-03,
+                          // with octaveEvidence below; measurements/
+                          // pitch-octave-arbitration-2026-10-03.md).
+                          // Still DO NOT RAISE materially — larger values
                           // are a high-octave bias that re-creates the
                           // weak-H1 octave-up failure on low-F0 voices
                           // (stage-A, measured on a private session
-                          // recording).
+                          // recording). 0.015 alone measured a small
+                          // 75-160 Hz octave-up cost on the private
+                          // session recordings.
+  // Spectral octave arbitration for (f, 2f) candidate pairs (2026-10-03).
+  // Low-frequency energy (room rumble <140 Hz, LF speech energy) inflates
+  // the autocorrelation at the 2T lag, so a real F0 2f can lose to its
+  // subharmonic f by a few hundredths. For every candidate f that has a
+  // 2f partner, oddEvenProminenceDb(f) compares the peak prominence of
+  // the partials at ODD multiples 3f, 5f, ... with the EVEN multiples
+  // 2f, 4f, ... (f itself is skipped — that is where rumble lives):
+  //   <= lowThrDb  : odd multiples absent -> f is a subharmonic of a real
+  //                  2f -> f.strength -= lowPenalty
+  //   >= highThrDb : odd multiples as prominent as even -> f is a real F0
+  //                  -> partner 2f.strength -= highPenalty (symmetric
+  //                  octave-up guard; it is what keeps the low-voice
+  //                  octave-up cost near the +0.3 pp guard — measurably
+  //                  higher without it, on the private session
+  //                  recordings)
+  // Prominence-based (peak vs. the valleys half a comb-spacing away), so
+  // it is insensitive to the formant envelope and to broadband noise
+  // (noise lowers both odd and even prominence -> no penalty).
+  // maxPartnerHz: only pairs whose 2f partner lies inside the DISPLAY
+  // range (PITCH_DISPLAY_RANGE.high 400 x 1.05) are arbitrated. Coupling
+  // with the 800 Hz search ceiling (maxPitchHz above): at 800 an octave
+  // rule could pair every female F0 with a 400-800 Hz partner and push it
+  // up out of the display (pitch-ceiling-2026-10-03.md §8 — phase-1 SHR
+  // rule, Hillenbrand women -5.6 pp unrestricted). Arbitration was
+  // measured at the 400 Hz search, where no partner can exceed 400, so
+  // this restriction reproduces exactly the measured domain.
+  octaveEvidence: {
+    lowThrDb: -15, lowPenalty: 0.05,
+    highThrDb: -3, highPenalty: 0.03,
+    fMaxHz: 3500, maxMultiple: 16,
+    maxPartnerHz: 420,
+  },
   peakFloor: 0.15,        // ignore AC maxima weaker than this (rNorm)
   maxCandidates: 15,
+  // Silence-term reference (globalPeak) transient rejection, 2026-10-03 —
+  // see the globalPeak comment in createBoersmaAC. An event raises the
+  // reference only if it fills >= referenceRank PERIODIC frames of the
+  // last referenceWindow frames; referenceGain re-centres that rank
+  // statistic on the old running max for sustained speech.
+  // measurements/pitch-globalpeak-transient-2026-10-03.md
+  referenceWindow: 12,      // frames (300 ms at the 25 ms hop)
+  referenceRank: 5,
+  referenceGain: 1.2,
+  referencePeriodicR: 0.35, // frame counts if its best in-range AC peak r >= this
 };
 
 // Production frame length at 16 kHz: 80 ms. Response center sits 40 ms
@@ -109,7 +170,9 @@ function fft(re, im, invert) {
 
 // Linear autocorrelation of x (length n) for lags [0, maxLag] via FFT
 // with zero padding. Writes into out (length maxLag+1).
-function autocorrFFT(x, n, fftSize, scratch, out, maxLag) {
+// If powOut is given, the frame's one-sided power spectrum bins
+// [0, powOut.length) are copied there (reused by the octave arbitration).
+function autocorrFFT(x, n, fftSize, scratch, out, maxLag, powOut) {
   const { re, im } = scratch;
   re.fill(0); im.fill(0);
   for (let i = 0; i < n; i++) re[i] = x[i];
@@ -118,6 +181,7 @@ function autocorrFFT(x, n, fftSize, scratch, out, maxLag) {
     const p = re[i] * re[i] + im[i] * im[i];
     re[i] = p; im[i] = 0;
   }
+  if (powOut) for (let i = 0; i < powOut.length; i++) powOut[i] = re[i];
   fft(re, im, true);
   for (let t = 0; t <= maxLag; t++) out[t] = re[t];
 }
@@ -142,12 +206,89 @@ export function createBoersmaAC(sampleRate, frameLength, opts = {}) {
   // any voiced candidate — a clean 100 Hz tone at peak 0.02 decoded
   // UNVOICED. Corpus/session WAVs sit near full scale, which masked this
   // in every harness; caught from live-use report 2026-06-09.
+  //
+  // Transient rejection (2026-10-03): the running max used to take EVERY
+  // frame's localPeak, so one click / plosive pop / desk bump far above a
+  // quiet AGC-off voice (e.g. 1.0 vs speech peaks 0.03) latched the
+  // reference for 30-50 s and the silence term vetoed the voice the whole
+  // time (transient oracle: a large share of voiced frames lost after ONE
+  // click at speech peak 0.03; real recordings ran on a transient-set
+  // reference part of the time). Now a frame contributes only if its own AC is
+  // periodic (best in-range peak r >= referencePeriodicR; transients are
+  // aperiodic), and the contribution is the referenceRank-th largest such
+  // frame peak over the last referenceWindow frames, x referenceGain — an
+  // impulse appears in at most ~4 frames (80 ms window, 25 ms hop) and
+  // its window-edge frames are the only periodic ones, so it can never
+  // fill 5 periodic slots. Sustained speech does, and the gain puts the
+  // rank-5 level back on the old running max (median ratio ~1.0 on real
+  // speech). Decay (0.999/frame) and the 1e-4 floor unchanged, so
+  // long-silence and soft-onset behaviour match the old tracker.
   let globalPeak = 1e-4;
+  const refW = cfg.referenceWindow;
+  const refRing = new Float64Array(refW); // gated frame peaks (0 = aperiodic)
+  const refTmp = new Float64Array(refW);
+  let refPos = 0, refFill = 0;
+  function updateReference(localPeak, bestR) {
+    refRing[refPos] = bestR >= cfg.referencePeriodicR ? localPeak : 0;
+    refPos = (refPos + 1) % refW;
+    if (refFill < refW) refFill++;
+    for (let i = 0; i < refFill; i++) refTmp[i] = refRing[i];
+    const rank = Math.min(cfg.referenceRank, refFill);
+    let level = 0;
+    for (let k = 0; k < rank; k++) { // rank-th largest; W, rank tiny
+      let bi = 0;
+      for (let i = 1; i < refFill; i++) if (refTmp[i] > refTmp[bi]) bi = i;
+      level = refTmp[bi];
+      refTmp[bi] = -1;
+    }
+    globalPeak = Math.max(cfg.referenceGain * level, globalPeak * 0.999, 1e-4);
+  }
   const scratch = { re: new Float64Array(fftSize), im: new Float64Array(fftSize) };
   const windowed = new Float64Array(n);
   const rX = new Float64Array(maxLag + 1);
   const rW = new Float64Array(maxLag + 1);
   const rNorm = new Float64Array(maxLag + 1);
+
+  // Octave-arbitration state (pre-allocated; no per-frame allocation
+  // beyond the candidate objects candidates() already creates).
+  const oe = cfg.octaveEvidence || null;
+  const partnerMaxHz = oe && oe.maxPartnerHz != null ? oe.maxPartnerHz : Infinity;
+  const binHz = sampleRate / fftSize;
+  const spec = oe ? new Float64Array(Math.min(fftSize / 2, Math.ceil((oe.fMaxHz * 1.1) / binHz) + 2)) : null;
+  const pen = new Float64Array(maxLag + 1); // >= max local-maxima count
+  const DB = 10 / Math.LN10;
+  // max power within [x - half, x + half]
+  function peakPow(x, half) {
+    let lo = Math.floor((x - half) / binHz), hi = Math.ceil((x + half) / binHz);
+    if (lo < 1) lo = 1;
+    if (hi > spec.length - 1) hi = spec.length - 1;
+    let m = 1e-30;
+    for (let b = lo; b <= hi; b++) if (spec[b] > m) m = spec[b];
+    return m;
+  }
+  function meanPow(x, half) {
+    let lo = Math.floor((x - half) / binHz), hi = Math.ceil((x + half) / binHz);
+    if (lo < 1) lo = 1;
+    if (hi > spec.length - 1) hi = spec.length - 1;
+    let s = 0;
+    for (let b = lo; b <= hi; b++) s += spec[b];
+    return s / (hi - lo + 1) + 1e-30;
+  }
+  // mean prominence (dB) of the partials at odd multiples m*f (m = 3, 5,
+  // ...) minus that at even multiples (m = 2, 4, ...), m <= maxMultiple,
+  // m*f < fMaxHz. Prominence = peak (±min(3 %, 0.2 f)) over the mean
+  // level of the valleys at (m ± 0.5) f (±0.1 f).
+  function oddEvenProminenceDb(f) {
+    let so = 0, no = 0, se = 0, ne = 0;
+    for (let m = 2; m <= oe.maxMultiple && m * f < oe.fMaxHz; m++) {
+      const x = m * f;
+      const half = Math.min(0.03 * x, 0.2 * f);
+      const v = 0.5 * (meanPow(x - 0.5 * f, 0.1 * f) + meanPow(x + 0.5 * f, 0.1 * f));
+      const prom = DB * Math.log(peakPow(x, half) / v);
+      if (m & 1) { so += prom; no++; } else { se += prom; ne++; }
+    }
+    return (no ? so / no : 0) - (ne ? se / ne : 0);
+  }
 
   // Window autocorrelation, computed once.
   autocorrFFT(window, n, fftSize, scratch, rW, maxLag);
@@ -170,18 +311,12 @@ export function createBoersmaAC(sampleRate, frameLength, opts = {}) {
       if (v > localPeak) localPeak = v;
     }
     if (localPeak === 0) return { voiced: [], unvoicedStrength: cfg.voicingThreshold };
-    globalPeak = Math.max(localPeak, globalPeak * 0.999, 1e-4);
 
     for (let i = 0; i < n; i++) windowed[i] = (buffer[i] - mean) * window[i];
-    autocorrFFT(windowed, n, fftSize, scratch, rX, maxLag);
+    autocorrFFT(windowed, n, fftSize, scratch, rX, maxLag, spec);
     const r0 = rX[0];
     if (r0 <= 0) return { voiced: [], unvoicedStrength: cfg.voicingThreshold };
     for (let t = 0; t <= maxLag; t++) rNorm[t] = (rX[t] / r0) / (rW[t] / rW0);
-
-    const unvoicedStrength = cfg.voicingThreshold + Math.max(
-      0,
-      2 - (localPeak / globalPeak) / (cfg.silenceThreshold / (1 + cfg.voicingThreshold)),
-    );
 
     const cands = [];
     // Scan from minLag exactly (rNorm is computed for all lags 0..maxLag,
@@ -207,6 +342,35 @@ export function createBoersmaAC(sampleRate, frameLength, opts = {}) {
         cands.push({ freq, strength, r });
       }
     }
+    if (oe && cands.length > 1) {
+      // Octave arbitration (see BOERSMA_DEFAULTS.octaveEvidence). Pairs
+      // are found on the pre-penalty strengths; penalties are summed and
+      // applied afterwards so the result is order-independent. Partners
+      // above maxPartnerHz are never paired (display-range domain only).
+      const m = cands.length;
+      for (let i = 0; i < m; i++) pen[i] = 0;
+      for (let i = 0; i < m; i++) {
+        const f = cands[i].freq;
+        let u = -1;
+        for (let j = 0; j < m; j++) {
+          if (j !== i && cands[j].freq <= partnerMaxHz
+            && Math.abs(cands[j].freq / (2 * f) - 1) < 0.05
+            && (u < 0 || cands[j].strength > cands[u].strength)) u = j;
+        }
+        if (u < 0) continue;
+        const ev = oddEvenProminenceDb(f);
+        if (ev <= oe.lowThrDb) pen[i] += oe.lowPenalty;
+        else if (ev >= oe.highThrDb) pen[u] += oe.highPenalty;
+      }
+      for (let i = 0; i < m; i++) cands[i].strength -= pen[i];
+    }
+    let bestR = 0;
+    for (const c of cands) if (c.r > bestR) bestR = c.r;
+    updateReference(localPeak, bestR);
+    const unvoicedStrength = cfg.voicingThreshold + Math.max(
+      0,
+      2 - (localPeak / globalPeak) / (cfg.silenceThreshold / (1 + cfg.voicingThreshold)),
+    );
     cands.sort((x, y) => y.strength - x.strength);
     if (cands.length > cfg.maxCandidates) cands.length = cfg.maxCandidates;
     return { voiced: cands, unvoicedStrength };

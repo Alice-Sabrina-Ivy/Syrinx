@@ -1,0 +1,61 @@
+export function harmonicStructureCount(buffer, f0, sampleRate, ratio = 10) {
+  if (!_hsScratch) {
+    _hsScratch = {
+      re: new Float64Array(_hsFftN),
+      im: new Float64Array(_hsFftN),
+      hann: null,
+    };
+  }
+  const s = _hsScratch;
+  if (!s.hann || s.hann.length !== buffer.length) {
+    s.hann = new Float64Array(buffer.length);
+    for (let i = 0; i < buffer.length; i++) {
+      s.hann[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (buffer.length - 1));
+    }
+  }
+  s.re.fill(0); s.im.fill(0);
+  const n = Math.min(buffer.length, _hsFftN);
+  for (let i = 0; i < n; i++) s.re[i] = buffer[i] * s.hann[i];
+  fft(s.re, s.im, false);
+  const half = _hsFftN / 2;
+  const binHz = sampleRate / _hsFftN;
+  const pw = (b) => s.re[b] * s.re[b] + s.im[b] * s.im[b];
+  const lobe = 2 / (buffer.length / sampleRate) + 5;
+  const w = Math.max(f0 - lobe, lobe + 2 * binHz);
+  let count = 0, ihCount = 0;
+  const ihDb = [0, -99, -99, -99, -99, -99, -99, -99, -99];
+  for (let k = 1; k <= __KMAX__; k++) {
+    const f = k * f0;
+    if (f > sampleRate / 2 - 100) break;
+    const lo = Math.max(1, Math.floor((f * 0.96) / binHz));
+    const hi = Math.min(half - 1, Math.ceil((f * 1.04) / binHz));
+    let peak = 0;
+    for (let b = lo; b <= hi; b++) { const p = pw(b); if (p > peak) peak = p; }
+    if (k <= 4) {
+      const flo = Math.max(1, Math.floor((f * 0.65) / binHz));
+      const fhi = Math.min(half - 1, Math.ceil((f * 1.35) / binHz));
+      const band = [];
+      for (let b = flo; b <= fhi; b++) band.push(pw(b));
+      band.sort((a, b) => a - b);
+      const floor = band[Math.floor(band.length / 2)] || 1e-12;
+      if (peak >= ratio * floor) count++;
+    }
+    if (k >= 2) {
+      const band = [];
+      for (let b = Math.max(1, Math.floor((f - w) / binHz)); b <= Math.min(half - 1, Math.ceil((f + w) / binHz)); b++) {
+        const df = Math.abs(b * binHz - f);
+        if (df < lobe || (f0 - df < lobe && df <= w)) continue;
+        band.push(pw(b));
+      }
+      if (band.length >= 4) {
+        band.sort((a, b) => a - b);
+        const floor = band[Math.floor(band.length / 2)] || 1e-12;
+        ihDb[k] = 10 * Math.log10(peak / floor + 1e-12);
+        if (k <= __IHKMAX__ && peak >= __IHRATIO__ * floor) ihCount++;
+      }
+    }
+  }
+  if (__HS__ && Math.max(ihDb[3], ihDb[5]) < __HSLO__ && Math.min(ihDb[2], ihDb[4]) >= __HSHI__) return 0;
+  if (count < 2 && ihCount >= __NEED__) return 2;
+  return count;
+}

@@ -23,17 +23,12 @@ Usage:
       build/pitch-compare/swift-contours.json \
       build/pitch-compare/swift-vs-praat-sessions.json
 
-The inputs are private session recordings (see CLAUDE.md "Private session
-data"), so the output is a private-session result: keep it under the
-gitignored build/ (or the user's private project), never in measurements/.
-Each file path is written relative to SYRINX_SESSIONS_DIR
-("$SYRINX_SESSIONS_DIR/<session>/session.wav"), never as the absolute local
-path. With the variable unset an absolute path is refused; a path outside
-the root is written verbatim with a warning.
+The inputs are private session recordings, so the output is a private-session
+result: keep it under the gitignored build/ (or the user's private project),
+never in measurements/.
 """
 
 import json
-import os
 import sys
 import wave
 
@@ -56,22 +51,6 @@ def classify(swift_hz, praat_hz):
     if nearest >= 2 and abs(big - nearest) / nearest < OCTAVE_REL_TOL:
         return "octave-up" if r > 1 else "octave-down"
     return "other"
-
-
-def public_path(path):
-    """Path as written to the committed JSON: a leading SYRINX_SESSIONS_DIR
-    root becomes the literal "$SYRINX_SESSIONS_DIR" (slashes normalised)."""
-    p = path.replace("\\", "/")
-    root = os.environ.get("SYRINX_SESSIONS_DIR", "").replace("\\", "/").rstrip("/")
-    if os.path.isabs(p) and not root:
-        sys.exit("set SYRINX_SESSIONS_DIR to the folder holding the private session "
-                 "recordings (see CLAUDE.md)")
-    if root and os.path.normcase(p).startswith(os.path.normcase(root + "/")):
-        return "$SYRINX_SESSIONS_DIR" + p[len(root):]
-    if os.path.isabs(p):
-        print(f"warning: {p} is not under SYRINX_SESSIONS_DIR; written verbatim "
-              "to the output JSON", file=sys.stderr)
-    return p
 
 
 def band_of(hz):
@@ -194,7 +173,7 @@ def main():
             if sum(bc.values()) >= 200
         }
         report["files"].append({
-            "path": public_path(pf["path"]),
+            "path": pf["path"],
             "praatVoicedFrames": total,
             "classificationPct": pct,
             "byPraatBandPct": band_pct,
