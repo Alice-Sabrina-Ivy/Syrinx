@@ -8,7 +8,7 @@
 #   A:/S:  Alice / second-voice session frames vs `cons` — cor_low (decode within
 #          5 % of a < 160 Hz reference), cor_tgt (>= 160 Hz), half_tgt
 #          (decode = half a >= 160 Hz reference), refUV (cons unvoiced)
-#   far    session decodes >= 0.3 s from any frame Praat AC / CC / session-label R1
+#   far    session decodes >= 0.3 s from any frame Praat AC / CC / session-label
 #          R1 voices (session_fv.py's population: room noise, distant voices)
 #   ptdbm:/fdam:/vocu: corpus frames (ground truth), N:<class> noise-fv classes
 # and prints, per rule, the fraction of each class's guard calls the rule
