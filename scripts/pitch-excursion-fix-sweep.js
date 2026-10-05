@@ -16,8 +16,8 @@
 // Metrics per cell:
 //   connPairs  — painted consecutive pairs >= 9 st apart (the visible
 //                vertical lines; target ~0)
-//   painted    — painted-frame count (over-suppression guard; current
-//                production paints 73523)
+//   painted    — painted-frame count (over-suppression guard vs the
+//                current production chain)
 //   band80-110 — correct% vs Praat in the user's register (accuracy guard)
 //
 // Usage: node scripts/pitch-excursion-fix-sweep.js

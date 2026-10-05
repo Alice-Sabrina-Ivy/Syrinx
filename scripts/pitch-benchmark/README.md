@@ -39,7 +39,7 @@ references (`$SO_REFS`, default `build/session-oracle/refs`, from
 | `swift.py` | SwiftF0 offline and the retired production stream (corpora or one WAV) |
 | `sess_detect.py` | offline trackers on the session spans |
 | `score_corpora.py`, `score_sessions.py` | metrics, offset sweep, reference conventions |
-| `sanity_baseline.py`, `sanity_sessions.py`, `mireval_check.py` | reproduction checks against the committed oracles and mir_eval |
+| `sanity_baseline.py`, `sanity_sessions.py`, `mireval_check.py` | reproduction checks against the committed corpus oracles, the private session-oracle table and mir_eval |
 | `timing.py`, `timing_syrinx.py` | CPU per second of audio |
 | `make_tables.py` | the measurement's §5 tables |
 

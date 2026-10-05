@@ -10,7 +10,7 @@ The display chain (`useAudioPipeline.js` `handleAnalysisResult` + `pitchGate.js`
 `pitchSmoothing.js` + `pitchPaintGate.js`) consumes only the pitch worker's messages and the DSP
 worker's intensity. So the workers run once per stream (`cache.mjs`), and any number of display
 variants replay through the **real** hook in about a second per session (`replay.mjs`). Parity:
-replay = `run.mjs` on every column (0 / 117 577 hops on 2026-06-09), and = `corpus.mjs` on FDA /
+replay = `run.mjs` on every column (no differing hop on the held-out session), and = `corpus.mjs` on FDA /
 vocadito.
 
 | file | role |
