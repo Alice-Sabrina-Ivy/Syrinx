@@ -4,10 +4,10 @@
 // and voice timing ON, so every track's verdicts AND the voice timing it
 // would get are recorded per observation.
 //   node scripts/notch-adversarial/realdata/linecls.mjs --set=voice|noise|held|gated [--deg=inf,20,10,0]
-//        [--variant=V18] [--shard=i/n] [--out=F] [--vcorr= --vcoh= --mcorr= --mcoh=]
-// --variant picks the coherence options of a variants.mjs entry (default V18 =
-// the shipped module since the 2026-10-05 follow-up: verdict pcorr >= 0.7 AND
-// pcoh >= 2.5 c, 75-400 Hz, takeover jump guard); --vcorr / --vcoh / --mcorr /
+//        [--variant=V19f] [--shard=i/n] [--out=F] [--vcorr= --vcoh= --mcorr= --mcoh=]
+// --variant picks the coherence options of a variants.mjs entry (default V19f =
+// src/ since the 2026-10-06 fix round, V18 before: verdict pcorr >= 0.7 AND
+// pcoh >= 2.5 c, 72-403 Hz, takeover jump guard); --vcorr / --vcoh / --mcorr /
 // --mcoh override its thresholds (the discrimination phase's 0.5 / 2 c are NOT
 // the default — measurements/noise-notch-voice-discrimination-2026-10-05.md).
 // voice: typical real held voice (PVQD CAPE-V < 20, VOICED healthy, VocalSet,
@@ -39,7 +39,7 @@ const A = Object.fromEntries(process.argv.slice(2).map((a) => a.replace(/^--/, "
 const SET = A.set || "noise";
 const [shI, shN] = (A.shard || "0/1").split("/").map(Number);
 const DEGS = (A.deg || "inf").split(",").map((d) => (d === "inf" ? Infinity : +d));
-const VAR = A.variant || "V18";
+const VAR = A.variant || "V19f";
 const base = VARIANTS[VAR]?.opts?.coh;
 if (!base) throw new Error(`--variant=${VAR}: no coh options in variants.mjs`);
 // cand3-notch.js's coh defaults the variant does not override (fLo 80 = V14's band)

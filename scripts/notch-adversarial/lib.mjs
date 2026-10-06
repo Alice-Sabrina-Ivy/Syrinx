@@ -39,8 +39,13 @@ for (const [k, p] of [["bc42", "../../build/notch-adv/trees/bc42/src"], ["head",
 const MEMO = process.env.NOTCH_MEMO !== "0";
 function mix32(h, v) { h ^= v; h = Math.imul(h, 0x01000193) >>> 0; return h; }
 const memo = new WeakMap(); // x -> Map(signature -> msgs)
-const VETO = Object.fromEntries(Object.entries(NOTCH).map(([k, m]) => [k, [...String(m.isNearNotch)].reduce((h, ch) => mix32(h, ch.charCodeAt(0)), 0x811c9dc5).toString(16)]));
-export function notchSignature(variant, x, sr) {
+// (the source is hashed without CRs: bc42's module comes from `git show`, LF,
+// the others are CRLF working copies of the same function — 2026-10-06)
+const VETO = Object.fromEntries(Object.entries(NOTCH).map(([k, m]) => [k, [...String(m.isNearNotch).replace(/\r/g, "")].reduce((h, ch) => mix32(h, ch.charCodeAt(0)), 0x811c9dc5).toString(16)]));
+// onChunk(tEnd, activeFreqs) (optional, 2026-10-06): called after every chunk
+// with the chunk's end time (s) and the notch's active frequencies — exactly
+// the worker's notchedFreqs for that chunk (offsets.mjs: per-line notch times)
+export function notchSignature(variant, x, sr, onChunk = null) {
   globalThis.__NOTCH_OPTS = variant.opts;
   const nt = NOTCH[variant.tree].createNoiseNotch(16000);
   const rs = RESAMP[variant.tree].createStreamingResampler(sr, 16000);
@@ -54,6 +59,7 @@ export function notchSignature(variant, x, sr) {
     for (let i = 0; i < u.length; i++) { h1 = mix32(h1, u[i]); h2 = mix32(h2, u[i] ^ i); }
     for (const ln of nt.activeLines()) for (const v of [ln.freq, ln.dev]) { f64[0] = v; h1 = mix32(h1, u64[0]); h1 = mix32(h1, u64[1]); h2 = mix32(h2, u64[1] ^ 0x5bd1e995); h2 = mix32(h2, u64[0]); }
     for (const f of nt.activeFreqs()) { f64[0] = f; h1 = mix32(h1, u64[0] ^ 0xa5a5a5a5); h2 = mix32(h2, u64[1]); }
+    if (onChunk) onChunk((c + C) / sr, nt.activeFreqs());
     h1 = mix32(h1, 0xffffffff); h2 = mix32(h2, c);
   }
   // + the tree's ghost-veto test (isNearNotch), which the worker also imports
@@ -65,7 +71,9 @@ export function notchSignature(variant, x, sr) {
 // it was given, appends {argv, call, sr, n, same} to NOTCH_SCAN_OUT and
 // returns one dummy message (the calling script's rows are meaningless). Cells where the
 // two notches agree have byte-identical worker messages, so a family with no
-// differing cell needs no worker run to compare A and B.
+// differing cell needs no worker run to compare A and B. NOTCH_SCAN=A:B:C...
+// (2026-10-06) compares every later variant with A in one pass: the row also
+// carries eq = [B == A, C == A, ...] (same = eq[0]).
 const SCAN = process.env.NOTCH_SCAN ? process.env.NOTCH_SCAN.split(":") : null;
 let scanCall = 0, scanVars = null;
 async function scanInit() { scanVars = (await import("./variants.mjs")).VARIANTS; }
@@ -74,8 +82,8 @@ if (SCAN) await scanInit();
 // runWorker(variant, x, sr): variant = { tree, opts? }. 25 ms chunks at sr.
 export function runWorker(variant, x, sr) {
   if (SCAN) {
-    const same = notchSignature(scanVars[SCAN[0]], x, sr) === notchSignature(scanVars[SCAN[1]], x, sr);
-    appendFileSync(process.env.NOTCH_SCAN_OUT || "notch-scan.jsonl", JSON.stringify({ argv: process.argv.slice(2).join(" "), call: scanCall++, sr, n: x.length, same }) + "\n");
+    const s0 = notchSignature(scanVars[SCAN[0]], x, sr), eq = SCAN.slice(1).map((v) => notchSignature(scanVars[v], x, sr) === s0);
+    appendFileSync(process.env.NOTCH_SCAN_OUT || "notch-scan.jsonl", JSON.stringify({ argv: process.argv.slice(2).join(" "), call: scanCall++, sr, n: x.length, same: eq[0], ...(eq.length > 1 ? { eq, vars: SCAN } : {}) }) + "\n");
     return [{ t: 0, pitch: 0, nf: null }]; // one dummy message: scripts that read the last one keep running
   }
   if (!MEMO) return runWorkerRaw(variant, x, sr);

@@ -18,7 +18,25 @@
 //            jumpPeakTolDb 0 (V18: 3 — the steady reference must be the line's
 //              loudest so far, within this; 0 = off),
 //            grantLastCorr 0 (V17, rejected: voice timing only while the
-//              latest single window's correlation is >= this; 0 = off) }
+//              latest single window's correlation is >= this; 0 = off),
+//            (2026-10-06 fix round, V19*:)
+//            jumpPreVoice false (the takeover test fires only when the line's
+//              coherence windows completed before its steady reference ended
+//              do NOT pool to a voice verdict, or there are none: a voice
+//              that gets louder — a vowel change, a crescendo — read as a
+//              voice before the jump; a hum taken over by a note did not),
+//            jumpPreFirst false (V19f: those windows must have ended by the
+//              reference's FIRST sighting, not its last: a note's onset can
+//              sit in a window that ends inside the steady stretch),
+//            bandMarginHz 0 (lines are measured from fLo - this to fHi + this),
+//            clearOob false (a line outside the band drops its running cents
+//              series: a window never splices non-adjacent chunks),
+//            lapseCorr 0, lapseCoh 0 (voice timing is also revoked when the
+//              line's pooled windows, >= 1, fall under these: the evidence
+//              that granted it has lapsed; 0 = off),
+//            capSec 0, capFirstObs 1 (a voice-timed line first seen in the
+//              stream's first capFirstObs observations is timed capSec s
+//              instead of onsetMinTrackSec; 0 = off) }
 // With rebirth true and coh null it is r8-notch.js message for message.
 // r8-notch.js — the round-2 candidate (`R8`, 2026-10-04) as a clean,
 // flag-free drop-in for src/dsp/noise-notch.js: bc42ad0's module plus the
@@ -265,7 +283,7 @@ function makeNotch(f0, sampleRate, q) {
 //     Hz); input to isNearNotch (the worker's ghost veto).
 export function createNoiseNotch(sampleRate, opts = {}) {
   const cfg = { ...NOTCH_DEFAULTS, rebirth: true, coh: null, ...(globalThis.__NOTCH_OPTS ?? {}), ...opts };
-  const COH = cfg.coh ? { voice: "onset", machine: true, rebirthGate: "any", voiceRevoke: false, reanchor: false, jumpGuard: false, jumpDb: 10, jumpMode: "first3", jumpRefObs: 3, jumpStableDb: 3, jumpRiseObs: 6, jumpPeakTolDb: 0, grantLastCorr: 0, revokeLast: false, minWin: 3, poolWin: 5, mCorr: 0.15, mCoh: 1, vCorr: 0.5, vCoh: 2, fLo: 80, fHi: 400, win: 1024, wch: 40, gateDb: 10, ...cfg.coh } : null;
+  const COH = cfg.coh ? { voice: "onset", machine: true, rebirthGate: "any", voiceRevoke: false, reanchor: false, jumpGuard: false, jumpDb: 10, jumpMode: "first3", jumpRefObs: 3, jumpStableDb: 3, jumpRiseObs: 6, jumpPeakTolDb: 0, grantLastCorr: 0, jumpPreVoice: false, jumpPreFirst: false, bandMarginHz: 0, clearOob: false, lapseCorr: 0, lapseCoh: 0, capSec: 0, capFirstObs: 1, revokeLast: false, minWin: 3, poolWin: 5, mCorr: 0.15, mCoh: 1, vCorr: 0.5, vCoh: 2, fLo: 80, fHi: 400, win: 1024, wch: 40, gateDb: 10, ...cfg.coh } : null;
   const N = cfg.fftSize;
   const bufferLength = cfg.obsLen;            // dedicated observation buffer
   const raw = new Float32Array(bufferLength); // rolling RAW buffer
@@ -475,7 +493,11 @@ export function createNoiseNotch(sampleRate, opts = {}) {
       for (let i = 0; i < COH.win; i++) cohHann[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (COH.win - 1));
     }
     for (const t of tracks) {
-      if (t.active || t.freq < COH.fLo || t.freq > COH.fHi) continue;
+      if (t.active) continue;
+      if (t.freq < COH.fLo - COH.bandMarginHz || t.freq > COH.fHi + COH.bandMarginHz) {
+        if (COH.clearOob && t.coh) { t.coh.c1.length = 0; t.coh.c2.length = 0; }
+        continue;
+      }
       if (!t.coh) t.coh = { c1: [], c2: [], wins: [] };
       const C = t.coh;
       if (obsIndex - t.lastSeenObs > 1) { C.c1.length = 0; C.c2.length = 0; continue; }
@@ -501,7 +523,7 @@ export function createNoiseNotch(sampleRate, opts = {}) {
       const m1 = midSeries(C.c1), m2 = midSeries(C.c2);
       let s12 = 0, s11 = 0, s22 = 0;
       for (let i = 0; i < m1.length; i++) { s12 += m1[i] * m2[i]; s11 += m1[i] * m1[i]; s22 += m2[i] * m2[i]; }
-      C.wins.push([s12 / m1.length, s11 / m1.length, s22 / m1.length]);
+      C.wins.push([s12 / m1.length, s11 / m1.length, s22 / m1.length, chunkCounter]); // [.., chunk the window ended on]
       if (C.wins.length > COH.poolWin) C.wins.shift();
       C.c1.length = 0; C.c2.length = 0;
       if (globalThis.__COHWIN) globalThis.__COHWIN.push({ c: chunkCount, id: t.id, f: t.freq, w: C.wins[C.wins.length - 1] });
@@ -528,6 +550,23 @@ export function createNoiseNotch(sampleRate, opts = {}) {
     const w = t.coh?.wins; if (!w || !w.length) return -1;
     const [a, b, c] = w[w.length - 1];
     return a / Math.max(1e-12, Math.sqrt(b * c));
+  }
+  // pooled verdict stats over the line's windows that ended at or before
+  // chunk c (all windows: c = Infinity): [pcorr, pcoh, n]
+  function pooledUpTo(t, c) {
+    let S12 = 0, S11 = 0, S22 = 0, n = 0;
+    for (const w of t.coh?.wins ?? []) if (w[3] <= c) { S12 += w[0]; S11 += w[1]; S22 += w[2]; n++; }
+    return n ? [S12 / Math.max(1e-12, Math.sqrt(S11 * S22)), Math.sign(S12) * Math.sqrt(Math.abs(S12) / n), n] : [0, 0, 0];
+  }
+  // jumpPreVoice: the line read as a voice before its steady reference ended
+  function preVoice(t, c) {
+    const [pc, ph, n] = pooledUpTo(t, c);
+    return n > 0 && pc >= COH.vCorr && ph >= COH.vCoh;
+  }
+  // lapse: the pooled windows no longer support the voice timing
+  function lapsed(t) {
+    const [pc, ph, n] = pooledUpTo(t, Infinity);
+    return n > 0 && (pc < COH.lapseCorr || ph < COH.lapseCoh);
   }
   function lastMachine(t) {
     const w = t.coh?.wins; if (!w || !w.length) return false;
@@ -634,7 +673,7 @@ export function createNoiseNotch(sampleRate, opts = {}) {
           // already there at a steady level. A crescendo rises slower than
           // that; a voice's attack has no steady level before it
           const ph = (best.ph ??= []);
-          ph.push([obsIndex, 10 * Math.log10(pk.power + 1e-30)]);
+          ph.push([obsIndex, 10 * Math.log10(pk.power + 1e-30), chunkCounter]);
           const R = COH.jumpRiseObs, P = COH.jumpRefObs;
           while (ph.length && ph[0][0] <= obsIndex - R - P) {
             // jumpPeakTolDb: the line's loudest sighting BEFORE the reference
@@ -647,7 +686,11 @@ export function createNoiseNotch(sampleRate, opts = {}) {
           if (ref.length >= P) {
             const lo = Math.min(...ref), hi = Math.max(...ref), med = [...ref].sort((a, b) => a - b)[Math.floor(ref.length / 2)];
             const peakOk = !COH.jumpPeakTolDb || (best.prePeak ?? -Infinity) <= hi + COH.jumpPeakTolDb;
-            if (hi - lo <= COH.jumpStableDb && peakOk && ph[ph.length - 1][1] >= med + COH.jumpDb) best.jumped = true;
+            // jumpPreVoice: not a takeover when the line already read as a
+            // voice before the reference ended (a vowel change, a crescendo)
+            const refCs = ph.filter(([o]) => o <= obsIndex - R).map(([, , c]) => c);
+            const refC = COH.jumpPreFirst ? Math.min(...refCs) : Math.max(...refCs);
+            if (hi - lo <= COH.jumpStableDb && peakOk && ph[ph.length - 1][1] >= med + COH.jumpDb && !(COH.jumpPreVoice && preVoice(best, refC))) best.jumped = true;
           }
         } else if (best.pow0 === undefined) { best.p3.push(pk.power); if (best.p3.length === 3) best.pow0 = [...best.p3].sort((a, b) => a - b)[1]; }
         else if (pk.power >= best.pow0 * Math.pow(10, (COH ? COH.jumpDb : cfg.onsetDb) / 10)) best.jumped = true;
@@ -704,14 +747,15 @@ export function createNoiseNotch(sampleRate, opts = {}) {
       // voiceRevoke: a voice-timed line that later reads machine-confirmed
       // (a spin-up transient that settled into a steady hum) gets its own
       // non-onset timing back
-      if (t.voiceBorn && COH.voiceRevoke && (cls === "machine" || (COH.revokeLast && lastMachine(t)))) { t.onsetBorn = false; t.voiceBorn = false; }
+      // lapse (V19): or its pooled windows fell under lapseCorr / lapseCoh
+      if (t.voiceBorn && COH.voiceRevoke && (cls === "machine" || (COH.revokeLast && lastMachine(t)) || (COH.lapseCorr > 0 && lapsed(t)))) { t.onsetBorn = false; t.voiceBorn = false; }
       // promote only on an observation that actually saw the peak (a note
       // that just ended must not promote on its trailing duty)
       if (cls === "machine" && COH.machine) {
         if (!t.active && t._seen && span >= minObs && duty >= cfg.promoteDuty) { t.active = true; t.prov = undefined; }
       } else if (cls === "voice" && COH.voice === "block") {
         // voice-confirmed: no promotion while the line looks like a voice
-      } else if (!t.active && t._seen && t.prov === undefined && timed >= (t.onsetBorn ? onsetMinObs : minObs) && duty >= cfg.promoteDuty) t.active = true;
+      } else if (!t.active && t._seen && t.prov === undefined && timed >= (t.onsetBorn ? (COH && COH.capSec > 0 && t.voiceBorn && t.firstObs <= COH.capFirstObs ? Math.ceil(COH.capSec * (obsPerSec ?? 10)) : onsetMinObs) : minObs) && duty >= cfg.promoteDuty) t.active = true;
       if (globalThis.__COHCLS && cls !== null) globalThis.__COHCLS(t, cls, obsIndex);
       if (globalThis.__COHDBG && cls !== null && t._seen && obsIndex % 10 === 0) globalThis.__COHDBG.push({ o: obsIndex, f: +t.freq.toFixed(1), cls, st: t.cohStat.map((v) => +v.toFixed(2)), ob: t.onsetBorn, nw: t.coh.wins.length });
       if (t.active && obsIndex - t.lastSeenObs > missObs) { t.active = false; t.hits = 0; t.firstObs = obsIndex; }

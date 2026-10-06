@@ -16,9 +16,17 @@
 // candidate): hum at 85 / 135 / 180 Hz, note at 0.95-1.07 x the hum from
 // 1.5 s (held 4 s) or 3 s (held 7 s), hum rms 0.008 / 0.04 / 0.07, 12 c
 // vibrato + 2.5 c wander, other seeds and phases (324 cells per rate).
+// --wobble / --sweep (2026-10-06 fix round, the review's takeover shapes): a
+// hum whose speed carries a SMALL shared wobble (OU, tau 0.15 s, 0 / 0.7 /
+// 1.2 / 2 c: undecided rather than machine-confirmed) with one 4 s note
+// (1.5-5.5 s, 12 c vibrato + 2.5 c wander) at 1.002 / 1.012 x the hum, hum at
+// 85 / 120 / 150 Hz, rms 0.04 / 0.07 (48 cells per rate); --sweep: hum at 85 /
+// 120 / 150 / 200 Hz, note at 1.002 / 1.006 / 1.012 x, hum rms 0.015-0.055 in
+// 7 steps, wobble 0 / 1.2 c (168 cells per rate). Rows add pfv (painted false
+// voicing after the note, median-3 + paint gate).
 import { writeFileSync } from "node:fs";
 import { synth, mulberry } from "./synth.mjs";
-import { runWorker, parseArgs } from "./lib.mjs";
+import { runWorker, displayed, parseArgs } from "./lib.mjs";
 import { VARIANTS } from "./variants.mjs";
 const args = parseArgs();
 const VARS = (args.variants || "B,N4").split(",");
@@ -26,9 +34,14 @@ const SRS = (args.sr || "16000").split(",").map(Number);
 const [shI, shN] = (args.shard || "0/1").split("/").map(Number);
 const rows = [];
 let job = -1;
-const HELD = "heldout" in args || "heldout2" in args, HELD2 = "heldout2" in args;
+const WOB = "wobble" in args || "sweep" in args;
+const HELD = "heldout" in args || "heldout2" in args || WOB, HELD2 = "heldout2" in args;
 const cells = [];
-if (!HELD) for (const sr of SRS) for (const noteF of [112, 117, 120.5, 123, 126, 132, 140]) for (const D of [4, 8]) for (const end of ["stop", "glide-on", "fade"]) for (const lvl of [0.01, 0.03])
+if ("wobble" in args) for (const sr of SRS) for (const hf of [85, 120, 150]) for (const ratio of [1.002, 1.012]) for (const lvl of [0.04, 0.07]) for (const wsd of [0, 0.7, 1.2, 2])
+  cells.push({ sr, hf, noteF: +(hf * ratio).toFixed(2), a: 1.5, D: 4, end: "stop", lvl, wsd, vib: 12, wan: 2.5, seed: 3000 + Math.round(hf * ratio * 10), rs: 57, ph2: 2.0, ph3: 0.6 });
+else if ("sweep" in args) for (const sr of SRS) for (const hf of [85, 120, 150, 200]) for (const ratio of [1.002, 1.006, 1.012]) for (const lvl of [0.015, 0.02, 0.025, 0.03, 0.035, 0.045, 0.055]) for (const wsd of [0, 1.2])
+  cells.push({ sr, hf, noteF: +(hf * ratio).toFixed(2), a: 1.5, D: 4, end: "stop", lvl, wsd, vib: 12, wan: 2.5, seed: 3000 + Math.round(hf * ratio * 10), rs: 57, ph2: 2.0, ph3: 0.6 });
+else if (!HELD) for (const sr of SRS) for (const noteF of [112, 117, 120.5, 123, 126, 132, 140]) for (const D of [4, 8]) for (const end of ["stop", "glide-on", "fade"]) for (const lvl of [0.01, 0.03])
   cells.push({ sr, hf: 120, noteF, a: 1, D, end, lvl, vib: 10, wan: 3, seed: noteF + D, rs: 9, ph2: 1.1, ph3: 2.3 });
 else if (HELD2) for (const sr of SRS) for (const hf of [85, 135, 180]) for (const ratio of [0.95, 0.985, 1.002, 1.012, 1.03, 1.07]) for (const D of [4, 7]) for (const end of ["stop", "glide-on", "fade"]) for (const lvl of [0.008, 0.04, 0.07])
   cells.push({ sr, hf, noteF: +(hf * ratio).toFixed(2), a: D === 4 ? 1.5 : 3, D, end, lvl, vib: 12, wan: 2.5, seed: 2000 + Math.round(hf * ratio * 10) + D, rs: 57, ph2: 2.0, ph3: 0.6 });
@@ -43,16 +56,20 @@ for (const c of cells) {
   const ampAt = (t) => (t < a || t > b ? 0 : Math.min(1, (t - a) / 0.06, end === "fade" ? (b - t) / 1.5 : (b - t) / 0.06));
   const x = synth({ sr, dur, f0At, ampAt, vowelAt: () => "a", seed: c.seed, vibCents: c.vib, wanderCents: c.wan });
   const r = mulberry(c.rs); let ph = 0;
-  for (let i = 0; i < n; i++) { ph += 2 * Math.PI * hf / sr; x[i] += lvl * Math.SQRT2 * (Math.sin(ph) + 0.25 * Math.sin(2 * ph + c.ph2) + 0.12 * Math.sin(3 * ph + c.ph3)) / 1.032 + 0.0003 * (2 * r() - 1); }
-  const row = HELD ? { sr, hf, noteF, a, D, end, lvl, v: {} } : { sr, noteF, D, end, lvl, v: {} };
+  // shared hum wobble (--wobble / --sweep): OU cents, tau 0.15 s
+  const rw = mulberry(77 + hf), aw = Math.exp(-1 / (0.15 * sr)), sw = (c.wsd ?? 0) * Math.sqrt(1 - aw * aw);
+  let wv = 0;
+  const gw = () => { const u = Math.max(1e-12, rw()), q = rw(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * q); };
+  for (let i = 0; i < n; i++) { if (c.wsd) wv = aw * wv + sw * gw(); ph += 2 * Math.PI * hf * (c.wsd ? Math.pow(2, wv / 1200) : 1) / sr; x[i] += lvl * Math.SQRT2 * (Math.sin(ph) + 0.25 * Math.sin(2 * ph + c.ph2) + 0.12 * Math.sin(3 * ph + c.ph3)) / 1.032 + 0.0003 * (2 * r() - 1); }
+  const row = HELD ? { sr, hf, noteF, a, D, end, lvl, ...(WOB ? { wsd: c.wsd } : {}), v: {} } : { sr, noteF, D, end, lvl, v: {} };
   for (const vn of VARS) {
-    const msgs = runWorker(VARIANTS[vn], x, sr);
-    let promo = null, fn = 0, fv = 0;
-    for (const m of msgs) {
+    const msgs = runWorker(VARIANTS[vn], x, sr), disp = displayed(msgs);
+    let promo = null, fn = 0, fv = 0, pfv = 0;
+    msgs.forEach((m, i) => {
       if (promo === null && m.nf && m.nf.some((f) => Math.abs(f / hf - 1) < 0.03)) promo = +(m.t + 0.04).toFixed(2);
-      if (m.t > b + 0.5) { fn++; if (m.pitch > 0) fv++; }
-    }
-    row.v[vn] = { promo, fv: +(100 * fv / fn).toFixed(1) };
+      if (m.t > b + 0.5) { fn++; if (m.pitch > 0) fv++; if (disp[i] > 0) pfv++; }
+    });
+    row.v[vn] = { promo, fv: +(100 * fv / fn).toFixed(1), pfv: +(100 * pfv / fn).toFixed(1) };
   }
   rows.push(row);
   console.log(JSON.stringify(row));

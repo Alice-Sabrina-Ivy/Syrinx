@@ -80,7 +80,12 @@ function buildTimeline(parts, dur, { qual = "modal", speechQual = "modal", vibCe
     // quality: holds use `qual`, speech uses `speechQual` -> synthesize both
     // and pick per part (simple, synthesis is cheap relative to clarity)
     const isHold = (t) => parts.some((p) => p.kind === "hold" && t >= p.a && t <= p.b);
-    const xh = synth({ sr, dur, f0At: (t) => (isHold(t) ? f0At(t) : 0), ampAt: (t) => (isHold(t) ? ampAt(t) : 0), vowelAt, qual, vibCents, wanderCents, seed });
+    // optional per-hold H1-only gain (dB), hold-relative time (2026-10-06)
+    const h1GainAt = parts.some((p) => p.h1At) ? (t) => {
+      for (const p of parts) if (p.kind === "hold" && p.h1At && t >= p.a && t <= p.b) return p.h1At(t - p.a);
+      return 0;
+    } : null;
+    const xh = synth({ sr, dur, f0At: (t) => (isHold(t) ? f0At(t) : 0), ampAt: (t) => (isHold(t) ? ampAt(t) : 0), vowelAt, qual, vibCents, wanderCents, seed, h1GainAt });
     const hasSpeech = parts.some((p) => p.kind === "speech");
     if (hasSpeech) {
       const xs = synth({ sr, dur, f0At: (t) => (isHold(t) ? 0 : f0At(t)), ampAt: (t) => (isHold(t) ? 0 : ampAt(t)), vowelAt, qual: speechQual, vibCents: 0, wanderCents: 0, seed: seed + 7, floorDb: -200 });
@@ -280,6 +285,77 @@ export function heldScenarios() {
     const hold = { kind: "hold", a: t0, b: t0 + 14, vowel: VOW[(f0 + sn.length) % 3], ramp: 0.02, gainAt: (tn) => Math.pow(10, g(tn) / 20), f0At: () => f0 };
     out.push({ name: `dip/${f0}/${sn}/t0=${t0}/${qual}`, family: "dip", holds: [[t0, t0 + 14]], promoF: [[f0, f0]], dur: t0 + 15,
       build: buildTimeline([hold], t0 + 15, { qual, vibCents: 10, wanderCents: 3, seed }) });
+  }
+  // 9. 2026-10-06 fix round (review of the follow-up). (a) "vowelnob": a vowel
+  // change on a hold whose line is NOT onset-born raises its 1st harmonic the
+  // way a takeover raises a hum's line. Holds: phonation from t0 = 0.15 s with
+  // the change 1.0 / 2.5 / 3.5 s in, from t0 = 0 with the change 2.5 s in,
+  // speech running into the hold (60 ms gap) with the change 1.5 s in, and a
+  // +100 c step 3 s into an onset-born hold (the stepped line is new) with the
+  // change 1.5 s after the step. Changes: the synth's formant model /a/ -> /i/
+  // and /a/ -> /u/, and an H1-only rise of +6 / +8 / +12 dB over 0.15 s
+  // (Hillenbrand 1995, within-talker /a/ -> /i/ H1 level: median +10.7 dB for
+  // men, +12.9 dB for women, >= 6 dB for most talkers of both). f0: 98 / 131 Hz
+  // and 196 / 247 Hz (male / female range).
+  const CHG = {
+    "a>i": { v: ["a", "i"] }, "a>u": { v: ["a", "u"] },
+    "h1+6": { db: 6 }, "h1+8": { db: 8 }, "h1+12": { db: 12 },
+  };
+  const h1Step = (at, db) => (u) => (u < at ? 0 : u < at + 0.15 ? db * (u - at) / 0.15 : db);
+  for (const f0 of [98, 131, 196, 247]) for (const [shape, at] of [["t015", 1.0], ["t015", 2.5], ["t015", 3.5], ["t0", 2.5], ["sp2hold", 1.5], ["step", 1.5]]) for (const [cn, ch] of Object.entries(CHG)) {
+    seed++;
+    const v0 = ch.v ? ch.v[0] : "a", v1 = ch.v ? ch.v[1] : "a";
+    const name = `vowelnob/${f0}/${shape}@${at}s/${cn}`;
+    if (shape === "t015" || shape === "t0") {
+      const t0 = shape === "t0" ? 0 : 0.15;
+      const hold = { kind: "hold", a: t0, b: t0 + 12, ramp: 0.02, vowelAt: (tn) => (tn < at ? v0 : v1), h1At: ch.db ? h1Step(at, ch.db) : null, f0At: () => f0 };
+      out.push({ name, family: "vowelnob", holds: [[t0, t0 + 12]], promoF: [[f0, f0]], dur: t0 + 13, build: buildTimeline([hold], t0 + 13, { vibCents: 10, wanderCents: 3, seed }) });
+    } else if (shape === "sp2hold") {
+      const parts = [{ kind: "speech", a: 1, b: 4, center: f0, gain: 1 }, { kind: "hold", a: 4.06, b: 16.06, vowelAt: (tn) => (tn < at ? v0 : v1), h1At: ch.db ? h1Step(at, ch.db) : null, f0At: () => f0 }];
+      out.push({ name, family: "vowelnob", holds: [[4.06, 16.06]], promoF: [[f0, f0]], dur: 17, build: buildTimeline(parts, 17, { vibCents: 10, wanderCents: 3, seed }) });
+    } else {
+      const f1 = cents(f0, 100), ts = 3;
+      const hold = { kind: "hold", a: 1, b: 17, vowelAt: (tn) => (tn < ts + at ? v0 : v1), h1At: ch.db ? h1Step(ts + at, ch.db) : null, f0At: (tn) => (tn < ts ? f0 : f1) };
+      out.push({ name, family: "vowelnob", holds: [[1 + ts, 17]], promoF: [[f1, f1]], dur: 18, build: buildTimeline([hold], 18, { vibCents: 10, wanderCents: 3, seed }) });
+    }
+  }
+  // (b) "crescpp": a steady soft start, then a fast crescendo, on a not-onset-
+  // born hold (t0 = 0.15 s) — the review's shapes: -12 dB held 0.5 / 1 s then
+  // +10 / +12 dB/s, -10 dB held 1 s then +15 dB/s, a logistic -15 -> 0 dB swell
+  // with a 10-90 % rise of 1 / 1.5 / 2 s, and +8 dB/s after 0.5 s (reported
+  // to pass). Steady-then-jump is the takeover test's own signal: the fast
+  // ones are a known limitation unless the line already read as a voice.
+  const lin = (pts) => (u) => {
+    if (u <= pts[0][0]) return pts[0][1];
+    for (let i = 1; i < pts.length; i++) if (u <= pts[i][0]) { const [a, da] = pts[i - 1], [b, db] = pts[i]; return da + (db - da) * (u - a) / (b - a); }
+    return pts[pts.length - 1][1];
+  };
+  const sig = (w) => (u) => -15 + 15 / (1 + Math.exp(-(u - (1.1 + w / 2)) * 4.39 / w));
+  const CPP = {
+    "p0.5r10": lin([[0, -12], [0.5, -12], [1.7, 0]]), "p0.5r12": lin([[0, -12], [0.5, -12], [1.5, 0]]), "p1r12": lin([[0, -12], [1, -12], [2, 0]]),
+    "p1r15": lin([[0, -10], [1, -10], [1 + 10 / 15, 0]]), "p0.5r8": lin([[0, -12], [0.5, -12], [2, 0]]),
+    sig1: sig(1), "sig1.5": sig(1.5), sig2: sig(2),
+  };
+  for (const f0 of [78, 120, 180, 220]) for (const [sn, g] of Object.entries(CPP)) {
+    seed++;
+    const hold = { kind: "hold", a: 0.15, b: 14.15, vowel: VOW[(f0 + sn.length) % 3], ramp: 0.02, gainAt: (tn) => Math.pow(10, g(tn) / 20), f0At: () => f0 };
+    out.push({ name: `crescpp/${f0}/${sn}`, family: "crescpp", holds: [[0.15, 14.15]], promoF: [[f0, f0]], dur: 15.15,
+      build: buildTimeline([hold], 15.15, { vibCents: 10, wanderCents: 3, seed }) });
+  }
+  // (c) "settle": attack at 0 dB for 0.6 s, settle 2 / 3 dB lower until 1.6 s,
+  // then swell to a new high within 0.4-0.5 s (fires V18's takeover test: the
+  // loudest-so-far tolerance lets the steady level sit below the attack), and
+  // the same rise over 0.7 s (reported to pass).
+  const SET = {
+    "s3up0.4": lin([[0, 0], [0.6, 0], [0.9, -3], [1.6, -3], [2.0, 3.5]]),
+    "s2up0.5": lin([[0, 0], [0.6, 0], [0.9, -2], [1.6, -2], [2.1, 4.5]]),
+    "s3up0.7": lin([[0, 0], [0.6, 0], [0.9, -3], [1.6, -3], [2.3, 3.5]]),
+  };
+  for (const f0 of [100, 140, 180, 220, 280]) for (const [sn, g] of Object.entries(SET)) {
+    seed++;
+    const hold = { kind: "hold", a: 0.15, b: 14.15, vowel: VOW[(f0 + sn.length) % 3], ramp: 0.02, gainAt: (tn) => Math.pow(10, g(tn) / 20), f0At: () => f0 };
+    out.push({ name: `settle/${f0}/${sn}`, family: "settle", holds: [[0.15, 14.15]], promoF: [[f0, f0]], dur: 15.15,
+      build: buildTimeline([hold], 15.15, { vibCents: 10, wanderCents: 3, seed }) });
   }
   return out;
 }

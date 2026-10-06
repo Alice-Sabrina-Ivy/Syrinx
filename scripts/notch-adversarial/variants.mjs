@@ -204,3 +204,30 @@ VARIANTS.V17 = { tree: "cand3", opts: { rebirth: false, coh: { ...V14c, fLo: 75,
 // Coswara /a/ dipped 13 dB after its onset, held steady ~31 dB, then rose
 // 7 dB within 4 observations -> V16's takeover test fired on a voice.
 VARIANTS.V18 = { tree: "cand3", opts: { rebirth: false, coh: { ...V14c, fLo: 75, ...PLAT, jumpPeakTolDb: 3 } } };
+
+// ---- 2026-10-06 V14 fix round (review of the follow-up) - cand3-notch.js ----
+// V19p = V18 + the takeover test needs the line NOT to read as a voice before
+// the jump (jumpPreVoice: the windows completed before the steady reference
+// ended must not pool to the voice verdict; none = fires as before): a vowel
+// change / crescendo on a held voice raises its line like a takeover.
+// V19 = V19p + the band measured within matchHz (3 Hz) of 75 / 400 Hz, and a
+// line leaving the band drops its running series (no spliced windows): a
+// voice centred on 75.0 Hz wandered out of the band and lost its windows.
+// V19l = V19 + lapse: voice timing also revoked when the pooled windows fall
+// under the discovery-phase verdict 0.5 / 2 c. Tried on the review's cases and
+// NOT adopted: it changes none of them (the real mains-hum line that kept its
+// voice timing pools 0.60-0.87 / 4-7 c throughout; the wobbling hum's note
+// windows dominate the pool until the first hum-alone window).
+// V19c = V19 + a 10 s cap on the voice timing of lines first seen in the
+// stream's first observation (the exposure to voice-like machines that are
+// running when the stream starts); a product dial, measured, not a candidate.
+const V18c = { ...V14c, fLo: 75, ...PLAT, jumpPeakTolDb: 3 };
+VARIANTS.V19p = { tree: "cand3", opts: { rebirth: false, coh: { ...V18c, jumpPreVoice: true } } };
+VARIANTS.V19 = { tree: "cand3", opts: { rebirth: false, coh: { ...V18c, jumpPreVoice: true, bandMarginHz: 3, clearOob: true } } };
+// V19f = V19 with the pre-jump windows ending by the steady reference's FIRST
+// sighting (a takeover note's onset transient can sit in a window that ends
+// inside the steady stretch and read as shared FM: hadv --sweep, 85 Hz hum,
+// 1.2 c wobble, rms 0.035, 48 kHz) = src/ after the fix round
+VARIANTS.V19f = { tree: "cand3", opts: { rebirth: false, coh: { ...V18c, jumpPreVoice: true, jumpPreFirst: true, bandMarginHz: 3, clearOob: true } } };
+VARIANTS.V19l = { tree: "cand3", opts: { rebirth: false, coh: { ...V18c, jumpPreVoice: true, bandMarginHz: 3, clearOob: true, lapseCorr: 0.5, lapseCoh: 2 } } };
+VARIANTS.V19c = { tree: "cand3", opts: { rebirth: false, coh: { ...V18c, jumpPreVoice: true, bandMarginHz: 3, clearOob: true, capSec: 10 } } };
