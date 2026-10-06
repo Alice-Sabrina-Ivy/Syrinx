@@ -20,8 +20,21 @@ session recordings are kept outside this repository.
 > crescendos and dip-and-recover voices cannot trip; it was validated on two
 > held-out splits. On those splits a hum taken over by a note of its own
 > level fails the strict rule for V14 and V18 alike — §8.1 for the decision.
+>
+> **Fix round (2026-10-06), §9.** A review of V18 and §8 found nine issues;
+> all were verified. `src/` is now **`V19g`**: the takeover test no longer
+> fires on a line that already read as a voice (vowel changes, settle-then-
+> swell), and lines are measured with a 3 Hz margin around 75-400 Hz. The
+> new coverage adds voice-like machines (partials sharing 0.5-8 Hz speed
+> wobble), real noise from every start offset and the review's takeover
+> shapes: on those, V14, V18 and V19g all fail the ship rule — §9.1 for
+> the decision.
 
 ## Decision
+
+**Historical (superseded 2026-10-05 by §8 and 2026-10-06 by §9):** the
+candidate phase's decision. `src/` is now `V19g`; the current verdict is
+§9.1.
 
 **SHIP `V14`** in `src/dsp/noise-notch.js`. It is bc42ad0's module plus one rule:
 
@@ -354,8 +367,11 @@ checks, (r3) at 128 Hz from 0.15 s, and (r4) at 128 Hz. On `V14`: **77 passed, 0
   whine, a ballast, a fan) can be voice-confirmed.
   - If such a line is present from the stream start and not onset-born, it is
     notched up to 20 s late instead of 5 s.
-  - Measured worst cost: whine 124015, +1.6 pp painted in noise-only lead
-    segments.
+  - **Historical (superseded 2026-10-06, §9.5):** Measured worst cost:
+    whine 124015, +1.6 pp painted in noise-only lead segments. That was the
+    0 s, first-notch view; from other start offsets the same clip is +15 s
+    late and a mains hum +25 pp, and synthetic voice-like machines cost up to
+    +82 pp.
 - **Repeated holds with breaths, holds ≥ 20 s** are bc42ad0's limits,
   unchanged.
 - **Real data ran at 16 kHz only.** The synthetic suite ran at both rates.
@@ -397,6 +413,12 @@ or synthesis. Results on the private session recordings are kept outside this
 repository.
 
 ### 8.1 Verdict
+
+**Historical (superseded 2026-10-06, §9.1):** the comparison below holds on
+the cells measured then. "At least as good as V14 on every voice measure"
+is an empirical result on those sets, not a guarantee: a settle-then-swell
+shape refutes it (§9.2 #3). The ship-rule rows had no voice-like machine
+cell, and the real noise was streamed from 0 s only.
 
 **`V18` is at least as good as V14 on every voice measure, in-sample and on
 both held-out splits (no stream or scenario more than 1 pp below V14). It is
@@ -451,10 +473,13 @@ cand3-notch.js` + `variants.mjs`). Parity `V18` vs `SRC`: 0 mismatches in
    sighting more than 3 dB above it (`cohJumpPeakTolDb`). That is a louder
    source starting on a line that was already there (a note sung on a hum's
    track).
-   - **No crescendo passes it.** At a constant slope of s dB per observation
-     the 3-sighting reference spans 2s and the rise reaches ~7s. Firing needs
-     2s ≤ 1.5 and 7s ≥ 6, i.e. s ≤ 0.75 and s ≥ 0.86: impossible. A voice's
-     attack has no steady level before it.
+   - **No crescendo passes it.** **Historical (superseded 2026-10-06,
+     §9.2 #2):** true only for a CONSTANT-slope crescendo from the note's
+     start, or one that never rises 6 dB within 0.7 s (≈ 8.6 dB/s). A steady
+     soft start followed by a ≥ 10 dB/s crescendo fires it. At a constant
+     slope of s dB per observation the 3-sighting reference spans 2s and the
+     rise reaches ~7s. Firing needs 2s ≤ 1.5 and 7s ≥ 6, i.e. s ≤ 0.75 and
+     s ≥ 0.86: impossible. A voice's attack has no steady level before it.
    - **No dip-and-recover passes it** (`V18`'s addition). A voice that fell
      after its onset, steadied and came back was louder before its steady
      stretch; a hum that a note takes over never was.
@@ -466,6 +491,9 @@ cand3-notch.js` + `variants.mjs`). Parity `V18` vs `SRC`: 0 mismatches in
      hum's track: the two beat, the line never rises 6 dB cleanly over a
      steady level, the note gets voice timing, and the timing is revoked only
      once a 1 s window of the hum alone has been read after the note (§8.6).
+     **Corrected 2026-10-06 (§9.5):** revoked only once a window reads
+     MACHINE-confirmed; a hum with ~1-2 c of shared wobble reads "undecided"
+     and keeps the timing longer.
      V14's guard misses 6 of the 11 such split-2 cells; it catches the other
      5 and split 1's one, that one by 0.1 dB.
 
@@ -666,7 +694,8 @@ cell (48 kHz; its 16 kHz twin passes):
 2. The pooled verdict arrives at 5.0 s, after the note ended (4.0 s), from
    windows that still hold the note.
 3. The first window of the hum alone revokes the timing at 6.0 s and the
-   line is notched then. bc42ad0 notches it at 5.45 s, mid-note.
+   line is notched then. bc42ad0 notches it at 5.45 s, mid-note. (This hum
+   reads machine-confirmed; one with shared wobble may not: §9.5.)
 
 V14's first-3 guard fired there on a +6.1 dB beat peak (0.1 dB over its
 threshold). On split 2 V14 fails 6 cells of the same kind. In split 2,
@@ -752,7 +781,8 @@ subito forte at 120 / 220 Hz.
   On the 297-stream real voice-only set bc42ad0 notches the voice in 33
   streams (73.0 % of their hold frames), V18 in none. Still unrecorded: real
   holds ≥ 20 s and real repeated same-pitch holds ≥ 8 s.
-- **The ship rule's takeover cells were not representative.** The held-out
+- **The ship rule's interferer cells were not representative** (2026-10-06:
+  nor were its real-noise streams or its synthetic families, §9.5). The held-out
   grids fail it for V14 and V18 alike (§8.6): a note at a hum's own level on
   its track. Closing it needs a takeover test that does not rely on a clean
   6 dB jump — for example a faster revoke when the line returns to its
@@ -782,3 +812,440 @@ Held-out data:
   --coswara-dates=20200417`.
 
 Runs used ≤ 3 node processes.
+
+## 9. Fix round (2026-10-06): review of the follow-up → `V19g`
+
+A review of V18 and of §8 raised nine findings: four medium, five low. All
+nine reproduced (§9.2).
+
+- **Fixed in `V19g`** (now `src/`, §9.3): two defects in V18's voice timing.
+- **The other seven** are coverage gaps or wrong claims in §8. This round
+  adds the missing test families and corrects the text.
+
+The new coverage shows a class that no ship-rule cell contained before:
+**voice-like machines**. Their partials share 0.5-8 Hz speed wobble, so they
+read as voices. **Every voice-timing variant (V14, V18, V19g) fails the
+extended ship rule on them** (§9.5).
+
+Everything below is on public data or synthesis, except the one-line
+session-oracle summary in §9.7.
+
+### 9.1 Verdict
+
+**Needs a decision: no variant meets the ship rule.** The rule this note
+has used is "no interferer cell (synthetic or real) worse than bc42ad0;
+held suite better". With the review's missing families added, **V14, V18
+and V19g all fail it, and by construction**:
+
+- **The cause.** A machine whose partials share ≥ ~5 c of 0.5-8 Hz speed
+  wobble reads voice-confirmed. If it is already running when the stream
+  starts (not onset-born), it gets the 20 s clock instead of 5 s.
+- **What it costs.** V19g vs bc42ad0, strict rule per line:
+
+  | cells | V19g fails | worst case |
+  |---|---|---|
+  | synthetic steady machines (`vmach.mjs --part=steady`) | 248 / 420 | 6 cells never notched in 30 s: at 300 / 390 Hz with 6-10 c of OU wobble, 99.8 % of the stream painted vs 17.7 % |
+  | synthetic spin-up / approach ramps (`--part=ramp`) | 102 / 108 | notched 20.45 s instead of 5.45 s, painted FV 17.7 → 67.9 % |
+  | real noise, every clip from every 3 s offset (`offsets.mjs`) | 22 / 3 798 streams (2 of 279 clips) | +15 s late; mains hum 438501 from 6 s: +25.2 pp painted FV |
+  | held-out real noise, same | 14 / 1 806 streams (1 of 119 clips) | vehicle interior 456092: 14 / 42 offsets, +15 s, +15.6 pp |
+
+- **V14.** It fails the same families, but less often: 212 / 420 steady,
+  40 / 108 ramp, 22 / 3 798 and 14 / 1 806 real. Its first-3 guard blocks a
+  machine whose level rises at the stream's start. The same guard blocks
+  real crescendos (§8.2 #1).
+- **The voice side.** Of V14, V18 and V19g, V19g has the best aggregate
+  voice numbers (§9.4, §9.6). But the notch's features cannot tell these
+  machines apart from a voice.
+
+**The options** (held: % of hold frames at pitch over the 1 804 runs of
+§9.4; real: streams where the voice is notched):
+
+| option | voice | voice-like machines |
+|---|---|---|
+| **bc42ad0** (= `main`) | held 63.9 %; real voice-only 33 / 297, held-out split 2 287 / 407 | passes by definition |
+| **V14** | 81.0 %; 5 / 297, 89 / 407 | fails (above) |
+| **V18** | 86.0 %; 0 / 297, 83 / 407 | fails more often than V14 |
+| **V19g** (`src/`) | **88.58 %; 0 / 297, 81 / 407** | fails like V18, +6 ramp cells |
+| V19g + a 10 s voice-timing cap for lines first seen in the stream's first observation (`V19c`, measured as a dial on V19) | 83.5 %: every hold from the stream's start that lasts > ~10 s is notched at ~10.5 s; 463 of the 672 runs in those families lose > 1 pp. Voice notched in 4 / 297 real voice-only and 131 / 407 held-out streams (split 2 max(F_err, M_err) 17.8 pp) | still fails every cell above. Synthetic painted-FV cost +16.4 pp instead of +48.4 pp. Real: the vehicle interior drops to +5 s / +5.8 pp; the whine's worst offsets (+15 s) and the mains hum are not covered (their late lines are first seen in a later observation); the whine's worst painted cost drops 7.5 → 5.1 pp |
+
+**V19g against V18.**
+
+- **Voice.** The review's vowel-change and settle-then-swell voices are
+  fixed, and so is a 75.0 Hz voice whose line reads ≥ 75.0 Hz. The three
+  new held families go from 63.4 % to 77.4 % of hold frames, and no run is
+  below V18.
+- **Identical** to V18 on every other cell and stream (notch-only scans,
+  §9.5), except:
+  - **6 ramp cells.** A ramping machine whose steady part already read as a
+    voice no longer fires the takeover test.
+  - **3 held-out voice streams.** All male, all better (§9.6).
+  - **4 held runs at 78 Hz** (+50 c glide / step: the measurement margin).
+    Their notch output differs, but every metric is identical: 100 % on
+    V18 and V19g.
+
+**On the binding gender-symmetric metric (finding 4).** Held-out split 2
+gives max(F_err, M_err) of 10.55 pp for V14, 10.43 pp for V18 and 10.25 pp
+for V19g. The gain over V14 is therefore 0.1-0.3 pp, and the residue is
+male (§9.6).
+
+The ship decision is the user's.
+
+### 9.2 The findings, verified
+
+Each finding was reproduced with the real worker before anything changed:
+first with probes on the review's own cell definitions, then with the
+in-repo families of §9.4-§9.6.
+
+| # | review finding | verified | evidence | action |
+|---|---|---|---|---|
+| 1 | A vowel change on a not-onset-born hold trips the takeover test | **yes** | H1 +10 dB over 0.15 s, 2.5 s into a hold from t = 0.15 s at 220 Hz: V14 / V18 36.4 % of hold frames, notched at 5.41 s. New `vowelnob` family (240 runs): V18 67.3 %, V14 63.4 %, bc42ad0 44.7 %. Hillenbrand 1995, within talker (`realdata/hillenbrand_h1.py`, the review's script): /ɑ/ → /i/ raises H1 by a median +10.7 dB (men) / +12.9 dB (women); ≥ 6 dB for 87 % / 96 % of talkers. | fixed for changes after the line's first coherence window (§9.3); earlier changes disclosed |
+| 2 | "No crescendo passes it" is false | **yes** | -12 dB held 0.5 s then +12 dB/s, and -10 dB held 1 s then +15 dB/s: 36.4 % on bc42ad0, V14 and V18 (120 / 220 Hz). New `crescpp` family: V18 fails 6 of 8 shapes; +8 dB/s and the 2 s logistic pass. | claim corrected (§8.3, §9.8); family added; mostly a known limitation |
+| 3 | "V18 at least as good as V14 on every voice measure" is refuted by a settle-then-swell | **yes** | Attack at 0 dB for 0.6 s, settle -3 dB to 1.6 s, then +6.5 dB within 0.4 s: V18 36.4 %, V14 100 % (120 / 180 / 220 Hz). New `settle` family: V18 55.5 %, V14 100 %. In 23 of the 334 new-family runs, V18 is > 1 pp below V14. | claim restated as empirical (§8.1); 28 of the 30 settle runs are ≥ 95 % on V19g (V18 9, V14 30) |
+| 4 | On max(F_err, M_err), V18's held-out gain over V14 is ~0.1 pp, and the residue is male | **yes** | `realdata/agg-gender.mjs` on the follow-up's rows. Split 2: V14 10.55 pp, V18 10.43 pp. Split 1: 3.94 / 3.42 pp. Split-2 V18 notches the voice in 79 / 340 male and 4 / 67 female streams. One held-out stream is below bc42ad0 on V14, V16 and V18: `coswara__20200417_mikiKeqF4S_o` (male, 121.6 Hz), 51.61 vs 55.33 %. | reported (§9.6) |
+| 5 | A hard 75.0 Hz cutoff; skipped chunks splice windows | **yes** | 75.0 Hz voice from 0.15 s: seed 16 is notched at 5.45 s on V18 (14.1 %, = bc42ad0); seed 15 is kept (50.5 %, the detector's own ceiling for a vibrato centred on its floor). 75.5 Hz: 88-91 %. `cohStep` skipped out-of-band lines without clearing `c1` / `c2`. | fixed in part (§9.3): measured with a 3 Hz margin and the series cleared; voice timing still needs the line inside 75-400 Hz |
+| 6 | Real noise only from 0 s and first notch only; voice-like machines fail at other offsets | **yes** | Vehicle interior 456092 (held-out): 14 / 42 offsets fail on V14 and V18. The 298 Hz line is notched at 20.45 s instead of 5.45 s; painted FV 3.3 → 17.2 % at 39 s. Whine 124015 at 9 / 15 s: 0.0 → 5.5 / 7.5 %. Mains hum 438501 at 6 s: V18 only. | `offsets.mjs`: every clip from every 3 s offset, lateness per line (§9.5) |
+| 7 | V18 widens the voice-like-machine regression vs V14 | **yes** | Mains hum 438501 from 6 s: the 121 Hz line is notched at 5.85 s on bc42ad0 and V14, 15.95 s on V18; painted FV 11.9 / 12.6 / 37.1 %. Ramping voice-like machines: V18 fails 96 / 108, V14 40 / 108. At 77 Hz: V18 fails 36 / 60 steady cells, V14 0. | measured (§9.5); V14's advantage comes from the guard that blocks real crescendos |
+| 8 | No synthetic family has shared in-band FM | **yes** | The suite's wobbles are 0.05-0.27 Hz. New `vmach.mjs`: a 120 Hz stack with shared 2 Hz / 5 c wobble is notched at 20.45 s on V14 / V18 vs 5.45 s; painted FV 17.7 → 67.9 %. | family added to the ship rule and to the test file (§9.4, §9.5) |
+| 9 | Takeover failures go beyond an 85 Hz hum; "undecided" keeps the voice timing | **yes** | A 150 Hz hum with 1.2 c of shared OU wobble: V18 notches it at 7.35 s vs 5.45 s, +10.3 pp painted FV after the note; V14 passes. Mains hum 438501 from 6 s, traced: pooled 0.60-0.87 / 4-7 c from 3.7 s to 15 s, never machine; revoked only after a level dip reset its windows. | grids added (§9.5); §8.3 / §8.6 revoke text corrected |
+
+### 9.3 The fix: `V19g`
+
+`src/dsp/noise-notch.js` = variant `V19g` (`cand3-notch.js` +
+`variants.mjs`). Parity `V19g` vs `SRC` (`NOTCH_MEMO=0`): 0 mismatches in 189 315 worker
+messages (181 scenarios at 16 kHz, 70 at 48 kHz), and 0 in 75 464 more
+re-checked on the final file. Two changes over V18:
+
+1. **The takeover test needs the line not to have been a voice already.**
+   - **Rule.** V18's conditions still apply: a rise of ≥ 6 dB within 6
+     observations, over a level that held within 1.5 dB for 3 sightings and
+     was the line's loudest so far (within 3 dB). In addition, the line's
+     coherence windows that ended by the FIRST of those steady sightings
+     must not pool to the voice verdict. That verdict uses the thresholds
+     that grant voice timing: `pcorr` ≥ 0.7 and `pcoh` ≥ 2.5 c. With no
+     such window, the test fires as on V18.
+   - **Why.**
+     - A vowel change, a crescendo after a steady start, or a swell after a
+       settle raises a line that already carried the voice's shared
+       modulation.
+     - A hum taken over by a note had none.
+     - The review's alternative (fire only when the pre-jump stretch read
+       machine-like) would let an "undecided" hum pass as a voice: one with
+       ~1-2 c of shared wobble.
+   - **Why the FIRST sighting (`V19` → `V19f`).**
+     - `V19` used windows ending by the reference's LAST sighting.
+     - One `--sweep` cell (85 Hz hum, 1.2 c wobble, rms 0.035, 48 kHz)
+       broke it. The note began 0.1 s before that last sighting, while the
+       512 ms observation still read the line as steady.
+     - The window ending inside the steady stretch held the note's onset
+       transient and read 0.88 / 4.2 c. That cancelled the takeover, and
+       the hum was notched at 6.85 s instead of 5.45 s.
+     - A loud note cannot start before the first steady sighting without
+       breaking the steadiness. Windows ending by that sighting therefore
+       hold the old line alone.
+     - The cost: 24 voice runs where V19 had a window only inside the
+       steady stretch (vowel changes 1.5 s after a speech → hold join or a
+       step; the 1.5 s logistic crescendo).
+   - **What it cannot fix.** A change in roughly the first 2 s of a
+     not-onset-born line. The first 1 s window ends ~1 s after the line's
+     first sighting, and the observation buffer itself needs 0.51 s, so
+     there is no evidence yet and the test fires as on V18.
+2. **The band edge** (`V19f` → `V19g`).
+   - **Measured over 72-403 Hz** (`cohMarginHz` = `matchHz` = 3 Hz). A
+     line that leaves that band drops its running series, so a window never
+     splices chunks that are not adjacent. A voice centred on 75.0 Hz
+     wanders across the 75 Hz edge.
+   - **Granted only inside 75-400 Hz.**
+     - `V19f` granted voice timing anywhere in the measurement margin. That
+       delayed voice-like machines at 73 / 74 / 401 / 402 Hz: 138 / 240
+       `--part=edge` cells late (V18: 0; `V19g`: 0).
+     - `V19h` widened the grant band by half an FFT bin, 74.5-400.5 Hz.
+       The test file's 75.0 Hz voice (seed 16) has a line estimate of
+       74.90-74.98 Hz and is kept only that way. But `V19h` also granted
+       voice timing to 401 Hz machines whose OU wobble reaches 400.5 Hz:
+       6 / 240 edge cells, 2 never notched in 30 s, up to +22 pp painted.
+       Rejected: a voice centred exactly on the display floor is the
+       smaller population.
+     - With `V19g`, a 75.0 Hz voice keeps the voice timing whenever its
+       line estimate is ≥ 75.0 Hz at a verdict. Both `synth.mjs` seeds do;
+       seed 16 of the test's synthesis does not (KNOWN LIMITATION).
+
+Not adopted:
+
+- **`V19l` (revoke on lapse).** Voice timing would also be revoked when the
+  pooled windows fall under 0.5 / 2 c. It changes none of the review's
+  cases:
+  - the real mains-hum line pools 0.60-0.87 / 4-7 c throughout;
+  - the wobbling hum's note windows dominate its pool until the first
+    hum-alone window.
+- **`V19c` (a 10 s cap).** Voice timing of a line first seen in the
+  stream's first observation lasts 10 s instead of 20 s. Measured as a dial
+  (§9.1), not proposed: it costs every hold from the stream's start that
+  lasts > 10 s.
+
+### 9.4 Held notes
+
+`held.mjs`, real worker, 16 + 48 kHz, % of hold frames at pitch. The suite
+now has 902 scenarios per rate; the three families marked "new" are this
+round's. The notch-only scans find V19g identical to V18 on the 1 470 runs
+of §8.4, except four 78 Hz +50 c glide / step runs, which have identical
+metrics (100 %). So every V19g number on those runs is V18's.
+
+| family | runs | bc42ad0 | V14 | V18 | V19 | V19f | **V19g** |
+|---|---|---|---|---|---|---|---|
+| **new** `vowelnob`: a vowel change on a not-onset-born hold | 240 | 44.7 | 63.4 | 67.3 | 85.8 | 81.5 | **81.5** |
+| — change 2.5 s into a hold from t = 0 / 0.15 s | 80 | 43.3 | 56.1 | 58.9 | 98.6 | 98.6 | **98.6** |
+| — change 3.5 s in (the voice verdict came first) | 40 | 42.7 | 100.0 | 100.0 | 100.0 | 100.0 | **100.0** |
+| — change 1.0 s in (no coherence window yet) | 40 | 42.7 | 54.1 | 61.3 | 61.3 | 61.3 | **61.3** |
+| — change 1.5 s after a speech → hold join or a step | 80 | 48.1 | 57.1 | 62.4 | 78.1 | 65.4 | **65.4** |
+| **new** `crescpp`: steady soft start, then a crescendo | 64 | 36.4 | 36.4 | 52.3 | 60.3 | 53.3 | **53.3** |
+| **new** `settle`: attack, settle 2-3 dB, swell | 30 | 36.4 | 100.0 | 55.5 | 95.8 | 95.8 | **95.8** |
+| new families, all | 334 | 42.36 | 61.52 | 63.38 | 81.79 | 77.41 | **77.41** |
+| the 1 470 runs of §8.4 | 1 470 | 68.74 | 85.37 | 91.12 | 91.12 | 91.12 | **91.12** |
+| **all** | 1 804 | 63.85 | 80.95 | 85.98 | 89.39 | 88.58 | **88.58** |
+| all, max(F_err, M_err) (male = f0 < 150 Hz: 736 / 1 068 runs) | | 39.2 pp | 23.7 pp | 15.0 pp | 11.8 pp | 12.7 pp | **12.7 pp** |
+
+- **Against V18 and bc42ad0.** No V19g run is more than 1 pp below V18 or
+  below bc42ad0.
+- **Against V14.** Two `settle` runs are below V14: 140 Hz s3up0.4 at
+  48 kHz, and 180 Hz s3up0.7 at 16 kHz.
+  - They score 36.4 % vs 100 %.
+  - Their single pre-jump window reads 1.00 / 2.30 c, under the 2.5 c
+    verdict.
+  - V18 was below V14 in 23 runs.
+- **By gender**, `vowelnob` max(F_err, M_err):
+  - V18: 42.6 pp (male 77.3 %, female 57.4 %);
+  - V19: 19.1 pp;
+  - V19g: 24.1 pp (87.2 / 75.9 %).
+- **Where V19g ≠ V19f.** Seven runs differ: the four 78 Hz runs above and
+  three 100 Hz `settle` runs at 48 kHz (a 400 Hz partial in the margin).
+  Their notch output differs; every metric is identical (100 %).
+
+**Tests** (`tests/dsp/noise-notch-test.js`): **101 passed, 0 failed** on
+V19g. bc42ad0 69 / 32, V14 85 / 16, V18 96 / 5.
+
+New checks, each failing on V18:
+
+- a vowel change (H1 +10 dB) 2.5 s into a hold from t = 0.15 s, at 131 and
+  220 Hz;
+- a settle-then-swell at 131 and 220 Hz;
+- a 75.0 Hz voice (seed 15): no notch on its partials up to 400 Hz. Seed
+  16, whose line estimate is 74.9 Hz, is a KNOWN LIMITATION line.
+
+New interferer checks:
+
+- **(o)** a 73 Hz voice-like machine, in the measurement margin, is notched
+  by bc42ad0's 5.45 s + 0.3 s. It fails on V19f.
+- **(n)** a 120 Hz and a 77 Hz voice-like machine, from t = 0:
+  - each is printed as a KNOWN COST (notched at 20.45 s vs 5.45 s);
+  - each has a bounding check: notched by 20.75 s.
+
+New KNOWN LIMITATION lines:
+
+- the vowel change 1 s in;
+- -12 dB for 0.5 s, then +12 dB/s.
+
+### 9.5 Interferers
+
+**Families that existed before.** Notch-only scans compare V18, V19f and
+V19g on every cell:
+
+- `r2int` 668, `int` 652, `handoff-adv` 168 / 432 / 648, FDA 109, grids
+  600, `dense` 32;
+- the real noise-only / gated / held-series / voice-in-noise / voice-only
+  sets and the held-out sets.
+
+Only 3 of the 407 held-out split-2 voice streams differ (§9.6). So every
+other §8.4 / §8.6 number stands for V19g.
+
+**The review's takeover shapes** (`handoff-adv.mjs --wobble / --sweep`,
+16 + 48 kHz). A cell fails when the hum is notched later than
+bc42ad0 + 0.3 s, or when the FV after the note exceeds bc42ad0 + 2 pp.
+
+| grid | cells | V14 | V18 | V19 | **V19g** | worst (V19g) |
+|---|---|---|---|---|---|---|
+| hum with 0 / 0.7 / 1.2 / 2 c shared wobble, one 4 s note at its level | 96 | 3 | 9 | 9 | **9** | +1.9 s, +5.1 pp painted |
+| hum-level sweep, rms 0.015-0.055, wobble 0 / 1.2 c | 336 | 5 | 15 | 16 | **15** | +1.4 s, +3.3 pp |
+
+- **Which hums.** Wobble grid: 6 cells at an 85 Hz hum and 3 at a 150 Hz
+  hum with 0.7-2 c of wobble. Sweep: all at an 85 Hz hum but one, a 200 Hz
+  hum with 1.2 c of wobble.
+- **Why.** This is V18's equal-level takeover (§8.6), now also with a
+  wobbling hum. After the note, a wobbling hum reads "undecided", not
+  machine, so it keeps the voice timing longer.
+- **Correction to §8.3 / §8.6.** The voice timing is revoked only by a
+  machine verdict. "After a 1 s window of the hum alone" holds only for a
+  hum that reads machine-confirmed.
+
+**Voice-like machines, synthetic** (`vmach.mjs`, 16 + 48 kHz, 30 s, no
+voice). A cell fails when any line bc42ad0 notches is notched later than
+max(6 s, bc42ad0 + 0.3 s), or when painted FV exceeds bc42ad0 + 2 pp.
+
+| part | cells | bc42ad0 painted FV | V14 | V18 | **V19g** | V19c |
+|---|---|---|---|---|---|---|
+| steady, 77-390 Hz, shared sin 1-4 Hz x 3-10 c or OU 3-10 c | 420 | 18.2 % | 212 fail (43.5 %) | 248 (46.8 %) | **248 (46.8 %)** | 248 (27.9 %) |
+| ramp -8 / -12 dB → 0 over 1-3 s | 108 | 17.7 % | 40 (36.3 %) | 96 (62.3 %) | **102 (65.1 %)** | 102 (33.6 %) |
+| edge: 73 / 74 / 401 / 402 Hz | 240 | 2.2 % | — | 0 (2.2 %) | **0 (2.2 %)** | |
+
+- **By modulation depth** (steady, V19g):
+  - 3 c sinusoidal and OU 3 c: 0 of 112 fail;
+  - 5 c: 28 / 84;
+  - 8-10 c: 168 / 168;
+  - OU 6-10 c: 52 / 56.
+- **Never notched in 30 s.** 6 cells (V14, V18, V19g): 300 and 390 Hz with
+  6-10 c of OU wobble. The line's duty over the 20 s clock falls under 0.9,
+  and 99.8 % of the stream is painted.
+- **V19g vs V18.** 6 more ramp cells fail: a machine at -12 dB for 2.5 s,
+  then +12 dB in 1 s. Its steady part already read as a voice, so the
+  takeover test no longer fires.
+- **The margin.** V19f granted voice timing in the measurement margin and
+  failed 138 / 240 edge cells. V19g grants only inside 75-400 Hz and fails
+  none.
+
+**Real noise from every start offset** (`offsets.mjs`):
+
+- every clip, every 3 s, 30 s streams, the first 180 s of each clip;
+- 16 kHz;
+- lateness judged per line;
+- the real worker only where a notch output differs from bc42ad0's.
+
+| corpus | streams (clips) | V14 | V18 | **V19g** | V19c |
+|---|---|---|---|---|---|
+| tuning noise-only | 3 798 (279) | 22 fail (2 clips) | 22 (2) | **22 (2)** | 22 (2) |
+| held-out noise (split 1) | 1 806 (119) | 14 (1) | 14 (1) | **14 (1)** | 14 (1) |
+
+V19g's notch output equals V19f's on all 5 604 offset streams. V19f's
+equals V19's on all 3 798 tuning streams (`offsets.mjs` with those variant
+pairs).
+
+- **Electronics whine 124015.** Its 324 Hz line is notched ~15 s late at
+  20 / 30 offsets, on V14, V18 and V19g alike. Painted FV rises by at most
+  7.5 pp per 30 s stream (V19c: +5.1).
+- **Mains hum 438501, 2 / 6 offsets (6 and 15 s).**
+  - V14: +4.7 s, +0.8 pp.
+  - V18 / V19g: +10.1 s, +25.2 pp.
+  - At 6 s, V14's first-3 guard happens to block it: the stream starts in a
+    level dip.
+- **Vehicle interior 456092 (held-out).** The review's clip. Its 298 Hz
+  line fails at 14 / 42 offsets on every voice-timing variant: +15 s,
+  painted FV up to +15.6 pp per stream. V19c gives +5 s / +5.8 pp: this
+  line is first seen in the first observation.
+- **Exposure.** At any start offset, 2 of 279 tuning clips and 1 of 119
+  held-out clips. This matches the review's population check (only the
+  whine differed at offsets 5 / 10 / 20 s). §6 / §8.9's "measured worst
+  cost +1.6 pp" and §8.4's "0 fail; = V14 in 279 / 279" were the 0 s,
+  first-notch view only.
+
+### 9.6 Real voice and the gender-symmetric metric (finding 4)
+
+`realdata/agg-gender.mjs` on the voice-only sets: hold frames painted at
+pitch, pooled per gender, and max(F_err, M_err), the binding pitch metric
+(CLAUDE.md).
+
+V19g equals V18 on every voice stream except 3 male split-2 streams, where
+it notches less (scan, then the real worker):
+
+- `Fi4TZCxqYq_a@10.42`: 48.8 → 100 %;
+- `ThEx12Qb23_o@1.34`: 100 → 100 %, now with no notch;
+- `chMsCb2Sqa_e`: 94.9 → 94.9 %, notched at 20.8 s instead of 15.7 s.
+
+| set | bc42ad0 | V14 | V18 | **V19g** |
+|---|---|---|---|---|
+| held-out split 2 (340 male / 67 female streams): max(F_err, M_err) | 37.62 pp | 10.55 pp | 10.43 pp | **10.25 pp** |
+| — male / female painted at pitch | 62.4 / 80.4 % | 89.5 / 92.8 % | 89.6 / 96.3 % | **89.8 / 96.3 %** |
+| — voice notched, male / female | 259 / 28 | 83 / 6 | 79 / 4 | **77 / 4** |
+| held-out split 1 (199 / 61; in-sample for V18's added condition): max(F_err, M_err) | 28.82 pp | 3.94 pp | 3.42 pp | **3.42 pp** |
+| — voice notched, male / female | 145 / 31 | 33 / 1 | 29 / 1 | **29 / 1** |
+
+- **Over V14 on split 2, V18 / V19g gain 0.1 / 0.3 pp** on the binding
+  metric. The pooled counts (89 → 83 / 81 streams notched) overstate it.
+  The female error falls 7.2 → 3.7 pp; the male error, the larger one,
+  barely moves (10.55 → 10.25).
+- **The residue is male-dominated.** V19g notches the voice in 77 / 340
+  male streams (23 %) vs 4 / 67 female (6 %). The cause is not
+  established. The voice verdict comes late on these consumer recordings
+  (§8.6: p50 4.2 s), but no per-gender latency was measured.
+- **Below bc42ad0.** One held-out stream is worse than bc42ad0 on V14, V16,
+  V18 and V19g: `coswara__20200417_mikiKeqF4S_o` (male, 121.6 Hz /o/),
+  51.6 vs 55.3 %.
+  - bc42ad0 notches the voice's 3rd partial (365.8 Hz) at 5.71 s. That
+    happens to end the detector's own 3 x F0 error (it was tracking
+    ~366 Hz) 0.7 s early.
+  - The later variants keep the partial, and the detector stays on 366 Hz
+    until ~6.4 s.
+  - The error is the detector's own, unmasked; the notch does not touch the
+    voice.
+- **The 10 s cap (V19c, on V19).** Every not-onset-born line first seen in
+  the stream's first observation is notched ~10.5 s in:
+  - held families with such holds (start0 / start015 / swell / low / dip /
+    vowelnob / crescpp / settle, 672 runs): 89.8 → 73.9 % of hold frames;
+    463 runs lose > 1 pp;
+  - the whole held suite: 89.4 → 83.5 %;
+  - the real voice-only set: the voice is notched in 4 / 297 streams (V18:
+    0), all male; max(F_err, M_err) 0.06 → 0.44 pp;
+  - held-out: split 1 max(F_err, M_err) 3.42 → 6.87 pp (voice notched in
+    30 → 64 streams), split 2 10.43 → 17.76 pp (83 → 131); no stream below
+    bc42ad0.
+
+### 9.7 Committed oracles, the session oracle, unit tests
+
+bc42ad0's module vs V19g (= `src/`), otherwise identical trees
+(`oracles.sh bc42 src`):
+
+| oracle | result |
+|---|---|
+| `noise-augment-oracle.js pitch --frontend=tracker`, 8 default classes × 20 / 10 / 5 dB | **byte-identical** apart from wall-clock lines (fan-hum 78.0 / 77.8 / 76.7 % correct) |
+| same, 6 extra tonal classes (fan-wobble 0.6 / 1.5, fan-drift, hum-rich 120 / 60, wobble + rich) × 10 / 5 dB | byte-identical apart from wall-clock lines |
+| same, vocadito × fan-hum / mains-complex / sleep-birdies | byte-identical apart from wall-clock lines |
+| `noise-augment-oracle.js gender` | byte-identical apart from wall-clock lines |
+| `voicing-robustness-shootout.js` | byte-identical |
+| session oracle | On the private session recordings, V19g's (and V18's) per-hop outputs are byte-identical to bc42ad0's module run on the same tree, on every session (results kept outside this repository). |
+| `npm run lint`, `npm run test:unit` (18 / 18 scripts, incl. this test file), `npm run test:dsp` (109 passed), `vite build` (to a scratch outDir) | pass |
+
+### 9.8 Limitations (updated; supersedes §8.9 where they differ)
+
+- **Voice-like machines** (§9.1, §9.5).
+  - A machine running when the stream starts, whose partials share
+    ≥ ~5 c of 0.5-8 Hz wobble, gets the voice timing.
+  - It is notched ~15 s later than on bc42ad0. If its duty over the longer
+    clock drops under 0.9, it is not notched within 30 s at all.
+  - Real exposure: 2 of 279 tuning clips and 1 of 119 held-out clips, at
+    some start offset.
+  - Synthetic: 248 / 420 steady and 102 / 108 ramp cells.
+  - The notch's features cannot tell these lines apart from voices.
+- **Takeover at the hum's own level** (§8.6) persists.
+  - A hum with ~1-2 c of shared wobble keeps the voice timing until a
+    window reads it as machine.
+  - Wobble / sweep grids: 9 / 96 and 15 / 336 cells, ≤ +1.9 s, ≤ +5.1 pp
+    painted.
+- **Takeover-like voice level changes in a line's first ~2 s keep
+  bc42ad0's timing**, because there is no coherence window yet:
+  - a vowel change;
+  - a subito forte;
+  - a crescendo faster than ~8.6 dB/s after a steady stretch.
+- **What is guaranteed.** A crescendo never fires the takeover test if its
+  level never rises 6 dB within 0.7 s (≈ 8.6 dB/s) after a 0.3 s steady
+  stretch, or if it rises at a constant slope from the note's start. Later
+  in a line's life, the test also needs the line not to have read as a
+  voice.
+- **A voice centred exactly on 75.0 Hz** keeps bc42ad0's timing when its
+  line estimate sits just under 75 Hz. Granting voice timing in the margin
+  delays voice-like machines just outside the band (§9.3).
+- **A weakly modulated pre-jump window is not a voice.** A window with
+  < 2.5 c of shared modulation does not count (the 2 `settle` runs).
+- **Unchanged:**
+  - verdict latency on consumer recordings (V19g notches the voice in
+    81 / 407 split-2 streams, male-dominated);
+  - shared modulation < 2.5 c;
+  - breathy low voices;
+  - repeated holds with breaths;
+  - holds ≥ 20 s.
+
+### 9.9 Reproduction
+
+See `scripts/notch-adversarial/README.md`, "Fix round (2026-10-06)".
+
+- Results not covered by a fresh run were inherited from the follow-up's
+  rows (`build/notch-adv/res8`) wherever a notch-only scan showed the
+  notch outputs identical (hence identical worker messages).
+- Runs used ≤ 3 node processes. The machine was shared, and a resource
+  governor paused jobs.

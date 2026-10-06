@@ -31,6 +31,11 @@
 //            bandMarginHz 0 (lines are measured from fLo - this to fHi + this),
 //            clearOob false (a line outside the band drops its running cents
 //              series: a window never splices non-adjacent chunks),
+//            grantInBand false (V19g: voice timing is granted only while the
+//              line sits inside fLo..fHi itself; the margin is for
+//              measurement only), grantTolHz 0 (V19h: ... within this of
+//              fLo..fHi: a 75.0 Hz voice's line estimate sits ~0.05-0.1 Hz
+//              under 75),
 //            lapseCorr 0, lapseCoh 0 (voice timing is also revoked when the
 //              line's pooled windows, >= 1, fall under these: the evidence
 //              that granted it has lapsed; 0 = off),
@@ -283,7 +288,7 @@ function makeNotch(f0, sampleRate, q) {
 //     Hz); input to isNearNotch (the worker's ghost veto).
 export function createNoiseNotch(sampleRate, opts = {}) {
   const cfg = { ...NOTCH_DEFAULTS, rebirth: true, coh: null, ...(globalThis.__NOTCH_OPTS ?? {}), ...opts };
-  const COH = cfg.coh ? { voice: "onset", machine: true, rebirthGate: "any", voiceRevoke: false, reanchor: false, jumpGuard: false, jumpDb: 10, jumpMode: "first3", jumpRefObs: 3, jumpStableDb: 3, jumpRiseObs: 6, jumpPeakTolDb: 0, grantLastCorr: 0, jumpPreVoice: false, jumpPreFirst: false, bandMarginHz: 0, clearOob: false, lapseCorr: 0, lapseCoh: 0, capSec: 0, capFirstObs: 1, revokeLast: false, minWin: 3, poolWin: 5, mCorr: 0.15, mCoh: 1, vCorr: 0.5, vCoh: 2, fLo: 80, fHi: 400, win: 1024, wch: 40, gateDb: 10, ...cfg.coh } : null;
+  const COH = cfg.coh ? { voice: "onset", machine: true, rebirthGate: "any", voiceRevoke: false, reanchor: false, jumpGuard: false, jumpDb: 10, jumpMode: "first3", jumpRefObs: 3, jumpStableDb: 3, jumpRiseObs: 6, jumpPeakTolDb: 0, grantLastCorr: 0, jumpPreVoice: false, jumpPreFirst: false, grantInBand: false, grantTolHz: 0, bandMarginHz: 0, clearOob: false, lapseCorr: 0, lapseCoh: 0, capSec: 0, capFirstObs: 1, revokeLast: false, minWin: 3, poolWin: 5, mCorr: 0.15, mCoh: 1, vCorr: 0.5, vCoh: 2, fLo: 80, fHi: 400, win: 1024, wch: 40, gateDb: 10, ...cfg.coh } : null;
   const N = cfg.fftSize;
   const bufferLength = cfg.obsLen;            // dedicated observation buffer
   const raw = new Float32Array(bufferLength); // rolling RAW buffer
@@ -743,7 +748,8 @@ export function createNoiseNotch(sampleRate, opts = {}) {
       // onset-born: timed from the current note (latest breath re-birth)
       const timed = t.onsetBorn ? obsIndex - Math.max(t.noteObs, t.firstObs) + 1 : span;
       const cls = COH && !t.active ? cohClass(t) : null;
-      if (cls === "voice" && !t.onsetBorn && COH.voice === "onset" && !(COH.jumpGuard && t.jumped) && (!COH.grantLastCorr || lastCorr(t) >= COH.grantLastCorr)) { t.onsetBorn = true; t.voiceBorn = true; }
+      if (cls === "voice" && !t.onsetBorn && COH.voice === "onset" && !(COH.jumpGuard && t.jumped) && (!COH.grantLastCorr || lastCorr(t) >= COH.grantLastCorr)
+          && (!COH.grantInBand || (t.freq >= COH.fLo - COH.grantTolHz && t.freq <= COH.fHi + COH.grantTolHz))) { t.onsetBorn = true; t.voiceBorn = true; }
       // voiceRevoke: a voice-timed line that later reads machine-confirmed
       // (a spin-up transient that settled into a steady hum) gets its own
       // non-onset timing back

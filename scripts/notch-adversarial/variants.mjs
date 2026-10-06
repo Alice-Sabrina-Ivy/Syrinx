@@ -227,7 +227,18 @@ VARIANTS.V19 = { tree: "cand3", opts: { rebirth: false, coh: { ...V18c, jumpPreV
 // V19f = V19 with the pre-jump windows ending by the steady reference's FIRST
 // sighting (a takeover note's onset transient can sit in a window that ends
 // inside the steady stretch and read as shared FM: hadv --sweep, 85 Hz hum,
-// 1.2 c wobble, rms 0.035, 48 kHz) = src/ after the fix round
+// 1.2 c wobble, rms 0.035, 48 kHz)
 VARIANTS.V19f = { tree: "cand3", opts: { rebirth: false, coh: { ...V18c, jumpPreVoice: true, jumpPreFirst: true, bandMarginHz: 3, clearOob: true } } };
+// V19g = V19f, but voice timing is granted only while the line itself sits
+// inside 75-400 Hz: the 3 Hz margin is for measurement only. V19f's margin
+// also granted it to machines at 73 / 74 / 401 / 402 Hz (vmach --part=edge:
+// 138 / 240 cells late, V18 0) = src/ after the fix round
+VARIANTS.V19g = { tree: "cand3", opts: { rebirth: false, coh: { ...V18c, jumpPreVoice: true, jumpPreFirst: true, bandMarginHz: 3, clearOob: true, grantInBand: true } } };
+// V19h = V19g with the grant band widened by half an FFT bin (0.5 Hz): the
+// line estimate of a voice centred on 75.0 Hz sits at 74.90-74.98 Hz, so
+// V19g never granted it (noise-notch-test 75.0 Hz seed 16). Rejected: it
+// also granted voice-like machines at 401 Hz whose wobble reaches 400.5 Hz
+// (vmach --part=edge 6 / 240 cells late, 2 never notched; V19g 0)
+VARIANTS.V19h = { tree: "cand3", opts: { rebirth: false, coh: { ...V18c, jumpPreVoice: true, jumpPreFirst: true, bandMarginHz: 3, clearOob: true, grantInBand: true, grantTolHz: 0.5 } } };
 VARIANTS.V19l = { tree: "cand3", opts: { rebirth: false, coh: { ...V18c, jumpPreVoice: true, bandMarginHz: 3, clearOob: true, lapseCorr: 0.5, lapseCoh: 2 } } };
 VARIANTS.V19c = { tree: "cand3", opts: { rebirth: false, coh: { ...V18c, jumpPreVoice: true, bandMarginHz: 3, clearOob: true, capSec: 10 } } };

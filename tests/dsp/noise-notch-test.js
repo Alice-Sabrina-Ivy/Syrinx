@@ -16,7 +16,10 @@
 // VocalSet long tones and PVQD sustained vowels, CC BY 4.0;
 // measurements/noise-notch-voice-discrimination-2026-10-05.md); its
 // follow-up adds 75-80 Hz voices, crescendos / messa di voce at a hold's
-// start (synthetic and real) and a later takeover guard case.
+// start (synthetic and real) and a later takeover guard case; its fix round
+// (2026-10-06) adds vowel changes and a settle-then-swell on not-onset-born
+// holds, a voice centred on the 75 Hz floor, and the voice-like machine (a
+// harmonic stack with shared in-band speed wobble) as a bounded-cost guard.
 //
 // Usage: node tests/dsp/noise-notch-test.js
 
@@ -335,7 +338,7 @@ console.log(`\nheld notes stay on the trace (real pitch worker, ${HOLD} s holds)
 // wanderCents — every real voice measured carries >= ~2.3 c of it,
 // measurements/notch-voice-machine-discrimination-2026-10-05.md), aspiration
 // noise, -70 dB floor everywhere.
-function voiceTrack({ dur, f0At, ampAt, h1h2 = 6, hnr = 25, vibCents = 15, wanderCents = 0, amp = 0.15, seed = 11 }) {
+function voiceTrack({ dur, f0At, ampAt, h1h2 = 6, hnr = 25, vibCents = 15, wanderCents = 0, amp = 0.15, seed = 11, h1At = null }) {
   const n = Math.round(dur * SR);
   const x = new Float32Array(n);
   let s = seed >>> 0 || 1;
@@ -354,7 +357,7 @@ function voiceTrack({ dur, f0At, ampAt, h1h2 = 6, hnr = 25, vibCents = 15, wande
     if (f0 > 0 && a > 0) {
       ph += 2 * Math.PI * f0 * Math.pow(2, (vibCents * Math.sin(2 * Math.PI * 5.5 * t) + ou) / 1200) / SR;
       const nh = Math.floor(3800 / f0);
-      for (let k = 1; k <= nh; k++) v += Math.pow(10, (k === 1 ? 0 : -h1h2 - 6 * Math.log2(k / 2)) / 20) * Math.sin(k * ph);
+      for (let k = 1; k <= nh; k++) v += (k === 1 && h1At ? Math.pow(10, h1At(t) / 20) : 1) * Math.pow(10, (k === 1 ? 0 : -h1h2 - 6 * Math.log2(k / 2)) / 20) * Math.sin(k * ph);
       v = a * (amp * v / 2 + noiseAmp * rnd());
     }
     x[i] = v + 0.0003 * rnd();
@@ -499,6 +502,57 @@ for (const f0 of [120, 220]) {
     holdScore(workerRun(voiceTrack({ dur: 17, f0At, ampAt, vibCents: 10, wanderCents: 3, seed: 7 * f0 })), f0At, [[0.15, 16.15]]));
 }
 
+// (3) Fix round (2026-10-06, measurements/noise-notch-voice-discrimination-
+// 2026-10-05.md "Fix round"): a vowel change on a held pitch raises the 1st
+// harmonic 6-13 dB within ~0.15 s (Hillenbrand 1995, within-talker /a/ -> /i/:
+// median +10.7 dB for men, +12.9 dB for women), and a voice that settles
+// after its attack and then swells rises over a steady level that is its
+// loudest so far within 3 dB: both are the takeover test's signal, and V18
+// notched them 5.45 s in (36-43 % of hold frames). The test now also needs
+// the line NOT to have read as a voice before its steady level began. Before
+// the line's first 1 s coherence window there is no such evidence, so a
+// change in roughly the first 2 s of the line, and a fast crescendo after a
+// steady soft start, keep bc42ad0's timing (known).
+console.log("\nvowel change / swell on a not-onset-born hold (real worker)");
+for (const f0 of [131, 220]) {
+  const f0At = (t) => (t >= 0.15 && t <= 16.15 ? f0 : 0);
+  const ampAt = (t) => ramp(t, 0.15, 16.15, 0.02);
+  for (const [at, known] of [[2.5, false], [1.0, true]]) {
+    const h1At = (t) => { const u = t - 0.15 - at; return u < 0 ? 0 : u < 0.15 ? 10 * u / 0.15 : 10; };
+    const name = `${f0} Hz from t = 0.15 s, H1 +10 dB (a vowel change) ${at} s in`;
+    const r = holdScore(workerRun(voiceTrack({ dur: 17, f0At, ampAt, h1At, vibCents: 10, wanderCents: 3, seed: 13 * f0 + 10 * at })), f0At, [[0.15, 16.15]]);
+    if (known) knownLimit(`${name} (before the line's first coherence window)`, r);
+    else check(`${name}: >= ${HELD_MIN} % of hold frames at pitch`, r.pct >= HELD_MIN, `${r.pct.toFixed(1)} %${r.notched ? ", notch promoted" : ""}`);
+  }
+  // attack at 0 dB for 0.6 s, settle 3 dB lower until 1.6 s, swell to +3.5 dB within 0.4 s
+  const g = (u) => (u < 0.6 ? 0 : u < 0.9 ? -10 * (u - 0.6) : u < 1.6 ? -3 : u < 2.0 ? -3 + 16.25 * (u - 1.6) : 3.5);
+  const r = holdScore(workerRun(voiceTrack({ dur: 17, f0At, ampAt: (t) => ampAt(t) * Math.pow(10, (g(t - 0.15) - 3.5) / 20), vibCents: 10, wanderCents: 3, seed: 17 * f0 })), f0At, [[0.15, 16.15]]);
+  check(`${f0} Hz from t = 0.15 s, settles 3 dB after its attack, then +6.5 dB within 0.4 s: >= ${HELD_MIN} % of hold frames at pitch`, r.pct >= HELD_MIN, `${r.pct.toFixed(1)} %${r.notched ? ", notch promoted" : ""}`);
+  // -12 dB held 0.5 s, then +12 dB/s: a steady line that jumps (known)
+  const gc = (u) => (u < 0.5 ? -12 : u < 1.5 ? -12 + 12 * (u - 0.5) : 0);
+  knownLimit(`${f0} Hz from t = 0.15 s, -12 dB for 0.5 s then a +12 dB/s crescendo (steady, then a takeover-like rise)`,
+    holdScore(workerRun(voiceTrack({ dur: 17, f0At, ampAt: (t) => ampAt(t) * Math.pow(10, gc(t - 0.15) / 20), vibCents: 10, wanderCents: 3, seed: 19 * f0 })), f0At, [[0.15, 16.15]]));
+}
+// (4) a voice centred on the 75 Hz display floor: its line estimate wanders
+// across 75.0 Hz, and V18 measured from exactly 75 Hz (the windows lost
+// chunks, the verdict came late or never; notched 5.45 s in on some seeds).
+// Now measured from 72 Hz (cohMarginHz): no notch on the voice's partials up
+// to 400 Hz (its 6th, ~450 Hz, is never measured and keeps bc42ad0's timing).
+// Voice timing is still granted only to a line inside 75-400 Hz (granting it
+// in the margin delayed voice-like machines just outside the band, case (o)):
+// seed 16's line estimate sits at 74.90-74.98 Hz, so it keeps bc42ad0's
+// timing (known). The detector itself reports only the half of a 75.0 Hz
+// vibrato above 75 Hz.
+console.log("\na voice centred on the 75 Hz floor (real worker)");
+for (const seed of [15, 16]) {
+  const f0At = (t) => (t >= 0.15 && t <= 16.15 ? 75 : 0);
+  const msgs = workerRun(voiceTrack({ dur: 17, f0At, ampAt: (t) => ramp(t, 0.15, 16.15, 0.02), vibCents: 10, wanderCents: 3, seed }));
+  const hit = msgs.find((m) => m.notchedFreqs?.some((f) => [75, 150, 225, 300, 375].some((L) => Math.abs(f / L - 1) < 0.04)));
+  const name = `75.0 Hz, 16 s hold from t = 0.15 s (seed ${seed})`;
+  if (seed === 16) console.log(`  · KNOWN LIMITATION ${name} (line estimate 74.9 Hz, under the grant band): ${hit ? `notched ${hit.notchedFreqs} at ${hit.contextTime.toFixed(2)} s` : "never notched"}`);
+  else check(`${name}: no notch on its partials up to 400 Hz`, !hit, hit ? `notched ${hit.notchedFreqs} at ${hit.contextTime.toFixed(2)} s` : "");
+}
+
 console.log("\nrepeated same-pitch holds separated by breaths (known limitation: one onset-born track spans the series, notched once it passes 20 s)");
 for (const [label, breathNoiseDb, mod] of [["silent 0.5 s breaths", null, { vibCents: 0 }], ["0.5 s breaths with audible inhalation (-20 dB)", -20, { vibCents: 0 }], ["silent 0.5 s breaths, 10 c vibrato + 3 c wander", null, { vibCents: 10, wanderCents: 3 }]]) for (const f0 of [120, 220]) {
   const spans = [[1, 11], [11.5, 21.5], [22, 32]];
@@ -561,6 +615,33 @@ console.log("\nvoice timing never holds back a hum (real worker)");
     const h = humTrack(v.length, (t) => 120 - 30 * Math.exp(-(t - 5) / 1.0), 0.01 * Math.SQRT2 / 1.032, 5);
     const t = firstNotchNear(workerRun(Float32Array.from(v, (s, i) => s + h[i] + fl[i])), 5, [110, 115, 120, 240]);
     check(`(m) fan spinning up 90 -> 120 Hz after switching on, sparse speech: notched by ${VM_LIM.m} s after switch-on`, t !== null && t <= VM_LIM.m, `t=${t?.toFixed(2)}`);
+  }
+  // (n) 2026-10-06 fix round: a VOICE-LIKE MACHINE — a harmonic stack whose
+  // speed wobbles 5 c at 2 Hz, shared by every partial (a motor's speed
+  // ripple), running from t = 0. Its line reads voice-confirmed, so it gets
+  // the voice timing: bc42ad0 notches it at 5.45 s, the voice timing at
+  // 20.45 s (scripts/notch-adversarial/vmach.mjs; ~2 % of real machine lines
+  // behave like this). A KNOWN COST of the voice timing, printed; the guard
+  // only bounds it: notched by the onset clock (20.45 s) + 0.3 s.
+  for (const [f0, rate, cents] of [[120, 2, 5], [77, 2, 8], [73, 2, 8]]) {
+    const n = 30 * SR, x = new Float32Array(n);
+    let ph = 0, s = 5 + f0;
+    for (let i = 0; i < n; i++) {
+      const tt = i / SR;
+      ph += 2 * Math.PI * f0 * Math.pow(2, cents * Math.sin(2 * Math.PI * rate * tt + 0.3) / 1200) / SR;
+      s ^= s << 13; s >>>= 0; s ^= s >> 17; s ^= s << 5; s >>>= 0;
+      x[i] = 0.02 * (Math.sin(ph) + 0.5 * Math.sin(2 * ph + 0.7) + 0.3 * Math.sin(3 * ph + 1.4)) / Math.sqrt((1 + 0.25 + 0.09) / 2) + 0.0003 * (s / 0x7fffffff - 1);
+    }
+    const t = firstNotchNear(workerRun(x), 0, [f0]);
+    if (f0 < 75) {
+      // (o) the same machine at 73 Hz: outside the display band, inside the
+      // coherence band's measurement margin — no voice timing there (a margin
+      // that also granted it delayed it to 20.45 s): bc42ad0's 5.45 s + 0.3 s
+      check(`(o) ${f0} Hz voice-like machine (in the measurement margin, below the display band): notched by 5.75 s`, t !== null && t <= 5.75, `t=${t?.toFixed(2)}`);
+      continue;
+    }
+    console.log(`  · KNOWN COST (n) ${f0} Hz machine with a shared ${rate} Hz / ${cents} c speed wobble from t = 0: its fundamental notched at ${t === null ? "never" : t.toFixed(2) + " s"} (bc42ad0 5.45 s)`);
+    check(`(n) ${f0} Hz voice-like machine from t = 0: notched by 20.75 s (the voice timing's bound)`, t !== null && t <= 20.75, `t=${t?.toFixed(2)}`);
   }
 }
 
