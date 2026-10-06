@@ -23,7 +23,9 @@ import { dirname, join } from "path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "../../..");
-const DATA = join(ROOT, "tests/dsp/data");
+// SYRINX_CORPORA_DIR: read the corpora from another checkout's tests/dsp/data
+// (the PTDB-TUG / FDA audio is gitignored and fetched per checkout).
+const DATA = process.env.SYRINX_CORPORA_DIR ?? join(ROOT, "tests/dsp/data");
 
 // ---------------------------------------------------------------------------
 //  Format readers
