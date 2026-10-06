@@ -221,6 +221,66 @@ export function heldScenarios() {
     out.push({ name: `repeatreverb/${f0}/breath${B}s/rt${rt}`, family: "repeatreverb", holds: parts.map((p) => [p.a, p.b]), promoF: [[f0, f0]], dur: end + 1,
       build: (sr) => { const r = base(sr); r.x = schroeder(r.x, sr, rt); return r; } });
   }
+  // 8. 2026-10-05 V14 follow-up (review fixes). (a) "swell": a hold whose
+  // line is NOT onset-born (phonation from the stream's first observation
+  // window, t0 = 0 / 0.15 s, or speech running straight into the hold) and
+  // whose level rises at the note's start — a crescendo (-6 dB -> 0 over
+  // 2 s, -12 -> 0 over 1 s, -10 -> 0 over 3 s) or a messa di voce (-10 ->
+  // 0 -> -10 dB, 8 s period) — which V14's jump guard (>= 6 dB over the
+  // first 3 sightings) took for a louder source taking over the line; and a
+  // subito forte (1 s at -8 dB, then +8 dB within 0.1 / 0.3 s: the
+  // takeover guard's own signal, kept as a known limitation). (b) "low":
+  // phonation from t0 = 0 / 0.15 s at 76-79 Hz (V14 measured line coherence
+  // from 80 Hz only) and a mid-hold glide / step at 78 Hz.
+  const SWELL = {
+    cresc6: (u) => (u < 2 ? -6 + 3 * u : 0),
+    cresc12: (u) => (u < 1 ? -12 + 12 * u : 0),
+    cresc10: (u) => (u < 3 ? -10 + 10 * u / 3 : 0),
+    messa: (u) => -10 * Math.abs(Math.cos(Math.PI * u / 8)),
+    subito: (u) => (u < 1 ? -8 : u < 1.1 ? -8 + 80 * (u - 1) : 0),
+    subito3: (u) => (u < 1 ? -8 : u < 1.3 ? -8 + 8 * (u - 1) / 0.3 : 0),
+  };
+  for (const f0 of [78, 120, 180, 220]) for (const [sn, g] of Object.entries(SWELL)) for (const t0 of [0, 0.15]) for (const qual of ["modal", "breathy"]) {
+    if (sn.startsWith("subito") && qual === "breathy") continue;
+    seed++;
+    const hold = { kind: "hold", a: t0, b: t0 + 14, vowel: VOW[(f0 + sn.length) % 3], ramp: 0.02, gainAt: (tn) => Math.pow(10, g(tn) / 20), f0At: () => f0 };
+    out.push({ name: `swell/${f0}/${sn}/t0=${t0}/${qual}`, family: sn.startsWith("subito") ? "subito" : "swell", holds: [[t0, t0 + 14]], promoF: [[f0, f0]], dur: t0 + 15,
+      build: buildTimeline([hold], t0 + 15, { qual, vibCents: 10, wanderCents: 3, seed }) });
+  }
+  for (const f0 of [78, 120, 220]) for (const sn of ["cresc6", "cresc10", "messa"]) {
+    seed++;
+    const g = SWELL[sn];
+    const parts = [{ kind: "speech", a: 1, b: 4, center: f0, gain: 1 }, { kind: "hold", a: 4, b: 16, vowel: "a", ramp: 0.02, gainAt: (tn) => Math.pow(10, g(tn) / 20), f0At: () => f0 }];
+    out.push({ name: `swell/${f0}/${sn}/speech2hold`, family: "swell", holds: [[4, 16]], promoF: [[f0, f0]], dur: 17,
+      build: buildTimeline(parts, 17, { vibCents: 10, wanderCents: 3, seed }) });
+  }
+  for (const f0 of [76, 77, 79]) for (const t0 of [0, 0.15]) for (const qual of ["modal", "breathy"]) {
+    seed++;
+    const hold = { kind: "hold", a: t0, b: t0 + 16, vowel: VOW[f0 % 3], ramp: 0.02, f0At: () => f0 };
+    out.push({ name: `low/${f0}/16s/${qual}/t0=${t0}`, family: "low", holds: [[t0, t0 + 16]], promoF: [[f0, f0]], dur: t0 + 17,
+      build: buildTimeline([hold], t0 + 17, { qual, vibCents: 10, wanderCents: 3, seed }) });
+  }
+  for (const sh of [50, 100]) for (const type of ["glide", "step"]) {
+    seed++;
+    const f0 = 78, g = type === "glide" ? 1 : 0.05, ts = 4;
+    const hold = { kind: "hold", a: 1, b: 17, vowel: "a", f0At: (tn) => cents(f0, tn < ts ? 0 : tn < ts + g ? sh * (tn - ts) / g : sh) };
+    out.push({ name: `low/shift/${f0}/+${sh}c@${ts}s/${type}`, family: "low", holds: [[1, 17]], promoF: [[f0, cents(f0, sh)]], dur: 18,
+      build: buildTimeline([hold], 18, { vibCents: 10, wanderCents: 3, seed }) });
+  }
+  // (c) "dip" (added with V18, after the first held-out split): a not-onset-
+  // born hold that dips 10 / 13 dB after its onset, holds the soft level, then
+  // recovers fast (+7 dB within 0.4 s) before its voice verdict — a held-out
+  // real /a/ did this, and V16's takeover test fired on it
+  const DIP = {
+    dip13: (u) => (u < 0.3 ? 0 : u < 1.3 ? -13 * (u - 0.3) : u < 2.0 ? -13 : u < 2.4 ? -13 + 17.5 * (u - 2.0) : Math.min(0, -6 + 15 * (u - 2.4))),
+    dip10: (u) => (u < 0.3 ? 0 : u < 1.0 ? -10 * (u - 0.3) / 0.7 : u < 1.8 ? -10 : u < 2.2 ? -10 + 17.5 * (u - 1.8) : Math.min(0, -3 + 15 * (u - 2.2))),
+  };
+  for (const f0 of [78, 120, 180, 220]) for (const [sn, g] of Object.entries(DIP)) for (const t0 of [0, 0.15]) for (const qual of ["modal", "breathy"]) {
+    seed++;
+    const hold = { kind: "hold", a: t0, b: t0 + 14, vowel: VOW[(f0 + sn.length) % 3], ramp: 0.02, gainAt: (tn) => Math.pow(10, g(tn) / 20), f0At: () => f0 };
+    out.push({ name: `dip/${f0}/${sn}/t0=${t0}/${qual}`, family: "dip", holds: [[t0, t0 + 14]], promoF: [[f0, f0]], dur: t0 + 15,
+      build: buildTimeline([hold], t0 + 15, { qual, vibCents: 10, wanderCents: 3, seed }) });
+  }
   return out;
 }
 

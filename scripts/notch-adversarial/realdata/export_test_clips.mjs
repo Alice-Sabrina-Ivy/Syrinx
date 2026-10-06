@@ -7,6 +7,11 @@
 //                    straight a, straight e), 3.5 s each (CC BY 4.0)
 //   vs_m1_128.wav  — 3 VocalSet long tones of male1 at ~128 Hz (straight a /
 //                    e / i), 2.75 s each (CC BY 4.0)
+//   pvqd_cresc.wav — (2026-10-05 follow-up) the first 5.6 s of PVQD Sj6001 and
+//                    5.25 s of PVQD SJ2012 (CC BY 4.0): sustained /a/ from the
+//                    recording's start whose level rises at the onset (a natural
+//                    crescendo) — V14's first-sightings jump guard took it for a
+//                    takeover and notched the vowel at 5.45 s
 // 16 kHz mono PCM16, levels as in the corpus; the notes are stored back to
 // back (the test cuts them by the offsets in tests/dsp/data/notch-real/README.md).
 //   node scripts/notch-adversarial/realdata/export_test_clips.mjs
@@ -28,3 +33,4 @@ pcm16(`${OUT}/ac114.wav`, cut("noise/mssnsd/mssnsd__test_AirConditioner_10.wav",
 const cat = (parts) => { const n = parts.reduce((a, p) => a + p.length, 0), y = new Float32Array(n); let o = 0; for (const p of parts) { y.set(p, o); o += p.length; } return y; };
 pcm16(`${OUT}/vs_f2_262.wav`, cat([cut("voice/vocalset/vocalset__female2_forte_o.wav", 0.6, 3.5), cut("voice/vocalset/vocalset__female2_straight_a.wav", 0.776, 3.5), cut("voice/vocalset/vocalset__female2_straight_e.wav", 0.639, 3.5)]));
 pcm16(`${OUT}/vs_m1_128.wav`, cat([cut("voice/vocalset/vocalset__male1_straight_a.wav", 0.229, 2.75), cut("voice/vocalset/vocalset__male1_straight_e.wav", 0.379, 2.75), cut("voice/vocalset/vocalset__male1_straight_i.wav", 0.429, 2.75)]));
+pcm16(`${OUT}/pvqd_cresc.wav`, cat([cut("voice/pvqd/pvqd__Sj6001_ENSS.wav", 0, 5.6), cut("voice/pvqd/pvqd__SJ2012_ENSS.wav", 0, 5.25)]));

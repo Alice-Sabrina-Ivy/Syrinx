@@ -23,7 +23,10 @@ private session recordings (`SYRINX_SESSIONS_DIR`; CLAUDE.md, "Private session
 data"). It is never in the default sources. A build that includes it feeds
 those clips into the indexes, the `voice_in_noise` "other" programs and every
 analysis, so nothing computed on such a build is committed; the committed
-results use the public sources only.
+results use the public sources only. Since 2026-10-05 `realdata.mjs`
+`loadIndex()` returns public sources only (an allowlist,
+`PUBLIC_NOISE_SOURCES` / `PUBLIC_VOICE_SOURCES`; a mix is public when every
+layer is) unless a local analysis passes `{ publicOnly: false }`.
 
 ## Rebuild (repo root; ~1.5 GB download, ~3 GB data incl. mixes)
 
@@ -60,8 +63,10 @@ node   $R/mix-parity.mjs                       # JS renderMix == Python render (
 | `linefeat.py` | DISCRIMINATE phase: per tracked line (notch peak finder, 80-400 Hz), 25 ms phase-vocoder IF + amplitude at f and 2f (64 ms Hann DFT bins), per-1 s-window micro-variation features; voice / noise / mix modes, white-noise degradation, window length, extra partners -> `build/notchvd/linefeat/*.csv` |
 | `linefeat_analyze.py` | AUC / 99 %-voice operating points per feature, confound check, degraded voice, grouped-CV logistic combinations, per-class tables |
 | `linefeat_rules.py` | explicit causal "confidently machine" rules (pooled cross-harmonic coherence, evidence floor `--minwin`), grouped-CV threshold selection, per-class + mix + supplement evaluation |
-| `realeval.mjs`, `agg-real.mjs` | CANDIDATE phase (2026-10-05): the real-noise oracle — real worker (`lib.mjs` variants) over `noise` / `gated` / `held` / `vin`; promotion, painted false voicing, voice frames at pitch; per-stream strict rule vs bc42ad0 |
-| `linecls.mjs` | census of the online line-coherence verdict (`cand3-notch.js`) on real voice (clean + white-noise degradations), real noise and the mixes |
+| `realeval.mjs`, `agg-real.mjs` | CANDIDATE phase (2026-10-05): the real-noise oracle — real worker (`lib.mjs` variants) over `noise` / `gated` / `held` / `vin`; promotion, painted false voicing, voice frames at pitch; per-stream strict rule vs bc42ad0. Follow-up: `voice` = real voice only, no noise (PVQD sustained vowels as recorded and from mid-phonation, VocalSet same-note phrases from mid-phonation, VocalSet messa di voce loops; held-out Coswara vowels under `NOTCHVD_ROOT=build/notchvd-heldout`) — every notch there is a cost; `--list` prints the stream counts |
+| `fetch_heldout.py` | (2026-10-05 follow-up) HELD-OUT data under `build/notchvd-heldout/` (same layout, manifests only): DCASE 2020 T2 additional-training machine ids (`dcaseeval`), Freesound queries disjoint from `fetch_noise.py`'s (`fsheld`), Coswara sustained vowels (`coswara`, CC BY 4.0: new speakers recorded on their own phones / laptops); split 2 = another Coswara date under `NOTCHVD_ROOT=build/notchvd-heldout2` (`--coswara-dates=20200417`) |
+| `linecls.mjs`, `agg-cls.mjs` | (follow-up) the census runs a `variants.mjs` entry's coherence options (default `V18`, the shipped 0.7 / 2.5 c) with voice timing on and records time to the voice verdict, the jump guard, at-risk lines and each line's margin to the verdict |
+| `linecls.mjs` | census of the online line-coherence verdict (`cand3-notch.js`) on real voice (clean + white-noise degradations), real noise and the mixes (see the follow-up row above) |
 | `export_test_clips.mjs` | writes the three short real clips `tests/dsp/noise-notch-test.js` commits (`tests/dsp/data/notch-real/`: an MS-SNSD air-conditioner excerpt, CC0; VocalSet long tones of two singers, CC BY 4.0) |
 | `realdata.mjs` | JS loader: `loadIndex`, `readClip`, `readWav`, `loadF0`, `resample` (16 -> 48 kHz polyphase), `renderMix` |
 

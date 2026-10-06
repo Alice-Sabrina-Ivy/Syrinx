@@ -172,3 +172,35 @@ VARIANTS.V13 = { tree: "cand3", opts: { coh: { ...V10c, rebirthGate: "voice" } }
 // V14 = V11 with the strict voice verdict (pcorr >= 0.7, pcoh >= 2.5 c):
 // bc42ad0 (no breath re-births) + voice timing for not-onset-born lines
 VARIANTS.V14 = { tree: "cand3", opts: { rebirth: false, coh: { ...V10c, rebirthGate: "any", vCorr: 0.7, vCoh: 2.5 } } };
+
+// ---- 2026-10-05 V14 follow-up (review fixes) - cand3-notch.js ----
+// V15 = V14 with the coherence band starting at the display / detector floor
+// (75 Hz, PITCH_DISPLAY_RANGE.low) instead of 80 Hz: 75-80 Hz lines got no
+// verdict. V16 = V15 with the takeover jump guard (jumpMode "plateau"): no
+// voice timing only when the line rose >= 6 dB within 6 observations over a
+// level that held within 1.5 dB for 3 consecutive sightings (a louder source
+// starting on a line that was already there), instead of >= 6 dB over the
+// median of its first 3 sightings (which also blocked real crescendos /
+// messa di voce at the note's start). 1.5 dB < 2 x 6 dB / (6 + 1): no
+// constant-slope crescendo can pass as "steady, then +6 dB in 6
+// observations". V16s3 / V16r4 / V16r10 = guard sensitivity.
+const V14c = { ...V10c, rebirthGate: "any", vCorr: 0.7, vCoh: 2.5 };
+const PLAT = { jumpMode: "plateau", jumpRefObs: 3, jumpStableDb: 1.5, jumpRiseObs: 6 };
+VARIANTS.V15 = { tree: "cand3", opts: { rebirth: false, coh: { ...V14c, fLo: 75 } } };
+VARIANTS.V16 = { tree: "cand3", opts: { rebirth: false, coh: { ...V14c, fLo: 75, ...PLAT } } };
+VARIANTS.V16s3 = { tree: "cand3", opts: { rebirth: false, coh: { ...V14c, fLo: 75, ...PLAT, jumpStableDb: 3 } } };
+VARIANTS.V16r4 = { tree: "cand3", opts: { rebirth: false, coh: { ...V14c, fLo: 75, ...PLAT, jumpRiseObs: 4 } } };
+VARIANTS.V16r10 = { tree: "cand3", opts: { rebirth: false, coh: { ...V14c, fLo: 75, ...PLAT, jumpRiseObs: 10 } } };
+// V17 = V16 + voice timing granted only while the latest single window's
+// correlation is >= 0.7 too. Tried AFTER the held-out run on its one failing
+// takeover cell (a note at the hum's level on its track, beating; the pooled
+// verdict arrived 1 s after the note ended) and NOT adopted: it does not fix
+// that cell (the granting window's correlation is 0.93: the note-to-hum
+// switch is itself a frequency step shared by both partials), and a rule
+// fitted to a held-out cell would make it in-sample.
+VARIANTS.V17 = { tree: "cand3", opts: { rebirth: false, coh: { ...V14c, fLo: 75, ...PLAT, grantLastCorr: 0.7 } } };
+// V18 = V16 + the takeover's steady level must be the line's loudest so far
+// (no sighting before the reference more than 3 dB above it): a held-out
+// Coswara /a/ dipped 13 dB after its onset, held steady ~31 dB, then rose
+// 7 dB within 4 observations -> V16's takeover test fired on a voice.
+VARIANTS.V18 = { tree: "cand3", opts: { rebirth: false, coh: { ...V14c, fLo: 75, ...PLAT, jumpPeakTolDb: 3 } } };

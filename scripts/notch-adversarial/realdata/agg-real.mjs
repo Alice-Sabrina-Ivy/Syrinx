@@ -8,7 +8,9 @@
 //   gated (source switching on at 2 s): notch whenever the base notched, no
 //     later than max(21 s, base + 0.3 s) after switch-on; painted FV from
 //     switch-on + 21 s <= base + 2 pp
-//   voice side (vin program, held): reported, not part of the interferer rule
+//   voice side (vin program, held, voice): reported, not part of the interferer
+//     rule; streams more than 1 pp below the base on hold frames are listed
+//     (--fails)
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 const pos = process.argv.slice(2).filter((a) => !a.startsWith("--"));
@@ -27,16 +29,18 @@ const GROUP = {
   gated: (r) => `period ${r.period_s} s, off ${r.off_s} s`,
   vin: (r) => `${r.voice_kind} ${r.snr_db >= 0 ? "+" : ""}${r.snr_db} dB`,
   held: (r) => `gap ${r.gap_s} s`,
+  voice: (r) => `${r.kind} ${r.grp}`,
 };
 const COLS = {
   noise: [["promo", "promo"], ["pfv", "pFV"], ["pfv20", "pFV>20s"]],
   gated: [["promo", "promo"], ["pfvAll", "pFV all"], ["pfv", "pFV>21s"]],
   vin: [["promo", "promo"], ["pfvLead", "lead pFV"], ["pfvTail", "tail pFV"], ["pok", "voice pOK"], ["ok", "voice OK"], ["hok", "hold pOK"], ["pfvProg", "prog pFV"]],
   held: [["pok", "hold pOK"], ["ok", "hold OK"], ["promoV", "promo@voice"]],
+  voice: [["pok", "hold pOK"], ["ok", "hold OK"], ["promoV", "promo@voice"]],
 };
 function check(r, v) {
   const b = r.v[base], c = r.v[v], f = [];
-  if (r.set === "held") return f;
+  if (r.set === "held" || r.set === "voice") return f;
   const lim = r.set === "gated" ? 21 : 6;
   if (b.promo !== null) {
     if (c.promo === null) f.push(`never notched (base ${b.promo})`);
@@ -46,7 +50,7 @@ function check(r, v) {
   for (const k of keys) if (c[k] != null && b[k] != null && c[k] > b[k] + 2) f.push(`${k} ${c[k]} vs ${b[k]}`);
   return f;
 }
-for (const set of ["noise", "gated", "vin", "held"]) {
+for (const set of ["noise", "gated", "vin", "held", "voice"]) {
   const rs = rows.filter((r) => r.set === set);
   if (!rs.length) continue;
   const groups = {};
@@ -61,8 +65,20 @@ for (const set of ["noise", "gated", "vin", "held"]) {
       return f1(mean(xs));
     }).join("/").padStart(44)).join(""));
   }
+  if (set === "held" || set === "voice") {
+    // voice side: hold frames (painted) vs the base, per stream
+    for (const v of vars) {
+      if (v === base) continue;
+      const worse = rs.filter((r) => r.v[v].pok != null && r.v[base].pok != null && r.v[v].pok < r.v[base].pok - 1);
+      const better = rs.filter((r) => r.v[v].pok != null && r.v[base].pok != null && r.v[v].pok > r.v[base].pok + 1);
+      const pooled = (k) => { let a = 0, n = 0; for (const r of rs) if (r.v[k].pok != null) { a += r.v[k].pok * r.v[k].pok_n / 100; n += r.v[k].pok_n; } return n ? (100 * a / n).toFixed(2) : "-"; };
+      console.log(`  ${v}: hold frames painted at pitch, pooled ${pooled(v)} % vs ${base} ${pooled(base)} %; ${better.length} streams > ${base} + 1 pp, ${worse.length} < ${base} - 1 pp`);
+      if (args.fails) for (const r of worse.slice(0, +args.fails)) console.log(`     ${r.id}: ${r.v[v].pok} vs ${r.v[base].pok}`);
+    }
+    continue;
+  }
   for (const v of vars) {
-    if (v === base || set === "held") continue;
+    if (v === base) continue;
     const bad = rs.map((r) => [r, check(r, v)]).filter(([, f]) => f.length);
     const better = rs.filter((r) => { const b = r.v[base], c = r.v[v]; return (b.promo === null && c.promo !== null) || (b.promo !== null && c.promo !== null && c.promo < b.promo - 1); }).length;
     console.log(`  ${v}: ${bad.length}/${rs.length} streams fail the rule vs ${base}; ${better} notched earlier / where ${base} never did`);

@@ -50,9 +50,30 @@ export function loadF0(rec) {
   return rec.f0_path && existsSync(join(DATA, rec.f0_path)) ? JSON.parse(readFileSync(join(DATA, rec.f0_path), "utf8")) : null;
 }
 
+// ---- public sources ---------------------------------------------------------
+// Every committed result uses the public corpora only. A local build may also
+// hold the opt-in private session source (README "Private session recordings"):
+// loadIndex() drops it (and every mix with a layer cut from it) unless the
+// caller passes { publicOnly: false } — a local-only analysis whose results
+// stay outside this repository.
+// (dcaseeval / fsheld / coswara: the held-out corpora of fetch_heldout.py)
+export const PUBLIC_NOISE_SOURCES = new Set(["mssnsd", "demand", "esc50", "dcase", "freesound", "synthfloor", "dcaseeval", "fsheld"]);
+export const PUBLIC_VOICE_SOURCES = new Set(["vocalset", "pvqd", "voiced", "vocadito", "hillenbrand", "ptdb", "fda", "synthetic", "coswara"]);
+const PUBLIC_DIRS = { noise: PUBLIC_NOISE_SOURCES, voice: PUBLIC_VOICE_SOURCES };
+// a record is public when its own source is (noise / voice) or when every mix
+// layer's clip (data-relative "noise|voice/<source>/...") is
+export function isPublic(rec) {
+  if (rec.spec?.layers) return rec.spec.layers.every((L) => {
+    const [kind, src] = String(L.clip).split("/");
+    return PUBLIC_DIRS[kind]?.has(src) ?? false;
+  });
+  return (rec.kind === "noise" ? PUBLIC_NOISE_SOURCES : PUBLIC_VOICE_SOURCES).has(rec.source);
+}
+
 // ---- index ------------------------------------------------------------------
 // filters: source, label, cls (class), set, minDur, maxDur, heldMin (s of held
-// voice), noDup (default true: drop exact-duplicate clips), ids
+// voice), noDup (default true: drop exact-duplicate clips), ids, publicOnly
+// (default true: public sources only, see above)
 export function loadIndex(kind, f = {}) {
   const p = join(DATA, `index_${kind}.json`);
   let recs;
@@ -66,7 +87,7 @@ export function loadIndex(kind, f = {}) {
   return recs.filter((r) => inSet(r.source, f.source) && inSet(r.label, f.label) && inSet(r.class, f.cls) && inSet(r.set, f.set)
     && (f.minDur == null || r.dur >= f.minDur) && (f.maxDur == null || r.dur <= f.maxDur)
     && (f.heldMin == null || (r.held_sec ?? 0) >= f.heldMin) && (f.noDup === false || !r.dup_of)
-    && (f.ids == null || f.ids.includes(r.id)));
+    && (f.ids == null || f.ids.includes(r.id)) && (f.publicOnly === false || isPublic({ kind, ...r })));
 }
 
 // ---- resampling (16 kHz corpus -> the worker's input rate) -------------------

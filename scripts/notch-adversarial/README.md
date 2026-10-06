@@ -26,7 +26,7 @@ interaction.
 | `P0`, `PH` | `cand-notch.js` reproducing `B` / `H` message-for-message |
 | `R1` | cb00425's module (round 1 = `N13`; tree `r1`) |
 | `R1c`, `R2h`, `R2q`, `R2`–`R8` | `cand2-notch.js` (round 2: cb00425 + flags): `R2h` handoff off; `R2q` + quiet-window line gate on breath re-births; `R2` the gate replacing cb00425's revokes with a quiet-window STEADY revoke; `R3`/`R4` run-scoped 3 / 5-window steady; `R5` + fast-decay counts as absent; `R6` + provisional re-births voided when the line comes back inside the pause; `R7` stricter "back" (+6 dB, 13 dB prominence); `R8` = the round-2 candidate (fast decay counts as absent only at >= 3 dB / 50 ms on average since the pause began). **Not shipped**: it never notches a tonal source that itself cuts out for 0.15-1 s every few seconds (`r2int.mjs --part=intermit`, bc42ad0 ~20 s), the repeated-holds signal by construction. The flag-free drop-in is [`r8-notch.js`](r8-notch.js) (parity with `R8`: 0 mismatches). Round 2 reverted `src/` to bc42ad0's module (`B`) |
-| `V0`–`V14` | `cand3-notch.js` (2026-10-05 voice-vs-machine CANDIDATE phase: `r8-notch.js` + per-track line coherence — shared mid-band FM of a line and its own 2nd partial, pooled over the last <= 5 1-s windows; `measurements/noise-notch-voice-discrimination-2026-10-05.md`): `V0` = `R8`, `VB0` = `B` (parity 0 mismatches); `V1` machine-confirmed lines promote at 5 s even if onset-born (fails the strict rule: synthetic `weak` / `weak2` / `step` FV cells, `handoff-adv`, 53 / 504 real gated streams); `V6`–`V10` voice timing + R8 re-births unless machine-confirmed (`V10`: + revoke, jump guard, reanchor; 99 / 504 real gated streams later than `B` — real sources re-birth while still undecided); `V11` = `B` + voice timing only; `V12` / `V13` re-births only for voice-confirmed lines (3 / 6 real gated streams fail); **`V14` = `V11` with the strict 0.7 / 2.5 c voice verdict = shipped** (`src/` parity: 0 mismatches in 75 980 messages) |
+| `V0`–`V14` | `cand3-notch.js` (2026-10-05 voice-vs-machine CANDIDATE phase: `r8-notch.js` + per-track line coherence — shared mid-band FM of a line and its own 2nd partial, pooled over the last <= 5 1-s windows; `measurements/noise-notch-voice-discrimination-2026-10-05.md`): `V0` = `R8`, `VB0` = `B` (parity 0 mismatches); `V1` machine-confirmed lines promote at 5 s even if onset-born (fails the strict rule: synthetic `weak` / `weak2` / `step` FV cells, `handoff-adv`, 53 / 504 real gated streams); `V6`–`V10` voice timing + R8 re-births unless machine-confirmed (`V10`: + revoke, jump guard, reanchor; 99 / 504 real gated streams later than `B` — real sources re-birth while still undecided); `V11` = `B` + voice timing only; `V12` / `V13` re-births only for voice-confirmed lines (3 / 6 real gated streams fail); `V14` = `V11` with the strict 0.7 / 2.5 c voice verdict (shipped 2026-10-05, `src/` parity: 0 mismatches in 75 980 messages). Follow-up (review of V14): `V15` = `V14` with the coherence band from 75 Hz (`PITCH_DISPLAY_RANGE.low`; was 80); `V16` = `V15` with the takeover jump guard (`jumpMode: "plateau"`: >= 6 dB within 6 observations over a level that held within 1.5 dB for 3 consecutive sightings; frozen, then run on held-out split 1); `V16s3` / `V16r4` / `V16r10` = guard sensitivity; `V17` = `V16` + a latest-window grant condition (tried on split 1's failing takeover cell, does not fix it, rejected); **`V18` = `V16` + the steady reference must be the line's loudest so far (within 3 dB; split 1 showed a real voice that dipped 13 dB and recovered firing `V16`'s test) = shipped**, run on held-out split 2 (`src/` parity: 0 mismatches in 89 506 messages, `NOTCH_MEMO=0`; `V16` vs `V18` notch scan: no differing cell in any suite family or real set) |
 
 `setup.sh` builds `build/notch-adv/trees/{bc42,head,cand,r1,cand2}/src` (copies of
 `src/` with that notch module). Re-run it after editing `src/`,
@@ -48,9 +48,23 @@ interaction.
 | `oracles.sh A B`, `sessions.sh`, `extra-preload.mjs` | committed oracles (noise-augment pitch + gender, voicing shootout) and the session oracle on two notch modules. |
 | `realdata/` | (2026-10-05) REAL noise + REAL held-voice corpora, census of the real noise, end-to-end mixes and JS loaders for the voice-vs-machine discrimination phase — [realdata/README.md](realdata/README.md), [measurements/notch-realdata-corpora-2026-10-05.md](../../measurements/notch-realdata-corpora-2026-10-05.md). Line discrimination (`linefeat*.py`, shared mid-band FM across partials): [measurements/notch-voice-machine-discrimination-2026-10-05.md](../../measurements/notch-voice-machine-discrimination-2026-10-05.md). |
 | `realdata/realeval.mjs`, `realdata/agg-real.mjs` | (2026-10-05) the REAL-noise oracle: the real worker over the real corpora — `noise` (279 noise-only clips: promotion, painted false voicing), `gated` (504 real stationary-tonal sources switched off 0.15–1 s every 5 / 8 s: the R8 failure class on real audio), `held` (192 real VocalSet same-pitch hold series), `vin` (798 real voice programs in real noise at +10 / 0 dB); per-stream strict rule vs `B` |
-| `realdata/linecls.mjs` | census of the ONLINE coherence verdict (`cand3-notch.js`, promotion disabled) on real voice / noise / mixes |
+| `realdata/linecls.mjs`, `realdata/agg-cls.mjs` | census of the ONLINE coherence verdict (`cand3-notch.js` with a variant's options, default `V18`; promotion disabled, voice timing on) on real voice / noise / mixes: verdicts, time to the voice verdict vs the 4.9 s promotion point, jump-guard blocks, at-risk lines, each line's margin to the verdict (`vmax`) |
+| `takeover-margin.mjs` | (2026-10-05 follow-up) notch-only: on every `handoff-adv` cell (tuning or `--heldout`), the hum line's rise over its steady pre-note level minus the 6 dB takeover threshold, and whether the guard mattered (the line read voice-confirmed) |
+| `handoff-adv.mjs --heldout` / `--heldout2` | (2026-10-05 follow-up) held-out takeover grids: split 1 hum at 100 / 150 Hz, note at 0.93-1.1 x the hum from 1 / 2.5 s, hum rms 0.005 / 0.02 / 0.05, 15 c vibrato + 4 c wander, new seeds (216 cells per rate); split 2 hum at 85 / 135 / 180 Hz, note at 0.95-1.07 x from 1.5 / 3 s, rms 0.008 / 0.04 / 0.07, 12 c + 2.5 c (324 cells per rate) |
+| `realdata/fetch_heldout.py` | (2026-10-05 follow-up) held-out real data under `build/notchvd-heldout/`: DCASE 2020 T2 additional-training machine ids, Freesound queries disjoint from `fetch_noise.py`'s, Coswara sustained vowels (new speakers, own phones / laptops) |
+| `memo-check.mjs` | `lib.mjs`'s notch-level memo == un-memoized worker, message for message |
+| `NOTCH_SCAN=A:B` (`lib.mjs`) | scan mode: any family script, no worker runs — per cell, whether variants A and B hand the worker identical notch output (`NOTCH_SCAN_OUT` jsonl); identical cells have identical worker messages |
+| `cmp-vars.mjs` | per-cell identity of variants in any results directory |
 | `agg-held.mjs`, `agg-int.mjs`, `agg-noise.mjs` | tables + the round-1 strict-rule check vs `B`. |
-| `parity.mjs A B` | message-level equality of two variants. |
+| `parity.mjs A B` | message-level equality of two variants (run with `NOTCH_MEMO=0`: with the memo two variants whose notches agree share one worker run). |
+
+**Notch-level memo (2026-10-05 follow-up).** `lib.mjs` `runWorker()` first runs
+only the variant's notch, exactly as the worker drives it, and hashes what
+the worker consumes from it per chunk (notched samples, `activeLines()`,
+`activeFreqs()`, plus the tree's `isNearNotch` source); variants with the
+same hash on the same audio share one worker run (a notch-only pass is ~25 %
+of a worker run). `NOTCH_MEMO=0` disables it; `memo-check.mjs`: 0 mismatches
+in 66 678 messages (B / V14 / V16, 13 scenarios x 16 + 48 kHz).
 
 All runners keep at most `MAXJ` (default 4) node processes alive at once — the suite shares a
 workstation; leave ~10 % CPU / RAM free.
@@ -87,4 +101,24 @@ for s in noise gated held; do bash $S/shards.sh $R/cls_$s 6 $RD/linecls.mjs --se
 bash $S/shards.sh $R/cls_voice 6 $RD/linecls.mjs --set=voice --deg=inf,20,10,0 --vcorr=0.7 --vcoh=2.5
 # synthetic suite as in round 2 with --variants=B,R8,SRC; merge.mjs joins runs of different variants
 node $RD/export_test_clips.mjs                       # tests/dsp/data/notch-real (committed)
+```
+
+### V14 follow-up (2026-10-05)
+
+```bash
+bash scripts/notch-adversarial/setup.sh
+S=scripts/notch-adversarial; R=build/notch-adv/res8; RD=$S/realdata; V=B,V14,SRC
+NOTCH_MEMO=0 node $S/parity.mjs V18 SRC 13 16000,48000     # src/ == V18
+NOTCH_SCAN=V16:V18 NOTCH_SCAN_OUT=$R/scan_held.jsonl node $S/held.mjs --variants=B --sr=16000,48000   # V16 vs V18, notch only (any family script)
+node $S/memo-check.mjs B,V14,V16 47 16000,48000
+bash $S/shards.sh $R/hadv 6 $S/handoff-adv.mjs --variants=$V --sr=16000,48000
+bash $S/shards.sh $R/hadv_ho 6 $S/handoff-adv.mjs --variants=$V --sr=16000,48000 --heldout
+bash $S/shards.sh $R/held 12 $S/held.mjs --variants=$V --sr=16000,48000     # 735 scenarios incl. swell / subito / low / dip
+# r2int / int / fda / grid / dense as above with --variants=$V
+for s in voice noise held gated vin; do bash $S/shards.sh $R/real_$s 6 $RD/realeval.mjs --set=$s --variants=$V; done
+python $RD/fetch_heldout.py                                  # build/notchvd-heldout
+for s in noise voice; do NOTCHVD_ROOT=build/notchvd-heldout bash $S/shards.sh $R/ho_$s 6 $RD/realeval.mjs --set=$s --variants=$V; done
+for v in V14 V16; do bash $S/shards.sh $R/cls_${v}_voice 6 $RD/linecls.mjs --set=voice --deg=inf,20,10,0 --variant=$v; done
+node $RD/agg-cls.mjs $R/cls_V16_voice; node $S/takeover-margin.mjs --heldout
+node $RD/agg-real.mjs $R/real_voice --vars=B,V14,SRC --fails=20
 ```
