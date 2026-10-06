@@ -5,8 +5,16 @@
 // "smaller / brighter"), each with faint reference bands from recorded
 // adult speakers, a settling / steadiness indicator, a 3-minute trace and a
 // one-line description. No targets, no verdicts, no good/bad colours.
+//
+// Below Tailwind's sm breakpoint (phones in portrait), and on short screens
+// (phones in landscape), a compact layout keeps as many cards on screen as
+// fit — all four on a phone in portrait: descriptions, footnotes and the
+// lab's intro sit behind small info toggles, statuses and band labels shorten,
+// and the axis and 3-minute trace are sized from the height actually
+// available (see usePhoneFit); short screens drop the traces first. Wider,
+// taller screens keep the full layout.
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { subscribe, resetReadings, downloadReadings } from "./labPipeline.js";
 import { requestResonanceLab } from "./labRequest.js";
 
@@ -39,41 +47,72 @@ const FINALISTS = [
 const x = (u) => ((Math.min(U_MAX, Math.max(U_MIN, u)) - U_MIN) / (U_MAX - U_MIN)) * 100;
 const toU = (ref, v) => (v - ref.menMedian) / (ref.womenMedian - ref.menMedian);
 
-function Continuum({ band: ref, snap }) {
+// Continuum geometry. FULL is the sm-and-up layout. Phones use ROOMY (same
+// rows, short band labels) when the screen has height to spare, else COMPACT:
+// the band labels sit beside their bands instead of on rows of their own, and
+// bands + marker hug the axis.
+const FULL = {
+  h: 68, ax: 34, bandH: 7, menY: 20, womenY: 41, menLabelY: 15, womenLabelY: 59, tick: 14, r: 5, clamp: 8, fs: 9,
+  men: "LibriSpeech adult men (test)", women: "LibriSpeech adult women (test)",
+};
+const ROOMY = { ...FULL, clamp: 5, fs: 10, men: "men", women: "women" };
+const COMPACT = { h: 30, ax: 16, bandH: 5, menY: 4, womenY: 23, tick: 11, r: 4.5, fs: 10, beside: true, men: "men", women: "women" };
+
+function Continuum({ band: ref, snap, g = FULL }) {
   // rows: men band above the axis, women band below; labels outside the bands
-  const bandRow = (q, y, label, labelY) => {
+  // (above / below them, or beside them on the outer side when compact)
+  const maskId = `lab-label-mask-${useId().replace(/[^\w-]/g, "")}`;
+  const rows = [[ref.men, g.menY, g.men, g.menLabelY, true], [ref.women, g.womenY, g.women, g.womenLabelY, false]].map(([q, y, label, labelY, outerLeft]) => {
     const a = x(toU(ref, q.q10)), b = x(toU(ref, q.q90)), m = x(toU(ref, q.q50));
-    return (
-      <g>
-        <rect x={`${a}%`} y={y} width={`${Math.max(0.5, b - a)}%`} height="7" rx="2" className="fill-neutral-500/25" />
-        <line x1={`${m}%`} x2={`${m}%`} y1={y} y2={y + 7} className="stroke-neutral-400/70" strokeWidth="1" />
-        <text x={`${Math.min(92, Math.max(8, m))}%`} y={labelY} textAnchor="middle" className="fill-neutral-500" fontSize="9">{label}</text>
-      </g>
-    );
-  };
+    let text;
+    if (g.beside) {
+      const left = outerLeft ? a >= 12 : 100 - b < 12;
+      text = { x: left ? a - 1.5 : b + 1.5, y: y + g.bandH / 2 + 3, anchor: left ? "end" : "start" };
+    } else {
+      text = { x: Math.min(100 - g.clamp, Math.max(g.clamp, m)), y: labelY, anchor: "middle" };
+    }
+    return { y, a, b, m, label, text };
+  });
+  const labelText = (r, props) => (
+    <text x={`${r.text.x}%`} y={r.text.y} textAnchor={r.text.anchor} {...props} fontSize={g.fs}>{r.label}</text>
+  );
   const u = snap?.u;
   const j = snap?.jitter ?? 0;
   const settled = (snap?.fill ?? 0) >= 1;
-  const AX = 34;
+  const AX = g.ax;
   return (
-    <svg width="100%" height="68" className="block overflow-visible">
-      {bandRow(ref.men, 20, "LibriSpeech adult men (test)", 15)}
-      {bandRow(ref.women, 41, "LibriSpeech adult women (test)", 59)}
+    <svg width="100%" height={g.h} className="block overflow-visible" data-lab-continuum="">
+      {rows.map((r) => (
+        <g key={r.label}>
+          <rect x={`${r.a}%`} y={r.y} width={`${Math.max(0.5, r.b - r.a)}%`} height={g.bandH} rx="2" className="fill-neutral-500/25" />
+          <line x1={`${r.m}%`} x2={`${r.m}%`} y1={r.y} y2={r.y + g.bandH} className="stroke-neutral-400/70" strokeWidth="1" />
+          {labelText(r, { className: "fill-neutral-500" })}
+        </g>
+      ))}
+      {/* Compact labels sit on the rows the marker's tick crosses: mask the
+          marker out under each word (plus a 1.5 px halo) so a reading next to
+          a band never strikes through its label. */}
+      {g.beside && (
+        <mask id={maskId} maskUnits="userSpaceOnUse" x="-5%" y={-10} width="110%" height={g.h + 20}>
+          <rect x="-5%" y={-10} width="110%" height={g.h + 20} fill="white" />
+          {rows.map((r) => <g key={r.label}>{labelText(r, { fill: "black", stroke: "black", strokeWidth: 3, strokeLinejoin: "round" })}</g>)}
+        </mask>
+      )}
       <line x1="0%" x2="100%" y1={AX} y2={AX} className="stroke-neutral-700" strokeWidth="1" />
       {u !== null && u !== undefined && (
-        <g opacity={settled ? 1 : 0.45}>
+        <g opacity={settled ? 1 : 0.45} mask={g.beside ? `url(#${maskId})` : undefined}>
           <line x1={`${x(u - j)}%`} x2={`${x(u + j)}%`} y1={AX} y2={AX} className="stroke-neutral-200/60" strokeWidth="3" strokeLinecap="round" />
-          <line x1={`${x(u)}%`} x2={`${x(u)}%`} y1={AX - 14} y2={AX + 14} className="stroke-neutral-100" strokeWidth="2" />
-          <circle cx={`${x(u)}%`} cy={AX} r="5" className="fill-neutral-100" />
+          <line x1={`${x(u)}%`} x2={`${x(u)}%`} y1={AX - g.tick} y2={AX + g.tick} className="stroke-neutral-100" strokeWidth="2" />
+          <circle cx={`${x(u)}%`} cy={AX} r={g.r} className="fill-neutral-100" />
         </g>
       )}
     </svg>
   );
 }
 
-function Trace({ history, k, band: ref }) {
+function Trace({ history, k, band: ref, height = 40 }) {
   const pts = history.filter((h) => h.u[k] !== null && h.u[k] !== undefined);
-  if (pts.length < 2) return <div className="h-10" />;
+  if (pts.length < 2) return <div style={{ height }} />;
   const t1 = history[history.length - 1].t;
   const t0 = t1 - 180;
   const xs = (t) => ((t - t0) / 180) * 100;
@@ -81,7 +120,7 @@ function Trace({ history, k, band: ref }) {
   const d = pts.map((p) => `${xs(p.t).toFixed(2)},${ys(p.u[k]).toFixed(2)}`).join(" ");
   const m0 = ys(toU(ref, ref.men.q50)), m1 = ys(toU(ref, ref.women.q50));
   return (
-    <svg viewBox="0 0 100 40" preserveAspectRatio="none" width="100%" height="40" className="block">
+    <svg viewBox="0 0 100 40" preserveAspectRatio="none" width="100%" height={height} className="block">
       <line x1="0" x2="100" y1={m0} y2={m0} className="stroke-neutral-600" strokeWidth="0.4" strokeDasharray="1 1" vectorEffect="non-scaling-stroke" />
       <line x1="0" x2="100" y1={m1} y2={m1} className="stroke-neutral-600" strokeWidth="0.4" strokeDasharray="1 1" vectorEffect="non-scaling-stroke" />
       <polyline points={d} fill="none" className="stroke-neutral-300" strokeWidth="1.2" vectorEffect="non-scaling-stroke" />
@@ -89,20 +128,98 @@ function Trace({ history, k, band: ref }) {
   );
 }
 
+const steadinessWord = (j) => (j < 0.15 ? "steady" : j < 0.35 ? "moving" : "unsettled");
+
 function stability(snap) {
   if (!snap || snap.u === null) return "waiting for voiced speech";
   if (snap.fill < 1) return `settling — ${(snap.fill * 5).toFixed(1)} / 5 s of voicing`;
   if (snap.jitter === null) return "settled";
   const j = snap.jitter;
-  return `${j < 0.15 ? "steady" : j < 0.35 ? "moving" : "unsettled"} (±${j.toFixed(2)} of the men–women spacing)`;
+  return `${steadinessWord(j)} (±${j.toFixed(2)} of the men–women spacing)`;
 }
+
+// Phone wording of the same status (the ± unit is explained in the card's info).
+function stabilityShort(snap) {
+  if (!snap || snap.u === null) return "waiting for voice";
+  if (snap.fill < 1) return `settling ${(snap.fill * 5).toFixed(1)}/5 s`;
+  if (snap.jitter === null) return "settled";
+  return `${steadinessWord(snap.jitter)} ±${snap.jitter.toFixed(2)}`;
+}
+
+function pnmlStatus(s) {
+  if (s.pnml === "ready") return null;
+  return s.pnml === "error" ? "model failed to load" : `loading model${s.pnmlProgress ? ` ${Math.round(s.pnmlProgress)}%` : "…"}`;
+}
+
+// Phone wording (the card's title already says it is the model).
+function pnmlStatusShort(s) {
+  if (s.pnml === "ready") return null;
+  return s.pnml === "error" ? "failed to load" : `loading${s.pnmlProgress ? ` ${Math.round(s.pnmlProgress)}%` : "…"}`;
+}
+
+// Every phone status at its widest (digits are tabular). The status cell
+// reserves the widest of these in the actual font, so whether a long title
+// wraps depends on the screen width alone, not on the live status — a title
+// flipping between one and two lines would shift every card below it.
+const PHONE_STATUS_WIDEST = ["waiting for voice", "settling 0.0/5 s", "unsettled ±0.00", "loading 100%", "failed to load"];
+
+const PhoneStatus = ({ text }) => (
+  <span className="shrink-0 grid whitespace-nowrap text-right text-[11px] leading-[18px] text-neutral-500 tabular-nums">
+    {PHONE_STATUS_WIDEST.map((t) => <span key={t} aria-hidden="true" className="invisible col-start-1 row-start-1">{t}</span>)}
+    <span className="col-start-1 row-start-1" data-lab-status="">{text}</span>
+  </span>
+);
+
+const Intro = () => (
+  <>
+    Four candidate resonance readouts, side by side, with no calibration. Each position is the
+    last ~5 s of <em>voiced</em> speech and only moves while you are voicing. The faint bands show
+    where recorded adult speakers fall; they are reference points, not targets — the axis works
+    the same in either direction.
+  </>
+);
+
+const ReadingNote = ({ s }) => (
+  <>
+    Reading this: compare changes within one session and one setup. Microphone, room and noise shift every
+    absolute position by roughly a third to half of the spacing between the two bands (background noise
+    pushes the three signal-processing readouts toward smaller/brighter), and isolated held vowels read
+    less reliably than running speech. Reference bands: {s.reference?.source ?? "LibriSpeech test-clean"}.
+    {s.perf?.dspMsPerAudioS != null && ` Lab cost here: ${s.perf.dspMsPerAudioS.toFixed(0)} ms CPU per s of audio (DSP)`}
+    {s.perf?.pnmlInferMsMedian != null && `, ${s.perf.pnmlInferMsMedian.toFixed(0)} ms per model inference`}
+    {s.perf?.dspMsPerAudioS != null && "."}
+  </>
+);
+
+const PitchStat = ({ snap }) => (
+  <span>
+    Pitch {snap?.pitch ? `${Math.round(snap.pitch)} Hz` : "—"}
+    {!snap?.pitch && snap?.lastPitch ? <span className="text-neutral-600"> (last {Math.round(snap.lastPitch)} Hz)</span> : null}
+  </span>
+);
+
+// The phone layout, as a live boolean: below Tailwind's sm breakpoint (40rem
+// wide; phones in portrait), or shorter than 30rem (phones in landscape, where
+// the full layout shows less than one card at a time).
+const PHONE_QUERY = "(width < 40rem), (height < 30rem)";
+const subscribePhone = (cb) => {
+  const mq = window.matchMedia(PHONE_QUERY);
+  mq.addEventListener("change", cb);
+  return () => mq.removeEventListener("change", cb);
+};
+const isPhone = () => window.matchMedia(PHONE_QUERY).matches;
 
 export default function LabView() {
   const [s, setS] = useState(null);
+  const phone = useSyncExternalStore(subscribePhone, isPhone, () => false);
   useEffect(() => subscribe(setS), []);
   // First open of the tab starts the lab (now if listening, else at the next start).
   useEffect(() => { requestResonanceLab(); }, []);
   if (!s) return null;
+  return phone ? <PhoneLab s={s} /> : <FullLab s={s} />;
+}
+
+function FullLab({ s }) {
   const ref = s.reference;
   const snap = s.snapshot;
   return (
@@ -110,16 +227,10 @@ export default function LabView() {
       <div className="mb-3">
         <h2 className="text-base text-neutral-200 font-medium">Resonance lab <span className="text-neutral-500 font-normal text-xs">experimental</span></h2>
         <p className="text-xs text-neutral-500 leading-relaxed mt-1">
-          Four candidate resonance readouts, side by side, with no calibration. Each position is the
-          last ~5 s of <em>voiced</em> speech and only moves while you are voicing. The faint bands show
-          where recorded adult speakers fall; they are reference points, not targets — the axis works
-          the same in either direction.
+          <Intro />
         </p>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-xs text-neutral-400">
-          <span>
-            Pitch {snap?.pitch ? `${Math.round(snap.pitch)} Hz` : "—"}
-            {!snap?.pitch && snap?.lastPitch ? <span className="text-neutral-600"> (last {Math.round(snap.lastPitch)} Hz)</span> : null}
-          </span>
+          <PitchStat snap={snap} />
           <span>Voiced so far {snap ? `${snap.voicedS.toFixed(0)} s` : "—"}</span>
           {s.dsp !== "ready" && <span>{s.dsp === "error" ? `Lab error: ${s.error}` : "Loading lab…"}</span>}
           <button onClick={resetReadings} className="px-2 py-0.5 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-300 cursor-pointer">Reset readings</button>
@@ -129,10 +240,7 @@ export default function LabView() {
       {!s.running && <p className="text-sm text-neutral-500">Start listening to see the readouts.</p>}
       {ref && FINALISTS.map((f) => {
         const fs = snap?.finalists?.[f.key];
-        let extra = null;
-        if (f.key === "pnml" && s.pnml !== "ready") {
-          extra = s.pnml === "error" ? "model failed to load" : `loading model${s.pnmlProgress ? ` ${Math.round(s.pnmlProgress)}%` : "…"}`;
-        }
+        const extra = f.key === "pnml" ? pnmlStatus(s) : null;
         return (
           <section key={f.key} className="mb-3 rounded-xl border border-neutral-800 bg-neutral-900/60 px-3 py-2">
             <div className="flex items-baseline justify-between gap-2">
@@ -151,14 +259,185 @@ export default function LabView() {
         );
       })}
       <p className="text-[11px] text-neutral-600 leading-relaxed mt-2">
-        Reading this: compare changes within one session and one setup. Microphone, room and noise shift every
-        absolute position by roughly a third to half of the spacing between the two bands (background noise
-        pushes the three signal-processing readouts toward smaller/brighter), and isolated held vowels read
-        less reliably than running speech. Reference bands: {ref?.source ?? "LibriSpeech test-clean"}.
-        {s.perf?.dspMsPerAudioS != null && ` Lab cost here: ${s.perf.dspMsPerAudioS.toFixed(0)} ms CPU per s of audio (DSP)`}
-        {s.perf?.pnmlInferMsMedian != null && `, ${s.perf.pnmlInferMsMedian.toFixed(0)} ms per model inference`}
-        {s.perf?.dspMsPerAudioS != null && "."}
+        <ReadingNote s={s} />
       </p>
+    </div>
+  );
+}
+
+// Small "i" toggle with a popover (same pattern as SteadinessReadout): tap to
+// open, tap again / outside / Escape to close. The popover spans its nearest
+// positioned ancestor (the row it belongs to) and opens toward whichever side
+// of the lab's scroll area has more room, capped to that room.
+function InfoToggle({ label, boundsRef, className = "flex", children }) {
+  const [open, setOpen] = useState(false);
+  const [place, setPlace] = useState({ up: false, maxH: 320 });
+  const wrapRef = useRef(null);
+  const tipId = useId();
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDown = (e) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+    };
+    const onKey = (e) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("pointerdown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const toggle = () => {
+    if (!open) {
+      const row = wrapRef.current?.offsetParent?.getBoundingClientRect();
+      const box = boundsRef.current?.getBoundingClientRect();
+      if (row && box) {
+        const below = box.bottom - row.bottom, above = row.top - box.top;
+        const up = above > below;
+        setPlace({ up, maxH: Math.max(96, Math.floor((up ? above : below) - 8)) });
+      }
+    }
+    setOpen((o) => !o);
+  };
+
+  return (
+    <span ref={wrapRef} className={className}>
+      <button
+        type="button"
+        onClick={toggle}
+        aria-expanded={open}
+        aria-controls={tipId}
+        aria-label={label}
+        className="relative inline-flex items-center justify-center w-4 h-4 shrink-0 rounded-full border border-neutral-600 text-[10px] leading-none text-neutral-500 hover:text-neutral-300 hover:border-neutral-400 transition-colors cursor-pointer before:absolute before:-inset-2.5 before:content-['']"
+      >
+        i
+      </button>
+      {open && (
+        <div
+          id={tipId}
+          role="note"
+          style={{ maxHeight: place.maxH }}
+          className={`absolute inset-x-0 z-20 ${place.up ? "bottom-full" : "top-full"} overflow-y-auto rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-left text-xs leading-relaxed font-normal normal-case tracking-normal text-neutral-300 shadow-lg space-y-1.5`}
+        >
+          {children}
+        </div>
+      )}
+    </span>
+  );
+}
+
+// How much the phone layout can afford, measured against the lab's real scroll
+// area (so it adapts to browser chrome, wrapped titles and text zoom). Each
+// card's fixed parts (title row, axis labels) are measured as laid out; the
+// continuum is ROOMY or COMPACT and the trace takes what is left, split four
+// ways. Order of preference: ROOMY with a trace of at least ROOMY_TRACE_MIN,
+// else COMPACT with a trace of at least TRACE_MIN, else COMPACT without traces
+// (traces are the first thing short screens lose); if even that does not fit,
+// the lab scrolls.
+const TRACE_MIN = 20;
+const ROOMY_TRACE_MIN = 32;
+const TRACE_MAX = 56;
+// The trace wrapper's vertical padding (py-0.5). Half of a card's bottom padding
+// lives on the wrapper, so a card that drops its trace also sheds 2 px.
+const TRACE_PAD = 4;
+const FIT_SLACK = 2; // sub-pixel safety
+
+function usePhoneFit(rootRef, contentRef) {
+  const [fit, setFit] = useState({ roomy: false, traceH: 0 });
+  useLayoutEffect(() => {
+    const root = rootRef.current, content = contentRef.current;
+    if (!root || !content) return undefined;
+    const measure = () => {
+      const sum = (sel) => [...content.querySelectorAll(sel)].reduce((t, el) => t + el.getBoundingClientRect().height, 0);
+      const n = FINALISTS.length;
+      const base = content.getBoundingClientRect().height - sum("[data-lab-trace]") - sum("[data-lab-continuum]");
+      const traceFor = (g) => Math.floor((root.clientHeight - FIT_SLACK - base - n * g.h) / n) - TRACE_PAD;
+      const roomyTrace = traceFor(ROOMY);
+      const compactTrace = traceFor(COMPACT);
+      const next = roomyTrace >= ROOMY_TRACE_MIN
+        ? { roomy: true, traceH: Math.min(TRACE_MAX, roomyTrace) }
+        : { roomy: false, traceH: compactTrace >= TRACE_MIN ? Math.min(TRACE_MAX, compactTrace) : 0 };
+      setFit((prev) => (prev.roomy === next.roomy && prev.traceH === next.traceH ? prev : next));
+    };
+    const ro = new ResizeObserver(measure);
+    ro.observe(root);
+    ro.observe(content);
+    return () => ro.disconnect();
+  }, [rootRef, contentRef]);
+  return fit;
+}
+
+function PhoneLab({ s }) {
+  const ref = s.reference;
+  const snap = s.snapshot;
+  const rootRef = useRef(null);
+  const contentRef = useRef(null);
+  const { roomy, traceH } = usePhoneFit(rootRef, contentRef);
+  return (
+    <div ref={rootRef} data-lab-phone="" className="flex-1 min-h-0 overflow-y-auto w-full max-w-3xl mx-auto pb-0.5">
+      <div ref={contentRef}>
+        <div className="mb-1.5">
+          <div className="relative flex items-center gap-2">
+            <h2 className="text-sm leading-5 text-neutral-200 font-medium">Resonance lab <span className="text-neutral-500 font-normal text-xs">experimental</span></h2>
+            <InfoToggle label="About the resonance lab" boundsRef={rootRef}>
+              <p><Intro /></p>
+              <p className="text-neutral-400"><ReadingNote s={s} /></p>
+            </InfoToggle>
+            <div className="ml-auto flex items-center gap-1.5">
+              <button onClick={resetReadings} aria-label="Reset readings" title="Reset readings" className="px-2 py-0.5 rounded bg-neutral-800 hover:bg-neutral-700 text-[11px] leading-4 text-neutral-300 cursor-pointer">Reset</button>
+              <button onClick={downloadReadings} aria-label="Save readings (JSON)" title="Save readings (JSON)" className="px-2 py-0.5 rounded bg-neutral-800 hover:bg-neutral-700 text-[11px] leading-4 text-neutral-300 cursor-pointer">Save</button>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-x-3 text-[11px] leading-4 text-neutral-400">
+            <PitchStat snap={snap} />
+            <span>Voiced so far {snap ? `${snap.voicedS.toFixed(0)} s` : "—"}</span>
+            {s.dsp !== "ready" && <span>{s.dsp === "error" ? `Lab error: ${s.error}` : "Loading lab…"}</span>}
+          </div>
+        </div>
+        {!s.running && <p className="text-sm text-neutral-500 mb-1.5">Start listening to see the readouts.</p>}
+        {ref && (
+          <div className="flex flex-col gap-1">
+            {FINALISTS.map((f) => {
+              const fs = snap?.finalists?.[f.key];
+              const extra = f.key === "pnml" ? pnmlStatusShort(s) : null;
+              return (
+                <section key={f.key} className="rounded-xl border border-neutral-800 bg-neutral-900/60 px-2.5 pt-1 pb-0.5">
+                  <div className="relative flex items-baseline justify-between gap-2">
+                    {/* The ⓘ follows the title's last word, even when the
+                        title wraps: no break between the two (nowrap on their
+                        common parent), normal wrapping inside the title. */}
+                    <div className="min-w-0 whitespace-nowrap text-[13px] leading-[18px]">
+                      <h3 className="inline whitespace-normal text-neutral-200">{f.title}</h3>
+                      <InfoToggle label={`About ${f.title}`} boundsRef={rootRef} className="inline-flex align-text-bottom ml-1.5 whitespace-normal">
+                        <p>{f.what}</p>
+                        <p className="text-neutral-400">
+                          Bands: LibriSpeech adult men (test) above the axis, adult women (test) below — each
+                          spans the 10th–90th percentile of speakers; the tick is the median.
+                        </p>
+                        <p className="text-neutral-400">± is how much the readout moved over the last ~3&nbsp;s, as a fraction of the men–women spacing.</p>
+                        {traceH > 0 && <p className="text-neutral-400">Trace: last 3 min · up = smaller / brighter · dotted = band medians.</p>}
+                      </InfoToggle>
+                    </div>
+                    <PhoneStatus text={extra ?? stabilityShort(fs)} />
+                  </div>
+                  <div className="flex justify-between text-[10px] leading-3 text-neutral-500 uppercase tracking-wide">
+                    <span>larger / darker</span>
+                    <span>smaller / brighter</span>
+                  </div>
+                  <Continuum g={roomy ? ROOMY : COMPACT} band={ref[f.key]} snap={fs} />
+                  {traceH > 0 && (
+                    <div data-lab-trace className="py-0.5">
+                      <Trace history={s.history} k={f.key} band={ref[f.key]} height={traceH} />
+                    </div>
+                  )}
+                </section>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
