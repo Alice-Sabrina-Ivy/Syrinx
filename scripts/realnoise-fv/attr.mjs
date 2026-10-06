@@ -27,6 +27,10 @@
 //   display columns, indexed by display hop (lib/chain.mjs):
 //     inten  DSP intensity (dB)   msg  pitch of the consumed message
 //     paint  painted value        ro   readout    style  0 / 1 holding / 2 voiced
+//     cpp / hnr / tilt  the DSP worker's other per-frame fields (NaN = null),
+//            handed to the hook as production does (2026-10-06)
+//     paintF the trace entry's value at the end of the stream (= paint unless
+//            the display fills entries after their hop)
 //   gender VAD (gender-worker.js maybeInfer replayed at its 150 ms cadence on
 //   the same audio, pitch hints of earlier chunks), indexed by chunk:
 //     gv     -1 no inference tick, 0 gated out, 1 scored (voiced pitch within
@@ -34,7 +38,7 @@
 //
 // Usage (repo root):
 //   node --import ./scripts/realnoise-fv/lib/register.mjs scripts/realnoise-fv/attr.mjs \
-//        [--set=noise|vin|gated|fda|ptdb|hil|voc] [--src=src] [--tag=head] [--shard=i/n] [--ids=a,b]
+//        [--set=noise|noiseho|vin|gated|fda|ptdb|hil|voc] [--src=src] [--tag=head] [--shard=i/n] [--ids=a,b]
 //        [--max-sec=90] [--data-root=<notchvd root>] [--out=build/realnoise-fv/attr]
 //        [--split=tune|held] [--cf=noVeto,noGuard] [--notch-opts=<JSON>] [--lead=S]
 // --cf / --notch-opts are ATTRIBUTION COUNTERFACTUALS (switches in the taps):
@@ -49,6 +53,9 @@
 // or singing within seconds of pressing Start. The crop (s) is recorded as
 // crop_s in the dump; vinscore.py / vinlead.py map stream time back to the
 // mix timeline with it. Tag the runs per lead (e.g. --tag=fgA_L3).
+// --set=noiseho (2026-10-06): the second held-out noise set — the
+// dcaseeval + fsheld noise clips of NOTCHVD_ROOT=<...>/notchvd-heldout
+// (sources never seen by any tuning; split = the source).
 import { writeFileSync, mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -59,7 +66,7 @@ const args = Object.fromEntries(process.argv.slice(2).map((a) => {
 }));
 dataRoot(args);
 const { loadIndex, readClip } = await import("../notch-adversarial/realdata/realdata.mjs");
-const { loadSrc, buildFrames, driveHook } = await import("../session-oracle/lib/chain.mjs");
+const { loadSrc, buildFrames, driveHook, noteDspExtras } = await import("../session-oracle/lib/chain.mjs");
 
 const SRC = args.src ?? "src", TAG = args.tag ?? "head", SET = args.set ?? "noise";
 const MAXS = Number(args["max-sec"] ?? 90);
@@ -73,7 +80,7 @@ const BAC = await import(pathToFileURL(resolve(SRC, "dsp/boersma-ac.js")).href);
 export const COLS = ["uv", "s0", "c0f", "dec", "gk", "hc", "post", "conf", "nnotch", "npres",
   ...Array.from({ length: 8 }, (_, i) => `tf${i}`), ...Array.from({ length: 8 }, (_, i) => `ts${i}`),
   ...Array.from({ length: 8 }, (_, i) => `tc${i}`),
-  "inten", "msg", "paint", "ro", "style", "gv", "refw", "refd"];
+  "inten", "msg", "paint", "ro", "style", "gv", "refw", "refd", "cpp", "hnr", "tilt", "paintF"];
 
 function trackStatus(t, inCascade, span, duty, c, minObs, onsetMinObs) {
   if (inCascade) return 1;
@@ -89,6 +96,7 @@ function runX(samples, sr = SR) {
   const n = Math.floor(samples.length / C);
   const col = Object.fromEntries(COLS.map((c) => [c, new Float32Array(n)]));
   col.gk.fill(-1); col.hc.fill(-1); col.inten.fill(NaN); col.gv.fill(-1);
+  col.cpp.fill(NaN); col.hnr.fill(NaN); col.tilt.fill(NaN);
   const msgPitch = new Float32Array(n).fill(NaN), msgConf = new Float32Array(n).fill(NaN);
   const msgNotch = new Array(n).fill(null);
   const frameChunk = []; let L = null; let curK = -1; let lastDec = -1; let notch = null;
@@ -153,7 +161,7 @@ function runX(samples, sr = SR) {
     }
     globalThis.self = D; D.posts.length = 0;
     dp.onmessage({ data: { buffer: Float32Array.from(samples.subarray(k * C, (k + 1) * C)).buffer, contextTime: ct } });
-    for (const m of D.posts) if (m.type === "analysis") col.inten[k] = m.data.intensity;
+    for (const m of D.posts) if (m.type === "analysis") { col.inten[k] = m.data.intensity; noteDspExtras(col, k, m.data); }
   }
   globalThis.__SO_TAP = null; globalThis.__RN_TAP = null;
   // gender VAD replay: 0.75 s window, inference attempted every 150 ms once
@@ -188,6 +196,9 @@ if (CORPORA[SET]) {
   const [fn, off] = CORPORA[SET];
   items = loaders[fn]().map((t) => ({ id: t.trackId, track: t, off, meta: { corpus: SET, gender: t.gender === "w" ? "f" : t.gender } }));
 } else if (SET === "noise") items = noiseSet(loadIndex).map((r) => ({ id: r.id, rec: r, meta: { label: r.label, source: r.source, cls: r.class, flags: r.flags ?? [], split: splitOf(r.id) } }));
+else if (SET === "noiseho") items = loadIndex("noise", { minDur: 10 }).filter((r) => r.source === "dcaseeval" || r.source === "fsheld")
+  .sort((a, b) => a.id.localeCompare(b.id))
+  .map((r) => ({ id: r.id, rec: r, meta: { label: `ho-${r.source}`, source: r.source, cls: r.class, flags: [], split: r.source } }));
 else {
   const set = { vin: "voice_in_noise", gated: "noise_gated" }[SET];
   items = publicMixes(loadIndex, set).map((r) => ({ id: r.id, rec: r, meta: { noise_id: r.noise_id, noise_label: r.noise_label, snr_db: r.snr_db, voice_kind: r.voice_kind, voice_t0: r.voice_t0, voice_t1: r.voice_t1, on_s: r.on_s, split: splitOf(r.noise_id) } }));
@@ -205,7 +216,7 @@ for (const it of items) {
   let x, sr = SR;
   if (it.track) { x = it.track.samples; sr = it.track.sampleRate; }
   else x = readClip(it.rec.path);
-  if (SET === "noise" && MAXS > 0 && x.length > MAXS * SR) x = x.subarray(0, MAXS * SR);
+  if ((SET === "noise" || SET === "noiseho") && MAXS > 0 && x.length > MAXS * SR) x = x.subarray(0, MAXS * SR);
   let crop = 0; // --lead: stream starts LEAD s before the voice program
   if (LEAD !== null) { const c0 = Math.round(Math.max(0, it.rec.voice_t0 - LEAD) * SR); crop = c0 / SR; x = x.subarray(c0); }
   const W = runX(x, sr);
@@ -215,7 +226,7 @@ for (const it of items) {
     for (let k = 0; k < W.n; k++) { W.col.refw[k] = refAt((k + 1) * hop - 0.040); W.col.refd[k] = refAt((k + 1) * hop - 0.040 - W.L * hop - 0.030); }
   }
   const Dc = await driveHook(S.hookPath, buildFrames(W), W.n);
-  for (const c of ["msg", "paint", "ro", "style"]) W.col[c].set(Dc[c]);
+  for (const c of ["msg", "paint", "ro", "style", "paintF"]) W.col[c].set(Dc[c]);
   const tbl = new Float32Array(W.n * COLS.length);
   COLS.forEach((c, i) => tbl.set(W.col[c], i * W.n));
   writeFileSync(resolve(OUT, `${it.id}.f32`), Buffer.from(tbl.buffer));

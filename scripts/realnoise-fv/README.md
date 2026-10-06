@@ -32,9 +32,23 @@ gitignored PTDB-TUG / FDA audio. Every output lands under `build/` (gitignored).
 | `harmfeat.py`, `harmfeat_audio.py`, `floorfeat.py`, `simguard.py`, `simfloor.py` | offline features (harmonic prominence, harmonic excess over a learned background) and worker-level guard simulations on the dumps (`simfloor.py`: causal background-floor variants — voicing-gated, segment-frozen) |
 | `mktree.py` | candidate src trees (`build/rnfv-trees/<name>/src`): hold-bridge (incl. `h_max0`, no bridge), onset-confirm and learned-background-guard variants (incl. `fg_armed`, counters only) |
 | `clips_csv.py` | per-clip table committed with the measurement |
+| `shiprule.py` | the pre-registered ship-rule rows of the pitch-hold bridge rework ([measurements/pitch-hold-bridge-rework-2026-10-06.md](../../measurements/pitch-hold-bridge-rework-2026-10-06.md)): goal (painted false voicing on the 279 noise-only clips, tuning / held-out, and the second held-out set `noiseho`) and G1–G4 (corpora, voice in noise at the 20 s and no lead incl. per-stream and noise-after-speech rules, clean-speech continuity), PASS / FAIL per row; `--paint=paintF` scores the trace as it stands at the end of the stream |
+| `bridge-rate-check.mjs` | a display change's transfer from the 16 kHz corpora to 44.1 / 48 kHz: a resampled subset of the noise-only clips and voice-in-noise mixes through the real worker at each rate, base and candidate hook |
+| `held-painted.mjs` | the held-note suite scored on the PAINTED trace of any number of hook trees over one worker run per scenario (`held.mjs` scores the posted pitch, which a display change cannot move) |
 | `cand/noise-floor-guard.js`, `cand/noise-floor-guard-test.mjs` | the (not adopted) learned-background voicing veto and its contract test (`python scripts/realnoise-fv/mktree.py fg`, then `node scripts/realnoise-fv/cand/noise-floor-guard-test.mjs`) |
 
 Commands: the measurement file's "Reproduction" section.
+
+**DSP fields reach the hook** (2026-10-06): `attr.mjs`, `replay.mjs` and the
+session oracle's `lib/chain.mjs` hand the DSP worker's `cpp` / `hnr` /
+`spectralTilt` to `handleAnalysisResult` per frame, as production does (they
+used to pass null: harmless while the display read only the intensity, but
+the pitch-hold bridge's voice evidence reads CPP). Dumps gained `cpp`, `hnr`,
+`tilt` and `paintF` (the trace entry's value at the end of the stream);
+`attr.mjs --set=noiseho` runs the second held-out noise set
+(`NOTCHVD_ROOT=<...>/notchvd-heldout`); `lib/tap-notch.mjs` resolves the
+notch's own relative imports (V19g's `noise-notch.js` imports
+`../utils/constants.js`, which a `data:` URL cannot).
 
 **Checking any future background-floor guard** (review fixes 2026-10-05):
 voice in noise with NO noise-only lead and with short leads (`--lead=0,1,3,8`),

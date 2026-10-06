@@ -16,6 +16,7 @@ import {
   smoothingBufferFor,
 } from "./pitchSmoothing";
 import { createGateState, evaluateFrameGate } from "./pitchGate";
+import { createBridgeEvidence } from "./bridgeEvidence";
 import { createPaintGate, EXCURSION_SEMI } from "./pitchPaintGate";
 import { createSteadinessTracker } from "./steadiness";
 import { createCaptureSource } from "./captureSource";
@@ -207,6 +208,8 @@ export function useAudioPipeline() {
   // Silence gating + pitch staleness/hold (see pitchGate.js)
   const silenceStartRef = useRef(null);
   const gateStateRef = useRef(createGateState());
+  // Voice evidence for drawing the pitch-hold bridge (bridgeEvidence.js).
+  const bridgeEvidenceRef = useRef(createBridgeEvidence());
 
   // Display painting state (display-only — never feeds recording).
   // - paintGateRef: onset confirmation + established-level excursion
@@ -797,6 +800,7 @@ export function useAudioPipeline() {
     f3SmoothRef.current = [];
     silenceStartRef.current = null;
     gateStateRef.current = createGateState();
+    bridgeEvidenceRef.current = createBridgeEvidence();
     paintGateRef.current.reset();
     displayVoicedRef.current = false;
     unpitchedFramesRef.current = 0;
@@ -978,6 +982,15 @@ export function useAudioPipeline() {
       pitchTs: latestPitch.ts,
     });
     const { pitch, hasPitch, isQuiet } = gate;
+    // Pitch-hold bridge evidence (bridgeEvidence.js; measurements/pitch-
+    // hold-bridge-rework-2026-10-06.md): past a short grace, a held frame
+    // is DRAWN only when this stream showed a strongly harmonic voiced
+    // frame (DSP-worker CPP) recently. A held frame that fails is hidden
+    // below, after the paint gate saw it — the hold, the smoothing buffer
+    // and the gate's continuity are kept, so voice resuming within the
+    // window paints at once. Fed every frame, silence included.
+    bridgeEvidenceRef.current.push({ now, fresh: hasPitch, cpp });
+    const hideHeld = !hasPitch && gate.holdAllowed && !bridgeEvidenceRef.current.allowHeld(now);
     // Steadiness reading (cached inside the tracker: recomputed on the
     // first read after new pitch messages arrived, i.e. at most once per
     // DSP frame). A stalled pitch worker reads "—".
@@ -1206,13 +1219,17 @@ export function useAudioPipeline() {
     // Held values (hold path: detector null, hold window open) are pushed
     // with fresh: false — they may bridge the trace on-level but never
     // move the gate's level or count toward a register change
-    // (pitchPaintGate.js "Register re-acquisition").
+    // (pitchPaintGate.js "Register re-acquisition"). A held value without
+    // voice evidence (hideHeld, bridgeEvidence.js) still goes through the
+    // gate — its continuity state stays exactly as with a drawn hold — and
+    // is then not drawn.
     let displayPitched = false;
     if (framePitched) {
       // raw: the unsmoothed fresh detection — the gate accepts a register
       // change only when it agrees with the off-level run (pitchPaintGate.js
       // "Faster re-acquisition").
       displayPitched = paintGateRef.current.push(smoothedPitch, { fresh: hasPitch, raw: hasPitch ? pitch : null });
+      if (hideHeld) displayPitched = false;
       if (!displayPitched && hasPitch && paintGateRef.current.lastReason() === "offlevel") {
         heldReadoutStaleRef.current = true;
       }

@@ -29,9 +29,11 @@ function check(name, cond, detail = "") {
 // leaks between cases). Inputs per frame: a number = fresh detection (loud,
 // confidence 0.8); "q" = quiet pitchless frame (-70 dB); "l" = loud
 // pitchless frame (-38 dB, the pitch-hold bridge). Returns the value the
-// trace painted on each frame (0 = gap).
+// trace painted on each frame (0 = gap). cpp (optional): the DSP worker's CPP
+// on voiced frames (pitchless frames get 0.2); null = none, as before
+// 2026-10-06 (the bridge's voice evidence then fails open).
 let gen = 0;
-async function run(seq) {
+async function run(seq, { cpp = null } = {}) {
   M.refs = []; M.effects = []; M.state = null;
   const mod = await import(`${HOOK}?g=${++gen}`);
   const api = mod.useAudioPipeline();
@@ -48,7 +50,8 @@ async function run(seq) {
     else if (x === "q") { intensity = -70; confidence = 0.2; }
     else { intensity = -38; confidence = 0.3; }
     latest.current = { pitch, confidence, voiced: pitch !== null, ts: t };
-    har.current({ intensity, formants: null, spectralTilt: null, hnr: null, cpp: null, absoluteTime: t });
+    const frameCpp = cpp === null ? null : (pitch !== null ? cpp : 0.2);
+    har.current({ intensity, formants: null, spectralTilt: null, hnr: null, cpp: frameCpp, absoluteTime: t });
     const trace = api.pitchTraceRef.current;
     const e = trace[trace.length - 1];
     return e && e.time === Math.round(t) && e.pitch !== null ? e.pitch : 0;
@@ -101,6 +104,21 @@ for (const g of ["q", "l"]) {
     const out = (await run([...rep(word, 30), g, g, lock, lock, lock, ...rep(word, 10)])).slice(32);
     check(`3-frame ${name} after 2×${gl} gap is never painted`, out.every((v) => !near(v, lock)), out.map((v) => Math.round(v)).join(","));
   }
+}
+
+console.log("\npitch-hold bridge needs voice evidence (2026-10-06, bridgeEvidence.js)");
+{
+  // Short weakly harmonic runs (DSP-worker CPP 0.3) 200 ms apart: real
+  // machine noise's false voicing, which the bridge used to join into one
+  // line. Past the 50 ms grace the held frames are not drawn; the next run
+  // still paints from its first frame (the gate's continuity is kept).
+  const seq = [...rep(120, 6), ...rep("l", 8), ...rep(120, 6)];
+  const weak = await run(seq, { cpp: 0.3 });
+  check("weak-CPP runs: held frames past the grace are not drawn",
+    weak[6] > 0 && weak[7] > 0 && weak.slice(8, 14).every((v) => v === 0), weak.map((v) => Math.round(v)).join(","));
+  check("weak-CPP runs: the run after the gap paints from its first frame", weak.slice(14).every((v) => near(v, 120)), weak.map((v) => Math.round(v)).join(","));
+  const strong = await run(seq, { cpp: 0.8 });
+  check("strong-CPP (voice-like) runs: the whole gap is bridged, as before", strong.slice(2).every((v) => near(v, 120)), strong.map((v) => Math.round(v)).join(","));
 }
 
 console.log("\nevery painted value is a real detection (random sequences)");

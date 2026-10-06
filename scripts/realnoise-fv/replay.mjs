@@ -13,9 +13,12 @@
 //
 //   node --import ./scripts/realnoise-fv/lib/register.mjs scripts/realnoise-fv/replay.mjs \
 //        --from=TAG --set=noise --src=<tree>/src --tag=NEWTAG [--parity] [--attr=build/realnoise-fv/attr] [--ids=a,b]
+//        [--in=<attr root>/<TAG> --out=<attr root>/<NEWTAG>]  (instead of --attr/--from/--tag)
 // Writes <attr>/<NEWTAG>/<set>/ dumps: every column copied from TAG, display
 // columns (msg / paint / ro / style) replaced. Gender column gv is copied
-// unchanged (the display does not feed the gender worker).
+// unchanged (the display does not feed the gender worker). The DSP worker's
+// cpp / hnr / tilt columns, when the dump has them, reach the hook as in
+// production (2026-10-06).
 import { readFileSync, writeFileSync, mkdirSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { loadSrc, buildFrames, driveHook } from "../session-oracle/lib/chain.mjs";
@@ -25,7 +28,8 @@ const args = Object.fromEntries(process.argv.slice(2).map((a) => {
 }));
 const ATTR = resolve(args.attr ?? "build/realnoise-fv/attr");
 const SET = args.set ?? "noise";
-const IN = resolve(ATTR, args.from, SET), OUT = resolve(ATTR, args.tag ?? `${args.from}_replay`, SET);
+const IN = args.in ? resolve(args.in, SET) : resolve(ATTR, args.from, SET);
+const OUT = args.out ? resolve(args.out, SET) : resolve(ATTR, args.tag ?? `${args.from}_replay`, SET);
 const S = await loadSrc(args.src ?? "src");
 mkdirSync(OUT, { recursive: true });
 const [shI, shN] = (args.shard ?? "0/1").split("/").map(Number);
@@ -45,13 +49,18 @@ for (const nm of names) {
   const msgPitch = new Float32Array(n).fill(NaN), msgConf = new Float32Array(n).fill(NaN);
   if (f0 >= 0) for (let k = f0 + L; k < n; k++) { msgPitch[k] = col.post[k - L]; msgConf[k] = col.conf[k - L]; }
   const sr = m.sr ?? ({ fda: 20000, ptdb: 48000, voc: 44100 }[SET] ?? 16000), C = Math.round(sr * 0.025);
-  const W = { n, C, sr, L, col: { inten: col.inten }, msgPitch, msgConf };
+  const W = { n, C, sr, L, col: { inten: col.inten, cpp: col.cpp, hnr: col.hnr, tilt: col.tilt }, msgPitch, msgConf };
   const D = await driveHook(S.hookPath, buildFrames(W), n);
   if (args.parity) {
     for (const c of ["paint", "ro", "style"]) for (let k = 0; k < n; k++) if (col[c][k] !== D[c][k]) { mism++; break; }
   }
   for (const c of ["msg", "paint", "ro", "style"]) col[c].set(D[c]);
-  writeFileSync(resolve(OUT, `${nm}.f32`), Buffer.from(tbl.buffer));
-  writeFileSync(resolve(OUT, `${nm}.json`), JSON.stringify({ ...m, replayFrom: args.from, src: args.src ?? "src" }));
+  // paintF (final trace entry value; = paint unless the display fills
+  // entries late) is appended when the source dump has no such column.
+  const cols = m.cols.includes("paintF") ? m.cols : [...m.cols, "paintF"];
+  const out = new Float32Array(n * cols.length);
+  cols.forEach((c, i) => out.set(c === "paintF" ? D.paintF : col[c], i * n));
+  writeFileSync(resolve(OUT, `${nm}.f32`), Buffer.from(out.buffer));
+  writeFileSync(resolve(OUT, `${nm}.json`), JSON.stringify({ ...m, cols, replayFrom: args.from ?? args.in, src: args.src ?? "src" }));
 }
-console.log(`replay ${args.from} -> ${args.tag} ${SET}: ${names.length} streams${args.parity ? `, ${mism} column mismatches` : ""}`);
+console.log(`replay ${args.from ?? args.in} -> ${args.tag ?? args.out} ${SET}: ${names.length} streams${args.parity ? `, ${mism} column mismatches` : ""}`);

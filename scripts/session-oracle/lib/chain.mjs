@@ -24,8 +24,15 @@
 //   consuming the pitch message emitted at chunk k, which describes frame
 //   k-L):
 //     inten  DSP-worker intensity (dB) — NaN before the DSP worker posts
+//     (runWorkers also keeps the DSP worker's cpp / hnr / tilt per hop in
+//     col.cpp / col.hnr / col.tilt, NaN = null, and buildFrames / driveHook
+//     hand them to the hook as production does — 2026-10-06: the pitch-hold
+//     bridge's voice evidence reads cpp)
 //     msg    pitch in the consumed message (0 = null)
 //     paint  value painted on the live trace this hop (0 = gap)
+//     paintF the same trace entry's value at the END of the stream (a
+//            display that fills trace entries after their hop — a deferred
+//            bridge — differs from paint there; otherwise paintF = paint)
 //     brk    1 if the hook inserted an octave-class line break before it
 //     ro     readout Hz in the hook's state (0 = "—")
 //     style  0 inactive, 1 holding (dim), 2 voiced
@@ -44,7 +51,17 @@ Object.defineProperty(globalThis, "performance", {
 });
 
 export const DET_COLS = ["fl", "c0f", "uv", "dec", "post", "conf", "nnotch"];
+// DSP-worker fields besides intensity that the hook reads (NaN = null).
+export const DSP_EXTRA_COLS = ["cpp", "hnr", "tilt"];
+export function noteDspExtras(col, k, data) {
+  if (data.cpp != null && col.cpp) col.cpp[k] = data.cpp;
+  if (data.hnr != null && col.hnr) col.hnr[k] = data.hnr;
+  if (data.spectralTilt != null && col.tilt) col.tilt[k] = data.spectralTilt;
+}
+const nz = (c, k) => (c && Number.isFinite(c[k]) ? c[k] : null);
 export const DISP_COLS = ["inten", "msg", "paint", "brk", "ro", "style", "rec"];
+// driveHook also returns paintF (see the header); not part of DISP_COLS so
+// run.mjs dumps keep their layout.
 
 export async function loadSrc(srcDir) {
   const src = resolve(srcDir);
@@ -72,6 +89,7 @@ export function runWorkers(S, samples, sr, { chunkMs = 25 } = {}) {
   const col = {};
   for (const c of DET_COLS) col[c] = new Float32Array(n);
   col.inten = new Float32Array(n).fill(NaN);
+  for (const c of DSP_EXTRA_COLS) col[c] = new Float32Array(n).fill(NaN);
   const msgPitch = new Float32Array(n).fill(NaN); // NaN = no message this chunk
   const msgConf = new Float32Array(n).fill(NaN);
   const { P, D } = S;
@@ -126,7 +144,7 @@ export function runWorkers(S, samples, sr, { chunkMs = 25 } = {}) {
     dp.onmessage({ data: { buffer: b.buffer, contextTime: ct } });
     for (const m of D.posts) {
       if (m.type === "worker-error") throw new Error(`dsp worker: ${m.message}`);
-      if (m.type === "analysis") col.inten[k] = m.data.intensity;
+      if (m.type === "analysis") { col.inten[k] = m.data.intensity; noteDspExtras(col, k, m.data); }
     }
   }
   globalThis.__SO_TAP = null;
@@ -146,8 +164,9 @@ export function buildFrames(W, { mask = null, floorDb = null } = {}) {
     const now = (k + 1) * C / sr * 1000;
     if (!Number.isNaN(msgPitch[k])) last = { pitch: msgPitch[k] > 0 ? msgPitch[k] : null, confidence: msgConf[k], ts: now };
     if (Number.isNaN(col.inten[k])) continue;
-    let f = { k, now, intensity: col.inten[k], pitch: last.pitch, confidence: last.confidence, ts: last.ts };
-    if (mask && !mask[k]) f = { k, now, intensity: floorDb, pitch: null, confidence: 0.2, ts: now };
+    let f = { k, now, intensity: col.inten[k], pitch: last.pitch, confidence: last.confidence, ts: last.ts,
+      cpp: nz(col.cpp, k), hnr: nz(col.hnr, k), tilt: nz(col.tilt, k) };
+    if (mask && !mask[k]) f = { k, now, intensity: floorDb, pitch: null, confidence: 0.2, ts: now, cpp: null, hnr: null, tilt: null };
     frames.push(f);
   }
   return frames;
@@ -164,16 +183,18 @@ export async function driveHook(hookPath, frames, n) {
   const latest = M.refs.find((r) => r.current && typeof r.current === "object" && "pitch" in r.current && "ts" in r.current && "confidence" in r.current && "voiced" in r.current);
   const har = M.refs.find((r) => typeof r.current === "function" && r.current.name === "handleAnalysisResult");
   if (!latest || !har) throw new Error("could not locate latestPitchRef / handleAnalysisResultRef");
-  const out = { msg: new Float32Array(n), paint: new Float32Array(n), brk: new Uint8Array(n), ro: new Float32Array(n), style: new Uint8Array(n), rec: new Float32Array(n) };
+  const out = { msg: new Float32Array(n), paint: new Float32Array(n), paintF: new Float32Array(n), brk: new Uint8Array(n), ro: new Float32Array(n), style: new Uint8Array(n), rec: new Float32Array(n) };
+  const ent = new Array(n).fill(null); // the trace entry pushed at hop k (for paintF)
   let rec = null;
   api.frameCallbackRef.current = (f) => { rec = f; };
   const tr = api.pitchTraceRef;
   for (const f of frames) {
     latest.current = { pitch: f.pitch, confidence: f.confidence, voiced: f.pitch !== null, ts: f.ts };
     rec = null;
-    har.current({ intensity: f.intensity, formants: null, spectralTilt: null, hnr: null, cpp: null, absoluteTime: f.now });
+    har.current({ intensity: f.intensity, formants: null, spectralTilt: f.tilt ?? null, hnr: f.hnr ?? null, cpp: f.cpp ?? null, absoluteTime: f.now });
     const T = tr.current; const lastE = T[T.length - 1]; const now = Math.round(f.now);
     const painted = lastE && lastE.time === now && lastE.pitch !== null ? lastE.pitch : 0;
+    if (lastE && lastE.time === now) ent[f.k] = lastE;
     out.msg[f.k] = f.pitch ?? 0;
     out.paint[f.k] = painted;
     const prev = T[T.length - 2];
@@ -183,6 +204,7 @@ export async function driveHook(hookPath, frames, n) {
     out.style[f.k] = s.voiced ? 2 : s.holding ? 1 : 0;
     out.rec[f.k] = rec && rec.voiced && rec.f0 !== null ? rec.f0 : 0;
   }
+  for (let k = 0; k < n; k++) out.paintF[k] = ent[k] && ent[k].pitch !== null ? ent[k].pitch : 0;
   return out;
 }
 

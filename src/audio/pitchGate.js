@@ -70,7 +70,9 @@ export const PITCH_STALE_MS = 250;
 // ~p99 of intra-speech null runs on the running-speech corpora
 // (PTDB-TUG p99 = 400 ms, FDA p99 = 350 ms at the production 25 ms hop)
 // while capping how long a phantom value can outlive the voice that
-// produced it.
+// produced it. Whether a held frame is also DRAWN is decided per frame by
+// the voice-evidence rule in bridgeEvidence.js (2026-10-06): the window
+// itself, and the continuity it gives the paint gate, are unchanged.
 export const PITCH_HOLD_MAX_MS = 400;
 
 // Mutable per-session gate state. Recreate on each pipeline start/stop.
