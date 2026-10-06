@@ -57,24 +57,98 @@
 // moves), and an interferer that SWITCHES ON mid-session (fan, fridge
 // compressor) is notched after ~20 s instead of ~5 s.
 //
-// Known held-note gaps (2026-10-04, measurements/noise-notch-held-note-
-// robustness-2026-10-04.md "Round 2"): the 20 s clock runs from the
-// TRACK's first onset, so it is NOT renewed by (a) same-pitch holds
-// separated by breaths (one track spans the series: notched once it passes
-// 20 s), (b) a glide / step > MATCH_HZ mid-hold (the moved line is born
-// without an onset: ~5 s), (c) speech running into a hold with < ~0.3 s
-// gaps, (d) phonation in the stream's first observation windows. Three
-// rule sets that closed some of them were built and reverted (6f8be18's
-// in-sound latch, round 1's breath re-birth + glide handoff, round 2's
-// quiet-window breath re-birth): each delayed or blocked a real
-// interferer. (a) is signal-identical to a tonal source that itself cuts
-// out for 0.15-1 s every few seconds (bc42ad0 notches it at ~20 s; any
-// breath rule leaves it painted as voice), so closing it is a product
-// trade, not a detector fix.
+// Voice vs machine lines (2026-10-05, measurements/noise-notch-voice-
+// discrimination-2026-10-05.md): the onset rule above misses held notes
+// whose line is NOT born at an onset — a glide / step > MATCH_HZ mid-hold
+// (the moved line is new), speech running into a hold with < ~0.3 s gaps,
+// phonation in the stream's first observation windows — which were notched
+// ~5 s in (bc42ad0: 45-74 % of hold frames). A voice line is told from a
+// machine line directly: a voice's partials wander TOGETHER (F0 wander,
+// vibrato, tremor move every harmonic by the same cents), a motor / mains /
+// electronics line has no mid-band FM shared with its own 2nd partial
+// (measurements/notch-voice-machine-discrimination-2026-10-05.md: real
+// corpora, AUC 0.997 clean). Per 25 ms chunk each unpromoted line in
+// COH_LO_HZ..COH_HI_HZ (+- COH_MARGIN_HZ) is read at f and 2f (64 ms Hann DFT bins, phase-
+// vocoder instantaneous frequency); 1 s windows of the mid-band (0.5-8 Hz)
+// cents series pool over the last COH_POOL windows into pcorr (shared /
+// total modulation) and pcoh (shared modulation, cents). With >= 3 windows:
+//   - VOICE-confirmed (pcorr >= VOICE_CORR AND pcoh >= VOICE_COH): a line
+//     that was not onset-born is timed as onset-born (ONSET_MIN_TRACK_SEC
+//     from its first sighting) — unless a louder source TOOK OVER the line
+//     (a note sung on a hum's track): it rose >= COH_JUMP_DB within
+//     COH_JUMP_RISE_OBS observations over a level that had held within
+//     COH_JUMP_STABLE_DB for COH_JUMP_REF_OBS consecutive sightings and
+//     that was the line's loudest so far (no earlier sighting more than
+//     COH_JUMP_PEAK_TOL_DB above it), and the line had NOT already read as
+//     a voice before that steady level began (its coherence windows up to
+//     then pool to the voice verdict: a voice that gets louder - a vowel
+//     change, a crescendo - is no takeover)
+//   - the voice timing is revoked when the line later reads MACHINE-
+//     confirmed (pcorr < MACHINE_CORR or pcoh < MACHINE_COH, pooled or in
+//     its latest window alone): a spin-up transient that settled, a note
+//     that ended over a hum. Only a machine verdict revokes: a line that
+//     falls back to "undecided" keeps its voice timing
+//   - nothing else changes: undecided lines, machine lines and onset-born
+//     lines keep bc42ad0's timing.
+// The verdict is strict on purpose (0.7 / 2.5 c, not the 0.5 / 2 c of the
+// discrimination phase): ~2 % of real machine lines (mains buzz, electronics
+// whine, a ballast, a fan, a motor) still read voice-confirmed online, and
+// each one present before any onset is notched up to 20 s late instead of
+// 5 s.
+// Follow-up (2026-10-05, same measurement note, "Follow-up"): the band
+// starts at PITCH_DISPLAY_RANGE.low (75 Hz; was 80, so 75-80 Hz voices got
+// no verdict), and the takeover test replaced ">= 6 dB over the median of the
+// first 3 sightings", which also fired on real crescendos and messa di voce
+// at the note's start (PVQD sustained vowels from t ~ 0; a VocalSet hold with
+// a -6 -> 0 dB swell: notched at 5.45 s, bc42ad0's timing). A CONSTANT-slope
+// crescendo from the note's start cannot fire it (the 1.5 dB steadiness
+// spans 2 observation steps, 1.5 < 2 x 6 / 7); a voice's attack has no steady
+// level before it; and a voice that dipped and recovers (a held-out real /a/
+// fell 13 dB after its onset, steadied, then rose 7 dB in 0.4 s) was louder
+// before its steady stretch, which a hum that a note takes over never is.
+// Fix round (2026-10-06, same note, "Fix round"): a vowel change on a held
+// pitch raises the 1st harmonic 6-13 dB within ~0.15 s (Hillenbrand /a/ ->
+// /i/), and a settle-then-swell or a fast crescendo after a steady soft start
+// rises like a takeover too, so the test also needs the line NOT to have read
+// as a voice before its steady level began (a window ending later can hold a
+// takeover note's onset transient, which reads as shared FM: a hum-level
+// sweep cell did); and lines are MEASURED from COH_MARGIN_HZ below 75 Hz to
+// COH_MARGIN_HZ above 400 Hz (a voice centred on 75.0 Hz wandered out and lost
+// its windows; a line leaving that band restarts its series) while voice
+// timing is GRANTED only to a line inside 75-400 Hz itself (granting it
+// anywhere in the margin delayed voice-like machines at 73-74 / 401-402 Hz
+// that bc42ad0 notches at 5 s; granting it within 0.5 Hz still delayed
+// wobbling 401 Hz ones). So a voice centred exactly on 75.0 Hz whose line
+// estimate sits just under it (74.9 Hz) still keeps bc42ad0's timing.
+// Left to bc42ad0's timing: a vowel change, subito forte or fast crescendo
+// (>= 6 dB within ~0.5 s after >= 0.3 s at a steady level that is the
+// loudest so far) in roughly the first 2 s of a not-onset-born line's life,
+// before its first 1 s coherence window - the takeover's own signal. Not
+// caught (held-out takeover grids; V14's first-3 guard missed about half of
+// them too): a note at about a hum's own level on the hum's track - the two
+// beat, the line never jumps cleanly, and the voice timing is revoked only
+// once a window of the hum alone reads machine (a hum with ~1-2 c of shared
+// wobble reads "undecided" and keeps it longer), so the hum is notched up to
+// ~2 s later than bc42ad0. And a MACHINE line with shared 0.5-8 Hz speed
+// wobble (~2 % of real machine lines: a mains buzz, an electronics whine, a
+// vehicle interior) reads as a voice: when it is already running as the
+// stream starts it gets the 20 s clock and is notched up to ~15 s later than
+// bc42ad0 (not within 30 s at all when its duty over the longer clock falls
+// under 0.9). The features measured here cannot tell it from a voice.
+// Known held-note gaps that remain (bc42ad0's): same-pitch holds separated
+// by breaths share one onset-born track that is notched once the series
+// passes 20 s (64-85 % of hold frames) — signal-identical to a tonal source
+// that cuts out for 0.15-1 s every few seconds, and breath rules that close
+// it (round 2's R8, or R8 restricted to voice-confirmed lines) left real
+// gated sources painted (measured: 227 / 3-6 of 504 real noise_gated
+// streams); holds >= 20 s; a note whose line reads machine-like (synthetic
+// zero-wander tones; no real voice measured that steady).
 //
 // Detection runs on RAW audio, filtering on the OUTPUT stream — a
 // notched interferer must stay visible to the tracker or the notch
 // set would oscillate.
+
+import { PITCH_DISPLAY_RANGE } from "../utils/constants.js";
 
 export const NOTCH_DEFAULTS = {
   bandLoHz: 50,          // search band: covers mains fundamentals up to
@@ -114,6 +188,25 @@ export const NOTCH_DEFAULTS = {
   onsetMinTrackSec: 20,
   retuneHz: 0.5,         // retune a live section in place when its track
                          //   drifted more than this (filter state kept)
+  // line coherence (2026-10-05; see "Voice vs machine lines" above)
+  cohLoHz: PITCH_DISPLAY_RANGE.low,  // lines measured: 75-400 Hz (the display /
+  cohHiHz: PITCH_DISPLAY_RANGE.high, //   detector band) ...
+  cohMarginHz: 3,        //   ... measured +- this (= matchHz: a line centred on an edge wanders
+                         //   across it); voice timing is granted only inside cohLoHz..cohHiHz
+  cohWin: 1024,          // 64 ms Hann DFT at f and 2f per 25 ms chunk
+  cohWinChunks: 40,      // 1 s feature window (40 consecutive valid chunks)
+  cohGateDb: 10,         // chunk invalid when the line is this far under its running level
+  cohPool: 5,            // verdicts pool the last 5 windows ...
+  cohMinWin: 3,          // ... and need >= 3
+  machineCorr: 0.15,     // machine-confirmed: pcorr < this OR pcoh < machineCoh
+  machineCoh: 1,         //   (cents)
+  voiceCorr: 0.7,        // voice-confirmed: pcorr >= this AND pcoh >= voiceCoh
+  voiceCoh: 2.5,         //   (cents)
+  cohJumpDb: 6,          // takeover: no voice timing for a line that rose this far ...
+  cohJumpRiseObs: 6,     //   ... within this many observations (~0.6 s) ...
+  cohJumpRefObs: 3,      //   ... over a level that held for this many consecutive sightings ...
+  cohJumpStableDb: 1.5,  //   ... within this (dB) ...
+  cohJumpPeakTolDb: 3,   //   ... and no earlier sighting this far above it
 };
 
 // In-place iterative radix-2 FFT (same shape as boersma-ac.js's).
@@ -207,13 +300,149 @@ export function createNoiseNotch(sampleRate, opts = {}) {
   let chunkCounter = 0;
   let obsPerSec = null;
 
-  // tracks: { id, freq, dev, power, hits, firstObs, lastSeenObs, active, onsetBorn }
+  // tracks: { id, freq, dev, power, hits, firstObs, lastSeenObs, active, onsetBorn,
+  //           voiceBorn, jumped, ph, prePeak, coh }
   let tracks = [];
   let obsIndex = 0;
   let nextTrackId = 1;
   const energyHist = [];   // band energy of recent observations (onset rule)
 
   let cascade = [];        // [{ id, freq, biquad }], ascending track id
+
+  // ---- line coherence: voice vs machine lines (2026-10-05) --------------
+  // Per chunk and per unpromoted track in [cohLoHz, cohHiHz]: the Hann-
+  // windowed (cohWin samples) DFT coefficient at the track frequency f and
+  // at 2f on the window ending at the chunk boundary and on the one ending
+  // a chunk earlier; the phase advance is the instantaneous frequency of the
+  // line and of its 2nd partial. A chunk is valid while the latest (or the
+  // previous) observation saw the line and the line's 64 ms level is within
+  // cohGateDb of its running level (a breath / cut-out the 512 ms observation
+  // still covers carries no line); >= cohGateDb down for 0.5 s while still
+  // seen means a weaker source now holds the line (a note ended over a hum):
+  // the level and the windows restart. Over cohWinChunks consecutive valid
+  // chunks the mid-band (5-point moving average, linear trend removed) cents
+  // series m1 / m2 give one window's s12 = mean(m1 m2), s11 = mean(m1^2),
+  // s22 = mean(m2^2); the last cohPool windows pool to pcorr = S12 /
+  // sqrt(S11 S22) and pcoh = sign(S12) sqrt(|S12| / n) (cents). The
+  // estimator of scripts/notch-adversarial/realdata/linefeat.py (+ the gate).
+  // Cost: 4 x cohWin complex MACs per measured line per chunk.
+  let cohHann = null;
+  function cohDft(off, n, f) {
+    const w = 2 * Math.PI * f / sampleRate, cr = Math.cos(w), ci = -Math.sin(w);
+    let pr = 1, pi = 0, sr = 0, si = 0;
+    for (let i = 0; i < n; i++) {
+      const v = raw[off + i] * cohHann[i];
+      sr += v * pr; si += v * pi;
+      const nr = pr * cr - pi * ci; pi = pr * ci + pi * cr; pr = nr;
+    }
+    return [sr, si];
+  }
+  // [instantaneous frequency at f over the last k samples, line power]
+  function cohIF(f, k) {
+    const n = cfg.cohWin, a = cohDft(bufferLength - n, n, f), b = cohDft(bufferLength - n - k, n, f);
+    // X_cur conj(X_prev) in absolute-time phase: the extra e^{-2 pi i f k / sr}
+    let re_ = a[0] * b[0] + a[1] * b[1], im_ = a[1] * b[0] - a[0] * b[1];
+    const w = -2 * Math.PI * f * k / sampleRate, c = Math.cos(w), s = Math.sin(w);
+    const r2 = re_ * c - im_ * s; im_ = re_ * s + im_ * c; re_ = r2;
+    return [f + Math.atan2(im_, re_) / (2 * Math.PI * k / sampleRate), a[0] * a[0] + a[1] * a[1]];
+  }
+  function midSeries(c) {
+    const L = c.length - 4, s = new Float64Array(L);
+    for (let i = 0; i < L; i++) s[i] = (c[i] + c[i + 1] + c[i + 2] + c[i + 3] + c[i + 4]) / 5;
+    let sx = 0, sy = 0, sxx = 0, sxy = 0;
+    for (let i = 0; i < L; i++) { sx += i; sy += s[i]; sxx += i * i; sxy += i * s[i]; }
+    const den = L * sxx - sx * sx, sl = den ? (L * sxy - sx * sy) / den : 0, ic = (sy - sl * sx) / L;
+    for (let i = 0; i < L; i++) s[i] -= sl * i + ic;
+    return s;
+  }
+  function cohStep(k) {
+    if (rawFill < bufferLength || k <= 0) return;
+    if (!cohHann) {
+      cohHann = new Float64Array(cfg.cohWin);
+      for (let i = 0; i < cfg.cohWin; i++) cohHann[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (cfg.cohWin - 1));
+    }
+    for (const t of tracks) {
+      if (t.active) continue;
+      if (t.freq < cfg.cohLoHz - cfg.cohMarginHz || t.freq > cfg.cohHiHz + cfg.cohMarginHz) {
+        // out of band: the running series restarts (a window never splices
+        // chunks that are not adjacent)
+        if (t.coh) { t.coh.c1.length = 0; t.coh.c2.length = 0; }
+        continue;
+      }
+      if (!t.coh) t.coh = { c1: [], c2: [], wins: [], lv: undefined, low: 0 };
+      const C = t.coh;
+      if (obsIndex - t.lastSeenObs > 1) { C.c1.length = 0; C.c2.length = 0; continue; }
+      const [f1, p1] = cohIF(t.freq, k), [f2] = cohIF(2 * t.freq, k);
+      const lv = 10 * Math.log10(p1 + 1e-30);
+      if (C.lv !== undefined && lv < C.lv - cfg.cohGateDb) {
+        C.c1.length = 0; C.c2.length = 0;
+        if (++C.low >= 20) { C.lv = lv; C.wins.length = 0; C.low = 0; }
+        continue;
+      }
+      C.low = 0;
+      C.lv = C.lv === undefined ? lv : 0.95 * C.lv + 0.05 * lv;
+      C.c1.push(1200 * Math.log2(Math.max(f1, 1e-3)));
+      C.c2.push(1200 * Math.log2(Math.max(f2, 1e-3)));
+      if (C.c1.length < cfg.cohWinChunks) continue;
+      const m1 = midSeries(C.c1), m2 = midSeries(C.c2);
+      let s12 = 0, s11 = 0, s22 = 0;
+      for (let i = 0; i < m1.length; i++) { s12 += m1[i] * m2[i]; s11 += m1[i] * m1[i]; s22 += m2[i] * m2[i]; }
+      C.wins.push([s12 / m1.length, s11 / m1.length, s22 / m1.length, chunkCounter]); // [..., chunk it ended on]
+      if (C.wins.length > cfg.cohPool) C.wins.shift();
+      C.c1.length = 0; C.c2.length = 0;
+    }
+  }
+  const isMachine = (s12, s11, s22, n) => s12 / Math.max(1e-12, Math.sqrt(s11 * s22)) < cfg.machineCorr
+    || Math.sign(s12) * Math.sqrt(Math.abs(s12) / n) < cfg.machineCoh;
+  // the line's windows that ended at or before chunk c pool to the voice
+  // verdict (takeover test: the line was a voice before it jumped)
+  function voiceUpTo(t, c) {
+    let S12 = 0, S11 = 0, S22 = 0, n = 0;
+    for (const w of t.coh?.wins ?? []) if (w[3] <= c) { S12 += w[0]; S11 += w[1]; S22 += w[2]; n++; }
+    return n > 0 && S12 / Math.max(1e-12, Math.sqrt(S11 * S22)) >= cfg.voiceCorr && Math.sign(S12) * Math.sqrt(Math.abs(S12) / n) >= cfg.voiceCoh;
+  }
+  // "machine" | "voice" | null (undecided, or < cohMinWin windows)
+  function cohClass(t) {
+    const C = t.coh;
+    if (!C || C.wins.length < cfg.cohMinWin) return null;
+    let S12 = 0, S11 = 0, S22 = 0;
+    for (const [a, b, c] of C.wins) { S12 += a; S11 += b; S22 += c; }
+    if (isMachine(S12, S11, S22, C.wins.length)) return "machine";
+    const pcorr = S12 / Math.max(1e-12, Math.sqrt(S11 * S22)), pcoh = Math.sign(S12) * Math.sqrt(Math.abs(S12) / C.wins.length);
+    return pcorr >= cfg.voiceCorr && pcoh >= cfg.voiceCoh ? "voice" : null;
+  }
+  // the latest single window alone reads machine
+  function lastMachine(t) {
+    const w = t.coh?.wins;
+    if (!w || !w.length) return false;
+    const [a, b, c] = w[w.length - 1];
+    return isMachine(a, b, c, 1);
+  }
+
+  // takeover test, per sighting: the line now sits >= cohJumpDb over the
+  // median of the cohJumpRefObs consecutive sightings that ended
+  // cohJumpRiseObs observations ago, those held within cohJumpStableDb, no
+  // sighting before them (prePeak) was more than cohJumpPeakTolDb above them
+  // (a steady line at its loudest so far, then a jump no constant-slope
+  // crescendo and no voice recovering from a dip makes), and the line had not
+  // read as a voice by the FIRST of those steady sightings (a vowel change, a
+  // settle-then-swell: see "Voice vs machine lines", follow-up / fix round; a
+  // loud note cannot have started before it without breaking the
+  // steadiness, so those windows hold the old line alone)
+  function tookOver(t, power) {
+    const ph = (t.ph ??= []), R = cfg.cohJumpRiseObs, P = cfg.cohJumpRefObs;
+    ph.push([obsIndex, 10 * Math.log10(power + 1e-30), chunkCounter]);
+    while (ph[0][0] <= obsIndex - R - P) t.prePeak = Math.max(t.prePeak ?? -Infinity, ph.shift()[1]);
+    const ref = [];
+    let refStart = Infinity;
+    for (const [o, d, c] of ph) if (o <= obsIndex - R) { ref.push(d); refStart = Math.min(refStart, c); }
+    if (ref.length < P) return false;
+    ref.sort((a, b) => a - b);
+    return ref[ref.length - 1] - ref[0] <= cfg.cohJumpStableDb
+      && (t.prePeak ?? -Infinity) <= ref[ref.length - 1] + cfg.cohJumpPeakTolDb
+      && ph[ph.length - 1][1] >= ref[Math.floor(ref.length / 2)] + cfg.cohJumpDb
+      && !voiceUpTo(t, refStart);
+  }
 
   function observe() {
     obsIndex++;
@@ -281,12 +510,16 @@ export function createNoiseNotch(sampleRate, opts = {}) {
         // that production never promoted — measured on a private session
         // recording.)
         best.firstObs = obsIndex; best.hits = 0; best.onsetBorn = true;
+        best.coh = undefined; best.voiceBorn = false; best.ph = undefined; best.prePeak = undefined; best.jumped = false;
         best.freq = pk.freq; best.dev = 0;
       }
       if (best) {
         best.dev = 0.9 * best.dev + 0.1 * Math.abs(pk.freq - best.freq); // wobble estimate
         best.freq = 0.9 * best.freq + 0.1 * pk.freq; // slow EMA — stability IS the criterion
         best.power = pk.power;
+        // a louder source taking over a line that was already there (a note
+        // sung on a hum's track): no voice timing for it (tookOver)
+        if (tookOver(best, pk.power)) best.jumped = true;
         best.hits++;
         best.lastSeenObs = obsIndex;
         best._seen = true;
@@ -303,6 +536,14 @@ export function createNoiseNotch(sampleRate, opts = {}) {
     for (const t of tracks) {
       const span = obsIndex - t.firstObs + 1;
       const duty = t.hits / span;
+      // voice timing (see "Voice vs machine lines"): a voice-confirmed line
+      // that was not onset-born is timed as onset-born; revoked when it
+      // reads machine (pooled, or its latest window alone)
+      if (!t.active) {
+        const cls = cohClass(t);
+        if (cls === "voice" && !t.onsetBorn && !t.jumped && t.freq >= cfg.cohLoHz && t.freq <= cfg.cohHiHz) { t.onsetBorn = true; t.voiceBorn = true; }
+        if (t.voiceBorn && (cls === "machine" || lastMachine(t))) { t.onsetBorn = false; t.voiceBorn = false; }
+      }
       // promote only on an observation that actually saw the peak (a note
       // that just ended must not promote on its trailing duty)
       if (!t.active && t._seen && span >= (t.onsetBorn ? onsetMinObs : minObs) && duty >= cfg.promoteDuty) t.active = true;
@@ -343,6 +584,7 @@ export function createNoiseNotch(sampleRate, opts = {}) {
     if (obsPerSec == null && k > 0) obsPerSec = sampleRate / (k * cfg.observeEveryChunks);
     chunkCounter++;
     if (rawFill >= bufferLength && chunkCounter % cfg.observeEveryChunks === 0) observe();
+    if (obsIndex > 0) cohStep(Math.min(k, bufferLength - cfg.cohWin));
 
     for (const n of cascade) n.biquad.processInPlace(chunk);
     return chunk;

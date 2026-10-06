@@ -41,12 +41,13 @@ export const QUAL = {
 
 // synth({ sr, dur, f0At(t) -> base Hz (0 = unvoiced), ampAt(t) -> [0,1],
 //         vowelAt(t) -> key, qual, vibCents, vibHz, wanderCents, jitterPct,
-//         shimmerPct, amp, seed, floorDb })
+//         shimmerPct, amp, seed, floorDb, h1GainAt(t) -> dB (optional: an
+//         extra gain on the 1st harmonic only, 2026-10-06) })
 // Harmonic amplitudes are re-evaluated every 5 ms (F0/vowel can move).
 export function synth({
   sr = 16000, dur, f0At, ampAt, vowelAt = () => "a", qual = "modal",
   vibCents = 0, vibHz = 5.5, wanderCents = 0, wanderTau = 0.5,
-  jitterPct = 0.5, shimmerPct = 3, amp = 0.2, seed = 1, floorDb = -70,
+  jitterPct = 0.5, shimmerPct = 3, amp = 0.2, seed = 1, floorDb = -70, h1GainAt = null,
 }) {
   const q = typeof qual === "string" ? QUAL[qual] : qual;
   const rnd = mulberry(seed);
@@ -94,7 +95,7 @@ export function synth({
       let v = 0;
       for (let k = 1; k <= nh; k++) {
         if (k * f > 7800) break;
-        v += A[k] * Math.sin(k * phase);
+        v += (k === 1 && h1GainAt ? Math.pow(10, h1GainAt(t) / 20) : 1) * A[k] * Math.sin(k * phase);
       }
       s = ampAt(t) * (voicedRms * cycS * v + noiseRms * gauss(rnd));
     } else {

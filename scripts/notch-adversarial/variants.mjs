@@ -120,3 +120,125 @@ VARIANTS.R7 = { tree: "cand2", opts: { handoffCents: 0, quietGate: true, n13Revo
 // since the run's first window (a release tail decays from the moment the
 // note stops; a 1:1 beat slides slowly, then plunges into its null)
 VARIANTS.R8 = { tree: "cand2", opts: { handoffCents: 0, quietGate: true, n13Revokes: false, steadyWin: 5, quietDecayDb: 3, decayEligDb: 6, decaySpan: 3, prov: true, returnDb: 6, returnK: 20, decayRateDb: 3 } };
+
+// ---- 2026-10-05 voice-vs-machine CANDIDATE phase - cand3-notch.js ----
+// (r8-notch.js + per-track line coherence: shared mid-band FM of the line
+// and its 2nd partial over the last <= 5 1-s windows, >= 3 needed;
+// measurements/notch-voice-machine-discrimination-2026-10-05.md).
+// machine-confirmed = pcorr < 0.15 OR pcoh < 1 c; voice-confirmed = pcorr
+// >= 0.5 AND pcoh >= 2 c (V*s: >= 0.7 AND >= 2.5 c). Rules (coh flags):
+//   voice "onset"  a voice-confirmed track is timed as onset-born (20 s clock
+//                  from its first sighting) - glides / speech -> hold
+//   voice "block"  a voice-confirmed track never promotes
+//   machine        a machine-confirmed track promotes at 5 s even if
+//                  onset-born (switch-on / intermittent sources)
+//   rebirthGate    R8 breath re-births for every onset-born track ("any"),
+//                  only voice-confirmed ones ("voice") or all but machine-
+//                  confirmed ones ("notMachine")
+// V0 must == R8, VB0 must == B.
+VARIANTS.V0 = { tree: "cand3", opts: {} };
+VARIANTS.VB0 = { tree: "cand3", opts: { rebirth: false } };
+VARIANTS.V1 = { tree: "cand3", opts: { coh: { voice: "onset", machine: true, rebirthGate: "notMachine" } } };
+VARIANTS.V2 = { tree: "cand3", opts: { rebirth: false, coh: { voice: "block", machine: true } } };
+VARIANTS.V3 = { tree: "cand3", opts: { coh: { voice: "block", machine: true, rebirthGate: "notMachine" } } };
+VARIANTS.V4 = { tree: "cand3", opts: { coh: { voice: "onset", machine: false, rebirthGate: "voice" } } };
+VARIANTS.V4s = { tree: "cand3", opts: { coh: { voice: "onset", machine: false, rebirthGate: "voice", vCorr: 0.7, vCoh: 2.5 } } };
+VARIANTS.V5 = { tree: "cand3", opts: { coh: { voice: "onset", machine: true, rebirthGate: "voice" } } };
+VARIANTS.V6 = { tree: "cand3", opts: { coh: { voice: "onset", machine: false, rebirthGate: "notMachine" } } };
+// V7 = V6 + voiceRevoke: a voice-timed (not onset-born) line that later
+// reads machine-confirmed gets its 5 s timing back (r2int step spin-up: the
+// spin-up transient's curvature reads as shared FM)
+VARIANTS.V7 = { tree: "cand3", opts: { coh: { voice: "onset", machine: false, rebirthGate: "notMachine", voiceRevoke: true } } };
+// V8 = V7 + reanchor (a line >= 10 dB down for 0.5 s while still seen restarts
+// its coherence windows: a weaker source now holds it) + jumpGuard (no voice
+// timing for a line whose level rose >= onsetDb over its first sightings: a
+// louder source took over a pre-existing line, handoff-adv "stop" cells)
+VARIANTS.V8 = { tree: "cand3", opts: { coh: { voice: "onset", machine: false, rebirthGate: "notMachine", voiceRevoke: true, reanchor: true, jumpGuard: true } } };
+// V9 = V8 with a 6 dB jump guard (the hum 9 dB under a note on its track)
+VARIANTS.V9 = { tree: "cand3", opts: { coh: { voice: "onset", machine: false, rebirthGate: "notMachine", voiceRevoke: true, reanchor: true, jumpGuard: true, jumpDb: 6 } } };
+// V10 = V9 + voice timing also revoked when the latest single window reads
+// machine (a note glided onto a hum: the pooled windows still hold the glide)
+VARIANTS.V10 = { tree: "cand3", opts: { coh: { voice: "onset", machine: false, rebirthGate: "notMachine", voiceRevoke: true, reanchor: true, jumpGuard: true, jumpDb: 6, revokeLast: true } } };
+// real-data round (2026-10-05): V10's notMachine re-birth gate let real gated
+// sources re-birth while still undecided (< 3 windows) -> 99 / 504 real
+// noise_gated streams later than bc42ad0. V11 = no breath re-births at all
+// (bc42ad0 + voice timing / revoke / jump guard / reanchor); V12 = re-births
+// only for voice-confirmed lines, strict voice verdict (pcorr >= 0.7, pcoh
+// >= 2.5 c) everywhere; V13 = the same with the 0.5 / 2 c verdict
+const V10c = { voice: "onset", machine: false, voiceRevoke: true, reanchor: true, jumpGuard: true, jumpDb: 6, revokeLast: true };
+VARIANTS.V11 = { tree: "cand3", opts: { rebirth: false, coh: { ...V10c, rebirthGate: "any" } } };
+VARIANTS.V12 = { tree: "cand3", opts: { coh: { ...V10c, rebirthGate: "voice", vCorr: 0.7, vCoh: 2.5 } } };
+VARIANTS.V13 = { tree: "cand3", opts: { coh: { ...V10c, rebirthGate: "voice" } } };
+// V14 = V11 with the strict voice verdict (pcorr >= 0.7, pcoh >= 2.5 c):
+// bc42ad0 (no breath re-births) + voice timing for not-onset-born lines
+VARIANTS.V14 = { tree: "cand3", opts: { rebirth: false, coh: { ...V10c, rebirthGate: "any", vCorr: 0.7, vCoh: 2.5 } } };
+
+// ---- 2026-10-05 V14 follow-up (review fixes) - cand3-notch.js ----
+// V15 = V14 with the coherence band starting at the display / detector floor
+// (75 Hz, PITCH_DISPLAY_RANGE.low) instead of 80 Hz: 75-80 Hz lines got no
+// verdict. V16 = V15 with the takeover jump guard (jumpMode "plateau"): no
+// voice timing only when the line rose >= 6 dB within 6 observations over a
+// level that held within 1.5 dB for 3 consecutive sightings (a louder source
+// starting on a line that was already there), instead of >= 6 dB over the
+// median of its first 3 sightings (which also blocked real crescendos /
+// messa di voce at the note's start). 1.5 dB < 2 x 6 dB / (6 + 1): no
+// constant-slope crescendo can pass as "steady, then +6 dB in 6
+// observations". V16s3 / V16r4 / V16r10 = guard sensitivity.
+const V14c = { ...V10c, rebirthGate: "any", vCorr: 0.7, vCoh: 2.5 };
+const PLAT = { jumpMode: "plateau", jumpRefObs: 3, jumpStableDb: 1.5, jumpRiseObs: 6 };
+VARIANTS.V15 = { tree: "cand3", opts: { rebirth: false, coh: { ...V14c, fLo: 75 } } };
+VARIANTS.V16 = { tree: "cand3", opts: { rebirth: false, coh: { ...V14c, fLo: 75, ...PLAT } } };
+VARIANTS.V16s3 = { tree: "cand3", opts: { rebirth: false, coh: { ...V14c, fLo: 75, ...PLAT, jumpStableDb: 3 } } };
+VARIANTS.V16r4 = { tree: "cand3", opts: { rebirth: false, coh: { ...V14c, fLo: 75, ...PLAT, jumpRiseObs: 4 } } };
+VARIANTS.V16r10 = { tree: "cand3", opts: { rebirth: false, coh: { ...V14c, fLo: 75, ...PLAT, jumpRiseObs: 10 } } };
+// V17 = V16 + voice timing granted only while the latest single window's
+// correlation is >= 0.7 too. Tried AFTER the held-out run on its one failing
+// takeover cell (a note at the hum's level on its track, beating; the pooled
+// verdict arrived 1 s after the note ended) and NOT adopted: it does not fix
+// that cell (the granting window's correlation is 0.93: the note-to-hum
+// switch is itself a frequency step shared by both partials), and a rule
+// fitted to a held-out cell would make it in-sample.
+VARIANTS.V17 = { tree: "cand3", opts: { rebirth: false, coh: { ...V14c, fLo: 75, ...PLAT, grantLastCorr: 0.7 } } };
+// V18 = V16 + the takeover's steady level must be the line's loudest so far
+// (no sighting before the reference more than 3 dB above it): a held-out
+// Coswara /a/ dipped 13 dB after its onset, held steady ~31 dB, then rose
+// 7 dB within 4 observations -> V16's takeover test fired on a voice.
+VARIANTS.V18 = { tree: "cand3", opts: { rebirth: false, coh: { ...V14c, fLo: 75, ...PLAT, jumpPeakTolDb: 3 } } };
+
+// ---- 2026-10-06 V14 fix round (review of the follow-up) - cand3-notch.js ----
+// V19p = V18 + the takeover test needs the line NOT to read as a voice before
+// the jump (jumpPreVoice: the windows completed before the steady reference
+// ended must not pool to the voice verdict; none = fires as before): a vowel
+// change / crescendo on a held voice raises its line like a takeover.
+// V19 = V19p + the band measured within matchHz (3 Hz) of 75 / 400 Hz, and a
+// line leaving the band drops its running series (no spliced windows): a
+// voice centred on 75.0 Hz wandered out of the band and lost its windows.
+// V19l = V19 + lapse: voice timing also revoked when the pooled windows fall
+// under the discovery-phase verdict 0.5 / 2 c. Tried on the review's cases and
+// NOT adopted: it changes none of them (the real mains-hum line that kept its
+// voice timing pools 0.60-0.87 / 4-7 c throughout; the wobbling hum's note
+// windows dominate the pool until the first hum-alone window).
+// V19c = V19 + a 10 s cap on the voice timing of lines first seen in the
+// stream's first observation (the exposure to voice-like machines that are
+// running when the stream starts); a product dial, measured, not a candidate.
+const V18c = { ...V14c, fLo: 75, ...PLAT, jumpPeakTolDb: 3 };
+VARIANTS.V19p = { tree: "cand3", opts: { rebirth: false, coh: { ...V18c, jumpPreVoice: true } } };
+VARIANTS.V19 = { tree: "cand3", opts: { rebirth: false, coh: { ...V18c, jumpPreVoice: true, bandMarginHz: 3, clearOob: true } } };
+// V19f = V19 with the pre-jump windows ending by the steady reference's FIRST
+// sighting (a takeover note's onset transient can sit in a window that ends
+// inside the steady stretch and read as shared FM: hadv --sweep, 85 Hz hum,
+// 1.2 c wobble, rms 0.035, 48 kHz)
+VARIANTS.V19f = { tree: "cand3", opts: { rebirth: false, coh: { ...V18c, jumpPreVoice: true, jumpPreFirst: true, bandMarginHz: 3, clearOob: true } } };
+// V19g = V19f, but voice timing is granted only while the line itself sits
+// inside 75-400 Hz: the 3 Hz margin is for measurement only. V19f's margin
+// also granted it to machines at 73 / 74 / 401 / 402 Hz (vmach --part=edge:
+// 138 / 240 cells late, V18 0) = src/ after the fix round
+VARIANTS.V19g = { tree: "cand3", opts: { rebirth: false, coh: { ...V18c, jumpPreVoice: true, jumpPreFirst: true, bandMarginHz: 3, clearOob: true, grantInBand: true } } };
+// V19h = V19g with the grant band widened by half an FFT bin (0.5 Hz): the
+// line estimate of a voice centred on 75.0 Hz sits at 74.90-74.98 Hz, so
+// V19g never granted it (noise-notch-test 75.0 Hz seed 16). Rejected: it
+// also granted voice-like machines at 401 Hz whose wobble reaches 400.5 Hz
+// (vmach --part=edge 6 / 240 cells late, 2 never notched; V19g 0)
+VARIANTS.V19h = { tree: "cand3", opts: { rebirth: false, coh: { ...V18c, jumpPreVoice: true, jumpPreFirst: true, bandMarginHz: 3, clearOob: true, grantInBand: true, grantTolHz: 0.5 } } };
+VARIANTS.V19l = { tree: "cand3", opts: { rebirth: false, coh: { ...V18c, jumpPreVoice: true, bandMarginHz: 3, clearOob: true, lapseCorr: 0.5, lapseCoh: 2 } } };
+VARIANTS.V19c = { tree: "cand3", opts: { rebirth: false, coh: { ...V18c, jumpPreVoice: true, bandMarginHz: 3, clearOob: true, capSec: 10 } } };
