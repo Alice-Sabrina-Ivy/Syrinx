@@ -27,7 +27,16 @@
 #         segments per reference-voiced second; within-word gaps = unpainted
 #         runs between two painted segments that lie wholly inside reference
 #         voicing (strict) and, as a second reading, every unpainted run
-#         <= 500 ms between two painted segments.
+#         <= 500 ms between two painted segments. Context columns (review fix
+#         round 2026-10-06; not part of the registered verdict): gaps of
+#         <= 500 ms between painted segments per voiced second and their total
+#         time per voiced second (strict reading in brackets) — both grow with
+#         fragmentation, while the registered median gap FALLS when a change
+#         adds short gaps inside words.
+#   G2    the verdict reads the registered pooled change; a second verdict
+#         row reads it gender-symmetrically (max(F_err, M_err) painted not
+#         worse by > 0.3 pp), as the project's binding rule for ship
+#         decisions asks.
 import sys, os, glob, json
 import numpy as np
 
@@ -206,6 +215,7 @@ def g23(lead, split):
             ok3 = dseg["tail"] <= 1.0 and dseg["gaps"] <= 1.0 and n10 == 0
             key = f"L{lead}|{split}|{snr}"
             v2 = verdict(t, f"G2 {key}", ok2); v3 = verdict(t, f"G3 {key}", ok3)
+            verdict(t, f"G2 gender-symmetric (max(F_err, M_err) <= +0.3 pp) {key}", ec - eb <= 0.3)
             print(f"| {t} | {snr} | {pct(pb, pn):.2f} -> {pct(pc, pn):.2f} ({dp:+.3f}) | {pct(lb, ln):.2f} -> {pct(lc, ln):.2f} ({dl:+.3f}) | "
                   f"{w2} / {len(ss)} ({share:.1f} %) | {pct(wc - wb, wn):+.3f} | {ec - eb:+.3f} | {segs[0]} | {segs[1]} | {segs[2]} | "
                   f"{worst['tail']:+.1f} / {worst['gaps']:+.1f} | {n10} | {v2} | {v3} |")
@@ -238,8 +248,8 @@ def frag(tag, cp):
 
 def g4():
     print("\n## G4: trace continuity, clean speech (painted segments per reference-voiced second; within-word gaps)")
-    print("| tag | FDA seg/s | PTDB seg/s | vocadito seg/s | pooled seg/s | strict within-word gaps n, median / mean ms | gaps <= 500 ms n, median ms (FDA / PTDB / voc) | verdict (<= +5 %, median not longer) |")
-    print("|---|---|---|---|---|---|---|---|")
+    print("| tag | FDA seg/s | PTDB seg/s | vocadito seg/s | pooled seg/s | strict within-word gaps n, median / mean ms | gaps <= 500 ms n, median ms (FDA / PTDB / voc) | verdict (<= +5 %, median not longer) | context: gaps <= 500 ms per voiced s / their time per voiced s [strict] |")
+    print("|---|---|---|---|---|---|---|---|---|")
     base = None
     for t in TAGS:
         per, S, Vs, G, G5 = {}, 0, 0.0, [], {}
@@ -248,9 +258,12 @@ def g4():
             per[cp] = s / v; S += s; Vs += v; G += g; G5[cp] = g5
         r = S / Vs
         med = float(np.median(G)) if G else 0.0
+        G5all = [g for cp in G5 for g in G5[cp]]
+        gps, gts = len(G5all) / Vs, sum(G5all) / 1000 / Vs  # <= 500 ms gaps per voiced s, their seconds per voiced s
+        sps, sts = len(G) / Vs, sum(G) / 1000 / Vs          # strict gaps
         med5 = {cp: float(np.median(G5[cp])) if G5[cp] else 0.0 for cp in G5}
         row = dict(per=per, pooled=r, n=len(G), med=med, mean=float(np.mean(G)) if G else 0.0,
-                   n5={cp: len(G5[cp]) for cp in G5}, med5=med5)
+                   n5={cp: len(G5[cp]) for cp in G5}, med5=med5, gps=gps, gts=gts, sps=sps, sts=sts)
         if base is None:
             base = row
             cells = [f"{per[cp]:.4f}" for cp in ("fda", "ptdb", "voc")] + [f"{r:.4f}"]
@@ -261,8 +274,11 @@ def g4():
             ok = (100 * (r / base["pooled"] - 1) <= 5 and all(100 * (per[cp] / base["per"][cp] - 1) <= 5 for cp in per)
                   and med <= base["med"] and all(med5[cp] <= base["med5"][cp] for cp in med5))
             vd = verdict(t, "G4", ok)
+        ctx = (f"{gps:.4f} / {1000 * gts:.1f} ms [{sps:.4f} / {1000 * sts:.1f} ms]" if t == TAGS[0] else
+               f"{gps:.4f} ({100 * (gps / base['gps'] - 1):+.1f} %) / {1000 * gts:.1f} ms ({100 * (gts / base['gts'] - 1):+.1f} %)"
+               f" [{100 * (sps / base['sps'] - 1):+.1f} % / {100 * (sts / base['sts'] - 1):+.1f} %]")
         print(f"| {t} | " + " | ".join(cells) + f" | {len(G)}, {med:.0f} / {row['mean']:.1f} | "
-              + " / ".join(f"{row['n5'][cp]}, {med5[cp]:.0f}" for cp in ("fda", "ptdb", "voc")) + f" | {vd} |")
+              + " / ".join(f"{row['n5'][cp]}, {med5[cp]:.0f}" for cp in ("fda", "ptdb", "voc")) + f" | {vd} | {ctx} |")
         OUT.setdefault(t, {})["g4"] = row
 
 

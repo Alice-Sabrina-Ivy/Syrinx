@@ -34,7 +34,12 @@ gitignored PTDB-TUG / FDA audio. Every output lands under `build/` (gitignored).
 | `clips_csv.py` | per-clip table committed with the measurement |
 | `shiprule.py` | the pre-registered ship-rule rows of the pitch-hold bridge rework ([measurements/pitch-hold-bridge-rework-2026-10-06.md](../../measurements/pitch-hold-bridge-rework-2026-10-06.md)): goal (painted false voicing on the 279 noise-only clips, tuning / held-out, and the second held-out set `noiseho`) and G1–G4 (corpora, voice in noise at the 20 s and no lead incl. per-stream and noise-after-speech rules, clean-speech continuity), PASS / FAIL per row; `--paint=paintF` scores the trace as it stands at the end of the stream |
 | `bridge-rate-check.mjs` | a display change's transfer from the 16 kHz corpora to 44.1 / 48 kHz: a resampled subset of the noise-only clips and voice-in-noise mixes through the real worker at each rate, base and candidate hook |
-| `held-painted.mjs` | the held-note suite scored on the PAINTED trace of any number of hook trees over one worker run per scenario (`held.mjs` scores the posted pitch, which a display change cannot move) |
+| `held-painted.mjs` | the held-note suite scored on the PAINTED trace of any number of hook trees over one worker run per scenario (`held.mjs` scores the posted pitch, which a display change cannot move); `--suite=lowband`: the 80–120 Hz breathy holds of `scripts/notch-adversarial/scenarios.mjs` `lowBandScenarios()` |
+| `evidence.py` | offline replica of the pitch-hold bridge's voice-evidence rule (`src/audio/bridgeEvidence.js`) over the dumps; `check` must report 0 mismatching hops against a real-hook replay before any row built on it is quoted (fix round 2026-10-06) |
+| `bridge-review.py` | the decision-record rows the ship rule does not score: goal with clip-bootstrap CIs, time-weighted, by stream time / duration / source / class; noise clips that produce strong-evidence frames vs not; warm-start counterfactual; what the user sees (trace, readout, glow dot, any); notch timing of the evidence; voice in noise per stream by F0 bin and gender; readout / style flicker |
+| `afterspeech.mjs`, `afterspeech.py` | painted false voicing on real noise after one PTDB-TUG sentence and between sentences every 15 s (real workers, any number of hook trees), by time since the last sentence |
+| `cpp-vs-f0.mjs` | production cpp.js on one synthetic vowel vs F0, on the DSP worker's 50 ms and 64 ms windows (`--sr=48000` for the mic rate) |
+| `held-painted-agg.py` | summary of `held-painted.mjs` outputs: suite mean, runs > 0.5 pp below base, per family / F0, losing runs |
 | `cand/noise-floor-guard.js`, `cand/noise-floor-guard-test.mjs` | the (not adopted) learned-background voicing veto and its contract test (`python scripts/realnoise-fv/mktree.py fg`, then `node scripts/realnoise-fv/cand/noise-floor-guard-test.mjs`) |
 
 Commands: the measurement file's "Reproduction" section.
@@ -49,6 +54,14 @@ the pitch-hold bridge's voice evidence reads CPP). Dumps gained `cpp`, `hnr`,
 (`NOTCHVD_ROOT=<...>/notchvd-heldout`); `lib/tap-notch.mjs` resolves the
 notch's own relative imports (V19g's `noise-notch.js` imports
 `../utils/constants.js`, which a `data:` URL cannot).
+
+**Fix round** (2026-10-06): the DSP worker posts `bridgeCpp` (CPP on the last
+64 ms) and the hook pairs each voiced flag with the CPP of the chunk its pitch
+frame ended on, by both messages' contextTime. Dumps gained `bcpp`;
+`lib/chain.mjs` builds both contextTimes into the frames it hands the hook;
+`replay.mjs` refuses a dump without `bcpp` (the evidence would fail open)
+unless `--allow-no-bcpp`. `shiprule.py` adds a gender-symmetric G2 verdict row
+and G4 context columns that grow with fragmentation.
 
 **Checking any future background-floor guard** (review fixes 2026-10-05):
 voice in noise with NO noise-only lead and with short leads (`--lead=0,1,3,8`),

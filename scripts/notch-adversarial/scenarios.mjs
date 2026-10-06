@@ -360,6 +360,37 @@ export function heldScenarios() {
   return out;
 }
 
+// lowBandScenarios() (2026-10-06, pitch-hold bridge rework fix round): held
+// notes at 80-120 Hz — the band between the held suite's `low` family
+// (76-79 Hz) and its other families (>= 98 / 120 Hz) — built to make the
+// detector drop frames, which is when a display's hold bridge matters:
+// breathy and very breathy phonation (HNR 10 / 6 dB, steep source), /i/ and
+// /u/ (low F1: weak upper harmonics) and /a/, phonation from the stream
+// start (t0 = 0 / 0.15 s: no earlier speech to open any evidence), swells
+// (crescendo -10 -> 0 dB over 3 s, messa di voce) and a soft hold at -12 dB.
+// Not part of heldScenarios(): the notch work's 902-scenario suite and its
+// recorded results stay as they are.
+const VERY_BREATHY = { h1h2: 15, hnrDb: 6, slope: -14 };
+export function lowBandScenarios() {
+  const out = [];
+  let seed = 9000;
+  const SH = {
+    flat: () => 0,
+    soft12: () => -12,
+    cresc10: (u) => (u < 3 ? -10 + 10 * u / 3 : 0),
+    messa: (u) => -10 * Math.abs(Math.cos(Math.PI * u / 8)),
+  };
+  for (const f0 of [82, 88, 94, 100, 106, 112, 118]) for (const vowel of ["i", "u", "a"]) for (const [qn, qual] of [["breathy", "breathy"], ["verybreathy", VERY_BREATHY]])
+    for (const [sn, g] of Object.entries(SH)) for (const t0 of [0, 0.15]) {
+      if (t0 === 0 && sn !== "flat") continue;
+      seed++;
+      const hold = { kind: "hold", a: t0, b: t0 + 12, vowel, ramp: 0.02, gainAt: (tn) => Math.pow(10, g(tn) / 20), f0At: () => f0 };
+      out.push({ name: `lowband/${f0}/${vowel}/${qn}/${sn}/t0=${t0}`, family: `lowband-${qn}`, holds: [[t0, t0 + 12]], promoF: [[f0, f0]], dur: t0 + 13,
+        build: buildTimeline([hold], t0 + 13, { qual, vibCents: 10, wanderCents: 3, seed }) });
+    }
+  return out;
+}
+
 // Schroeder reverb (4 parallel combs + 2 series allpasses), wet at -3 dB re
 // dry: a living-room-like release tail for the round-2 reverb family.
 function schroeder(x, sr, rt60) {

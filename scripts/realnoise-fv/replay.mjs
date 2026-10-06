@@ -17,8 +17,12 @@
 // Writes <attr>/<NEWTAG>/<set>/ dumps: every column copied from TAG, display
 // columns (msg / paint / ro / style) replaced. Gender column gv is copied
 // unchanged (the display does not feed the gender worker). The DSP worker's
-// cpp / hnr / tilt columns, when the dump has them, reach the hook as in
-// production (2026-10-06).
+// cpp / hnr / tilt / bcpp (bridgeCpp) columns, when the dump has them, reach
+// the hook as in production (2026-10-06), with both messages' contextTime
+// (lib/chain.mjs buildFrames). A dump without bcpp (made before the fix
+// round) hands the hook no bridgeCpp: the bridge evidence then fails open,
+// so replaying a current hook over such a dump is refused unless
+// --allow-no-bcpp.
 import { readFileSync, writeFileSync, mkdirSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { loadSrc, buildFrames, driveHook } from "../session-oracle/lib/chain.mjs";
@@ -44,12 +48,13 @@ for (const nm of names) {
   const n = m.n, col = {};
   m.cols.forEach((c, i) => { col[c] = tbl.subarray(i * n, (i + 1) * n); });
   const L = m.L;
+  if (!m.cols.includes("bcpp") && !args["allow-no-bcpp"]) throw new Error(`${nm}: dump has no bcpp column (made before 2026-10-06 fix round); the bridge evidence would fail open — re-run attr.mjs, or pass --allow-no-bcpp for a hook that does not read bridgeCpp`);
   let f0 = -1;
   for (let k = 0; k < n; k++) if (col.uv[k] > 0) { f0 = k; break; }
   const msgPitch = new Float32Array(n).fill(NaN), msgConf = new Float32Array(n).fill(NaN);
   if (f0 >= 0) for (let k = f0 + L; k < n; k++) { msgPitch[k] = col.post[k - L]; msgConf[k] = col.conf[k - L]; }
   const sr = m.sr ?? ({ fda: 20000, ptdb: 48000, voc: 44100 }[SET] ?? 16000), C = Math.round(sr * 0.025);
-  const W = { n, C, sr, L, col: { inten: col.inten, cpp: col.cpp, hnr: col.hnr, tilt: col.tilt }, msgPitch, msgConf };
+  const W = { n, C, sr, L, col: { inten: col.inten, cpp: col.cpp, hnr: col.hnr, tilt: col.tilt, bcpp: col.bcpp }, msgPitch, msgConf };
   const D = await driveHook(S.hookPath, buildFrames(W), n);
   if (args.parity) {
     for (const c of ["paint", "ro", "style"]) for (let k = 0; k < n; k++) if (col[c][k] !== D[c][k]) { mism++; break; }

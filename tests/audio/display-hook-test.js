@@ -29,9 +29,11 @@ function check(name, cond, detail = "") {
 // leaks between cases). Inputs per frame: a number = fresh detection (loud,
 // confidence 0.8); "q" = quiet pitchless frame (-70 dB); "l" = loud
 // pitchless frame (-38 dB, the pitch-hold bridge). Returns the value the
-// trace painted on each frame (0 = gap). cpp (optional): the DSP worker's CPP
-// on voiced frames (pitchless frames get 0.2); null = none, as before
-// 2026-10-06 (the bridge's voice evidence then fails open).
+// trace painted on each frame (0 = gap). cpp (optional): the DSP worker's
+// bridgeCpp on voiced frames (pitchless frames get 0.2); null = none, as
+// before 2026-10-06 (the bridge's voice evidence then fails open). Each
+// frame's pitch message and DSP frame name the same chunk (contextTime), so
+// a frame's CPP pairs with its own voiced flag.
 let gen = 0;
 async function run(seq, { cpp = null } = {}) {
   M.refs = []; M.effects = []; M.state = null;
@@ -49,9 +51,9 @@ async function run(seq, { cpp = null } = {}) {
     if (typeof x === "number") { intensity = -28; pitch = x; confidence = 0.8; }
     else if (x === "q") { intensity = -70; confidence = 0.2; }
     else { intensity = -38; confidence = 0.3; }
-    latest.current = { pitch, confidence, voiced: pitch !== null, ts: t };
+    latest.current = { pitch, confidence, voiced: pitch !== null, ts: t, contextTime: t / 1000 };
     const frameCpp = cpp === null ? null : (pitch !== null ? cpp : 0.2);
-    har.current({ intensity, formants: null, spectralTilt: null, hnr: null, cpp: frameCpp, absoluteTime: t });
+    har.current({ intensity, formants: null, spectralTilt: null, hnr: null, cpp: null, bridgeCpp: frameCpp, contextTime: t / 1000, absoluteTime: t });
     const trace = api.pitchTraceRef.current;
     const e = trace[trace.length - 1];
     return e && e.time === Math.round(t) && e.pitch !== null ? e.pitch : 0;

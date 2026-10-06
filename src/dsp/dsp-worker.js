@@ -21,6 +21,16 @@ let windowSize = Math.floor(sampleRate * WINDOW_MS / 1000);
 // 100 ms with 25 ms chunks).
 const HNR_WINDOW_MS = 70;
 let hnrSize = Math.floor(sampleRate * HNR_WINDOW_MS / 1000);
+// Voice evidence for the pitch-hold bridge (src/audio/bridgeEvidence.js):
+// a second CPP on a 64 ms window (cpp.js CPP_INPUT_LEN, its preferred
+// length), ending at the chunk end like the 50 ms one. On the 50 ms window
+// CPP depends on F0 — a deep voice fits fewer periods: a synthetic vowel at
+// 76-82 Hz reads 35-48 % lower than at 140-200 Hz — so a fixed evidence
+// threshold was a stricter bar for low voices. 64 ms flattens 90-250 Hz
+// (measurements/pitch-hold-bridge-rework-2026-10-06.md §4.1). Kept apart
+// from `cpp`, which feeds the vocal-weight gauge unchanged.
+const BRIDGE_CPP_WINDOW_MS = 64;
+let bridgeCppSize = Math.floor(sampleRate * BRIDGE_CPP_WINDOW_MS / 1000);
 
 // Pre-allocated ring buffer to avoid GC pressure from repeated allocations.
 // Uses a fixed-size buffer with a write position; oldest data is overwritten.
@@ -98,6 +108,9 @@ function processChunk(buffer, contextTime) {
   const cppT0 = _diag ? performance.now() : 0;
   cpp = computeCPP(window, sampleRate);
   const cppMs = _diag ? performance.now() - cppT0 : null;
+  // cpp.js keeps no state across calls at its production defaults (no time
+  // smoothing), so this second call leaves `cpp` above unchanged.
+  const bridgeCpp = computeCPP(ringBuffer.subarray(ringLen - Math.min(ringLen, bridgeCppSize), ringLen), sampleRate);
   analysisCount++;
 
   const analysisEndTime = performance.now();
@@ -137,7 +150,7 @@ function processChunk(buffer, contextTime) {
       // useAudioPipeline.js merges the pitch-worker's most-recent pitch into
       // each analysis frame.
       pitch: null,
-      intensity, formants, spectralTilt, hnr, cpp,
+      intensity, formants, spectralTilt, hnr, cpp, bridgeCpp,
       // Absolute timestamp comparable across threads
       absoluteTime: performance.timeOrigin + performance.now(),
       // Diagnostic fields (always present so the main-thread shape doesn't
@@ -159,6 +172,7 @@ self.onmessage = (e) => {
     if (e.data.diag) _diag = true;
     windowSize = Math.floor(sampleRate * WINDOW_MS / 1000);
     hnrSize = Math.floor(sampleRate * HNR_WINDOW_MS / 1000);
+    bridgeCppSize = Math.floor(sampleRate * BRIDGE_CPP_WINDOW_MS / 1000);
     // Formant extractor (src/dsp/formants.js): decimation, anti-alias FIR
     // and zero-GC scratch buffers for this sample rate / window length.
     configureFormants(sampleRate, windowSize);

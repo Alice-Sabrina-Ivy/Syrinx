@@ -24,10 +24,13 @@
 //   consuming the pitch message emitted at chunk k, which describes frame
 //   k-L):
 //     inten  DSP-worker intensity (dB) — NaN before the DSP worker posts
-//     (runWorkers also keeps the DSP worker's cpp / hnr / tilt per hop in
-//     col.cpp / col.hnr / col.tilt, NaN = null, and buildFrames / driveHook
-//     hand them to the hook as production does — 2026-10-06: the pitch-hold
-//     bridge's voice evidence reads cpp)
+//     (runWorkers also keeps the DSP worker's cpp / hnr / tilt / bridgeCpp
+//     per hop in col.cpp / col.hnr / col.tilt / col.bcpp, NaN = null, and
+//     buildFrames / driveHook hand them to the hook as production does —
+//     2026-10-06: the pitch-hold bridge's voice evidence reads bridgeCpp —
+//     together with both messages' contextTime: the DSP frame's chunk end
+//     (k + 1) * C / sr and the consumed pitch message's, i.e. the chunk its
+//     frame ended on; the evidence pairs the two by it)
 //     msg    pitch in the consumed message (0 = null)
 //     paint  value painted on the live trace this hop (0 = gap)
 //     paintF the same trace entry's value at the END of the stream (a
@@ -52,9 +55,10 @@ Object.defineProperty(globalThis, "performance", {
 
 export const DET_COLS = ["fl", "c0f", "uv", "dec", "post", "conf", "nnotch"];
 // DSP-worker fields besides intensity that the hook reads (NaN = null).
-export const DSP_EXTRA_COLS = ["cpp", "hnr", "tilt"];
+export const DSP_EXTRA_COLS = ["cpp", "hnr", "tilt", "bcpp"];
 export function noteDspExtras(col, k, data) {
   if (data.cpp != null && col.cpp) col.cpp[k] = data.cpp;
+  if (data.bridgeCpp != null && col.bcpp) col.bcpp[k] = data.bridgeCpp;
   if (data.hnr != null && col.hnr) col.hnr[k] = data.hnr;
   if (data.spectralTilt != null && col.tilt) col.tilt[k] = data.spectralTilt;
 }
@@ -92,6 +96,7 @@ export function runWorkers(S, samples, sr, { chunkMs = 25 } = {}) {
   for (const c of DSP_EXTRA_COLS) col[c] = new Float32Array(n).fill(NaN);
   const msgPitch = new Float32Array(n).fill(NaN); // NaN = no message this chunk
   const msgConf = new Float32Array(n).fill(NaN);
+  const msgCt = new Float64Array(n).fill(NaN); // contextTime of the message (its frame's chunk end)
   const { P, D } = S;
   // ---- tap state ----
   const frameChunk = []; let L = null; let curK = -1;
@@ -137,6 +142,7 @@ export function runWorkers(S, samples, sr, { chunkMs = 25 } = {}) {
       col.nnotch[kk] = m.notchedFreqs ? m.notchedFreqs.length : 0;
       if ((m.pitch !== null) !== (m.confidence >= 0.5)) throw new Error(`invariant pitch!==null <=> conf>=0.5 broken at chunk ${k}`);
       msgPitch[k] = m.pitch !== null ? m.pitch : 0; msgConf[k] = m.confidence;
+      msgCt[k] = typeof m.contextTime === "number" ? m.contextTime : NaN;
     }
     // DSP worker (same chunk, independent copy: transferables detach)
     globalThis.self = D; D.posts.length = 0;
@@ -148,25 +154,33 @@ export function runWorkers(S, samples, sr, { chunkMs = 25 } = {}) {
     }
   }
   globalThis.__SO_TAP = null;
-  return { n, C, sr, L, col, msgPitch, msgConf, cpu: { pitchMsPerChunk: Number(busyNs) / 1e6 / n, frames } };
+  return { n, C, sr, L, col, msgPitch, msgConf, msgCt, cpu: { pitchMsPerChunk: Number(busyNs) / 1e6 / n, frames } };
 }
 
 // Main-thread frames, one per DSP frame: the pitch message consumed is the
 // latest one posted at or before chunk k (the pitch worker posts once per
 // chunk once warm). `mask` (Uint8Array per hop, optional): hops with
 // mask[k] === 0 are replaced by a pitchless frame at `floorDb` (simulates
-// the user practising alone with the room noise left in).
+// the user practising alone with the room noise left in). `msgCt` (per hop,
+// NaN = none; optional): the consumed message's contextTime — when W has
+// none, the message posted at chunk k describes frame k - L (runWorkers'
+// cadence) and its contextTime is (k - L + 1) * C / sr.
 export function buildFrames(W, { mask = null, floorDb = null } = {}) {
-  const { n, C, sr, col, msgPitch, msgConf } = W;
+  const { n, C, sr, col, msgPitch, msgConf, L } = W;
+  const msgCt = W.msgCt ?? null;
   const frames = [];
-  let last = { pitch: null, confidence: null, ts: 0 };
+  let last = { pitch: null, confidence: null, ts: 0, ct: null };
   for (let k = 0; k < n; k++) {
     const now = (k + 1) * C / sr * 1000;
-    if (!Number.isNaN(msgPitch[k])) last = { pitch: msgPitch[k] > 0 ? msgPitch[k] : null, confidence: msgConf[k], ts: now };
+    if (!Number.isNaN(msgPitch[k])) {
+      const ct = msgCt ? msgCt[k] : (k - L + 1) * C / sr;
+      last = { pitch: msgPitch[k] > 0 ? msgPitch[k] : null, confidence: msgConf[k], ts: now, ct: Number.isFinite(ct) ? ct : null };
+    }
     if (Number.isNaN(col.inten[k])) continue;
     let f = { k, now, intensity: col.inten[k], pitch: last.pitch, confidence: last.confidence, ts: last.ts,
-      cpp: nz(col.cpp, k), hnr: nz(col.hnr, k), tilt: nz(col.tilt, k) };
-    if (mask && !mask[k]) f = { k, now, intensity: floorDb, pitch: null, confidence: 0.2, ts: now, cpp: null, hnr: null, tilt: null };
+      cpp: nz(col.cpp, k), hnr: nz(col.hnr, k), tilt: nz(col.tilt, k), bcpp: nz(col.bcpp, k),
+      ct: (k + 1) * C / sr, pct: last.ct };
+    if (mask && !mask[k]) f = { k, now, intensity: floorDb, pitch: null, confidence: 0.2, ts: now, cpp: null, hnr: null, tilt: null, bcpp: null, ct: (k + 1) * C / sr, pct: null };
     frames.push(f);
   }
   return frames;
@@ -189,9 +203,10 @@ export async function driveHook(hookPath, frames, n) {
   api.frameCallbackRef.current = (f) => { rec = f; };
   const tr = api.pitchTraceRef;
   for (const f of frames) {
-    latest.current = { pitch: f.pitch, confidence: f.confidence, voiced: f.pitch !== null, ts: f.ts };
+    latest.current = { pitch: f.pitch, confidence: f.confidence, voiced: f.pitch !== null, ts: f.ts, contextTime: f.pct ?? null };
     rec = null;
-    har.current({ intensity: f.intensity, formants: null, spectralTilt: f.tilt ?? null, hnr: f.hnr ?? null, cpp: f.cpp ?? null, absoluteTime: f.now });
+    har.current({ intensity: f.intensity, formants: null, spectralTilt: f.tilt ?? null, hnr: f.hnr ?? null, cpp: f.cpp ?? null,
+      bridgeCpp: f.bcpp ?? null, contextTime: f.ct ?? null, absoluteTime: f.now });
     const T = tr.current; const lastE = T[T.length - 1]; const now = Math.round(f.now);
     const painted = lastE && lastE.time === now && lastE.pitch !== null ? lastE.pitch : 0;
     if (lastE && lastE.time === now) ent[f.k] = lastE;

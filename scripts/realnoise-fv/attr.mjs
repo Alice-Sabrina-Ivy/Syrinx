@@ -29,6 +29,8 @@
 //     paint  painted value        ro   readout    style  0 / 1 holding / 2 voiced
 //     cpp / hnr / tilt  the DSP worker's other per-frame fields (NaN = null),
 //            handed to the hook as production does (2026-10-06)
+//     bcpp   the DSP worker's bridgeCpp (64 ms CPP, the pitch-hold bridge's
+//            voice evidence; fix round 2026-10-06), NaN = null / absent
 //     paintF the trace entry's value at the end of the stream (= paint unless
 //            the display fills entries after their hop)
 //   gender VAD (gender-worker.js maybeInfer replayed at its 150 ms cadence on
@@ -80,7 +82,7 @@ const BAC = await import(pathToFileURL(resolve(SRC, "dsp/boersma-ac.js")).href);
 export const COLS = ["uv", "s0", "c0f", "dec", "gk", "hc", "post", "conf", "nnotch", "npres",
   ...Array.from({ length: 8 }, (_, i) => `tf${i}`), ...Array.from({ length: 8 }, (_, i) => `ts${i}`),
   ...Array.from({ length: 8 }, (_, i) => `tc${i}`),
-  "inten", "msg", "paint", "ro", "style", "gv", "refw", "refd", "cpp", "hnr", "tilt", "paintF"];
+  "inten", "msg", "paint", "ro", "style", "gv", "refw", "refd", "cpp", "hnr", "tilt", "paintF", "bcpp"];
 
 function trackStatus(t, inCascade, span, duty, c, minObs, onsetMinObs) {
   if (inCascade) return 1;
@@ -96,8 +98,9 @@ function runX(samples, sr = SR) {
   const n = Math.floor(samples.length / C);
   const col = Object.fromEntries(COLS.map((c) => [c, new Float32Array(n)]));
   col.gk.fill(-1); col.hc.fill(-1); col.inten.fill(NaN); col.gv.fill(-1);
-  col.cpp.fill(NaN); col.hnr.fill(NaN); col.tilt.fill(NaN);
+  col.cpp.fill(NaN); col.hnr.fill(NaN); col.tilt.fill(NaN); col.bcpp.fill(NaN);
   const msgPitch = new Float32Array(n).fill(NaN), msgConf = new Float32Array(n).fill(NaN);
+  const msgCt = new Float64Array(n).fill(NaN);
   const msgNotch = new Array(n).fill(null);
   const frameChunk = []; let L = null; let curK = -1; let lastDec = -1; let notch = null;
   globalThis.__RN_TAP = { notch(inst) { notch = inst; } };
@@ -139,6 +142,7 @@ function runX(samples, sr = SR) {
       col.post[kk] = m.pitch !== null ? m.pitch : 0; col.conf[kk] = m.confidence;
       col.nnotch[kk] = m.notchedFreqs ? m.notchedFreqs.length : 0;
       msgPitch[k] = m.pitch !== null ? m.pitch : 0; msgConf[k] = m.confidence;
+      msgCt[k] = typeof m.contextTime === "number" ? m.contextTime : NaN;
       msgNotch[k] = m.notchedFreqs ?? [];
     }
     if (notch && notch.__obs) {
@@ -183,7 +187,7 @@ function runX(samples, sr = SR) {
     else g = AU.subFloorVoiced(w, SR, lastNotch) ? 2 : 0;
     col.gv[k] = g;
   }
-  return { n, C, sr, L, col, msgPitch, msgConf };
+  return { n, C, sr, L, col, msgPitch, msgConf, msgCt };
 }
 
 const CORPORA = { fda: ["loadFda", 0], ptdb: ["loadPtdbTug", 20], hil: ["loadHillenbrand", 0], voc: ["loadVocadito", 0] };

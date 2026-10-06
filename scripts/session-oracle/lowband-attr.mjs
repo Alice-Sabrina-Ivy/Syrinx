@@ -19,7 +19,7 @@
 // (paint, ro, inten) by display hop, as in lib/chain.mjs.
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { resolve } from "node:path";
-import { loadSrc, buildFrames, driveHook } from "./lib/chain.mjs";
+import { loadSrc, buildFrames, driveHook, noteDspExtras, DSP_EXTRA_COLS } from "./lib/chain.mjs";
 import { readWav } from "./lib/wav.mjs";
 
 const args = Object.fromEntries(process.argv.slice(2).map((a) => {
@@ -34,6 +34,9 @@ function runX(S, samples, sr) {
   const n = Math.floor(samples.length / C);
   const col = Object.fromEntries(COLS.map((c) => [c, new Float32Array(n)]));
   col.guard.fill(-1); col.inten.fill(NaN);
+  // the DSP worker's cpp / hnr / tilt / bridgeCpp reach the hook as in
+  // production (not dumped; 2026-10-06: the pitch-hold bridge reads bridgeCpp)
+  for (const c of DSP_EXTRA_COLS) col[c] = new Float32Array(n).fill(NaN);
   const msgPitch = new Float32Array(n).fill(NaN), msgConf = new Float32Array(n).fill(NaN);
   const frameChunk = []; let L = null; let curK = -1; let lastDec = -1;
   globalThis.__SO_TAP = {
@@ -76,7 +79,7 @@ function runX(S, samples, sr) {
     globalThis.self = D; D.posts.length = 0;
     const b = Float32Array.from(samples.subarray(k * C, (k + 1) * C));
     dp.onmessage({ data: { buffer: b.buffer, contextTime: ct } });
-    for (const m of D.posts) if (m.type === "analysis") col.inten[k] = m.data.intensity;
+    for (const m of D.posts) if (m.type === "analysis") { col.inten[k] = m.data.intensity; noteDspExtras(col, k, m.data); }
   }
   globalThis.__SO_TAP = null;
   return { n, C, sr, L, col, msgPitch, msgConf, cpuMsPerChunk: Number(busyNs) / 1e6 / n };

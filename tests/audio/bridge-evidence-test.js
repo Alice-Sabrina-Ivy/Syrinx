@@ -21,13 +21,16 @@ function check(name, cond, detail = "") {
 }
 
 const HOP = 25;
-// A frame sequence driver for the module alone: push(fresh, cpp) advances 25 ms.
+// A frame sequence driver for the module alone: push(fresh, cpp) advances
+// 25 ms; the voiced flag and the CPP describe the same capture chunk (both
+// messages carry its contextTime), so these checks read the rule itself.
+// The alignment checks below deliver the flag L frames late, as production.
 function drive() {
   const ev = BE.createBridgeEvidence();
   let t = 1000;
   return {
     ev,
-    push(fresh, cpp) { t += HOP; ev.push({ now: t, fresh, cpp }); },
+    push(fresh, cpp) { t += HOP; ev.push({ now: t, fresh, cpp, cppCt: t / 1000, pitchCt: t / 1000 }); },
     allow() { return ev.allowHeld(t); },
   };
 }
@@ -81,6 +84,66 @@ console.log("createBridgeEvidence");
   check("before any voiced frame (nothing to hold) the rule is open", ev.allowHeld(5000));
 }
 
+console.log("\nlow-F0 gain: below 100 Hz the evidence bar is lowered by BRIDGE_LOW_F0_GAIN");
+{
+  check("lowF0Gain: 1 from 100 Hz up, 0.8 at / below 75 Hz, linear between the points",
+    BE.lowF0Gain(100) === 1 && BE.lowF0Gain(250) === 1 && BE.lowF0Gain(75) === 0.8 && BE.lowF0Gain(60) === 0.8
+    && Math.abs(BE.lowF0Gain(86) - 0.87) < 1e-9 && BE.lowF0Gain(null) === 1);
+  function runF0(f0, cpp) {
+    const ev = BE.createBridgeEvidence();
+    let t = 3000;
+    for (let k = 0; k < 10; k++) {
+      t += HOP;
+      const fresh = k < 3;
+      ev.push({ now: t, fresh, f0: fresh ? f0 : null, cpp, cppCt: t / 1000, pitchCt: t / 1000 });
+    }
+    return ev.allowHeld(t);
+  }
+  const c = BE.BRIDGE_CPP_MIN * 0.86; // below the bar at 150 Hz, above it at 80 Hz (gain 0.814)
+  check("a CPP just under BRIDGE_CPP_MIN is not evidence for a 150 Hz voice", !runF0(150, c));
+  check("... and is for an 80 Hz voice", runF0(80, c));
+}
+
+console.log("\nalignment: the voiced flag is paired with the CPP of its own chunk");
+{
+  // Production order: the DSP frame of chunk k carries chunk k's CPP and
+  // consumes the pitch message of the frame that ended on chunk k - L (the
+  // tracker's decode delay, L = 2). A 2-frame voiced burst at chunks 0-1
+  // with strong CPP, then weak CPP from chunk 2 on (the voice stopped). The
+  // flags arrive at DSP frames 2-3, next to chunks 2-3's weak CPP.
+  const L = 2;
+  const cpps = [0.8, 0.8, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2];
+  const voiced = (j) => j === 0 || j === 1;
+  function runAligned(timed) {
+    const ev = BE.createBridgeEvidence();
+    let t = 5000;
+    for (let k = 0; k < cpps.length; k++) {
+      t += HOP;
+      const j = k - L; // the frame the consumed pitch message describes
+      ev.push({
+        now: t, fresh: j >= 0 && voiced(j), cpp: cpps[k],
+        cppCt: timed ? (k + 1) * 0.025 : null, pitchCt: timed && j >= 0 ? (j + 1) * 0.025 : null,
+      });
+    }
+    return ev.allowHeld(t);
+  }
+  check("timed (contextTime): the burst's own strong CPP is evidence", runAligned(true));
+  check(`untimed: the CPP of CPP_FALLBACK_LAG (${BE.CPP_FALLBACK_LAG}) frames back is used — same pairing`, runAligned(false));
+  // the pre-fix pairing (flag with the CPP of the frame it arrived on) saw
+  // 0.2 / 0.2 here and hid the gap
+  const ev = BE.createBridgeEvidence();
+  let t = 5000;
+  for (let k = 0; k < cpps.length; k++) { t += HOP; const j = k - L; ev.push({ now: t, fresh: j >= 0 && voiced(j), cpp: cpps[k], cppCt: (k + 1) * 0.025, pitchCt: (k + 1) * 0.025 }); }
+  check("(control: pairing each flag with the CPP of the frame it arrived on hides it)", !ev.allowHeld(t));
+}
+{
+  // a pitch message whose chunk is no longer in the CPP ring pairs with nothing
+  const ev = BE.createBridgeEvidence();
+  let t = 5000;
+  for (let k = 0; k < 12; k++) { t += HOP; ev.push({ now: t, fresh: k >= 9, cpp: 0.9, cppCt: (k + 1) * 0.025, pitchCt: 0.025 }); }
+  check("a stale contextTime (chunk not in the ring) pairs with no CPP: no evidence", !ev.allowHeld(t + 3 * HOP));
+}
+
 // ---- the real hook ---------------------------------------------------------
 // seq items: [pitch | null, cpp | null, intensity?]; one pitch message per
 // frame (confidence 0.8 voiced / 0.3 unvoiced). Returns the painted value per
@@ -99,8 +162,10 @@ async function run(seq) {
   const paint = [];
   for (const [pitch, cpp, intensity = -30] of seq) {
     t += HOP;
-    latest.current = { pitch, confidence: pitch === null ? 0.3 : 0.8, voiced: pitch !== null, ts: t };
-    har.current({ intensity, formants: null, spectralTilt: null, hnr: null, cpp, absoluteTime: t });
+    // the pitch message and the DSP frame name the same chunk (contextTime):
+    // each seq item's CPP is its own frame's
+    latest.current = { pitch, confidence: pitch === null ? 0.3 : 0.8, voiced: pitch !== null, ts: t, contextTime: t / 1000 };
+    har.current({ intensity, formants: null, spectralTilt: null, hnr: null, cpp: null, bridgeCpp: cpp, contextTime: t / 1000, absoluteTime: t });
     const trace = api.pitchTraceRef.current;
     const e = trace[trace.length - 1];
     paint.push(e && e.time === Math.round(t) && e.pitch !== null ? e.pitch : 0);
@@ -134,6 +199,63 @@ console.log("\nreal hook: weak-CPP (noise-like) vs strong-CPP (voice-like) gaps"
 {
   const out = await run([...rep([150, null], 6), ...rep([null, null], 10), ...rep([150, null], 4)]);
   check("no CPP: the bridge is drawn as before", idx(6, 10).every((i) => out[i] > 0), show(out));
+}
+{
+  // the hook reads the DSP worker's bridgeCpp (64 ms window), not its cpp
+  // (50 ms, the vocal-weight feed): strong cpp with weak bridgeCpp hides
+  M.refs = []; M.effects = []; M.state = null;
+  const mod = await import(`${HOOK}?be=${++gen}`);
+  const api = mod.useAudioPipeline();
+  for (const e of M.effects) { try { e(); } catch { /* effects that need a DOM */ } }
+  const latest = M.refs.find((r) => r.current && typeof r.current === "object" && "pitch" in r.current && "contextTime" in r.current);
+  const har = M.refs.find((r) => typeof r.current === "function" && r.current.name === "handleAnalysisResult");
+  const seq = [...rep(150, 6), ...rep(null, 10)];
+  let t = 2e6; const out = [];
+  for (const p of seq) {
+    t += HOP;
+    latest.current = { pitch: p, confidence: p === null ? 0.3 : 0.8, voiced: p !== null, ts: t, contextTime: t / 1000 };
+    har.current({ intensity: -30, formants: null, spectralTilt: null, hnr: null, cpp: 0.9, bridgeCpp: 0.2, contextTime: t / 1000, absoluteTime: t });
+    const tr = api.pitchTraceRef.current; const e = tr[tr.length - 1];
+    out.push(e && e.time === Math.round(t) && e.pitch !== null ? e.pitch : 0);
+  }
+  check("the evidence reads bridgeCpp, not cpp", idx(9, 7).every((i) => out[i] === 0), show(out));
+}
+
+console.log("\nhidden held frames: the readout blanks and the glow dot ends with the trace");
+{
+  M.refs = []; M.effects = []; M.state = null;
+  const mod = await import(`${HOOK}?be=${++gen}`);
+  const api = mod.useAudioPipeline();
+  for (const e of M.effects) { try { e(); } catch { /* effects that need a DOM */ } }
+  const latest = M.refs.find((r) => r.current && typeof r.current === "object" && "pitch" in r.current && "contextTime" in r.current);
+  const har = M.refs.find((r) => typeof r.current === "function" && r.current.name === "handleAnalysisResult");
+  // The hook throttles its readout state to ~5 fps on performance.now();
+  // advance it 1 s per call so every frame's state is recorded (as the
+  // session oracle's chain does), restored after this block.
+  const realPerf = Object.getOwnPropertyDescriptor(globalThis, "performance");
+  let fakeNow = 0;
+  Object.defineProperty(globalThis, "performance", { value: { now: () => (fakeNow += 1000), timeOrigin: 0, mark() {}, measure() {} }, configurable: true, writable: true });
+  // weak voiced run (noise-like), then a gap the evidence rule hides, then
+  // weak voiced again
+  const run2 = (cpp) => {
+    const seq = [...rep(120, 6), ...rep(null, 8), ...rep(120, 4)];
+    let t = 3e6 + (cpp > 0.5 ? 1e5 : 0); const ro = [], hid = [];
+    for (const p of seq) {
+      t += HOP;
+      latest.current = { pitch: p, confidence: p === null ? 0.3 : 0.8, voiced: p !== null, ts: t, contextTime: t / 1000 };
+      har.current({ intensity: -30, formants: null, spectralTilt: null, hnr: null, cpp: null, bridgeCpp: p === null ? 0.2 : cpp, contextTime: t / 1000, absoluteTime: t });
+      const tr = api.pitchTraceRef.current; const e = tr[tr.length - 1];
+      ro.push(M.state.pitch ?? 0); hid.push(!!(e && e.hidden));
+    }
+    return { ro, hid };
+  };
+  const w = run2(0.3);
+  check("weak: hidden gap frames are marked `hidden` in the trace (the glow dot ends there)",
+    idx(8, 6).every((i) => w.hid[i]) && !w.hid[6] && !w.hid[7], w.hid.map(Number).join(""));
+  check("weak: the readout is blank on hidden frames (no dim held value)", idx(8, 6).every((i) => w.ro[i] === 0), show(w.ro));
+  check("weak: the readout returns with the next painted frame", w.ro[14] > 0, show(w.ro));
+  check("weak: the readout keeps the held value through the drawn grace frames", w.ro[6] > 0 && w.ro[7] > 0, show(w.ro));
+  if (realPerf) Object.defineProperty(globalThis, "performance", realPerf);
 }
 
 console.log("\nhide-only: the painted trace is the fail-open trace minus some held frames");

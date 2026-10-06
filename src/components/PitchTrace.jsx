@@ -227,9 +227,12 @@ export function PitchTrace({
       }
       if (inSegment) ctx.stroke();
 
-      // Current position glow dot (backward scan avoids array copy + reverse)
+      // Current position glow dot (backward scan avoids array copy + reverse).
+      // A held frame the pitch-hold bridge hid for lack of voice evidence
+      // (`hidden`, useAudioPipeline.js / bridgeEvidence.js) ends the dot.
       let lastVoiced = null;
       for (let i = data.length - 1; i >= 0; i--) {
+        if (data[i].hidden) break;
         if (data[i].voiced && data[i].pitch !== null) { lastVoiced = data[i]; break; }
       }
       if (lastVoiced && now - lastVoiced.time < 500) {

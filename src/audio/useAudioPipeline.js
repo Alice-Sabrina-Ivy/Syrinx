@@ -143,11 +143,15 @@ export function useAudioPipeline() {
   // run on the same chunk cadence, so the lag is at most one chunk
   // (~25 ms), and pitch trace history is built using DSP's absoluteTime
   // anyway. confidence is the voicedness gate's input.
+  // contextTime: the capture chunk the message's frame ended on — the
+  // pitch-hold bridge pairs the voiced flag with that chunk's CPP
+  // (bridgeEvidence.js).
   const latestPitchRef = useRef({
     pitch: null,
     confidence: null,
     voiced: false,
     ts: 0,
+    contextTime: null,
   });
   // Steadiness tracker (steadiness.js) — fed every pitch-worker message
   // (posted values, voiced or not) by handlePitchMessage; read on every
@@ -227,7 +231,10 @@ export function useAudioPipeline() {
   // or a harmonic lock). While set, the readout/note name show "—" instead
   // of falling back to the last painted value — which, on a register
   // switch, is the OTHER register (the "readout an octave low" report).
-  // Cleared by the next painted frame.
+  // Cleared by the next painted frame. Also set by a held frame the
+  // pitch-hold bridge hides for lack of voice evidence (bridgeEvidence.js,
+  // fix round 2026-10-06): the readout then goes blank with the trace
+  // instead of keeping the held value up for VOICED_FALL_FRAMES.
   const heldReadoutStaleRef = useRef(false);
   const lastVoicedRef = useRef({
     pitch: null,
@@ -788,7 +795,7 @@ export function useAudioPipeline() {
       labRef.current.stop();
       labRef.current = null;
     }
-    latestPitchRef.current = { pitch: null, confidence: null, voiced: false, ts: 0 };
+    latestPitchRef.current = { pitch: null, confidence: null, voiced: false, ts: 0, contextTime: null };
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
@@ -906,6 +913,7 @@ export function useAudioPipeline() {
       confidence: msg.confidence,
       voiced: msg.voiced,
       ts: msg.ts,
+      contextTime: typeof msg.contextTime === "number" ? msg.contextTime : null,
     };
     // Forward pitch hint to the DSP worker so its formant extraction
     // can pick the right LPC order / formant ceiling. One-frame lag
@@ -958,7 +966,7 @@ export function useAudioPipeline() {
   useEffect(() => { handlePitchMessageRef.current = handlePitchMessage; });
 
   function handleAnalysisResult(data) {
-    const { intensity, formants, spectralTilt, hnr, cpp, absoluteTime } = data;
+    const { intensity, formants, spectralTilt, hnr, cpp, bridgeCpp, contextTime, absoluteTime } = data;
 
     // Use the worker's absolute timestamp for data points.
     // This reflects when audio was *analyzed* in the worker, which is the
@@ -985,11 +993,14 @@ export function useAudioPipeline() {
     // Pitch-hold bridge evidence (bridgeEvidence.js; measurements/pitch-
     // hold-bridge-rework-2026-10-06.md): past a short grace, a held frame
     // is DRAWN only when this stream showed a strongly harmonic voiced
-    // frame (DSP-worker CPP) recently. A held frame that fails is hidden
-    // below, after the paint gate saw it — the hold, the smoothing buffer
-    // and the gate's continuity are kept, so voice resuming within the
-    // window paints at once. Fed every frame, silence included.
-    bridgeEvidenceRef.current.push({ now, fresh: hasPitch, cpp });
+    // frame (the DSP worker's 64 ms bridgeCpp, paired with the CPP of the
+    // chunk the pitch frame ended on) recently. A held frame that fails is
+    // hidden below, after the paint gate saw it — the hold, the smoothing
+    // buffer and the gate's continuity are kept, so voice resuming within
+    // the window paints at once. Fed every frame, silence included.
+    bridgeEvidenceRef.current.push({
+      now, fresh: hasPitch, f0: hasPitch ? pitch : null, cpp: bridgeCpp, cppCt: contextTime, pitchCt: latestPitch.contextTime,
+    });
     const hideHeld = !hasPitch && gate.holdAllowed && !bridgeEvidenceRef.current.allowHeld(now);
     // Steadiness reading (cached inside the tracker: recomputed on the
     // first read after new pitch messages arrived, i.e. at most once per
@@ -1222,7 +1233,11 @@ export function useAudioPipeline() {
     // (pitchPaintGate.js "Register re-acquisition"). A held value without
     // voice evidence (hideHeld, bridgeEvidence.js) still goes through the
     // gate — its continuity state stays exactly as with a drawn hold — and
-    // is then not drawn.
+    // is then not drawn; the readout blanks and the trace's glow dot ends
+    // with it (heldReadoutStaleRef, the `hidden` trace entry below) — with
+    // the readout kept, what the user saw on noise-only audio fell ~5 %
+    // instead of ~18 % (measurements/pitch-hold-bridge-rework-2026-10-06.md
+    // §4.6).
     let displayPitched = false;
     if (framePitched) {
       // raw: the unsmoothed fresh detection — the gate accepts a register
@@ -1236,6 +1251,7 @@ export function useAudioPipeline() {
     } else {
       paintGateRef.current.resetSegment();
     }
+    if (hideHeld) heldReadoutStaleRef.current = true;
     if (displayPitched) {
       heldReadoutStaleRef.current = false;
       displayVoicedRef.current = true;
@@ -1273,10 +1289,12 @@ export function useAudioPipeline() {
         pitchTraceRef.current.push({ time: now, pitch: null, voiced: false });
       }
     }
+    // A held frame hidden for lack of voice evidence is a gap marked
+    // `hidden`: PitchTrace ends the glow dot at it.
     pitchTraceRef.current.push(
       displayPitched
         ? { time: now, pitch: smoothedPitch, voiced: true }
-        : { time: now, pitch: null, voiced: false },
+        : (hideHeld ? { time: now, pitch: null, voiced: false, hidden: true } : { time: now, pitch: null, voiced: false }),
     );
     trimHistory(pitchTraceRef.current, PITCH_TRACE_SECONDS * 1000, now);
 

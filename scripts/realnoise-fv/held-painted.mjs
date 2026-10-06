@@ -14,10 +14,13 @@
 // end of the stream (differs only for a display that fills entries late).
 //
 //   node --import ./scripts/realnoise-fv/lib/register.mjs scripts/realnoise-fv/held-painted.mjs \
-//     --worker=<tree>/src --trees=base=<tree>/src,cand=<tree>/src [--sr=16000,48000] [--shard=i/n] [--family=..] --out=F
+//     --worker=<tree>/src --trees=base=<tree>/src,cand=<tree>/src [--sr=16000,48000] [--shard=i/n] [--family=..]
+//     [--suite=held|lowband] --out=F
+// --suite=lowband (fix round 2026-10-06): scenarios.mjs lowBandScenarios(),
+// held notes at 80-120 Hz built to make the detector drop frames.
 import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { heldScenarios } from "../notch-adversarial/scenarios.mjs";
+import { heldScenarios, lowBandScenarios } from "../notch-adversarial/scenarios.mjs";
 import { loadSrc, runWorkers, buildFrames, driveHook } from "../session-oracle/lib/chain.mjs";
 
 const args = Object.fromEntries(process.argv.slice(2).map((a) => {
@@ -29,7 +32,7 @@ const trees = (args.trees ?? "base=src").split(",").map((p) => {
 });
 const SRS = (args.sr || "16000,48000").split(",").map(Number);
 const [shI, shN] = (args.shard || "0/1").split("/").map(Number);
-let list = heldScenarios();
+let list = args.suite === "lowband" ? lowBandScenarios() : heldScenarios();
 if (args.family) list = list.filter((s) => args.family.split(",").includes(s.family));
 const jobs = [];
 for (const sc of list) for (const sr of SRS) jobs.push([sc, sr]);
