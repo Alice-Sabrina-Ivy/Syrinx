@@ -6,12 +6,13 @@
 // adult speakers, a settling / steadiness indicator, a 3-minute trace and a
 // one-line description. No targets, no verdicts, no good/bad colours.
 //
-// Below Tailwind's sm breakpoint (phones in portrait) a compact layout keeps
-// all four cards on screen at once: descriptions, footnotes and the lab's
-// intro sit behind small info toggles, statuses and band labels shorten, and
-// the axis and 3-minute trace are sized from the height actually available
-// (see usePhoneFit); short screens drop the traces first. sm and up keeps the
-// full layout.
+// Below Tailwind's sm breakpoint (phones in portrait), and on short screens
+// (phones in landscape), a compact layout keeps as many cards on screen as
+// fit — all four on a phone in portrait: descriptions, footnotes and the
+// lab's intro sit behind small info toggles, statuses and band labels shorten,
+// and the axis and 3-minute trace are sized from the height actually
+// available (see usePhoneFit); short screens drop the traces first. Wider,
+// taller screens keep the full layout.
 
 import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { subscribe, resetReadings, downloadReadings } from "./labPipeline.js";
@@ -51,16 +52,17 @@ const toU = (ref, v) => (v - ref.menMedian) / (ref.womenMedian - ref.menMedian);
 // the band labels sit beside their bands instead of on rows of their own, and
 // bands + marker hug the axis.
 const FULL = {
-  h: 68, ax: 34, bandH: 7, menY: 20, womenY: 41, menLabelY: 15, womenLabelY: 59, tick: 14, r: 5, clamp: 8,
+  h: 68, ax: 34, bandH: 7, menY: 20, womenY: 41, menLabelY: 15, womenLabelY: 59, tick: 14, r: 5, clamp: 8, fs: 9,
   men: "LibriSpeech adult men (test)", women: "LibriSpeech adult women (test)",
 };
-const ROOMY = { ...FULL, clamp: 5, men: "men", women: "women" };
-const COMPACT = { h: 30, ax: 16, bandH: 5, menY: 4, womenY: 23, tick: 11, r: 4.5, beside: true, men: "men", women: "women" };
+const ROOMY = { ...FULL, clamp: 5, fs: 10, men: "men", women: "women" };
+const COMPACT = { h: 30, ax: 16, bandH: 5, menY: 4, womenY: 23, tick: 11, r: 4.5, fs: 10, beside: true, men: "men", women: "women" };
 
 function Continuum({ band: ref, snap, g = FULL }) {
   // rows: men band above the axis, women band below; labels outside the bands
   // (above / below them, or beside them on the outer side when compact)
-  const bandRow = (q, y, label, labelY, outerLeft) => {
+  const maskId = `lab-label-mask-${useId().replace(/[^\w-]/g, "")}`;
+  const rows = [[ref.men, g.menY, g.men, g.menLabelY, true], [ref.women, g.womenY, g.women, g.womenLabelY, false]].map(([q, y, label, labelY, outerLeft]) => {
     const a = x(toU(ref, q.q10)), b = x(toU(ref, q.q90)), m = x(toU(ref, q.q50));
     let text;
     if (g.beside) {
@@ -69,25 +71,36 @@ function Continuum({ band: ref, snap, g = FULL }) {
     } else {
       text = { x: Math.min(100 - g.clamp, Math.max(g.clamp, m)), y: labelY, anchor: "middle" };
     }
-    return (
-      <g>
-        <rect x={`${a}%`} y={y} width={`${Math.max(0.5, b - a)}%`} height={g.bandH} rx="2" className="fill-neutral-500/25" />
-        <line x1={`${m}%`} x2={`${m}%`} y1={y} y2={y + g.bandH} className="stroke-neutral-400/70" strokeWidth="1" />
-        <text x={`${text.x}%`} y={text.y} textAnchor={text.anchor} className="fill-neutral-500" fontSize="9">{label}</text>
-      </g>
-    );
-  };
+    return { y, a, b, m, label, text };
+  });
+  const labelText = (r, props) => (
+    <text x={`${r.text.x}%`} y={r.text.y} textAnchor={r.text.anchor} {...props} fontSize={g.fs}>{r.label}</text>
+  );
   const u = snap?.u;
   const j = snap?.jitter ?? 0;
   const settled = (snap?.fill ?? 0) >= 1;
   const AX = g.ax;
   return (
     <svg width="100%" height={g.h} className="block overflow-visible" data-lab-continuum="">
-      {bandRow(ref.men, g.menY, g.men, g.menLabelY, true)}
-      {bandRow(ref.women, g.womenY, g.women, g.womenLabelY, false)}
+      {rows.map((r) => (
+        <g key={r.label}>
+          <rect x={`${r.a}%`} y={r.y} width={`${Math.max(0.5, r.b - r.a)}%`} height={g.bandH} rx="2" className="fill-neutral-500/25" />
+          <line x1={`${r.m}%`} x2={`${r.m}%`} y1={r.y} y2={r.y + g.bandH} className="stroke-neutral-400/70" strokeWidth="1" />
+          {labelText(r, { className: "fill-neutral-500" })}
+        </g>
+      ))}
+      {/* Compact labels sit on the rows the marker's tick crosses: mask the
+          marker out under each word (plus a 1.5 px halo) so a reading next to
+          a band never strikes through its label. */}
+      {g.beside && (
+        <mask id={maskId} maskUnits="userSpaceOnUse" x="-5%" y={-10} width="110%" height={g.h + 20}>
+          <rect x="-5%" y={-10} width="110%" height={g.h + 20} fill="white" />
+          {rows.map((r) => <g key={r.label}>{labelText(r, { fill: "black", stroke: "black", strokeWidth: 3, strokeLinejoin: "round" })}</g>)}
+        </mask>
+      )}
       <line x1="0%" x2="100%" y1={AX} y2={AX} className="stroke-neutral-700" strokeWidth="1" />
       {u !== null && u !== undefined && (
-        <g opacity={settled ? 1 : 0.45}>
+        <g opacity={settled ? 1 : 0.45} mask={g.beside ? `url(#${maskId})` : undefined}>
           <line x1={`${x(u - j)}%`} x2={`${x(u + j)}%`} y1={AX} y2={AX} className="stroke-neutral-200/60" strokeWidth="3" strokeLinecap="round" />
           <line x1={`${x(u)}%`} x2={`${x(u)}%`} y1={AX - g.tick} y2={AX + g.tick} className="stroke-neutral-100" strokeWidth="2" />
           <circle cx={`${x(u)}%`} cy={AX} r={g.r} className="fill-neutral-100" />
@@ -138,6 +151,25 @@ function pnmlStatus(s) {
   return s.pnml === "error" ? "model failed to load" : `loading model${s.pnmlProgress ? ` ${Math.round(s.pnmlProgress)}%` : "…"}`;
 }
 
+// Phone wording (the card's title already says it is the model).
+function pnmlStatusShort(s) {
+  if (s.pnml === "ready") return null;
+  return s.pnml === "error" ? "failed to load" : `loading${s.pnmlProgress ? ` ${Math.round(s.pnmlProgress)}%` : "…"}`;
+}
+
+// Every phone status at its widest (digits are tabular). The status cell
+// reserves the widest of these in the actual font, so whether a long title
+// wraps depends on the screen width alone, not on the live status — a title
+// flipping between one and two lines would shift every card below it.
+const PHONE_STATUS_WIDEST = ["waiting for voice", "settling 0.0/5 s", "unsettled ±0.00", "loading 100%", "failed to load"];
+
+const PhoneStatus = ({ text }) => (
+  <span className="shrink-0 grid whitespace-nowrap text-right text-[11px] leading-[18px] text-neutral-500 tabular-nums">
+    {PHONE_STATUS_WIDEST.map((t) => <span key={t} aria-hidden="true" className="invisible col-start-1 row-start-1">{t}</span>)}
+    <span className="col-start-1 row-start-1" data-lab-status="">{text}</span>
+  </span>
+);
+
 const Intro = () => (
   <>
     Four candidate resonance readouts, side by side, with no calibration. Each position is the
@@ -166,8 +198,10 @@ const PitchStat = ({ snap }) => (
   </span>
 );
 
-// Tailwind's `max-sm` (below the 40rem sm breakpoint) as a live boolean.
-const PHONE_QUERY = "(width < 40rem)";
+// The phone layout, as a live boolean: below Tailwind's sm breakpoint (40rem
+// wide; phones in portrait), or shorter than 30rem (phones in landscape, where
+// the full layout shows less than one card at a time).
+const PHONE_QUERY = "(width < 40rem), (height < 30rem)";
 const subscribePhone = (cb) => {
   const mq = window.matchMedia(PHONE_QUERY);
   mq.addEventListener("change", cb);
@@ -235,7 +269,7 @@ function FullLab({ s }) {
 // open, tap again / outside / Escape to close. The popover spans its nearest
 // positioned ancestor (the row it belongs to) and opens toward whichever side
 // of the lab's scroll area has more room, capped to that room.
-function InfoToggle({ label, boundsRef, children }) {
+function InfoToggle({ label, boundsRef, className = "flex", children }) {
   const [open, setOpen] = useState(false);
   const [place, setPlace] = useState({ up: false, maxH: 320 });
   const wrapRef = useRef(null);
@@ -269,7 +303,7 @@ function InfoToggle({ label, boundsRef, children }) {
   };
 
   return (
-    <span ref={wrapRef} className="flex">
+    <span ref={wrapRef} className={className}>
       <button
         type="button"
         onClick={toggle}
@@ -305,7 +339,9 @@ function InfoToggle({ label, boundsRef, children }) {
 const TRACE_MIN = 20;
 const ROOMY_TRACE_MIN = 32;
 const TRACE_MAX = 56;
-const TRACE_PAD = 2; // the trace wrapper's top padding (pt-0.5)
+// The trace wrapper's vertical padding (py-0.5). Half of a card's bottom padding
+// lives on the wrapper, so a card that drops its trace also sheds 2 px.
+const TRACE_PAD = 4;
 const FIT_SLACK = 2; // sub-pixel safety
 
 function usePhoneFit(rootRef, contentRef) {
@@ -340,7 +376,7 @@ function PhoneLab({ s }) {
   const contentRef = useRef(null);
   const { roomy, traceH } = usePhoneFit(rootRef, contentRef);
   return (
-    <div ref={rootRef} className="flex-1 min-h-0 overflow-y-auto w-full pb-0.5">
+    <div ref={rootRef} data-lab-phone="" className="flex-1 min-h-0 overflow-y-auto w-full max-w-3xl mx-auto pb-0.5">
       <div ref={contentRef}>
         <div className="mb-1.5">
           <div className="relative flex items-center gap-2">
@@ -365,13 +401,16 @@ function PhoneLab({ s }) {
           <div className="flex flex-col gap-1">
             {FINALISTS.map((f) => {
               const fs = snap?.finalists?.[f.key];
-              const extra = f.key === "pnml" ? pnmlStatus(s) : null;
+              const extra = f.key === "pnml" ? pnmlStatusShort(s) : null;
               return (
-                <section key={f.key} className="rounded-xl border border-neutral-800 bg-neutral-900/60 px-2.5 py-1">
+                <section key={f.key} className="rounded-xl border border-neutral-800 bg-neutral-900/60 px-2.5 pt-1 pb-0.5">
                   <div className="relative flex items-baseline justify-between gap-2">
-                    <div className="min-w-0 flex items-baseline gap-1.5">
-                      <h3 className="min-w-0 text-[13px] leading-[18px] text-neutral-200">{f.title}</h3>
-                      <InfoToggle label={`About ${f.title}`} boundsRef={rootRef}>
+                    {/* The ⓘ follows the title's last word, even when the
+                        title wraps: no break between the two (nowrap on their
+                        common parent), normal wrapping inside the title. */}
+                    <div className="min-w-0 whitespace-nowrap text-[13px] leading-[18px]">
+                      <h3 className="inline whitespace-normal text-neutral-200">{f.title}</h3>
+                      <InfoToggle label={`About ${f.title}`} boundsRef={rootRef} className="inline-flex align-text-bottom ml-1.5 whitespace-normal">
                         <p>{f.what}</p>
                         <p className="text-neutral-400">
                           Bands: LibriSpeech adult men (test) above the axis, adult women (test) below — each
@@ -381,15 +420,15 @@ function PhoneLab({ s }) {
                         {traceH > 0 && <p className="text-neutral-400">Trace: last 3 min · up = smaller / brighter · dotted = band medians.</p>}
                       </InfoToggle>
                     </div>
-                    <span className="shrink-0 whitespace-nowrap text-[11px] leading-[18px] text-neutral-500 tabular-nums">{extra ?? stabilityShort(fs)}</span>
+                    <PhoneStatus text={extra ?? stabilityShort(fs)} />
                   </div>
-                  <div className="flex justify-between text-[9px] leading-3 text-neutral-500 uppercase tracking-wide">
+                  <div className="flex justify-between text-[10px] leading-3 text-neutral-500 uppercase tracking-wide">
                     <span>larger / darker</span>
                     <span>smaller / brighter</span>
                   </div>
                   <Continuum g={roomy ? ROOMY : COMPACT} band={ref[f.key]} snap={fs} />
                   {traceH > 0 && (
-                    <div data-lab-trace className="pt-0.5">
+                    <div data-lab-trace className="py-0.5">
                       <Trace history={s.history} k={f.key} band={ref[f.key]} height={traceH} />
                     </div>
                   )}

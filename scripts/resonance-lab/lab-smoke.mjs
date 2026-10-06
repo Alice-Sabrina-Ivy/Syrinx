@@ -7,7 +7,10 @@
 // Run 1 (tab never opened): asserts that no lab chunk / worker / asset is requested and
 // only the three production workers start. Run 2: opens the "Resonance lab" tab while
 // listening, waits, prints the lab's readout text and saves a screenshot. Run 3: opens the
-// tab BEFORE listening, then starts — the lab must start with the pipeline.
+// tab BEFORE listening, then starts — the lab must start with the pipeline. Run 4: the lab
+// on a phone (402x750 CSS px — an iPhone 16 Pro with Safari's toolbars showing; mobile
+// emulation, DPR 3): the phone layout must show all four cards above the Stop Listening
+// row with neither the lab area nor the page scrolling, and no horizontal overflow.
 //
 // Process hygiene (CLAUDE.md hard rule 2): Chrome is launched by puppeteer with a fresh
 // temporary --user-data-dir and closed via browser.close() (PID-scoped); the preview
@@ -56,8 +59,26 @@ async function startServer() {
   throw new Error("preview server did not start");
 }
 
-async function run(url, { lab, tabFirst = false }) {
+// Runs in the page: does the phone lab fit? (the lab's own scroll area, each card vs the
+// top of the Stop Listening row, page overflow both ways)
+function measurePhoneFit() {
+  const area = document.querySelector("[data-lab-phone]");
+  const cards = [...document.querySelectorAll("[data-lab-phone] section")];
+  const stop = [...document.querySelectorAll("button")].find((b) => b.textContent.includes("Stop Listening"));
+  const barTop = stop ? stop.parentElement.getBoundingClientRect().top : null;
+  const de = document.documentElement;
+  return {
+    phoneLayout: !!area,
+    area: area && { scrollH: area.scrollHeight, clientH: area.clientHeight },
+    barTop,
+    cardBottoms: cards.map((c) => +c.getBoundingClientRect().bottom.toFixed(1)),
+    doc: { scrollH: de.scrollHeight, innerH: innerHeight, scrollW: de.scrollWidth, innerW: innerWidth },
+  };
+}
+
+async function run(url, { lab, tabFirst = false, viewport = null, wait = SECONDS }) {
   const page = await browser.newPage();
+  if (viewport) await page.setViewport(viewport);
   const requests = [];
   const workers = [];
   const errors = [];
@@ -93,14 +114,15 @@ async function run(url, { lab, tabFirst = false }) {
   await sleep(1500);
   if (lab) {
     if (!tabFirst) log("lab tab clicked:", await clickText(["Resonance lab"]));
-    await sleep((tabFirst ? Math.min(SECONDS, 20) : SECONDS) * 1000);
+    await sleep((tabFirst ? Math.min(wait, 20) : wait) * 1000);
   } else {
     await sleep(8000);
   }
   const text = await page.evaluate(() => document.body.innerText);
-  if (SHOT && lab) await page.screenshot({ path: SHOT, fullPage: true });
+  const fit = viewport ? await page.evaluate(measurePhoneFit) : null;
+  if (SHOT && lab) await page.screenshot({ path: viewport ? SHOT.replace(/(\.png)?$/i, "-phone.png") : SHOT, fullPage: !viewport });
   await page.close();
-  return { requests, workers, errors, text };
+  return { requests, workers, errors, text, fit };
 }
 
 log("starting preview server");
@@ -136,8 +158,19 @@ const first = await run(base, { lab: true, tabFirst: true });
 console.log("TAB FIRST: workers", first.workers.map((u) => u.split("/").pop()));
 console.log("TAB FIRST: page errors", first.errors.length ? first.errors : "none");
 const firstOk = first.workers.some((u) => u.includes("lab-worker")) && /Pitch \d+ Hz|Voiced so far [1-9]/.test(first.text);
+
+const PHONE = { width: 402, height: 750, deviceScaleFactor: 3, isMobile: true, hasTouch: true };
+const phone = await run(base, { lab: true, viewport: PHONE, wait: Math.min(SECONDS, 30) });
+const f = phone.fit;
+console.log(`PHONE ${PHONE.width}x${PHONE.height}: page errors`, phone.errors.length ? phone.errors : "none");
+console.log(`PHONE ${PHONE.width}x${PHONE.height}: fit`, JSON.stringify(f));
+const phoneOk = f.phoneLayout && f.cardBottoms.length === 4 && f.barTop !== null
+  && f.area.scrollH <= f.area.clientH + 1 // the lab area does not scroll
+  && f.cardBottoms.every((b) => b <= f.barTop + 0.5) // every card ends above the Stop Listening row
+  && f.doc.scrollH <= f.doc.innerH + 1 && f.doc.scrollW <= f.doc.innerW // nor does the page, either way
+  && /Voiced so far [1-9]/.test(phone.text);
 await browser.close();
 browser = null;
-console.log(`\nisolation until the tab is opened: ${offOk ? "PASS" : "FAIL"}; lab live after opening: ${onOk ? "PASS" : "FAIL"}; tab opened before listening: ${firstOk ? "PASS" : "FAIL"}`);
+console.log(`\nisolation until the tab is opened: ${offOk ? "PASS" : "FAIL"}; lab live after opening: ${onOk ? "PASS" : "FAIL"}; tab opened before listening: ${firstOk ? "PASS" : "FAIL"}; four cards fit on a ${PHONE.width}x${PHONE.height} phone: ${phoneOk ? "PASS" : "FAIL"}`);
 cleanup(); // the preview server child would otherwise keep the event loop alive
-process.exit(offOk && onOk && firstOk ? 0 : 1);
+process.exit(offOk && onOk && firstOk && phoneOk ? 0 : 1);
