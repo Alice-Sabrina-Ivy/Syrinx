@@ -18,12 +18,19 @@ const ROOT = path.resolve(HERE, "../..");
 const posts = [];
 globalThis.self = { postMessage: (m) => posts.push(m) };
 const H = {}, NOTCH = {}, RESAMP = {};
-for (const [k, p] of [["bc42", "../../build/notch-adv/trees/bc42/src"], ["head", "../../build/notch-adv/trees/head/src"], ["cand", "../../build/notch-adv/trees/cand/src"], ["r1", "../../build/notch-adv/trees/r1/src"], ["cand2", "../../build/notch-adv/trees/cand2/src"], ["cand3", "../../build/notch-adv/trees/cand3/src"], ["src", "../../src"]]) {
-  await import(pathToFileURL(path.join(HERE, p, "dsp/pitch-worker.js")).href);
+// NOTCH_ADV_TREES=name=path[,name=path...] (paths relative to the repo root)
+// REPLACES the fixed tree list below: run the suite on any src trees, e.g.
+// another work item's candidate trees (build/rnfv-trees/{base0,fgA}/src).
+// Every listed name is also a variant { tree: name } (variants.mjs).
+const TREES = process.env.NOTCH_ADV_TREES
+  ? process.env.NOTCH_ADV_TREES.split(",").map((s) => s.split("=")).map(([k, p]) => [k, path.resolve(ROOT, p)])
+  : [["bc42", "../../build/notch-adv/trees/bc42/src"], ["head", "../../build/notch-adv/trees/head/src"], ["cand", "../../build/notch-adv/trees/cand/src"], ["r1", "../../build/notch-adv/trees/r1/src"], ["cand2", "../../build/notch-adv/trees/cand2/src"], ["cand3", "../../build/notch-adv/trees/cand3/src"], ["src", "../../src"]].map(([k, p]) => [k, path.resolve(HERE, p)]);
+for (const [k, p] of TREES) {
+  await import(pathToFileURL(path.join(p, "dsp/pitch-worker.js")).href);
   H[k] = globalThis.self.onmessage;
   // the SAME module instances the worker imported (memo below)
-  NOTCH[k] = await import(pathToFileURL(path.join(HERE, p, "dsp/noise-notch.js")).href);
-  RESAMP[k] = await import(pathToFileURL(path.join(HERE, p, "ml/audio-utils.js")).href);
+  NOTCH[k] = await import(pathToFileURL(path.join(p, "dsp/noise-notch.js")).href);
+  RESAMP[k] = await import(pathToFileURL(path.join(p, "ml/audio-utils.js")).href);
 }
 
 // ---- notch-level memo (2026-10-05 follow-up) --------------------------------

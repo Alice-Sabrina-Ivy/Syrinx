@@ -242,3 +242,7 @@ VARIANTS.V19g = { tree: "cand3", opts: { rebirth: false, coh: { ...V18c, jumpPre
 VARIANTS.V19h = { tree: "cand3", opts: { rebirth: false, coh: { ...V18c, jumpPreVoice: true, jumpPreFirst: true, bandMarginHz: 3, clearOob: true, grantInBand: true, grantTolHz: 0.5 } } };
 VARIANTS.V19l = { tree: "cand3", opts: { rebirth: false, coh: { ...V18c, jumpPreVoice: true, bandMarginHz: 3, clearOob: true, lapseCorr: 0.5, lapseCoh: 2 } } };
 VARIANTS.V19c = { tree: "cand3", opts: { rebirth: false, coh: { ...V18c, jumpPreVoice: true, bandMarginHz: 3, clearOob: true, capSec: 10 } } };
+
+// NOTCH_ADV_TREES (lib.mjs): every listed src tree is also a variant of that
+// name (2026-10-05 review fix: --variants=base0,fgA on build/rnfv-trees).
+if (process.env.NOTCH_ADV_TREES) for (const s of process.env.NOTCH_ADV_TREES.split(",")) { const k = s.split("=")[0]; VARIANTS[k] ??= { tree: k }; }
