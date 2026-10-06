@@ -36,13 +36,19 @@
 //   node --import ./scripts/realnoise-fv/lib/register.mjs scripts/realnoise-fv/attr.mjs \
 //        [--set=noise|vin|gated|fda|ptdb|hil|voc] [--src=src] [--tag=head] [--shard=i/n] [--ids=a,b]
 //        [--max-sec=90] [--data-root=<notchvd root>] [--out=build/realnoise-fv/attr]
-//        [--split=tune|held] [--cf=noVeto,noGuard] [--notch-opts=<JSON>]
+//        [--split=tune|held] [--cf=noVeto,noGuard] [--notch-opts=<JSON>] [--lead=S]
 // --cf / --notch-opts are ATTRIBUTION COUNTERFACTUALS (switches in the taps):
 // noVeto disables the ghost veto, noGuard makes the harmonic guard keep every
 // frame, --notch-opts is merged over the notch's options (e.g.
 // '{"maxNotches":99}', '{"minTrackSec":1e9,"onsetMinTrackSec":1e9}' = no notch).
 // RN_TAP=0 runs untapped (pure production imports; notch / candidate columns
 // stay 0) — the parity check compares post / paint / gv between the two.
+// --lead=S (vin only; review fix 2026-10-05): crop each mix so the stream
+// starts S s before the voice program (max(0, voice_t0 - S)) instead of
+// after the mixes' fixed 20 s noise-only lead — a user who starts speaking
+// or singing within seconds of pressing Start. The crop (s) is recorded as
+// crop_s in the dump; vinscore.py / vinlead.py map stream time back to the
+// mix timeline with it. Tag the runs per lead (e.g. --tag=fgA_L3).
 import { writeFileSync, mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -187,6 +193,8 @@ else {
   items = publicMixes(loadIndex, set).map((r) => ({ id: r.id, rec: r, meta: { noise_id: r.noise_id, noise_label: r.noise_label, snr_db: r.snr_db, voice_kind: r.voice_kind, voice_t0: r.voice_t0, voice_t1: r.voice_t1, on_s: r.on_s, split: splitOf(r.noise_id) } }));
 }
 if (args.ids) { const s = new Set(args.ids.split(",")); items = items.filter((x) => s.has(x.id)); }
+const LEAD = args.lead !== undefined ? Number(args.lead) : null;
+if (LEAD !== null && (SET !== "vin" || !(LEAD >= 0))) throw new Error("--lead=S (S >= 0) applies to --set=vin only");
 if (args.split) items = items.filter((x) => x.meta.split === args.split);
 const [shI, shN] = (args.shard ?? "0/1").split("/").map(Number);
 items = items.filter((_, i) => i % shN === shI);
@@ -198,6 +206,8 @@ for (const it of items) {
   if (it.track) { x = it.track.samples; sr = it.track.sampleRate; }
   else x = readClip(it.rec.path);
   if (SET === "noise" && MAXS > 0 && x.length > MAXS * SR) x = x.subarray(0, MAXS * SR);
+  let crop = 0; // --lead: stream starts LEAD s before the voice program
+  if (LEAD !== null) { const c0 = Math.round(Math.max(0, it.rec.voice_t0 - LEAD) * SR); crop = c0 / SR; x = x.subarray(c0); }
   const W = runX(x, sr);
   if (it.track) {
     const { f0, hopMs } = it.track.ref, hop = W.C / W.sr;
@@ -209,6 +219,6 @@ for (const it of items) {
   const tbl = new Float32Array(W.n * COLS.length);
   COLS.forEach((c, i) => tbl.set(W.col[c], i * W.n));
   writeFileSync(resolve(OUT, `${it.id}.f32`), Buffer.from(tbl.buffer));
-  writeFileSync(resolve(OUT, `${it.id}.json`), JSON.stringify({ id: it.id, n: W.n, hopS: W.C / W.sr, C: W.C, sr: W.sr, L: W.L, cols: COLS, ...it.meta, src: SRC, cf: args.cf ?? null, notchOpts: args["notch-opts"] ?? null }));
+  writeFileSync(resolve(OUT, `${it.id}.json`), JSON.stringify({ id: it.id, n: W.n, hopS: W.C / W.sr, C: W.C, sr: W.sr, L: W.L, cols: COLS, ...it.meta, crop_s: crop, src: SRC, cf: args.cf ?? null, notchOpts: args["notch-opts"] ?? null }));
 }
 console.log(`${TAG} ${SET} ${shI}/${shN}: ${items.length} items ${(Date.now() - t0) / 1000}s`);

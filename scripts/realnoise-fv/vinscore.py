@@ -10,6 +10,8 @@
 # < / >= 160 Hz, painted), hok (painted hold frames of held-series programs),
 # lead / tail (painted FV in the 20 s noise lead from 1.5 s / the 5 s tail),
 # prog (painted on program frames >= 0.1 s from any voiced truth).
+# Dumps of cropped streams (attr.mjs --lead=S) carry crop_s: stream time +
+# crop_s = mix time; the lead window starts 1.5 s into the STREAM.
 import sys, os, glob, json
 import numpy as np
 
@@ -62,11 +64,13 @@ def score(tag):
             continue
         rec = MIX[m["id"]]
         n, hop, L = m["n"], m["hopS"], m["L"]
+        crop = m.get("crop_s", 0) or 0
         k = np.arange(n)
-        tw = (k + 1) * hop - 0.040
-        td = tw - L * hop - 0.030
+        tws = (k + 1) * hop - 0.040             # stream time
+        tds = tws - L * hop - 0.030
         dur = n * hop
-        valid = (td >= 0) & (tw <= dur - 0.3)
+        valid = (tds >= 0) & (tws <= dur - 0.3)
+        tw, td = tws + crop, tds + crop         # mix timeline
         rw, rd = truth(rec, tw), truth(rec, td)
         post = c["post"]
         paint = np.where(np.isfinite(c["inten"]), c["paint"], 0)
@@ -83,7 +87,7 @@ def score(tag):
         near = np.zeros(n, bool)
         for d in np.arange(-0.1, 0.1001, 0.025):
             near |= truth(rec, td + d) > 0
-        lead = valid & (td >= 1.5) & (td < t0 - 0.1)
+        lead = valid & (tds >= 1.5) & (td < t0 - 0.1)
         tail = valid & (td > t1 + 0.5)
         prog = progd & ~(rd > 0) & ~near
         row = {"ok": (okw.sum(), vw.sum()), "pok": (okd.sum(), vd.sum()),

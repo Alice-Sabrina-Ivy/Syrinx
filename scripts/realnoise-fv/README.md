@@ -19,15 +19,26 @@ gitignored PTDB-TUG / FDA audio. Every output lands under `build/` (gitignored).
 | `lib/tap-boersma.mjs`, `lib/tap-notch.mjs` | observation-only taps (detector candidates, tracker decode, harmonic-guard verdict; the notch's tracks / cascade / line verdict) with opt-in counterfactual switches (`--cf=noVeto,noGuard`, `--notch-opts=<JSON>`) |
 | `lib/sets.mjs` | noise-only set, public-mix filter, the tuning / held-out split of noise sources |
 | `lib/worker.mjs` | drive the pitch worker of any number of src trees in one process |
-| `attr.mjs` | per-hop dump of the PRODUCTION chain (real pitch worker, DSP worker, `handleAnalysisResult`) over noise / voice-in-noise / gated sets or a corpus, incl. the replayed gender VAD |
+| `attr.mjs` | per-hop dump of the PRODUCTION chain (real pitch worker, DSP worker, `handleAnalysisResult`) over noise / voice-in-noise / gated sets or a corpus, incl. the replayed gender VAD; `--lead=S` crops the voice-in-noise mixes to an S-second noise-only lead (the mixes carry 20 s) |
 | `attr.py` | attribution tables from the dumps (painted / fresh / held, worker funnel, detector, notch coverage, silence gate, gender VAD, worst clips) |
 | `cmp.py`, `vinscore.py`, `score.py` | compare dump tags: noise-only by class; voice in noise (Praat truth of the voice layers); ground-truth corpora (corpus.mjs conventions, gender-symmetric) |
+| `vinlead.py` | voice in noise as base / candidate pairs per noise-only lead: cost by register and voice gender (max(F_err, M_err)), per-stream worker / painted losses in frames (display-only losses marked), painted false voicing per stream on the noise segments (lead, tail, gaps between phrases; +2 pp rule), gender-model ticks over voiced audio |
+| `fvwin.py` | painted false voicing of the noise-only clips per 5 s window (a clip-mean gain can hide worse windows) |
+| `armed.mjs` | how often the candidate guard is armed at all on the clean corpora (`fg_armed` tree: the candidate + observation-only counters) and its margin to the threshold |
+| `cmpcells.mjs` | cell-by-cell base / candidate check of the notch work's synthetic interferer suites (`scripts/notch-adversarial`, which load any trees via `NOTCH_ADV_TREES`) |
 | `replay.mjs` | re-drive the real display hook of any tree over existing dumps (display candidates, exact; `--parity`) |
 | `evalmix.mjs`, `aggmix.py` | gated / held-series / voice-in-noise mixes through the production chain; tree comparison |
 | `held.mjs` | the notch work's synthetic held-note suite on any trees (agg-held.mjs-compatible rows) |
 | `harmfeat.py`, `harmfeat_audio.py`, `floorfeat.py`, `simguard.py`, `simfloor.py` | offline features (harmonic prominence, harmonic excess over a learned background) and worker-level guard simulations on the dumps (`simfloor.py`: causal background-floor variants — voicing-gated, segment-frozen) |
-| `mktree.py` | candidate src trees (`build/rnfv-trees/<name>/src`): hold-bridge, onset-confirm and learned-background-guard variants |
+| `mktree.py` | candidate src trees (`build/rnfv-trees/<name>/src`): hold-bridge (incl. `h_max0`, no bridge), onset-confirm and learned-background-guard variants (incl. `fg_armed`, counters only) |
 | `clips_csv.py` | per-clip table committed with the measurement |
 | `cand/noise-floor-guard.js`, `cand/noise-floor-guard-test.mjs` | the (not adopted) learned-background voicing veto and its contract test (`python scripts/realnoise-fv/mktree.py fg`, then `node scripts/realnoise-fv/cand/noise-floor-guard-test.mjs`) |
 
 Commands: the measurement file's "Reproduction" section.
+
+**Checking any future background-floor guard** (review fixes 2026-10-05):
+voice in noise with NO noise-only lead and with short leads (`--lead=0,1,3,8`),
+not only the mixes' 20 s lead; worker and painted losses in frames, by register
+and voice gender; painted false voicing on the noise segments AFTER speech per
+stream (the 400 ms hold bridge can paint more from fewer worker frames); 5 s
+windows of the noise-only clips; the synthetic interferer suites.

@@ -17,8 +17,16 @@ const ROOT = path.resolve(HERE, "../..");
 const posts = [];
 globalThis.self = { postMessage: (m) => posts.push(m) };
 const H = {};
-for (const [k, p] of [["bc42", "../../build/notch-adv/trees/bc42/src"], ["head", "../../build/notch-adv/trees/head/src"], ["cand", "../../build/notch-adv/trees/cand/src"], ["r1", "../../build/notch-adv/trees/r1/src"], ["cand2", "../../build/notch-adv/trees/cand2/src"], ["cand3", "../../build/notch-adv/trees/cand3/src"], ["src", "../../src"]]) {
-  await import(pathToFileURL(path.join(HERE, p, "dsp/pitch-worker.js")).href);
+// NOTCH_ADV_TREES=name=path[,name=path...] (paths relative to the repo root)
+// REPLACES the fixed tree list below: run the suite on any src trees, e.g.
+// another work item's candidate trees (2026-10-05 review fix: the real-noise
+// false-voicing candidate, build/rnfv-trees/{base0,fgA}/src). Every listed
+// name is also a variant { tree: name } (variants.mjs).
+const TREES = process.env.NOTCH_ADV_TREES
+  ? process.env.NOTCH_ADV_TREES.split(",").map((s) => s.split("=")).map(([k, p]) => [k, path.resolve(ROOT, p)])
+  : [["bc42", "../../build/notch-adv/trees/bc42/src"], ["head", "../../build/notch-adv/trees/head/src"], ["cand", "../../build/notch-adv/trees/cand/src"], ["r1", "../../build/notch-adv/trees/r1/src"], ["cand2", "../../build/notch-adv/trees/cand2/src"], ["cand3", "../../build/notch-adv/trees/cand3/src"], ["src", "../../src"]].map(([k, p]) => [k, path.join(HERE, p)]);
+for (const [k, p] of TREES) {
+  await import(pathToFileURL(path.join(p, "dsp/pitch-worker.js")).href);
   H[k] = globalThis.self.onmessage;
 }
 

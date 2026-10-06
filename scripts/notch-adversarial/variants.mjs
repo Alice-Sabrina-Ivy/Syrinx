@@ -172,3 +172,6 @@ VARIANTS.V13 = { tree: "cand3", opts: { coh: { ...V10c, rebirthGate: "voice" } }
 // V14 = V11 with the strict voice verdict (pcorr >= 0.7, pcoh >= 2.5 c):
 // bc42ad0 (no breath re-births) + voice timing for not-onset-born lines
 VARIANTS.V14 = { tree: "cand3", opts: { rebirth: false, coh: { ...V10c, rebirthGate: "any", vCorr: 0.7, vCoh: 2.5 } } };
+// NOTCH_ADV_TREES (lib.mjs): every listed src tree is also a variant of that
+// name (2026-10-05 review fix: --variants=base0,fgA on build/rnfv-trees).
+if (process.env.NOTCH_ADV_TREES) for (const s of process.env.NOTCH_ADV_TREES.split(",")) { const k = s.split("=")[0]; VARIANTS[k] ??= { tree: k }; }

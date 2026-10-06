@@ -32,6 +32,11 @@ interaction.
 `src/` with that notch module). Re-run it after editing `src/`,
 `cand-notch.js` or `cand2-notch.js`.
 
+`NOTCH_ADV_TREES=name=path[,name=path...]` (paths from the repo root) replaces
+that tree list with any src trees, each also a variant of its name — e.g. the
+real-noise false-voicing candidate on the whole suite
+(`--variants=bc42,base0,fgA`, [measurements/realnoise-false-voicing-attribution-2026-10-05.md](../../measurements/realnoise-false-voicing-attribution-2026-10-05.md) §7).
+
 ## Parts
 
 | script | what |

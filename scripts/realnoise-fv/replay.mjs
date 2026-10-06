@@ -12,7 +12,7 @@
 // confidence = conf[k - L]).
 //
 //   node --import ./scripts/realnoise-fv/lib/register.mjs scripts/realnoise-fv/replay.mjs \
-//        --from=TAG --set=noise --src=<tree>/src --tag=NEWTAG [--parity] [--attr=build/realnoise-fv/attr]
+//        --from=TAG --set=noise --src=<tree>/src --tag=NEWTAG [--parity] [--attr=build/realnoise-fv/attr] [--ids=a,b]
 // Writes <attr>/<NEWTAG>/<set>/ dumps: every column copied from TAG, display
 // columns (msg / paint / ro / style) replaced. Gender column gv is copied
 // unchanged (the display does not feed the gender worker).
@@ -29,7 +29,9 @@ const IN = resolve(ATTR, args.from, SET), OUT = resolve(ATTR, args.tag ?? `${arg
 const S = await loadSrc(args.src ?? "src");
 mkdirSync(OUT, { recursive: true });
 const [shI, shN] = (args.shard ?? "0/1").split("/").map(Number);
-const names = readdirSync(IN).filter((f) => f.endsWith(".json")).map((f) => f.slice(0, -5)).sort().filter((_, i) => i % shN === shI);
+const only = args.ids ? new Set(args.ids.split(",")) : null; // --ids=a,b: these streams only
+const names = readdirSync(IN).filter((f) => f.endsWith(".json")).map((f) => f.slice(0, -5)).sort()
+  .filter((nm) => !only || only.has(nm)).filter((_, i) => i % shN === shI);
 let mism = 0;
 for (const nm of names) {
   const m = JSON.parse(readFileSync(resolve(IN, `${nm}.json`), "utf8"));

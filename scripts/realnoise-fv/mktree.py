@@ -119,6 +119,25 @@ def fg(**kw):
 
 NOFLOOR = fg() + [(PW, "      floorGuardOn = msg.floorGuard !== false;", "      floorGuardOn = false;")]
 
+# fg + observation-only counters (globalThis.__FGI, armed.mjs): how often
+# check() is past its warm-up and anchored ("armed"), and the best harmonic
+# excess over the floor of every armed check. Verdicts are unchanged.
+ARMED = [
+    (FLOOR, "    if (fr < cfg.warmFrames || !(f0 > 0) || !blkAnchor.some((v) => v)) { return pass(); }",
+     "    const G = globalThis.__FGI; if (G) G.calls++;" + NL +
+     "    if (fr < cfg.warmFrames) { if (G) G.warm++; return pass(); }" + NL +
+     "    if (!(f0 > 0) || !blkAnchor.some((v) => v)) { if (G) G.noanchor++; return pass(); }" + NL +
+     "    if (G) G.armed++;"),
+    (FLOOR, "    let count = 0;" + NL + "    for (let h = 1; h <= cfg.harmonics; h++) {",
+     "    let count = 0;" + NL +
+     "    if (G) { let best = -Infinity; for (let h = 1; h <= cfg.harmonics; h++) { const f = h * f0; if (f > cfg.maxHarmHz) break; const half = Math.min(0.03 * f, 0.2 * f0);" + NL +
+     "      const lo = Math.max(1, Math.floor((f - half) / binHz)), hi = Math.min(NB - 1, Math.ceil((f + half) / binHz));" + NL +
+     "      for (let b = lo; b <= hi; b++) if (floor[b] < Infinity) best = Math.max(best, 10 * Math.log10(p[b] / floor[b])); } G.best.push(best); }" + NL +
+     "    for (let h = 1; h <= cfg.harmonics; h++) {"),
+    (FLOOR, "    streak++;" + NL + "    return streak < cfg.debounce;",
+     "    streak++;" + NL + "    if (G) { G.armedFail++; if (streak >= cfg.debounce) G.vetoes++; }" + NL + "    return streak < cfg.debounce;"),
+]
+
 CANDS = {
     "src": [],
     "h_run1": hold_cand("run", 1),
@@ -126,6 +145,7 @@ CANDS = {
     "h_run2": hold_cand("run", 2),
     "h_seg1": hold_cand("seg", 1),
     "h_max200": holdmax(200),
+    "h_max0": holdmax(0),   # no pitch-hold bridge (mechanism check of the tail FV increase, §4.3)
     "h_max150": holdmax(150),
     "on4": onset(4),
     "on5": onset(5),
@@ -145,6 +165,8 @@ CANDS = {
     "fg_noanchor": fg() + [(PW, "  floorGuard.decided(vetoed > 0, !preGuardVoiced);", "  floorGuard.decided(vetoed > 0);")],
     # the worker's floor guard switched off (= base behaviour, same code)
     "fg_off": NOFLOOR,
+    # fg with observation-only counters (armed.mjs; review fix, §4.2)
+    "fg_armed": fg() + ARMED,
     # Measured on earlier revisions of the module (not rebuildable from this
     # src; see the measurement file §3.5): no anchor rule; background learned
     # from (a) every frame ("all" mode), (b) every frame unvoiced before this
