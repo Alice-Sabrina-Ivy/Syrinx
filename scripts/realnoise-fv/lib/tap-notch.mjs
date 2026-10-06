@@ -16,7 +16,12 @@ if (!re.test(text)) throw new Error(`tap-notch: cannot find createNoiseNotch's r
 // cohClass (the line verdict, 2026-10-05 trees) is exposed when the tree has one
 const hasCoh = /function cohClass\(/.test(text);
 const patched = text.replace(re, `return {$1__obs: () => ({ tracks, cascade, obsIndex, cfg${hasCoh ? ", cohClass" : ""} }),$1process,`);
-const R = await import("data:text/javascript;base64," + Buffer.from(patched, "utf8").toString("base64"));
+// A data: URL cannot resolve the tree's relative imports (noise-notch.js
+// imports ../utils/constants.js since V19g, 2026-10-06), so they are
+// rewritten to absolute file URLs of the same tree first.
+const patchedAbs = patched.replace(/(from\s+["'])(\.{1,2}\/[^"']+)(["'])/g,
+  (m, a, spec, b) => a + new URL(spec, realUrl).href + b);
+const R = await import("data:text/javascript;base64," + Buffer.from(patchedAbs, "utf8").toString("base64"));
 
 export const NOTCH_DEFAULTS = R.NOTCH_DEFAULTS;
 // counterfactual switch: globalThis.__RN_CF.noVeto disables the ghost veto
