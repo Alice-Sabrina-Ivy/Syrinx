@@ -17,6 +17,7 @@ import {
 } from "./pitchSmoothing";
 import { createGateState, evaluateFrameGate } from "./pitchGate";
 import { createPaintGate, EXCURSION_SEMI } from "./pitchPaintGate";
+import { createSteadinessTracker } from "./steadiness";
 import { createCaptureSource } from "./captureSource";
 import { VocalWeightAggregator } from "./vocal-weight-aggregator";
 import { VocalWeightBaseline } from "./vocal-weight-baseline";
@@ -42,6 +43,7 @@ import {
   pushVocalWeightEmit,
   resetVocalWeightCounters,
 } from "../diag/diag";
+import { isResonanceLabRequested, onResonanceLabRequested } from "../resonance-lab/labRequest";
 
 // Silence-gate thresholds (SILENCE_THRESHOLD_DB, CONFIDENCE_THRESHOLD,
 // SILENCE_DEBOUNCE_FRAMES), pitch staleness, and the bounded pitch-hold
@@ -71,6 +73,9 @@ const FORMANT_OUTLIER_HZ = 500; // max plausible frame-to-frame formant jump
 // NOT hysteresis'd — recorded frames keep the truthful per-frame flag.
 const VOICED_FALL_FRAMES = 16;
 
+// Steadiness readout when there is no reading (see steadiness.js).
+const NO_STEADINESS = { value: null, held: false };
+
 export function useAudioPipeline() {
   const [state, setState] = useState({
     status: "idle",
@@ -80,6 +85,13 @@ export function useAudioPipeline() {
     pitch: null,
     intensity: null,
     noteName: null,
+    // Pitch steadiness (steadiness.js): SD in semitones of the posted
+    // pitch over the last ~1 s, or null ("—") when the window holds too
+    // little voiced audio or spans a jump the trim refuses.
+    // steadinessHeld: the value is the last reading, kept briefly after
+    // the voice stopped (dim).
+    steadiness: null,
+    steadinessHeld: false,
     formants: { f1: null, f2: null, f3: null },
     spectralTilt: null,
     hnr: null,
@@ -118,6 +130,10 @@ export function useAudioPipeline() {
   const workerRef = useRef(null);
   const mlWorkerRef = useRef(null);
   const pitchWorkerRef = useRef(null);
+  // Experimental resonance lab: handle returned by the dynamically imported
+  // labPipeline; stays null until the user opens the lab tab.
+  const labRef = useRef(null);
+  const labUnsubRef = useRef(null);
   const streamRef = useRef(null);
   // Latest pitch from pitch-worker (SwiftF0). The DSP worker no longer
   // produces pitch since the Stage 4 cutover; each DSP analysis frame
@@ -132,6 +148,11 @@ export function useAudioPipeline() {
     voiced: false,
     ts: 0,
   });
+  // Steadiness tracker (steadiness.js) — fed every pitch-worker message
+  // (posted values, voiced or not) by handlePitchMessage; read on every
+  // DSP frame by handleAnalysisResult (published on the throttled state
+  // cadence). Fresh per start().
+  const steadinessRef = useRef(null);
   // Periodic AudioContext state sampler interval — set up in start(),
   // cleared in stop(). Diag-mode-only; the ref stays null in production.
   const ctxSamplerRef = useRef(null);
@@ -231,6 +252,8 @@ export function useAudioPipeline() {
   // recent version. Stable refs (audioCtxRef, captureSrcRef, etc.) are
   // referenced directly.
   const handleAnalysisResultRef = useRef(null);
+  // Same pattern for the pitch-worker message handler.
+  const handlePitchMessageRef = useRef(null);
 
   // Recent AudioWorklet process()-throw timestamps (see capture onError):
   // transient recovered errors are tolerated; repeats escalate.
@@ -285,6 +308,7 @@ export function useAudioPipeline() {
     cppBaselineRef.current = new VocalWeightBaseline();
     lastCppAggregateRef.current = { time: -1 };
     if (DIAG_ENABLED) resetVocalWeightCounters();
+    steadinessRef.current = createSteadinessTracker();
 
     setState((s) => ({ ...s, status: "requesting", error: null }));
 
@@ -459,55 +483,32 @@ export function useAudioPipeline() {
         [pitchPort],
       );
 
+      // Experimental resonance lab: one EXTRA capture consumer + lab worker,
+      // loaded on demand once the user has opened the lab tab (now, or later
+      // in this listening session). Until then nothing lab-related is
+      // fetched or run (see resonance-lab/labRequest.js).
+      let labStarting = false;
+      const startLabIfRequested = () => {
+        if (labStarting || labRef.current || !isResonanceLabRequested()) return;
+        labStarting = true;
+        import("../resonance-lab/labPipeline.js")
+          .then((lab) => {
+            if (!genAlive() || captureSrcRef.current !== captureSrc || labRef.current) return;
+            labRef.current = lab.startLab(captureSrc);
+          })
+          .catch((err) => console.error("resonance lab failed to start", err))
+          .finally(() => { labStarting = false; });
+      };
+      if (labUnsubRef.current) labUnsubRef.current();
+      labUnsubRef.current = onResonanceLabRequested(startLabIfRequested);
+      startLabIfRequested();
+
       pitchWorker.onmessage = (e) => {
         if (!genAlive()) return; // late message after stop()
         const msg = e.data;
         if (!msg || !msg.type) return;
         if (msg.type === "pitch") {
-          latestPitchRef.current = {
-            pitch: msg.pitch,
-            confidence: msg.confidence,
-            voiced: msg.voiced,
-            ts: msg.ts,
-          };
-          // Forward pitch hint to the DSP worker so its formant extraction
-          // can pick the right LPC order / formant ceiling. One-frame lag
-          // is acceptable since formants change slowly. We always send
-          // (including null when unvoiced) so the DSP worker can drop the
-          // hint promptly when speech ends.
-          if (workerRef.current) {
-            workerRef.current.postMessage({
-              type: "pitch-hint",
-              pitch: msg.pitch,
-            });
-          }
-          // Forward voicedness to the ML worker: its VAD gates gender
-          // inference on "pitch recently voiced" so noise-only windows
-          // stop feeding masculine-leaning scores into the EMA (every
-          // synthetic noise type passed the old peak-amplitude VAD 100%
-          // of the time — measurements/noise-robustness-oracle-
-          // 2026-07-19.md §4). Sent on every pitch message, voiced or
-          // not, so the worker's recency window closes promptly.
-          if (mlWorkerRef.current) {
-            mlWorkerRef.current.postMessage({
-              type: "pitch-hint",
-              voiced: msg.voiced,
-              ts: msg.ts,
-              // Active tonal-interferer notches — consumed by the ML
-              // worker's sub-floor voicing probe (fail-open for
-              // below-pitch-floor phonation, Codex review on PR #90).
-              notchedFreqs: msg.notchedFreqs ?? [],
-            });
-          }
-          if (DIAG_ENABLED && typeof msg.inferMs === "number") {
-            pushPitchInference({
-              tEpochMs: msg.ts,
-              inferMs: msg.inferMs,
-              pitch: msg.pitch,
-              confidence: msg.confidence,
-              voiced: msg.voiced,
-            });
-          }
+          handlePitchMessageRef.current?.(msg);
         } else if (msg.type === "inference-event") {
           // Mirrors the gender-worker timeout-event handling. Diag-only
           // capture of pitch-worker hangs into the errors ring so
@@ -731,6 +732,11 @@ export function useAudioPipeline() {
         captureSrcRef.current = null;
       }
       audioCtxRef.current = null;
+      if (labUnsubRef.current) { labUnsubRef.current(); labUnsubRef.current = null; }
+      if (labRef.current) {
+        labRef.current.stop();
+        labRef.current = null;
+      }
       for (const ref of [workerRef, mlWorkerRef, pitchWorkerRef]) {
         if (ref.current) {
           try { ref.current.terminate(); } catch { /* */ }
@@ -774,6 +780,11 @@ export function useAudioPipeline() {
       pitchWorkerRef.current.terminate();
       pitchWorkerRef.current = null;
     }
+    if (labUnsubRef.current) { labUnsubRef.current(); labUnsubRef.current = null; }
+    if (labRef.current) {
+      labRef.current.stop();
+      labRef.current = null;
+    }
     latestPitchRef.current = { pitch: null, confidence: null, voiced: false, ts: 0 };
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop());
@@ -808,6 +819,7 @@ export function useAudioPipeline() {
     cppBaselineRef.current = null;
     lastCppAggregateRef.current = { time: -1 };
     lastDiagVwEmitRef.current = -1;
+    steadinessRef.current = null;
     setState({
       status: "idle",
       error: null,
@@ -816,6 +828,8 @@ export function useAudioPipeline() {
       pitch: null,
       intensity: null,
       noteName: null,
+      steadiness: null,
+      steadinessHeld: false,
       formants: { f1: null, f2: null, f3: null },
       spectralTilt: null,
       hnr: null,
@@ -879,6 +893,66 @@ export function useAudioPipeline() {
     };
   }
 
+  // Pitch-worker "pitch" message: latest-pitch ref for the DSP frames,
+  // pitch hints to the DSP + ML workers, the steadiness window, diag.
+  // Reached from start()'s onmessage through handlePitchMessageRef.
+  function handlePitchMessage(msg) {
+    latestPitchRef.current = {
+      pitch: msg.pitch,
+      confidence: msg.confidence,
+      voiced: msg.voiced,
+      ts: msg.ts,
+    };
+    // Forward pitch hint to the DSP worker so its formant extraction
+    // can pick the right LPC order / formant ceiling. One-frame lag
+    // is acceptable since formants change slowly. We always send
+    // (including null when unvoiced) so the DSP worker can drop the
+    // hint promptly when speech ends.
+    if (workerRef.current) {
+      workerRef.current.postMessage({
+        type: "pitch-hint",
+        pitch: msg.pitch,
+      });
+    }
+    // Forward voicedness to the ML worker: its VAD gates gender
+    // inference on "pitch recently voiced" so noise-only windows
+    // stop feeding masculine-leaning scores into the EMA (every
+    // synthetic noise type passed the old peak-amplitude VAD 100%
+    // of the time — measurements/noise-robustness-oracle-
+    // 2026-07-19.md §4). Sent on every pitch message, voiced or
+    // not, so the worker's recency window closes promptly.
+    if (mlWorkerRef.current) {
+      mlWorkerRef.current.postMessage({
+        type: "pitch-hint",
+        voiced: msg.voiced,
+        ts: msg.ts,
+        // Active tonal-interferer notches — consumed by the ML
+        // worker's sub-floor voicing probe (fail-open for
+        // below-pitch-floor phonation, Codex review on PR #90).
+        notchedFreqs: msg.notchedFreqs ?? [],
+      });
+    }
+    if (DIAG_ENABLED && typeof msg.inferMs === "number") {
+      pushPitchInference({
+        tEpochMs: msg.ts,
+        inferMs: msg.inferMs,
+        pitch: msg.pitch,
+        confidence: msg.confidence,
+        voiced: msg.voiced,
+      });
+    }
+    // Steadiness window: every posted value (null = unvoiced) on the
+    // audio clock. Lazily created so the oracle chain, which drives the
+    // hook without start(), exercises the same path.
+    if (!steadinessRef.current) steadinessRef.current = createSteadinessTracker();
+    steadinessRef.current.push(
+      msg.pitch,
+      typeof msg.contextTime === "number" ? msg.contextTime : msg.ts / 1000,
+    );
+  }
+
+  useEffect(() => { handlePitchMessageRef.current = handlePitchMessage; });
+
   function handleAnalysisResult(data) {
     const { intensity, formants, spectralTilt, hnr, cpp, absoluteTime } = data;
 
@@ -904,6 +978,12 @@ export function useAudioPipeline() {
       pitchTs: latestPitch.ts,
     });
     const { pitch, hasPitch, isQuiet } = gate;
+    // Steadiness reading (cached inside the tracker: recomputed on the
+    // first read after new pitch messages arrived, i.e. at most once per
+    // DSP frame). A stalled pitch worker reads "—".
+    const steady = !gate.pitchStale && steadinessRef.current
+      ? steadinessRef.current.read()
+      : NO_STEADINESS;
     // Counted on every frame (silence frames included): true on a fresh
     // detection right after a gap — see smoothingBufferFor below.
     const freshAfterGap = smoothGapRef.current.frame(hasPitch);
@@ -1002,6 +1082,8 @@ export function useAudioPipeline() {
           pitch: heldStale ? null : held.pitch,
           intensity,
           noteName: heldStale ? null : held.noteName,
+          steadiness: steady.value,
+          steadinessHeld: steady.held,
           formants: held.formants,
           spectralTilt: held.spectralTilt,
           hnr: held.hnr,
@@ -1025,6 +1107,8 @@ export function useAudioPipeline() {
           pitch: null,
           intensity,
           noteName: null,
+          steadiness: steady.value,
+          steadinessHeld: steady.held,
           formants: { f1: null, f2: null, f3: null },
           spectralTilt: null,
           hnr: null,
@@ -1239,6 +1323,8 @@ export function useAudioPipeline() {
       pitch: displayPitched ? smoothedPitch : (showHeldReadout ? lastVoicedRef.current.pitch : null),
       intensity,
       noteName: displayPitched ? noteName : (showHeldReadout ? lastVoicedRef.current.noteName : null),
+      steadiness: steady.value,
+      steadinessHeld: steady.held,
       formants: smoothedFormants,
       spectralTilt: currentTilt,
       hnr: currentHnr,
