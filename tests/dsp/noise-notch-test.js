@@ -13,8 +13,10 @@
 // and (2026-10-05) the voice-vs-machine line verdict: voice-timed glides /
 // speech -> hold / early phonation, its interferer guards, and REAL
 // recordings (tests/dsp/data/notch-real/: an MS-SNSD air conditioner, CC0;
-// VocalSet long tones, CC BY 4.0; measurements/noise-notch-voice-
-// discrimination-2026-10-05.md).
+// VocalSet long tones and PVQD sustained vowels, CC BY 4.0;
+// measurements/noise-notch-voice-discrimination-2026-10-05.md); its
+// follow-up adds 75-80 Hz voices, crescendos / messa di voce at a hold's
+// start (synthetic and real) and a later takeover guard case.
 //
 // Usage: node tests/dsp/noise-notch-test.js
 
@@ -440,6 +442,63 @@ for (const f0 of [120, 220]) {
   check(`${f0} Hz, 16 s hold from t = 0.15 s: >= ${HELD_MIN} % of hold frames at pitch`, r.pct >= HELD_MIN, `${r.pct.toFixed(1)} %${r.notched ? ", notch promoted" : ""}`);
 }
 
+// ---- 2026-10-05 follow-up (review of V14; measurements/noise-notch-voice-
+// discrimination-2026-10-05.md "Follow-up") -----------------------------------
+// (1) The coherence band starts at the display / detector floor (75 Hz):
+// V14 measured lines from 80 Hz only, so a 75-80 Hz voice got no verdict and
+// was notched 5.45 s in (31.7 % of hold frames), as on bc42ad0 — very low
+// voices are in scope (gender symmetry).
+console.log("\nvery low voices: phonation from the stream's start at 76-79 Hz (real worker)");
+for (const [f0, t0] of [[77, 0], [77, 0.15], [76, 0.15], [79, 0]]) {
+  const f0At = (t) => (t >= t0 && t <= t0 + 16 ? f0 : 0);
+  const r = holdScore(workerRun(voiceTrack({ dur: t0 + 17, f0At, ampAt: (t) => ramp(t, t0, t0 + 16, 0.02), vibCents: 10, wanderCents: 3, seed: 3 * f0 + 10 * t0 })), f0At, [[t0, t0 + 16]]);
+  check(`${f0} Hz, 16 s hold from t = ${t0} s (10 c vibrato + 3 c wander): >= ${HELD_MIN} % of hold frames at pitch`, r.pct >= HELD_MIN, `${r.pct.toFixed(1)} %${r.notched ? ", notch promoted" : ""}`);
+}
+{
+  const f0At = (t) => (t >= 0.15 && t <= 16.15 ? 77 : 0);
+  knownLimit("77 Hz from t = 0.15 s, 3 c wander, no vibrato (too little shared modulation for a voice verdict)",
+    holdScore(workerRun(voiceTrack({ dur: 17, f0At, ampAt: (t) => ramp(t, 0.15, 16.15, 0.02), vibCents: 0, wanderCents: 3, seed: 231 })), f0At, [[0.15, 16.15]]));
+}
+
+// (2) The jump guard keys on a TAKEOVER, not on any rise: V14 refused voice
+// timing to a line whose level rose >= 6 dB over its first 3 sightings, which
+// is also what a crescendo or a messa di voce does at the start of a hold
+// (measured on real PVQD sustained vowels from t ~ 0, below). Now: >= 6 dB
+// within 6 observations over a level that held within 1.5 dB for 3
+// consecutive sightings and was the line's loudest so far (within 3 dB) — a
+// hum with a louder note starting on its track (case (l) below), which no
+// constant-slope crescendo and no voice recovering from a dip matches.
+console.log("\ncrescendo / messa di voce at the start of a not-onset-born hold (real worker)");
+for (const f0 of [120, 220]) for (const [label, gDb] of [
+  ["-12 -> 0 dB over 1 s", (u) => (u < 1 ? -12 + 12 * u : 0)],
+  ["-10 -> 0 dB over 3 s", (u) => (u < 3 ? -10 + 10 * u / 3 : 0)],
+  ["messa di voce -10 -> 0 -> -10 dB, 8 s period", (u) => -10 * Math.abs(Math.cos(Math.PI * u / 8))],
+]) {
+  const f0At = (t) => (t >= 0.15 && t <= 16.15 ? f0 : 0);
+  const ampAt = (t) => ramp(t, 0.15, 16.15, 0.02) * Math.pow(10, gDb(t - 0.15) / 20);
+  const r = holdScore(workerRun(voiceTrack({ dur: 17, f0At, ampAt, vibCents: 10, wanderCents: 3, seed: f0 + label.length })), f0At, [[0.15, 16.15]]);
+  check(`${f0} Hz from t = 0.15 s, ${label}: >= ${HELD_MIN} % of hold frames at pitch`, r.pct >= HELD_MIN, `${r.pct.toFixed(1)} %${r.notched ? ", notch promoted" : ""}`);
+}
+// a voice that dips and recovers before its verdict (a held-out real /a/ fell
+// 13 dB after its onset, steadied, then rose 7 dB in 0.4 s): its steady
+// stretch is not the line's loudest so far, so it is no takeover (V16, which
+// lacked that condition, notched it 5.45 s in: 31.7 %)
+for (const f0 of [120, 220]) {
+  const f0At = (t) => (t >= 0.15 && t <= 16.15 ? f0 : 0);
+  const g = (u) => (u < 0.3 ? 0 : u < 1.3 ? -13 * (u - 0.3) : u < 2.0 ? -13 : u < 2.4 ? -13 + 17.5 * (u - 2.0) : Math.min(0, -6 + 15 * (u - 2.4)));
+  const ampAt = (t) => ramp(t, 0.15, 16.15, 0.02) * Math.pow(10, g(t - 0.15) / 20);
+  const r = holdScore(workerRun(voiceTrack({ dur: 17, f0At, ampAt, vibCents: 10, wanderCents: 3, seed: 11 * f0 })), f0At, [[0.15, 16.15]]);
+  check(`${f0} Hz from t = 0.15 s, dips 13 dB after the onset and recovers: >= ${HELD_MIN} % of hold frames at pitch`, r.pct >= HELD_MIN, `${r.pct.toFixed(1)} %${r.notched ? ", notch promoted" : ""}`);
+}
+for (const f0 of [120, 220]) {
+  // subito forte: 1 s at -8 dB, then +8 dB within 0.1 s — a steady line that
+  // jumps, i.e. the takeover's own signal: bc42ad0's timing (known)
+  const f0At = (t) => (t >= 0.15 && t <= 16.15 ? f0 : 0);
+  const ampAt = (t) => ramp(t, 0.15, 16.15, 0.02) * Math.pow(10, (t < 1.15 ? -8 : t < 1.25 ? -8 + 80 * (t - 1.15) : 0) / 20);
+  knownLimit(`${f0} Hz from t = 0.15 s, subito forte (+8 dB after 1 s at -8 dB) (takeover signal)`,
+    holdScore(workerRun(voiceTrack({ dur: 17, f0At, ampAt, vibCents: 10, wanderCents: 3, seed: 7 * f0 })), f0At, [[0.15, 16.15]]));
+}
+
 console.log("\nrepeated same-pitch holds separated by breaths (known limitation: one onset-born track spans the series, notched once it passes 20 s)");
 for (const [label, breathNoiseDb, mod] of [["silent 0.5 s breaths", null, { vibCents: 0 }], ["0.5 s breaths with audible inhalation (-20 dB)", -20, { vibCents: 0 }], ["silent 0.5 s breaths, 10 c vibrato + 3 c wander", null, { vibCents: 10, wanderCents: 3 }]]) for (const f0 of [120, 220]) {
   const spans = [[1, 11], [11.5, 21.5], [22, 32]];
@@ -474,15 +533,18 @@ console.log("\nvoice timing never holds back a hum (real worker)");
     return x;
   };
   // (l) a hum present from t = 0 with a louder 120.5 Hz note on its track
-  // (1-5 s, vibrato + wander), then the hum alone: the note makes the line
-  // voice-like, but the line was a hum first (its level jumped >= 6 dB when
-  // the note took it over) -> no voice timing; bc42ad0 notches it at 5.45 s
-  for (const lvl of [0.01, 0.03]) {
-    const f0At = (t) => (t >= 1 && t <= 5 ? 120.5 : 0);
-    const v = voiceTrack({ dur: 25, f0At, ampAt: (t) => ramp(t, 1, 5, 0.06), vibCents: 10, wanderCents: 3, amp: 0.2, seed: 91 });
+  // (vibrato + wander), then the hum alone: the note makes the line voice-
+  // like, but the line was a hum first — steady, then >= 6 dB up within 6
+  // observations when the note took it over (the takeover test) -> no voice
+  // timing; bc42ad0 notches it at 5.45 s. Notes at 1-5 s (rms 0.01 / 0.03:
+  // the line rises ~16 / ~6-9 dB) and, 2026-10-05 follow-up, at 3-7 s over
+  // an rms 0.02 hum (a 2.4 s steady stretch before the takeover)
+  for (const [lvl, a, b] of [[0.01, 1, 5], [0.03, 1, 5], [0.02, 3, 7]]) {
+    const f0At = (t) => (t >= a && t <= b ? 120.5 : 0);
+    const v = voiceTrack({ dur: 25, f0At, ampAt: (t) => ramp(t, a, b, 0.06), vibCents: 10, wanderCents: 3, amp: 0.2, seed: 91 });
     const h = humTrack(v.length, () => 120, lvl * Math.SQRT2 / 1.032);
     const t = firstNotchNear(workerRun(Float32Array.from(v, (s, i) => s + h[i])), 0, [120]);
-    check(`(l) hum (rms ${lvl}) under a 4 s 120.5 Hz note on its track: notched by ${VM_LIM.l} s`, t !== null && t <= VM_LIM.l, `t=${t?.toFixed(2)}`);
+    check(`(l) hum (rms ${lvl}) under a ${b - a} s 120.5 Hz note on its track from ${a} s: notched by ${VM_LIM.l} s`, t !== null && t <= VM_LIM.l, `t=${t?.toFixed(2)}`);
   }
   // (m) a fan spinning up (90 -> 120 Hz, 1 s time constant) after switching
   // on in silence at 5 s, then steady, sparse speech from 10 s: the spin-up's
@@ -586,7 +648,11 @@ console.log("\nreal recordings (real worker)");
   // 262 Hz; male1 straight /e/, 128 Hz) looped 4x with 30 ms crossfades into
   // a 10-14 s hold (real F0 micro-variation; real corpus holds are 2-3.5 s,
   // too short for any notch), (a) with 3 s of speech-like syllables running
-  // straight into it, (b) from t = 0.15 s. bc42ad0 notched both ~5 s in.
+  // straight into it, (b) from t = 0.15 s. Only the 128 Hz hold from
+  // t = 0.15 s DISCRIMINATES: bc42ad0 notches it at 5.45 s (47.0 % of hold
+  // frames). The other three are no-regression guards — bc42ad0 never
+  // notches them either (100 %; corrected 2026-10-05, the V14 comment said
+  // bc42ad0 notched all four).
   for (const [file, len, k, f0] of [["vs_f2_262.wav", 3.5, 1, 262.5], ["vs_m1_128.wav", 2.75, 1, 128.3]]) {
     const note = notes(file, len)[k];
     for (const start of [4, 0.15]) {
@@ -598,7 +664,37 @@ console.log("\nreal recordings (real worker)");
         x = Float32Array.from(y, (v, i) => v + sp[i]);
       }
       const r = realScore(workerRun(x), [[spans[0][0], spans[3][1]]], f0);
-      check(`(r3) real ${f0} Hz hold (VocalSet ${file.slice(3, 5)}) ${start > 1 ? "after 3 s of speech" : "from t = 0.15 s"}: >= ${HELD_MIN} % of hold frames at pitch`, r.pct >= HELD_MIN, `${r.pct.toFixed(1)} %${r.notched ? ", notch promoted" : ""}`);
+      const role = f0 < 200 && start < 1 ? "discriminating" : "guard";
+      check(`(r3, ${role}) real ${f0} Hz hold (VocalSet ${file.slice(3, 5)}) ${start > 1 ? "after 3 s of speech" : "from t = 0.15 s"}: >= ${HELD_MIN} % of hold frames at pitch`, r.pct >= HELD_MIN, `${r.pct.toFixed(1)} %${r.notched ? ", notch promoted" : ""}`);
+    }
+  }
+  // (r5) REAL crescendos at the start of a not-onset-born hold (2026-10-05
+  // follow-up): V14's first-sightings jump guard took them for a takeover.
+  //   (a) the (r3) 128 Hz hold from t = 0.15 s with a -6 -> 0 dB swell over
+  //       its first 2 s: bc42ad0 and V14 47.0 %
+  //   (b) PVQD sustained /a/ as recorded (Sj6001, SJ2012: phonation from the
+  //       recording's start, the level rising 5-11 dB over its first 1-3 s),
+  //       held on by looping its last steady 2 s to ~13 s: bc42ad0 and V14
+  //       notch the vowel at 5.45 s (35.6 / 36.6 % of hold frames)
+  {
+    const note = notes("vs_m1_128.wav", 2.75)[1];
+    const { y, spans } = chain([note, note, note, note], 0, 0.15);
+    const a = spans[0][0];
+    const x = Float32Array.from(y, (v, i) => { const u = i / SR - a; return u >= 0 && u < 2 ? v * Math.pow(10, (-6 + 3 * u) / 20) : v; });
+    const r = realScore(workerRun(x), [[a, spans[3][1]]], 128.3);
+    check(`(r5a) real 128.3 Hz hold from t = 0.15 s with a -6 -> 0 dB swell over 2 s: >= ${HELD_MIN} % of hold frames at pitch`, r.pct >= HELD_MIN, `${r.pct.toFixed(1)} %${r.notched ? ", notch promoted" : ""}`);
+  }
+  {
+    const pv = readPcm16(new URL("pvqd_cresc.wav", REAL));
+    for (const [label, from, len, f0] of [["PVQD Sj6001 /a/ (270 Hz)", 0, 5.6, 270.2], ["PVQD SJ2012 /a/ (201 Hz)", 5.6, 5.25, 201]]) {
+      const head = pv.subarray(Math.round(from * SR), Math.round((from + len) * SR));
+      const tail = head.subarray(head.length - 2 * SR);
+      const F = Math.round(0.03 * SR), parts = [head, tail, tail, tail, tail];
+      const y = new Float32Array(parts.reduce((s, p) => s + p.length - F, F) + SR);
+      let n = 0;
+      parts.forEach((p, k) => { if (k) n -= F; for (let i = 0; i < p.length; i++) y[n + i] += Math.min(1, k ? (i + 1) / F : 1, (p.length - i) / F) * p[i]; n += p.length; });
+      const r = realScore(workerRun(y), [[0.7, n / SR]], f0);
+      check(`(r5b) ${label} as recorded (onset crescendo), held to ${(n / SR).toFixed(1)} s: >= ${HELD_MIN} % of hold frames at pitch`, r.pct >= HELD_MIN, `${r.pct.toFixed(1)} %${r.notched ? ", notch promoted" : ""}`);
     }
   }
   // (r4) the three real notes (0.3 s gaps) over the real air conditioner
