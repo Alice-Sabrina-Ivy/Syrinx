@@ -29,10 +29,17 @@ are not shipped in the built app.
   S. Khudanpur, "LibriSpeech: an ASR corpus based on public domain audio
   books", ICASSP 2015 — CC BY 4.0, https://www.openslr.org/12.
 - **Resonance cue** (Dashboard): the same `vtln_warp.json` and
-  `reference.json` as the resonance lab (LibriSpeech, CC BY 4.0, above).
+  `reference.json` as the resonance lab, plus `cue-bands.json` (bands of
+  single 5 s readings of the same LibriSpeech test-clean readers) —
+  LibriSpeech, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/);
+  numbers derived from it (modified).
 - **"Likely heard as" estimate** (experimental, opt-in;
   `src/ml/heardAsCalibration.js`). Only fitted numbers ship — no audio and no
-  per-stimulus tables. The constants were fitted on:
+  per-stimulus tables: the shipped constants are derived from (modified
+  from) the data below. Licence texts: CC BY 4.0
+  https://creativecommons.org/licenses/by/4.0/, CC0 1.0
+  https://creativecommons.org/publicdomain/zero/1.0/. The constants were
+  fitted on:
   - Palette of Voices — B. Munson & D. Dolquist (2025), "The Perception of
     (Trans)masculinity in Speech: Effects of Acoustic Characteristics and
     Rater Identity", *JSLHR*, doi:10.1044/2025_JSLHR-24-00756; OSF n3twm —
@@ -51,8 +58,10 @@ are not shipped in the built app.
   - S. Mohsenin & K. P. Munz (2024), "Gender-Ambiguous Voices and Social
     Disfluency", *Psychological Science*, doi:10.1177/09567976241238222;
     ResearchBox 695 / Zenodo doi:10.5281/zenodo.15038471 — listener data
-    CC BY 4.0 (the vendor TTS audio was measured locally and never
-    redistributed).
+    CC BY 4.0. The stimuli are vendor text-to-speech audio, which that
+    licence does not cover: they were measured locally only, never
+    redistributed, and only numbers derived from them ship (dropping this
+    source moves the estimate by at most 0.12 logit).
   - LibriSpeech (above), CC BY 4.0, as the base audio of rebuilt stimuli.
 
   Sources used for validation only (no constant depends on them) are cited in

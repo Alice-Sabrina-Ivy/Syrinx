@@ -35,8 +35,19 @@ next to pitch and vocal weight. Public data and synthetic stimuli only.
   late-resolving tail of a held note never enters. Voiced time spent in
   dropped bins is taken out of the readout's voiced clock, so a held note
   does not push earlier running speech out of the 5 s horizon.
-- **Overload guard.** An EMA (τ ≈ 10 s) of worker ms per audio second; above
-  500 ms/s the worker stops and the row says "unavailable on this device".
+- **Overload guard.** *Revised in the review round*
+  (`src/resonance/overloadGuard.js`,
+  measurements/cue-strip-review-fixes-2026-10-07.md §4): the mean worker ms
+  per audio second over the trailing 10 s of audio, ignoring the first 3 s;
+  above 500 ms/s the worker backs off (20 s of audio, doubling, ≤ 160 s),
+  the row says "paused — device busy", then it resumes with a fresh engine.
+  **Historical (superseded 2026-10-07):** an EMA (τ ≈ 10 s) seeded with the
+  first, coldest chunk that latched "unavailable on this device" for the
+  session.
+- **After a long pause** (review round): ≥ 10 s of audio with no admitted
+  bin restarts the cue's `sinceResumeS`; the row shows "settling" until 2 s
+  of new speech are in, so an earlier voice's readout is never shown as a
+  confident live dot.
 
 ## 2. Parity (bit-exact)
 
@@ -126,9 +137,10 @@ Same 40 reading streams, from the stream start:
 
 ## 6. Sanity check against the bands
 
-The bands are the 10th–90th percentiles of per-speaker 5 s readouts of the
-same 40 LibriSpeech speakers (`reference.json`, in u units: men −0.53…0.29,
-women 0.65…1.55). Each reader's gated readout at the end of their stream:
+The lab's bands are the 10th–90th percentiles of the 20 **per-speaker
+medians** of 5 s readouts per sex (`reference.json`, in u units: men
+−0.53…0.29, women 0.65…1.55). Each reader's gated readout at the end of their
+stream:
 
 | | median u | inside own q10–q90 band |
 |---|---|---|
@@ -136,8 +148,13 @@ women 0.65…1.55). Each reader's gated readout at the end of their stream:
 | men | −0.00 | 11 / 20 (4 below, 5 above) |
 
 Women and men separate (one woman at 0.27, one man at 0.78 cross the gap).
-One readout per speaker is noisier than the pooled band distribution, as
-expected from the lab benchmark's utterance-to-utterance wobble.
+One readout per speaker is noisier than the per-speaker medians, as expected
+from the lab benchmark's utterance-to-utterance wobble — and the shortfall
+was larger for men (64 % of men's live readouts inside the men's band vs
+83 % for women). **Since the review round the cue draws bands from the
+distribution of single readouts instead** (`public/resonance-lab/cue-bands.json`:
+men −0.58…0.48, women 0.57…1.39; 80 % / 80 % of live readouts inside, 17 / 20
+end-of-stream readouts each) — measurements/cue-strip-review-fixes-2026-10-07.md §2.
 
 ## 7. Desktop Chrome and mobile
 
@@ -156,14 +173,17 @@ runs, so these are upper-side figures.
 
 Target ≤ 45 ms/s: at the target under this load (≈ 1.4 × the Node figure);
 the stop threshold (60 ms/s)
-is not reached. The overload guard trips at 500 ms/s. (A first run exposed
+is not reached. The overload guard trips at 500 ms/s. With the experimental
+panel on (the gender worker competing for CPU) the review measured 51.8 ms per
+audio second (session mean, ~74 % machine load) vs 44.1 with it off —
+measurements/cue-strip-review-fixes-2026-10-07.md §4. (A first run exposed
 that the overload EMA counted only chunk processing while most vtln work
 runs when a relayed pitch frame resolves grid time; it now counts both.)
 
 **Mobile: unmeasured.** No phone was attached while this was built.
 `scripts/mobile-diag-capture.js` now prints the worker's `resonancePerf`;
-until it is measured, the overload guard (§1) turns the row into
-"unavailable on this device" rather than letting the worker fall behind.
+until it is measured, the overload guard (§1) pauses the row ("paused —
+device busy") rather than letting the worker fall behind.
 
 ## 8. Honest position
 
@@ -177,13 +197,22 @@ ln α ±0.24 (u −1.63 / +2.61), and on single syllables it reads vowel
 identity. The cue therefore:
 
 1. is titled **"Resonance · approx."**;
-2. draws its typical-speaker bands fainter and fuzzy-edged;
-3. marks **where you started** this session (a ring at the first full
-   readout) — movement relative to it is the validated use;
-4. explains in its info text: "Your microphone, room and distance shift the
-   whole scale, so trust how the dot moves more than where it sits. Uses
-   about your last 5 s of running speech; held vowels and single words
-   don't count.";
+2. draws its typical-speaker bands dashed (since the review round: a
+   neutral-400 dashed outline at ≥ 3:1 contrast; before, fainter and
+   fuzzy-edged, which made the women's band nearly invisible);
+3. marks **where you started** this session (a ring; since the review
+   round the median of the readouts over the first 12 s of voiced speech
+   after the readout fills — before, the first full readout, which could sit
+   0.65 u off a reader's typical level) — movement relative to it is the
+   validated use — and, since the
+   review round, says that change in its header ("brighter / darker than
+   your start", "about where you started" within 0.3 u) with a line from
+   the ring to the dot and a ~30 s trail;
+4. explains in its info text that the microphone, room and distance shift
+   the whole scale ("trust how the dot moves more than where it sits"),
+   that it uses about the last 5 s of running speech (held vowels and single
+   words don't count) and that even typical speakers' dots land outside
+   their band about 1 time in 5;
 5. pins the dot at the axis end with a chevron and says "beyond the scale"
    at the clamp;
 6. never colours its dot on or off a target (only pitch judges).

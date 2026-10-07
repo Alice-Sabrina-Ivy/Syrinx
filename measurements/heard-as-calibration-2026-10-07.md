@@ -2,7 +2,7 @@
 
 The Dashboard's opt-in **"Likely heard as · Experimental"** panel shows how
 listeners in published studies might hear a voice: the shares who would say
-*man*, *might be unsure* and *woman*, each as a **range** in "x in 10", never a
+*man*, *neither or unsure* and *woman*, each as a **range** in "x in 10", never a
 verdict. It is off by default. This note records what its constants are, what
 they were fitted on, how well they do on held-out listener data, and the known
 failures the panel must (and does) disclose. Every number comes from public
@@ -80,7 +80,8 @@ classifier (JaesungHuh voice-gender-classifier, ECAPA-TDNN) is MIT.
 with child categories); used as natural-voice validation instead.
 
 **Validation only** (reported in aggregate below; no constant depends on
-them): Jebens, Başkent & Rachman 2022 (doi:10.1121/10.0016601; data
+them — the range width is selected on licence-clean held-out data only since
+the 2026-10-07 review, §5): Jebens, Başkent & Rachman 2022 (doi:10.1121/10.0016601; data
 doi:10.34894/ICA98X, CC BY-NC-SA), Nagels et al. 2020
 (doi:10.1038/s41598-020-61732-6; data doi:10.34894/XCPMVK, CC BY-NC-SA),
 bmmb (Barreda & Silbert, MIT), Kong, Tran & Hennequin 2025 (arXiv:2511.02726,
@@ -199,17 +200,28 @@ from per-voice error (binomial latent model, voice bootstrap):
 | LibriTTS-P women / men | ≈0 | 1.00 |
 
 The binding constraint is condition-level held-out listener data (the
-manipulated and conflicting-cue voices). Source-balanced coverage:
+manipulated and conflicting-cue voices). Source-balanced coverage on
+**licence-clean held-out data only** — the fit sources leave-one-source-out
+plus the Hillenbrand & Clark syllable condition
+(`scripts/heard-as/calibration/final_checks.py`; corrected 2026-10-07: the
+first selection also pooled the CC BY-NC-SA PICKA sets and Mooshammer,
+which the licence rule excludes from anything a shipped constant depends on):
 
-| half-width | feminine | ambiguous | masculine | all non-Palette | worst source |
-|---|---|---|---|---|---|
-| 1.79 | 0.66 | 0.75 | 0.83 | 0.77 | 0.44 |
-| 2.00 | 0.74 | 0.75 | 0.83 | 0.80 | 0.56 |
-| **2.25** | **0.81** | **0.83** | **0.88** | **0.86** | 0.67 |
-| 2.50 | 0.89 | 0.92 | 0.93 | 0.91 | 0.67 |
+| half-width | feminine | ambiguous | masculine |
+|---|---|---|---|
+| 1.79 | 0.76 (n 31) | 0.67 (n 3) | 0.75 (n 267) |
+| 2.00 | 0.81 | 0.67 | 0.76 |
+| **2.25** | **0.87** | 0.67 | **0.83** |
+| 2.50 | 0.92 | 1.00 | 0.90 |
 
-2.25 is the smallest width with ≥ 80 % on every side (the feminine side
-binds). A "likely man" / "likely woman" call at this width — computed only for
+Validation only, never used to choose the width (PICKA Jebens / Nagels,
+CC BY-NC-SA; Mooshammer, no data licence), at 2.25: feminine 0.72 (n 16),
+ambiguous 0.89 (n 15), masculine 1.00 (n 15).
+
+2.25 is the smallest width with ≥ 80 % on the feminine and masculine sides
+(2.0 fails the masculine side). The ambiguous side has only 3 licence-clean
+held-out data and fails 80 %, so the panel claims the ~8-in-10 coverage only
+for clearly feminine or clearly masculine voices. A "likely man" / "likely woman" call at this width — computed only for
 this note; the panel shows no verdict — never landed on the wrong side of 50 %
 on 347 held-out listener data (0 of 240 Palette, 0 of 93 bmmb, 0 of 196
 LibriTTS-P voices); the cost is a wide "split" for many clear voices.
@@ -218,12 +230,12 @@ LibriTTS-P voices); the cost is a wide "split" for many clear voices.
 
 | # | Failure | Numbers | How the panel says it |
 |---|---|---|---|
-| 1 | Pitch moved without resonance is over-credited, **in both directions** | Male voice, pitch raised, formants unchanged: 12–62 points too little "man" (median 21; 4 held-out data; worst the RB695 male TTS raised to ~161 Hz, 89.5 % heard vs 27.8 % predicted). Female voice, pitch lowered, formants unchanged: median +20, up to +46 points too much "man" (7 of 11 data; the NC-licensed PICKA validation grids agree, +11 to +40 points). Pitch and resonance moved together: median miss 5 (male base) / 8 (female base) points | caveat: "It follows pitch more than listeners do: change pitch without resonance and it shows more movement than listeners would hear, in either direction"; the **conflict note** when the pitch and resonance cues point different ways |
+| 1 | Pitch moved without resonance is over-credited, **in both directions** | Male voice, pitch raised, formants unchanged: 12–62 points too little "man" (median 21; 4 held-out data; worst the RB695 male TTS raised to ~161 Hz, 89.5 % heard vs 27.8 % predicted). Female voice, pitch lowered, formants unchanged: median +20, up to +46 points too much "man" (7 of 11 data; the NC-licensed PICKA validation grids agree, +11 to +40 points). Pitch and resonance moved together: median miss 5 (male base) / 8 (female base) points | the always-visible **caveat**: "It follows pitch more than listeners do: change your pitch without changing resonance and it shows a bigger change than listeners would hear — sometimes by more than half of them — in either direction". The **conflict note** (\|u_F0 − u_resonance\| > 1) rarely fires on these cases (RB695 raised male Δ ≈ 0.62, female lowered ×0.59 Δ ≈ 0.86, Meyer −6 st Δ ≈ 0.55 — none fire); a threshold low enough to catch them fires on ~half of ordinary men's live readings (measurements/cue-strip-review-fixes-2026-10-07.md §5), so the caveat is the disclosure |
 | 2 | Clear voices look less clear than they are | clear women 6–15 % predicted vs 0.4–3 % heard; clear men 83–86 % vs 97.5–99.6 % | "More": typical voices are shown further from the ends than listeners put them |
 | 3 | Listener groups differ | between-study offset SD 0.64 logit (−1.01 to +0.74) | caveat: "Listener groups disagree a lot." |
-| 4 | Tested population | Fit: masculine-presenting natural voices (Palette) plus resynthesised / TTS voices; no natural trans-feminine or trans-masculine training voices with listener data are public | caveat: "Tested mostly on masculine-presenting and computer-altered voices, not on trans or nonbinary speakers." |
+| 4 | Tested population | Fit: natural voices of trans and cis men (Palette, 20 talkers), natural women's and men's voices (Hillenbrand & Clark rates on rebuilt H95 / LibriSpeech material), resynthesised and TTS voices; no trans women's or nonbinary speakers' voices with public listener data — so the more-feminine direction is the less validated one | caveat: "Fitted on trans and cis men's voices, women's voices and computer-altered voices; not tested on trans women or nonbinary speakers." (corrected 2026-10-07: the earlier caveat said it was not tested on trans speakers, which the Palette contradicts) |
 | 5 | Out of scope | children (bmmb /hid/ median F0: girls 241, boys 243, women 227 Hz — F0 cannot separate them; boys predicted 6–8 % "man", heard 60 %); singing (Kong 34.7 points); held vowels, single words, < ~3 s voiced | caveat: "Adults' speaking voice only."; "More": singing, children, held vowels and single words not supported; hidden on held notes and short speech (§7) |
-| 6 | Extrapolation | fit stimuli span 81–376 Hz (q99 293 Hz), meterLogit −7.3…+5.7; natural running speech in the fit ends at 213 Hz | the **range note** "Outside the range it was tested on" outside 81–293 Hz or that meter range |
+| 6 | Extrapolation | fit stimuli span 81–376 Hz (q99 293 Hz), meterLogit −7.3…+5.7; natural running speech in the fit ends at 213 Hz | **hidden** ("Outside the range it was tested on — no guess shown") outside 81–293 Hz or that meter range (since the 2026-10-07 review; it was a note before). Hides 1 of 200 LibriSpeech utterances, 0 of 52 other natural voices |
 
 ## 7. When the panel hides
 
@@ -232,6 +244,7 @@ LibriTTS-P voices); the cost is a wide "split" for many clear voices.
 | fewer than **3.0 s** of voiced frames inside scored windows, or fewer than **10** scored windows, in the trailing 8 s | live estimates at or above the fit material (1.4–3 s voiced); estimate noise falls from SD 0.67 logit at 1 s voiced to 0.53 at 3 s | hidden on 9 % of display updates overall, 0 % in steady reading; first estimate a median 5.5 s after speech starts |
 | the gender worker's voice state is `sustained` (held vowel or note) | the classifier puts held vowels near 50 | "Needs running speech" |
 | no scored window for > 5 s | never show an old estimate; 2–5 s old it is dimmed | "Waiting for running speech" |
+| 8 s aggregate outside 81–293 Hz or meter logit −7.31…+5.72 | extrapolation beyond the fit data (§6 row 6) | "Outside the range it was tested on — no guess shown" |
 | model loading / error, nothing scored yet | — | a one-line reason |
 
 The minimum-input rule is a **display** rule, not a calibration-domain rule:
@@ -239,8 +252,11 @@ the fit stimuli are single ~2 s utterances (217 of the 240 Palette stimuli
 would fail the live minimums on their own), while the live estimate pools up
 to 8 s.
 
-Melodic singing is **not** detected (the gate scores 81.5 % of sung time),
-and neither are children's voices; both are disclosed instead.
+Melodic singing is **not** detected (the gate scores 81.5 % of sung time;
+the range rule hides 29 % of sung items), and neither are children's voices
+(the range rule hides 2 of 54 boys, 0 of 38 girls); both are disclosed in
+"More" instead — a deviation from the spec's "must hide", because no cheap
+detector exists.
 
 ## Reproduce
 

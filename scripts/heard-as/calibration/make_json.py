@@ -35,7 +35,7 @@ J = {
  },
  "range": {"half_width_logit": W, "nominal": "80 %",
            "rule": "show [1/(1+exp(-(eta-w))), 1/(1+exp(-(eta+w)))]; in 'x in 10 listeners' round the low end DOWN and the high end UP",
-           "basis": "smallest width with >= 80 % source-balanced coverage of held-out listener data on BOTH sides (feminine-presenting 0.81, ambiguous 0.83, masculine-presenting 0.88); natural voices need only ~1.1 after correcting for listener-panel sampling"},
+           "basis": "smallest width with >= 80 % source-balanced coverage of LICENCE-CLEAN held-out listener data (fit sources leave-one-source-out + hc-syl; final_checks.py) on the feminine and masculine sides (0.87 / 0.83; w 2.0: 0.81 / 0.76); ambiguous side only 3 licence-clean data (0.67); NC / unlicensed validation sets (never used to choose w) 0.72 / 0.89 / 1.00; natural voices need only ~1.1 after correcting for listener-panel sampling"},
  "unsure": {"model": "u = min(max(f, k*4*s*(1-s)), 2*min(s, 1-s)); man = s - u/2; woman = 1 - s - u/2  (even split = the inverse of the fitted target)",
             "k": K, "f": FL, "k_by_question_framing": {"explicit other-gender + no-answer (Palette)": round(UNS["palette"][0], 2),
                  "'other gender' only (Palette)": round(UNS["palette 'other gender' only"][0], 2),

@@ -586,20 +586,26 @@ The default practice mode — everything at a glance. **As built (Design A
 - **Cue strip** directly under it: three graded readouts — **Pitch** (log
   Hz), **Resonance · approx.** (spectral warp) and **Vocal weight** (relative
   to the session's own start) — each on one neutral axis with the
-  typically-men end on the left, soft bands for typical adult men and women
-  (none for weight), a dot for the current value and a ~2 s trail. The
-  training direction appears as the same soft highlight on every cue; only
-  pitch is coloured on / off target. F0 and steadiness sit in the pitch row,
-  HNR in the strip's caption.
+  typically-men end on the left, bands for typical adult men and women
+  (none for weight; resonance bands are where single readings of typical
+  speakers fall), a dot for the current value and a trail (~2 s; ~30 s for
+  resonance, whose header says how far you have moved from where you
+  started; the weight dot is a ~5 s level). The training direction appears as
+  the same soft highlight on every cue; only pitch is judged on / off target
+  (colour, a hollow dot and "↑ higher" / "↓ lower" — never colour alone). The
+  pitch level and steadiness sit in the pitch row, HNR in the strip's caption.
 - **"Likely heard as · Experimental"** — opt-in, off by default: listener
-  shares (man / unsure / woman) as ranges in "x in 10", never a verdict, with
-  its known weaknesses stated.
+  shares (man / neither or unsure / woman) as bracketed ranges in "x in 10",
+  never a verdict, with its known weaknesses stated (including that it was
+  not tested on trans women or nonbinary speakers); hidden outside the range
+  it was fitted on.
 - **Session row**: Save, timer, notes.
 
 On **phones** these stack in that order (trace and strip fit the first screen
 at 360 × 690 and up); held sideways, trace and strip sit side by side; on
-desktop the trace fills the left and a 420 px column holds the strip and the
-panel.
+desktop the trace fills the left and a column of 38 % of the width
+(420–540 px) holds the strip — drawn larger, for reading at arm's length —
+and the panel.
 
 **Historical (superseded 2026-10-07):** a resonance plot / Perceived-voice
 meter beside the trace and a stats row (F0, F2, vocal-weight gauge, HNR).
