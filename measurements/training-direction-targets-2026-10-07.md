@@ -14,8 +14,12 @@ Code: `src/utils/trainingDirection.js`, `src/utils/pitchLevel.js`.
 **Revised the same day after review** (this note describes the result):
 the pitch target is judged on a running pitch level, not per frame; past
 the band in the direction of travel reads neutral, not off target; the F2
-and vocal-weight targets were removed (neutral readouts in every
-direction). Sections below give the numbers behind each change.
+target was removed (a neutral readout in every direction). The review also
+removed the vocal-weight zones; the user restored them the same day
+("Restore vocal-weight zones with a note") — lighter side for more
+feminine, heavier side for more masculine, with a visible note on the
+pitch confound whenever a zone is shown. Sections below give the numbers
+and the reasoning behind each change.
 
 ## Pitch (speaking F0)
 
@@ -157,18 +161,64 @@ readout ships (the Resonance lab is evaluating candidates).
 | per-speaker vowel-mean F2, mean ± SD (range) | 1508 ± 53 (1387–1652) Hz | 1763 ± 85 (1625–2014) Hz |
 | share of tokens ≥ 1400 Hz (the old feminine rule) | 47 % | 63 % |
 
-## Vocal weight — no target in any direction
+## Vocal weight — a zone for more feminine / more masculine, with a pitch note
 
+**User decision (2026-10-07): "Restore vocal-weight zones with a note."**
+
+| Direction | Zone on the gauge | In the zone (green marker + readout) |
+|---|---|---|
+| More feminine | lighter side, from the Lighter end to σ = +0.5 (0–41.7 % of the track) | σ ≥ +0.5 |
+| More masculine | heavier side, from σ = −0.5 to the Heavier end (58.3–100 %) | σ ≤ −0.5 |
+| Androgynous or in between | none | — |
+| Just exploring (or not answered) | none | — |
+
+σ is the gauge's existing reading: the distance of the current 1-s CPP
+aggregate from the session's frozen first-30-s calibration mean, in units
+of that calibration's standard deviation, positive = lighter, the track
+spanning ±3 σ (`BASELINE_SIGMA`). The two zones mirror each other (same
+0.5 σ threshold, same width, same green); a reading short of the zone is
+shown in the gauge's neutral purple, never red. The zone is drawn once
+calibration finishes (the first ~30 s of voiced speech). There is no
+androgynous zone: the gauge is relative to the user's own voice, and the
+weight literature gives no population "in between". Code:
+`weightTargetFor` / `weightStatus` / `weightZoneForDisplay` in
+`src/utils/trainingDirection.js` (the zone edges are derived from the same
+`BASELINE_SIGMA` as the baseline's `gaugePosition`, and the test checks
+that the drawn edges sit exactly where the gauge draws σ = ±0.5);
+`src/components/VocalWeightGauge.jsx`.
+
+**The reviewer's confound note (why the review had removed the zones).**
 The gauge's CPP correlate reads a raised voice as lighter and a lowered
 one as heavier from CPP's dependence on pitch alone (CLAUDE.md "Register
 confound"; `vocal-weight-floor-and-register-2026-10-03.md`). A "lighter =
 on target" zone for feminising (the zone every user saw before this
-change) and its mirror for masculinising therefore rewarded a pitch change
-as a weight change — in the browser check a man's ~94 Hz speech showed
-"−1.6 σ (heavier)" in green under "More masculine" at 80 Hz. **The gauge is
-now neutral in every direction** (no zone, no green) until pitch is
-factored out of the reading; its σ readout is unchanged. The weight
-literature also gives no population "in between" for an androgynous goal.
+branch) and its mirror for masculinising therefore reward a pitch change
+as a weight change — in the review's browser check a man's ~94 Hz speech
+showed "−1.6 σ (heavier)" in green under "More masculine" at 80 Hz. That
+is still true with the zones restored: under "More feminine", raising
+pitch alone moves the marker toward the zone; under "More masculine",
+lowering it does. Nothing in the reading separates the two until pitch is
+factored out of it (unaddressed; see the vocal-weight row of CLAUDE.md's
+Current-state table).
+
+**The note.** Whenever the direction has a zone (also while calibrating,
+so the line does not appear mid-session), the dashboard shows under the
+stats row, centred under the gauge: *"Vocal weight: raising your pitch
+also reads lighter, lowering it reads heavier."* — the same wording for
+both directions. The gauge's info button (ⓘ next to "Vocal Weight") opens
+an explainer that says what the reading is, that it is relative to the
+session's first 30 s, that pitch moves it ("compare readings at a similar
+pitch"), and which zone the current direction marks. No note and no zone
+for androgynous / just exploring. Checked in the headless browser at
+448 × 890 and 1280 × 800: the note is one line at both widths, nothing
+clipped, no horizontal overflow, the desktop dashboard still fits the
+800 px window without scrolling (`scripts/voice-direction-smoke.mjs`; the
+gauge column is 12 rem wide from the `sm` breakpoint up, was 11 rem, so
+the ⓘ fits its Lighter / title / Heavier row). The smoke run shows the
+confound case again: on its male LibriSpeech speech under "More
+masculine", one screenshot has the F0 readout at 80 Hz and the weight
+reading at −1.6 σ, in the zone — the note is what tells the user that
+part of such a reading is pitch.
 
 ## Perceived Voice meter
 
@@ -216,4 +266,8 @@ last answer preselected, inert background (Tab and taps can't reach it),
 Escape behaviour, mid-session changes repaint the band and colours at
 once, "Just exploring" draws no band, F0 colour by level (a ~100 Hz voice:
 not red under "More masculine", red under "More feminine"), F2 neutral,
-History old sessions neutral and goals in order.
+vocal weight (after calibration: heavier-side zone under "More masculine",
+lighter side under "More feminine", none for androgynous / exploring; the
+pitch note exactly when a zone is in effect; the info explainer on
+screen; no clipping or horizontal overflow), History old sessions neutral
+and goals in order.

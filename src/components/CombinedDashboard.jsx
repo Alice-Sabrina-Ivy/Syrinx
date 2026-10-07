@@ -6,8 +6,11 @@
 // The pitch target follows the user's training direction
 // (utils/trainingDirection.js) and judges the pitch LEVEL (running 1.5 s
 // median), not single frames; with no target ("Just exploring") readouts
-// are neutral. F2 and vocal weight are neutral readouts in every
-// direction (no reliable target — see the measurement note). A recorded
+// are neutral. F2 is a neutral readout in every direction (no reliable
+// target — see the measurement note). The vocal-weight gauge marks the
+// lighter side for "More feminine" and the heavier side for "More
+// masculine" (none otherwise), and whenever it does, a note under the
+// stats row says the reading also moves with pitch. A recorded
 // session keeps a log of the direction(s) in effect so its on-target
 // stats are measured against the right target even if it changed
 // mid-session.
@@ -22,11 +25,12 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { PitchTrace } from "./PitchTrace";
 import { ResonanceMeter } from "./ResonanceMeter";
-import { VocalWeightGauge } from "./VocalWeightGauge";
+import { VocalWeightGauge, WeightPitchNote } from "./VocalWeightGauge";
 import { SteadinessReadout } from "./SteadinessReadout";
 import {
   pitchTargetFor,
   pitchStatus,
+  weightTargetFor,
   appendDirection,
 } from "../utils/trainingDirection";
 import { statusTextClass } from "../utils/constants";
@@ -477,6 +481,8 @@ export function CombinedDashboard({
   // number is this moment's pitch; its colour judges the pitch level.
   const pitchTarget = pitchTargetFor(direction);
   const pitchLevelStatus = pitch !== null ? pitchStatus(pitchLevel, pitchTarget) : null;
+  // Vocal-weight zone side for this direction (null = no zone, no note).
+  const weightTarget = weightTargetFor(direction);
 
   const statOpacity = !voiced && !holding ? "opacity-40" : holding ? "opacity-50" : "";
 
@@ -523,7 +529,7 @@ export function CombinedDashboard({
 
       {/* Live stats — columnar layout: F0 + steadiness | F2 + VocalWeight | HNR.
           Perceived voice is shown by the thermometer above. */}
-      <div className="flex-shrink-0 mt-3 px-2">
+      <div data-live-stats className="flex-shrink-0 mt-3 px-2">
         <div className="flex items-end justify-center gap-x-3 sm:gap-x-6">
           {/* Column 1: F0 value + pitch steadiness (last ~1 s) */}
           <div className="text-center shrink-0">
@@ -545,8 +551,9 @@ export function CombinedDashboard({
             </div>
           </div>
 
-          {/* Column 2: F2 value + Vocal weight gauge */}
-          <div className="flex-1 max-w-40 sm:max-w-44">
+          {/* Column 2: F2 value + Vocal weight gauge (12 rem from sm up: room
+              for the info button in the gauge's Lighter / title / Heavier row) */}
+          <div className="flex-1 max-w-40 sm:max-w-48">
             <div className={`text-center mb-1.5 ${statOpacity} transition-opacity duration-300`}>
               <span className="text-[10px] text-neutral-500 uppercase tracking-wider block">
                 F2
@@ -566,6 +573,7 @@ export function CombinedDashboard({
               vocalWeight={vocalWeight}
               voiced={voiced}
               holding={holding}
+              target={weightTarget}
             />
           </div>
 
@@ -580,6 +588,10 @@ export function CombinedDashboard({
             </span>
           </div>
         </div>
+        {/* The weight reading's pitch confound, whenever a weight zone is
+            in effect (also during calibration, so the line doesn't appear
+            mid-session). Full row width, centred under the gauge. */}
+        <WeightPitchNote target={weightTarget} />
       </div>
 
       {/* Session controls */}

@@ -16,6 +16,11 @@
 //             Escape closes it and returns focus to the gear) — the pitch
 //             band must follow at once (canvas data-target), "Just
 //             exploring" must draw none; F0 colour judges the pitch level;
+//             vocal weight: after calibration the heavier-side zone under
+//             "More masculine", the lighter side under "More feminine",
+//             none for androgynous / exploring, the pitch-confound note
+//             whenever a zone is in effect, nothing clipped or overflowing
+//             (gauge screenshots 04b / 07b / 07c / 08b);
 //             History: old sessions neutral, a changed session lists its
 //             goals in order; reload: the question again, last choice
 //             preselected, Continue confirms and starts listening (one
@@ -119,6 +124,59 @@ async function open() {
 }
 
 const shot = (page, name) => page.screenshot({ path: path.join(OUT, `${name}.png`) });
+// The live-stats row (F0 | F2 + vocal weight | HNR + the weight note),
+// with a margin; `above` px more on top for the explainer popover.
+const shotStats = async (page, name, above = 0) => {
+  const r = await page.evaluate(() => {
+    const el = document.querySelector("[data-live-stats]");
+    if (!el) return null;
+    el.scrollIntoView({ block: "center" });
+    const b = el.getBoundingClientRect();
+    return { x: b.x, y: b.y, width: b.width, height: b.height };
+  });
+  if (!r) return;
+  const vp = page.viewport();
+  const x = Math.max(0, r.x - 12), y = Math.max(0, r.y - 12 - above);
+  await page.screenshot({ path: path.join(OUT, `${name}.png`),
+    clip: { x, y, width: Math.min(vp.width - x, r.width + 24), height: Math.min(vp.height - y, r.height + 24 + above) } });
+};
+// Vocal-weight gauge state: zone side, calibrated, drawn band, the note,
+// and whether anything is clipped or overflows the viewport.
+const weightInfo = (page) => page.evaluate(() => {
+  const g = document.querySelector("[data-weight-zone]");
+  if (!g) return null;
+  const band = g.querySelector("[data-weight-zone-band]");
+  const note = document.querySelector("[data-weight-note]");
+  const labels = g.querySelector("[data-weight-labels]");
+  const nr = note?.getBoundingClientRect();
+  const lr = labels?.getBoundingClientRect();
+  return {
+    zone: g.dataset.weightZone,
+    ready: g.dataset.weightReady === "1",
+    band: band ? { left: parseFloat(band.style.left), width: parseFloat(band.style.width) } : null,
+    note: note?.textContent ?? null,
+    noteLines: nr ? Math.round(nr.height / parseFloat(getComputedStyle(note).lineHeight)) : 0,
+    noteInView: nr ? nr.left >= 0 && nr.right <= innerWidth : null,
+    noteClipped: note ? note.scrollWidth > note.clientWidth + 1 : null,
+    labelsClipped: labels ? labels.scrollWidth > labels.clientWidth + 1 : null,
+    labelsInView: lr ? lr.left >= 0 && lr.right <= innerWidth : null,
+    pageOverflowX: document.documentElement.scrollWidth > innerWidth,
+    noteBottom: nr ? Math.round(nr.bottom + scrollY) : null,
+    pageHeight: document.documentElement.scrollHeight,
+    vh: innerHeight,
+  };
+});
+const layoutOk = (w) => w && !w.pageOverflowX && !w.labelsClipped && w.labelsInView
+  && (w.note == null || (!w.noteClipped && w.noteInView));
+async function waitWeightReady(page, ms = 150000) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < ms) {
+    const w = await weightInfo(page);
+    if (w?.ready) return true;
+    await sleep(1000);
+  }
+  return false;
+}
 const clickButton = (page, texts) => page.evaluate((ts) => {
   const b = [...document.querySelectorAll("button")].find((x) => ts.some((t) => x.textContent.trim().includes(t)));
   if (b) b.click();
@@ -374,6 +432,24 @@ await launch(WAV.speech);
   check("running speech: meter shows a number most of the time", share(speechCounts, "score") >= 0.6, JSON.stringify(speechCounts));
   check("F2 readout neutral (no resonance target)", /text-neutral-200/.test((await readoutClass(page, "F2")) ?? "text-neutral-200"));
   await shot(page, "04-masculine-speech");
+  // Vocal weight under "More masculine": heavier-side zone once calibrated,
+  // the pitch-confound note from the start.
+  const NOTE_RE = /raising your pitch also reads lighter, lowering it reads heavier/i;
+  const wm0 = await weightInfo(page);
+  check("masculine: weight zone = heavier side, pitch note shown (also while calibrating)",
+    wm0?.zone === "heavier" && NOTE_RE.test(wm0?.note ?? ""), JSON.stringify(wm0));
+  check("masculine: weight calibration completes on running speech", await waitWeightReady(page));
+  await sleep(1500);
+  const wm = await weightInfo(page);
+  check("masculine: heavier-side zone drawn at the Heavier end (58.3–100 %)",
+    !!wm?.band && Math.abs(wm.band.left - 58.333) < 0.1 && Math.abs(wm.band.left + wm.band.width - 100) < 0.1, JSON.stringify(wm?.band));
+  check("weight gauge + note fit: no clipping, no horizontal overflow", layoutOk(wm), JSON.stringify(wm));
+  if (VIEWPORT === "desktop") {
+    check("desktop: the note is on screen without scrolling (page fits the window)",
+      wm?.noteBottom <= wm?.vh && wm?.pageHeight <= wm?.vh, JSON.stringify(wm));
+  }
+  await shot(page, "04a-masculine-weight-zone");
+  await shotStats(page, "04b-gauge-masculine");
 
   await page.evaluate(() => document.querySelector('button[title="Settings & Data"]').click());
   await page.waitForFunction(() => !!document.querySelector("[data-dialog=settings]"), { timeout: 10000 });
@@ -397,20 +473,47 @@ await launch(WAV.speech);
   const f0cls = await f0WhileVoiced(page);
   check("feminine: a ~100 Hz voice reads off target (red F0)", /text-red-400/.test(f0cls ?? ""), f0cls);
   await shot(page, "07-feminine-speech");
+  const wf = await weightInfo(page);
+  check("feminine: lighter-side zone at the Lighter end (0–41.7 %), pitch note shown",
+    wf?.zone === "lighter" && !!wf.band && wf.band.left === 0 && Math.abs(wf.band.width - 41.667) < 0.1
+      && NOTE_RE.test(wf.note ?? ""), JSON.stringify(wf));
+  check("feminine: gauge + note fit, no clipping or overflow", layoutOk(wf), JSON.stringify(wf));
+  await shotStats(page, "07b-gauge-feminine");
+  // The info explainer: opens on tap, states the pitch confound and the
+  // lighter-side target, stays on screen.
+  await page.evaluate(() => document.querySelector('button[aria-label="What does the vocal weight gauge show?"]')?.click());
+  await sleep(300);
+  const tip = await page.evaluate(() => {
+    const t = document.querySelector("[data-weight-zone] [role=note]");
+    if (!t) return null;
+    const r = t.getBoundingClientRect();
+    return { text: t.textContent, inView: r.left >= 0 && r.right <= innerWidth && r.top >= 0, h: Math.round(r.height) };
+  });
+  check("weight info: explainer opens on screen, states the pitch confound and the lighter-side target",
+    !!tip?.inView && /raising your pitch reads lighter and lowering it reads heavier/.test(tip.text)
+      && /Target for More feminine: the lighter side/.test(tip.text), JSON.stringify(tip));
+  await shotStats(page, "07c-gauge-feminine-info", (tip?.h ?? 0) + 16);
+  await page.keyboard.press("Escape");
+  await sleep(200);
 
   await page.evaluate(() => document.querySelector('button[title="Settings & Data"]').click());
   await sleep(500);
   await pickDirection(page, "androgynous", "[data-dialog=settings]");
   await sleep(150);
   check("settings -> androgynous: band 145–175 Hz", (await pitchTarget(page)).includes("145-175"));
+  const wa = await weightInfo(page);
+  check("androgynous: no weight zone, no pitch note", wa?.zone === "none" && wa.band === null && wa.note === null, JSON.stringify(wa));
   await pickDirection(page, "exploring", "[data-dialog=settings]");
   await sleep(150);
   check("settings -> just exploring: no band", (await pitchTarget(page)).every((t) => t === "none"), JSON.stringify(await pitchTarget(page)));
+  const wx = await weightInfo(page);
+  check("just exploring: no weight zone, no pitch note", wx?.zone === "none" && wx.band === null && wx.note === null, JSON.stringify(wx));
   await clickButton(page, ["×"]);
   await sleep(1000);
   const f0x = await f0WhileVoiced(page);
   check("just exploring: neutral F0 readout", /text-neutral-200/.test(f0x ?? ""), f0x);
   await shot(page, "08-exploring-speech");
+  await shotStats(page, "08b-gauge-exploring");
 
   // History: a session from before training directions existed (no log)
   // must not be judged; a session whose direction changed lists its goals

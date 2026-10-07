@@ -27,10 +27,19 @@
 //   measured intonation. Beyond the band in the direction of travel (above
 //   255 Hz for feminine, below 85 Hz for masculine) is "beyond": shown
 //   neutrally, not as off target — a lower voice is not less masculine.
-//   No resonance (F2) or vocal-weight target: per-frame F2 is dominated by
-//   the vowel (the bands held near-chance shares of men's and women's
-//   vowels) and the vocal-weight reading moves with pitch, so both are
-//   neutral readouts in every direction (2026-10-07 review).
+//   No resonance (F2) target: per-frame F2 is dominated by the vowel (the
+//   bands held near-chance shares of men's and women's vowels), so it is a
+//   neutral readout in every direction (2026-10-07 review).
+//   Vocal weight (relative to the user's own calibration baseline, so it
+//   has no population "in between"): feminine = the lighter side
+//   (σ ≥ +0.5), masculine = the heavier side (σ ≤ −0.5), androgynous /
+//   exploring = no zone. The CPP reading also moves with pitch — a raised
+//   voice reads lighter, a lowered one heavier — so the zone rewards a
+//   pitch change too; it was removed in the 2026-10-07 review and restored
+//   by user decision the same day with a visible note on the gauge
+//   whenever a zone is shown (WEIGHT_PITCH_NOTE).
+
+import { BASELINE_SIGMA } from "../audio/vocal-weight-baseline.js";
 
 export const TRAINING_DIRECTIONS = Object.freeze([
   Object.freeze({ id: "feminine", label: "More feminine" }),
@@ -86,6 +95,44 @@ export function bandForDisplay(target, displayRange) {
   const low = Math.max(target.low, displayRange.low);
   const high = Math.min(target.high, displayRange.high);
   return high > low ? { low, high } : null;
+}
+
+// ---------------------------------------------------------------------------
+// Vocal weight: which side of the session's calibration baseline is the
+// target, and from how far (σ = the gauge's σ-distance from the frozen
+// first-30-s mean, positive = lighter). Feminine and masculine mirror each
+// other; androgynous and exploring have none.
+export const WEIGHT_TARGET_SIGMA = 0.5;
+export const WEIGHT_TARGETS = Object.freeze({
+  feminine: Object.freeze({ side: "lighter", sigma: WEIGHT_TARGET_SIGMA }),
+  masculine: Object.freeze({ side: "heavier", sigma: WEIGHT_TARGET_SIGMA }),
+});
+
+// Shown next to the gauge whenever a weight zone is: the reading's pitch
+// confound (CPP rises with pitch), worded the same for both sides.
+export const WEIGHT_PITCH_NOTE = "Vocal weight: raising your pitch also reads lighter, lowering it reads heavier.";
+
+export function weightTargetFor(direction) {
+  return WEIGHT_TARGETS[direction] ?? null;
+}
+
+// "in" (at least target.sigma toward the target side), "out", or null (no
+// target / no reading — rendered neutrally). Short of the zone is shown
+// neutrally too (no red): the reading carries the pitch confound.
+export function weightStatus(sigmaDelta, target) {
+  if (target == null || sigmaDelta == null || !Number.isFinite(sigmaDelta)) return null;
+  const toward = target.side === "lighter" ? sigmaDelta : -sigmaDelta;
+  return toward >= target.sigma ? "in" : "out";
+}
+
+// The zone on the gauge track as { left, width } in percent of the track,
+// measured from its LEFT end — the gauge draws Lighter on the left, i.e.
+// σ = +span at 0 % and σ = −span at 100 % (the baseline's gaugePosition
+// mirrored). null = draw nothing.
+export function weightZoneForDisplay(target, span = BASELINE_SIGMA) {
+  if (target == null || !(span > target.sigma)) return null;
+  const width = ((span - target.sigma) / (2 * span)) * 100;
+  return target.side === "lighter" ? { left: 0, width } : { left: 100 - width, width };
 }
 
 // The drawn band, e.g. "165–255 Hz".

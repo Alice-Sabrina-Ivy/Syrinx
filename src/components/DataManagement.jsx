@@ -225,7 +225,7 @@ export function DataManagement({ onClose, direction = null, onDirectionChange })
           <>
             <div className="mb-4">
               <h3 className="text-sm text-neutral-300 mb-0.5">What are you trying to sound like?</h3>
-              <p className="text-[11px] text-neutral-500 mb-2">Sets the pitch target. Changes apply right away — close this panel to see them.</p>
+              <p className="text-[11px] text-neutral-500 mb-2">Sets your targets. Changes apply right away — close this panel to see them.</p>
               <DirectionOptions value={direction} onChange={onDirectionChange} compact name="training-direction-settings" />
             </div>
             <hr className="border-neutral-800 mb-4" />

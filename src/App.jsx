@@ -68,7 +68,7 @@ function WelcomeOverlay({ onDismiss }) {
         <p className="text-sm text-neutral-300 leading-relaxed mb-5">
           Syrinx gives you real-time visual feedback on your voice pitch, resonance, and
           vocal weight — it needs microphone access to work.{" "}
-          Next, choose what you&apos;re aiming for — that sets the pitch target shown on the trace.
+          Next, choose what you&apos;re aiming for — that sets the targets shown on the pitch trace and the vocal-weight gauge.
         </p>
         <button
           ref={buttonRef}

@@ -4,7 +4,9 @@
 // answer preselected so confirming it is one tap — Continue also starts
 // listening, so a return visit is still a single tap. Changeable any time
 // in the settings panel, which renders the same DirectionOptions. Every
-// option looks the same — only the target ranges behind them differ.
+// option looks the same — only the targets behind them differ (a pitch
+// band for the first three; a vocal-weight side for more feminine /
+// more masculine).
 //
 // A real modal: App makes everything behind it inert while it is open
 // (no focus, no clicks — the microphone can't be started and Settings
@@ -16,12 +18,15 @@ import { useState, useRef, useEffect } from "react";
 import {
   TRAINING_DIRECTIONS,
   pitchTargetFor,
+  weightTargetFor,
   formatTarget,
 } from "../utils/trainingDirection";
 
 function optionHint(id) {
   const pitch = formatTarget(pitchTargetFor(id));
-  return pitch ? `Pitch target ${pitch}` : "No targets, just the readings";
+  if (!pitch) return "No targets, just the readings";
+  const weight = weightTargetFor(id)?.side;
+  return weight ? `Pitch target ${pitch} · ${weight} vocal weight` : `Pitch target ${pitch}`;
 }
 
 // Radio group of the four directions. `compact` = the settings-panel size.
@@ -119,7 +124,7 @@ export function DirectionPrompt({ initial, onConfirm }) {
           What are you trying to sound like?
         </h2>
         <p className="text-xs text-neutral-400 text-center mt-1.5 mb-4 leading-relaxed">
-          This sets the pitch target. You can change it any time in Settings.
+          This sets your targets. You can change it any time in Settings.
         </p>
         <DirectionOptions value={choice} onChange={setChoice} />
         <button
