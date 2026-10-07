@@ -22,7 +22,15 @@
 //                                                can record which model + ORT
 //                                                backend (webgpu vs wasm) won
 //                  { type: "progress", loaded, total, file }
-//                  { type: "score", score, confidence, ts, inferMs? }
+//                  { type: "score", score, confidence, ts, logit, audioMs, spanId, mode, inferMs? }
+//                                                logit: ln(p_female) - ln(p_male) of THIS
+//                                                window (unsmoothed; null if unusable);
+//                                                audioMs: audio-clock ms of the window's
+//                                                newest chunk; spanId: the utterance gate's
+//                                                span; mode: "gated" | "fallback". Consumed
+//                                                by the experimental "Likely heard as" panel
+//                                                (src/ml/heard-as.js; 2026-10-07,
+//                                                measurements/heard-as-window-logit-2026-10-07.md)
 //                  { type: "voice-state", state, ts }  on change — what the
 //                                                meter should say: "listening"
 //                                                | "updating" | "scoring" |
@@ -30,7 +38,9 @@
 //                  { type: "inference-event", event: "timeout", durationMs, ts }
 //
 // (The main thread tears workers down via Worker.terminate(); there is
-// no graceful "stop" message — calls were never wired up.)
+// no graceful "stop" message — calls were never wired up.) Since the cue
+// strip (2026-10-07) the main thread creates this worker only while the
+// opt-in "Likely heard as" panel is on.
 //
 // `inferMs` is the wall-clock duration of the classifier(...) call only
 // (no VAD gate, no EMA, no postMessage). Always populated when the
@@ -44,13 +54,12 @@ import {
   RingWindow,
   SilenceTracker,
   femaleScoreFromResult,
+  femaleLogitFromResult,
   windowPeak,
   ema,
-  VAD_PEAK_THRESHOLD,
-  VAD_SILENCE_FLOOR,
   TARGET_SAMPLE_RATE,
 } from "./audio-utils.js";
-import { createUtteranceGate, meterStateForVerdict } from "./utterance-gate.js";
+import { createUtteranceGate, decideMlWindow } from "./utterance-gate.js";
 
 // We don't ship the model in the bundle — fetch from the Hub at runtime.
 env.allowRemoteModels = true;
@@ -203,6 +212,8 @@ async function maybeInfer() {
   if (now - lastInferenceMs < INFERENCE_INTERVAL_MS) return;
 
   const windowCopy = ring.snapshot();
+  // The window's end on the audio clock (posted with its score).
+  const windowAudioMs = audioNowMs;
 
   // Which windows get scored. Normally the utterance gate decides from
   // the relayed pitch voicing (noise-robust: the pitch worker's tonal
@@ -213,26 +224,18 @@ async function maybeInfer() {
   // EMA reset, so a broken pitch worker degrades the meter instead of
   // silencing it. Peak, not RMS: a speech-with-pauses window has a low
   // average but clearly speech-level peaks.
+  // The decision itself lives in utterance-gate.js decideMlWindow (pure,
+  // extracted 2026-10-07, bit-identical: the heard-as calibration replays
+  // it): which path (gated / fallback), whether to score, whether to start
+  // a fresh EMA (a path switch — never carry a score across it —, an
+  // utterance onset or the end of a held note, or the fallback's
+  // silent-run reset), and the meter-facing state.
   const peak = windowPeak(windowCopy);
-  const decision = audioNowMs === null ? { verdict: "stale", resetEma: false } : gate.decide(audioNowMs);
-  const mode = decision.verdict === "stale" ? "fallback" : "gated";
-  if (mode !== lastGateMode) {
-    // Never carry a score across a switch between the two paths.
-    smoothedFemale = null;
-    lastGateMode = mode;
-  }
-  let score;
-  if (mode === "fallback") {
-    score = peak >= VAD_PEAK_THRESHOLD;
-    if (score) silenceTracker.noteActive();
-    else if (silenceTracker.noteSilent()) smoothedFemale = null;
-    postVoiceState(score ? "scoring" : "listening");
-  } else {
-    score = decision.verdict === "score" && peak >= VAD_SILENCE_FLOOR;
-    // Utterance onset (or the end of a held note): start a fresh EMA.
-    if (decision.resetEma) smoothedFemale = null;
-    postVoiceState(decision.verdict === "score" && !score ? "pause" : meterStateForVerdict(decision.verdict));
-  }
+  const d = decideMlWindow({ gate, audioNowMs, peak, lastGateMode, silenceTracker });
+  lastGateMode = d.mode;
+  if (d.resetEma) smoothedFemale = null;
+  postVoiceState(d.voiceState);
+  const score = d.score;
   if (!score) {
     lastInferenceMs = now;
     return;
@@ -262,6 +265,12 @@ async function maybeInfer() {
       score,
       confidence,
       ts: performance.timeOrigin + performance.now(),
+      // The unsmoothed window logit + where the window sits on the audio
+      // clock: what the experimental "Likely heard as" estimate pools.
+      logit: femaleLogitFromResult(result),
+      audioMs: windowAudioMs,
+      spanId: d.spanId,
+      mode: d.mode,
       ...(_diag ? { inferMs } : {}),
     });
   } catch (err) {

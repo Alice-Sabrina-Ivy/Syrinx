@@ -11,6 +11,7 @@ import {
   RingWindow,
   SilenceTracker,
   femaleScoreFromResult,
+  femaleLogitFromResult,
   windowRMS,
   windowPeak,
   ema,
@@ -416,6 +417,34 @@ console.log("\ncreateVoicedRecencyGate — pitch-voicedness VAD arm");
   check("feed silent past staleMs -> stale (fail open)", g.shouldScore(4000) === "stale");
   g.notePitchHint({ voiced: true, ts: 4100 });
   check("recovers from stale on next voiced hint", g.shouldScore(4200) === "voiced");
+}
+
+console.log("\nfemaleLogitFromResult");
+{
+  const pF = 0.8, pM = 0.2;
+  const a = femaleLogitFromResult([{ label: "female", score: pF }, { label: "male", score: pM }]);
+  const b = femaleLogitFromResult([{ label: "male", score: pM }, { label: "female", score: pF }]);
+  check("label-order independent", a === b);
+  check("equals ln(pF / pM)", Math.abs(a - Math.log(pF / pM)) < 1e-15);
+  check("null on a missing label", femaleLogitFromResult([{ label: "female", score: 0.9 }]) === null);
+  check("null on a zero label", femaleLogitFromResult([{ label: "female", score: 1 }, { label: "male", score: 0 }]) === null);
+  check("null on garbage", femaleLogitFromResult(null) === null && femaleLogitFromResult([]) === null);
+  // softmax of logits d -> exactly the logit difference (float64)
+  const d = [1.7, -2.4];
+  const e0 = Math.exp(d[0]), e1 = Math.exp(d[1]);
+  const res = [{ label: "male", score: e0 / (e0 + e1) }, { label: "female", score: e1 / (e0 + e1) }];
+  check("recovers d[female] - d[male] from softmax probabilities", Math.abs(femaleLogitFromResult(res) - (d[1] - d[0])) < 1e-12);
+  // float32-rounded probabilities (as the pipeline returns them) at an extreme window
+  const big = -30;
+  const pf32 = Math.fround(1 / (1 + Math.exp(-big))), pm32 = Math.fround(1 / (1 + Math.exp(big)));
+  const l32 = femaleLogitFromResult([{ label: "female", score: pf32 }, { label: "male", score: pm32 }]);
+  check("extreme window (-30) survives float32 probabilities, not clamped", Math.abs(l32 - big) < 1e-5);
+  let signOk = true;
+  for (const p of [0.01, 0.3, 0.5001, 0.7, 0.99]) {
+    const r = [{ label: "female", score: p }, { label: "male", score: 1 - p }];
+    if (Math.sign(femaleLogitFromResult(r)) !== Math.sign(femaleScoreFromResult(r) - 0.5)) signOk = false;
+  }
+  check("sign agrees with femaleScoreFromResult - 0.5", signOk);
 }
 
 console.log("\nconstants");

@@ -8,8 +8,10 @@
 import {
   createUtteranceGate,
   meterStateForVerdict,
+  decideMlWindow,
   UTTERANCE_GATE_DEFAULTS as D,
 } from "../../src/ml/utterance-gate.js";
+import { SilenceTracker, VAD_PEAK_THRESHOLD, VAD_SILENCE_FLOOR, RESET_AFTER_SILENT_INFERENCES } from "../../src/ml/audio-utils.js";
 
 let passed = 0;
 let failed = 0;
@@ -209,6 +211,88 @@ console.log("\nheld-phonation share: 95 % voiced over the second");
   check("~92 % voiced flat-pitch speech is not 'sustained'", ds.every((d) => d.verdict !== "sustained"),
     ds.map((d) => d.verdict[0]).join(""));
   check("default share is 0.95", D.sustainMinShare === 0.95);
+}
+
+console.log("\ndecideMlWindow (the worker's window decision, extracted 2026-10-07)");
+{
+  // The pre-refactor maybeInfer decision, verbatim, as a reference.
+  function legacy(st, gate, audioNowMs, peak) {
+    const decision = audioNowMs === null ? { verdict: "stale", resetEma: false } : gate.decide(audioNowMs);
+    const mode = decision.verdict === "stale" ? "fallback" : "gated";
+    let reset = false;
+    if (mode !== st.lastGateMode) { reset = true; st.lastGateMode = mode; }
+    let score, vs;
+    if (mode === "fallback") {
+      score = peak >= VAD_PEAK_THRESHOLD;
+      if (score) st.silence.noteActive();
+      else if (st.silence.noteSilent()) reset = true;
+      vs = score ? "scoring" : "listening";
+    } else {
+      score = decision.verdict === "score" && peak >= VAD_SILENCE_FLOOR;
+      if (decision.resetEma) reset = true;
+      vs = decision.verdict === "score" && !score ? "pause" : meterStateForVerdict(decision.verdict);
+    }
+    return { score, resetEma: reset, voiceState: vs, mode };
+  }
+  const fake = (verdict, resetEma = false) => ({ decide: () => ({ verdict, resetEma, spanId: 7 }) });
+  const table = [
+    // [verdict, gateReset, peak, lastMode, expected]
+    ["score", false, 0.2, "gated", { score: true, resetEma: false, voiceState: "scoring", mode: "gated" }],
+    ["score", true, 0.2, "gated", { score: true, resetEma: true, voiceState: "scoring", mode: "gated" }],
+    ["score", false, VAD_SILENCE_FLOOR / 2, "gated", { score: false, resetEma: false, voiceState: "pause", mode: "gated" }],
+    ["score", false, 0.2, "fallback", { score: true, resetEma: true, voiceState: "scoring", mode: "gated" }],
+    ["score", false, 0.2, null, { score: true, resetEma: true, voiceState: "scoring", mode: "gated" }],
+    ["warming", false, 0.2, "gated", { score: false, resetEma: false, voiceState: "updating", mode: "gated" }],
+    ["pause", false, 0.2, "gated", { score: false, resetEma: false, voiceState: "pause", mode: "gated" }],
+    ["sustained", false, 0.2, "gated", { score: false, resetEma: false, voiceState: "sustained", mode: "gated" }],
+    ["silent", false, 0.2, "gated", { score: false, resetEma: false, voiceState: "listening", mode: "gated" }],
+    ["stale", false, VAD_PEAK_THRESHOLD, "fallback", { score: true, resetEma: false, voiceState: "scoring", mode: "fallback" }],
+    ["stale", false, VAD_PEAK_THRESHOLD / 2, "fallback", { score: false, resetEma: false, voiceState: "listening", mode: "fallback" }],
+    ["stale", false, 0.2, "gated", { score: true, resetEma: true, voiceState: "scoring", mode: "fallback" }],
+  ];
+  let ok = true;
+  for (const [verdict, gr, peak, last, want] of table) {
+    const now = verdict === "stale" ? null : 1000;
+    const got = decideMlWindow({ gate: fake(verdict, gr), audioNowMs: now, peak, lastGateMode: last });
+    const leg = legacy({ lastGateMode: last, silence: new SilenceTracker() }, fake(verdict, gr), now, peak);
+    for (const k of Object.keys(want)) {
+      if (got[k] !== want[k] || leg[k] !== want[k]) {
+        ok = false;
+        console.log(`    ${verdict}/${peak}/${last}: ${k} got ${got[k]} legacy ${leg[k]} want ${want[k]}`);
+      }
+    }
+  }
+  check("(verdict, peak, mode) table matches the pre-refactor decision", ok);
+  // The fallback's silent-run EMA reset fires on the same tick.
+  const tr1 = new SilenceTracker();
+  const st = { lastGateMode: "fallback", silence: new SilenceTracker() };
+  let same = true, resets = 0;
+  for (let i = 0; i < RESET_AFTER_SILENT_INFERENCES + 3; i++) {
+    const a = decideMlWindow({ gate: fake("stale"), audioNowMs: null, peak: 0, lastGateMode: "fallback", silenceTracker: tr1 });
+    const b = legacy(st, fake("stale"), null, 0);
+    if (a.resetEma !== b.resetEma) same = false;
+    if (a.resetEma) resets++;
+  }
+  check("fallback silent-run EMA reset fires on the same tick", same && resets === 1, `${resets} resets`);
+  // Whole streams through two real gates: identical decision sequences.
+  let streamsOk = true;
+  for (const frame of [speech(120), speech(220), heldNote(200), heldNote(260, 0.8), silent]) {
+    const g1 = createUtteranceGate(), g2 = createUtteranceGate();
+    const st2 = { lastGateMode: null, silence: new SilenceTracker() };
+    let last = null;
+    for (let t = HOP; t <= 6000; t += HOP) {
+      const h = frame(t);
+      g1.notePitchHint({ ts: t, ...h });
+      g2.notePitchHint({ ts: t, ...h });
+      if (t % TICK) continue;
+      const peak = h.voiced ? 0.2 : 0.0005;
+      const a = decideMlWindow({ gate: g1, audioNowMs: t, peak, lastGateMode: last });
+      last = a.mode;
+      const b = legacy(st2, g2, t, peak);
+      if (a.score !== b.score || a.resetEma !== b.resetEma || a.voiceState !== b.voiceState || a.mode !== b.mode) streamsOk = false;
+    }
+  }
+  check("speech / held-note / silence streams: identical decisions tick by tick", streamsOk);
 }
 
 console.log("\nmeter state mapping");

@@ -167,6 +167,29 @@ export function femaleScoreFromResult(result) {
   return Math.max(0, Math.min(1, female));
 }
 
+// The classifier's window logit, ln(p_female) − ln(p_male), from the same
+// pipeline result as femaleScoreFromResult (labels parsed by name, so the
+// order of the result array doesn't matter). With 2 labels this equals the
+// model's fc7 logit difference d[female] − d[male] (softmax cancels; the
+// pipeline rounds probabilities to float32, |Δ| ≤ ~1e-6 —
+// measurements/heard-as-window-logit-2026-10-07.md). It is the input the
+// experimental "Likely heard as" estimate pools (src/ml/heard-as.js): the
+// UNSMOOTHED per-window value, never the EMA. Not clamped (real windows
+// reach about −37 / +9). null when either label is missing or not > 0.
+export function femaleLogitFromResult(result) {
+  if (!Array.isArray(result) || result.length === 0) return null;
+  let female = null, male = null;
+  for (const r of result) {
+    if (r == null || typeof r.score !== "number") continue;
+    const label = String(r.label ?? "").toLowerCase();
+    if (label.includes("female") || label === "f") female = r.score;
+    else if (label.includes("male") || label === "m") male = r.score;
+  }
+  if (!(female > 0) || !(male > 0)) return null;
+  const l = Math.log(female) - Math.log(male);
+  return Number.isFinite(l) ? l : null;
+}
+
 // ---------------------------------------------------------------------------
 // Voiced-recency gate for the ML VAD (2026-07-19).
 //

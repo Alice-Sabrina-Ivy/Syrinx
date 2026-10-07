@@ -64,6 +64,8 @@
 //   "sustained" held phonation — don't score, show "needs running speech".
 //   "score"     score it; resetEma is true on the span's first score.
 
+import { VAD_PEAK_THRESHOLD, VAD_SILENCE_FLOOR } from "./audio-utils.js";
+
 export const UTTERANCE_GATE_DEFAULTS = Object.freeze({
   windowMs: 750,            // ML window length (gender-worker WINDOW_SECONDS)
   onsetRunMs: 150,          // consecutive voicing that opens an utterance
@@ -234,4 +236,50 @@ export function meterStateForVerdict(verdict) {
     case "sustained": return "sustained";
     default: return "listening"; // silent (stale is resolved by the caller)
   }
+}
+
+// The gender worker's per-tick window decision (extracted from
+// gender-worker.js maybeInfer, 2026-10-07; behaviour bit-identical —
+// measurements/heard-as-window-logit-2026-10-07.md). Pure, so the
+// "Likely heard as" calibration can replay exactly the windows the live
+// worker scores (scripts/heard-as/).
+//
+//   gate           createUtteranceGate() instance (mutated by decide())
+//   audioNowMs     audio-clock ms of the newest chunk in the window, or null
+//                  (no audio time yet -> "stale")
+//   peak           window peak (audio-utils windowPeak)
+//   lastGateMode   the previous tick's mode ("gated" | "fallback" | null)
+//   silenceTracker optional SilenceTracker for the amplitude fallback's
+//                  silent-run EMA reset (the worker passes its own)
+// -> { score, resetEma, voiceState, mode, verdict, spanId }
+//   score      score this window
+//   resetEma   start a fresh EMA before using this window (a switch between
+//              the gated and fallback paths, an utterance onset, or the
+//              fallback's silent-run reset)
+//   voiceState the meter-facing state to post (meterStateForVerdict, or
+//              "pause" for a scoreable verdict below the silence floor;
+//              "scoring" / "listening" on the fallback path)
+export function decideMlWindow({ gate, audioNowMs, peak, lastGateMode, silenceTracker = null }) {
+  const decision = audioNowMs === null || audioNowMs === undefined
+    ? { verdict: "stale", resetEma: false, spanId: null }
+    : gate.decide(audioNowMs);
+  const mode = decision.verdict === "stale" ? "fallback" : "gated";
+  // Never carry a score across a switch between the two paths.
+  let resetEma = mode !== lastGateMode;
+  let score;
+  let voiceState;
+  if (mode === "fallback") {
+    score = peak >= VAD_PEAK_THRESHOLD;
+    if (silenceTracker) {
+      if (score) silenceTracker.noteActive();
+      else if (silenceTracker.noteSilent()) resetEma = true;
+    }
+    voiceState = score ? "scoring" : "listening";
+  } else {
+    score = decision.verdict === "score" && peak >= VAD_SILENCE_FLOOR;
+    // Utterance onset (or the end of a held note): start a fresh EMA.
+    if (decision.resetEma) resetEma = true;
+    voiceState = decision.verdict === "score" && !score ? "pause" : meterStateForVerdict(decision.verdict);
+  }
+  return { score, resetEma, voiceState, mode, verdict: decision.verdict, spanId: decision.spanId ?? null };
 }
