@@ -41,6 +41,12 @@ the trail and the header use it; the header says "about where you started"
 inside ±0.3 σ (about half the level's own wobble). The level is fed during
 calibration too, so it is ready the moment the baseline freezes.
 
+**Re-measured in the built app** (the review's `drive.mjs`, four of its
+stimuli, phone viewport): same-voice wobble of the weight dot 0.62–0.98 σ
+q10–q90 (review, single emits: 1.5–3.3 σ); the header said "about where you
+started" on 36–58 % of the changed half's live samples, otherwise 0.4–0.7 σ
+either way (one run briefly 1.9 σ lighter).
+
 **What this does not fix.** Training-sized changes in these stimuli still
 move the 5 s level by only about half its same-voice wobble: pitch ±4 st
 moves it ~0.36 σ (the CPP pitch confound is smaller than the frame noise),
@@ -77,7 +83,8 @@ outside their band about 1 time in 5.
 
 The lab benchmark establishes the cue for **in-session change**, not absolute
 position. The header now says "brighter / darker than your start" or "about
-where you started", with a 0.3 u deadband: the UX review measured the 5 s
+where you started" (until the start is known: "finding your start…"), with a
+0.3 u deadband: the UX review measured the 5 s
 readout's same-voice wobble at 0.28–0.36 u (woman) and 0.54–0.65 u
 (expressive man) q10–q90, and ±10 % formants moved it ±0.76–0.84 u, +5 %
 0.41–0.46 u. So ±10 % formant changes clear the deadband for both readers; a
@@ -85,6 +92,35 @@ readout's same-voice wobble at 0.28–0.36 u (woman) and 0.54–0.65 u
 draws a line from the start ring to the dot, and the resonance trail now
 samples every 2 s over ~30 s (the 8-dot / 2 s trail could not show a change
 that develops over 5–8 s).
+
+**The start reference.** The first build put the start ring at the first
+full readout. Re-measured in the built app, the expressive man's first
+readout sat at u −0.75 against his typical −0.10, so his *unchanged* voice
+read "brighter than your start" in every live sample of the first half. The
+start is now the median of the readouts over the first 12 s of admitted
+voiced speech after the readout fills (`resonanceCue.js` `START_COLLECT_S`).
+Replayed on the 16 runs (the review's 12 + the 4 re-measured): with the start
+taken over the first 0 / 10 / 20 / 30 s of live readouts, an unchanged voice
+reads "about where you started" in a median 57 / 67 / **96** / 100 % of live
+samples (worst run 10 / 0 / **77** / 100 %), while ±10 % formants still move
+the readout 0.7–0.9 u from that start and +5 % 0.45–0.66 u. 12 s of voiced
+speech is about 20 s of live reading.
+
+Re-measured in the built app (phone viewport; share of live samples):
+
+| Run | unchanged half, once the start is known | changed half |
+|---|---|---|
+| woman, formants −10 % *(first start rule)* | about where you started 95 % | darker 100 % |
+| woman, pitch −4 st *(first start rule)* | about where you started 97 % | about where you started 100 % |
+| man, formants +10 % | about where you started 69 % (darker 31 %) | brighter 81 % |
+| man, formants −10 % | about where you started 100 % | darker 43 %, beyond the scale (dark end) 39 %, about 18 % |
+| man, pitch +4 st | about where you started 81 % | about 66 %, darker 34 % |
+
+So on the expressive reader a ±10 % formant change shows clearly, but his
+own content drift still reads "darker" a third of the time with no
+resonance change — the cue is a guide over tens of seconds, not
+sentence by sentence, and the info text now says so ("What you say moves it
+too, so judge a change over tens of seconds, not sentence by sentence").
 
 **After a long pause.** The readout freezes through silence by design, so a
 voice returning after a break (or another speaker) got the earlier value as a
