@@ -25,6 +25,7 @@ import time
 
 import numpy as np
 
+import model as M
 from infer import OnnxEngine, TorchEngine, cand_json
 from tcommon import HOP, OFF, args, resample_stream
 
@@ -47,6 +48,37 @@ def stream_list(spec):
     return out
 
 
+class TorchChunked(TorchEngine):
+    """A training checkpoint run over a long session in chunks of `frames`
+    frames through model.Streaming (state carried chunk to chunk; the same
+    arithmetic as the batch form): cuDNN refuses one GRU call over a whole
+    20-minute session."""
+
+    def __init__(self, ckpt, frames=20000):
+        super().__init__(ckpt)
+        self.st = M.Streaming(self.net).to(self.dev).eval()
+        self.frames = frames
+
+    def __call__(self, x16):
+        torch = self.torch
+        n = (len(x16) + OFF) // HOP
+        ctx0 = self.net.ctx
+        xp = np.concatenate([np.zeros(ctx0 + OFF, np.float32), np.asarray(x16, np.float32)])
+        state = [t.to(self.dev) for t in self.st.init_state()]
+        out = np.empty(n, np.float32)
+        i = 0
+        with torch.no_grad():
+            while i < n:
+                m = min(self.frames, n - i)
+                a = ctx0 + i * HOP
+                chunk = torch.from_numpy(xp[a:a + m * HOP])[None].to(self.dev)
+                r = self.st(chunk, *state)
+                out[i:i + m] = r[0][0].float().cpu().numpy()
+                state = list(r[1:])
+                i += m
+        return out
+
+
 def main():
     metas = stream_list(A["streams"])
     order = sorted(range(len(metas)), key=lambda i: (metas[i]["set"], metas[i]["id"]))
@@ -66,9 +98,17 @@ def main():
         else:
             sessions.append(cur)
     if "onnx" in A:
-        engs = [OnnxEngine(A["onnx"], int(A.get("chunk", "8")))]
+        if "stagger" in A:   # round 2, Addendum F: staggered state reset (stagger.py), T seconds
+            from stagger import OnnxStagger
+            engs = [OnnxStagger(A["onnx"], float(A["stagger"]), int(A.get("chunk", "8")))]
+        else:
+            engs = [OnnxEngine(A["onnx"], int(A.get("chunk", "8")))]
     else:
-        engs = [TorchEngine(c) for c in A["ckpt"].split(",")]
+        if "stagger" in A:
+            from stagger import TorchStagger
+            engs = [TorchStagger(c, float(A["stagger"])) for c in A["ckpt"].split(",")]
+        else:
+            engs = [TorchChunked(c) for c in A["ckpt"].split(",")]
     outs = A["out"].split(",")
     assert len(engs) == len(outs)
     sj = A.get("sessions-json") or os.path.join(outs[0], "sessions.json")

@@ -96,9 +96,17 @@ def main():
     outs = A["out"].split(",")
     sh, nsh = (int(v) for v in A.get("shard", "0/1").split("/"))
     if "onnx" in A:
-        engs = [OnnxEngine(A["onnx"], int(A.get("chunk", "8")))]
+        if "stagger" in A:   # round 2, Addendum F: staggered state reset (stagger.py), T seconds
+            from stagger import OnnxStagger
+            engs = [OnnxStagger(A["onnx"], float(A["stagger"]), int(A.get("chunk", "8")))]
+        else:
+            engs = [OnnxEngine(A["onnx"], int(A.get("chunk", "8")))]
     else:
-        engs = [TorchEngine(c) for c in A["ckpt"].split(",")]   # several checkpoints share one pass over the audio
+        if "stagger" in A:
+            from stagger import TorchStagger
+            engs = [TorchStagger(c, float(A["stagger"])) for c in A["ckpt"].split(",")]
+        else:
+            engs = [TorchEngine(c) for c in A["ckpt"].split(",")]   # several checkpoints share one pass over the audio
     assert len(engs) == len(outs)
     metas = list_streams(root, sets)
     if A.get("split"):

@@ -778,3 +778,39 @@ coswara counting 0.06, coswara vowels 0.18, mdvr 0.04, dcs 0.09, esmuc 0.09,
 csd 0.08, svd 0.14, singbap 0.07, imitations 0.02, kids 0.02, fsvoice 0.03
 (held notes and sustained vowels 0.65 of the draws, as in round 1's 0.63).
 Two seeds (11 and 12).
+
+## Addendum F — round 2: the state bank did not fix carried state on validation; staggered state reset (2026-10-07, before the round-2 look)
+
+Written after the round-2 checkpoints were scored on the **selection data
+only** (validation streams and the tuning 194), and before any round-2 model
+touched an evaluation stream.
+
+**What the selection data showed.** Under the rule of D.4, no round-2
+checkpoint has a feasible point. With fresh state every one meets the limits
+at low thresholds, but on the carried-state validation sessions the state
+bank (D.2 item 3) did not remove the vetoes: even at the most permissive grid
+point (p ≥ 0.01, 3 s hangover), the carried files exceed the 0.5 % clean
+limit in every checkpoint (`clinical` 0.57–1.16 %, `exercises` up to 3.9 %,
+`vowels` up to 0.92 %) and, for r8a at steps 10,000–16,000, the 1.5 % mix
+limit (vmix20 0 dB 1.8–2.8 %). The carried vetoes grow with training steps.
+For r8a at step 8,000 they are spread over 116 validation streams (11 with
+fresh state); a stream that follows another recording (clean speech as often
+as noise) is held at p < 0.01 for more than 3 s. The round-1 model has no
+feasible point on these data either.
+
+**Change (defect fix, not a new recipe).** Each candidate is also scored with
+the **staggered state reset** (`train/stagger.py`), the alternative the round-1
+review proposed: two copies of the streaming model run on the same audio, each
+resets its GRU state to zero every 2T, copy B offset by T (copy A at 2T, 4T, …;
+copy B at T, 3T, …); only the GRU state is reset; the gate uses
+max(p_A, p_B). Each copy's history is then at most 2T, inside the training
+crops. **T = 10 s**, fixed now. A deployed gate runs the model twice per
+capture chunk.
+
+- **Candidates**: the ten EMA checkpoints of D.2 with the reset (r8a and r8b,
+  steps 8,000–16,000), scored with the D.4 rule unchanged (fresh and carried
+  validation files, same limits, objective, tie-breaks and fallback). The ten
+  checkpoints without the reset stay in the table as scored; none is feasible.
+- V4 for a reset candidate is measured as two model runs per 25 ms.
+- Everything in D.5 is unchanged; the look's carried-state rows (D.5 item 1)
+  apply to the chosen candidate as deployed (with the reset).
