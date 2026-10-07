@@ -599,7 +599,10 @@ The default practice mode — everything at a glance. **As built (Design A
   the middle guess, "can't tell yet" when the range covers most of it; the
   unsure / neither share as a text line), never a verdict, with its known weaknesses stated (including that it was
   not tested on trans women or nonbinary speakers); hidden outside the range
-  it was fitted on.
+  it was fitted on. A live note warns when the pitch has moved a lot more
+  than the resonance since the session's start (where the guess overstates
+  the change listeners hear; pre-registered rule,
+  `measurements/heard-as-pitch-only-warning-2026-10-07.md`).
 - **Session row**: Save, timer, notes.
 
 On **phones** these stack in that order (trace and strip fit the first screen

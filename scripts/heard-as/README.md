@@ -24,6 +24,18 @@ posted pitch on the fixtures changes: then re-run `run_chain.mjs` on the
 calibration sources, refit or confirm the constants (below), and regenerate
 the golden file.
 
+## Pitch-only-change warning study
+
+`pitch-only/` — the pre-registered study behind `src/ml/pitch-only-warning.js`
+(`measurements/heard-as-pitch-only-warning-2026-10-07.md`, whose Reproduce
+section lists the order): `build_jobs.py` (session audio), `session.mjs` (the
+production chain, ticks every 2 s), `features.py`, `rules.py` (every
+pre-registered configuration), `select_report.py`, `details.py`, `posthoc.py`
+(the K = 1 / 2 / 3 flash check) and `make_fixture.py` (the golden replay
+fixture `tests/ml/fixtures/pitch-only-golden.json`). Run in a directory under
+`build/`; needs `SYRINX_LIBRISPEECH` and, for the hcc / picka / rb sets,
+`SYRINX_HEARD_AS_DATA`.
+
 ## Calibration (Python)
 
 `calibration/` holds the fit that produced the shipped constants (form A,

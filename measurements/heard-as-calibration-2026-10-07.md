@@ -231,7 +231,7 @@ LibriTTS-P voices); the cost is a wide "split" for many clear voices.
 
 | # | Failure | Numbers | How the panel says it |
 |---|---|---|---|
-| 1 | Pitch moved without resonance is over-credited, **in both directions** | Male voice, pitch raised, formants unchanged: 12–62 points too little "man" (median 21; 4 held-out data; worst the RB695 male TTS raised to ~161 Hz, 89.5 % heard vs 27.8 % predicted). Female voice, pitch lowered, formants unchanged: median +20, up to +46 points too much "man" (7 of 11 data; the NC-licensed PICKA validation grids agree, +11 to +40 points). Pitch and resonance moved together: median miss 5 (male base) / 8 (female base) points | the always-visible **caveat**: "It follows pitch more than listeners do: change your pitch without changing resonance and it shows a bigger change than listeners would hear — sometimes by more than half of them — in either direction". The **conflict note** (\|u_F0 − u_resonance\| > 1) rarely fires on these cases (RB695 raised male Δ ≈ 0.62, female lowered ×0.59 Δ ≈ 0.86, Meyer −6 st Δ ≈ 0.55 — none fire); a threshold low enough to catch them fires on ~half of ordinary men's live readings (measurements/cue-strip-review-fixes-2026-10-07.md §5), so the caveat is the disclosure |
+| 1 | Pitch moved without resonance is over-credited, **in both directions** | Male voice, pitch raised, formants unchanged: 12–62 points too little "man" (median 21; 4 held-out data; worst the RB695 male TTS raised to ~161 Hz, 89.5 % heard vs 27.8 % predicted). Female voice, pitch lowered, formants unchanged: median +20, up to +46 points too much "man" (7 of 11 data; the NC-licensed PICKA validation grids agree, +11 to +40 points). Pitch and resonance moved together: median miss 5 (male base) / 8 (female base) points | the always-visible **caveat**: "It follows pitch more than listeners do: change your pitch without changing resonance and it shows a bigger change than listeners would hear — sometimes by more than half of them — in either direction". The **conflict note** (\|u_F0 − u_resonance\| > 1) rarely fires on these cases (RB695 raised male Δ ≈ 0.62, female lowered ×0.59 Δ ≈ 0.86, Meyer −6 st Δ ≈ 0.55 — none fire); a threshold low enough to catch them fires on ~half of ordinary men's live readings (measurements/cue-strip-review-fixes-2026-10-07.md §5), so the caveat is the disclosure. **Since 2026-10-07 also a live warning** (§9) |
 | 2 | Clear voices look less clear than they are | clear women 6–15 % predicted vs 0.4–3 % heard; clear men 83–86 % vs 97.5–99.6 % | "More": typical voices are shown further from the ends than listeners put them |
 | 3 | Listener groups differ | between-study offset SD 0.64 logit (−1.01 to +0.74) | caveat: "Listener groups disagree a lot." |
 | 4 | Tested population | Fit: natural voices of trans and cis men (Palette, 20 talkers), natural women's and men's voices (Hillenbrand & Clark rates on rebuilt H95 / LibriSpeech material), resynthesised and TTS voices; no trans women's or nonbinary speakers' voices with public listener data — so the more-feminine direction is the less validated one | caveat: "Fitted on trans and cis men's voices, women's voices and computer-altered voices; not tested on trans women or nonbinary speakers." (corrected 2026-10-07: the earlier caveat said it was not tested on trans speakers, which the Palette contradicts) |
@@ -278,6 +278,19 @@ man / woman swapped (`tests/ml/heard-as-axis-test.js`). The always-visible
 caveat, the experiment label and the hide rules (§7) are unchanged. Code:
 `src/components/heardAsAxisModel.js` (geometry + words), `HeardAsPanel.jsx`.
 No estimate, constant or coverage figure changed.
+
+## 9. Pitch-only-change warning (2026-10-07)
+
+A pre-registered study (public data, 469 sessions through the production
+chain, dev / test split) selected a live warning for failure 1: the posted
+pitch has moved ≥ 4 st from the pitch over the resonance cue's start window
+while the resonance readout is within 0.6 u of its start, on 2 consecutive
+updates. On the test split it catches 10 / 11 male-base and 27 / 30
+female-base failure sessions (K = 2), with natural false alarms of 1.0 % /
+0 % of women's / men's updates. It cannot see shifts that predate the session
+start or pitch changes the resonance cue reads as resonance, so the caveat
+stays. Full study, pre-registration and the K = 2 deviation:
+`measurements/heard-as-pitch-only-warning-2026-10-07.md`.
 
 ## Reproduce
 
