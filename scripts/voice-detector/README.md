@@ -28,7 +28,7 @@ re-driven.
 | `score.py` | step 2: align a candidate to the painted hops, apply its threshold + hangover, score V1–V4 |
 | `check.py` | parity of the dumps with the published base numbers of the same chain |
 | `selftest.py` | contract checks of the scorer's alignment, hangover and onset logic |
-| `judge/` | the verdict's checks ([voice-detector-benchmark-2026-10-06.md](../../measurements/voice-detector-benchmark-2026-10-06.md)): `spot.py` / `spot-wasm.mjs` re-run Silero and WebRTC (reference + browser port) and test causality by truncation; `variant.py` scores a candidate's files at another threshold / hangover; `webrtc_point.py` re-emits a WebRTC sweep point; `tables.py` the cross-candidate table |
+| `judge/` | the verdict's checks ([voice-detector-benchmark-2026-10-06.md](../../measurements/voice-detector-benchmark-2026-10-06.md)): `spot.py` / `spot-wasm.mjs` re-run Silero and WebRTC (reference + browser port) and test causality by truncation; `variant.py` scores a candidate's files at another threshold / hangover; `webrtc_point.py` re-emits a WebRTC sweep point; `tables.py` the cross-candidate table. The custom detector's look (2026-10-07, [voice-detector-custom-2026-10-06.md](../../measurements/voice-detector-custom-2026-10-06.md)): `custom_rerun.mjs` (re-run in onnxruntime-web WASM through the app's resampler + truncation causality), `custom_tradeoff.py` / `custom_fastscore.py` (post-hoc threshold × hangover grid and failure breakdowns), `custom_v5_infer.py` / `custom_v5_score.py` (V5 on the private session recordings; results outside this repository) |
 
 ## Data (read in place, never copied)
 

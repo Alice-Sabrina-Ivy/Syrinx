@@ -490,3 +490,22 @@ carries the operating point and the sha256 of the checkpoint
 evaluation stream. The departures of the training step are listed in §5 of
 that note.
 
+## Addendum C — the evaluation look (2026-10-07)
+
+The one pre-registered look was taken on the frozen candidate (40d151a), with
+the unchanged `score.py` over all 4,305 harness streams:
+[voice-detector-custom-2026-10-06.md](voice-detector-custom-2026-10-06.md).
+
+- **Verdict: the bar is not met.** V1 fails: the male group vetoes 3.47 %,
+  3.52 % and 6.88 % in three of the four voice-in-noise cells (limit 3 %).
+  The clean sets pass, the worst being 0.84 %.
+- V2 passes: 79.58 / 74.48 / 75.38 % removed. V3 passes (82 ms; median onset
+  delay 0 ms). V4 passes after re-measurement (0.50 ms per 25 ms in Node, 0.39 ms
+  in headless Chrome).
+- The judge checks of §4 were run: re-score, re-run in onnxruntime-web WASM,
+  truncation causality, licence re-read, WASM CPU re-measured.
+- V5 was run once, at the frozen point. Results on the private session
+  recordings are kept outside this repository.
+- After the look, a threshold × hangover grid was scored on the same files.
+  It is reported there as post-hoc. None of its points is a selection, and none
+  counts as a pass.
