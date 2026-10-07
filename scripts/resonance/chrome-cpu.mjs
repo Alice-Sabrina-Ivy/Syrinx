@@ -50,6 +50,8 @@ const DIST = arg("dist", "dist");
 const WARMUP = Number(arg("warmup", "20"));
 const TRACE = Number(arg("trace", "30"));
 const OUT = arg("out", "");
+const DIAG = arg("diag", "1") !== "0";       // --diag=0: production URL (no overlay / diag instrumentation; no resonancePerf, no inference count)
+const PROFILE = arg("profile", "");           // --profile=<file.cpuprofile>: main-thread JS profile of 15 s after the trace
 const CHROME = ["C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
   "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe"].find(existsSync);
 if (!CHROME || !existsSync(WAV)) { console.error("need Chrome and the WAV"); process.exit(2); }
@@ -80,7 +82,7 @@ const ortFiles = new Set();
 page.on("response", (r) => { const u = r.url(); if (/ort-wasm|onnx/.test(u)) ortFiles.add(u.replace(/\?.*$/, "")); });
 const cdp = await page.createCDPSession();
 await cdp.send("Emulation.setFocusEmulationEnabled", { enabled: true });
-await page.goto(`http://localhost:${PORT}/Syrinx/?diag=1`, { waitUntil: "domcontentloaded" });
+await page.goto(`http://localhost:${PORT}/Syrinx/${DIAG ? "?diag=1" : ""}`, { waitUntil: "domcontentloaded" });
 const click = (t) => page.evaluate((t) => { const b = [...document.querySelectorAll("button")].find((x) => x.textContent.includes(t)); b?.click(); return !!b; }, t);
 await page.waitForFunction(() => document.body.innerText.includes("Welcome to Syrinx"), { timeout: 60000 });
 await click("Get Started");
@@ -113,6 +115,7 @@ async function runTrace() {
   await page.tracing.start({ categories: (process.env.TRACE_CATS ?? "toplevel,disabled-by-default-devtools.timeline").split(",") });
   await sleep(TRACE * 1000);
   const buf = await page.tracing.stop();
+  if (process.env.TRACE_SAVE) writeFileSync(process.env.TRACE_SAVE, Buffer.from(buf));
   const wallS = (Date.now() - w0) / 1000;
   const p1 = await processCpu();
   const s1 = await page.evaluate(() => window.__syrinxDiag?.snapshot());
@@ -171,7 +174,14 @@ async function runTrace() {
   // audio seconds = the traced span of the page's renderer (the fake mic runs in real time)
   let tsMin = Infinity, tsMax = -Infinity;
   for (const list of tasks.values()) for (const e of list) { tsMin = Math.min(tsMin, e.ts); tsMax = Math.max(tsMax, e.ts + (e.dur ?? 0)); }
-  const spanS = tsMax > tsMin ? (tsMax - tsMin) / 1e6 : wallS;
+  const tracedS = tsMax > tsMin ? (tsMax - tsMin) / 1e6 : wallS;
+  // Audio actually captured per wall second around the trace (the resonance
+  // worker's audio count; 1.0 when the fake mic keeps real time — under heavy
+  // machine load Chrome's fake capture can starve, and a run below 0.95 is
+  // flagged invalid). CPU is divided by the AUDIO seconds of the traced span.
+  const audioRate = (s1?.resonancePerf?.audioS != null && s0?.resonancePerf?.audioS != null)
+    ? (s1.resonancePerf.audioS - s0.resonancePerf.audioS) / wallS : 1;
+  const spanS = tracedS * Math.min(1, audioRate);
   const perAudioS = {};
   let total = 0;
   for (const [label, r] of Object.entries(perThread)) {
@@ -191,11 +201,31 @@ async function runTrace() {
   const ims = inf.map((m) => m.inferMs).sort((a, b) => a - b);
   const app = ["gender-worker", "resonance-worker", "pitch-worker", "dsp-worker", "main"].reduce((a, k) => a + (perAudioS[k]?.cpuMsPerS ?? 0), 0);
   traceResult = {
-    wallS, spanS, anyTdur, appCpuMsPerS: app, perAudioS, threadTotalCpuMsPerS: total, processCpuMsPerS: proc,
-    gender: { inferences: inf.length, perS: inf.length / wallS, medianInferMs: ims.length ? ims[ims.length >> 1] : null, p90InferMs: ims.length ? ims[Math.floor(ims.length * 0.9)] : null },
+    wallS, tracedS, audioRate, valid: audioRate >= 0.95, spanS, anyTdur, appCpuMsPerS: app, perAudioS, threadTotalCpuMsPerS: total, processCpuMsPerS: proc,
+    gender: { inferences: inf.length, perS: inf.length / (wallS * Math.min(1, audioRate)), medianInferMs: ims.length ? ims[ims.length >> 1] : null, p90InferMs: ims.length ? ims[Math.floor(ims.length * 0.9)] : null },
   };
 }
-const tracing = TRACE > 0 ? runTrace() : Promise.resolve();
+let profileTop = null;
+async function runProfile() {
+  await cdp.send("Profiler.enable");
+  await cdp.send("Profiler.setSamplingInterval", { interval: 500 });
+  await cdp.send("Profiler.start");
+  await sleep(15000);
+  const { profile } = await cdp.send("Profiler.stop");
+  writeFileSync(PROFILE, JSON.stringify(profile));
+  const byId = new Map(profile.nodes.map((n) => [n.id, n]));
+  const self = new Map();
+  const dt = profile.timeDeltas;
+  for (let i = 0; i < profile.samples.length; i++) {
+    const n = byId.get(profile.samples[i]);
+    const cf = n.callFrame;
+    const k = `${cf.functionName || "(anon)"} ${cf.url.split("/").pop()}:${cf.lineNumber}`;
+    self.set(k, (self.get(k) ?? 0) + (dt[i] ?? 0) / 1000);
+  }
+  const totalMs = (profile.endTime - profile.startTime) / 1000;
+  profileTop = { totalMs, top: [...self.entries()].sort((a, b) => b[1] - a[1]).slice(0, 30) };
+}
+const tracing = (TRACE > 0 ? runTrace() : sleep(WARMUP * 1000)).then(() => (PROFILE ? runProfile() : null));
 
 const rows = [];
 for (let t = 10; t <= SECONDS; t += 10) {
@@ -211,7 +241,8 @@ const peak = Math.max(...rows.map((r) => r?.msPerAudioS ?? 0));
 console.log(`${ua} (panel ${PANEL ? "on" : "off"}, ${DIST}): resonance worker ${last?.meanMsPerAudioS?.toFixed(1)} ms per audio second (session mean), trailing 10 s ${last?.msPerAudioS?.toFixed(1)}, peak ${peak.toFixed(1)}, overloads ${last?.overloads ?? 0}`);
 if (traceResult) {
   const tr = traceResult;
-  console.log(`trace ${tr.spanS.toFixed(1)} s traced (${tr.wallS.toFixed(1)} s wall) (thread clock ${tr.anyTdur ? "present" : "MISSING"}): thread CPU ms per audio second`);
+  console.log(`trace ${tr.tracedS.toFixed(1)} s traced (${tr.wallS.toFixed(1)} s wall), audio ${tr.audioRate.toFixed(2)} x real time${tr.valid ? "" : " — INVALID (capture starved)"}`);
+  console.log(`  (per AUDIO second: ${tr.spanS.toFixed(1)} s) (thread clock ${tr.anyTdur ? "present" : "MISSING"}): thread CPU ms per audio second`);
   for (const [label, r] of Object.entries(tr.perAudioS).sort((a, b) => b[1].cpuMsPerS - a[1].cpuMsPerS)) {
     if (r.cpuMsPerS < 0.5 && label.startsWith("other")) continue;
     console.log(`  ${label.padEnd(34)} ${r.cpuMsPerS.toFixed(1).padStart(7)}  (wall ${r.wallMsPerS.toFixed(1)}, ${r.threads} thr)`);
@@ -220,6 +251,10 @@ if (traceResult) {
   console.log(`  ${"renderer threads total".padEnd(34)} ${tr.threadTotalCpuMsPerS.toFixed(1).padStart(7)}`);
   console.log(`process CPU ms/s: ${Object.entries(tr.processCpuMsPerS).map(([k, v]) => `${k} ${v.toFixed(1)}`).join(", ")}`);
   console.log(`gender inferences: ${tr.gender.inferences} (${tr.gender.perS.toFixed(2)}/s), median inferMs ${tr.gender.medianInferMs?.toFixed(1)}, p90 ${tr.gender.p90InferMs?.toFixed(1)}`);
+}
+if (profileTop) {
+  console.log(`main-thread JS profile, ${(profileTop.totalMs / 1000).toFixed(1)} s (self ms per s):`);
+  for (const [k, ms] of profileTop.top) console.log(`  ${(ms / (profileTop.totalMs / 1000)).toFixed(1).padStart(7)}  ${k}`);
 }
 console.log(`ORT files: ${[...ortFiles].join(" ")}`);
 if (OUT) writeFileSync(OUT, JSON.stringify({ ua, panel: PANEL, dist: DIST, wav: path.basename(WAV), resonance: last, resonancePeak: peak, trace: traceResult, ortFiles: [...ortFiles] }, null, 1));
