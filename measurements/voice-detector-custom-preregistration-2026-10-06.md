@@ -699,3 +699,82 @@ creativecommons.org licence URL, and per dataset its licence link, with a
 note that the audio was resampled, mixed and used for training (the round-1
 file gave neither titles nor licence links). The round-1 model's files are
 regenerated with it, and the round-2 model gets the same.
+
+## Addendum E — round-2 data step (2026-10-07, before any round-2 model is trained)
+
+Addendum D was committed and pushed as 0ee0827 before any round-2 audio was
+downloaded. This addendum records what the round-2 data step produced and
+where it departs from Addendum D. **No round-2 model has been trained, and no
+model has been scored on the added validation streams.** The private session
+recordings were not read.
+
+**Added voice positives** (`custom/fetch_r2.py`, `custom/prepare_r2.py`;
+manifest parts `manifest.r2*.jsonl`, latest record per id wins):
+
+| source | split | files | hours | Praat-voiced h | groups | f / m / unknown files | licence |
+|---|---|---|---|---|---|---|---|
+| SVD (Saarbrücken Voice Database) | train | 1,793 | 16.65 | 9.74 | 1,472 speakers | 1,025 / 768 / 0 | CC BY 4.0 |
+| SVD | val | 249 | 2.35 | 1.36 | 207 speakers | 130 / 119 / 0 | CC BY 4.0 |
+| SingBAP | train | 1,280 | 1.37 | 1.24 | 6 participants | — / — / 1,280 | CC BY 4.0 |
+| SingBAP | val | 878 | 1.16 | 1.02 | 3 participants | — / — / 878 | CC BY 4.0 |
+| vocal imitations | train | 273 | 0.34 | 0.20 | 10 imitators | — / — / 273 | CC0 1.0 |
+| children's speech | train | 202 | 0.55 | 0.36 | 7 children | 58 / 144 / 0 | CC BY 4.0 |
+| children's speech | val | 112 | 0.28 | 0.11 | 4 children | 82 / 30 / 0 | CC BY 4.0 |
+| `fsvoice` (Freesound) | train | 92 | 0.94 | 0.47 | 65 uploaders | — / — / 92 | CC0 1.0 (58), CC BY 4.0 (30), CC BY 3.0 (21) over both splits |
+| `fsvoice` | val | 17 | 0.18 | 0.09 | 13 uploaders | — / — / 17 | (above) |
+
+- Round 2 adds 19.85 h of training voice and 3.97 h of validation voice. The
+  round-2 voice packs (`pack.py --tag=r2`) hold 78.06 h (train) and 22.27 h
+  (val) with round 1's sources; round 1's packs are unchanged.
+- SVD covers the registers round 1 lacked: per session, the median of the
+  5th-percentile F0 is 98 Hz (male) and 173 Hz (female), and the 90th
+  percentile of the 95th-percentile F0 is 311 Hz (male) and 393 Hz (female).
+  687 of the 2,042 sessions are from healthy speakers, the other 1,355 from
+  speakers with one or more of 71 diagnoses.
+- Licences of the kept round-2 files: CC BY 4.0 4,544, CC0 1.0 331,
+  CC BY 3.0 21. Nothing else.
+
+**Departures from Addendum D** (each removes data or reorganises validation;
+none adds a source):
+
+1. **Voice screen of `fsvoice`.** The Freesound searches returned many
+   recordings that are not voice (a fridge hum and airport luggage wheels for
+   "humming", singing bowls for "singing scale", waves and rolling bottles for
+   "rolled r"). The reference tracker would label their periodic frames as
+   voice. A screen was added, its rule fixed before it was run
+   (`custom/voice_screen.py`): YAMNet over each clip, 0.96 s patches every
+   0.48 s; a clip is kept only if YAMNet's top class is human-vocal in at least
+   half of its patches. It removed 63 of 172 prepared clips (54 train, 9 val).
+   A few kept clips still have non-voice sound under the voice (a siren under
+   a platform announcement, vehicles under children's speech).
+2. **Children's free speech**: the sentence cuts of `files_cut_by_sentences`
+   do not state their microphone and duplicate the `files_in_one_part`
+   recordings, so only the latter (studio and portable microphone) are used.
+3. **Vocal imitations**: the archive's Q1–Q3 folders are not imitators (they
+   are loudness-equalised 44.1 kHz stimuli, identical in level across the
+   three folders); only the ten imitator folders (I12 … I50) are used.
+4. **SingBAP validation programs**: SingBAP takes are short (median 4 s), so a
+   25 s excerpt rarely exists. The `exercise` mix programs therefore join one
+   participant's takes on one microphone with 0.5 s gaps to at least 20 s, as
+   the `fsvoice` programs do. The participant rule puts 3 of 9 participants
+   (878 of 2,158 takes) into validation.
+5. SVD sessions without a speaker id in any `overview.csv` (4) are dropped.
+
+**Validation streams added** (`train/valsets_r2.py`, appended to the round-1
+lists; the round-1 streams and their dumps are unchanged):
+
+- clean: 1,256 streams, 3.96 h — `clinical` (SVD) f 130 / m 119, `children`
+  f 82 / m 30, `exercises` (SingBAP at most 30 min per participant and
+  microphone, plus `fsvoice`) 895, gender unknown;
+- mixes: 150 more per SNR and lead variant (300 more per lead variant),
+  programs rotating over SVD takes (50), exercises (50) and children (50);
+  genders f 128, m 72, unknown 100.
+
+**Training settings fixed now** (Addendum D.2; `train.py` round-2 options):
+`--vtag=r2 --p_rough=0.2 --p_breath=0.15 --p_state=0.75 --bank=8192`, the
+r5-bighard configuration (`--ema=0.999 --whard_ac=3 --steps=16000`, convs
+[24, 48, 48], GRU 96), and voice source weights librispeech 0.12, vctk 0.06,
+coswara counting 0.06, coswara vowels 0.18, mdvr 0.04, dcs 0.09, esmuc 0.09,
+csd 0.08, svd 0.14, singbap 0.07, imitations 0.02, kids 0.02, fsvoice 0.03
+(held notes and sustained vowels 0.65 of the draws, as in round 1's 0.63).
+Two seeds (11 and 12).

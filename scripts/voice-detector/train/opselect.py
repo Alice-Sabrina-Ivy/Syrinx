@@ -17,6 +17,14 @@
 #   pick = the feasible maximum; ties within 0.5 pp -> the shorter hangover.
 # Secondary (reported): V2 on the val negatives.
 #
+# Round 2 (pre-registration Addendum D.4): three more clean groups (clinical,
+# exercises, children) and, with --carried, the same grid scored on the
+# carried-state files of each candidate (infer_carried.py; default dir
+# <CAND>-carried): a point is feasible only if every group and cell meets its
+# limit on BOTH the fresh and the carried files. If no point is feasible, the
+# point with the smallest worst ratio (vetoes / limit, fresh and carried) is
+# reported as the fallback.
+#
 #   python opselect.py CAND_DIR [--val=build/vad-train/val] [--bench=build/vad] [--json=OUT] [--write-best]
 #          [--thr=...] [--hang=...] [--aggs=last,max,mean]
 import json
@@ -40,7 +48,7 @@ THR = [float(v) for v in MY.get("thr", "0.01,0.02,0.03,0.05,0.07,0.1,0.13,0.16,0
 HANG = [float(v) for v in MY.get("hang", "0,50,100,150,200,250,300,400,500,600,750,1000,1250,1500,2000,3000").split(",")]
 AGGS = MY.get("aggs", "last,max,mean").split(",")
 CLEAN_LIM, MIX_LIM, ONSET_LIM, TIE_PP = 0.5, 1.5, 100.0, 0.5
-GROUPS = ["speech", "vowels", "singing"]
+GROUPS = ["speech", "vowels", "singing", "clinical", "exercises", "children"]
 CELLS = [("vmix20", 10), ("vmix20", 0), ("vmix0", 10), ("vmix0", 0)]
 
 
@@ -65,20 +73,26 @@ def key_of(m):
     return ("tune", "tune194", g)
 
 
+_DUMPS = {}
+
+
 def evaluate(cdir, streams):
     spec0 = S.load_cand(cdir)
     rows = []
     for root, m in streams:
-        cols = load_dump(root, m)
-        paint, lab = cols["paint"] > 0, cols["lab"].astype(np.int8)
+        k = (root, m["set"], m["id"])
+        if k not in _DUMPS:
+            cols = load_dump(root, m)
+            _DUMPS[k] = (cols["paint"] > 0, cols["lab"].astype(np.int8),
+                         S.onsets(cols["paint"], cols["lab"].astype(np.int8)) if m["set"] in ("vvoice", "vmix20", "vmix0") else [])
+        paint, lab, ons = _DUMPS[k]
         fp = os.path.join(cdir, m["set"], m["id"] + ".f32")
         if not os.path.exists(fp):
             if "allow-missing" in MY:   # previews on partial data only; a selection needs every stream
                 continue
             raise SystemExit(f"{fp}: missing")
         P = np.fromfile(fp, dtype="<f4").astype(np.float64)
-        rows.append({"m": m, "key": key_of(m), "P": P, "corr": paint & (lab == 1), "false": paint & (lab == 2), "paint": paint,
-                     "ons": S.onsets(cols["paint"], lab) if m["set"] in ("vvoice", "vmix20", "vmix0") else []})
+        rows.append({"m": m, "key": key_of(m), "P": P, "corr": paint & (lab == 1), "false": paint & (lab == 2), "paint": paint, "ons": ons})
     H = np.array(HANG) / 1000.0 + 1e-9
     res = []
     for agg in AGGS:
@@ -149,6 +163,23 @@ def evaluate(cdir, streams):
     return spec0, res
 
 
+def ratio(r):
+    """Worst vetoes / limit over every group and cell (fresh, and carried if scored)."""
+    v = max(r["worst_clean"] / CLEAN_LIM, r["worst_mix"] / MIX_LIM)
+    if "carried" in r:
+        v = max(v, r["carried"]["worst_clean"] / CLEAN_LIM, r["carried"]["worst_mix"] / MIX_LIM)
+    return v
+
+
+def merge_carried(res, res_c):
+    for r, c in zip(res, res_c):
+        assert (r["agg"], r["thr"], r["hang"]) == (c["agg"], c["thr"], c["hang"])
+        r["fresh_feasible"] = r["feasible"]
+        r["carried"] = {k: v for k, v in c.items() if k not in ("agg", "thr", "hang")}
+        r["feasible"] = bool(r["feasible"] and c["feasible"])
+    return res
+
+
 def pick(res):
     feas = [r for r in res if r["feasible"]]
     if not feas:
@@ -165,14 +196,21 @@ def main():
     out = {}
     for c in CANDS:
         spec, res = evaluate(c, streams)
+        if "carried" in MY:
+            cd = c.rstrip("/\\") + "-carried" if MY["carried"] == "1" else MY["carried"]
+            _, res_c = evaluate(cd, streams)
+            res = merge_carried(res, res_c)
         best = pick(res)
-        out[spec["name"]] = {"best": best, "grid": res}
+        fb = None if best else min(res, key=ratio)
+        out[spec["name"]] = {"best": best, "fallback": fb, "grid": res}
         if best:
+            cw = f", carried worst clean {best['carried']['worst_clean']:.2f} % / mix {best['carried']['worst_mix']:.2f} %" if "carried" in best else ""
             print(f"{spec['name']}: PICK agg {best['agg']} thr {best['thr']} hang {best['hang']} ms -> tune194 V2 {best['tune194_v2']:.2f} % "
-                  f"(worst clean {best['worst_clean']:.2f} %, worst mix {best['worst_mix']:.2f} %, onset {best['onset_median_worst']:.0f} ms, vneg V2 {best['vneg_v2']:.2f} %)")
+                  f"(worst clean {best['worst_clean']:.2f} %, worst mix {best['worst_mix']:.2f} %{cw}, onset {best['onset_median_worst']:.0f} ms, vneg V2 {best['vneg_v2']:.2f} %)")
         else:
-            lo = min(res, key=lambda r: max(r["worst_clean"] / CLEAN_LIM, r["worst_mix"] / MIX_LIM))
-            print(f"{spec['name']}: NO feasible point; closest: {json.dumps({k: (round(v, 3) if isinstance(v, float) else v) for k, v in lo.items()})}")
+            print(f"{spec['name']}: NO feasible point; fallback (smallest worst ratio {ratio(fb):.2f}): "
+                  f"{json.dumps({k: (round(v, 3) if isinstance(v, float) else v) for k, v in fb.items() if k != 'carried'})}"
+                  + (f" carried {json.dumps({k: round(v, 3) for k, v in fb['carried'].items() if isinstance(v, float)})}" if "carried" in fb else ""))
         # trade-off: best tune V2 at relaxed limits (information)
         for mult in (2, 4):
             fe = [r for r in res if r["worst_clean"] <= CLEAN_LIM * mult and r["worst_mix"] <= MIX_LIM * mult and r["onset_median_worst"] <= ONSET_LIM]

@@ -24,6 +24,18 @@
 # Loss: BCE, positives weighted --wpos (missing voice costs more), optional
 # hard-negative weight --whard on frames of the "tonal" synthetic families.
 #
+# Round 2 (pre-registration Addendum D; all default off = the round-1 recipe):
+#   --vtag=r2      the voice packs with the round-2 positives (pack.py --tag=r2)
+#   --p_rough=P    roughness resynthesis of the voice layer: periodic shimmer
+#                  (AM 15-40 Hz, depth 0.3-0.95), half the time followed by a
+#                  one-pole low-pass at 0.8-3 kHz (closed lips)
+#   --p_breath=P   breathiness: white noise high-passed at 500 Hz, shaped by the
+#                  voice layer's 20 ms envelope, at -25..-6 dB re the voice
+#   --p_state=P    a crop starts from a GRU state drawn from a bank of the final
+#                  states of recent crops (--bank=N, FIFO) instead of zeros
+#                  (training on states after histories of any length)
+# Labels are unchanged by all three.
+#
 #   <venv>/python scripts/voice-detector/train/train.py --name=NAME [--steps=20000] [--cfg=JSON] [--wpos=3] ...
 import json
 import math
@@ -60,6 +72,9 @@ NEG_W = json.loads(A.get("neg", '{"fsd_machine":0.25,"fsd_other":0.2,"fstrain":0
 SNR_LO, SNR_HI = (float(v) for v in A.get("snr", "-6,30").split(","))
 P_REVERB_V, P_REVERB_N = float(A.get("p_rev_v", "0.35")), float(A.get("p_rev_n", "0.2"))
 P_SPEED = float(A.get("p_speed", "0.3"))
+VTAG = A.get("vtag", "")
+P_ROUGH, P_BREATH = float(A.get("p_rough", "0")), float(A.get("p_breath", "0"))
+P_STATE, BANK_N = float(A.get("p_state", "0")), int(A.get("bank", "8192"))
 DEV = "cuda"
 
 
@@ -107,12 +122,13 @@ class Sampler:
 
     def __init__(self, split, seed):
         self.rng = np.random.default_rng(seed)
-        self.V = Bank(f"voice_{split}")
+        sfx = f"_{VTAG}" if VTAG else ""
+        self.V = Bank(f"voice_{split}{sfx}")
         self.N = Bank(f"nonvoice_{split}")
         self.S = Bank(f"synth_{split}")
         self.rir = np.load(os.path.join(TRAIN, f"rir_{split}.npy"))
         v = self.V.ix
-        meta = json.load(open(os.path.join(TRAIN, f"voice_{split}.json"), encoding="utf8"))
+        meta = json.load(open(os.path.join(TRAIN, f"voice_{split}{sfx}.json"), encoding="utf8"))
         srcs, kinds = meta["sources"], meta["kinds"]
         # voiced seconds per file = positive label frames * 10 ms
         pos = np.add.reduceat((v["lab"] == 1).astype(np.int64), v["loff"]) if len(v["loff"]) else np.zeros(0)
@@ -274,10 +290,48 @@ def speed(x, fac):
     return torch.where(pos < n - 1, y, torch.zeros_like(y))
 
 
+def voice_quality(V, g):
+    """Round 2: roughness (periodic shimmer + optional lip low-pass) and
+    breathiness (envelope-shaped aspiration noise) of the voice layer."""
+    B, n = V.shape
+    nfft = 1 << (n - 1).bit_length()
+    f = torch.linspace(0, SR / 2, nfft // 2 + 1, device=DEV)[None]
+    if P_ROUGH > 0:
+        on = torch.rand(B, 1, device=DEV, generator=g) < P_ROUGH
+        if on.any():
+            t = torch.arange(n, device=DEV)[None].float() / SR
+            fam = torch.rand(B, 1, device=DEV, generator=g) * 25 + 15
+            dep = torch.rand(B, 1, device=DEV, generator=g) * 0.65 + 0.3
+            ph = torch.rand(B, 1, device=DEV, generator=g) * 6.283
+            m = 1 - dep * (0.5 + 0.5 * torch.sin(2 * math.pi * fam * t + ph))
+            Vr = V * m
+            lp = torch.rand(B, 1, device=DEV, generator=g) < 0.5
+            fc = torch.rand(B, 1, device=DEV, generator=g) * 2200 + 800
+            H = torch.where(lp, 1 / torch.sqrt(1 + (f / fc) ** 2), torch.ones_like(f))
+            Vr = torch.fft.irfft(torch.fft.rfft(Vr, nfft) * H, nfft)[:, :n]
+            V = torch.where(on, Vr, V)
+    if P_BREATH > 0:
+        on = torch.rand(B, 1, device=DEV, generator=g) < P_BREATH
+        if on.any():
+            env = F.avg_pool1d(V.abs()[:, None], 321, stride=1, padding=160)[:, 0]
+            w = torch.randn(B, n, device=DEV, generator=g)
+            Hh = torch.clamp((f - 400) / 200, 0, 1)
+            w = torch.fft.irfft(torch.fft.rfft(w, nfft) * Hh, nfft)[:, :n] * env
+            pk = V.abs().amax(1, keepdim=True)
+            act = (V.abs() > 0.02 * pk).float()
+            vr = torch.sqrt((V * V * act).sum(1, keepdim=True) / act.sum(1, keepdim=True).clamp(min=1)).clamp(min=1e-7)
+            wr = torch.sqrt((w * w).mean(1, keepdim=True)).clamp(min=1e-9)
+            lev = 10 ** ((torch.rand(B, 1, device=DEV, generator=g) * 19 - 25) / 20)
+            V = torch.where(on, V + w / wr * vr * lev, V)
+    return V
+
+
 def augment(V, N1, N2, Y, W, info, rir, g):
     V, N1, N2 = (z.float() / 32768 for z in (V, N1, N2))
     B, n = V.shape
     kind = info[:, 0]
+    if P_ROUGH > 0 or P_BREATH > 0:
+        V = voice_quality(V, g)
     # voice: speed perturbation (labels follow: the frame grid is resampled too)
     if P_SPEED > 0:
         sp = torch.rand(B, device=DEV, generator=g) < P_SPEED
@@ -408,6 +462,8 @@ def main():
         t.start()
     g = torch.Generator(device=DEV)
     g.manual_seed(SEED)
+    bank = torch.zeros(net.cfg["gru_layers"], BANK_N, net.cfg["gru"], device=DEV) if P_STATE > 0 else None
+    bank_fill, bank_pos = 0, 0
     log = open(os.path.join(OUT, "log.jsonl"), "a", encoding="utf8")
     json.dump({"args": A, "cfg": net.cfg, "params": net.n_params()}, open(os.path.join(OUT, "config.json"), "w"), indent=1)
     t0 = time.time()
@@ -473,7 +529,21 @@ def main():
             if WHARD_AC != 1:
                 per = periodicity(x, Yb.shape[1])
                 Wb = Wb * torch.where((Yb < 0.5) & (per > AC_THR), WHARD_AC, 1.0)
-        logits = net(xp)
+        if bank is not None:
+            Bn = xp.shape[0]
+            h0 = torch.zeros(net.cfg["gru_layers"], Bn, net.cfg["gru"], device=DEV)
+            if bank_fill:
+                use = torch.rand(Bn, device=DEV, generator=g) < P_STATE
+                pick = torch.randint(0, bank_fill, (Bn,), device=DEV, generator=g)
+                h0 = torch.where(use[None, :, None], bank[:, pick], h0)
+            logits, _, hT = net.body(net.front(xp), None, h0)
+            with torch.no_grad():
+                idx = (bank_pos + torch.arange(Bn, device=DEV)) % BANK_N
+                bank[:, idx] = hT.detach()
+                bank_pos = (bank_pos + Bn) % BANK_N
+                bank_fill = min(BANK_N, bank_fill + Bn)
+        else:
+            logits = net(xp)
         loss = (F.binary_cross_entropy_with_logits(logits, Yb, reduction="none") * Wb).sum() / Wb.sum().clamp(min=1)
         opt.zero_grad(set_to_none=True)
         loss.backward()

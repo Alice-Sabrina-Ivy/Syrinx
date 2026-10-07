@@ -11,7 +11,11 @@
 #   <TRAIN>/synth_<split>.i16 + .npz    the synthetic interferer bank
 #   <TRAIN>/rir_<split>.npy             the RIR bank (rows zero-padded to 1 s)
 #
-#   python scripts/voice-detector/train/pack.py [--what=voice,nonvoice,synth,rir] [--splits=train,val]
+#   python scripts/voice-detector/train/pack.py [--what=voice,nonvoice,synth,rir] [--splits=train,val] [--tag=r2]
+#
+# --tag=r2 (round 2, pre-registration Addendum D): the voice packs include the
+# round-2 sources and are written as voice_<split>_r2.* (round 1's packs are
+# left as they were); the non-voice, synthetic and RIR banks are shared.
 import json
 import os
 
@@ -24,7 +28,11 @@ from tcommon import DATA, SR, TRAIN, args, load_manifest, praat_track, voice_lab
 A = args()
 WHAT = A.get("what", "voice,nonvoice,synth,rir").split(",")
 SPLITS = A.get("splits", "train,val").split(",")
+TAG = A.get("tag", "")
 VSRC = ["librispeech", "vctk", "coswara", "mdvr", "dcs", "esmuc", "csd", "cantoria"]
+R2SRC = ["svd", "singbap", "imitations", "kids", "fsvoice"]
+if TAG == "r2":
+    VSRC = VSRC + R2SRC      # appended: round-1 source indices are unchanged
 NSRC = ["fsd50k", "fstrain", "synthetic"]
 SYN = {"train": (0, 4000), "val": (1_000_000_000 + 100, 300)}
 RIRS = {"train": (0, 3000), "val": (1_000_000_000 + 1000, 300)}
@@ -33,8 +41,10 @@ RIRS = {"train": (0, 3000), "val": (1_000_000_000 + 1000, 300)}
 def kind_of(r):
     if r["source"] == "coswara":
         return "vowel" if r["recording"].startswith("vowel") else "counting"
-    if r["source"] in ("dcs", "esmuc", "csd", "cantoria"):
+    if r["source"] in ("dcs", "esmuc", "csd", "cantoria", "singbap", "fsvoice"):
         return "singing"
+    if r["source"] == "svd":
+        return "vowel"
     return "speech"
 
 
@@ -42,8 +52,10 @@ KINDS = ["speech", "counting", "vowel", "singing"]
 
 
 def pack_voice(man, split):
-    recs = sorted([r for r in man.values() if not r.get("drop") and r["kind"] == "voice" and r["split"] == split], key=lambda r: r["id"])
-    path = os.path.join(TRAIN, f"voice_{split}.i16")
+    recs = sorted([r for r in man.values() if not r.get("drop") and r["kind"] == "voice" and r["split"] == split and r["source"] in VSRC],
+                  key=lambda r: r["id"])
+    sfx = f"_{TAG}" if TAG else ""
+    path = os.path.join(TRAIN, f"voice_{split}{sfx}.i16")
     groups = sorted({r["group"] for r in recs})
     gi = {g: i for i, g in enumerate(groups)}
     off, ln, src, gen, grp, knd, t0s, loff, llen = [], [], [], [], [], [], [], [], []
@@ -65,10 +77,10 @@ def pack_voice(man, split):
             if (i + 1) % 2000 == 0:
                 print(f"voice {split}: {i + 1}/{len(recs)}", flush=True)
     os.replace(path + ".tmp", path)
-    np.savez(os.path.join(TRAIN, f"voice_{split}.npz"), off=np.array(off, np.int64), len=np.array(ln, np.int64), src=np.array(src, np.int8),
+    np.savez(os.path.join(TRAIN, f"voice_{split}{sfx}.npz"), off=np.array(off, np.int64), len=np.array(ln, np.int64), src=np.array(src, np.int8),
              gender=np.array(gen, np.int8), group=np.array(grp, np.int32), kind=np.array(knd, np.int8), t0=np.array(t0s, np.float64),
              loff=np.array(loff, np.int64), llen=np.array(llen, np.int64), lab=np.concatenate(labs) if labs else np.zeros(0, np.uint8))
-    with open(os.path.join(TRAIN, f"voice_{split}.json"), "w", encoding="utf8") as f:
+    with open(os.path.join(TRAIN, f"voice_{split}{sfx}.json"), "w", encoding="utf8") as f:
         json.dump({"ids": [r["id"] for r in recs], "groups": groups, "sources": VSRC, "kinds": KINDS}, f)
     L = np.concatenate(labs)
     print(f"voice {split}: {len(recs)} files, {pos / SR / 3600:.2f} h, label frames pos {np.mean(L == 1) * 100:.1f} % / neg {np.mean(L == 0) * 100:.1f} % / margin {np.mean(L == 2) * 100:.1f} %", flush=True)
