@@ -515,3 +515,272 @@ end that is robust to low-frequency noise.
 
 R6 commits the attribution chain, the frozen metric code and the rule
 checker with the shipping candidate.
+
+---
+
+## Candidate meter-c1 (2026-10-07) — VERDICT: FAIL
+
+**Branch `lowvoice-meter-c1`, commit ec3ab6d** (code; this section is a later
+commit on the same branch). Variant **meter-c2** = the same code plus a 2 s
+utterance close: **branch `lowvoice-meter-c2`, commit 0ba28af**. Both are
+measured with the frozen evaluator above, as required; both fail.
+
+### What it changes
+
+The C1 lever from the diagnosis, implemented in the real workers:
+
+- **Utterance gate** (`src/ml/utterance-gate.js`): the onset run drops from
+  150 to 100 ms. A new **weak** hint keeps an *already open* utterance alive
+  (it refreshes the gap and recency clocks and counts as voiced in the
+  window's voiced share). It never opens one: it breaks a voiced run like any
+  unvoiced hint, and it counts as unvoiced in the held-phonation test. It is
+  never posted as a pitch and never painted.
+- **Pitch worker** (`src/dsp/pitch-worker.js` + new
+  `src/dsp/subharmonic-evidence.js`): when the tracker decodes above
+  400 Hz, one extra 4096-point FFT on the decoded frame's buffer counts, for
+  each sub-multiple f = d/k (k = 2–10, 75 ≤ f ≤ 400 Hz), the partials h·f ≤
+  1000 Hz (h ≤ 12) that clear the band median by 10 dB (the harmonic guard's
+  rule) and are not multiples of d. If the best count is ≥ 2 the frame is
+  posted (still unvoiced, pitch null) with `subharmonic: true`. The hook
+  relays it to the ML worker as `weak`; `gender-worker.js` hands it to the
+  gate. `boersma-ac.js` only exports its FFT.
+- Every posted pitch, confidence, painted value and readout is unchanged.
+  The candidate's chain runs reproduce the baseline runs' posted pitch,
+  contextTime, DSP gate, paint and every stage-dump column on every
+  public set (0 differing streams); the flag matches the diagnosis's
+  `absub2` definition frame for frame (chanx: 3 340 of 3 340 flagged frames,
+  noise: 5 432 of 5 432).
+- **Known limitation** (in the module and its test): a clean harmonic
+  note above 400 Hz is often flagged too, because Hann sidelobes of its
+  strong partials clear the 10 dB floor at sub-multiple partials within
+  ~60 Hz of them. Flags never open an utterance, so such a note can only
+  keep one open.
+
+### Variants tried (all of them)
+
+| variant | onset run | weak hysteresis | close (gapMs) | verdict |
+|---|---|---|---|---|
+| meter-c1 | 100 ms | `subharmonic` frames | 1 s | FAIL (8 public criteria; 12 with the private guards) |
+| meter-c2 | 100 ms | `subharmonic` frames | 2 s | FAIL (12 public criteria; 16 with the private guards) |
+
+No other parameter was changed or tried. meter-c2 shares meter-c1's pitch
+worker and hook (`git diff ec3ab6d 0ba28af -- src/dsp src/audio` is empty),
+so its replays use meter-c1's chain runs and its G8 inputs are meter-c1's.
+
+### How it was measured
+
+`run_candidate.sh` with K=meter-c1, REV=ec3ab6d, KIND=pitch, step by step:
+
+- Freeze checks pass (evaluator SHA-256, oracle harnesses unchanged).
+- The pitch worker posts a new field, so two harness copies record it and
+  nothing else: `chain-attr-meter-c1.mjs` (adds a `sub` column to the
+  stage dump) and, for the private session-meter check, a copy of
+  `lowband-attr.mjs` with a `sub` column. Parity: the chain-attr copy on the
+  base tree reproduces every column of the base chanx runs (456 of 456
+  streams, 0 flagged frames); the lowband-attr copy reproduces every column
+  of the frozen harness's dumps on the same tree.
+- The replay copy `replay_meter-c1.mjs` changes only the hint construction
+  (voiced = posted pitch, weak = posted `subharmonic`, pitch = posted pitch).
+  Parity on the base tree: 0 differing streams on all ten sets
+  (`parity_lvn.py` exit 0). The session-meter copy reproduces the stored
+  baseline byte for byte.
+- Replays report 0 missing logits.
+- G9: `npm run lint`, `npm run test:unit` (24/24, incl. the new
+  `tests/dsp/subharmonic-evidence-test.js` and the extended
+  `tests/ml/utterance-gate-test.js`) and `npm run build` pass. The main
+  checkout's `node_modules` was incomplete (no `.bin`, no `@babel/core`), so
+  these ran against a clean `npm ci` of the branch's lockfile in scratch.
+- G8e: `npm run test:dsp` passes in the candidate tree, with the corpora.
+
+### Results
+
+Noisy coverage (pink 0 dB + real 10 dB + real 0 dB), % of speaking time:
+
+| set | | women | men 115–147 Hz | men < 105 Hz | all men | gap |
+|---|---|---|---|---|---|---|
+| 38-speaker | baseline | 89.90 | 80.01 | 79.85 | 79.96 | 9.94 |
+| | meter-c1 | 91.91 | 87.68 | 85.33 | 86.90 | 5.01 |
+| | meter-c2 | 92.33 | 88.77 | 87.28 | 88.27 | 4.06 |
+| held-out `chandev` | baseline | 87.84 | 82.67 | 83.43 | 82.88 | 4.96 |
+| | meter-c1 | 91.56 | 88.98 | 87.60 | 88.59 | 2.96 |
+| | meter-c2 | 92.00 | 89.82 | 88.55 | 89.46 | 2.54 |
+
+Utterance onset success in noise (a number within 1 s of each ≥ 1 s burst),
+all men: 86.1 → 92.6 % (both variants); women 96.5 → 98.2 %.
+
+The diagnosis predicted C1 at women +2.0, all men +6.9 pp, gap 5.0 pp and
+noise-only +8.4 pp; the real workers give +2.0, +6.9, 5.01 pp and +8.5 pp.
+
+**Full public criterion table** (every criterion the frozen checker
+evaluates without private inputs; baseline = voice-direction 852b5cc):
+
+| criterion | rule | baseline | meter-c1 | | meter-c2 | |
+|---|---|---|---|---|---|---|
+| P1 noisy gap women - men (pp) | <= max(3.0, 0.5 x 9.94) = 4.97 | 9.94 | 5.01 | **FAIL** | 4.06 | pass |
+| P2b noisy gap women - men < 105 Hz (n=6) (pp) | <= max(3.0, 0.5 x 10.04) = 5.02 | 10.04 | 6.58 | **FAIL** | 5.05 | **FAIL** |
+| P2a noisy coverage, the 94 / 100 Hz voices (%) | >= base + 15.0 | 58.56 | 69.36 | **FAIL** | 74.21 | pass |
+| G1 coverage women clean (%) | >= base - 0.5 | 93.01 | 93.76 | pass | 93.76 | pass |
+| G1 coverage men clean (%) | >= base - 0.5 | 92.32 | 93.07 | pass | 93.48 | pass |
+| G1 coverage women quiet20 (%) | >= base - 0.5 | 92.74 | 93.24 | pass | 93.24 | pass |
+| G1 coverage men quiet20 (%) | >= base - 0.5 | 92.02 | 93.07 | pass | 93.28 | pass |
+| G1 coverage women laptop (%) | >= base - 0.5 | 93.58 | 93.98 | pass | 93.98 | pass |
+| G1 coverage men laptop (%) | >= base - 0.5 | 91.91 | 92.58 | pass | 92.94 | pass |
+| G1 coverage women phone (%) | >= base - 0.5 | 93.46 | 93.72 | pass | 93.72 | pass |
+| G1 coverage men phone (%) | >= base - 0.5 | 89.94 | 92.25 | pass | 92.61 | pass |
+| G1 coverage women reverb05 (%) | >= base - 0.5 | 87.22 | 87.34 | pass | 87.34 | pass |
+| G1 coverage men reverb05 (%) | >= base - 0.5 | 92.01 | 92.75 | pass | 92.95 | pass |
+| G1 coverage women reverb10 (%) | >= base - 0.5 | 83.30 | 83.49 | pass | 83.49 | pass |
+| G1 coverage men reverb10 (%) | >= base - 0.5 | 89.25 | 90.24 | pass | 90.44 | pass |
+| G1 coverage women pink10 (%) | >= base - 0.5 | 92.71 | 93.09 | pass | 93.09 | pass |
+| G1 coverage men pink10 (%) | >= base - 0.5 | 91.44 | 92.67 | pass | 93.00 | pass |
+| G1 coverage women pink0 (%) | >= base - 0.5 | 91.72 | 92.64 | pass | 92.81 | pass |
+| G1 coverage men pink0 (%) | >= base - 0.5 | 76.05 | 84.46 | pass | 86.72 | pass |
+| G1 coverage women real10 (%) | >= base - 0.5 | 93.37 | 94.71 | pass | 94.96 | pass |
+| G1 coverage men real10 (%) | >= base - 0.5 | 92.69 | 94.02 | pass | 94.51 | pass |
+| G1 coverage women real0 (%) | >= base - 0.5 | 84.59 | 88.38 | pass | 89.23 | pass |
+| G1 coverage men real0 (%) | >= base - 0.5 | 71.13 | 82.22 | pass | 83.58 | pass |
+| G1 coverage women babble10 (%) | >= base - 0.5 | 99.93 | 99.93 | pass | 99.93 | pass |
+| G1 coverage men babble10 (%) | >= base - 0.5 | 100.00 | 100.00 | pass | 100.00 | pass |
+| G1 coverage women babble0 (%) | >= base - 0.5 | 100.00 | 100.00 | pass | 100.00 | pass |
+| G1 coverage men babble0 (%) | >= base - 0.5 | 100.00 | 100.00 | pass | 100.00 | pass |
+| G2 clean-ish coverage women (%) | >= base (0.05 resolution) | 92.00 | 92.41 | pass | 92.41 | pass |
+| G2 clean-ish coverage men (%) | >= base (0.05 resolution) | 91.64 | 92.75 | pass | 93.05 | pass |
+| G3 real-noise lead before speech with a number (%) | <= base + 1.0 | 12.18 | 15.39 | **FAIL** | 15.39 | **FAIL** |
+| H1 noisy gap women - men (pp) | <= max(3.0, 0.5 x 4.96) = 3.00 | 4.96 | 2.96 | pass | 2.54 | pass |
+| H2 noisy gap women - men < 105 Hz (n=5) (pp) | <= max(3.0, 0.5 x 4.41) = 3.00 | 4.41 | 3.96 | **FAIL** | 3.45 | **FAIL** |
+| H3 coverage women clean (%) | >= base - 0.5 | 91.36 | 91.94 | pass | 92.02 | pass |
+| H3 coverage men clean (%) | >= base - 0.5 | 93.74 | 93.82 | pass | 94.07 | pass |
+| H3 coverage women quiet20 (%) | >= base - 0.5 | 86.25 | 86.82 | pass | 86.91 | pass |
+| H3 coverage men quiet20 (%) | >= base - 0.5 | 93.51 | 93.91 | pass | 94.16 | pass |
+| H3 coverage women laptop (%) | >= base - 0.5 | 90.86 | 91.75 | pass | 91.83 | pass |
+| H3 coverage men laptop (%) | >= base - 0.5 | 93.39 | 93.82 | pass | 93.95 | pass |
+| H3 coverage women phone (%) | >= base - 0.5 | 91.12 | 91.64 | pass | 91.80 | pass |
+| H3 coverage men phone (%) | >= base - 0.5 | 91.56 | 93.35 | pass | 93.47 | pass |
+| H3 coverage women reverb05 (%) | >= base - 0.5 | 84.24 | 84.45 | pass | 84.50 | pass |
+| H3 coverage men reverb05 (%) | >= base - 0.5 | 92.15 | 92.55 | pass | 92.55 | pass |
+| H3 coverage women reverb10 (%) | >= base - 0.5 | 77.69 | 78.12 | pass | 78.21 | pass |
+| H3 coverage men reverb10 (%) | >= base - 0.5 | 90.42 | 91.97 | pass | 92.22 | pass |
+| H3 coverage women pink10 (%) | >= base - 0.5 | 90.81 | 91.65 | pass | 91.84 | pass |
+| H3 coverage men pink10 (%) | >= base - 0.5 | 91.81 | 93.06 | pass | 93.19 | pass |
+| H3 coverage women pink0 (%) | >= base - 0.5 | 86.34 | 89.03 | pass | 89.63 | pass |
+| H3 coverage men pink0 (%) | >= base - 0.5 | 83.38 | 87.21 | pass | 87.90 | pass |
+| H3 coverage women real10 (%) | >= base - 0.5 | 94.29 | 96.46 | pass | 96.46 | pass |
+| H3 coverage men real10 (%) | >= base - 0.5 | 92.46 | 94.19 | pass | 94.52 | pass |
+| H3 coverage women real0 (%) | >= base - 0.5 | 82.88 | 89.18 | pass | 89.91 | pass |
+| H3 coverage men real0 (%) | >= base - 0.5 | 72.80 | 84.38 | pass | 85.97 | pass |
+| H3 coverage women babble10 (%) | >= base - 0.5 | 100.00 | 100.00 | pass | 100.00 | pass |
+| H3 coverage men babble10 (%) | >= base - 0.5 | 100.00 | 100.00 | pass | 100.00 | pass |
+| H3 coverage women babble0 (%) | >= base - 0.5 | 100.00 | 100.00 | pass | 100.00 | pass |
+| H3 coverage men babble0 (%) | >= base - 0.5 | 100.00 | 100.00 | pass | 100.00 | pass |
+| H3 clean-ish coverage women (%) | >= base (0.05 resolution) | 88.77 | 89.32 | pass | 89.41 | pass |
+| H3 clean-ish coverage men (%) | >= base (0.05 resolution) | 92.87 | 93.49 | pass | 93.64 | pass |
+| H4 real-noise lead before speech with a number (%) | <= base + 1.0 | 16.06 | 18.59 | **FAIL** | 18.59 | **FAIL** |
+| P3 men's median settle in noise (s) | <= base | 0.68 | 0.57 | pass | 0.57 | pass |
+| G6 median settle men clean-ish (s) | <= base + 0.15 | 0.55 | 0.48 | pass | 0.48 | pass |
+| G6 median first number men clean-ish (s) | <= base + 0.15 | 0.53 | 0.48 | pass | 0.48 | pass |
+| G6 first value in the wrong range men clean-ish (%) | <= base + 5.0 | 0.00 | 0.00 | pass | 0.00 | pass |
+| G6 median settle women clean-ish (s) | <= base + 0.15 | 0.76 | 0.69 | pass | 0.64 | pass |
+| G6 median first number women clean-ish (s) | <= base + 0.15 | 0.48 | 0.47 | pass | 0.47 | pass |
+| G6 first value in the wrong range women clean-ish (%) | <= base + 5.0 | 4.21 | 4.21 | pass | 4.21 | pass |
+| G6 median first number men noisy (s) | <= base + 0.15 | 0.55 | 0.53 | pass | 0.53 | pass |
+| G6 first value in the wrong range men noisy (%) | <= base + 5.0 | 3.85 | 3.77 | pass | 3.77 | pass |
+| G6 median settle women noisy (s) | <= base + 0.15 | 0.69 | 0.69 | pass | 0.69 | pass |
+| G6 median first number women noisy (s) | <= base + 0.15 | 0.55 | 0.48 | pass | 0.47 | pass |
+| G6 first value in the wrong range women noisy (%) | <= base + 5.0 | 5.26 | 8.77 | pass | 17.54 | **FAIL** |
+| G3 noise-only time with number (%) | <= base + 1.0 | 22.26 | 30.75 | **FAIL** | 32.19 | **FAIL** |
+| G3 noise-only time with any non-blank state (%) | <= base + 1.0 | 25.41 | 34.35 | **FAIL** | 35.22 | **FAIL** |
+| G4 held pvqd f: 'needs running speech' from 1.25 s (%) | >= base - 1.0 | 96.67 | 96.67 | pass | 96.67 | pass |
+| G4 held pvqd m: 'needs running speech' from 1.25 s (%) | >= base - 1.0 | 96.69 | 96.69 | pass | 96.69 | pass |
+| G4 held vocalset f: 'needs running speech' from 1.25 s (%) | >= base - 1.0 | 99.13 | 99.13 | pass | 99.13 | pass |
+| G4 held vocalset m: 'needs running speech' from 1.25 s (%) | >= base - 1.0 | 100.00 | 100.00 | pass | 100.00 | pass |
+| G4 held voiced f: 'needs running speech' from 1.25 s (%) | >= base - 1.0 | 95.28 | 95.28 | pass | 95.28 | pass |
+| G4 held voiced m: 'needs running speech' from 1.25 s (%) | >= base - 1.0 | 100.00 | 100.00 | pass | 100.00 | pass |
+| G4 held all >400: number (%) | <= base + 1.0 | 5.62 | 5.62 | pass | 5.62 | pass |
+| G4 held pvqd f: number (%) | <= base + 1.0 | 9.40 | 9.43 | pass | 11.42 | **FAIL** |
+| G4 held pvqd m: number (%) | <= base + 1.0 | 11.91 | 12.54 | pass | 13.44 | **FAIL** |
+| G4 held vocalset f: number (%) | <= base + 1.0 | 2.55 | 2.55 | pass | 2.55 | pass |
+| G4 held vocalset m: number (%) | <= base + 1.0 | 6.05 | 6.05 | pass | 6.05 | pass |
+| G4 held voiced f: number (%) | <= base + 1.0 | 3.90 | 3.90 | pass | 3.90 | pass |
+| G4 held voiced m: number (%) | <= base + 1.0 | 3.06 | 3.06 | pass | 3.06 | pass |
+| G5 PVQD speech portions f: false note (%) | <= base + 0.5 | 0.11 | 0.11 | pass | 0.11 | pass |
+| G5 PVQD speech portions m: false note (%) | <= base + 0.5 | 0.25 | 0.25 | pass | 0.25 | pass |
+| G2 PVQD speech portions f: number (%) | >= base (0.05 resolution) | 92.56 | 93.26 | pass | 94.52 | pass |
+| G2 PVQD speech portions m: number (%) | >= base (0.05 resolution) | 88.08 | 89.29 | pass | 91.18 | pass |
+| G5 ls mono f: 'needs running speech' on speech (%) | <= base + 1.0 | 7.19 | 7.19 | pass | 7.19 | pass |
+| G5 ls mono m: 'needs running speech' on speech (%) | <= base + 1.0 | 3.33 | 3.33 | pass | 3.33 | pass |
+| G5 ls mono_slow15 f: 'needs running speech' on speech (%) | <= base + 1.0 | 8.00 | 8.00 | pass | 8.00 | pass |
+| G5 ls mono_slow15 m: 'needs running speech' on speech (%) | <= base + 1.0 | 3.87 | 3.87 | pass | 3.87 | pass |
+| G5 ls orig f: 'needs running speech' on speech (%) | <= base + 0.5 | 0.00 | 0.00 | pass | 0.00 | pass |
+| G5 ls orig m: 'needs running speech' on speech (%) | <= base + 0.5 | 0.00 | 0.00 | pass | 0.00 | pass |
+| G5 ls slow15 f: 'needs running speech' on speech (%) | <= base + 0.5 | 0.42 | 0.42 | pass | 0.42 | pass |
+| G5 ls slow15 m: 'needs running speech' on speech (%) | <= base + 0.5 | 0.00 | 0.00 | pass | 0.00 | pass |
+| G5 ls slow20 f: 'needs running speech' on speech (%) | <= base + 0.5 | 2.01 | 2.01 | pass | 2.01 | pass |
+| G5 ls slow20 m: 'needs running speech' on speech (%) | <= base + 0.5 | 0.39 | 0.39 | pass | 0.39 | pass |
+| G5 pv mono f: 'needs running speech' on speech (%) | <= base + 1.0 | 7.95 | 7.95 | pass | 7.95 | pass |
+| G5 pv mono m: 'needs running speech' on speech (%) | <= base + 1.0 | 6.81 | 6.81 | pass | 6.81 | pass |
+| G5 pv orig f: 'needs running speech' on speech (%) | <= base + 0.5 | 0.19 | 0.19 | pass | 0.19 | pass |
+| G5 pv orig m: 'needs running speech' on speech (%) | <= base + 0.5 | 0.12 | 0.12 | pass | 0.12 | pass |
+| G5 pv slow15 f: 'needs running speech' on speech (%) | <= base + 0.5 | 1.64 | 1.64 | pass | 1.64 | pass |
+| G5 pv slow15 m: 'needs running speech' on speech (%) | <= base + 0.5 | 1.29 | 1.29 | pass | 1.29 | pass |
+| G7 first value after a 1.5 s pause, f2m (median) | <= 30 | 0.61 | 0.61 | pass | 2.44 | pass |
+| G7 lag to 90 % after a 1.5 s pause, f2m (s) | <= base + 0.15 | 0.90 | 0.90 | pass | 1.43 | **FAIL** |
+| G7 first value after a 1.5 s pause, m2f (median) | >= 70 | 90.54 | 90.54 | pass | 55.35 | **FAIL** |
+| G7 lag to 90 % after a 1.5 s pause, m2f (s) | <= base + 0.15 | 0.97 | 0.97 | pass | 1.50 | **FAIL** |
+| G7 first value after a 2.5 s pause, f2m (median) | <= 30 | 0.99 | 0.99 | pass | 0.99 | pass |
+| G7 lag to 90 % after a 2.5 s pause, f2m (s) | <= base + 0.15 | 0.95 | 0.95 | pass | 0.95 | pass |
+| G7 first value after a 2.5 s pause, m2f (median) | >= 70 | 88.04 | 88.04 | pass | 88.04 | pass |
+| G7 lag to 90 % after a 2.5 s pause, m2f (s) | <= base + 0.15 | 1.02 | 1.02 | pass | 1.02 | pass |
+| G7 first value after a 4.0 s pause, f2m (median) | <= 30 | 0.99 | 0.99 | pass | 0.99 | pass |
+| G7 lag to 90 % after a 4.0 s pause, f2m (s) | <= base + 0.15 | 0.95 | 0.95 | pass | 0.95 | pass |
+| G7 first value after a 4.0 s pause, m2f (median) | >= 70 | 87.80 | 87.80 | pass | 87.80 | pass |
+| G7 lag to 90 % after a 4.0 s pause, m2f (s) | <= base + 0.15 | 1.18 | 1.18 | pass | 1.18 | pass |
+
+**G8 pitch-chain guards.** G8a (noise-augment oracle, every class × 20 / 10 /
+5 dB) and G8b (FDA, PTDB-TUG, Hillenbrand, vocadito through
+`session-oracle/corpus.mjs`, posted and painted): all 137 criteria pass with
+a delta of exactly 0, as expected from a bit-identical posted pitch stream.
+G8e passes. The base corpus runs (`prereg/corpus/base.*`) were computed by
+this candidate's evaluation, once, from the frozen 852b5cc tree.
+
+**Private guards.** On the private session recordings the pitch-chain guards
+(G8c session oracle, G8d `session_fv.py`) are unchanged, and the meter's
+display far from any voicing rises by more than the +1 pp allowance for
+every speaker label and overall (G3), for both variants. Results on the
+private session recordings are kept outside this repository.
+
+**R3 (validity).** Desktop production build, headless Chrome (puppeteer, temp
+profile, closed by PID), fake mic = a 48 kHz LibriSpeech-derived speech WAV,
+`?diag=1`, 60–90 s per run. The added work, `subharmonicPartialCount`, timed
+in a module worker of the same Chrome over 3 800 calls on 1 280-sample
+buffers: median 0.6–0.9 ms, p95 1.0–1.7 ms, p99 1.1–2.9 ms. It runs in the
+pitch worker (25 ms budget per chunk), at most once per chunk. Gender
+inference p95 was 95.1, 96.1, 120.6, 150.5 and 172.9 ms on five candidate
+runs and 94.8 and 113.9 ms on two interleaved baseline runs (medians
+74–96 ms vs the documented ~52 ms). The machine was at 48–100 % CPU from
+other jobs during every run, so these are contended figures. Inference plus
+the added work stays under 150 ms at p95 in 3 of the 5 candidate runs. The
+candidate does not change the gender worker's inference. The baseline was
+not measured on an idle machine either. R3 is therefore **not established
+for this candidate on a quiet desktop**. The verdict is FAIL regardless.
+
+### Verdict
+
+**meter-c1: FAIL.** It fails P1 (gap 5.01 vs ≤ 4.97 pp), P2a (69.36 vs
+≥ 73.56 %), P2b (6.58 vs ≤ 5.02 pp) and H2 (3.96 vs ≤ 3.00 pp). It also fails
+the noise guards: G3 noise-only time with a number 22.26 → 30.75 %,
+non-blank 25.41 → 34.35 %, real-noise lead 12.18 → 15.39 % (H4 16.06 →
+18.59 %), and the private session display. It passes P3 (men's noisy settle
+0.675 → 0.575 s), H1 (2.96 pp) and every G1, G2, G4–G9 criterion.
+
+**meter-c2: FAIL.** It passes P1 (4.06 pp), P2a (74.21 %) and H1 (2.54 pp)
+but still fails P2b (5.05 pp) and H2 (3.45 pp). It also fails the G3 noise
+guards (noise-only with a number 32.19 %), and adds G4 (PVQD held vowels with
+a number, women 9.40 → 11.42 %, men 11.91 → 13.44 %), G6 (women's noisy first
+value in the wrong range 5.26 → 17.54 %) and G7 (after a 1.5 s pause the
+first man → woman value is 55.35 instead of ≥ 70, and the lag to 90 % is
+1.43–1.50 s). The 2 s close carries the previous speaker across a 1.5 s
+pause.
+
+As the rule anticipated, both trade about 1 pp of noise-only display per pp
+gained for men in noise. Neither closes the low-voice gap on the held-out
+set.
