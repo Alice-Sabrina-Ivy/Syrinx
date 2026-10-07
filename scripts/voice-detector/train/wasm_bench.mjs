@@ -34,7 +34,7 @@ const REF = A.ref ?? null;
 const ORT_DIR = resolve(A.ort ?? ".", "node_modules", "onnxruntime-web");
 const MODE = A.mode ?? "node";
 const N = Number(A.n ?? 6), SEC = Number(A.sec ?? 60);
-const HOP = 200, CTX = 312, PADEXTRA = 4; // stream = 4 zeros + samples after a 312-sample zero context (tcommon.PAD = 316)
+const HOP = 200, PADEXTRA = 4; // stream = 4 zeros + samples after a (WIN - HOP)-sample zero context (the ctx input)
 
 function pickStreams() {
   const neg = listStreams(VAL, ["vneg"]);
@@ -48,7 +48,7 @@ function pickStreams() {
 // the streaming loop, shared verbatim by node mode and the chrome page
 const LOOP_SRC = `
 async function vdStream(ort, sess, x, shapes) {
-  const HOP = ${HOP}, CTX = ${CTX}, PADEXTRA = ${PADEXTRA}, PER = 2;
+  const HOP = ${HOP}, PADEXTRA = ${PADEXTRA}, PER = 2;
   const xs = new Float32Array(PADEXTRA + x.length); xs.set(x, PADEXTRA);
   const n = Math.floor(xs.length / HOP);
   const probs = new Float32Array(n);

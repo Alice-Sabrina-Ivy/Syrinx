@@ -107,7 +107,7 @@ def evaluate(cdir, streams):
                     vals = np.where(pm, seg, np.inf)
                     rm = np.minimum.accumulate(vals)                  # non-increasing
                     # first index j with rm[j] <= H
-                    idx = np.array([np.argmax(rm <= h) if (rm <= h).any() else len(rm) for h in H])
+                    idx = len(rm) - np.searchsorted(rm[::-1], H, side="right")   # rm non-increasing: first j with rm[j] <= h
                     onset[r["key"][2]].append(idx * hop * 1000.0)
             for hi, hang in enumerate(HANG):
                 pt = {"agg": agg, "thr": thr, "hang": hang}

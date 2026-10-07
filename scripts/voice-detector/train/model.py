@@ -45,16 +45,16 @@ def mel_fb(n_mels, fmin, fmax, n_fft=WIN, sr=SR):
 
 
 class Frontend(nn.Module):
-    def __init__(self, n_mels=64, fmin=50.0, fmax=7800.0):
+    def __init__(self, n_mels=64, fmin=50.0, fmax=7800.0, win=WIN):
         super().__init__()
-        n = np.arange(WIN)
-        w = 0.5 - 0.5 * np.cos(2 * np.pi * n / WIN)      # periodic Hann
-        k = np.arange(WIN // 2 + 1)[:, None]
-        ang = 2 * np.pi * k * n[None, :] / WIN
+        n = np.arange(win)
+        w = 0.5 - 0.5 * np.cos(2 * np.pi * n / win)      # periodic Hann
+        k = np.arange(win // 2 + 1)[:, None]
+        ang = 2 * np.pi * k * n[None, :] / win
         basis = np.concatenate([np.cos(ang) * w, -np.sin(ang) * w], 0).astype(np.float32)[:, None, :]
         self.register_buffer("basis", torch.from_numpy(basis))          # [514, 1, 512]
-        self.register_buffer("fb", torch.from_numpy(mel_fb(n_mels, fmin, fmax)))  # [M, 257]
-        self.nb = WIN // 2 + 1
+        self.register_buffer("fb", torch.from_numpy(mel_fb(n_mels, fmin, fmax, n_fft=win)))  # [M, win/2+1]
+        self.nb = win // 2 + 1
 
     def forward(self, xpad):
         """xpad [B, S] (stream with PAD zeros in front) -> log-mel [B, T, M], T = (S - WIN) // HOP + 1."""
@@ -85,10 +85,13 @@ class CausalConv(nn.Module):
 
 
 class VoiceNet(nn.Module):
-    def __init__(self, n_mels=64, convs=((16, 3), (32, 3), (32, 1)), gru=64, gru_layers=1, fc=64, fmin=50.0, fmax=7800.0):
+    def __init__(self, n_mels=64, convs=((16, 3), (32, 3), (32, 1)), gru=64, gru_layers=1, fc=64, fmin=50.0, fmax=7800.0, win=WIN):
         super().__init__()
-        self.cfg = dict(n_mels=n_mels, convs=[list(c) for c in convs], gru=gru, gru_layers=gru_layers, fc=fc, fmin=fmin, fmax=fmax)
-        self.front = Frontend(n_mels, fmin, fmax)
+        self.cfg = dict(n_mels=n_mels, convs=[list(c) for c in convs], gru=gru, gru_layers=gru_layers, fc=fc, fmin=fmin, fmax=fmax, win=win)
+        self.win = win
+        self.pad = win - HOP + OFF       # zeros in front of the stream
+        self.ctx = win - HOP             # streaming audio context
+        self.front = Frontend(n_mels, fmin, fmax, win)
         self.inorm = nn.BatchNorm1d(n_mels)
         layers, cin, f = [], 1, n_mels
         for c, kt in convs:
@@ -106,7 +109,7 @@ class VoiceNet(nn.Module):
 
     @property
     def frame_ms(self):
-        return WIN / 16.0 + (self.rf - 1) * HOP / 16.0
+        return self.win / 16.0 + (self.rf - 1) * HOP / 16.0
 
     def body(self, feats, conv_states=None, h=None):
         """feats [B, T, M] log-mel -> logits [B, T], new conv states, new h."""
@@ -145,7 +148,7 @@ class Streaming(nn.Module):
             states.append(next(it) if k > 1 else None)
         logits, news, h2 = self.net.body(feats, states, h)
         outs = [n if n is not None else s for n, s in zip(news, [s0, s1, s2])]
-        return torch.sigmoid(logits), x[:, -(WIN - HOP):], outs[0], outs[1], outs[2], h2
+        return torch.sigmoid(logits), x[:, -self.net.ctx:], outs[0], outs[1], outs[2], h2
 
     def init_state(self):
         net = self.net
@@ -157,7 +160,7 @@ class Streaming(nn.Module):
             cin, f = c, (f + 1) // 2
         while len(st) < 3:
             st.append(torch.zeros(1, 1, 1, 1))
-        return [torch.zeros(1, WIN - HOP)] + st + [torch.zeros(net.cfg["gru_layers"], 1, net.cfg["gru"])]
+        return [torch.zeros(1, net.ctx)] + st + [torch.zeros(net.cfg["gru_layers"], 1, net.cfg["gru"])]
 
 
 def build(cfg):
@@ -174,9 +177,9 @@ def load_ckpt(path, map_location="cpu"):
 def run_stream(net, x16, device="cpu"):
     """Batch (whole-stream) inference: probabilities of every complete frame of a 16 kHz stream."""
     with torch.no_grad():
-        xp = torch.from_numpy(np.concatenate([np.zeros(PAD, np.float32), np.asarray(x16, np.float32)]))[None].to(device)
+        xp = torch.from_numpy(np.concatenate([np.zeros(net.pad, np.float32), np.asarray(x16, np.float32)]))[None].to(device)
         n = (len(x16) + OFF) // HOP
         if n <= 0:
             return np.zeros(0, np.float32)
-        xp = xp[:, :PAD + n * HOP - OFF]
+        xp = xp[:, :net.pad + n * HOP - OFF]
         return torch.sigmoid(net(xp))[0, :n].float().cpu().numpy()

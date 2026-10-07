@@ -54,6 +54,7 @@ AC_THR = float(A.get("ac_thr", "0.45"))
 P_MIX, P_VOICE = float(A.get("p_mix", "0.5")), float(A.get("p_voice", "0.15"))
 SEED = int(A.get("seed", "1"))
 CFG = json.loads(A.get("cfg", "{}"))
+EMA = float(A.get("ema", "0"))   # > 0: keep an exponential moving average of the weights (decay EMA) and save it too
 VSRC_W = json.loads(A.get("vsrc", '{"librispeech":0.16,"vctk":0.08,"coswara_counting":0.08,"coswara_vowel":0.26,"mdvr":0.05,"dcs":0.12,"esmuc":0.13,"csd":0.12}'))
 NEG_W = json.loads(A.get("neg", '{"fsd_machine":0.25,"fsd_other":0.2,"fstrain":0.22,"synth":0.33}'))
 SNR_LO, SNR_HI = (float(v) for v in A.get("snr", "-6,30").split(","))
@@ -175,7 +176,7 @@ class Sampler:
         n = int(L * SR)
         B = max(8, int(round(SEC_PER_BATCH / L)))
         T = (n + M.OFF) // M.HOP
-        cen = ((np.arange(T) + 1) * M.HOP - M.OFF - M.WIN / 2)   # frame centres (samples, in crop)
+        cen = ((np.arange(T) + 1) * M.HOP - M.OFF - CFG.get("win", M.WIN) / 2)   # frame centres (samples, in crop)
         V = np.zeros((B, n), np.int16)
         N1 = np.zeros((B, n), np.int16)
         N2 = np.zeros((B, n), np.int16)
@@ -371,6 +372,12 @@ def main():
     net = M.build(CFG).to(DEV) if CFG else M.VoiceNet().to(DEV)
     print(f"{NAME}: {net.n_params()} parameters, rf {net.rf} frames = frame_ms {net.frame_ms}", flush=True)
     opt = torch.optim.AdamW(net.parameters(), lr=LR, weight_decay=1e-4)
+    ema = None
+    if EMA > 0:
+        import copy
+        ema = copy.deepcopy(net).eval()
+        for q_ in ema.parameters():
+            q_.requires_grad_(False)
     sched = torch.optim.lr_scheduler.LambdaLR(opt, lambda s: min(1.0, (s + 1) / 500) * (0.05 + 0.95 * 0.5 * (1 + math.cos(math.pi * min(s, STEPS) / STEPS))))
     rir_tr = torch.from_numpy(np.load(os.path.join(TRAIN, "rir_train.npy"))).to(DEV)
     rir_va = torch.from_numpy(np.load(os.path.join(TRAIN, "rir_val.npy"))).to(DEV)
@@ -407,13 +414,23 @@ def main():
     run_loss = 0.0
     run_loss_t = torch.zeros((), device=DEV)
     print(f"blocking sync: {BLOCKING}", flush=True)
-    for step in range(STEPS + 1):
+    start = 0
+    last = os.path.join(OUT, "last.pt")
+    if "resume" in A and os.path.exists(last):   # continue after a crash (GPU driver reset on the shared machine)
+        st = torch.load(last, map_location=DEV, weights_only=False)
+        net.load_state_dict(st["model"]); opt.load_state_dict(st["opt"]); sched.load_state_dict(st["sched"])
+        if ema is not None and st.get("ema") is not None:
+            ema.load_state_dict(st["ema"])
+        g.set_state(st["gstate"])
+        start = st["step"] + 1
+        print(f"resumed at step {start}", flush=True)
+    for step in range(start, STEPS + 1):
         if step % 1000 == 0 or step == STEPS:
             net.eval()
             P, Yl, Wl, K = [], [], [], []
             with torch.no_grad():
                 for x, Yv, Wv, info in valb:
-                    xp = F.pad(x.to(DEV), (M.PAD, 0))[:, :M.PAD + Yv.shape[1] * M.HOP - M.OFF]
+                    xp = F.pad(x.to(DEV), (net.pad, 0))[:, :net.pad + Yv.shape[1] * M.HOP - M.OFF]
                     P.append(torch.sigmoid(net(xp)).cpu().numpy())
                     Yl.append(Yv.numpy()); Wl.append(Wv.numpy()); K.append(np.repeat(info[:, 0:1].numpy(), Yv.shape[1], 1))
             P, Yl, Wl, K = (np.concatenate([a.ravel() for a in Z]) for Z in (P, Yl, Wl, K))
@@ -427,6 +444,23 @@ def main():
             log.flush()
             run_loss = 0.0
             torch.save({"model": net.state_dict(), "cfg": net.cfg, "step": step, "args": A}, os.path.join(OUT, f"ckpt_{step:06d}.pt"))
+            if ema is not None:
+                with torch.no_grad():
+                    for be, bn in zip(ema.buffers(), net.buffers()):
+                        be.copy_(bn)       # BatchNorm running statistics from the live model
+                    P2 = []
+                    for x, Yv, Wv, info in valb:
+                        xp = F.pad(x.to(DEV), (net.pad, 0))[:, :net.pad + Yv.shape[1] * M.HOP - M.OFF]
+                        P2.append(torch.sigmoid(ema(xp)).cpu().numpy())
+                    P2 = np.concatenate([a_.ravel() for a_ in P2])
+                    me = frame_metrics(P2, Yl, Wl)
+                    rec_e = {"step": step, "ema": True, **me, "noise_p_mean": float(P2[(K == 2) & (Wl > 0)].mean())}
+                    print(json.dumps(rec_e), flush=True)
+                    log.write(json.dumps(rec_e) + "\n")
+                torch.save({"model": ema.state_dict(), "cfg": net.cfg, "step": step, "args": A, "ema": EMA}, os.path.join(OUT, f"ckpt_ema_{step:06d}.pt"))
+            torch.save({"model": net.state_dict(), "opt": opt.state_dict(), "sched": sched.state_dict(), "step": step,
+                        "ema": ema.state_dict() if ema is not None else None, "gstate": g.get_state()}, last + ".tmp")
+            os.replace(last + ".tmp", last)
             net.train()
             if step == STEPS:
                 break
@@ -434,7 +468,7 @@ def main():
         t = [torch.from_numpy(a).to(DEV, non_blocking=True) for a in (V, N1, N2, Y, W, info)]
         with torch.no_grad():
             x, Yb, Wb = augment(*t, rir_tr, g)
-            xp = F.pad(x, (M.PAD, 0))[:, :M.PAD + Yb.shape[1] * M.HOP - M.OFF]
+            xp = F.pad(x, (net.pad, 0))[:, :net.pad + Yb.shape[1] * M.HOP - M.OFF]
             if WHARD_AC != 1:
                 per = periodicity(x, Yb.shape[1])
                 Wb = Wb * torch.where((Yb < 0.5) & (per > AC_THR), WHARD_AC, 1.0)
@@ -445,6 +479,11 @@ def main():
         torch.nn.utils.clip_grad_norm_(net.parameters(), 1.0)
         opt.step()
         sched.step()
+        if ema is not None:
+            with torch.no_grad():
+                d = min(EMA, (1 + step) / (10 + step))
+                for pe, pn in zip(ema.parameters(), net.parameters()):
+                    pe.mul_(d).add_(pn.detach(), alpha=1 - d)
         run_loss_t = run_loss_t + loss.detach()
     stop.set()
     print(f"{NAME}: done in {time.time() - t0:.0f} s", flush=True)

@@ -23,7 +23,7 @@ import time
 import numpy as np
 
 import model as M
-from tcommon import FIRST_AVAIL_MS, HOP_MS, OFF, PAD, HOP, WIN, args, resample_stream
+from tcommon import FIRST_AVAIL_MS, HOP_MS, OFF, HOP, args, resample_stream
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
 from streams import list_streams, load_audio  # noqa: E402
@@ -59,13 +59,13 @@ class OnnxEngine:
 
     def __call__(self, x16):
         n = (len(x16) + OFF) // HOP
-        xp = np.concatenate([np.zeros(PAD, np.float32), np.asarray(x16, np.float32)])
+        ctx0 = int(self.shapes["ctx"][1])          # WIN - HOP of this model
+        xp = np.concatenate([np.zeros(ctx0 + OFF, np.float32), np.asarray(x16, np.float32)])
         st = {}
         for name in self.inputs:
             if name == "chunk":
                 continue
             st[name] = np.zeros([d if isinstance(d, int) else 1 for d in self.shapes[name]], np.float32)
-        ctx0 = WIN - HOP
         out = np.empty(n, np.float32)
         i = 0
         while i < n:
