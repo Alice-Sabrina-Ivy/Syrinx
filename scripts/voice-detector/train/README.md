@@ -29,6 +29,9 @@ session recordings are not read by any script here.
 | `opselect.py` | the pre-registered operating-point rule on the selection data |
 | `export.py` | streaming ONNX export + parity against the batch model |
 | `wasm_bench.mjs` | V4 CPU: onnxruntime-web WASM, 1 thread, Node and headless Chrome (temporary profile, killed by its own PID) |
+| `attribution.py` | the model's MIT licence text and the attribution file for the CC BY training data (from the manifest) |
+| `valtable.py`, `valpoint.py`, `report.py` | the current app on the validation streams; one candidate at its point on the validation streams; training-curve and selection tables |
+| `frozen/candidate.json` | **the frozen candidate** (operating point, sha256 of checkpoint / state / ONNX, V4 facts), committed before any evaluation stream was read |
 
 ```bash
 VENV=build/vad-train/venv/Scripts/python.exe        # CUDA PyTorch venv (pip install torch --index-url https://download.pytorch.org/whl/cu128)

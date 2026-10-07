@@ -474,3 +474,19 @@ this manifest by §2.2 and §3:
   §2.2 seeds);
 - the production-chain dumps of the val voice;
 - the val mixes and the val negatives.
+
+## Addendum B — training step (2026-10-07, before the evaluation look)
+
+Training, the validation streams and the selection are reported in
+[voice-detector-custom-training-2026-10-06.md](voice-detector-custom-training-2026-10-06.md).
+The rule of §3 chose run `r5-bighard`, step 10,000, EMA weights (89,257
+parameters), at agg `mean`, p ≥ 0.30, hangover 3 s, among 30 checkpoints of 7
+runs. Its tuning-194 V2 is 82.36 %; the worst val group is 0.48 % and the worst
+val mix cell 1.27 %. The frozen `candidate.json`
+([scripts/voice-detector/train/frozen/candidate.json](../scripts/voice-detector/train/frozen/candidate.json))
+carries the operating point and the sha256 of the checkpoint
+(`222df077…c387`), its state dict (`e17d09f7…f26d`) and the streaming ONNX file
+(`4230d27a…c23d`, 1,485,034 B). It was committed before the runner touched any
+evaluation stream. The departures of the training step are listed in §5 of
+that note.
+

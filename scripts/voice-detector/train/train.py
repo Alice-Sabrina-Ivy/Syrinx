@@ -457,6 +457,7 @@ def main():
                     rec_e = {"step": step, "ema": True, **me, "noise_p_mean": float(P2[(K == 2) & (Wl > 0)].mean())}
                     print(json.dumps(rec_e), flush=True)
                     log.write(json.dumps(rec_e) + "\n")
+                    log.flush()
                 torch.save({"model": ema.state_dict(), "cfg": net.cfg, "step": step, "args": A, "ema": EMA}, os.path.join(OUT, f"ckpt_ema_{step:06d}.pt"))
             torch.save({"model": net.state_dict(), "opt": opt.state_dict(), "sched": sched.state_dict(), "step": step,
                         "ema": ema.state_dict() if ema is not None else None, "gstate": g.get_state()}, last + ".tmp")

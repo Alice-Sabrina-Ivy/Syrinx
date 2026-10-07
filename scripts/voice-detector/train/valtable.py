@@ -19,6 +19,7 @@ VAL = A.get("val", "build/vad-train/val")
 
 
 def main():
+    sys.stdout.reconfigure(encoding="utf-8")
     rows = collections.OrderedDict()
     for m in list_streams(VAL, ["vvoice", "vmix20", "vmix0", "vneg"]):
         c = load_dump(VAL, m)

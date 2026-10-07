@@ -1,0 +1,75 @@
+{
+ "name": "custom-vd",
+ "hop_ms": 12.5,
+ "first_avail_ms": 12.375,
+ "frame_ms": 82.0,
+ "lookahead_ms": 0,
+ "threshold": 0.3,
+ "hangover_ms": 3000.0,
+ "agg": "mean",
+ "p_before_first": 0.0,
+ "v4": {
+  "license": "MIT",
+  "license_file": "build/vad-train/model/LICENSE",
+  "license_text_checked": true,
+  "attribution_file": "build/vad-train/model/ATTRIBUTION.md",
+  "model_bytes": 1485034,
+  "runtime": "onnxruntime-web-wasm",
+  "wasm_ms_per_25ms": 0.628,
+  "wasm_measured_on": "desktop 11th Gen Intel(R) Core(TM) i9-11900K @ 3.50GHz; node v24.14.1 0.623 ms (wall 0.628); headless Chrome 154 0.509 ms (wall 0.520); onnxruntime-web 1.30.0 WASM EP, 1 thread, one session.run per 25 ms (400 samples = 2 frames), state carried; 6 x 60 s validation streams; shared machine under load"
+ },
+ "model": {
+  "onnx": "build/vad-train/model/custom-vd.onnx",
+  "onnx_sha256": "4230d27a8dc336dccc7b30afb53941998471f8b1fb5a444b66bc96869ca8c23d",
+  "checkpoint": "build/vad-train/train/runs/r5-bighard/ckpt_ema_010000.pt",
+  "checkpoint_sha256": "222df07735c291c001134aae29b022a1d2fa8a9f42488b244f6d5ad21027c387",
+  "state_sha256": "e17d09f7b6ad10464cdbe1232e13c9575455a809f64182c44fd52f674ddaf26d",
+  "params": 89257,
+  "run": "r5-bighard",
+  "step": 10000,
+  "weights": "EMA (decay 0.999)",
+  "cfg": {
+   "n_mels": 64,
+   "convs": [
+    [
+     24,
+     3
+    ],
+    [
+     48,
+     3
+    ],
+    [
+     48,
+     1
+    ]
+   ],
+   "gru": 96,
+   "gru_layers": 1,
+   "fc": 64,
+   "fmin": 50.0,
+   "fmax": 7800.0,
+   "win": 512
+  }
+ },
+ "selection": {
+  "agg": "mean",
+  "thr": 0.3,
+  "hang": 3000.0,
+  "clean speech": 0.4844290657439446,
+  "clean vowels": 0.16869780692850994,
+  "clean singing": 0.03442955330842504,
+  "mix vmix20 +10": 0.07207531870804991,
+  "mix vmix20 +0": 1.2209531311539976,
+  "mix vmix0 +10": 0.11904761904761904,
+  "mix vmix0 +0": 1.2678288431061806,
+  "worst_clean": 0.4844290657439446,
+  "worst_mix": 1.2678288431061806,
+  "onset_median_worst": 0.0,
+  "tune194_v2": 82.36118298978832,
+  "vneg_v2": 92.4779204133539,
+  "latency_ms": 82.0,
+  "feasible": true
+ },
+ "notes": "Custom voice-vs-machine detector (scripts/voice-detector/train, measurements/voice-detector-custom-training-2026-10-06.md). Frozen before any evaluation stream was read; operating point chosen by the pre-registered rule on the val split + the 194-clip tuning split. Probability files: infer.py --onnx (streaming ONNX, onnxruntime CPU EP, 1 thread, state carried) on each stream's own samples through the pitch worker's linear resampler."
+}
