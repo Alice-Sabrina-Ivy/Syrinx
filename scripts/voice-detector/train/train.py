@@ -1,0 +1,455 @@
+# train.py — custom voice detector (2026-10-06): train one model on the
+# pre-registered TRAINING split (pack.py), with on-the-fly mixtures.
+#
+# Each example is one crop of L seconds (L cycles over --crops, the batch size
+# scales so every batch holds the same audio time):
+#   mix    (p_mix)   a training voice segment (1.5 s .. L, placed at a random
+#                    offset; 30 % start with the crop = lead 0) inside a
+#                    training negative (looped), SNR drawn from --snr (voice
+#                    active RMS, 2 %-of-peak rule, over noise RMS — the
+#                    benchmark's SNR); 25 % add a second negative
+#   voice  (p_voice) a clean training voice crop (+ a -85..-60 dBFS floor)
+#   noise  (rest)    negatives only (25 % two of them)
+# Negatives: FSD50K machine / room, FSD50K other, fstrain, the synthetic bank
+# (--neg weights; machine / room material >= half of the draws, §1.2).
+# Voice sources: --vsrc weights (held notes and sustained vowels emphasised).
+# Augmentation on the GPU: reverberation (the RIR bank), random EQ (tilt,
+# peaks, high- / low-pass incl. telephone band), speed perturbation of the
+# voice (pitch and formants together, +-6 %), level (mixture RMS -55..-12
+# dBFS), noise floor.
+# Labels (pre-registration §1.1, tcommon.voice_labels): a frame is positive
+# where its centre lies on a positive Praat frame of the voice layer; in a mix
+# every other frame is negative except the boundary margin; in a clean voice
+# crop only positives count (the rest is masked); noise crops: all negative.
+# Loss: BCE, positives weighted --wpos (missing voice costs more), optional
+# hard-negative weight --whard on frames of the "tonal" synthetic families.
+#
+#   <venv>/python scripts/voice-detector/train/train.py --name=NAME [--steps=20000] [--cfg=JSON] [--wpos=3] ...
+import json
+import math
+import os
+import queue
+import threading
+import time
+
+import numpy as np
+import torch
+import torch.nn.functional as F
+
+import model as M
+from tcommon import SR, TRAIN, args
+
+A = args()
+NAME = A["name"]
+OUT = os.path.join(TRAIN, "runs", NAME)
+os.makedirs(OUT, exist_ok=True)
+STEPS = int(A.get("steps", "20000"))
+SEC_PER_BATCH = float(A.get("sec_per_batch", "768"))
+CROPS = [float(v) for v in A.get("crops", "4,8,16,32").split(",")]
+LR = float(A.get("lr", "2e-3"))
+WPOS = float(A.get("wpos", "3"))
+WHARD = float(A.get("whard", "1"))
+WHARD_AC = float(A.get("whard_ac", "1"))     # weight of negative frames whose periodicity > AC_THR
+AC_THR = float(A.get("ac_thr", "0.45"))
+P_MIX, P_VOICE = float(A.get("p_mix", "0.5")), float(A.get("p_voice", "0.15"))
+SEED = int(A.get("seed", "1"))
+CFG = json.loads(A.get("cfg", "{}"))
+VSRC_W = json.loads(A.get("vsrc", '{"librispeech":0.16,"vctk":0.08,"coswara_counting":0.08,"coswara_vowel":0.26,"mdvr":0.05,"dcs":0.12,"esmuc":0.13,"csd":0.12}'))
+NEG_W = json.loads(A.get("neg", '{"fsd_machine":0.25,"fsd_other":0.2,"fstrain":0.22,"synth":0.33}'))
+SNR_LO, SNR_HI = (float(v) for v in A.get("snr", "-6,30").split(","))
+P_REVERB_V, P_REVERB_N = float(A.get("p_rev_v", "0.35")), float(A.get("p_rev_n", "0.2"))
+P_SPEED = float(A.get("p_speed", "0.3"))
+DEV = "cuda"
+
+
+def _blocking_sync():
+    """Make CUDA waits sleep instead of spin (cudaDeviceScheduleBlockingSync):
+    the shared machine's CPU is the scarce resource, not the GPU."""
+    import ctypes
+    import glob
+    for dll in glob.glob(os.path.join(os.path.dirname(torch.__file__), "lib", "cudart64_*.dll")):
+        try:
+            ctypes.CDLL(dll).cudaSetDeviceFlags(4)
+            return True
+        except OSError:
+            pass
+    return False
+
+
+BLOCKING = _blocking_sync()
+torch.set_num_threads(1)
+torch.backends.cuda.matmul.allow_tf32 = True
+torch.backends.cudnn.allow_tf32 = True
+
+
+# ----------------------------------------------------------------------------- data
+class Bank:
+    def __init__(self, name):
+        self.x = np.memmap(os.path.join(TRAIN, name + ".i16"), dtype=np.int16, mode="r")
+        self.ix = dict(np.load(os.path.join(TRAIN, name + ".npz")))
+        self.n = len(self.ix["off"])
+
+    def crop(self, i, start, n, loop):
+        o, ln = int(self.ix["off"][i]), int(self.ix["len"][i])
+        if loop:
+            if ln >= n + start:
+                return self.x[o + start:o + start + n]
+            clip = np.asarray(self.x[o:o + ln])
+            reps = (start + n + ln - 1) // ln
+            return np.tile(clip, reps)[start:start + n]
+        a = self.x[o + start:o + min(ln, start + n)]
+        return a
+
+
+class Sampler:
+    """CPU side: picks files and crops, builds frame labels (numpy)."""
+
+    def __init__(self, split, seed):
+        self.rng = np.random.default_rng(seed)
+        self.V = Bank(f"voice_{split}")
+        self.N = Bank(f"nonvoice_{split}")
+        self.S = Bank(f"synth_{split}")
+        self.rir = np.load(os.path.join(TRAIN, f"rir_{split}.npy"))
+        v = self.V.ix
+        meta = json.load(open(os.path.join(TRAIN, f"voice_{split}.json"), encoding="utf8"))
+        srcs, kinds = meta["sources"], meta["kinds"]
+        # voiced seconds per file = positive label frames * 10 ms
+        pos = np.add.reduceat((v["lab"] == 1).astype(np.int64), v["loff"]) if len(v["loff"]) else np.zeros(0)
+        pos = np.where(v["llen"] > 0, pos, 0)
+        self.vpools = {}
+        for key, w in VSRC_W.items():
+            if key.startswith("coswara_"):
+                sel = (v["src"] == srcs.index("coswara")) & (v["kind"] == kinds.index(key.split("_")[1]))
+            else:
+                if key not in srcs:
+                    continue
+                sel = v["src"] == srcs.index(key)
+            ids = np.nonzero(sel & (pos > 50))[0]
+            if len(ids):
+                p = pos[ids].astype(np.float64)
+                self.vpools[key] = (ids, np.cumsum(p) / p.sum(), w)
+        tot = sum(w for _, _, w in self.vpools.values())
+        self.vkeys = list(self.vpools)
+        self.vw = np.cumsum([self.vpools[k][2] / tot for k in self.vkeys])
+        n = self.N.ix
+        nsrc = json.load(open(os.path.join(TRAIN, f"nonvoice_{split}.json"), encoding="utf8"))["sources"]
+        self.npools = {
+            "fsd_machine": np.nonzero((n["src"] == nsrc.index("fsd50k")) & n["machine"])[0],
+            "fsd_other": np.nonzero((n["src"] == nsrc.index("fsd50k")) & ~n["machine"])[0],
+            "fstrain": np.nonzero(n["src"] == nsrc.index("fstrain"))[0],
+        }
+        self.nkeys = [k for k in NEG_W if k == "synth" or len(self.npools.get(k, []))]
+        self.nw = np.array([NEG_W[k] for k in self.nkeys])
+        self.nw = np.cumsum(self.nw / self.nw.sum())
+        self.stonal = self.S.ix["tonal"]
+
+    def neg(self, n):
+        r = self.rng
+        key = self.nkeys[min(int(np.searchsorted(self.nw, r.random())), len(self.nkeys) - 1)]
+        if key == "synth":
+            i = int(r.integers(self.S.n))
+            ln = int(self.S.ix["len"][i])
+            x = self.S.crop(i, int(r.integers(ln)), n, True)
+            return x, key, bool(self.stonal[i])
+        ids = self.npools[key]
+        # long clips more often (time-uniform over the pool, capped at 60 s)
+        i = int(ids[r.integers(len(ids))])
+        ln = int(self.N.ix["len"][i])
+        x = self.N.crop(i, int(r.integers(max(1, ln - n))) if ln > n else 0, n, True)
+        return x, key, False
+
+    def voice(self, maxlen):
+        r = self.rng
+        key = self.vkeys[min(int(np.searchsorted(self.vw, r.random())), len(self.vkeys) - 1)]
+        ids, cdf, _ = self.vpools[key]
+        i = int(ids[min(int(np.searchsorted(cdf, r.random())), len(ids) - 1)])
+        ln = int(self.V.ix["len"][i])
+        n = min(ln, maxlen)
+        st = int(r.integers(0, ln - n + 1))
+        x = self.V.crop(i, st, n, False)
+        lab = self.V.ix["lab"][self.V.ix["loff"][i]:self.V.ix["loff"][i] + self.V.ix["llen"][i]]
+        return x, lab, float(self.V.ix["t0"][i]), st, key
+
+    def batch(self, L):
+        r = self.rng
+        n = int(L * SR)
+        B = max(8, int(round(SEC_PER_BATCH / L)))
+        T = (n + M.OFF) // M.HOP
+        cen = ((np.arange(T) + 1) * M.HOP - M.OFF - M.WIN / 2)   # frame centres (samples, in crop)
+        V = np.zeros((B, n), np.int16)
+        N1 = np.zeros((B, n), np.int16)
+        N2 = np.zeros((B, n), np.int16)
+        Y = np.zeros((B, T), np.float32)
+        W = np.zeros((B, T), np.float32)
+        info = np.zeros((B, 6), np.float32)   # kind, snr, has2, n2 rel dB, tonal, voice-segment start
+        for b in range(B):
+            u = r.random()
+            kind = 0 if u < P_MIX else (1 if u < P_MIX + P_VOICE else 2)
+            tonal = False
+            if kind in (0, 2):
+                x, key, tonal = self.neg(n)
+                N1[b] = x
+                if r.random() < 0.25:
+                    x2, _, t2 = self.neg(n)
+                    N2[b] = x2
+                    info[b, 2] = 1
+                    info[b, 3] = r.uniform(-15, 5)
+                    tonal = tonal or t2
+            if kind in (0, 1):
+                if kind == 0:
+                    lv = int(r.uniform(1.5, L) * SR)
+                    x, lab, t0, st, key = self.voice(lv)
+                    o = 0 if r.random() < 0.3 else int(r.integers(0, n - len(x) + 1))
+                else:
+                    x, lab, t0, st, key = self.voice(n)
+                    o = 0
+                V[b, o:o + len(x)] = x
+                # labels at frame centres
+                ft = (st + cen - o) / SR                                  # file time of each frame centre
+                inside = (cen >= o) & (cen < o + len(x))
+                j = np.round((ft - t0) / 0.01).astype(np.int64)
+                ok = inside & (j >= 0) & (j < len(lab))
+                code = np.zeros(T, np.int8)                                # 0 outside the segment
+                code[ok] = lab[j[ok]]
+                code[inside & ~ok] = 0
+                if kind == 0:
+                    Y[b] = code == 1
+                    W[b] = np.where(code == 2, 0.0, np.where(code == 1, WPOS, 1.0))
+                else:
+                    Y[b] = code == 1
+                    W[b] = np.where(code == 1, WPOS, 0.0)
+                info[b, 5] = o
+            else:
+                W[b] = 1.0
+            if kind == 0:
+                u = r.random()
+                info[b, 1] = r.uniform(SNR_LO, 12) if u < 0.5 else r.uniform(5, SNR_HI)
+            info[b, 0] = kind
+            info[b, 4] = tonal
+        W[:, :2] = 0   # windows reaching before the crop
+        if WHARD != 1:
+            W *= np.where((info[:, 4:5] > 0) & (Y == 0), WHARD, 1.0)
+        return V, N1, N2, Y, W, info
+
+
+# ----------------------------------------------------------------------------- GPU augmentation
+def rand_eq(B, nfft, g):
+    """Random zero-phase EQ magnitude per example on rfft bins (torch, GPU)."""
+    f = torch.linspace(0, SR / 2, nfft // 2 + 1, device=DEV)[None]
+    lf = torch.log2(torch.clamp(f, 20) / 1000.0)
+    db = torch.zeros(B, f.shape[1], device=DEV)
+    tilt = (torch.rand(B, 1, device=DEV, generator=g) * 2 - 1) * 3.0
+    db += tilt * lf
+    for _ in range(2):
+        fc = torch.exp(torch.rand(B, 1, device=DEV, generator=g) * (math.log(5000) - math.log(150)) + math.log(150))
+        gain = (torch.rand(B, 1, device=DEV, generator=g) * 2 - 1) * 9.0
+        bw = torch.rand(B, 1, device=DEV, generator=g) * 1.5 + 0.3
+        on = (torch.rand(B, 1, device=DEV, generator=g) < 0.6).float()
+        db += on * gain * torch.exp(-0.5 * ((lf - torch.log2(fc / 1000)) / bw) ** 2)
+    hp = (torch.rand(B, 1, device=DEV, generator=g) < 0.3).float()
+    fhp = torch.rand(B, 1, device=DEV, generator=g) * 240 + 60
+    db += hp * (-40 * torch.log10(1 + (fhp / torch.clamp(f, 1)) ** 2) / 2)
+    lp = (torch.rand(B, 1, device=DEV, generator=g) < 0.3).float()
+    flp = torch.rand(B, 1, device=DEV, generator=g) * 4000 + 3400
+    order = torch.where(torch.rand(B, 1, device=DEV, generator=g) < 0.5, 4.0, 16.0)   # gentle / near-brickwall (8 kHz origin)
+    db += lp * (-10 * torch.log10(1 + (f / flp) ** order))
+    return 10 ** (db / 20)
+
+
+def fft_conv(x, h):
+    n = x.shape[1] + h.shape[1]
+    nf = 1 << (n - 1).bit_length()
+    y = torch.fft.irfft(torch.fft.rfft(x, nf) * torch.fft.rfft(h, nf), nf)
+    return y[:, :x.shape[1]]
+
+
+def speed(x, fac):
+    """Resample each row by its factor (linear interpolation; pitch + formants together)."""
+    B, n = x.shape
+    pos = torch.arange(n, device=DEV)[None].float() * fac[:, None]
+    i0 = torch.clamp(pos.floor().long(), 0, n - 2)
+    fr = pos - i0
+    y = x.gather(1, i0) * (1 - fr) + x.gather(1, i0 + 1) * fr
+    return torch.where(pos < n - 1, y, torch.zeros_like(y))
+
+
+def augment(V, N1, N2, Y, W, info, rir, g):
+    V, N1, N2 = (z.float() / 32768 for z in (V, N1, N2))
+    B, n = V.shape
+    kind = info[:, 0]
+    # voice: speed perturbation (labels follow: the frame grid is resampled too)
+    if P_SPEED > 0:
+        sp = torch.rand(B, device=DEV, generator=g) < P_SPEED
+        fac = torch.where(sp, 1 + (torch.rand(B, device=DEV, generator=g) * 2 - 1) * 0.06, torch.ones(B, device=DEV))
+        V = speed(V, fac)
+        T = Y.shape[1]
+        tp = torch.arange(T, device=DEV)[None].float() * fac[:, None]
+        j = torch.clamp(tp.round().long(), 0, T - 1)
+        vk = (kind < 2)[:, None]
+        Y = torch.where(vk, Y.gather(1, j), Y)
+        W = torch.where(vk & (tp > T - 1), torch.zeros_like(W), torch.where(vk, W.gather(1, j), W))
+        W[:, :2] = 0
+    # reverberation
+    def rev(x, p):
+        on = torch.rand(B, device=DEV, generator=g) < p
+        if not on.any():
+            return x
+        h = rir[torch.randint(0, rir.shape[0], (B,), device=DEV, generator=g)]
+        return torch.where(on[:, None], fft_conv(x, h), x)
+    V = rev(V, P_REVERB_V)
+    N1 = rev(N1, P_REVERB_N)
+    # levels: voice active RMS (2 % of peak) vs noise RMS
+    pk = V.abs().amax(1, keepdim=True)
+    act = (V.abs() > 0.02 * pk).float()
+    vrms = torch.sqrt((V * V * act).sum(1) / act.sum(1).clamp(min=1)).clamp(min=1e-6)
+    n2 = torch.sqrt((N2 * N2).mean(1)).clamp(min=1e-7)
+    n1 = torch.sqrt((N1 * N1).mean(1)).clamp(min=1e-7)
+    N = N1 / n1[:, None] + (info[:, 2] > 0).float()[:, None] * N2 / n2[:, None] * (10 ** (info[:, 3] / 20))[:, None]
+    nr = torch.sqrt((N * N).mean(1)).clamp(min=1e-7)
+    snr = info[:, 1]
+    is_mix, is_voice = kind == 0, kind == 1
+    ng = torch.where(is_mix, 1.0 / (10 ** (snr / 20)) / nr, torch.where(is_voice, torch.zeros_like(nr), 1.0 / nr))
+    vg = torch.where(kind < 2, 1.0 / vrms, torch.zeros_like(vrms))
+    x = V * (vg * 0.1)[:, None] + N * (ng * 0.1)[:, None]
+    # EQ on the mixture
+    nfft = 1 << (n - 1).bit_length()
+    eq = torch.rand(B, device=DEV, generator=g) < 0.6
+    X = torch.fft.rfft(x, nfft)
+    x = torch.where(eq[:, None], torch.fft.irfft(X * rand_eq(B, nfft, g), nfft)[:, :n], x)
+    # overall level + floor
+    rms = torch.sqrt((x * x).mean(1)).clamp(min=1e-7)
+    lev = 10 ** ((torch.rand(B, device=DEV, generator=g) * 43 - 55) / 20)
+    x = x * (lev / rms)[:, None]
+    floor = 10 ** ((torch.rand(B, device=DEV, generator=g) * 25 - 85) / 20)
+    x = x + floor[:, None] * torch.randn(x.shape, device=DEV, generator=g)
+    return x.clamp(-1, 1), Y, W
+
+
+# ----------------------------------------------------------------------------- eval
+def periodicity(x, T):
+    """Per model frame: Boersma-style normalised autocorrelation peak over lags
+    of 75-400 Hz (40 ms Hann window ending with the frame) — a cheap stand-in
+    for "the pitch detector would call this voiced" (hard-negative weight)."""
+    B, n = x.shape
+    L = 640
+    ends = (torch.arange(T, device=DEV) + 1) * M.HOP - M.OFF
+    xp = F.pad(x, (L, 0))
+    idx = (ends[:, None] + torch.arange(L, device=DEV)[None]).clamp(max=n + L - 1)   # padded coords: frame [end-L, end)
+    fr = xp[:, idx]                                                  # [B, T, L]
+    w = torch.hann_window(L, periodic=False, device=DEV)
+    fr = (fr - fr.mean(-1, keepdim=True)) * w
+    nf = 2048
+    r = torch.fft.irfft(torch.fft.rfft(fr, nf).abs() ** 2, nf)[..., :L]
+    rw = torch.fft.irfft(torch.fft.rfft(w, nf).abs() ** 2, nf)[:L]
+    r = r / r[..., :1].clamp(min=1e-12) / (rw / rw[0]).clamp(min=1e-3)
+    lo, hi = SR // 400, SR // 75 + 1
+    return r[..., lo:hi].amax(-1)                                     # [B, T]
+
+
+def frame_metrics(p, y, w):
+    """AUC over weighted frames + recall at the thresholds giving 10 % / 30 % FPR on negatives."""
+    m = w > 0
+    p, y = p[m], y[m]
+    pos, neg = p[y > 0.5], p[y < 0.5]
+    if not len(pos) or not len(neg):
+        return {}
+    allp = np.concatenate([pos, neg])
+    ranks = allp.argsort().argsort().astype(np.float64)
+    auc = (ranks[:len(pos)].sum() - len(pos) * (len(pos) - 1) / 2) / (len(pos) * len(neg))
+    out = {"auc": float(auc)}
+    for fpr in (0.1, 0.3):
+        thr = np.quantile(neg, 1 - fpr)
+        out[f"tpr@fpr{int(fpr * 100)}"] = float((pos > thr).mean())
+    # negatives' rejection at the threshold keeping 99 % of positives
+    thr = np.quantile(pos, 0.01)
+    out["tnr@tpr99"] = float((neg < thr).mean())
+    return out
+
+
+def main():
+    torch.manual_seed(SEED)
+    net = M.build(CFG).to(DEV) if CFG else M.VoiceNet().to(DEV)
+    print(f"{NAME}: {net.n_params()} parameters, rf {net.rf} frames = frame_ms {net.frame_ms}", flush=True)
+    opt = torch.optim.AdamW(net.parameters(), lr=LR, weight_decay=1e-4)
+    sched = torch.optim.lr_scheduler.LambdaLR(opt, lambda s: min(1.0, (s + 1) / 500) * (0.05 + 0.95 * 0.5 * (1 + math.cos(math.pi * min(s, STEPS) / STEPS))))
+    rir_tr = torch.from_numpy(np.load(os.path.join(TRAIN, "rir_train.npy"))).to(DEV)
+    rir_va = torch.from_numpy(np.load(os.path.join(TRAIN, "rir_val.npy"))).to(DEV)
+    # fixed validation batches (val split + val banks, fixed seeds)
+    vs = Sampler("val", 1_000_000_123)
+    gv = torch.Generator(device=DEV)
+    gv.manual_seed(1_000_000_007)
+    valb = []
+    for k in range(12):
+        V, N1, N2, Y, W, info = vs.batch(8.0)
+        t = [torch.from_numpy(a).to(DEV) for a in (V, N1, N2, Y, W, info)]
+        x, Yv, Wv = augment(*t, rir_va, gv)
+        valb.append((x.cpu(), Yv.cpu(), Wv.cpu(), t[5].cpu()))
+    del vs
+    NTH = int(A.get("threads", "2"))
+    trs = [Sampler("train", SEED * 1000 + i) for i in range(NTH)]
+    q = queue.Queue(maxsize=6)
+    stop = threading.Event()
+
+    def producer(i):
+        k = i
+        while not stop.is_set():
+            L = CROPS[k % len(CROPS)]
+            k += NTH
+            q.put(trs[i].batch(L))
+    ths = [threading.Thread(target=producer, args=(i,), daemon=True) for i in range(NTH)]
+    for t in ths:
+        t.start()
+    g = torch.Generator(device=DEV)
+    g.manual_seed(SEED)
+    log = open(os.path.join(OUT, "log.jsonl"), "a", encoding="utf8")
+    json.dump({"args": A, "cfg": net.cfg, "params": net.n_params()}, open(os.path.join(OUT, "config.json"), "w"), indent=1)
+    t0 = time.time()
+    run_loss = 0.0
+    run_loss_t = torch.zeros((), device=DEV)
+    print(f"blocking sync: {BLOCKING}", flush=True)
+    for step in range(STEPS + 1):
+        if step % 1000 == 0 or step == STEPS:
+            net.eval()
+            P, Yl, Wl, K = [], [], [], []
+            with torch.no_grad():
+                for x, Yv, Wv, info in valb:
+                    xp = F.pad(x.to(DEV), (M.PAD, 0))[:, :M.PAD + Yv.shape[1] * M.HOP - M.OFF]
+                    P.append(torch.sigmoid(net(xp)).cpu().numpy())
+                    Yl.append(Yv.numpy()); Wl.append(Wv.numpy()); K.append(np.repeat(info[:, 0:1].numpy(), Yv.shape[1], 1))
+            P, Yl, Wl, K = (np.concatenate([a.ravel() for a in Z]) for Z in (P, Yl, Wl, K))
+            met = frame_metrics(P, Yl, Wl)
+            met_noise = {"noise_p_mean": float(P[(K == 2) & (Wl > 0)].mean()), "noise_p_p99": float(np.quantile(P[(K == 2) & (Wl > 0)], 0.99))}
+            run_loss = float(run_loss_t)
+            run_loss_t = torch.zeros((), device=DEV)
+            rec = {"step": step, "time": round(time.time() - t0, 1), "loss": run_loss / max(1, min(step, 1000) if step else 1), "lr": sched.get_last_lr()[0], **met, **met_noise}
+            print(json.dumps(rec), flush=True)
+            log.write(json.dumps(rec) + "\n")
+            log.flush()
+            run_loss = 0.0
+            torch.save({"model": net.state_dict(), "cfg": net.cfg, "step": step, "args": A}, os.path.join(OUT, f"ckpt_{step:06d}.pt"))
+            net.train()
+            if step == STEPS:
+                break
+        V, N1, N2, Y, W, info = q.get()
+        t = [torch.from_numpy(a).to(DEV, non_blocking=True) for a in (V, N1, N2, Y, W, info)]
+        with torch.no_grad():
+            x, Yb, Wb = augment(*t, rir_tr, g)
+            xp = F.pad(x, (M.PAD, 0))[:, :M.PAD + Yb.shape[1] * M.HOP - M.OFF]
+            if WHARD_AC != 1:
+                per = periodicity(x, Yb.shape[1])
+                Wb = Wb * torch.where((Yb < 0.5) & (per > AC_THR), WHARD_AC, 1.0)
+        logits = net(xp)
+        loss = (F.binary_cross_entropy_with_logits(logits, Yb, reduction="none") * Wb).sum() / Wb.sum().clamp(min=1)
+        opt.zero_grad(set_to_none=True)
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(net.parameters(), 1.0)
+        opt.step()
+        sched.step()
+        run_loss_t = run_loss_t + loss.detach()
+    stop.set()
+    print(f"{NAME}: done in {time.time() - t0:.0f} s", flush=True)
+    os._exit(0)
+
+
+if __name__ == "__main__":
+    main()
