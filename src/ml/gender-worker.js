@@ -43,7 +43,10 @@
 // mlInferences ring; mobile-diag-capture surfaces median/p95/p99
 // for the 150 ms hop-budget check. With diag on, score messages also
 // carry `vadMs`: the speech detector's run time since the previous
-// inference (the added work that shares the 150 ms hop).
+// posted score (the added work that shares the 150 ms hop). It is 0 while
+// the detector is not live, and it accumulates over ticks that post no
+// score, so the first score and the first after a pause carry more than
+// one hop's worth; per-hop summaries keep back-to-back scores only.
 
 import { pipeline, env } from "@huggingface/transformers";
 // The same onnxruntime-web module instance Transformers.js runs on (it
@@ -62,7 +65,7 @@ import {
   TARGET_SAMPLE_RATE,
 } from "./audio-utils.js";
 import { createUtteranceGate, meterStateForVerdict } from "./utterance-gate.js";
-import { SPEECH_DETECTOR, createSpeechFramer, createSileroRunner, sha256Hex } from "./speech-detector.js";
+import { SPEECH_DETECTOR, createSpeechFramer, createSileroRunner, loadVerifiedModel } from "./speech-detector.js";
 
 // We don't ship the model in the bundle — fetch from the Hub at runtime.
 env.allowRemoteModels = true;
@@ -352,14 +355,13 @@ async function loadModel(modelId) {
 
 async function loadSpeechDetector() {
   try {
-    const res = await fetch(SPEECH_DETECTOR.modelUrl);
-    if (!res.ok) throw new Error(`speech detector model HTTP ${res.status}`);
-    const bytes = await res.arrayBuffer();
-    if ((await sha256Hex(bytes)) !== SPEECH_DETECTOR.modelSha256) throw new Error("speech detector model hash mismatch");
+    // Cache Storage first (HF's resolve redirect is no-store and this
+    // worker is recreated on every start), sha256-checked either way.
+    const { bytes, source } = await loadVerifiedModel({ url: SPEECH_DETECTOR.modelUrl, sha256: SPEECH_DETECTOR.modelSha256 });
     const session = await ort.InferenceSession.create(new Uint8Array(bytes), { executionProviders: ["wasm"] });
     speechFramer.reset();
     speechRunner = createSileroRunner(ort, session);
-    self.postMessage({ type: "speech-detector", status: "ready" });
+    self.postMessage({ type: "speech-detector", status: "ready", source });
   } catch (err) {
     speechRunner = null;
     self.postMessage({ type: "speech-detector", status: "error", message: String(err?.message || err) });

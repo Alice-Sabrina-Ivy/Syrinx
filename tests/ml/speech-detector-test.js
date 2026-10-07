@@ -7,7 +7,7 @@
 //
 // Usage: node tests/ml/speech-detector-test.js
 
-import { SPEECH_DETECTOR as S, createSpeechFramer, createSileroRunner, sha256Hex } from "../../src/ml/speech-detector.js";
+import { SPEECH_DETECTOR as S, createSpeechFramer, createSileroRunner, sha256Hex, loadVerifiedModel } from "../../src/ml/speech-detector.js";
 
 let passed = 0;
 let failed = 0;
@@ -24,6 +24,8 @@ function check(name, condition, detail = "") {
 console.log("constants");
 check("16 kHz, 512-sample chunks, 64-sample context", S.sampleRate === 16000 && S.chunk === 512 && S.context === 64);
 check("model pinned by sha256", /^[0-9a-f]{64}$/.test(S.modelSha256) && S.modelUrl.includes("v6.2.3"));
+check("model URL = the project's HF mirror, pinned to a commit",
+  /^https:\/\/huggingface\.co\/Alice-Sabrina-Ivy\/silero-vad-v6\.2\.3-onnx\/resolve\/[0-9a-f]{40}\/silero_vad\.onnx$/.test(S.modelUrl), S.modelUrl);
 
 console.log("\nframer: 25 ms capture chunks -> 32 ms frames on the audio clock");
 {
@@ -76,6 +78,61 @@ console.log("\nsha256");
 {
   const h = await sha256Hex(new TextEncoder().encode("abc").buffer);
   check("sha256('abc')", h === "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", h);
+}
+
+console.log("\nloadVerifiedModel: Cache Storage first, sha256-checked, network fallback");
+{
+  const good = new TextEncoder().encode("model bytes v1").buffer;
+  const bad = new TextEncoder().encode("tampered bytes").buffer;
+  const sha = await sha256Hex(good);
+  const url = "https://example.test/m.onnx";
+  const key = `${url}?sha256=${sha}`;
+  function fakeCaches({ openThrows = false, putThrows = false } = {}) {
+    const store = new Map();
+    const cache = {
+      async match(k) { return store.has(k) ? new Response(store.get(k).slice(0)) : undefined; },
+      async put(k, res) { if (putThrows) throw new Error("quota"); store.set(String(k), await res.arrayBuffer()); },
+      async delete(k) { return store.delete(typeof k === "string" ? k : k.url); },
+      async keys() { return [...store.keys()].map((u) => ({ url: u })); },
+    };
+    return { store, api: { async open() { if (openThrows) throw new Error("SecurityError"); return cache; } } };
+  }
+  function fakeFetch(body, status = 200) {
+    const f = async () => { f.calls++; return new Response(status === 200 ? body.slice(0) : null, { status }); };
+    f.calls = 0;
+    return f;
+  }
+  const eq = (a, b) => Buffer.from(a).equals(Buffer.from(b));
+
+  let c = fakeCaches();
+  const f = fakeFetch(good);
+  c.store.set("https://example.test/old.onnx?sha256=00", new ArrayBuffer(3));
+  let r = await loadVerifiedModel({ url, sha256: sha, fetchFn: f, cachesApi: c.api });
+  check("miss: fetched from the network", r.source === "network" && f.calls === 1 && eq(r.bytes, good));
+  check("miss: stored under url + sha256, other versions dropped",
+    c.store.size === 1 && c.store.has(key) && eq(c.store.get(key), good), [...c.store.keys()].join());
+  r = await loadVerifiedModel({ url, sha256: sha, fetchFn: f, cachesApi: c.api });
+  check("hit: read from the cache, no fetch", r.source === "cache" && f.calls === 1 && eq(r.bytes, good));
+
+  c.store.set(key, bad.slice(0));
+  r = await loadVerifiedModel({ url, sha256: sha, fetchFn: f, cachesApi: c.api });
+  check("corrupt cache entry: re-fetched and replaced", r.source === "network" && f.calls === 2 && eq(c.store.get(key), good));
+
+  c = fakeCaches();
+  let err = null;
+  try { await loadVerifiedModel({ url, sha256: sha, fetchFn: fakeFetch(bad), cachesApi: c.api }); } catch (e) { err = e; }
+  check("fetched bytes with the wrong hash: throws, nothing cached", /hash mismatch/.test(err?.message ?? "") && c.store.size === 0);
+  err = null;
+  try { await loadVerifiedModel({ url, sha256: sha, fetchFn: fakeFetch(good, 404), cachesApi: c.api }); } catch (e) { err = e; }
+  check("HTTP error: throws", /HTTP 404/.test(err?.message ?? ""));
+
+  r = await loadVerifiedModel({ url, sha256: sha, fetchFn: fakeFetch(good), cachesApi: fakeCaches({ openThrows: true }).api });
+  check("Cache Storage throws on open: plain fetch", r.source === "network" && eq(r.bytes, good));
+  r = await loadVerifiedModel({ url, sha256: sha, fetchFn: fakeFetch(good), cachesApi: undefined });
+  check("no Cache Storage (insecure context): plain fetch", r.source === "network" && eq(r.bytes, good));
+  c = fakeCaches({ putThrows: true });
+  r = await loadVerifiedModel({ url, sha256: sha, fetchFn: fakeFetch(good), cachesApi: c.api });
+  check("put fails (quota): the model still loads", r.source === "network" && eq(r.bytes, good) && c.store.size === 0);
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

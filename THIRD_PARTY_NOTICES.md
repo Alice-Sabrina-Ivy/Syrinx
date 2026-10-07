@@ -11,7 +11,7 @@ their own licences; the MIT License does not apply to them.
 | React, React DOM | MIT | https://github.com/facebook/react |
 | Dexie.js | Apache-2.0 | https://github.com/dexie/Dexie.js |
 | Transformers.js (`@huggingface/transformers`) | Apache-2.0 | https://github.com/huggingface/transformers.js |
-| ONNX Runtime Web (bundled by Transformers.js) | MIT | https://github.com/microsoft/onnxruntime |
+| ONNX Runtime Web (JavaScript bundled with Transformers.js; its WASM files are fetched at runtime from jsDelivr) | MIT | https://github.com/microsoft/onnxruntime |
 
 Build-time tools (Vite, Tailwind CSS, ESLint and plugins) are MIT-licensed and
 are not shipped in the built app.
@@ -28,13 +28,12 @@ are not shipped in the built app.
   2,327,524 bytes, sha256
   `1a153a22f4509e292a94e67d6f9b85e8deb25b4988682b7e174c65279d8788e3`) — MIT,
   Copyright (c) 2020-present Silero Team. The unmodified file is fetched at
-  runtime from the GitHub tag through jsDelivr
-  (`https://cdn.jsdelivr.net/gh/snakers4/silero-vad@v6.2.3/src/silero_vad/data/silero_vad.onnx`)
-  and checked against that sha256 before use (`src/ml/speech-detector.js`).
-  A byte-identical mirror on the project's Hugging Face account
-  (`Alice-Sabrina-Ivy/silero-vad-v6.2.3-onnx`, with Silero's LICENSE and a
-  model card that credits the upstream project) is planned and not yet
-  published.
+  runtime from a byte-identical mirror on the project's Hugging Face
+  account (`Alice-Sabrina-Ivy/silero-vad-v6.2.3-onnx`, commit
+  `6c8942f41b1e6a85ef5b092537f0db565f099c49`, with Silero's LICENSE and a
+  model card that credits the upstream project), checked against that
+  sha256 before use, and kept in the browser's Cache Storage
+  (`src/ml/speech-detector.js`).
 - **Resonance lab models** (`public/resonance-lab/`: `vtln_warp.json`,
   `le_ens_h64.json`, `pnml_head.json`, `fv_model.json`) were trained or fitted
   on LibriSpeech dev-clean, and the reference bands in `reference.json` come

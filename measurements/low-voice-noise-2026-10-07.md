@@ -543,7 +543,9 @@ from pitch voicing. Pitch evidence only shapes the held-note tests.
   frames plus a 64-sample context, with the LSTM state carried. That gives
   one speech probability per 32 ms, stamped on the audio clock. The model
   is fetched at runtime from the v6.2.3 tag through jsDelivr and checked
-  against its pinned sha256. It runs on the onnxruntime-web instance that
+  against its pinned sha256 (as evaluated; since the fix round it comes
+  from the project's Hugging Face mirror with a Cache Storage copy, see
+  "Model hosting"). It runs on the onnxruntime-web instance that
   Transformers.js already loads, so no second WASM runtime is shipped.
   The gender-worker chunk grows by 3.2 KB.
 - **Why this detector.** The custom voice-vs-machine detector on the
@@ -691,6 +693,13 @@ It is the value with the fewest failures.
     202 ms. The machine was shared with other jobs, and the inference
     median was above the 52 ms in
     [gender-model-latency-2026-07-19.md](gender-model-latency-2026-07-19.md).
+  - **Note (fix round, 2026-10-07):** the p99 is probably inflated by how
+    `vadMs` is counted. It is the detector time since the previous
+    *posted* score, so the first score, and the first after a pause,
+    also carry detector time from ticks that scored nothing. Counting
+    back-to-back hops only (previous score < 220 ms earlier), the
+    fix-round desktop smoke run measured inference + detector p95
+    100.8 ms (n = 65). The R3 pass does not depend on the p99.
   - The model loaded 4.5 s after page load.
 - **G9.** `npm run lint` passes. `npm run test:unit` passes 24/24 scripts,
   including the new `tests/ml/speech-detector-test.js` and 20 new
@@ -709,9 +718,10 @@ It is the value with the fewest failures.
 
 - **Model hosting.** The model is fetched from jsDelivr (GitHub tag
   v6.2.3). It could instead go on the project's Hugging Face account next
-  to the gender model.
+  to the gender model. (Done in the fix round; see "Model hosting".)
 - **Cost and mobile.** The detector adds a 2.3 MB download and about
-  1 ms of CPU per 32 ms on desktop. Mobile is unmeasured.
+  1 ms of CPU per 32 ms on desktop. Mobile is unmeasured. (Measured
+  since on a Pixel; see "Phone CPU" under the Decision.)
 - **Whisper.** Speech the detector hears without voicing, such as
   whispering, can now open the meter and be scored. This was not
   measured.
@@ -740,8 +750,11 @@ The user made the adoption conditional on two follow-ups before any PR:
 2. test background chatter, music, TV / podcast speech, whispering, the
    startup window before the detector is ready, and phone CPU.
 
-Both are reported below. The candidate (0528fce) is merged into
-`voice-direction` unchanged. The integration adds diag-only
+Both are reported below. Since the fix round (2026-10-07) the model
+comes from the project's Hugging Face mirror, with a Cache Storage copy
+(see "Model hosting"), and the phone figures are measured ones. The
+candidate (0528fce) is merged into `voice-direction` unchanged. The
+integration adds diag-only
 instrumentation: `?diag=1` snapshots record the detector status and
 per-inference `vadMs`, and `scripts/mobile-diag-capture.js` prints
 inference + detector time per hop for the phone run.
@@ -761,7 +774,8 @@ evaluator's clean coverage (candidate women / men 94.6 / 95.5 %).
 
 Inputs:
 
-- **Targets:** the 38 LibriSpeech test-clean talkers, 19 women and 18 men.
+- **Targets:** the 38-speaker set (37 talkers scored: 19 women, 18 men;
+  ls672 excluded as in the rule).
 - **Chatter:** reverberant 6- and 3-talker LibriSpeech babble.
 - **Music:** MUSDB18 7-s excerpts (CC BY 4.0), instrumental and full mix,
   taken from the same excerpts.
@@ -784,7 +798,10 @@ cand = this candidate.
 |---|---|---|
 | Chatter alone, 6 talkers, 0 / −10 / −20 / −30 dB: time with a number | 96.0 / 95.9 / 97.0 / 96.9 → 95.3 / 89.5 / 67.6 / **0.0** % (number ≈ 33–46) | Not a regression. **User decision:** the meter scores a nearby crowd at normal chatter levels in both versions. |
 | Babble under speech, 20 / 10 / 0 dB: coverage, women; men | 99.9 / 99.9 / 100 → 96.8 / 99.7 / 98.9 %; 100 / 100 / 100 → 97.3 / 99.1 / 99.3 % | Above clean coverage. The baseline's figure includes numbers it opened on the babble. |
-| Babble lead before speech, 20 dB: time with a number, women; men | 59.3 → 11.5 %; 54.3 → 17.9 % | Better. |
+| Babble lead before speech (reverberant, 6 talkers), 20 dB: time with a number, women; men | 59.3 → 11.5 %; 54.3 → 17.9 % | Better. |
+| Babble lead, 10 dB: women; men | 56.5 → 43.6 %; 58.6 → 39.7 % | A number for much of the lead in both versions, somewhat less in cand. |
+| Babble lead, 0 dB: women; men | 58.5 → 54.0 %; 61.2 → 46.6 % | About as often as before. |
+| Babble lead, dry chanx babble (frozen evaluator), 10 / 0 dB: women; men | 57.7 / 57.7 → 62.1 / 62.1 %; 59.9 / 59.9 → 62.9 / 63.3 % | Slightly worse. |
 | Babble 0 dB: pull on the number during speech | women −17.2 → −17.3, men +15.7 → +15.5 points | Unchanged. The classifier hears the mix. |
 | Music alone, instrumental 0 / −10 / −20 dB: time with a number | 73.9 / 74.9 / 72.0 → 0.7 / 0.0 / 0.0 % | **Large improvement.** |
 | Music alone, with vocals 0 / −10 / −20 dB | 82.8 / 87.9 / 75.2 → 1.9 / 1.0 / 4.4 % | **Large improvement.** |
@@ -801,7 +818,12 @@ cand = this candidate.
 | Startup: first number, cold; warm (s) | 3.97 → 4.45; 2.06 → 1.97 | The cold ranges overlap on a loaded machine. |
 | Startup: detector live late, 2.5 or 4.5 s in | meter = baseline until the switch; over music the number clears ≈ 2 s after; over speech the switch costs nothing | Acceptable. |
 | Desktop CPU (i9-11900K under load) | detector 16–26 ms per audio second in Node WASM, ≤ 35 ms in Chrome; per hop p50 5.7, p95 9.0 ms; inference + detector p95 118.7 ms (< 150) | Acceptable. |
-| Phone CPU | not measured: no phone attached (`adb devices` empty) | **Pending.** |
+| Phone CPU (Pixel 11 Pro XL, Chrome 154; see "Phone CPU") | detector 1.16–1.24 ms per 32 ms frame (36–39 ms per audio second); inference p50 / p95 88 / 102 ms; inference + detector p95 107 ms (< 150); 0 overruns, 0 timeouts, no fallback | **Acceptable.** Cold-cache start, portrait and slower phones unmeasured. |
+
+**Babble before the user speaks.** Better only for quiet babble (20 dB
+below the user's speech). At normal babble levels the meter shows a number
+over the babble before the user speaks about as often as before, and
+slightly more often on dry babble (women +4.4 pp, men +3.0 / +3.4 pp).
 
 **Whisper.** Asymmetry: women's whisper gets a number less often than
 men's (54 vs 72 %; Expresso women only 32 %). The options for the user:
@@ -824,21 +846,54 @@ implemented. The cue-strip redesign starts the gender worker only when the
 opt-in "Likely heard as" panel is switched on, and that is the natural
 trigger if it is wanted.
 
-**Phone CPU.** This is an estimate only, from the known 2.4–4.5× desktop
-→ mobile WASM ratios: 40–160 ms per audio second, 14–41 ms per 150 ms
-hop. That load sits on top of a classifier whose mobile time is itself
-unmeasured (52 ms desktop × 2.4–4.5 ≈ 125–235 ms per hop). When a hop
-overruns, the `inferenceInProgress` guard drops inferences, so the meter
-updates less often; it does not fail.
+**Phone CPU (measured 2026-10-07).** **Historical (superseded 2026-10-07,
+fix round):** this paragraph gave only an estimate (2.4–4.5× the desktop
+cost) and said no phone was attached. A Pixel run of the same detector code
+had already been made and checked.
 
-**Integration check (built app, 2026-10-07).** `scripts/voice-direction-smoke.mjs`
-passes at desktop / phone / landscape (52 / 51 / 5 checks). It now
-confirms that the detector model is fetched from the pinned URL (HTTP 200).
-In a `--diag=1` desktop run with a LibriSpeech fake mic, the detector
-reported "ready" and ran on all 64 inferences. Inference p50 / p95 was
-76.4 / 114.6 ms, detector time per hop 5.9 / 10.7 ms, and inference +
-detector p95 127.2 ms, under the 150 ms hop. The machine was shared with
-other jobs.
+- **Device.** Pixel 11 Pro XL (Tensor G6), Android 17, Chrome 154, MSTP
+  capture at 48 kHz, held in landscape (wide layout). Thermal status 0
+  throughout.
+- **Build.** `lowvoice-voice-detector-gate` at dd05f07, whose `src` is
+  identical to the candidate 0528fce merged here. This branch adds only
+  diag lines and, since the fix round, the Hugging Face URL with a Cache
+  Storage copy; those change where the model comes from, not the
+  per-frame work.
+- **Audio.** Public LibriSpeech test-clean, 5 women and 5 men in
+  alternating 30 s blocks, played from the PC's speakers into the phone.
+  Two 90 s `?diag=1` runs after a 20 s warm-up, plus one run on the
+  production page (CPU only). CPU was not split by sex.
+- **Results.**
+  - Detector: **1.16–1.24 ms per 32 ms frame** (36–39 ms per audio
+    second, about 4 % of one core; an upper bound, as it is wall time
+    around each run).
+  - Classifier inference: median 88 ms, p95 102 ms.
+  - **Inference + detector per hop: p95 107 ms**, inside the 150 ms hop.
+    Of 952 hops, 4 read over 150 ms. All 4 followed a pause of about 1 s
+    and carried 64–77 ms of detector time from that pause (the `vadMs`
+    counting described under R3). On back-to-back hops the detector took
+    at most 10.7 ms per hop and inference at most 134 ms, so no hop
+    actually exceeded 150 ms.
+  - 0 overruns, 0 timeouts; the detector never failed or fell back.
+  - Gender worker thread CPU 461–463 ms per second, the same as main's
+    always-on meter (437–466).
+  - Start-up: the detector was live 1.45–2.0 s after Start, at the same
+    moment as the classifier. That was with the gender model already in
+    the browser's cache, and the detector model still came from jsDelivr.
+- **Still unmeasured on a phone:** a cold-cache first start (and the
+  first download from Hugging Face), portrait, and slower phones.
+
+**Integration check (built app, 2026-10-07, re-run in the fix round).**
+`scripts/voice-direction-smoke.mjs` passes at desktop (`--diag=1`) /
+phone / landscape: 59 / 55 / 5 checks. On the first visit it confirms
+that the detector model is downloaded from the pinned Hugging Face URL
+(302, then HTTP 200 from the CDN, followed through the redirect chain).
+On a reload, and in a new browser process on the same profile, it
+confirms that the model is read from Cache Storage with no download
+(diag source "cache"). In the desktop run (LibriSpeech fake mic) the
+detector reported "ready" and ran on 65 back-to-back inferences:
+inference p50 / p95 68.1 / 94.1 ms, detector per hop 5.4 / 7.6 ms,
+inference + detector p95 100.8 ms, under the 150 ms hop.
 
 ### Model hosting
 
@@ -895,6 +950,26 @@ checks the sha256, stores the entry and deletes any other entries in that
 cache. If Cache Storage is unavailable or throws (an insecure origin, some
 private windows, quota), it falls back to a plain fetch.
 
+**In the built app (after the change).** Time from Continue (which starts
+listening) to the detector being live, the classifier ready and the first
+number, in headless Chrome 154 with a LibriSpeech fake mic. Builds:
+jsDelivr = 15c119d; HF without a cache = 15c119d with only the URL
+changed; HF + Cache Storage = this change. Each: a first visit on a fresh
+profile, then 4 reloads; two rounds.
+
+| build | first visit: detector / classifier / first number (s) | reloads: detector / classifier / first number (s) |
+|---|---|---|
+| jsDelivr | 1.43–1.75 / 2.95–2.97 / 3.17–3.18 | 0.79–1.06 / same / 1.59–1.80 |
+| HF, no cache | 2.29–2.44 / 2.89–3.19 / 3.14–3.46 | **1.32–1.91 / 1.07–1.26** / 1.74–1.94 |
+| HF + Cache Storage | 2.22–2.30 / 2.88–2.94 / 3.12–3.24 | 0.86–1.06 / same / 1.57–1.75 |
+
+- On a reload, the cached copy makes the detector live together with
+  the classifier, as with jsDelivr. Without it, the detector came 0.1–0.7 s
+  after the classifier on every reload.
+- On a first visit, the download from Hugging Face is 0.5–0.8 s slower
+  than from jsDelivr. The detector was still live before the classifier
+  in every run, so the first number was not delayed.
+
 **Not moved: the ONNX Runtime WASM.** The runtime's
 `ort-wasm-simd-threaded.asyncify.{mjs,wasm}` still comes from
 `cdn.jsdelivr.net/npm/onnxruntime-web@…` (Transformers.js's default
@@ -908,11 +983,14 @@ separate measured change, and the user decides whether to make it.
 
 ### Still pending
 
-- **Phone CPU** on the Pixel. The user must plug it in: USB debugging on,
-  file-transfer mode, screen awake. Then run `node
-  scripts/mobile-diag-capture.js` against `?diag=1` and read "speech det" /
-  "infer + det".
-- **The Hugging Face mirror**, which needs a Hugging Face write token.
+- **Phone, not yet measured:** a cold-cache first start (including the
+  first download from Hugging Face), portrait, and slower phones. The
+  user must plug in the Pixel (USB debugging on, file-transfer mode,
+  screen awake), then run `node scripts/mobile-diag-capture.js` against
+  `?diag=1` and read "speech det" / "infer + det" (back-to-back hops).
+- **ONNX Runtime WASM from jsDelivr** (see "Model hosting"): the user
+  decides whether to serve it from the app's own bundle, as a separate
+  measured change.
 - **R6.** Commit the public part of the frozen evaluator under
   `scripts/low-voice-noise/` and its results here. Not done in this
   integration.

@@ -221,7 +221,8 @@ would help both this and the noise figures.
 The meter's utterance gate now asks a speech detector (Silero VAD v6.2.3,
 `src/ml/speech-detector.js`) whether someone is speaking. Pitch voicing
 still drives the held-note test. This was measured on the wider 38-speaker
-set (19 women, 18 men; same noisy conditions) and on a held-out set
+set (37 talkers scored: 19 women, 18 men; ls672 excluded as in the rule;
+same noisy conditions) and on a held-out set
 ([low-voice-noise-2026-10-07.md](low-voice-noise-2026-10-07.md)).
 
 | 38-speaker set, noisy | pitch gate (above) | speech-detector gate |

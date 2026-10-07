@@ -606,12 +606,22 @@ function summarize(snap) {
   // Speech detector (utterance gate, Silero VAD) time between inferences,
   // and classifier + detector per hop — the R3 budget check of
   // measurements/low-voice-noise-2026-10-07.md (p95 < 150 ms).
-  const vadSeries = mlInferences
-    .map((e) => e.vadMs)
-    .filter((v) => typeof v === "number" && Number.isFinite(v));
-  const hopSeries = mlInferences
-    .filter((e) => typeof e.inferMs === "number" && typeof e.vadMs === "number")
-    .map((e) => e.inferMs + e.vadMs);
+  // The worker's vadMs is the detector time since the previous POSTED
+  // score: 0 while the detector is not live, and it accumulates over
+  // ticks that post no score (pauses, the start). So only back-to-back
+  // hops count: drop the first score, keep a score only if the previous
+  // one was posted < 220 ms earlier (the hop is 150 ms), require vadMs > 0
+  // and the detector "ready".
+  const detectorReady = snap.mlModel?.speechDetector === "ready";
+  const byTime = mlInferences
+    .filter((e) => typeof e.tEpochMs === "number" && typeof e.inferMs === "number")
+    .sort((a, b) => a.tEpochMs - b.tEpochMs);
+  const backToBack = detectorReady
+    ? byTime.filter((e, i) => i > 0 && e.tEpochMs - byTime[i - 1].tEpochMs < 220
+      && typeof e.vadMs === "number" && e.vadMs > 0)
+    : [];
+  const vadSeries = backToBack.map((e) => e.vadMs);
+  const hopSeries = backToBack.map((e) => e.inferMs + e.vadMs);
   const statsP99 = (a) => {
     const base = stats(a);
     if (!base) return null;
@@ -741,7 +751,7 @@ function printSummary(s) {
     const h = s.mlInferencePlusDetectorMs;
     console.log(
       `  speech det:  ${s.speechDetector ?? "no status"}` +
-      (v ? `; per hop median=${v.median.toFixed(1)}ms p95=${v.p95.toFixed(1)}ms (n=${v.n})` : ""),
+      (v ? `; per back-to-back hop median=${v.median.toFixed(1)}ms p95=${v.p95.toFixed(1)}ms (n=${v.n})` : ""),
     );
     if (h) {
       console.log(

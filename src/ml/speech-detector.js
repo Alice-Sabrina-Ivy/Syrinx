@@ -33,19 +33,14 @@ export const SPEECH_DETECTOR = Object.freeze({
   chunk: 512,      // samples per probability (32 ms)
   context: 64,     // past samples prefixed to each chunk
   stateSize: 2 * 128,
-  // Fetched at runtime (not bundled): the official release file served by
-  // jsDelivr from the GitHub tag, verified against the pinned sha256.
-  // TODO(hosting, user decision 2026-10-07): move to the project's Hugging
-  // Face mirror `Alice-Sabrina-Ivy/silero-vad-v6.2.3-onnx` once it exists
-  // (it could not be created: no Hugging Face write token on the build
-  // machine). Use the commit-pinned resolve URL
-  //   https://huggingface.co/Alice-Sabrina-Ivy/silero-vad-v6.2.3-onnx/resolve/<commit>/silero_vad.onnx
-  // and keep modelSha256. HF's /resolve/ redirect is `no-store` and points
-  // at a signed, expiring CDN URL, so the browser re-downloads the model on
-  // every visit (warm fetch 1.75 s vs 0.29 s from jsDelivr, which sends
-  // `immutable`): add a Cache Storage layer keyed by modelSha256 in the
-  // same change (measurements/low-voice-noise-2026-10-07.md, "Decision").
-  modelUrl: "https://cdn.jsdelivr.net/gh/snakers4/silero-vad@v6.2.3/src/silero_vad/data/silero_vad.onnx",
+  // Fetched at runtime (not bundled) from the project's Hugging Face
+  // mirror of the official release file (Alice-Sabrina-Ivy/
+  // silero-vad-v6.2.3-onnx, byte-identical to the GitHub tag), pinned to
+  // the mirror's commit and verified against the pinned sha256. HF's
+  // /resolve/ redirect is `no-store`, so loadVerifiedModel keeps its own
+  // Cache Storage copy (measurements/low-voice-noise-2026-10-07.md,
+  // "Model hosting").
+  modelUrl: "https://huggingface.co/Alice-Sabrina-Ivy/silero-vad-v6.2.3-onnx/resolve/6c8942f41b1e6a85ef5b092537f0db565f099c49/silero_vad.onnx",
   modelSha256: "1a153a22f4509e292a94e67d6f9b85e8deb25b4988682b7e174c65279d8788e3",
 });
 
@@ -102,4 +97,43 @@ export function createSileroRunner(ort, session) {
 export async function sha256Hex(bytes) {
   const d = await globalThis.crypto.subtle.digest("SHA-256", bytes);
   return Array.from(new Uint8Array(d), (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+export const MODEL_CACHE_NAME = "syrinx-speech-detector";
+
+// The model's bytes, verified against `sha256`, from Cache Storage when a
+// good copy is there, else from the network (then stored for next time).
+//   -> { bytes: ArrayBuffer, source: "cache" | "network" }
+// Throws only on a network / HTTP failure or a hash mismatch of the
+// fetched bytes. Cache Storage problems (missing outside secure contexts,
+// throwing in some private windows, quota) fall back to a plain fetch.
+// fetchFn / cachesApi are injectable for tests.
+export async function loadVerifiedModel({ url, sha256, fetchFn = globalThis.fetch, cachesApi = globalThis.caches, cacheName = MODEL_CACHE_NAME } = {}) {
+  const key = `${url}${url.includes("?") ? "&" : "?"}sha256=${sha256}`;
+  let cache = null;
+  try { cache = cachesApi ? await cachesApi.open(cacheName) : null; } catch { cache = null; }
+  if (cache) {
+    try {
+      const hit = await cache.match(key);
+      if (hit) {
+        const bytes = await hit.arrayBuffer();
+        if ((await sha256Hex(bytes)) === sha256) return { bytes, source: "cache" };
+        await cache.delete(key);
+      }
+    } catch { /* unreadable entry: fetch instead */ }
+  }
+  const res = await fetchFn(url);
+  if (!res.ok) throw new Error(`speech detector model HTTP ${res.status}`);
+  const bytes = await res.arrayBuffer();
+  if ((await sha256Hex(bytes)) !== sha256) throw new Error("speech detector model hash mismatch");
+  if (cache) {
+    try {
+      await cache.put(key, new Response(bytes.slice(0), { headers: { "content-type": "application/octet-stream" } }));
+      // Drop copies of any other model version.
+      for (const req of await cache.keys()) {
+        if (req.url !== key) await cache.delete(req);
+      }
+    } catch { /* not cached this time; the model still loads */ }
+  }
+  return { bytes, source: "network" };
 }

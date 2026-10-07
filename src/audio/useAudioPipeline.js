@@ -577,8 +577,9 @@ export function useAudioPipeline() {
             pushMlInference({
               tEpochMs: msg.ts,
               inferMs: msg.inferMs,
-              // speech detector's run time since the previous inference
-              // (shares the 150 ms hop; null before it is live)
+              // speech detector's run time since the previous posted
+              // score (0 while the detector is not live; the first score
+              // and the first after a pause also carry unscored ticks)
               vadMs: typeof msg.vadMs === "number" ? msg.vadMs : null,
               score: msg.score,
               confidence: msg.confidence,
@@ -589,7 +590,7 @@ export function useAudioPipeline() {
           // diag-only record of whether it loaded (setMlModel is a no-op
           // without diag). On "error" the gate keeps running on pitch
           // voicing, so there is nothing to show the user.
-          setMlModel({ speechDetector: msg.status, speechDetectorError: msg.message ?? null });
+          setMlModel({ speechDetector: msg.status, speechDetectorError: msg.message ?? null, speechDetectorSource: msg.source ?? null });
           if (DIAG_ENABLED && msg.status === "error") {
             pushError({ source: "mlWorker", where: "speech-detector", message: msg.message ?? "error", ts: Date.now() });
           }
