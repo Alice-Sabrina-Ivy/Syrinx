@@ -1,27 +1,35 @@
 // PitchTrace.jsx — Scrolling canvas pitch trace (last 15 seconds)
-// Green line when in target range, red when outside. Gaps during silence.
+// With a target (the user's training direction): band drawn, line green
+// inside it and red outside. With none ("Just exploring" / not chosen
+// yet): no band, neutral line. Gaps during silence.
 
 import { useRef, useEffect } from "react";
 import { hzToNote } from "../utils/pitchUtils";
 import { SteadinessReadout } from "./SteadinessReadout";
 import {
-  DEFAULT_PITCH_TARGET,
   PITCH_DISPLAY_RANGE,
   PITCH_TRACE_SECONDS,
   COLORS,
 } from "../utils/constants";
+import { inTarget as isInTarget, bandForDisplay } from "../utils/trainingDirection";
 
 export function PitchTrace({
   pitchTraceRef,
   voiced,
   holding,
   pitch,
+  target = null,
   steadiness = null,
   steadinessHeld = false,
   compact = false,
 }) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
+  // Read by the rAF loop each frame, so a direction change mid-session
+  // repaints the band and colours on the next frame without tearing the
+  // loop down. Synced post-render (refs must not be written during render).
+  const targetRef = useRef(target);
+  useEffect(() => { targetRef.current = target; }, [target]);
 
   // Handle canvas sizing with ResizeObserver
   useEffect(() => {
@@ -49,9 +57,8 @@ export function PitchTrace({
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     let animId;
+    let lastTargetAttr = null;
 
-    const targetLow = DEFAULT_PITCH_TARGET.low;
-    const targetHigh = DEFAULT_PITCH_TARGET.high;
     const displayLow = PITCH_DISPLAY_RANGE.low;
     const displayHigh = PITCH_DISPLAY_RANGE.high;
 
@@ -138,23 +145,41 @@ export function PitchTrace({
         ctx.fillText(sec === 0 ? "now" : `-${sec}s`, x, plotBottom + 4 * dpr);
       }
 
-      // Target band
-      const bandTop = hzToY(targetHigh);
-      const bandBottom = hzToY(targetLow);
-      ctx.fillStyle = COLORS.targetBand;
-      ctx.fillRect(plotLeft, bandTop, plotRight - plotLeft, bandBottom - bandTop);
+      // Target band (none without a training-direction target)
+      const target = targetRef.current;
+      const band = bandForDisplay(target, PITCH_DISPLAY_RANGE);
+      const colorFor = (hz) => {
+        const t = isInTarget(hz, target);
+        return t === null ? COLORS.neutralTrace : t ? COLORS.inTarget : COLORS.outOfTarget;
+      };
+      // The drawn target, mirrored to the DOM for assistive tech / checks
+      // (written only when it changes).
+      const targetAttr = band ? `${band.low}-${band.high}` : "none";
+      if (targetAttr !== lastTargetAttr) {
+        lastTargetAttr = targetAttr;
+        canvas.dataset.target = targetAttr;
+        canvas.setAttribute("aria-label", band
+          ? `Pitch trace, target ${band.low} to ${band.high} Hz`
+          : "Pitch trace, no target range");
+      }
+      if (band) {
+        const bandTop = hzToY(band.high);
+        const bandBottom = hzToY(band.low);
+        ctx.fillStyle = COLORS.targetBand;
+        ctx.fillRect(plotLeft, bandTop, plotRight - plotLeft, bandBottom - bandTop);
 
-      // Target band borders
-      ctx.strokeStyle = COLORS.targetBandBorder;
-      ctx.lineWidth = 1;
-      ctx.setLineDash([4 * dpr, 4 * dpr]);
-      ctx.beginPath();
-      ctx.moveTo(plotLeft, bandTop);
-      ctx.lineTo(plotRight, bandTop);
-      ctx.moveTo(plotLeft, bandBottom);
-      ctx.lineTo(plotRight, bandBottom);
-      ctx.stroke();
-      ctx.setLineDash([]);
+        // Target band borders
+        ctx.strokeStyle = COLORS.targetBandBorder;
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4 * dpr, 4 * dpr]);
+        ctx.beginPath();
+        ctx.moveTo(plotLeft, bandTop);
+        ctx.lineTo(plotRight, bandTop);
+        ctx.moveTo(plotLeft, bandBottom);
+        ctx.lineTo(plotRight, bandBottom);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
 
       // Pitch trace line
       const data = pitchTraceRef.current;
@@ -197,28 +222,25 @@ export function PitchTrace({
         }
 
         const y = hzToY(pt.pitch);
-        const inTarget = pt.pitch >= targetLow && pt.pitch <= targetHigh;
+        const color = colorFor(pt.pitch);
 
         if (!inSegment) {
           ctx.beginPath();
-          ctx.strokeStyle = inTarget ? COLORS.inTarget : COLORS.outOfTarget;
+          ctx.strokeStyle = color;
           ctx.moveTo(x, y);
           inSegment = true;
         } else {
           // Check if color needs to change
           const prevPt = data[i - 1];
-          const prevInTarget =
-            prevPt?.voiced &&
-            prevPt.pitch !== null &&
-            prevPt.pitch >= targetLow &&
-            prevPt.pitch <= targetHigh;
+          const prevColor =
+            prevPt?.voiced && prevPt.pitch !== null ? colorFor(prevPt.pitch) : null;
 
-          if (inTarget !== prevInTarget) {
+          if (color !== prevColor) {
             // Finish old segment, start new with different color
             ctx.lineTo(x, y);
             ctx.stroke();
             ctx.beginPath();
-            ctx.strokeStyle = inTarget ? COLORS.inTarget : COLORS.outOfTarget;
+            ctx.strokeStyle = color;
             ctx.moveTo(x, y);
           } else {
             ctx.lineTo(x, y);
@@ -235,9 +257,7 @@ export function PitchTrace({
       if (lastVoiced && now - lastVoiced.time < 500) {
         const x = timeToX(lastVoiced.time, now);
         const y = hzToY(lastVoiced.pitch);
-        const inTarget =
-          lastVoiced.pitch >= targetLow && lastVoiced.pitch <= targetHigh;
-        const color = inTarget ? COLORS.inTarget : COLORS.outOfTarget;
+        const color = colorFor(lastVoiced.pitch);
 
         ctx.beginPath();
         ctx.arc(x, y, 5 * dpr, 0, Math.PI * 2);
@@ -266,10 +286,7 @@ export function PitchTrace({
 
   // Readout
   const noteInfo = pitch ? hzToNote(pitch) : null;
-  const inTarget =
-    pitch !== null &&
-    pitch >= DEFAULT_PITCH_TARGET.low &&
-    pitch <= DEFAULT_PITCH_TARGET.high;
+  const inTarget = isInTarget(pitch, target); // null = no target: neutral
 
   return (
     <div className="flex flex-col h-full">
@@ -277,7 +294,7 @@ export function PitchTrace({
         ref={containerRef}
         className="relative flex-1 min-h-0 rounded-xl overflow-hidden border border-neutral-800"
       >
-        <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
+        <canvas ref={canvasRef} role="img" aria-label="Pitch trace" className="absolute inset-0 w-full h-full" />
       </div>
 
       {/* Hz + Note + steadiness readout (hidden in compact mode) */}
@@ -289,9 +306,11 @@ export function PitchTrace({
                 ? "text-neutral-600 opacity-40"
                 : holding
                   ? "text-white opacity-50"
-                  : inTarget
-                    ? "text-green-400"
-                    : "text-red-400"
+                  : inTarget === null
+                    ? "text-neutral-200"
+                    : inTarget
+                      ? "text-green-400"
+                      : "text-red-400"
             }`}
           >
             {pitch !== null ? `${Math.round(pitch)} Hz` : "— Hz"}

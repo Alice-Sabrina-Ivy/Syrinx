@@ -175,6 +175,12 @@ export function useAudioPipeline() {
   // can be tagged with the DSP gate's current verdict.
   const dspGateRef = useRef({ voiced: false, holding: false });
 
+  // Latest perceived-voice state from the ML worker ({ state, ts }; state
+  // listening | updating | scoring | pause | sustained — see
+  // ml/utterance-gate.js). Read by the meter's rAF loop to decide between
+  // a number, "updating…", and "needs running speech".
+  const genderStateRef = useRef(null);
+
   // Smoothing buffers
   const pitchSmoothRef = useRef([]);
   // Tracks gaps of >= SMOOTH_RESET_GAP_FRAMES frames without a fresh
@@ -600,6 +606,8 @@ export function useAudioPipeline() {
               device: msg.device ?? null,
             });
           }
+        } else if (msg.type === "voice-state") {
+          genderStateRef.current = { state: msg.state, ts: Math.round(msg.ts) };
         } else if (msg.type === "progress") {
           setState((s) => ({
             ...s,
@@ -814,6 +822,7 @@ export function useAudioPipeline() {
     pitchTraceRef.current = [];
     formantTrailRef.current = [];
     genderTraceRef.current = [];
+    genderStateRef.current = null;
     dspGateRef.current = { voiced: false, holding: false };
     cppAggregatorRef.current = null;
     cppBaselineRef.current = null;
@@ -914,22 +923,19 @@ export function useAudioPipeline() {
         pitch: msg.pitch,
       });
     }
-    // Forward voicedness to the ML worker: its VAD gates gender
-    // inference on "pitch recently voiced" so noise-only windows
-    // stop feeding masculine-leaning scores into the EMA (every
-    // synthetic noise type passed the old peak-amplitude VAD 100%
-    // of the time — measurements/noise-robustness-oracle-
-    // 2026-07-19.md §4). Sent on every pitch message, voiced or
-    // not, so the worker's recency window closes promptly.
+    // Forward every pitch frame to the ML worker: its utterance gate
+    // (ml/utterance-gate.js) scores only recent, voiced running speech,
+    // restarts the score at each utterance onset, and spots held
+    // phonation from the pitch track — so noise-only windows stop
+    // feeding masculine-leaning scores into the meter
+    // (measurements/perceived-voice-gate-2026-10-07.md). Sent voiced or
+    // not, so utterances close promptly.
     if (mlWorkerRef.current) {
       mlWorkerRef.current.postMessage({
         type: "pitch-hint",
         voiced: msg.voiced,
+        pitch: msg.pitch,
         ts: msg.ts,
-        // Active tonal-interferer notches — consumed by the ML
-        // worker's sub-floor voicing probe (fail-open for
-        // below-pitch-floor phonation, Codex review on PR #90).
-        notchedFreqs: msg.notchedFreqs ?? [],
       });
     }
     if (DIAG_ENABLED && typeof msg.inferMs === "number") {
@@ -1345,6 +1351,7 @@ export function useAudioPipeline() {
     pitchTraceRef,
     formantTrailRef,
     genderTraceRef,
+    genderStateRef,
     // Exposed so canvas-based components can read the DSP voicedness gate
     // at full rAF rate, bypassing the ~5 fps throttledSetState. Note the
     // ref's `voiced` means "audio present" (silence gate not engaged),

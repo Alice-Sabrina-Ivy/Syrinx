@@ -1,16 +1,60 @@
 // SessionHistory.jsx — Past sessions list with expandable cards + detail traces
+//
+// Targets come from each session's own direction log (the training
+// direction(s) in effect while it was recorded — utils/trainingDirection.js),
+// so a session is always judged against what the user was aiming for then.
+// Sessions recorded before directions existed have no log: their traces
+// are drawn neutrally with no band, and their stored time-in-range figures
+// are labelled with the fixed range they were computed against.
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import db from "../db";
 import { EXCURSION_SEMI } from "../audio/pitchPaintGate";
 import { isLiveSession } from "../utils/sessionRepair";
 import {
-  DEFAULT_PITCH_TARGET,
-  DEFAULT_F2_TARGET,
   PITCH_DISPLAY_RANGE,
   F2_DISPLAY_RANGE,
   COLORS,
 } from "../utils/constants";
+import {
+  directionAt,
+  directionsUsed,
+  directionLabel,
+  pitchTargetFor,
+  f2TargetFor,
+  inTarget as isInTarget,
+  bandForDisplay,
+  formatTarget,
+} from "../utils/trainingDirection";
+
+// The fixed ranges sessions recorded before training directions existed
+// were scored against (their stored pctTimeIn* figures) — labels only.
+const LEGACY_PITCH_RANGE_LABEL = "165–255 Hz";
+const LEGACY_F2_RANGE_LABEL = "≥ 1400 Hz";
+
+function hasDirectionLog(session) {
+  return Array.isArray(session.directionLog) && session.directionLog.length > 0;
+}
+
+// "More feminine", "More feminine → Just exploring", or null (legacy).
+function goalText(session) {
+  if (!hasDirectionLog(session)) return null;
+  return directionsUsed(session.directionLog).map(directionLabel).join(" → ");
+}
+
+// Label for a time-in-target stat: "Pitch in target (165–255 Hz)" for a
+// single-direction session, "Pitch in target" when it changed, the fixed
+// range for legacy sessions.
+function targetStatLabel(session, kind) {
+  if (!hasDirectionLog(session)) {
+    return kind === "pitch" ? `Pitch in ${LEGACY_PITCH_RANGE_LABEL}` : `F2 ${LEGACY_F2_RANGE_LABEL}`;
+  }
+  const used = directionsUsed(session.directionLog);
+  const base = kind === "pitch" ? "Pitch in target" : "F2 in target";
+  if (used.length !== 1) return base;
+  const t = kind === "pitch" ? pitchTargetFor(used[0]) : f2TargetFor(used[0]);
+  return t ? `${base} (${formatTarget(t)})` : base;
+}
 
 export function SessionHistory() {
   const [sessions, setSessions] = useState([]);
@@ -193,7 +237,7 @@ function SessionCard({ session, expanded, onToggle, onDelete }) {
           </span>
           {session.pctTimeInPitchTarget != null && (
             <span className="text-neutral-400">
-              Pitch in target:{" "}
+              {targetStatLabel(session, "pitch")}:{" "}
               <span
                 className={
                   session.pctTimeInPitchTarget >= 50
@@ -207,12 +251,12 @@ function SessionCard({ session, expanded, onToggle, onDelete }) {
           )}
           {session.pctTimeInResonanceTarget != null && (
             <span className="text-neutral-400">
-              F2 in target:{" "}
+              {targetStatLabel(session, "f2")}:{" "}
               <span
                 className={
                   session.pctTimeInResonanceTarget >= 50
-                    ? "text-blue-400"
-                    : "text-orange-400"
+                    ? "text-green-400"
+                    : "text-red-400"
                 }
               >
                 {fmtPct(session.pctTimeInResonanceTarget)}
@@ -220,6 +264,10 @@ function SessionCard({ session, expanded, onToggle, onDelete }) {
             </span>
           )}
         </div>
+
+        {goalText(session) && (
+          <p className="text-[11px] text-neutral-500 mt-1">Goal: {goalText(session)}</p>
+        )}
 
         {session.notes && (
           <p className="text-xs text-neutral-500 mt-1 truncate italic">
@@ -253,8 +301,8 @@ function SessionCard({ session, expanded, onToggle, onDelete }) {
             <Stat label="Avg HNR" value={
               session.avgHnr != null ? `${session.avgHnr.toFixed(1)} dB` : "--"
             } />
-            <Stat label="Pitch in Target" value={fmtPct(session.pctTimeInPitchTarget)} />
-            <Stat label="F2 in Target" value={fmtPct(session.pctTimeInResonanceTarget)} />
+            <Stat label={targetStatLabel(session, "pitch")} value={fmtPct(session.pctTimeInPitchTarget)} />
+            <Stat label={targetStatLabel(session, "f2")} value={fmtPct(session.pctTimeInResonanceTarget)} />
             <Stat label="Total Duration" value={formatDuration(session.durationSeconds)} />
             <Stat label="Voiced Duration" value={formatDuration(session.voicedDurationSeconds)} />
           </div>
@@ -264,7 +312,7 @@ function SessionCard({ session, expanded, onToggle, onDelete }) {
           )}
 
           {/* Static traces */}
-          <SessionTraces sessionId={session.id} />
+          <SessionTraces sessionId={session.id} directionLog={hasDirectionLog(session) ? session.directionLog : null} />
 
           {/* Audio playback */}
           {session.audioBlob && <AudioPlayer blob={session.audioBlob} />}
@@ -313,7 +361,7 @@ function AudioPlayer({ blob }) {
 }
 
 // Static pitch + resonance traces for a completed session
-function SessionTraces({ sessionId }) {
+function SessionTraces({ sessionId, directionLog }) {
   const [frames, setFrames] = useState(null);
   const pitchCanvasRef = useRef(null);
   const resCanvasRef = useRef(null);
@@ -360,8 +408,8 @@ function SessionTraces({ sessionId }) {
     canvas.width = rect.width * dpr;
     canvas.height = rect.height * dpr;
 
-    drawStaticPitchTrace(canvas, frames, dpr);
-  }, [frames, resizeTick]);
+    drawStaticPitchTrace(canvas, frames, dpr, directionLog);
+  }, [frames, resizeTick, directionLog]);
 
   // Draw resonance trace
   useEffect(() => {
@@ -375,8 +423,8 @@ function SessionTraces({ sessionId }) {
     canvas.width = rect.width * dpr;
     canvas.height = rect.height * dpr;
 
-    drawStaticResonanceTrace(canvas, frames, dpr);
-  }, [frames, resizeTick]);
+    drawStaticResonanceTrace(canvas, frames, dpr, directionLog);
+  }, [frames, resizeTick, directionLog]);
 
   if (framesError) {
     return (
@@ -432,13 +480,46 @@ function SessionTraces({ sessionId }) {
   );
 }
 
-function drawStaticPitchTrace(canvas, frames, dpr) {
+// Target bands for a session: one rect per direction-log segment (a
+// session whose direction changed shows each target where it applied).
+// No log (legacy) or "Just exploring" segments draw nothing.
+function drawTargetBands(ctx, log, targetFor, displayRange, totalMs, msToX, hzToY, plotLeft, plotRight, dpr) {
+  if (!log) return;
+  for (let i = 0; i < log.length; i++) {
+    const band = bandForDisplay(targetFor(log[i].direction), displayRange);
+    if (!band) continue;
+    const x0 = Math.max(plotLeft, msToX(i === 0 ? 0 : log[i].atMs));
+    const x1 = Math.min(plotRight, msToX(i + 1 < log.length ? log[i + 1].atMs : totalMs));
+    if (x1 <= x0) continue;
+    const top = hzToY(band.high);
+    const bottom = hzToY(band.low);
+    ctx.fillStyle = COLORS.targetBand;
+    ctx.fillRect(x0, top, x1 - x0, bottom - top);
+    ctx.strokeStyle = COLORS.targetBandBorder;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4 * dpr, 4 * dpr]);
+    ctx.beginPath();
+    ctx.moveTo(x0, top);
+    ctx.lineTo(x1, top);
+    ctx.moveTo(x0, bottom);
+    ctx.lineTo(x1, bottom);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+}
+
+// Line colour for a value at a session time: in/out of that moment's
+// target, neutral without one.
+function traceColor(log, targetFor, atMs, value) {
+  const t = log ? isInTarget(value, targetFor(directionAt(log, atMs))) : null;
+  return t === null ? COLORS.neutralTrace : t ? COLORS.inTarget : COLORS.outOfTarget;
+}
+
+function drawStaticPitchTrace(canvas, frames, dpr, log) {
   const ctx = canvas.getContext("2d");
   const w = canvas.width;
   const h = canvas.height;
 
-  const targetLow = DEFAULT_PITCH_TARGET.low;
-  const targetHigh = DEFAULT_PITCH_TARGET.high;
   const displayLow = PITCH_DISPLAY_RANGE.low;
   const displayHigh = PITCH_DISPLAY_RANGE.high;
 
@@ -494,21 +575,8 @@ function drawStaticPitchTrace(canvas, frames, dpr) {
     ctx.fillText(label, x, plotBottom + 3 * dpr);
   }
 
-  // Target band
-  const bandTop = hzToY(targetHigh);
-  const bandBottom = hzToY(targetLow);
-  ctx.fillStyle = COLORS.targetBand;
-  ctx.fillRect(plotLeft, bandTop, plotRight - plotLeft, bandBottom - bandTop);
-  ctx.strokeStyle = COLORS.targetBandBorder;
-  ctx.lineWidth = 1;
-  ctx.setLineDash([4 * dpr, 4 * dpr]);
-  ctx.beginPath();
-  ctx.moveTo(plotLeft, bandTop);
-  ctx.lineTo(plotRight, bandTop);
-  ctx.moveTo(plotLeft, bandBottom);
-  ctx.lineTo(plotRight, bandBottom);
-  ctx.stroke();
-  ctx.setLineDash([]);
+  // Target band(s)
+  drawTargetBands(ctx, log, pitchTargetFor, PITCH_DISPLAY_RANGE, totalMs, msToX, hzToY, plotLeft, plotRight, dpr);
 
   // Pitch line. Clip to the plot rect: sessions recorded before the
   // 2026-06-10 detector-floor change can hold stored F0 below the 75 Hz
@@ -540,7 +608,7 @@ function drawStaticPitchTrace(canvas, frames, dpr) {
     }
     const x = msToX(f.timestampMs);
     const y = hzToY(f.f0);
-    const inTarget = f.f0 >= targetLow && f.f0 <= targetHigh;
+    const color = traceColor(log, pitchTargetFor, f.timestampMs, f.f0);
     // Octave-class step: start a new segment rather than stroking a
     // near-vertical connecting line (same rule as the live trace).
     if (inSegment && lastDrawnF0 !== null &&
@@ -552,17 +620,17 @@ function drawStaticPitchTrace(canvas, frames, dpr) {
 
     if (!inSegment) {
       ctx.beginPath();
-      ctx.strokeStyle = inTarget ? COLORS.inTarget : COLORS.outOfTarget;
+      ctx.strokeStyle = color;
       ctx.moveTo(x, y);
       inSegment = true;
     } else {
       const prev = frames[i - 1];
-      const prevInTarget = prev?.voiced && prev.f0 != null && prev.f0 >= targetLow && prev.f0 <= targetHigh;
-      if (inTarget !== prevInTarget) {
+      const prevColor = prev?.voiced && prev.f0 != null ? traceColor(log, pitchTargetFor, prev.timestampMs, prev.f0) : null;
+      if (color !== prevColor) {
         ctx.lineTo(x, y);
         ctx.stroke();
         ctx.beginPath();
-        ctx.strokeStyle = inTarget ? COLORS.inTarget : COLORS.outOfTarget;
+        ctx.strokeStyle = color;
         ctx.moveTo(x, y);
       } else {
         ctx.lineTo(x, y);
@@ -573,13 +641,11 @@ function drawStaticPitchTrace(canvas, frames, dpr) {
   ctx.restore(); // end plot-rect clip
 }
 
-function drawStaticResonanceTrace(canvas, frames, dpr) {
+function drawStaticResonanceTrace(canvas, frames, dpr, log) {
   const ctx = canvas.getContext("2d");
   const w = canvas.width;
   const h = canvas.height;
 
-  const targetLow = DEFAULT_F2_TARGET.low;
-  const targetHigh = DEFAULT_F2_TARGET.high;
   const displayLow = F2_DISPLAY_RANGE.low;
   const displayHigh = F2_DISPLAY_RANGE.high;
 
@@ -635,21 +701,8 @@ function drawStaticResonanceTrace(canvas, frames, dpr) {
     ctx.fillText(label, x, plotBottom + 3 * dpr);
   }
 
-  // Target band
-  const bandTop = hzToY(targetHigh);
-  const bandBottom = hzToY(targetLow);
-  ctx.fillStyle = COLORS.resTargetBand;
-  ctx.fillRect(plotLeft, bandTop, plotRight - plotLeft, bandBottom - bandTop);
-  ctx.strokeStyle = COLORS.resTargetBandBorder;
-  ctx.lineWidth = 1;
-  ctx.setLineDash([4 * dpr, 4 * dpr]);
-  ctx.beginPath();
-  ctx.moveTo(plotLeft, bandTop);
-  ctx.lineTo(plotRight, bandTop);
-  ctx.moveTo(plotLeft, bandBottom);
-  ctx.lineTo(plotRight, bandBottom);
-  ctx.stroke();
-  ctx.setLineDash([]);
+  // Target band(s)
+  drawTargetBands(ctx, log, f2TargetFor, F2_DISPLAY_RANGE, totalMs, msToX, hzToY, plotLeft, plotRight, dpr);
 
   // F2 line
   ctx.lineWidth = 1.5 * dpr;
@@ -665,21 +718,21 @@ function drawStaticResonanceTrace(canvas, frames, dpr) {
     }
     const x = msToX(f.timestampMs);
     const y = hzToY(f.f2);
-    const inTarget = f.f2 >= targetLow;
+    const color = traceColor(log, f2TargetFor, f.timestampMs, f.f2);
 
     if (!inSegment) {
       ctx.beginPath();
-      ctx.strokeStyle = inTarget ? COLORS.resInTarget : COLORS.resOutOfTarget;
+      ctx.strokeStyle = color;
       ctx.moveTo(x, y);
       inSegment = true;
     } else {
       const prev = frames[i - 1];
-      const prevInTarget = prev?.voiced && prev.f2 != null && prev.f2 >= targetLow;
-      if (inTarget !== prevInTarget) {
+      const prevColor = prev?.voiced && prev.f2 != null ? traceColor(log, f2TargetFor, prev.timestampMs, prev.f2) : null;
+      if (color !== prevColor) {
         ctx.lineTo(x, y);
         ctx.stroke();
         ctx.beginPath();
-        ctx.strokeStyle = inTarget ? COLORS.resInTarget : COLORS.resOutOfTarget;
+        ctx.strokeStyle = color;
         ctx.moveTo(x, y);
       } else {
         ctx.lineTo(x, y);

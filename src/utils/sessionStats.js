@@ -3,7 +3,7 @@
 // sessions that never got finalized (tab close / crash / mobile discard),
 // so both write identical stat definitions. Pure — runnable in Node.
 
-import { DEFAULT_PITCH_TARGET, DEFAULT_F2_TARGET } from "./constants.js";
+import { directionAt, pitchTargetFor, f2TargetFor, inTarget } from "./trainingDirection.js";
 
 // Linear-interpolated percentile of an ascending-sorted numeric array.
 function percentileSorted(sorted, p) {
@@ -22,8 +22,15 @@ function percentileSorted(sorted, p) {
 export const PITCH_RANGE_LOW_PCT = 0.05;
 export const PITCH_RANGE_HIGH_PCT = 0.95;
 
-// Compute summary statistics from recorded frames
-export function computeSummaryStats(frames) {
+// Compute summary statistics from recorded frames.
+//
+// Time-in-target is measured against the training direction in effect at
+// each frame (`directionLog`: [{ atMs, direction }] on the frames'
+// timestampMs clock — see utils/trainingDirection.js). Frames recorded
+// while "Just exploring" have no target and don't count either way; with
+// no direction log at all (sessions recorded before directions existed)
+// the in-target figures are null rather than assumed.
+export function computeSummaryStats(frames, { directionLog = null } = {}) {
   const voicedFrames = frames.filter((f) => f.voiced && f.f0 !== null);
   const f0Values = voicedFrames.map((f) => f.f0);
   const f2Values = voicedFrames.filter((f) => f.f2 !== null).map((f) => f.f2);
@@ -46,11 +53,17 @@ export function computeSummaryStats(frames) {
     return Math.sqrt(variance);
   };
 
-  // Time in target calculations
-  const pitchInTarget = f0Values.filter(
-    (f0) => f0 >= DEFAULT_PITCH_TARGET.low && f0 <= DEFAULT_PITCH_TARGET.high
-  );
-  const f2InTarget = f2Values.filter((f2) => f2 >= DEFAULT_F2_TARGET.low);
+  // Time in target (per frame, against that frame's direction).
+  let pitchWithTarget = 0, pitchInTarget = 0, f2WithTarget = 0, f2InTarget = 0;
+  if (Array.isArray(directionLog) && directionLog.length > 0) {
+    for (const f of voicedFrames) {
+      const dir = directionAt(directionLog, f.timestampMs ?? 0);
+      const p = inTarget(f.f0, pitchTargetFor(dir));
+      if (p !== null) { pitchWithTarget++; if (p) pitchInTarget++; }
+      const r = inTarget(f.f2, f2TargetFor(dir));
+      if (r !== null) { f2WithTarget++; if (r) f2InTarget++; }
+    }
+  }
 
   // Estimate voiced duration. DSP analysis runs once per chunk arrival
   // (default chunkMs = 25), not once per WINDOW_MS — so frames are ~25 ms
@@ -75,11 +88,11 @@ export function computeSummaryStats(frames) {
     pitchRangeLow: percentileSorted(f0Sorted, PITCH_RANGE_LOW_PCT),
     pitchRangeHigh: percentileSorted(f0Sorted, PITCH_RANGE_HIGH_PCT),
     pitchStdev: stdev(f0Values),
-    pctTimeInPitchTarget: f0Values.length
-      ? Math.round((pitchInTarget.length / f0Values.length) * 100)
+    pctTimeInPitchTarget: pitchWithTarget
+      ? Math.round((pitchInTarget / pitchWithTarget) * 100)
       : null,
-    pctTimeInResonanceTarget: f2Values.length
-      ? Math.round((f2InTarget.length / f2Values.length) * 100)
+    pctTimeInResonanceTarget: f2WithTarget
+      ? Math.round((f2InTarget / f2WithTarget) * 100)
       : null,
     voicedDurationSeconds,
   };

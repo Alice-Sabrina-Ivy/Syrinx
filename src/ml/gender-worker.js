@@ -1,16 +1,18 @@
 // gender-worker.js — On-device perceived-gender classifier.
 //
-// Hosts a Wav2Vec2 audio-classification pipeline (Transformers.js) and
-// produces a 0-100 "femininity" score from a rolling 0.75-second window
-// of microphone audio. Inference runs at ~6.7 Hz (every 150 ms), gated
-// by a peak-amplitude VAD to skip silent windows and EMA-smoothed across
-// inferences. After a sustained run of silent inferences the EMA resets
-// so a new utterance doesn't blend with a stale pre-pause value.
-// Replaces the older hand-crafted vowel-normalized resonance score.
+// Hosts an audio-classification pipeline (Transformers.js) and produces a
+// 0-100 "femininity" score from a rolling 0.75-second window of
+// microphone audio. Inference runs at ~6.7 Hz (every 150 ms) on windows
+// the utterance gate (utterance-gate.js) clears: recent AND voiced
+// running speech, at most half pre-onset audio, never held phonation.
+// Scores are EMA-smoothed within an utterance; the EMA restarts at each
+// utterance onset so a new utterance never blends with the previous one
+// or with the noise before it.
 //
 // Protocol:
 //   main → worker: { type: "init", inputSampleRate, modelId?, diag? }
 //                  { type: "audioPort", port }       MessagePort from AudioWorklet
+//                  { type: "pitch-hint", voiced, ts, pitch }  relayed per pitch frame
 //   worker → main: { type: "status", status, message?, modelId?, device? }
 //                                                "loading"|"ready"|"error";
 //                                                modelId + device populated on
@@ -19,6 +21,10 @@
 //                                                backend (webgpu vs wasm) won
 //                  { type: "progress", loaded, total, file }
 //                  { type: "score", score, confidence, ts, inferMs? }
+//                  { type: "voice-state", state, ts }  on change — what the
+//                                                meter should say: "listening"
+//                                                | "updating" | "scoring" |
+//                                                "pause" | "sustained"
 //                  { type: "inference-event", event: "timeout", durationMs, ts }
 //
 // (The main thread tears workers down via Worker.terminate(); there is
@@ -41,9 +47,8 @@ import {
   VAD_PEAK_THRESHOLD,
   VAD_SILENCE_FLOOR,
   TARGET_SAMPLE_RATE,
-  createVoicedRecencyGate,
-  subFloorVoiced,
 } from "./audio-utils.js";
+import { createUtteranceGate, meterStateForVerdict } from "./utterance-gate.js";
 
 // We don't ship the model in the bundle — fetch from the Hub at runtime.
 env.allowRemoteModels = true;
@@ -124,18 +129,25 @@ const ring = new RingWindow(WINDOW_SAMPLES);
 let inferenceInProgress = false;
 let lastInferenceMs = 0;
 let smoothedFemale = null;              // EMA over recent inferences
+// EMA reset for the amplitude-only fallback below (pitch feed dead):
+// after a sustained run of gated windows the score is treated as stale.
 const silenceTracker = new SilenceTracker();
-// Pitch-voicedness gate (see createVoicedRecencyGate in audio-utils.js):
-// the peak VAD alone passes 100 % of noise-only windows for every noise
-// type measured, so pauses in a noisy room fed masculine-leaning scores
-// into the EMA. The main thread relays each pitch message here as
-// { type: "pitch-hint", voiced, ts }; windows without recent voiced
-// pitch are treated as silence. Fails OPEN if the pitch feed goes
-// stale. measurements/noise-robustness-oracle-2026-07-19.md §4.
-const voicedGate = createVoicedRecencyGate();
-// Active notch frequencies from the latest pitch-hint — consumed by the
-// sub-floor voicing probe below.
-let notchedFreqs = [];
+// Utterance gate (utterance-gate.js, 2026-10-07): decides from the
+// relayed pitch-voicing stream which windows are scoreable, when an
+// utterance starts (EMA reset), and when the voice is held phonation the
+// classifier can't read. Replaces the 2026-07-19 voiced-recency gate +
+// sub-75 Hz periodicity probe, which together scored 41 % of real-noise
+// windows and the mostly-pre-onset first windows of every utterance:
+// measurements/perceived-voice-gate-2026-10-07.md.
+const gate = createUtteranceGate({ windowMs: WINDOW_SECONDS * 1000 });
+let lastVoiceState = null;
+let lastGateMode = null;                // "gated" | "fallback"
+
+function postVoiceState(state) {
+  if (state === lastVoiceState) return;
+  lastVoiceState = state;
+  self.postMessage({ type: "voice-state", state, ts: performance.timeOrigin + performance.now() });
+}
 
 // Sentinel error class so the catch branch can distinguish a hang-induced
 // timeout from a real inference error. Only timeouts get the recover-and-
@@ -183,34 +195,39 @@ async function maybeInfer() {
 
   const windowCopy = ring.snapshot();
 
-  // Voice-activity gate: skip inference when the window contains no
-  // speech-level peaks. Peak (not RMS) is used because in any window
-  // that mixes speech with brief pauses a speaker between phrases
-  // produces a low average even though the speech portion is clearly
-  // voiced — RMS would falsely gate. After a sustained run of silent
-  // windows, drop the EMA so a resumed utterance doesn't blend with a
-  // stale pre-pause score.
-  // VAD (restructured 2026-07-20 — field report: quiet desktop mics froze
-  // the meter). Amplitude arm: only the true-silence floor is absolute;
-  // the old 0.05 threshold applies solely when the pitch feed is stale
-  // (legacy fallback), because real mics deliver speech peaks of
-  // 0.01-0.05 where 0.05 gated EVERYTHING. Speech-vs-noise otherwise
-  // rides the pitch-voicedness gate, which inherits the detector's
-  // adaptive mic-level handling — the two paths now share one notion of
-  // "loud enough". Sub-floor probe fails open for <75 Hz phonation
-  // (Codex PR #90), with actively-notched interferers excluded.
+  // Which windows get scored. Normally the utterance gate decides from
+  // the relayed pitch voicing (noise-robust: the pitch worker's tonal
+  // notch + harmonic voicing guard sit in front of it). The absolute
+  // silence floor always applies. If the pitch feed is dead ("stale" —
+  // never in normal operation; the pitch worker is pure JS and ready at
+  // once) fall back to the legacy peak-amplitude VAD with its silent-run
+  // EMA reset, so a broken pitch worker degrades the meter instead of
+  // silencing it. Peak, not RMS: a speech-with-pauses window has a low
+  // average but clearly speech-level peaks.
   const peak = windowPeak(windowCopy);
-  const verdict = voicedGate.shouldScore(performance.timeOrigin + performance.now());
-  const gatedOut =
-    peak < VAD_SILENCE_FLOOR ||
-    (verdict === "stale" && peak < VAD_PEAK_THRESHOLD) ||
-    (verdict === "unvoiced" && !subFloorVoiced(windowCopy, TARGET_SAMPLE_RATE, notchedFreqs));
-  if (gatedOut) {
-    if (silenceTracker.noteSilent()) smoothedFemale = null;
+  const decision = gate.decide(performance.timeOrigin + performance.now());
+  const mode = decision.verdict === "stale" ? "fallback" : "gated";
+  if (mode !== lastGateMode) {
+    // Never carry a score across a switch between the two paths.
+    smoothedFemale = null;
+    lastGateMode = mode;
+  }
+  let score;
+  if (mode === "fallback") {
+    score = peak >= VAD_PEAK_THRESHOLD;
+    if (score) silenceTracker.noteActive();
+    else if (silenceTracker.noteSilent()) smoothedFemale = null;
+    postVoiceState(score ? "scoring" : "listening");
+  } else {
+    score = decision.verdict === "score" && peak >= VAD_SILENCE_FLOOR;
+    // Utterance onset (or the end of a held note): start a fresh EMA.
+    if (decision.resetEma) smoothedFemale = null;
+    postVoiceState(decision.verdict === "score" && !score ? "pause" : meterStateForVerdict(decision.verdict));
+  }
+  if (!score) {
     lastInferenceMs = now;
     return;
   }
-  silenceTracker.noteActive();
 
   inferenceInProgress = true;
   // Hop is timed START-to-start (2026-07-19; was set in the finally
@@ -321,8 +338,7 @@ self.onmessage = (e) => {
       attachAudioPort(msg.port);
       break;
     case "pitch-hint":
-      voicedGate.notePitchHint(msg);
-      if (Array.isArray(msg.notchedFreqs)) notchedFreqs = msg.notchedFreqs;
+      gate.notePitchHint(msg);
       break;
   }
 };

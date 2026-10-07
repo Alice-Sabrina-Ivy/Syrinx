@@ -1,58 +1,53 @@
 // ResonanceMeter.jsx — Vertical thermometer for the ML perceived-gender
 // score. Replaces the older ResonanceScoreTrace + ResonanceGauge pair.
+// (A cue-strip redesign will replace this meter; until then it keeps its
+// layout, with the no-regret fixes of 2026-10-07 below.)
 //
 // Layout:
 //   - "Perceived voice" caption above the canvas (matches the styling of
-//     SpectralTiltGauge's "Vocal Weight" title)
-//   - main vertical bar fills from 0 (bottom, "Masculine") to current
-//     score (top, "Feminine") with a warm→cool gradient; faint blue
-//     band marks the feminine range at 70-100, faint orange band marks
-//     the masculine range at 0-30, with a neutral uncertain band in
-//     between (30-70)
-//   - glowing horizontal indicator rides at the current score; opacity scales
+//     the Vocal Weight title)
+//   - main vertical bar fills from 0 (bottom, "Masculine") to the current
+//     score (top, "Feminine") in ONE neutral colour; faint identical
+//     bands mark the 0-30 and 70-100 ranges with the uncertain range in
+//     between. No end of the scale is coloured as the goal — the user's
+//     training direction doesn't change how this meter looks.
+//   - horizontal indicator rides at the current score; opacity scales
 //     with confidence so low-confidence predictions read dim
-//   - thin history strip on the right shows the last ~10 inferences fading
+//   - thin history strip on the right shows the last ~10 scores fading
 //     by age
-//   - big score readout below the bar with a three-way subtitle
-//     ("in feminine range" / "in uncertain range" / "in masculine range")
+//   - big score readout below the bar with a status line
 //
-// The middle 30-70 score band is treated as the uncertain region rather
-// than a separate confidence threshold: classifier confidence is by
-// construction |score - 0.5| × 2, so "score in [30, 70]" and "confidence
-// below ~0.4" describe the same windows.
+// What it shows comes from perceivedVoiceView.js (pure, unit-tested,
+// replayed by measurements/perceived-voice-gate-2026-10-07.md):
+//   - a number only while the newest score is fresh (<= 1.2 s); the
+//     worker only scores recent, voiced running speech, so a fresh score
+//     is about the speech happening now. Stale scores are never held on
+//     screen (the previous meter kept them up to 6 s whenever the DSP
+//     gate was open — e.g. under noise above -50 dB);
+//   - "updating…" while a voice onset is being collected (the first
+//     score of an utterance waits until at most half its window predates
+//     the onset);
+//   - "needs running speech" on held vowels / sung notes (the worker's
+//     held-phonation test), which the classifier reads near 50;
+//   - nothing while no voice is heard.
 //
-// The score arrives at ~6.7 Hz; the rAF loop tweens displayScore toward
-// the latest sample with an exponential lerp so the indicator slides
-// smoothly.
+// The middle 30-70 score band is the uncertain region: classifier
+// confidence is by construction |score - 0.5| × 2, so "score in [30, 70]"
+// and "confidence below ~0.4" describe the same windows.
 //
-// Animation source: we read the most recent entry from `genderTraceRef`
-// every frame, NOT React state. The ML worker pushes to that ref
-// unconditionally, while the corresponding `genderScore` React state
-// goes through a 200 ms throttle that's shared with the high-rate DSP
-// path — DSP saturates the gate, so most ML state updates get dropped.
-// Reading the ref directly bypasses that staleness.
-//
-// Voicedness gating: the meter blanks fully (bar, indicator, score
-// number, history dots) when the DSP voicedness gate has determined no
-// voice is present. Mirrors the pitch UI behaviour established in
-// commit 8287b84 — without this, broadband ambient noise (AC, fans)
-// that exceeds the ML worker's peak-amplitude VAD but isn't actually
-// voiced was rendering as a confident perceived-voice score. The gate
-// is the AND of intensity and SwiftF0 confidence in useAudioPipeline
-// (post-Stage 4 cutover, 2026-05-06; previously OR + pYIN voicedness).
-// We read the live gate state from `dspGateRef` each rAF tick rather
-// than `voiced`/`holding` props — props go through a ~5 fps throttled
-// setState and would lag the live gate noticeably. Holding state (the
-// 5 s silence-hold after recent voice) keeps the meter at the last
-// value so a brief breath doesn't blank.
+// Scores arrive at ~6.7 Hz; the rAF loop tweens displayScore toward the
+// latest sample with an exponential lerp so the indicator slides. Score
+// and worker state are read from refs every frame, NOT React state (the
+// shared ~5 fps setState throttle would drop most ML updates).
 
 import { useRef, useEffect } from "react";
 import { COLORS } from "../utils/constants";
+import { perceivedVoiceView } from "./perceivedVoiceView";
 
-// Score range thresholds. Feminine ≥ 70, Masculine ≤ 30, Uncertain in
-// between. Kept aligned with the visual band shading on the meter.
-const SCORE_FEMININE_FLOOR = 70;
-const SCORE_MASCULINE_CEILING = 30;
+// Score range thresholds (descriptive, not targets). Kept aligned with
+// the visual band shading on the meter.
+const SCORE_HIGH_FLOOR = 70;
+const SCORE_LOW_CEILING = 30;
 
 // How quickly the displayed score chases the latest sample, per rAF tick.
 // 0.3 → ~95% of the way to the target after ~9 frames (~150 ms at 60 fps),
@@ -65,26 +60,17 @@ const LERP_RATE = 0.3;
 const HISTORY_DOTS = 10;
 const HISTORY_AGE_MS = 6000;
 
-// Recency rules for the bar/indicator/readout. genderTraceRef keeps its
-// last entry until a NEW score arrives, but the worker posts nothing
-// while its VAD gates windows out (and silently resets its EMA after
-// ~2.1 s of them) — so without an age check the meter kept painting the
-// pre-pause score at full color whenever the DSP gate opened again,
-// e.g. under non-voice noise above -50 dB. Two rules, so the designed
-// 5 s silence hold (gate `holding`) still shows the last value:
-//   - SCORE_STALE_MS: the gate has been OPEN this long and no score has
-//     arrived since it opened -> the open gate isn't voice the worker
-//     will score (noise) -> blank. Scores land every ~150 ms during
-//     speech (slower where inference overruns the hop), so 1.5 s is not
-//     a slow inference; a speech onset gets its first score well inside.
-//   - SCORE_MAX_AGE_MS: never show a score older than the hold horizon
-//     (SILENCE_HOLD_MS 5 s + a margin), e.g. at the onset of the next
-//     utterance after a long pause, before its first score lands.
-const SCORE_STALE_MS = 1500;
-const SCORE_MAX_AGE_MS = 6000;
+const STATUS_TEXT = {
+  loading: "loading…",
+  error: "unavailable",
+  listening: "waiting for speech",
+  updating: "updating…",
+  sustained: "needs running speech",
+};
 
 export function ResonanceMeter({
   genderTraceRef,
+  genderStateRef,
   dspGateRef,
   modelStatus,
   modelProgress,
@@ -96,10 +82,6 @@ export function ResonanceMeter({
   // Animation state — kept in refs so the rAF loop doesn't re-render React.
   const displayScoreRef = useRef(null);
   const displayConfRef = useRef(0);
-  // When the DSP gate last went from not-voiced to voiced (epoch ms) —
-  // see SCORE_STALE_MS.
-  const gateOpenedAtRef = useRef(0);
-  const gateWasVoicedRef = useRef(false);
 
   // Resize handling
   useEffect(() => {
@@ -125,6 +107,7 @@ export function ResonanceMeter({
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     let animId;
+    let lastLabel = null;
 
     const pad = { left: 16, right: 16, top: 26, bottom: 60 };
     const HISTORY_COL_WIDTH = 18; // px (logical)
@@ -134,20 +117,21 @@ export function ResonanceMeter({
       return plotBottom - frac * (plotBottom - plotTop);
     }
 
-    function gradientColor(score) {
-      // 0 → red/orange, 50 → yellow, 100 → blue/green target
-      if (score <= 50) {
-        const t = score / 50;
-        const r = 239;
-        const g = Math.round(68 + (200 - 68) * t);
-        const b = Math.round(68 * (1 - t));
-        return `rgb(${r}, ${g}, ${b})`;
-      }
-      const t = (score - 50) / 50;
-      const r = Math.round(239 - (239 - 96) * t);
-      const g = Math.round(200 + (165 - 200) * t);
-      const b = Math.round(0 + 250 * t);
-      return `rgb(${r}, ${g}, ${b})`;
+    // One of the two outer ranges: faint fill + dashed edge line.
+    function drawBand(fromScore, toScore, edgeScore, barLeft, barRight, plotTop, plotBottom, dpr) {
+      const top = scoreToY(toScore, plotTop, plotBottom);
+      const bottom = scoreToY(fromScore, plotTop, plotBottom);
+      ctx.fillStyle = COLORS.meterBand;
+      ctx.fillRect(barLeft, top, barRight - barLeft, bottom - top);
+      const edge = scoreToY(edgeScore, plotTop, plotBottom);
+      ctx.strokeStyle = COLORS.meterBandBorder;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4 * dpr, 4 * dpr]);
+      ctx.beginPath();
+      ctx.moveTo(barLeft, edge);
+      ctx.lineTo(barRight, edge);
+      ctx.stroke();
+      ctx.setLineDash([]);
     }
 
     function draw() {
@@ -190,8 +174,8 @@ export function ResonanceMeter({
       ctx.fillStyle = "rgba(10, 10, 10, 0.95)";
       ctx.fillRect(0, 0, w, h);
 
-      // Top "Feminine" / bottom "Masculine" labels (will sit just above
-      // and below the plot region inside the padding area).
+      // Top "Feminine" / bottom "Masculine" end labels (just above and
+      // below the plot region inside the padding area).
       ctx.fillStyle = COLORS.gridLabel;
       ctx.font = `${10 * dpr}px system-ui`;
       ctx.textBaseline = "alphabetic";
@@ -204,62 +188,26 @@ export function ResonanceMeter({
       ctx.fillStyle = "rgba(255, 255, 255, 0.04)";
       ctx.fillRect(barLeft, plotTop, barWidth, plotHeight);
 
-      // Masculine range band 0-30
-      const mascTop = scoreToY(SCORE_MASCULINE_CEILING, plotTop, plotBottom);
-      const mascBottom = scoreToY(0, plotTop, plotBottom);
-      ctx.fillStyle = COLORS.resMaleBand;
-      ctx.fillRect(barLeft, mascTop, barWidth, mascBottom - mascTop);
-      ctx.strokeStyle = COLORS.resMaleBandBorder;
-      ctx.lineWidth = 1;
-      ctx.setLineDash([4 * dpr, 4 * dpr]);
-      ctx.beginPath();
-      ctx.moveTo(barLeft, mascTop);
-      ctx.lineTo(barRight, mascTop);
-      ctx.stroke();
+      // The two outer ranges, drawn identically.
+      drawBand(0, SCORE_LOW_CEILING, SCORE_LOW_CEILING, barLeft, barRight, plotTop, plotBottom, dpr);
+      drawBand(SCORE_HIGH_FLOOR, 100, SCORE_HIGH_FLOOR, barLeft, barRight, plotTop, plotBottom, dpr);
 
-      // Feminine range band 70-100
-      const femTop = scoreToY(100, plotTop, plotBottom);
-      const femBottom = scoreToY(SCORE_FEMININE_FLOOR, plotTop, plotBottom);
-      ctx.fillStyle = COLORS.resTargetBand;
-      ctx.fillRect(barLeft, femTop, barWidth, femBottom - femTop);
-      ctx.strokeStyle = COLORS.resTargetBandBorder;
-      ctx.beginPath();
-      ctx.moveTo(barLeft, femBottom);
-      ctx.lineTo(barRight, femBottom);
-      ctx.stroke();
-      ctx.setLineDash([]);
-
-      // Read the latest score/confidence directly from the trace ref so
-      // we're not at the mercy of the throttledSetState gate (see header
-      // comment for why this matters).
-      // Voicedness gating: when the DSP-side gate has determined no voice
-      // is present (idle = !voiced && !holding), drive targetScore to
-      // null so the bar/indicator/score-number all blank — same model
-      // the pitch UI uses (commit 8287b84). Holding state (the 5 s
-      // silence-hold after recent voice) keeps showing the last value;
-      // a brief breath shouldn't blank the meter, only sustained silence
-      // should. Without this gate, broadband ambient noise (AC, fans)
-      // that exceeds the ML worker's peak-VAD threshold but isn't actually
-      // voiced renders as a confident-looking score.
-      const gate = dspGateRef?.current ?? { voiced: false, holding: false };
-      const voiced = gate.voiced;
-      const holding = gate.holding;
-      const idle = !voiced && !holding;
+      // What to show right now (number / updating / needs running speech /
+      // nothing) — see perceivedVoiceView.js.
       const data = genderTraceRef?.current ?? [];
-      // Entry `time` is the worker's epoch ms (performance.timeOrigin +
-      // now()) — compare against the same epoch clock, as the history
-      // strip below does.
+      // Entry `time` and the state's `ts` are worker epoch ms
+      // (performance.timeOrigin + now()) — compare on the same clock.
       const now = Math.round(performance.timeOrigin + performance.now());
-      if (voiced && !gateWasVoicedRef.current) gateOpenedAtRef.current = now;
-      gateWasVoicedRef.current = voiced;
       const newest = data.length > 0 ? data[data.length - 1] : null;
-      const unscoredOpen = voiced && newest
-        && newest.time < gateOpenedAtRef.current
-        && now - gateOpenedAtRef.current > SCORE_STALE_MS;
-      const latest = newest && !unscoredOpen && now - newest.time <= SCORE_MAX_AGE_MS
-        ? newest : null;
-      const targetScore = idle ? null : (latest?.score ?? null);
-      const targetConf = idle ? 0 : (latest?.confidence ?? 0);
+      const view = perceivedVoiceView({
+        now,
+        modelStatus,
+        dspGate: dspGateRef?.current ?? { voiced: false, holding: false },
+        newest,
+        voiceState: genderStateRef?.current ?? null,
+      });
+      const targetScore = view.score;
+      const targetConf = targetScore === null ? 0 : (newest?.confidence ?? 0);
 
       // Tween animation for the displayed score
       if (targetScore == null) {
@@ -272,33 +220,25 @@ export function ResonanceMeter({
       displayConfRef.current += (targetConf - displayConfRef.current) * LERP_RATE;
 
       const dispScore = displayScoreRef.current;
+      const showNumber = dispScore != null && modelStatus === "ready";
 
-      if (dispScore !== null && modelStatus === "ready") {
-        // Filled portion: gradient orange→blue, top edge at the displayed score
+      if (showNumber) {
         const fillTop = scoreToY(dispScore, plotTop, plotBottom);
-        const grad = ctx.createLinearGradient(0, plotBottom, 0, plotTop);
-        grad.addColorStop(0, "rgba(239, 68, 68, 0.65)");
-        grad.addColorStop(0.5, "rgba(234, 179, 8, 0.65)");
-        grad.addColorStop(1, "rgba(96, 165, 250, 0.65)");
-        ctx.fillStyle = grad;
+        ctx.save();
+        if (view.dim) ctx.globalAlpha = 0.55;
+        ctx.fillStyle = COLORS.meterFill;
         ctx.fillRect(barLeft, fillTop, barWidth, plotBottom - fillTop);
 
-        // Glowing indicator at the top of the fill.
-        const indicatorColor = gradientColor(dispScore);
+        // Indicator at the top of the fill.
         const conf = Math.max(0, Math.min(1, displayConfRef.current));
-        const glowAlpha = 0.4 + 0.6 * conf;
-
-        ctx.save();
-        ctx.globalAlpha = glowAlpha;
-        // Halo
+        ctx.globalAlpha *= 0.4 + 0.6 * conf;
         const halo = ctx.createRadialGradient(barCx, fillTop, 2 * dpr, barCx, fillTop, 24 * dpr);
-        halo.addColorStop(0, indicatorColor);
+        halo.addColorStop(0, COLORS.meterIndicator);
         halo.addColorStop(1, "transparent");
         ctx.fillStyle = halo;
         ctx.fillRect(barLeft - 14 * dpr, fillTop - 24 * dpr, barWidth + 28 * dpr, 48 * dpr);
 
-        // Crisp horizontal line
-        ctx.strokeStyle = indicatorColor;
+        ctx.strokeStyle = COLORS.meterIndicator;
         ctx.lineWidth = 2.5 * dpr;
         ctx.beginPath();
         ctx.moveTo(barLeft - 4 * dpr, fillTop);
@@ -312,96 +252,82 @@ export function ResonanceMeter({
       ctx.lineWidth = 1;
       ctx.strokeRect(barLeft + 0.5, plotTop + 0.5, barWidth - 1, plotHeight - 1);
 
-      // History strip — last HISTORY_DOTS recent inferences
+      // History strip — last HISTORY_DOTS scores within HISTORY_AGE_MS,
+      // skipping any whose `voiced` tag (the DSP gate's state when the
+      // score arrived, set by useAudioPipeline) is false; entries without
+      // the field count as voiced. Hidden while no voice is heard, so old
+      // dots never stand in for a current reading.
       const colCx = barRight + 8 * dpr + historyColW / 2;
-
-      // Collect up to HISTORY_DOTS most recent points within HISTORY_AGE_MS,
-      // skipping any whose `voiced` tag is false. The tag (added by
-      // useAudioPipeline at emission time) records the DSP gate's state
-      // when the ML score arrived. Without this filter, the strip's 6 s
-      // retention overlaps the 5 s silence-hold and produces a 1 s window
-      // of stale colored dots after the bar/indicator have blanked —
-      // exactly the ambient-noise scenario this gate is supposed to fix.
-      // Entries without the field (older sessions, HMR transitions) default
-      // to voiced=true for backward compatibility.
-      const recent = [];
-      for (let i = data.length - 1; i >= 0 && recent.length < HISTORY_DOTS; i--) {
-        const pt = data[i];
-        if (now - pt.time > HISTORY_AGE_MS) break;
-        if (pt.voiced === false) continue;
-        recent.push(pt);
+      if (view.status !== "listening") {
+        const recent = [];
+        for (let i = data.length - 1; i >= 0 && recent.length < HISTORY_DOTS; i--) {
+          const pt = data[i];
+          if (now - pt.time > HISTORY_AGE_MS) break;
+          if (pt.voiced === false) continue;
+          recent.push(pt);
+        }
+        ctx.fillStyle = COLORS.meterIndicator;
+        for (let i = 0; i < recent.length; i++) {
+          const pt = recent[i];
+          const y = scoreToY(pt.score, plotTop, plotBottom);
+          const ageFrac = (now - pt.time) / HISTORY_AGE_MS;
+          ctx.globalAlpha = 0.15 + 0.5 * Math.max(0, 1 - ageFrac);
+          ctx.beginPath();
+          ctx.arc(colCx, y, 2.5 * dpr, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
       }
-      // recent[0] is newest, recent[recent.length-1] is oldest
-      for (let i = 0; i < recent.length; i++) {
-        const pt = recent[i];
-        const y = scoreToY(pt.score, plotTop, plotBottom);
-        const ageFrac = (now - pt.time) / HISTORY_AGE_MS;
-        const alpha = Math.max(0, 1 - ageFrac);
-        ctx.fillStyle = gradientColor(pt.score);
-        ctx.globalAlpha = 0.2 + 0.6 * alpha;
-        ctx.beginPath();
-        ctx.arc(colCx, y, 2.5 * dpr, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      ctx.globalAlpha = 1;
 
-      // Three-way classification by score range. The middle band is the
-      // uncertain region (see file header for why this collapses with
-      // low classifier confidence).
-      const inFeminineRange = dispScore != null && dispScore >= SCORE_FEMININE_FLOOR;
-      const inMasculineRange = dispScore != null && dispScore <= SCORE_MASCULINE_CEILING;
-      const inUncertainRange = dispScore != null && !inFeminineRange && !inMasculineRange;
-      // `idle` is computed earlier in this draw() — the voicedness gate
-      // for the bar/indicator. Reused here to dim the readout when no
-      // voice is present.
-      const readoutColor =
-        modelStatus === "loading" || modelStatus === "error" || dispScore == null
-          ? "rgba(180, 180, 180, 0.5)"
-          : idle
-            ? "rgba(120, 120, 120, 0.5)"
-            : holding
-              ? "rgba(220, 220, 220, 0.5)"
-              : inUncertainRange
-                ? "rgba(220, 220, 220, 0.7)"
-                : inFeminineRange
-                  ? COLORS.resInTarget
-                  : COLORS.resOutOfTarget;
-
-      ctx.fillStyle = readoutColor;
+      // Readout: the number in one neutral colour for every reading
+      // (dimmed when it describes a moment ago), or a dash.
+      ctx.fillStyle = !showNumber
+        ? "rgba(180, 180, 180, 0.5)"
+        : view.dim
+          ? "rgba(220, 220, 220, 0.5)"
+          : "rgba(235, 235, 235, 0.9)";
       ctx.font = `300 ${30 * dpr}px system-ui`;
       ctx.textAlign = "center";
       ctx.textBaseline = "alphabetic";
-      const readoutText = dispScore == null ? "—" : String(Math.round(dispScore));
       const readoutY = plotBottom + 38 * dpr;
-      ctx.fillText(readoutText, barCx, readoutY);
+      ctx.fillText(showNumber ? String(Math.round(dispScore)) : "—", barCx, readoutY);
 
-      // Subtitle below readout
+      // Status line below the readout.
       ctx.font = `${10 * dpr}px system-ui`;
       ctx.fillStyle = "rgba(255, 255, 255, 0.4)";
-      const subtitle =
-        modelStatus === "loading" ? "loading…" :
-        modelStatus === "error" ? "unavailable" :
-        dispScore == null ? "warming up" :
-        inFeminineRange ? "in feminine range" :
-        inMasculineRange ? "in masculine range" :
-        "in uncertain range";
+      const subtitle = showNumber
+        ? dispScore >= SCORE_HIGH_FLOOR ? "in feminine range"
+          : dispScore <= SCORE_LOW_CEILING ? "in masculine range"
+            : "in uncertain range"
+        : STATUS_TEXT[view.status] ?? "";
       ctx.fillText(subtitle, barCx, readoutY + 14 * dpr);
 
-      // First-score hint, drawn on canvas so it reflects the ref (which
-      // is always current) rather than stale React state. The window
-      // is 0.75 s so the first inference lands ~1 s after the user
-      // starts speaking; "briefly" reads more naturally than a precise
-      // duration that would need updating whenever the window changes.
-      if (modelStatus === "ready" && data.length === 0) {
+      // Text equivalent for assistive tech (and the browser checks):
+      // written to the DOM only when it changes.
+      const label = showNumber ? `${Math.round(dispScore)}, ${subtitle}` : subtitle;
+      if (label !== lastLabel) {
+        lastLabel = label;
+        canvas.setAttribute("aria-label", `Perceived voice: ${label}`);
+        canvas.dataset.status = showNumber ? "score" : view.status;
+        canvas.dataset.score = showNumber ? String(Math.round(dispScore)) : "";
+      }
+
+      // Centre-of-bar notes, drawn on canvas so they track the refs.
+      const midY = (plotTop + plotBottom) / 2;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      if (view.status === "sustained") {
+        ctx.fillStyle = "rgba(225, 225, 225, 0.9)";
+        ctx.font = `${12 * dpr}px system-ui`;
+        ctx.fillText("Needs running speech", barCx, midY - 9 * dpr);
+        ctx.fillStyle = "rgba(180, 180, 180, 0.7)";
+        ctx.font = `${10 * dpr}px system-ui`;
+        ctx.fillText("held notes aren’t scored", barCx, midY + 8 * dpr);
+      } else if (modelStatus === "ready" && data.length === 0 && view.status !== "updating") {
+        // First-score hint. The first score lands ~0.5 s into speech.
         ctx.fillStyle = "rgba(180, 180, 180, 0.65)";
         ctx.font = `${11 * dpr}px system-ui`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText(
-          "Speak briefly to see your first score",
-          (plotLeft + plotRight) / 2,
-          (plotTop + plotBottom) / 2,
-        );
+        ctx.fillText("Speak a sentence to see a reading", barCx, midY);
       }
 
       animId = requestAnimationFrame(draw);
@@ -409,10 +335,10 @@ export function ResonanceMeter({
 
     draw();
     return () => cancelAnimationFrame(animId);
-    // voiced/holding deliberately omitted: read from dspGateRef inside draw()
-    // so the rAF loop doesn't get torn down + recreated on every gate flip
-    // (which can happen multiple times per second under normal speech).
-  }, [genderTraceRef, dspGateRef, modelStatus]);
+    // The DSP gate and worker state are read from refs inside draw() so
+    // the rAF loop isn't torn down + recreated on every change (which can
+    // happen several times per second under normal speech).
+  }, [genderTraceRef, genderStateRef, dspGateRef, modelStatus]);
 
   // Overlays for loading and error states (HTML, sits above the canvas)
   let overlay = null;
@@ -453,7 +379,7 @@ export function ResonanceMeter({
         ref={containerRef}
         className="relative flex-1 min-h-0 rounded-xl overflow-hidden border border-neutral-800"
       >
-        <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
+        <canvas ref={canvasRef} role="img" aria-label="Perceived voice" className="absolute inset-0 w-full h-full" />
         {overlay}
       </div>
     </div>

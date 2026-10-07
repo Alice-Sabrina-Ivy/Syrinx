@@ -4,8 +4,15 @@ import { PitchTrace } from "./components/PitchTrace";
 import { CombinedDashboard } from "./components/CombinedDashboard";
 import { SessionHistory } from "./components/SessionHistory";
 import { DataManagement } from "./components/DataManagement";
+import { DirectionPrompt } from "./components/DirectionPrompt";
 import { DIAG_ENABLED } from "./diag/diag";
 import { repairInterruptedSessions } from "./utils/sessionRepair";
+import {
+  loadTrainingDirection,
+  saveTrainingDirection,
+  pitchTargetFor,
+} from "./utils/trainingDirection";
+import db from "./db";
 
 // Diagnostic overlay is dynamically imported and only rendered when the
 // ?diag=1 URL flag is present. Production users get zero bundle impact —
@@ -28,6 +35,11 @@ const TABS = [
 
 const WELCOME_KEY = "syrinx_welcomed";
 
+// How long to wait for the saved training direction (IndexedDB) before
+// asking without a preselection — a blocked/hung IndexedDB must not keep
+// the question from appearing.
+const DIRECTION_LOAD_TIMEOUT_MS = 1500;
+
 function WelcomeOverlay({ onDismiss }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4">
@@ -36,7 +48,7 @@ function WelcomeOverlay({ onDismiss }) {
         <p className="text-sm text-neutral-300 leading-relaxed mb-5">
           Syrinx gives you real-time visual feedback on your voice pitch, resonance, and
           vocal weight — it needs microphone access to work.{" "}
-          The green target zones show the ranges you're aiming for.
+          Next, choose what you&apos;re aiming for; the green zones then show that target range.
         </p>
         <button
           onClick={onDismiss}
@@ -70,6 +82,16 @@ function App() {
     }
   });
   const [showSettings, setShowSettings] = useState(false);
+  // Training direction: asked on EVERY load (never assumed). `direction`
+  // stays null — no targets, neutral readouts — until it's answered.
+  // The last answer (Dexie settings) is preselected in the prompt.
+  const [direction, setDirection] = useState(null);
+  const [savedDirection, setSavedDirection] = useState(null);
+  const [directionLoaded, setDirectionLoaded] = useState(false);
+  const [showDirectionPrompt, setShowDirectionPrompt] = useState(true);
+  // First visit: Welcome's "Get Started" used to start listening; it now
+  // leads to the direction question, whose Continue starts listening.
+  const startAfterDirectionRef = useRef(false);
   // Ref for session metadata (notes, elapsed, recording state) —
   // kept in sync by CombinedDashboard, readable by a future save/export feature.
   const sessionRef = useRef({ recording: false, elapsed: 0, notes: "" });
@@ -93,10 +115,42 @@ function App() {
     pitchTraceRef,
     formantTrailRef,
     genderTraceRef,
+    genderStateRef,
     dspGateRef,
     frameCallbackRef,
     streamRef,
   } = useAudioPipeline();
+
+  useEffect(() => {
+    let done = false;
+    const finish = (dir) => {
+      if (done) return;
+      done = true;
+      setSavedDirection(dir);
+      setDirectionLoaded(true);
+    };
+    loadTrainingDirection(db.settings).then(finish);
+    const timer = setTimeout(() => finish(null), DIRECTION_LOAD_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, []);
+
+  function confirmDirection(next) {
+    setDirection(next);
+    setSavedDirection(next);
+    setShowDirectionPrompt(false);
+    saveTrainingDirection(db.settings, next);
+    if (startAfterDirectionRef.current) {
+      startAfterDirectionRef.current = false;
+      start();
+    }
+  }
+
+  // Settings panel, any time (also mid-session): applies at once.
+  function changeDirection(next) {
+    setDirection(next);
+    setSavedDirection(next);
+    saveTrainingDirection(db.settings, next);
+  }
 
   // One-shot repair of sessions a previous visit never finalized (tab
   // close / crash / mobile discard) — see utils/sessionRepair.js. A
@@ -115,7 +169,7 @@ function App() {
       // Site data blocked — dismissal lasts for this page load only.
     }
     setShowWelcome(false);
-    start();
+    startAfterDirectionRef.current = true;
   }
 
   // h-dvh, not h-screen: on phones 100vh is the viewport with the URL bar
@@ -135,8 +189,19 @@ function App() {
       {/* Welcome overlay (first visit only) */}
       {showWelcome && <WelcomeOverlay onDismiss={dismissWelcome} />}
 
+      {/* Training-direction question (every load; after the welcome) */}
+      {!showWelcome && showDirectionPrompt && directionLoaded && (
+        <DirectionPrompt initial={savedDirection} onConfirm={confirmDirection} />
+      )}
+
       {/* Settings overlay */}
-      {showSettings && <DataManagement onClose={() => setShowSettings(false)} />}
+      {showSettings && (
+        <DataManagement
+          onClose={() => setShowSettings(false)}
+          direction={direction}
+          onDirectionChange={changeDirection}
+        />
+      )}
 
       {/* Header */}
       <header className="text-center mb-2 flex-shrink-0 relative">
@@ -281,7 +346,9 @@ function App() {
                 pitchTraceRef={pitchTraceRef}
                 formantTrailRef={formantTrailRef}
                 genderTraceRef={genderTraceRef}
+                genderStateRef={genderStateRef}
                 dspGateRef={dspGateRef}
+                direction={direction}
                 sessionRef={sessionRef}
                 frameCallbackRef={frameCallbackRef}
                 streamRef={streamRef}
@@ -295,6 +362,7 @@ function App() {
                       voiced={voiced}
                       holding={holding}
                       pitch={pitch}
+                      target={pitchTargetFor(direction)}
                       steadiness={steadiness}
                       steadinessHeld={steadinessHeld}
                     />

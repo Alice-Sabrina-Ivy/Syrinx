@@ -1,7 +1,6 @@
-// constants.js — Default target ranges, colors, and configuration
-
-// Default target pitch range for voice feminization (Hz)
-export const DEFAULT_PITCH_TARGET = { low: 165, high: 255 };
+// constants.js — Display ranges, colors, and configuration.
+// Target ranges depend on the user's training direction and live in
+// utils/trainingDirection.js (no direction is assumed).
 
 // Y-axis display range for pitch trace (Hz) — also the REPORTED pitch
 // range: the floor matches the detector's search floor (boersma-ac.js
@@ -14,12 +13,6 @@ export const DEFAULT_PITCH_TARGET = { low: 165, high: 255 };
 // raising maxPitchHz to keep the 2x relationship.
 export const PITCH_DISPLAY_RANGE = { low: 75, high: 400 };
 
-// F2 resonance target range for voice feminization (Hz)
-// Wide band because F2 varies heavily by vowel (low for "oo," high for "ee").
-// This represents generally feminine resonance territory across all vowels.
-// Values above the high end are fine — the concern is resonance being too low.
-export const DEFAULT_F2_TARGET = { low: 1400, high: 2800 };
-
 // Y-axis display range for resonance trace (Hz)
 export const F2_DISPLAY_RANGE = { low: 800, high: 3500 };
 
@@ -30,26 +23,30 @@ export const SILENCE_HOLD_MS = 5000;
 
 // Spectral tilt display range (dB) — lower = lighter voice, higher = heavier
 export const SPECTRAL_TILT_RANGE = { min: -5, max: 25 };
-// Default target zone for voice feminization (lighter voice)
+// Target zone of the (currently unmounted) SpectralTiltGauge — a
+// lighter-voice zone from before training directions existed; direction-
+// aware targets live in utils/trainingDirection.js.
 export const SPECTRAL_TILT_TARGET = { low: -2, high: 8 };
 
 // HNR display range (dB) — higher = cleaner voice
 export const HNR_RANGE = { min: 0, max: 35 };
 
-// Colors
+// Colors. Target colouring is the same for every training direction
+// (green in target / red outside); with no target ("Just exploring", or
+// sessions recorded before directions existed) traces use the neutral
+// colour and no band is drawn.
 export const COLORS = {
-  // Pitch trace: green / red
   inTarget: "#4ade80",
   outOfTarget: "#f87171",
   targetBand: "rgba(74, 222, 128, 0.08)",
   targetBandBorder: "rgba(74, 222, 128, 0.25)",
-  // Resonance trace: blue / orange
-  resInTarget: "#60a5fa",
-  resOutOfTarget: "#fb923c",
-  resTargetBand: "rgba(96, 165, 250, 0.08)",
-  resTargetBandBorder: "rgba(96, 165, 250, 0.25)",
-  resMaleBand: "rgba(251, 146, 60, 0.06)",
-  resMaleBandBorder: "rgba(251, 146, 60, 0.25)",
+  neutralTrace: "#c4b5fd",
+  // Perceived Voice meter: one neutral hue for every reading — the
+  // meter's ends are descriptions, not goals.
+  meterFill: "rgba(167, 139, 250, 0.45)",
+  meterIndicator: "#c4b5fd",
+  meterBand: "rgba(255, 255, 255, 0.035)",
+  meterBandBorder: "rgba(255, 255, 255, 0.14)",
   // Shared
   grid: "rgba(255, 255, 255, 0.06)",
   gridLabel: "rgba(255, 255, 255, 0.3)",

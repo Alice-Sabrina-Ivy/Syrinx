@@ -3,6 +3,11 @@
 // stats + session controls below. Handles session recording: buffers
 // frames and writes to IndexedDB every ~1s.
 //
+// Targets follow the user's training direction (utils/trainingDirection.js);
+// with none ("Just exploring") readouts are neutral. A recorded session
+// keeps a log of the direction(s) in effect so its time-in-target stats
+// are measured against the right target even if it changed mid-session.
+//
 // App keeps this component mounted for the whole time the pipeline runs
 // (so a recording survives switching to the Pitch / History tabs) and
 // passes active=false while another tab is showing: it then renders
@@ -15,7 +20,13 @@ import { PitchTrace } from "./PitchTrace";
 import { ResonanceMeter } from "./ResonanceMeter";
 import { VocalWeightGauge } from "./VocalWeightGauge";
 import { SteadinessReadout } from "./SteadinessReadout";
-import { DEFAULT_PITCH_TARGET, DEFAULT_F2_TARGET } from "../utils/constants";
+import {
+  pitchTargetFor,
+  f2TargetFor,
+  weightTargetFor,
+  inTarget as isInTarget,
+  appendDirection,
+} from "../utils/trainingDirection";
 import { computeSummaryStats } from "../utils/sessionStats";
 import { holdRecordingLock } from "../utils/sessionRepair";
 import db from "../db";
@@ -37,7 +48,9 @@ export function CombinedDashboard({
   modelProgress,
   pitchTraceRef,
   genderTraceRef,
+  genderStateRef,
   dspGateRef,
+  direction = null,
   sessionRef,
   frameCallbackRef,
   streamRef,
@@ -56,6 +69,11 @@ export function CombinedDashboard({
   const frameBufferRef = useRef([]);
   const flushIntervalRef = useRef(null);
   const recordingStartRef = useRef(null);
+
+  // Training direction(s) in effect during the recording:
+  // [{ atMs, direction }] on the frames' timestampMs clock.
+  const directionLogRef = useRef([]);
+  const directionRef = useRef(direction);
 
   // Audio recording state
   const mediaRecorderRef = useRef(null);
@@ -139,10 +157,12 @@ export function CombinedDashboard({
       const recordAudio = !!settings?.recordAudio;
 
       // Create session in DB
+      directionLogRef.current = appendDirection([], 0, directionRef.current);
       const id = await db.sessions.add({
         startedAt: now,
         sessionType: "freeform",
         notes: "",
+        directionLog: directionLogRef.current,
       });
       if (!mountedRef.current) {
         // Unmounted while the row was being created: nothing will ever
@@ -152,6 +172,14 @@ export function CombinedDashboard({
       }
       sessionIdRef.current = id;
       releaseLockRef.current = holdRecordingLock(id);
+      // A direction change while the row was being created found no
+      // session id to log against — catch it up now.
+      const caughtUp = appendDirection(directionLogRef.current, Date.now() - now, directionRef.current);
+      if (caughtUp !== directionLogRef.current) {
+        directionLogRef.current = caughtUp;
+        db.sessions.update(id, { directionLog: caughtUp })
+          .catch((err) => console.error("Failed to record direction change:", err));
+      }
 
       // Set up frame callback
       frameCallbackRef.current = (frame) => {
@@ -295,13 +323,15 @@ export function CombinedDashboard({
     const endTime = Date.now();
     const startedAt = recordingStartRef.current;
     const durationSeconds = startedAt ? Math.round((endTime - startedAt) / 1000) : null;
-    const summary = computeSummaryStats(allFrames);
+    const directionLog = directionLogRef.current;
+    const summary = computeSummaryStats(allFrames, { directionLog });
 
     await db.sessions.update(sessionId, {
       endedAt: endTime,
       durationSeconds,
       notes: notesRef.current,
       audioBlob,
+      directionLog,
       ...summary,
     });
 
@@ -344,6 +374,20 @@ export function CombinedDashboard({
   // render is unsafe.
   const finalizeRef = useRef(finalizeRecordingDb);
   useEffect(() => { finalizeRef.current = finalizeRecordingDb; });
+
+  // Direction changes (settings panel, mid-session): log them against the
+  // in-progress recording and persist the log right away, so a session
+  // that never finalizes (tab close) is repaired with the right targets.
+  useEffect(() => {
+    directionRef.current = direction;
+    const sessionId = sessionIdRef.current;
+    if (sessionId === null || recordingStartRef.current === null) return;
+    const next = appendDirection(directionLogRef.current, Date.now() - recordingStartRef.current, direction);
+    if (next === directionLogRef.current) return;
+    directionLogRef.current = next;
+    db.sessions.update(sessionId, { directionLog: next })
+      .catch((err) => console.error("Failed to record direction change:", err));
+  }, [direction]);
 
   // Keep sessionRef in sync
   useEffect(() => {
@@ -425,14 +469,11 @@ export function CombinedDashboard({
     return `${m}:${s.toString().padStart(2, "0")}`;
   };
 
-  const inPitchTarget =
-    pitch !== null &&
-    pitch >= DEFAULT_PITCH_TARGET.low &&
-    pitch <= DEFAULT_PITCH_TARGET.high;
-
-  const inF2Target =
-    formants?.f2 !== null && formants?.f2 !== undefined &&
-    formants.f2 >= DEFAULT_F2_TARGET.low;
+  // null = no target (exploring / not chosen): neutral readout.
+  const pitchTarget = pitchTargetFor(direction);
+  const inPitchTarget = isInTarget(pitch, pitchTarget);
+  const inF2Target = isInTarget(formants?.f2 ?? null, f2TargetFor(direction));
+  const targetClass = (t) => (t === null ? "text-neutral-200" : t ? "text-green-400" : "text-red-400");
 
   const statOpacity = !voiced && !holding ? "opacity-40" : holding ? "opacity-50" : "";
 
@@ -454,6 +495,7 @@ export function CombinedDashboard({
             voiced={voiced}
             holding={holding}
             pitch={pitch}
+            target={pitchTarget}
             compact
           />
         </div>
@@ -466,6 +508,7 @@ export function CombinedDashboard({
         <div className="lg:w-1/2 min-h-[260px] lg:min-h-0">
           <ResonanceMeter
             genderTraceRef={genderTraceRef}
+            genderStateRef={genderStateRef}
             dspGateRef={dspGateRef}
             modelStatus={modelStatus}
             modelProgress={modelProgress}
@@ -486,11 +529,7 @@ export function CombinedDashboard({
               </span>
               <span
                 className={`text-xl sm:text-2xl font-light tabular-nums ${
-                  pitch !== null
-                    ? inPitchTarget
-                      ? "text-green-400"
-                      : "text-red-400"
-                    : "text-neutral-600"
+                  pitch !== null ? targetClass(inPitchTarget) : "text-neutral-600"
                 }`}
               >
                 {pitch !== null ? `${Math.round(pitch)}` : "—"}
@@ -511,9 +550,7 @@ export function CombinedDashboard({
               <span
                 className={`text-xl sm:text-2xl font-light tabular-nums ${
                   formants?.f2 !== null && formants?.f2 !== undefined
-                    ? inF2Target
-                      ? "text-blue-400"
-                      : "text-orange-400"
+                    ? targetClass(inF2Target)
                     : "text-neutral-600"
                 }`}
               >
@@ -525,6 +562,7 @@ export function CombinedDashboard({
               vocalWeight={vocalWeight}
               voiced={voiced}
               holding={holding}
+              target={weightTargetFor(direction)}
             />
           </div>
 

@@ -18,6 +18,12 @@
 //   - Ready, holding (silence < 5 s): marker at last-known position,
 //     dimmed.
 //
+// Target zone (2026-10-07): follows the training direction — the lighter
+// side of the user's own baseline for "more feminine", the heavier side
+// for "more masculine", none for "androgynous" / "just exploring" (the
+// gauge is relative to the user's own recent voice, so it has no
+// population "in between"). Same look on either side.
+//
 // Each session calibrates from scratch (no cross-session persistence,
 // no buttons, no target voice). Mic/room/voice differ between
 // sessions; a 30-s re-calibration each time is cheaper than UX
@@ -28,12 +34,13 @@
 
 import { BASELINE_SIGMA } from "../audio/vocal-weight-baseline";
 
-const TARGET_BAND_LOW_SIGMA = 0.5;   // target = lighter than μ + 0.5σ
+const TARGET_BAND_SIGMA = 0.5;   // target = at least 0.5σ toward the target side
 
 export function VocalWeightGauge({
   vocalWeight,
   voiced,
   holding,
+  target = null,                  // "lighter" | "heavier" | null
 }) {
   const cpp = vocalWeight?.cpp ?? null;
   const positionFromHook = vocalWeight?.position ?? null;
@@ -47,17 +54,20 @@ export function VocalWeightGauge({
   // match the "Lighter ← → Heavier" label arrangement.
   const visualPct = positionFromHook !== null ? (1 - positionFromHook) * 100 : null;
 
-  // Target band: σ ∈ (+TARGET_BAND_LOW_SIGMA, +BASELINE_SIGMA) covers
-  // the "lighter than baseline" region. Visual LEFT = lighter (high σ),
-  // so the band anchors at the LEFT edge (visualPct 0, corresponding to
-  // σ=+BASELINE_SIGMA) and extends rightward to where σ=+0.5 falls on
-  // the ±BASELINE_SIGMA gauge span — derived from the same constant the
-  // baseline's gaugePosition uses, so the drawn band always agrees with
-  // the inTarget marker color below.
-  const targetLeftPct = ready ? 0 : null;
-  const targetWidthPct = ((BASELINE_SIGMA - TARGET_BAND_LOW_SIGMA) / (2 * BASELINE_SIGMA)) * 100;
+  // Target band: "lighter" covers σ ∈ (+TARGET_BAND_SIGMA, +BASELINE_SIGMA)
+  // — visual LEFT = lighter (high σ), so it anchors at the LEFT edge
+  // (σ=+BASELINE_SIGMA) and extends to where σ=+0.5 falls on the
+  // ±BASELINE_SIGMA span; "heavier" mirrors it from the RIGHT edge. Both
+  // derive from the same constant the baseline's gaugePosition uses, so
+  // the drawn band always agrees with the inTarget marker color below.
+  const targetWidthPct = ((BASELINE_SIGMA - TARGET_BAND_SIGMA) / (2 * BASELINE_SIGMA)) * 100;
+  const targetLeftPct = !ready || target === null ? null
+    : target === "heavier" ? 100 - targetWidthPct : 0;
 
-  const inTarget = sigmaDelta !== null && sigmaDelta >= TARGET_BAND_LOW_SIGMA;
+  const inTarget = sigmaDelta !== null && (
+    target === "lighter" ? sigmaDelta >= TARGET_BAND_SIGMA
+      : target === "heavier" ? sigmaDelta <= -TARGET_BAND_SIGMA
+        : false);
   const opacity = !voiced && !holding ? 0.3 : holding ? 0.5 : 1;
 
   return (
