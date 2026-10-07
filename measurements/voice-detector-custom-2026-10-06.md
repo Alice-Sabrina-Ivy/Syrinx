@@ -697,7 +697,7 @@ every evaluation set has now been looked at twice.**
 | round 2 as frozen (reset), fresh | 27.99 / 27.82 / 31.67 | 56 / 104 | 0 | p ≥ 0.16, 1.25 s: 55.09 / 51.71 / 59.44 |
 | round 2 as frozen (reset), carried | 31.24 / 32.49 / 33.50 | 20 / 104 | 0 | p ≥ 0.05, 1.25 s: 38.12 / 38.14 / 42.14 |
 | round 2 network without the reset, fresh | 46.47 / 46.28 / 45.34 | 47 / 104 | 12 | p ≥ 0.07, 0.25 s: 67.10 / 64.30 / 64.33 |
-| round 2 network without the reset, carried | not completed (the shared machine suspended the run) | | | |
+| round 2 network without the reset, carried | 71.00 / 68.34 / 70.09 (V1 fails: PVQD + VOICED f 3.06 %, FDA m 1.72 %, PTDB-TUG m 1.22 %) | 1 / 104 | 0 | p ≥ 0.01, 5 s: 48.54 / 50.39 / 46.27 |
 
 - The retraining did not cost separability on fresh streams: without the reset
   the round-2 network's frontier matches round 1's (12 vs 14 grid points
@@ -705,6 +705,11 @@ every evaluation set has now been looked at twice.**
   types round 1 lost.
 - The reset costs it: max(p_A, p_B) raises p on noise, so at every threshold
   less noise is vetoed (46.5 → 28.0 % at the frozen p).
+- Without the reset the retrained network still drifts with its history, as
+  the selection data showed: with the state carried, the frozen threshold
+  vetoes 3.06 % of VOICED female and 1.72 % of FDA male speech, and only one
+  grid point keeps voice (48.5 / 50.4 / 46.3 % removed). The state bank did
+  not cure the drift; the reset cures it at the price of the removal.
 - The carried state is what binds, because it moves the gate's calibration.
   With its state carried, the round-1 network's p falls so far that V1 holds
   only at p ≥ 0.01 — where it removes 65.9 / 65.0 / 58.0 % with the state
