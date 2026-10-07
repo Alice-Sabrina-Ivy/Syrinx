@@ -345,3 +345,132 @@ judge checks as the benchmark are run:
 - Downloads go to `build/vad-train/dl/` (gitignored), with at most three
   transfers at once. No audio and no weights are committed.
 - No PR is opened.
+
+## Addendum A — data step (2026-10-06, before any training)
+
+The text above was committed and pushed as 978ef5f before any data was
+prepared and before any model was trained. This addendum records what the data
+step produced, and every place where it departs from that text. **No model has
+been trained.** The private session recordings were not read.
+
+**Where the data is.**
+
+- Manifest: `build/vad-train/data/manifest*.jsonl`. There is one file per
+  preparation run; the latest record per id wins (`common.py`
+  `load_manifest`). Each record carries the source, URL or archive member,
+  licence, where the licence was read, attribution, group, split and
+  gender / voice part. Dropped files carry the reason.
+- Audio: 16 kHz PCM16 under `build/vad-train/data/{voice,nonvoice}/<source>/`.
+- Praat AC references: `<id>.f0.npz`.
+- Native-rate copies of the val voice files: `data/valnative/`.
+- Audio checks: `build/vad-train/meta/dedup_report.json`.
+- Counts: `meta/summary.json`.
+- Disk use: data 18 GB, downloads 73 GB (28 GB of that is the extracted
+  FSD50K), all gitignored.
+
+**What was built** (`summarize.py`):
+
+| kind | source | split | files | hours | groups | f / m / unknown groups | voiced h | machine / room files |
+|---|---|---|---|---|---|---|---|---|
+| voice | LibriSpeech | train | 5,567 | 10.51 | 73 | 36 / 37 / 0 | 5.63 | — |
+| voice | LibriSpeech | val | 5,559 | 10.75 | 73 | 37 / 36 / 0 | 5.60 | — |
+| voice | VCTK | train | 3,878 | 3.65 | 97 | 55 / 42 / 0 | 1.40 | — |
+| voice | VCTK | val | 533 | 0.48 | 13 | 8 / 5 / 0 | 0.17 | — |
+| voice | Coswara | train | 9,412 | 27.65 | 1,999 | 650 / 1,349 / 0 | 14.27 | — |
+| voice | Coswara | val | 1,299 | 4.02 | 268 | 72 / 196 / 0 | 2.11 | — |
+| voice | MDVR-KCL | train | 58 | 2.23 | 30 | 0 / 0 / 30 | 0.72 | — |
+| voice | MDVR-KCL | val | 15 | 0.64 | 8 | 0 / 0 / 8 | 0.23 | — |
+| voice | Dagstuhl ChoirSet | train | 500 | 6.60 | 10 | 4 / 6 / 0 | 5.12 | — |
+| voice | ESMUC | train | 399 | 5.65 | 13 | 8 / 5 / 0 | 3.77 | — |
+| voice | Choral Singing Dataset | train | 48 | 1.93 | 16 | 8 / 8 / 0 | 1.39 | — |
+| voice | Cantoría | val | 56 | 2.42 | 4 | 2 / 2 / 0 | 1.57 | — |
+| non-voice | FSD50K | train | 12,923 | 29.28 | 2,688 | — | — | 7,195 |
+| non-voice | FSD50K | val | 3,611 | 9.95 | 1,116 | — | — | 2,479 |
+| non-voice | `fstrain` | train | 514 | 7.36 | 385 | — | — | 514 |
+| non-voice | `fstrain` | val | 115 | 1.88 | 84 | — | — | 115 |
+
+- **Totals.** Voice: 58.2 h train, 18.3 h val. Non-voice: 36.6 h train,
+  11.8 h val. The synthetic interferers and room impulse responses are
+  generated in process; they are not files.
+- **Registers.** Median F0 of the files by group:
+
+  | source | f | m |
+  |---|---|---|
+  | VCTK | 200 Hz | 111 Hz |
+  | LibriSpeech | 205 Hz | 120 Hz |
+  | Coswara | 209 Hz | 128 Hz |
+  | choir sets | 297–425 Hz | 147–212 Hz |
+
+  Basses and low speakers reach the bottom of the 75–400 Hz band.
+
+**Checks.**
+
+- **Split disjointness.** 6,746 groups (speakers, singers, participants,
+  uploaders); none appears in both train and val. Freesound uploaders were
+  checked jointly across FSD50K and `fstrain`.
+- **Licences of the kept files.** CC BY 4.0: 27,486; CC0 1.0: 9,524;
+  CC BY 3.0: 7,477. Nothing else. Every kept file has an attribution.
+- **Fingerprint matcher.** FSD50K has 259 clips that were dropped by id
+  (6 benchmark previews, 253 ESC-50 sources). As a self-test, they were run
+  through the matcher:
+  - all **112** whose benchmark copy is in the index were matched, at
+    BER 0.011–0.344. All but two were ≤ 0.26;
+  - none of the 147 whose ESC-50 excerpt is not a benchmark clip was matched.
+
+  Over the whole negative set, the closest candidates that were not matched
+  sit at BER 0.355–0.38. Most of them are clips shorter than 1 s, or
+  repetitive clock ticks. The margin is therefore narrow: a copy that has
+  been degraded more than the worst known one (0.344) could be missed. The
+  id, uploader and matched-uploader rules are the backstop.
+- **Fingerprint drops: 35** (27 FSD50K, 8 `fstrain`).
+  - The Freesound originals of MS-SNSD's air-conditioner, copier and
+    vacuum-cleaner clips. These turned up in FSD50K and among the `fstrain`
+    search results.
+  - ESC-50 sources under other Freesound ids (a church-bell series, alarms,
+    engines).
+  - One held-out B clip and one 279-set clip under other ids (BER 0.24 and
+    0.29).
+- **Speech screen: 69 drops** (65 FSD50K, 4 `fstrain`).
+  - FSD50K machine / room classes lost 52 of 9,933 (0.5 %).
+  - `fstrain` lost 4 of 648.
+  - Both are under the 5 % flag.
+
+**Departures from the text above.**
+
+1. **Matched-uploader rule (stricter; added before training).** If any clip
+   of an uploader fingerprint-matches benchmark audio, that uploader's other
+   clips are dropped too, as for a benchmark uploader. The reason is rule 2's:
+   the same people, devices, rooms and machines. This covers 25 uploaders and
+   270 clips (263 FSD50K, 7 `fstrain`). A few matches at BER 0.2–0.34 may be
+   similar recordings rather than copies. Dropping them only removes training
+   data.
+2. **Fingerprint candidate search.** Candidates come from exact 16-bit
+   half-word hits, not exact 32-bit sub-fingerprints.
+   - Why: a channel-0 copy of a stereo preview sits at about BER 0.2 from
+     FSD50K's mono mix, and a 32-bit word rarely survives that. The first
+     version recalled 104 of the 112 known duplicates.
+   - The rule itself is unchanged: BER ≤ 0.35 over an aligned 3 s block.
+   - All-zero (silent) words are left out of the BER.
+   - The dedup ran again from scratch with this version.
+3. **Keyword list.** It was widened slightly before the FSD50K pass, for
+   example *spoken*, *sung* and *vocalise*. It dropped 1,700 clips. The §1.2
+   and §2.2 figures (1,689 drops, 17,681 clips) were computed with the
+   narrower draft.
+4. **Counts differ from the metadata estimates in §1–2.**
+
+   | source | estimate | built | why |
+   |---|---|---|---|
+   | FSD50K train / val | 13,929 / 3,752 | 12,923 / 3,611 | the wider keyword list, 781 clips under 0.5 s, the audio checks |
+   | Coswara participants with ≥ 1 kept recording, train / val | 2,112 / 280 | 1,999 / 268 | every recording had quality label 0 or no voiced frame |
+   | `fstrain` | — | 648 clips over 46 queries | median 17 per query, at least 3; 9.2 h after the 120 s cap |
+5. **Gender.** MDVR-KCL's release gives no speaker gender, so its speakers
+   are "unknown". The Dagstuhl ChoirSet uses 10 singer ids (S1–S2, A1–A2,
+   T1–T2, B1–B4), and these are its groups.
+
+**Not built yet.** These are the first work of the training step, built from
+this manifest by §2.2 and §3:
+
+- the synthetic interferers and room impulse responses (in process, with the
+  §2.2 seeds);
+- the production-chain dumps of the val voice;
+- the val mixes and the val negatives.
