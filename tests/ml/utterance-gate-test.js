@@ -223,18 +223,18 @@ console.log("\nweak hints (pitch worker's subharmonic flag): keep an open uttera
   const ds2 = run(frag, 4000);
   check("weak frames don't extend a voiced run", ds2.every((d) => d.verdict === "silent"),
     ds2.map((d) => d.verdict[0]).join(""));
-  // Speech, then 1.6 s of weak-only frames (a low voice whose voicing the
+  // Speech, then gapMs + 0.6 s of weak-only frames (a low voice whose voicing the
   // tracker lost to noise), then speech again: the utterance stays open
   // and the EMA is not restarted.
-  const stream = (t) => (t <= 2000 ? speech(100)(t) : t <= 3600 ? weak() : speech(100)(t));
-  const ds3 = run(stream, 5500);
+  const stream = (t) => (t <= 2000 ? speech(100)(t) : t <= 2000 + D.gapMs + 600 ? weak() : speech(100)(t));
+  const ds3 = run(stream, 4500 + D.gapMs);
   check("weak frames keep an open utterance alive past gapMs",
     ds3.filter((d) => d.verdict === "score" && d.resetEma).length === 1);
-  const mid = ds3.filter((d) => d.t > 2200 && d.t <= 3600);
+  const mid = ds3.filter((d) => d.t > 2200 && d.t <= 2000 + D.gapMs + 600);
   check("an open utterance keeps scoring on weak evidence", mid.every((d) => d.verdict === "score"),
     mid.map((d) => d.verdict[0]).join(""));
   // The same stream with plain unvoiced frames closes and restarts.
-  const ds4 = run((t) => (t <= 2000 ? speech(100)(t) : t <= 3600 ? silent() : speech(100)(t)), 5500);
+  const ds4 = run((t) => (t <= 2000 ? speech(100)(t) : t <= 2000 + D.gapMs + 600 ? silent() : speech(100)(t)), 4500 + D.gapMs);
   check("(control: unvoiced frames close it)", ds4.filter((d) => d.verdict === "score" && d.resetEma).length === 2);
   // Weak frames count as unvoiced in the held-phonation test: a held note
   // whose every 4th frame is weak (75 % voiced) is not 'sustained'; a

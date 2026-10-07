@@ -78,7 +78,8 @@ export const UTTERANCE_GATE_DEFAULTS = Object.freeze({
   windowMs: 750,            // ML window length (gender-worker WINDOW_SECONDS)
   onsetRunMs: 100,          // consecutive voicing that opens an utterance
                             //   (150 until candidate meter-c1, 2026-10-07)
-  gapMs: 1000,              // no voicing this long closes it
+  gapMs: 2000,              // no voicing this long closes it (1000 until
+                            //   candidate variant meter-c2, 2026-10-07)
   recencyMs: 500,           // newest voiced hint must be this recent to score
   minVoicedShare: 0.15,     // voiced share of the window's hints
   minPostOnsetFrac: 0.5,    // >= this much of the window must follow the span start
