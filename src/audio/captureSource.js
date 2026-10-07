@@ -119,6 +119,8 @@ async function _createAudioContextSource(stream, opts) {
 
   await audioCtx.audioWorklet.addModule("capture-processor.js");
   const workletNode = new AudioWorkletNode(audioCtx, "capture-processor");
+  const portIds = new Map(); // port2 handed out -> id in the worklet (disconnectConsumer)
+  let nextPortId = 1;
 
   // Worklet message handling — init-ack and error surfaces. The
   // addEventListener pattern (vs onmessage) requires explicit start().
@@ -216,11 +218,23 @@ async function _createAudioContextSource(stream, opts) {
       // worker), so audio chunks bypass the main thread entirely. The
       // worklet broadcasts each chunk to all registered ports.
       const channel = new MessageChannel();
+      const id = nextPortId++;
+      portIds.set(channel.port2, id);
       workletNode.port.postMessage(
-        { type: "port", port: channel.port1 },
+        { type: "port", port: channel.port1, id },
         [channel.port1],
       );
       return channel.port2;
+    },
+    // Stop sending chunks to a consumer (the port connectConsumer returned,
+    // even after it was transferred to a worker): the worklet drops it from
+    // its broadcast list. Used when the opt-in gender worker is switched off.
+    disconnectConsumer(port) {
+      const id = portIds.get(port);
+      if (id === undefined) return false;
+      portIds.delete(port);
+      try { workletNode.port.postMessage({ type: "removePort", id }); } catch { /* closed */ }
+      return true;
     },
     close() {
       closed = true;
@@ -258,6 +272,7 @@ async function _createMstpSource(stream, opts) {
 
   const chunkMs = opts.chunkMs ?? 25;
   const consumerPorts = [];
+  const ownPorts = new Map(); // port2 handed out -> our port1 (disconnectConsumer)
   let chunkSize = 0;
   let pendingBuffer = null;
   let pendingFill = 0;
@@ -449,7 +464,18 @@ async function _createMstpSource(stream, opts) {
       // (caller transfers via worker.postMessage(..., [port2])).
       const channel = new MessageChannel();
       consumerPorts.push(channel.port1);
+      ownPorts.set(channel.port2, channel.port1);
       return channel.port2;
+    },
+    // Stop sending chunks to a consumer (see the AudioWorklet path).
+    disconnectConsumer(port) {
+      const own = ownPorts.get(port);
+      if (!own) return false;
+      ownPorts.delete(port);
+      const i = consumerPorts.indexOf(own);
+      if (i >= 0) consumerPorts.splice(i, 1);
+      try { own.close(); } catch { /* closed */ }
+      return true;
     },
     close() {
       stopped = true;

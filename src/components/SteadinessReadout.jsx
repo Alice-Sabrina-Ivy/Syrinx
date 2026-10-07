@@ -62,29 +62,34 @@ export function SteadinessReadout({
       aria-controls={tipId}
       aria-label="What does steadiness measure?"
       title={EXPLAINER}
-      className="ml-1 inline-flex items-center justify-center w-3.5 h-3.5 rounded-full border border-neutral-600 text-[9px] leading-none text-neutral-500 hover:text-neutral-300 hover:border-neutral-400 transition-colors cursor-pointer align-middle"
+      className="relative ml-1 inline-flex items-center justify-center w-3.5 h-3.5 rounded-full border border-neutral-500 text-[9px] leading-none text-neutral-400 hover:text-neutral-200 hover:border-neutral-300 transition-colors cursor-pointer align-middle before:absolute before:-inset-2 before:content-['']"
     >
       i
     </button>
   );
   // Anchored to the side the readout sits on so it stays on screen at
   // phone width: the dashboard column is at the left, the Pitch-tab
-  // readout ends its row.
+  // readout ends its row. The cue strip ("compact") shows it as a card fixed
+  // in the middle of the viewport, like the strip's other info popovers
+  // (2026-10-07 review: opening upward it was clipped and invisible).
+  // whitespace-normal: the strip's header row is nowrap.
   const popover = open && (
     <div
       id={tipId}
       role="note"
-      className={`absolute z-20 bottom-full mb-2 ${variant === "stat" ? "left-0" : "right-0"} w-60 max-w-[calc(100vw-2rem)] rounded-lg border border-neutral-700 bg-neutral-900/95 px-3 py-2 text-left text-xs leading-relaxed text-neutral-300 shadow-lg normal-case tracking-normal`}
+      className={variant === "compact"
+        ? "fixed z-40 inset-x-4 top-1/2 -translate-y-1/2 mx-auto max-w-md max-h-[80dvh] overflow-y-auto whitespace-normal break-words rounded-lg border border-neutral-600 bg-neutral-900 px-3 py-2 text-left text-xs lg:text-sm leading-relaxed font-normal text-neutral-200 shadow-2xl shadow-black/70 normal-case tracking-normal"
+        : `absolute z-20 bottom-full mb-2 ${variant === "stat" ? "left-0" : "right-0"} w-60 max-w-[calc(100vw-2rem)] whitespace-normal break-words rounded-lg border border-neutral-700 bg-neutral-900/95 px-3 py-2 text-left text-xs leading-relaxed font-normal text-neutral-300 shadow-lg normal-case tracking-normal`}
     >
       {EXPLAINER}
     </div>
   );
 
   // Dashboard cue strip's pitch row header (2026-10-07): "±0.4 st ⓘ" in one
-  // 11 px line; the popover opens above, anchored right.
+  // 11 px line; the popover opens below, across the cue row.
   if (variant === "compact") {
     return (
-      <span ref={wrapRef} className="relative inline-flex items-center" data-steadiness="">
+      <span ref={wrapRef} className="inline-flex items-center" data-steadiness="">
         <span className={`text-[11px] transition-opacity duration-300 ${dim}`} title="Steadiness (last ~1 s)">{valueNode}</span>
         {infoButton}
         {popover}

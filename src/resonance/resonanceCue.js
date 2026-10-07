@@ -28,6 +28,23 @@
 // one utterance can enter before the gate fires (about 7 of ~33 bins in a
 // 5 s readout; the median absorbs it).
 //
+// Where you started (startU): the MEDIAN of the readouts over the first
+// START_COLLECT_S of admitted voiced speech after the readout first fills
+// (2026-10-07 review: a single first readout sat up to 0.65 u off an
+// expressive reader's typical level, so an unchanged voice read "brighter
+// than your start" the whole session; with a ~20 s reference an unchanged
+// voice reads "about where you started" in 96 % of live samples, ±10 %
+// formants still move 0.7–0.9 u — measurements/cue-strip-review-fixes-
+// 2026-10-07.md §3). startU stays null until then.
+//
+// Resume after a long idle (2026-10-07 review): the readout itself freezes
+// through silence (it is a window of voiced time), so after ≥ IDLE_RESET_S
+// of audio with no admitted bin the snapshot's sinceResumeS restarts at 0
+// and counts the admitted voiced time since; the cue strip shows
+// "settling" until it reaches 2 s, so a voice coming back after a break
+// (or a different speaker) never gets the old value as a confident live
+// dot. The readout's values are not reset.
+//
 // Units: u = (readout − LibriSpeech men's median) / (women's − men's
 // median) (reference.json "vtln"): 0 = typical adult man in that corpus,
 // 1 = typical adult woman. The vtln estimator clamps ln α at ±0.24; a
@@ -38,6 +55,8 @@ import { createReadout } from "../resonance-lab/readout.js";
 import { createUtteranceGate } from "../ml/utterance-gate.js";
 
 export const VTLN_CLAMP_EDGE = 0.2395;
+export const IDLE_RESET_S = 10;
+export const START_COLLECT_S = 12;
 const DROP_VERDICTS = new Set(["sustained", "warming"]);
 
 /**
@@ -50,11 +69,16 @@ export function createResonanceCue({ reference, horizonS = 5, gate = true } = {}
   const g = gate ? createUtteranceGate() : null;
   let verdict = gate ? "silent" : "score";
   let startU = null;
+  let startSamples = [];
+  let startVoicedS = 0;
   let lastStampSeen = null;
   let droppedVoicedS = 0;
   let binsAdmitted = 0;
   let binsDropped = 0;
   let afterSustained = false;
+  let lastAdmitTe = null;
+  let sinceResumeS = 0;
+  let resumes = 0;
 
   return {
     /** One relayed pitch frame (the hook's pitch-hint message). */
@@ -80,10 +104,21 @@ export function createResonanceCue({ reference, horizonS = 5, gate = true } = {}
         return false;
       }
       binsAdmitted++;
+      if (lastAdmitTe !== null && typeof te === "number" && te - lastAdmitTe >= IDLE_RESET_S) { sinceResumeS = 0; resumes++; }
+      if (typeof te === "number") lastAdmitTe = te;
+      sinceResumeS += delta;
       readout.add(stampS - droppedVoicedS, value);
       if (startU === null) {
         const s = readout.snapshot();
-        if (s.fill >= 1 && s.u !== null) startU = s.u;
+        if (s.fill >= 1 && s.u !== null) {
+          if (startSamples.length) startVoicedS += delta;
+          startSamples.push(s.u);
+          if (startVoicedS >= START_COLLECT_S) {
+            const q = [...startSamples].sort((a, b) => a - b), h = q.length >> 1;
+            startU = q.length % 2 ? q[h] : (q[h - 1] + q[h]) / 2;
+            startSamples = [];
+          }
+        }
       }
       return true;
     },
@@ -99,8 +134,11 @@ export function createResonanceCue({ reference, horizonS = 5, gate = true } = {}
         clamp,
         verdict,
         startU,
+        startProgress: startU !== null ? 1 : Math.min(1, startVoicedS / START_COLLECT_S),
         binsAdmitted,
         binsDropped,
+        sinceResumeS,
+        resumes,
       };
     },
   };

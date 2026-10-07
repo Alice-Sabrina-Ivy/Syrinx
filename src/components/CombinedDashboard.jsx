@@ -12,7 +12,8 @@
 // trace sized clamp(150px, 26dvh, 240px) so trace + strip fit the first
 // screen at 448 × 890 (Pixel 8 Pro) down to 360 × 690; short landscape
 // (≤ 480 px tall, ≥ 640 px wide) puts trace and strip side by side; desktop
-// (lg) puts the trace left and a 420 px column (strip + panel) right.
+// (lg) puts the trace left and a 38 % column (420–540 px: strip + panel)
+// right, the strip drawn larger there (read at arm's length).
 //
 // The pitch target follows the user's training direction
 // (utils/trainingDirection.js) and judges the pitch LEVEL (running 1.5 s
@@ -524,7 +525,7 @@ export function CombinedDashboard({
         </div>
 
         {/* Cue strip (+ the experimental panel on desktop) */}
-        <div className="flex flex-col gap-2 lg:w-[420px] lg:shrink-0 lg:overflow-y-auto shortland:w-[52%] shortland:shrink-0">
+        <div className="flex flex-col gap-2 lg:w-[clamp(420px,38%,540px)] lg:shrink-0 lg:overflow-y-auto shortland:w-[52%] shortland:shrink-0">
           <CueStrip
             direction={direction}
             voiced={voiced}

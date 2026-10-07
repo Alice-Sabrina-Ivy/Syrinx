@@ -11,7 +11,11 @@ import {
   axisPos,
   bandsFor,
   createTrail,
+  cueResonanceRef,
+  cueSummary,
   dotColor,
+  dotHollow,
+  pitchCueWord,
   dotOpacity,
   highlightFor,
   pitchRowState,
@@ -25,13 +29,18 @@ import {
   HIGHLIGHT_STYLE,
   TRAIL_LEN,
   TRAIL_EVERY_MS,
+  RESONANCE_TRAIL,
   CUES,
 } from "../../src/components/cueStripModel.js";
 import { COLORS, CUE_AXES, statusColor } from "../../src/utils/constants.js";
 import { PITCH_TARGETS, pitchStatus, pitchTargetFor, resonanceU } from "../../src/utils/trainingDirection.js";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const REF = JSON.parse(readFileSync(path.join(repo, "public/resonance-lab/reference.json"), "utf8")).vtln;
+const SPK = JSON.parse(readFileSync(path.join(repo, "public/resonance-lab/reference.json"), "utf8")).vtln;
+const CUE_BANDS = JSON.parse(readFileSync(path.join(repo, "public/resonance-lab/cue-bands.json"), "utf8"));
+// What the strip draws with: u units from the per-speaker medians, bands
+// from the readout distribution, the per-speaker bands for androgynous.
+const REF = cueResonanceRef(SPK, CUE_BANDS);
 
 let passed = 0, failed = 0;
 function check(name, cond, detail = "") {
@@ -61,13 +70,20 @@ console.log("\nbands");
     near(p.men.x0, axisPos("pitch", PITCH_TARGETS.masculine.low).x) && near(p.men.x1, axisPos("pitch", PITCH_TARGETS.masculine.high).x)
     && near(p.women.x0, axisPos("pitch", PITCH_TARGETS.feminine.low).x) && near(p.women.x1, axisPos("pitch", PITCH_TARGETS.feminine.high).x));
   const r = bandsFor("resonance", REF);
-  check("resonance bands = reference.json q10–q90, q50 tick",
+  check("cueResonanceRef: u units unchanged (per-speaker medians), bands from cue-bands.json, speaker bands kept",
+    REF.menMedian === SPK.menMedian && REF.womenMedian === SPK.womenMedian && REF.men === CUE_BANDS.men && REF.speakerBands.women === SPK.women);
+  check("cueResonanceRef without cue bands = the per-speaker reference", cueResonanceRef(SPK, null) === SPK);
+  check("resonance bands = cue-bands.json q10–q90, tick at the typical speaker (u 0 / 1)",
     near(r.men.x0, axisPos("resonance", resonanceU(REF, REF.men.q10)).x) && near(r.men.x1, axisPos("resonance", resonanceU(REF, REF.men.q90)).x)
     && near(r.women.x0, axisPos("resonance", resonanceU(REF, REF.women.q10)).x) && near(r.women.x1, axisPos("resonance", resonanceU(REF, REF.women.q90)).x)
     && near(r.men.xm, axisPos("resonance", 0).x) && near(r.women.xm, axisPos("resonance", 1).x));
-  check("resonance band values in u (men −0.53…0.29, women 0.65…1.55)",
-    near(resonanceU(REF, REF.men.q10), -0.530, 1e-3) && near(resonanceU(REF, REF.men.q90), 0.288, 1e-3)
-    && near(resonanceU(REF, REF.women.q10), 0.654, 1e-3) && near(resonanceU(REF, REF.women.q90), 1.549, 1e-3));
+  check("resonance band values in u (readout distribution: men −0.58…0.48, women 0.57…1.39)",
+    near(resonanceU(REF, REF.men.q10), -0.582, 2e-3) && near(resonanceU(REF, REF.men.q90), 0.480, 2e-3)
+    && near(resonanceU(REF, REF.women.q10), 0.574, 2e-3) && near(resonanceU(REF, REF.women.q90), 1.390, 2e-3),
+    [REF.men.q10, REF.men.q90, REF.women.q10, REF.women.q90].map((v) => resonanceU(REF, v).toFixed(3)).join(" "));
+  check("resonance bands are wider than the per-speaker-median bands on both sides (they describe single readings)",
+    resonanceU(REF, REF.men.q90) - resonanceU(REF, REF.men.q10) > resonanceU(SPK, SPK.men.q90) - resonanceU(SPK, SPK.men.q10)
+    && resonanceU(REF, REF.women.q90) - resonanceU(REF, REF.women.q10) > 0.8);
   check("weight has no population bands", bandsFor("weight") === null);
 }
 
@@ -78,7 +94,8 @@ console.log("\ndirection highlight");
     resonance: {
       feminine: [resonanceU(REF, REF.women.q10), resonanceU(REF, REF.women.q90)],
       masculine: [resonanceU(REF, REF.men.q10), resonanceU(REF, REF.men.q90)],
-      androgynous: [resonanceU(REF, REF.men.q90), resonanceU(REF, REF.women.q10)],
+      // the gap between typical men's and women's readings (per-speaker bands)
+      androgynous: [resonanceU(SPK, SPK.men.q90), resonanceU(SPK, SPK.women.q10)],
     },
     weight: { feminine: [0.5, 3], masculine: [-3, -0.5], androgynous: null },
   };
@@ -112,6 +129,17 @@ console.log("\ndot colours: only pitch judges");
     }
   }
   check("pitch = statusColor(pitchStatus(level, target)); resonance & weight always neutral", ok);
+  check("off target is also HOLLOW (not colour alone); in / beyond / no target are filled",
+    dotHollow("pitch", { pitchLevel: 120, direction: "feminine" }) && dotHollow("pitch", { pitchLevel: 200, direction: "masculine" })
+    && dotHollow("pitch", { pitchLevel: 200, direction: "androgynous" })
+    && !dotHollow("pitch", { pitchLevel: 200, direction: "feminine" }) && !dotHollow("pitch", { pitchLevel: 280, direction: "feminine" })
+    && !dotHollow("pitch", { pitchLevel: 120, direction: null }) && !dotHollow("resonance", { pitchLevel: 120, direction: "feminine" }));
+  check("pitch word: same words in every direction",
+    pitchCueWord(120, "feminine") === "↑ higher" && pitchCueWord(200, "masculine") === "↓ lower"
+    && pitchCueWord(200, "feminine") === "in target" && pitchCueWord(120, "masculine") === "in target"
+    && pitchCueWord(130, "androgynous") === "↑ higher" && pitchCueWord(190, "androgynous") === "↓ lower"
+    && pitchCueWord(280, "feminine") === null && pitchCueWord(80, "masculine") === null
+    && pitchCueWord(150, "exploring") === null && pitchCueWord(null, "feminine") === null);
   check("beyond the band in the direction of travel is neutral (not red)",
     dotColor("pitch", { pitchLevel: 280, direction: "feminine" }) === COLORS.neutralTrace
     && dotColor("pitch", { pitchLevel: 80, direction: "masculine" }) === COLORS.neutralTrace);
@@ -138,6 +166,11 @@ console.log("\ntrail");
   t.tick("live", null);
   check("null values are not sampled", t.points().length === 1);
   check("trail opacity 0.12 (oldest) -> 0.45 (newest)", near(trailOpacity(0, 8), 0.12) && near(trailOpacity(7, 8), 0.45));
+  check("resonance trail: 15 samples, one every 8 ticks (2 s, ~30 s)", RESONANCE_TRAIL.n === 15 && RESONANCE_TRAIL.everyTicks === 8);
+  const rt = createTrail(RESONANCE_TRAIL.n, RESONANCE_TRAIL.everyTicks);
+  for (let i = 0; i < 8 * 20; i++) rt.tick("live", i);
+  check("slow trail keeps one sample per 8 live ticks, last 15", rt.points().length === 15 && rt.points()[14] === 152 && rt.points()[13] === 144,
+    JSON.stringify(rt.points()));
 }
 
 console.log("\nrow states");
@@ -148,7 +181,8 @@ console.log("\nrow states");
   const snap = (o) => ({ u: 0.8, raw: 0.03, fill: 1, voicedS: 6, verdict: "score", ...o });
   const R = (o) => resonanceRowState({ workerStatus: "ready", voiced: true, holding: false, snap: snap({}), ...o });
   check("resonance: starting (worker loading / no state yet)", resonanceRowState({ workerStatus: "loading" }) === "starting" && R({ snap: null }) === "starting");
-  check("resonance: unavailable (error / overloaded)", R({ workerStatus: "error" }) === "unavailable" && R({ workerStatus: "overloaded" }) === "unavailable");
+  check("resonance: unavailable on error; paused while the worker backs off (overloaded)", R({ workerStatus: "error" }) === "unavailable" && R({ workerStatus: "overloaded" }) === "paused");
+  check("resonance: settling again after a long pause until 2 s of new speech", R({ snap: snap({ sinceResumeS: 0.8 }) }) === "settling" && R({ snap: snap({ sinceResumeS: 2.4 }) }) === "live");
   check("resonance: idle without voice", R({ voiced: false, holding: false }) === "idle");
   check("resonance: sustained on a held note", R({ snap: snap({ verdict: "sustained" }) }) === "sustained");
   check("resonance: warming below 2 s voiced", R({ snap: snap({ voicedS: 1.2, fill: 0.24 }) }) === "warming");
@@ -157,18 +191,35 @@ console.log("\nrow states");
   check("resonance: live", R({}) === "live");
   const W = (vw, o = {}) => weightRowState({ vocalWeight: vw, voiced: true, holding: false, ...o });
   check("weight: calibrating until the baseline locks", W({ baselineReady: false, baselineProgress: 0.4 }) === "calibrating");
-  check("weight: live / holding / idle",
-    W({ baselineReady: true, sigmaDelta: 0.7 }) === "live" && W({ baselineReady: true, sigmaDelta: 0.7 }, { voiced: false, holding: true }) === "holding"
-    && W({ baselineReady: true, sigmaDelta: 0.7 }, { voiced: false, holding: false }) === "idle");
+  check("weight: live / holding / idle (on the ~5 s level, sigmaLevel)",
+    W({ baselineReady: true, sigmaLevel: 0.7 }) === "live" && W({ baselineReady: true, sigmaLevel: 0.7 }, { voiced: false, holding: true }) === "holding"
+    && W({ baselineReady: true, sigmaLevel: 0.7 }, { voiced: false, holding: false }) === "idle"
+    && W({ baselineReady: true, sigmaDelta: 0.7, sigmaLevel: null }) === "holding");
   check("dot opacity per state", dotOpacity("live") === 1 && dotOpacity("holding") === 0.5 && dotOpacity("settling") === 0.45
     && dotOpacity("idle") === null && dotOpacity("warming") === null && dotOpacity("calibrating") === null && dotOpacity("starting") === null);
   check("resonance header words", resonanceHeader("sustained") === "needs running speech" && resonanceHeader("warming") === "keep talking…"
-    && resonanceHeader("unavailable") === "unavailable on this device" && resonanceHeader("live", snap({})) === "last ~5 s of speech"
+    && resonanceHeader("unavailable") === "unavailable on this device" && resonanceHeader("paused") === "paused — device busy"
+    && resonanceHeader("live", snap({})) === "finding your start…"
     && resonanceHeader("live", snap({ raw: 0.24, u: 2.6 })) === "beyond the scale");
+  check("resonance header: change from your start, 0.3 u deadband (the same both ways)",
+    resonanceHeader("live", snap({ u: 0.9, startU: 0.7 })) === "about where you started"
+    && resonanceHeader("live", snap({ u: 1.1, startU: 0.7 })) === "brighter than your start"
+    && resonanceHeader("live", snap({ u: 0.3, startU: 0.7 })) === "darker than your start"
+    && resonanceHeader("holding", snap({ u: 0.3, startU: 0.7 })) === "darker than your start");
   check("weight header words", weightHeader("calibrating", { baselineProgress: 0.4, cpp: 12 }) === "Calibrating 40 %"
-    && weightHeader("live", { sigmaDelta: 1.24 }) === "1.2 σ lighter than your start"
-    && weightHeader("live", { sigmaDelta: -0.8 }) === "0.8 σ heavier than your start"
-    && weightHeader("idle", { sigmaDelta: 0.5 }) === "—");
+    && weightHeader("live", { sigmaLevel: 1.24 }) === "1.2 σ lighter than your start"
+    && weightHeader("live", { sigmaLevel: -0.8 }) === "0.8 σ heavier than your start"
+    && weightHeader("live", { sigmaLevel: 0.2, sigmaDelta: 2 }) === "about where you started"
+    && weightHeader("idle", { sigmaLevel: 0.5 }) === "—");
+  check("screen-reader summaries name the value and the target",
+    cueSummary("pitch", { state: "live", direction: "feminine", pitchLevel: 168 }) === "Pitch level 168 Hz, inside your target 165 to 255 Hz."
+    && cueSummary("pitch", { state: "live", direction: "masculine", pitchLevel: 180 }) === "Pitch level 180 Hz, above your target 85 to 155 Hz."
+    && cueSummary("pitch", { state: "live", direction: null, pitchLevel: 180 }) === "Pitch level 180 Hz."
+    && cueSummary("pitch", { state: "idle" }) === "Pitch: no voice right now.");
+  check("screen-reader: resonance position against the bands + change",
+    cueSummary("resonance", { state: "live", snap: snap({ u: 0.52, startU: 0.1 }), vtlnRef: REF }) === "Resonance (approximate): between the typical men's and women's bands, brighter than your start."
+    && cueSummary("resonance", { state: "warming", snap: snap({}) , vtlnRef: REF }) === "Resonance (approximate): keep talking…");
+  check("screen-reader: weight", cueSummary("weight", { state: "live", vocalWeight: { sigmaLevel: 0.9 } }) === "Vocal weight: 0.9 σ lighter than your start.");
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

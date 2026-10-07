@@ -12,9 +12,13 @@
 //                   Continue starts listening. LAYOUT (the hard requirement):
 //                   at scrollTop 0 the pitch trace and the whole cue strip are
 //                   inside the viewport, no horizontal page scroll, no clipped
-//                   strip header. Pitch live <= 3 s; resonance warming ->
+//                   strip header (horizontally or vertically — descenders).
+//                   INFO POPOVERS: each row's "i" and the steadiness "i" open a
+//                   popover whose text wraps inside it (scrollWidth <=
+//                   clientWidth) and that is on top at its centre and inside
+//                   the viewport. Pitch live <= 3 s; resonance warming ->
 //                   settling -> live (live <= 12 s); weight calibrating -> live
-//                   (<= 45 s); every live row's trail reaches 8 dots. Settings:
+//                   (<= 45 s); pitch and weight trails reach 8 dots, resonance's 3 (one per 2 s). Settings:
 //                   masculine / feminine / androgynous / exploring — each
 //                   cue's highlight range per the spec table, the same fill /
 //                   stroke in every direction, none for exploring. Heard-as:
@@ -149,6 +153,9 @@ const state = (page) => page.evaluate(() => {
       low: el.dataset.targetLow ?? null, high: el.dataset.targetHigh ?? null,
       hl: h ? { fill: cs.fill, stroke: cs.stroke, strokeWidth: cs.strokeWidth, rx: h.getAttribute("rx") } : null,
       header: el.querySelector("[data-cue-value]")?.textContent ?? "",
+      hollow: el.dataset.hollow === "1",
+      word: el.querySelector("[data-cue-word]")?.textContent ?? null,
+      sr: el.querySelector("[data-cue-sr]")?.textContent ?? "",
     };
   }
   const p = document.querySelector("[data-heard-as]");
@@ -168,11 +175,38 @@ const layout = (page) => page.evaluate(() => {
   const r = (sel) => { const e = document.querySelector(sel); if (!e) return null; const b = e.getBoundingClientRect(); return { top: Math.round(b.top), bottom: Math.round(b.bottom), left: Math.round(b.left), right: Math.round(b.right) }; };
   const trace = r("[data-pitch-trace-box]"), strip = r("[data-cue-strip]");
   const clipped = [...document.querySelectorAll("[data-cue-strip] [data-cue-title], [data-cue-strip] [data-cue-value]")]
-    .filter((e) => e.scrollWidth > e.clientWidth + 1).map((e) => e.textContent);
+    // vertically only where the box clips vertically (overflow-x: clip leaves y visible)
+    // only boxes that clip can cut text off: overflow-x: clip (titles, text
+    // values) horizontally, and vertically only where overflow-y clips too
+    .filter((e) => { const cs = getComputedStyle(e);
+      return (cs.overflowX !== "visible" && e.scrollWidth > e.clientWidth + 1) || (cs.overflowY !== "visible" && e.scrollHeight > e.clientHeight + 1); })
+    .map((e) => e.textContent);
   return { vh: innerHeight, vw: innerWidth, trace, strip, scrollW: document.documentElement.scrollWidth, clipped,
     panel: r("[data-heard-as]"), session: r("[data-session-row]") };
 });
 const inView = (b, L) => b && b.top >= 0 && b.bottom <= L.vh && b.left >= 0 && b.right <= L.vw;
+
+// Opens one info toggle (by its aria-label), measures its popover, closes it.
+const probePopover = (page, label) => page.evaluate(async (label) => {
+  const btn = [...document.querySelectorAll("[data-cue-strip] button")].find((b) => b.getAttribute("aria-label") === label);
+  if (!btn) return { found: false };
+  btn.click();
+  await new Promise((r) => setTimeout(r, 150));
+  const id = btn.getAttribute("aria-controls");
+  const pop = id ? document.getElementById(id) : null;
+  let out = { found: true, open: !!pop };
+  if (pop) {
+    const b = pop.getBoundingClientRect();
+    const cx = (b.left + b.right) / 2, cy = (b.top + b.bottom) / 2;
+    const hit = document.elementFromPoint(cx, cy);
+    out = { ...out, wraps: pop.scrollWidth <= pop.clientWidth + 1, onTop: !!hit && pop.contains(hit),
+      inViewport: b.top >= 0 && b.left >= 0 && b.right <= innerWidth && b.bottom <= innerHeight,
+      rect: [Math.round(b.left), Math.round(b.top), Math.round(b.right), Math.round(b.bottom)], sw: pop.scrollWidth, cw: pop.clientWidth };
+  }
+  document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+  await new Promise((r) => setTimeout(r, 100));
+  return out;
+}, label);
 
 async function startFirstVisit(page, direction) {
   await page.waitForFunction(() => document.body.innerText.includes("Welcome to Syrinx"), { timeout: 60000 });
@@ -223,7 +257,9 @@ async function sample(page, ms, fn) {
 const SPEC_HL = {
   // cue -> direction -> [low, high] (rounded to 3 decimals as the attribute)
   pitch: { feminine: [165, 255], masculine: [85, 155], androgynous: [145, 175] },
-  resonance: { feminine: [0.654, 1.549], masculine: [-0.53, 0.288], androgynous: [0.288, 0.654] },
+  // feminine / masculine: the cue's readout bands (cue-bands.json);
+  // androgynous: between the per-speaker bands (reference.json).
+  resonance: { feminine: [0.574, 1.39], masculine: [-0.582, 0.48], androgynous: [0.288, 0.654] },
   weight: { feminine: [0.5, 3], masculine: [-3, -0.5], androgynous: null },
 };
 
@@ -245,6 +281,19 @@ await sleep(600);
   check("layout: no clipped strip header text", L.clipped.length === 0, L.clipped.join(" | "));
   log(`  trace ${L.trace?.top}-${L.trace?.bottom}, strip ${L.strip?.top}-${L.strip?.bottom}, panel ${L.panel?.top}-${L.panel?.bottom}, session ${L.session?.top}-${L.session?.bottom}, vh ${L.vh}`);
 }
+// Info popovers (the honest caveats live there): readable and visible.
+for (const label of ["About the pitch cue", "About the resonance cue", "About the weight cue", "What does steadiness measure?"]) {
+  const r = await probePopover(page, label);
+  check(`info popover '${label}': opens, text wraps inside it, on top, inside the viewport`,
+    r.found && r.open && r.wraps && r.onTop && r.inViewport, JSON.stringify(r));
+  if (label === "About the resonance cue") {
+    await page.evaluate((label) => [...document.querySelectorAll("[data-cue-strip] button")].find((b) => b.getAttribute("aria-label") === label)?.click(), label);
+    await sleep(150);
+    await shot(page, "01b-resonance-info");
+    await page.evaluate(() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
+    await sleep(100);
+  }
+}
 {
   const s = await state(page);
   check("heard-as: off at first visit", s.heardAs?.mode === "off");
@@ -256,7 +305,10 @@ await sleep(600);
   const tLive = {};
   const maxTrail = { pitch: 0, resonance: 0, weight: 0 };
   let weightLiveAt = null;
+  let hollowBad = 0, hollowSeen = 0;
   await sample(page, 75000, (s, t) => {
+    const pr = s.rows.pitch;
+    if (pr?.dot) { if (pr.hollow) hollowSeen++; if (pr.hollow !== /higher|lower/.test(pr.word ?? "")) hollowBad++; }
     for (const cue of ["pitch", "resonance", "weight"]) {
       const r = s.rows[cue];
       if (!r) continue;
@@ -267,14 +319,15 @@ await sleep(600);
     }
     if (s.rows.weight?.state === "live" && weightLiveAt === null) weightLiveAt = t;
     return tLive.pitch !== undefined && tLive.resonance !== undefined && weightLiveAt !== null
-      && maxTrail.pitch >= 8 && maxTrail.resonance >= 8 && maxTrail.weight >= 8;
+      && maxTrail.pitch >= 8 && maxTrail.resonance >= 3 && maxTrail.weight >= 8;
   });
   check("pitch dot live within 3 s", tLive.pitch !== undefined && tLive.pitch <= 3, `${tLive.pitch?.toFixed(1)} s`);
   const rs = seen.resonance.join(">");
   check("resonance warming -> settling -> live", /warming.*settling.*live/.test(rs), rs);
   check("resonance live within 12 s", tLive.resonance !== undefined && tLive.resonance <= 12, `${tLive.resonance?.toFixed(1)} s`);
   check("weight calibrating, then live within 45 s", seen.weight.has("calibrating") && weightLiveAt !== null && weightLiveAt <= 45, `${weightLiveAt?.toFixed(1)} s`);
-  check("trail reaches 8 dots on every row", maxTrail.pitch >= 8 && maxTrail.resonance >= 8 && maxTrail.weight >= 8, JSON.stringify(maxTrail));
+  check("trail reaches 8 dots on pitch and weight, 3 on resonance (one per 2 s of live speech)", maxTrail.pitch >= 8 && maxTrail.resonance >= 3 && maxTrail.weight >= 8, JSON.stringify(maxTrail));
+  check("pitch off target: hollow dot exactly when the row says higher / lower (not colour alone)", hollowBad === 0, `${hollowBad} mismatches, ${hollowSeen} hollow samples`);
   await shot(page, "02-woman-live-masculine");
 }
 // directions via Settings

@@ -15,21 +15,24 @@
 //                   { type: "audioPort", port }                    capture chunks
 //                   { type: "pitch-hint", voiced, pitch, contextTime }
 //   worker -> main: { type: "status", status: "loading"|"ready"|"error"|"overloaded", message? }
+//                   ("overloaded" is a pause: after a back-off the worker posts
+//                    "ready" again with a fresh engine)
 //                   { type: "state", u, raw, n, fill, voicedS, clamp, verdict, startU,
-//                     framesDropped, perf? }                every 200 ms of audio
+//                     startProgress, sinceResumeS, framesDropped, perf? }                every 200 ms of audio
 //
-// Overload guard: an EMA (τ ≈ 10 s of audio) of processing ms per audio
-// second; above 500 ms/s the worker stops feeding audio to vtln, posts
-// "overloaded" and the cue row shows "unavailable on this device".
-// perf.msPerAudioS is posted when init.diag is set.
+// Overload guard (overloadGuard.js): the worker's busy ms per audio second
+// over a trailing 10 s of audio, not counting the first 3 s (start-up JIT);
+// above 500 ms/s it posts "overloaded" (the row shows "paused — device
+// busy"), skips vtln work for a back-off (20 s of audio, doubling on each
+// repeat, ≤ 160 s), then starts a fresh engine + cue and posts "ready" again.
+// perf.msPerAudioS (that trailing mean) is posted when init.diag is set.
 // measurements/resonance-cue-production-path-2026-10-07.md
 
 import { createLabEngine } from "../resonance-lab/lab-engine.js";
 import { createResonanceCue } from "./resonanceCue.js";
+import { createOverloadGuard } from "./overloadGuard.js";
 
 const POST_EVERY_S = 0.2; // of audio (deterministic: the audio clock, not wall time)
-const OVERLOAD_MS_PER_S = 500;
-const EMA_TAU_S = 10;
 
 let engine = null;
 let cue = null;
@@ -37,7 +40,9 @@ let sampleRate = 48000;
 let diag = false;
 let state = "idle"; // idle | loading | ready | error | overloaded
 let sinceLastPostS = 0;
-let emaMsPerS = null;
+let guard = null;
+let vtlnModel = null;
+let referenceJson = null;
 let totalMs = 0;
 let totalAudioS = 0;
 // Busy ms spent on relayed pitch frames since the last chunk (most of the
@@ -74,10 +79,13 @@ function post(force = false) {
     clamp: s.clamp,
     verdict: s.verdict,
     startU: s.startU,
+    startProgress: s.startProgress,
+    sinceResumeS: s.sinceResumeS,
     framesDropped: e.framesDropped,
     ...(diag ? {
       perf: {
-        msPerAudioS: emaMsPerS,
+        msPerAudioS: guard?.rate() ?? null,
+        overloads: guard?.overloads() ?? 0,
         meanMsPerAudioS: totalAudioS > 0 ? totalMs / totalAudioS : null,
         audioS: totalAudioS,
         binsAdmitted: s.binsAdmitted,
@@ -88,27 +96,40 @@ function post(force = false) {
   });
 }
 
+function startEngine() {
+  cue = createResonanceCue({ reference: referenceJson });
+  engine = createLabEngine({
+    sampleRate,
+    models: { vtln: vtlnModel },
+    reference: referenceJson,
+    pitchSource: "frames",
+    onStamped: (name, te, stampS, value) => { if (name === "vtln") cue.onStamped(te, stampS, value); },
+  });
+  pendingFrameMs = 0;
+}
+
 function onChunk(msg) {
-  if (!engine || state !== "ready" || !msg?.buffer) return;
+  if (!engine || (state !== "ready" && state !== "overloaded") || !msg?.buffer) return;
   const x = new Float32Array(msg.buffer);
   if (!x.length) return;
+  const audioS = x.length / sampleRate;
+  if (state === "overloaded") {
+    // Backing off: no vtln work; resume with a fresh engine when it ends.
+    if (guard.add(0, audioS) === "resume") { startEngine(); status("ready"); }
+    return;
+  }
   const ct = typeof msg.contextTime === "number" && Number.isFinite(msg.contextTime) ? msg.contextTime : null;
   const t0 = performance.now();
   cue.noteChunk(ct);
   engine.pushChunk(x, null, ct);
   const ms = performance.now() - t0 + pendingFrameMs;
   pendingFrameMs = 0;
-  const audioS = x.length / sampleRate;
   totalMs += ms;
   totalAudioS += audioS;
   sinceLastPostS += audioS;
-  const rate = ms / audioS;
-  const a = 1 - Math.exp(-audioS / EMA_TAU_S);
-  emaMsPerS = emaMsPerS === null ? rate : emaMsPerS + a * (rate - emaMsPerS);
-  // Judge only after a few seconds of audio (start-up JIT is slow).
-  if (totalAudioS > 3 && emaMsPerS > OVERLOAD_MS_PER_S) {
-    status("overloaded", `${Math.round(emaMsPerS)} ms per audio second`);
+  if (guard.add(ms, audioS) === "overloaded") {
     post(true);
+    status("overloaded", `${Math.round(guard.rate())} ms per audio second`);
     return;
   }
   post();
@@ -133,7 +154,7 @@ self.onmessage = async (e) => {
     engine = null;
     cue = null;
     sinceLastPostS = 0;
-    emaMsPerS = null;
+    guard = createOverloadGuard();
     totalMs = 0;
     totalAudioS = 0;
     pendingFrameMs = 0;
@@ -141,14 +162,9 @@ self.onmessage = async (e) => {
     try {
       const base = msg.assetBase ?? "/";
       const [vtln, reference] = await Promise.all([loadJson(base, "vtln_warp.json"), loadJson(base, "reference.json")]);
-      cue = createResonanceCue({ reference });
-      engine = createLabEngine({
-        sampleRate,
-        models: { vtln },
-        reference,
-        pitchSource: "frames",
-        onStamped: (name, te, stampS, value) => { if (name === "vtln") cue.onStamped(te, stampS, value); },
-      });
+      vtlnModel = vtln;
+      referenceJson = reference;
+      startEngine();
       status("ready");
     } catch (err) {
       status("error", String(err?.message || err));

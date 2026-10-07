@@ -32,6 +32,7 @@ class CaptureProcessor extends AudioWorkletProcessor {
     // Each consumer that wants audio sends a `{ type: "port", port }`
     // message; the worklet then broadcasts every chunk to all of them.
     this.workerPorts = [];
+    this.workerPortIds = []; // parallel to workerPorts (removePort)
   }
 
   // Re-allocate the chunk-aggregation buffers when chunkMs changes
@@ -62,6 +63,16 @@ class CaptureProcessor extends AudioWorkletProcessor {
           });
         } else if (e.data.type === "port") {
           this.workerPorts.push(e.data.port);
+          this.workerPortIds.push(e.data.id ?? null);
+        } else if (e.data.type === "removePort") {
+          // A consumer switched off (captureSource.disconnectConsumer):
+          // stop broadcasting to it.
+          const i = this.workerPortIds.indexOf(e.data.id);
+          if (i >= 0) {
+            try { this.workerPorts[i].close(); } catch { /* closed */ }
+            this.workerPorts.splice(i, 1);
+            this.workerPortIds.splice(i, 1);
+          }
         }
       } catch (err) {
         // Surface any init-handler error so an empty pipeline doesn't

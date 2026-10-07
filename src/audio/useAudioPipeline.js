@@ -23,6 +23,7 @@ import { pitchLevelAt } from "../utils/pitchLevel";
 import { createCaptureSource } from "./captureSource";
 import { VocalWeightAggregator } from "./vocal-weight-aggregator";
 import { VocalWeightBaseline } from "./vocal-weight-baseline";
+import { createWeightLevel } from "./vocal-weight-level";
 import {
   DIAG_ENABLED,
   DIAG_SR_OVERRIDE,
@@ -111,6 +112,9 @@ export function useAudioPipeline() {
     //   is still calibrating.
     // - vocalWeight.sigmaDelta: σ-distance from baseline mean
     //   (positive = lighter, negative = heavier).
+    // - vocalWeight.sigmaLevel: the same σ-distance of the median of the
+    //   last ~5 s of voiced emits (vocal-weight-level.js) — the cue
+    //   strip's dot; null until the baseline is ready.
     // - vocalWeight.baselineProgress: 0-1 fraction of the first-30-s
     //   baseline window that has been filled by voiced speech.
     // - vocalWeight.baselineReady: true once baseline μ/σ are locked.
@@ -118,6 +122,7 @@ export function useAudioPipeline() {
       cpp: null,
       position: null,
       sigmaDelta: null,
+      sigmaLevel: null,
       baselineProgress: 0,
       baselineReady: false,
     },
@@ -127,7 +132,7 @@ export function useAudioPipeline() {
     modelError: null,
     modelProgress: null,       // { loaded, total, file } during download
     // Resonance cue worker (src/resonance/resonance-worker.js):
-    // idle | loading | ready | error | overloaded. Its readings are in
+    // idle | loading | ready | error | overloaded (a back-off pause). Its readings are in
     // resonanceRef (read by the cue strip's 4 Hz tick).
     resonanceStatus: "idle",
   });
@@ -142,6 +147,7 @@ export function useAudioPipeline() {
   const captureSrcRef = useRef(null);        // unified handle from captureSource factory
   const workerRef = useRef(null);
   const mlWorkerRef = useRef(null);
+  const mlPortRef = useRef(null); // its capture port (disconnected when switched off)
   const pitchWorkerRef = useRef(null);
   // Dashboard resonance cue (src/resonance/resonance-worker.js, always on
   // while listening) and its latest posted state { u, raw, n, fill, voicedS,
@@ -215,6 +221,7 @@ export function useAudioPipeline() {
   // baseline.
   const cppAggregatorRef = useRef(null);
   const cppBaselineRef = useRef(null);
+  const weightLevelRef = useRef(null);
   // Latest CPP-aggregate emit; used by the throttled state update so
   // we don't re-emit gauge state on every DSP frame.
   const lastCppAggregateRef = useRef({ time: -1 });
@@ -329,6 +336,7 @@ export function useAudioPipeline() {
     // of this simpler zero-interaction model).
     cppAggregatorRef.current = new VocalWeightAggregator();
     cppBaselineRef.current = new VocalWeightBaseline();
+    weightLevelRef.current = createWeightLevel();
     lastCppAggregateRef.current = { time: -1 };
     if (DIAG_ENABLED) resetVocalWeightCounters();
     steadinessRef.current = createSteadinessTracker();
@@ -479,6 +487,9 @@ export function useAudioPipeline() {
           resonanceRef.current = msg;
           if (DIAG_ENABLED && msg.perf) setResonancePerf(msg.perf);
         } else if (msg.type === "status") {
+          // "overloaded" is a back-off pause (the worker resumes with a
+          // fresh engine and posts "ready"): drop the stale reading.
+          if (msg.status === "overloaded") resonanceRef.current = null;
           setState((s) => ({ ...s, resonanceStatus: msg.status }));
           if (DIAG_ENABLED) setResonanceStatus({ status: msg.status, message: msg.message ?? null });
           if (msg.status === "error") pushError({ source: "resonance-worker", where: "worker", message: msg.message });
@@ -515,6 +526,7 @@ export function useAudioPipeline() {
           ...(DIAG_ENABLED ? { diag: true } : {}),
         });
         const mlPort = captureSrc.connectConsumer();
+        mlPortRef.current = mlPort;
         mlWorker.postMessage({ type: "audioPort", port: mlPort }, [mlPort]);
       };
       if (heardAsEnabledRef.current) startMlWorkerRef.current();
@@ -831,6 +843,7 @@ export function useAudioPipeline() {
       mlWorkerRef.current = null;
       if (DIAG_ENABLED) setMlWorkerAlive(false);
     }
+    mlPortRef.current = null;
     startMlWorkerRef.current = null;
     if (pitchWorkerRef.current) {
       pitchWorkerRef.current.terminate();
@@ -902,6 +915,7 @@ export function useAudioPipeline() {
         cpp: null,
         position: null,
         sigmaDelta: null,
+        sigmaLevel: null,
         baselineProgress: 0,
         baselineReady: false,
       },
@@ -914,10 +928,10 @@ export function useAudioPipeline() {
 
   // The "Likely heard as" panel switched on / off (Settings or the panel's
   // own switch; App owns the persisted setting). On: start the gender worker
-  // now if listening (else start() does). Off: terminate it and forget its
-  // windows. captureSource has no consumer-disconnect API, so the switched-
-  // off worker's capture port stays registered until Stop (one ~25 ms chunk
-  // copy to a closed port per chunk).
+  // now if listening (else start() does). Off: terminate it, take its
+  // capture port off the broadcast list (captureSource.disconnectConsumer —
+  // no chunk copies to a dead port, however often the switch is flipped)
+  // and forget its windows.
   const setHeardAsEnabled = useCallback((on) => {
     heardAsEnabledRef.current = !!on;
     if (on) {
@@ -928,6 +942,10 @@ export function useAudioPipeline() {
       mlWorkerRef.current.terminate();
       mlWorkerRef.current = null;
       if (DIAG_ENABLED) setMlWorkerAlive(false);
+    }
+    if (mlPortRef.current) {
+      captureSrcRef.current?.disconnectConsumer?.(mlPortRef.current);
+      mlPortRef.current = null;
     }
     heardAsRef.current.reset();
     genderStateRef.current = null;
@@ -969,13 +987,16 @@ export function useAudioPipeline() {
     const baseline = cppBaselineRef.current;
     const cppValue = aggregate ? aggregate.cpp : null;
     if (!baseline) {
-      return { cpp: cppValue, position: null, sigmaDelta: null,
+      return { cpp: cppValue, position: null, sigmaDelta: null, sigmaLevel: null,
                baselineProgress: 0, baselineReady: false };
     }
+    const levelCpp = weightLevelRef.current?.cpp() ?? null;
     return {
       cpp: cppValue,
       position: cppValue !== null ? baseline.gaugePosition(cppValue) : null,
       sigmaDelta: cppValue !== null ? baseline.sigmaDelta(cppValue) : null,
+      // ~5 s median (the cue strip's dot), same σ units; null until ready.
+      sigmaLevel: levelCpp !== null && baseline.ready() ? baseline.sigmaDelta(levelCpp) : null,
       baselineProgress: baseline.progress(),
       baselineReady: baseline.ready(),
     };
@@ -1117,6 +1138,8 @@ export function useAudioPipeline() {
         time: cppAggregate.time,
         cpp: cppAggregate.cpp,
       });
+      // The cue strip's ~5 s weight level (vocal-weight-level.js).
+      weightLevelRef.current?.push(cppAggregate.cpp);
       lastCppAggregateRef.current = cppAggregate;
     }
     if (DIAG_ENABLED && cppAggregate && cppAggregate.time !== lastDiagVwEmitRef.current) {

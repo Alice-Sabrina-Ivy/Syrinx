@@ -15,8 +15,12 @@
 // offset SD 0.64 logit). Talker-bootstrap 95 % intervals: bMeter
 // [−0.385, −0.314], bLnF0 [−3.65, −2.89].
 // Range: eta ± halfWidth (2.25 logit: the smallest width with ≥ 80 %
-// source-balanced coverage of held-out listener data on the feminine,
-// ambiguous AND masculine sides — 0.81 / 0.83 / 0.88).
+// source-balanced coverage of LICENCE-CLEAN held-out listener data — the fit
+// sources leave-one-source-out + the Hillenbrand & Clark syllable condition —
+// on the feminine and masculine sides: 0.87 / 0.83; 2.0 gives 0.81 / 0.76.
+// The ambiguous side has only 3 licence-clean data (0.67), so coverage there
+// rests on validation data alone; the NC / unlicensed validation sets give
+// 0.72 / 0.89 / 1.00 and were never used to choose it).
 // Unsure share: u = min(max(unsureFloor, unsureK · 4s(1−s)), 2·min(s, 1−s)),
 // man = s − u/2, woman = 1 − s − u/2 (k 0.42 = pooled licence-clean fit;
 // it depends on how listeners are asked: 0.10–0.59).

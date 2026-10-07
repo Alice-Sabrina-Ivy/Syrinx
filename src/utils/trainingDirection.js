@@ -150,21 +150,25 @@ export function weightRangeFor(direction, span = BASELINE_SIGMA) {
 // ---------------------------------------------------------------------------
 // Resonance (the Dashboard's spectral-warp cue, 2026-10-07): the cue strip's
 // soft highlight, in the cue's u units (0 = the typical LibriSpeech man,
-// 1 = the typical woman), from the reference speakers' 10th–90th percentile
-// 5 s readouts (public/resonance-lab/reference.json, "vtln"): feminine = the
-// women's band, masculine = the men's band, androgynous = the gap between
-// them (men's q90 → women's q10), exploring / none = no highlight. An outline
-// only — the cue's absolute position across microphones is approximate, so
-// it never judges on / off target. ref: reference.json's "vtln" entry.
+// 1 = the typical woman; reference.json "vtln" per-speaker medians).
+// feminine = the women's band, masculine = the men's band — the bands the
+// strip draws (cueStripModel cueResonanceRef: the 10th–90th percentile of
+// individual 5 s readouts, cue-bands.json); androgynous = the gap between
+// typical men's and women's readings (men's q90 → women's q10 of the
+// per-speaker bands, ref.speakerBands — the readout bands nearly touch);
+// exploring / none = no highlight. An outline only — the cue's absolute
+// position across microphones is approximate, so it never judges on / off
+// target. ref: reference.json's "vtln" entry, or cueResonanceRef(...).
 export function resonanceU(ref, value) {
   return (value - ref.menMedian) / (ref.womenMedian - ref.menMedian);
 }
 export function resonanceTargetFor(direction, ref) {
   if (ref == null) return null;
   const u = (v) => resonanceU(ref, v);
+  const sp = ref.speakerBands ?? ref;
   if (direction === "feminine") return { low: u(ref.women.q10), high: u(ref.women.q90) };
   if (direction === "masculine") return { low: u(ref.men.q10), high: u(ref.men.q90) };
-  if (direction === "androgynous") return { low: u(ref.men.q90), high: u(ref.women.q10) };
+  if (direction === "androgynous") return { low: u(sp.men.q90), high: u(sp.women.q10) };
   return null;
 }
 
