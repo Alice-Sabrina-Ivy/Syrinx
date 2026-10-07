@@ -233,7 +233,7 @@ console.log("\nspeech-detector evidence (noteSpeech, 32 ms frames)");
   const ds = runBoth(lostPitch, talking(1000, 6000), 6000);
   const first = firstAt(ds, "score");
   check("speech the pitch tracker loses still scores", !!first);
-  check("...first score within 0.8 s of the onset", first && first.t - 1000 <= 800, first && `${first.t - 1000} ms`);
+  check("...first score within 0.8 s of the onset", first && first.t - 1000 <= 800 && first.t - 1000 >= D.speechMinPostOnsetFrac * D.windowMs, first && `${first.t - 1000} ms`);
   check("...and keeps scoring", ds.filter((d) => d.t >= 2000 && d.t <= 6000).every((d) => d.verdict === "score"));
   const pitchOnly = run(lostPitch, 6000);
   check("(the same pitch stream alone never scores)", pitchOnly.every((d) => d.verdict !== "score"));
@@ -258,8 +258,8 @@ console.log("\nspeech-detector evidence (noteSpeech, 32 ms frames)");
   const dsR = runBoth(humThenVoice, talking(2000, 7000), 7000);
   const back = dsR.find((d) => d.t > 3000 && d.verdict === "score");
   check("speech running through the end of a hold verdict is scored again", !!back);
-  check("...with a fresh EMA, once the window is mostly past the hold",
-    back?.resetEma === true && back.t - 3000 >= D.minPostOnsetFrac * D.windowMs, back && `${back.t - 3000} ms`);
+  check("...with a fresh EMA, once >= 40 % of the window is past the hold",
+    back?.resetEma === true && back.t - 3000 >= D.speechMinPostOnsetFrac * D.windowMs, back && `${back.t - 3000} ms`);
   const dsR0 = runBoth(humThenVoice, talking(2000, 7000), 7000, createUtteranceGate({ speechReopenAfterHold: false }));
   check("(speechReopenAfterHold off: shut until the speech run breaks)", dsR0.every((d) => d.t <= 3000 || d.verdict !== "score"));
 
@@ -282,12 +282,21 @@ console.log("\nspeech-detector evidence (noteSpeech, 32 ms frames)");
     check("stale speech hints -> pitch voicing decides again", scored);
   }
 
-  // Variant switch: speechOrPitch lets pitch voicing open too.
-  const dsO = runBoth(speech(150), () => 0.02, 4000, createUtteranceGate({ speechOrPitch: true }));
-  check("speechOrPitch: pitch-voiced speech the detector misses scores", dsO.some((d) => d.verdict === "score"));
+  // A vowel held after speech, with the detector still calling it speech:
+  // the background pitch utterance restarts at the vowel (>= gapMs of
+  // unvoiced pitch before it) and is watched at "warming", as on pitch alone.
+  {
+    const pitchF = (t) => (t <= 3000 ? speech(200)(t) : t <= 4200 ? silent() : heldNote(200)(t));
+    const dsV = runBoth(pitchF, talking(0, 7000), 7000);
+    check("vowel held after speech (detector on): never scored once the vowel starts",
+      dsV.filter((d) => d.t > 4200 + D.windowMs).every((d) => d.verdict !== "score"),
+      dsV.filter((d) => d.t > 4200).map((d) => d.verdict[0]).join(""));
+    check("...and 'sustained' after ~1 s", dsV.some((d) => d.t > 4200 && d.verdict === "sustained"));
+  }
   const dsS = runBoth(speech(150), () => 0.02, 4000);
   check("default: the detector decides (pitch voicing alone does not open)", dsS.every((d) => d.verdict !== "score"));
   check("speech defaults: Silero threshold 0.5, 32 ms frames", D.speechThreshold === 0.5 && D.speechHopMs === 32);
+  check("speech mode: >= 40 % of a scored window follows the speech onset", D.speechMinPostOnsetFrac === 0.4);
 }
 
 console.log("\nmeter state mapping");

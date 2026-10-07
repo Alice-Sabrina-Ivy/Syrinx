@@ -66,20 +66,22 @@
 
 // Speech evidence (2026-10-07, low-voice-noise candidate
 // "voice-detector-gate", measurements/low-voice-noise-2026-10-07.md):
-// when the worker also feeds speech-detector hints (noteSpeech: one
-// { ts, p } per 32 ms Silero VAD frame, audio clock; speech-detector.js),
-// WHETHER someone is speaking comes from them: the utterance opens on a
-// run of >= onsetRunMs of speech frames (p >= speechThreshold), closes
-// after gapMs without one, and a window scores only if a speech frame is
-// <= recencyMs old and >= minVoicedShare of the window's speech frames
-// are speech. Pitch hints then only shape the held-note tests (sustained /
-// holdSteadyOnset), which are unchanged. Why: the pitch tracker loses low
-// (men's) voices in heavy noise far more than women's, so a pitch-voicing
-// onset rarely formed for them; every pitch-evidence lever that recovered
-// them voiced noise about 1:1. With no speech hint for staleMs (detector
-// still loading, or failed) the gate runs on pitch voicing exactly as
-// before. speechOrPitch: either kind of evidence opens / keeps the
-// utterance (a measured variant, not the default).
+// the worker also feeds speech-detector hints (noteSpeech: one { ts, p }
+// per 32 ms Silero VAD frame, audio clock; speech-detector.js). While they
+// are live, WHETHER someone is speaking comes from them: a speech
+// utterance opens on a run of >= onsetRunMs of speech frames
+// (p >= speechThreshold), closes after gapMs without one, and a window
+// scores only if a speech frame is <= recencyMs old and >= minVoicedShare
+// of the window's speech frames are speech. Pitch hints then only shape
+// the held-note tests: "sustained" (unchanged) and the steady-onset hold,
+// which watches the pitch utterance the gate would have opened on pitch
+// voicing alone (kept running in the background, exactly as before), so
+// a held vowel is held at "warming" just as it was. Why: the pitch tracker
+// loses low (men's) voices in heavy noise far more than women's, so a
+// pitch-voicing onset rarely formed for them; every pitch-evidence lever
+// that recovered them also voiced noise about 1:1. With no speech hint
+// for staleMs (detector still loading, or failed) the gate runs on pitch
+// voicing exactly as before.
 
 export const UTTERANCE_GATE_DEFAULTS = Object.freeze({
   windowMs: 750,            // ML window length (gender-worker WINDOW_SECONDS)
@@ -102,10 +104,12 @@ export const UTTERANCE_GATE_DEFAULTS = Object.freeze({
   resetBackMs: 1000,        // the clock jumping back this far = a new stream
   speechThreshold: 0.5,     // speech-detector frame counts as speech (Silero's default)
   speechHopMs: 32,          // speech-detector frame hop (512 samples at 16 kHz)
-  speechOrPitch: false,     // variant: pitch voicing ALSO opens / keeps an utterance
+  // minPostOnsetFrac while speech hints decide (0.5 measured too: see
+  // measurements/low-voice-noise-2026-10-07.md, candidate voice-detector-gate).
+  speechMinPostOnsetFrac: 0.4,
   // A speech run still going when a held-note verdict ends may open an
   // utterance whose span starts at the end of the note (so the note is
-  // never scored: >= half of a scored window follows it). Pitch runs break
+  // never scored: >= speechMinPostOnsetFrac of a scored window follows it). Pitch runs break
   // within a syllable; a speech detector's run does not, so without this a
   // steady hum the pitch tracker calls a "held note" kept the meter shut
   // for the rest of the sentence.
@@ -149,12 +153,13 @@ export function createUtteranceGate(options = {}) {
   let lastHintTs = null;
   let lastVoicedTs = null;
   let runStartTs = null;     // first hint of the current voiced run
-  let open = false;          // utterance open
-  let spanStartTs = null;
-  let spanId = 0;
+  let spanId = 0;            // shared counter: every new span (either kind) gets a fresh id
   let lastScoredSpanId = -1;
   let lastSustainedTs = null; // last decide() that found held phonation
-  // Speech-detector evidence (noteSpeech); empty until the first hint.
+  // The pitch utterance: what the gate opens on pitch voicing alone.
+  const pu = { open: false, spanStartTs: null, spanId: 0 };
+  // The speech utterance: opened by speech-detector frames.
+  const su = { open: false, spanStartTs: null, spanId: 0 };
   let speech = [];           // { ts, on } oldest first, trimmed to keepMs
   let lastSpeechHintTs = null;
   let lastSpeechTs = null;   // newest frame with p >= speechThreshold
@@ -162,28 +167,16 @@ export function createUtteranceGate(options = {}) {
 
   // Speech hints decide "is someone speaking" while they are live.
   const speechLive = (ts) => lastSpeechHintTs !== null && ts - lastSpeechHintTs <= o.staleMs;
-  // Newest evidence of speaking, for the gap / recency rules.
-  function lastEvidenceTs(ts) {
-    if (!speechLive(ts)) return lastVoicedTs;
-    if (!o.speechOrPitch || lastVoicedTs === null) return lastSpeechTs;
-    return lastSpeechTs === null ? lastVoicedTs : Math.max(lastSpeechTs, lastVoicedTs);
-  }
 
   function closeIfGap(ts) {
-    const last = lastEvidenceTs(ts);
-    if (open && (last === null || ts - last > o.gapMs)) open = false;
+    if (pu.open && (lastVoicedTs === null || ts - lastVoicedTs > o.gapMs)) pu.open = false;
+    if (su.open && (lastSpeechTs === null || ts - lastSpeechTs > o.gapMs)) su.open = false;
   }
 
-  // Opens on a long-enough run that began AFTER any held note: the rest
-  // of a held note (or a note's tail) never opens one. runStart = the
-  // run's first hint ts (pitch) / its first frame's start (speech).
-  function tryOpen(runStart, ts, hop) {
-    if (!open && ts - runStart + hop >= o.onsetRunMs
-      && (lastSustainedTs === null || runStart > lastSustainedTs)) {
-      open = true;
-      spanStartTs = runStart;
-      spanId++;
-    }
+  function openSpan(u, startTs) {
+    u.open = true;
+    u.spanStartTs = startTs;
+    u.spanId = ++spanId;
   }
 
   function reset() {
@@ -191,26 +184,15 @@ export function createUtteranceGate(options = {}) {
     lastHintTs = null;
     lastVoicedTs = null;
     runStartTs = null;
-    open = false;
-    spanStartTs = null;
+    pu.open = false;
+    pu.spanStartTs = null;
     lastSustainedTs = null;
+    su.open = false;
+    su.spanStartTs = null;
     speech = [];
     lastSpeechHintTs = null;
     lastSpeechTs = null;
     speechRunStartTs = null;
-  }
-
-  // Share of the window's evidence frames that say "speaking".
-  function windowShare(nowTs) {
-    const pitchShare = stats(hints, nowTs - o.windowMs).share;
-    if (!speechLive(nowTs)) return pitchShare;
-    let n = 0, v = 0;
-    for (let i = speech.length - 1; i >= 0 && speech[i].ts > nowTs - o.windowMs; i--) {
-      n++;
-      if (speech[i].on) v++;
-    }
-    const speechShare = n > 0 ? v / n : 0;
-    return o.speechOrPitch ? Math.max(speechShare, pitchShare) : speechShare;
   }
 
   return {
@@ -237,8 +219,12 @@ export function createUtteranceGate(options = {}) {
       if (voiced) {
         if (runStartTs === null) runStartTs = ts;
         lastVoicedTs = ts;
-        // Pitch voicing opens the utterance unless live speech hints decide.
-        if (!speechLive(ts) || o.speechOrPitch) tryOpen(runStartTs, ts, hop);
+        // Opens on a long-enough run that began AFTER any held note: the
+        // rest of a held note (or a note's tail) never opens one.
+        if (!pu.open && ts - runStartTs + hop >= o.onsetRunMs
+          && (lastSustainedTs === null || runStartTs > lastSustainedTs)) {
+          openSpan(pu, runStartTs);
+        }
       } else {
         runStartTs = null;
       }
@@ -262,8 +248,14 @@ export function createUtteranceGate(options = {}) {
       if (on) {
         if (speechRunStartTs === null) speechRunStartTs = ts - o.speechHopMs;
         lastSpeechTs = ts;
-        const held = lastSustainedTs !== null && speechRunStartTs <= lastSustainedTs;
-        tryOpen(held && o.speechReopenAfterHold ? lastSustainedTs + 1e-6 : speechRunStartTs, ts, 0);
+        if (!su.open) {
+          // A run that began during a held note counts from the note's end.
+          const held = lastSustainedTs !== null && speechRunStartTs <= lastSustainedTs;
+          if (!held || o.speechReopenAfterHold) {
+            const start = held ? lastSustainedTs : speechRunStartTs;
+            if (ts - start >= o.onsetRunMs) openSpan(su, start);
+          }
+        }
       } else {
         speechRunStartTs = null;
       }
@@ -272,7 +264,9 @@ export function createUtteranceGate(options = {}) {
     // nowTs: audio-clock ms of the newest audio in the ML window.
     // -> { verdict, resetEma, spanId }
     decide(nowTs) {
-      const out = (verdict, resetEma = false) => ({ verdict, resetEma, spanId });
+      const useSpeech = speechLive(nowTs);
+      const u = useSpeech ? su : pu;
+      const out = (verdict, resetEma = false) => ({ verdict, resetEma, spanId: u.spanId });
       if (lastHintTs === null || nowTs - lastHintTs > o.staleMs) return out("stale");
 
       // Held phonation over the trailing sustainMs (needs history covering
@@ -284,28 +278,44 @@ export function createUtteranceGate(options = {}) {
       if (covered) {
         const s = stats(hints, nowTs - o.sustainMs);
         if (s.share >= o.sustainMinShare && s.spread !== null && s.spread <= o.sustainMaxSpreadSt) {
-          open = false;
+          pu.open = false;
+          su.open = false;
           lastSustainedTs = nowTs;
           return out("sustained");
         }
       }
 
       closeIfGap(nowTs);
-      if (!open) return out("silent");
+      if (!u.open) return out("silent");
 
-      const age = nowTs - spanStartTs;
-      if (age < o.minPostOnsetFrac * o.windowMs) return out("warming");
-      if (o.holdSteadyOnset && age < o.sustainMs) {
-        const s = stats(hints, spanStartTs - 1);
+      const age = nowTs - u.spanStartTs;
+      if (age < (useSpeech ? o.speechMinPostOnsetFrac : o.minPostOnsetFrac) * o.windowMs) return out("warming");
+      // A young pitch utterance that has been steady since its start is
+      // watched at "warming" until the full-second held-note test can
+      // decide (with speech evidence: the pitch utterance running in the
+      // background, so a vowel held after speech is watched as before).
+      if (o.holdSteadyOnset && pu.open && nowTs - pu.spanStartTs < o.sustainMs) {
+        const s = stats(hints, pu.spanStartTs - 1);
         if (s.share >= o.sustainMinShare && (s.spread === null || s.spread <= o.sustainMaxSpreadSt)) {
           return out("warming");
         }
       }
-      const lastEv = lastEvidenceTs(nowTs);
+      const lastEv = useSpeech ? lastSpeechTs : lastVoicedTs;
       if (lastEv === null || nowTs - lastEv > o.recencyMs) return out("pause");
-      if (windowShare(nowTs) < o.minVoicedShare) return out("pause");
-      const resetEma = spanId !== lastScoredSpanId;
-      lastScoredSpanId = spanId;
+      let share;
+      if (useSpeech) {
+        let n = 0, v = 0;
+        for (let i = speech.length - 1; i >= 0 && speech[i].ts > nowTs - o.windowMs; i--) {
+          n++;
+          if (speech[i].on) v++;
+        }
+        share = n > 0 ? v / n : 0;
+      } else {
+        share = stats(hints, nowTs - o.windowMs).share;
+      }
+      if (share < o.minVoicedShare) return out("pause");
+      const resetEma = u.spanId !== lastScoredSpanId;
+      lastScoredSpanId = u.spanId;
       return out("score", resetEma);
     },
   };
