@@ -113,6 +113,18 @@ Everything runs in the browser. There is no backend.
 └──────────────────────────────────────────────────────────────┘
 ```
 
+**As built (2026-10-07).** The capture source (AudioWorklet or a main-thread
+MediaStreamTrackProcessor) broadcasts ~25 ms chunks to several workers, each on
+its own thread: the **DSP worker** (formants, spectral tilt, HNR, intensity,
+CPP), the **pitch worker** (Boersma autocorrelation + path tracker), the
+**resonance worker** (the Dashboard's spectral-warp resonance cue — it reuses
+the pitch worker's posted decisions, relayed by the main thread, instead of
+running its own pitch tracker), the **gender worker** (voice classifier, only
+while the opt-in "Likely heard as" panel is on) and, once its tab is opened,
+the resonance-lab worker. The main-thread hook (`useAudioPipeline`) merges
+their outputs and relays each pitch decision to the DSP, resonance and (when
+running) gender workers. CLAUDE.md holds the current details.
+
 ### Key Architectural Decision: Web Worker for DSP
 
 All audio analysis runs in a **dedicated Web Worker**, not on the main thread. This is critical:
@@ -567,17 +579,30 @@ These are population averages and should be configurable per user.
 
 ### View 3: Combined Dashboard (Default View)
 
-The default practice mode — everything at a glance:
+The default practice mode — everything at a glance. **As built (Design A
+"cue strip", 2026-10-07):**
 
-- **Top**: Compact resonance plot + compact pitch trace side by side (stacked on mobile)
-- **Middle**: Key live stats — current F0, F2, spectral tilt, HNR
-- **Bottom**: Session controls (start/stop, timer, notes) + quick metrics (time in target, session duration)
+- **Pitch trace** (15 s) on top.
+- **Cue strip** directly under it: three graded readouts — **Pitch** (log
+  Hz), **Resonance · approx.** (spectral warp) and **Vocal weight** (relative
+  to the session's own start) — each on one neutral axis with the
+  typically-men end on the left, soft bands for typical adult men and women
+  (none for weight), a dot for the current value and a ~2 s trail. The
+  training direction appears as the same soft highlight on every cue; only
+  pitch is coloured on / off target. F0 and steadiness sit in the pitch row,
+  HNR in the strip's caption.
+- **"Likely heard as · Experimental"** — opt-in, off by default: listener
+  shares (man / unsure / woman) as ranges in "x in 10", never a verdict, with
+  its known weaknesses stated.
+- **Session row**: Save, timer, notes.
 
-On **mobile** this becomes a vertically scrolling layout:
-1. Pitch trace (most glanceable metric, gets top billing on small screens)
-2. Key stats row
-3. Resonance plot
-4. Session controls
+On **phones** these stack in that order (trace and strip fit the first screen
+at 360 × 690 and up); held sideways, trace and strip sit side by side; on
+desktop the trace fills the left and a 420 px column holds the strip and the
+panel.
+
+**Historical (superseded 2026-10-07):** a resonance plot / Perceived-voice
+meter beside the trace and a stats row (F0, F2, vocal-weight gauge, HNR).
 
 ### View 4: Intonation Contour (v0.3)
 

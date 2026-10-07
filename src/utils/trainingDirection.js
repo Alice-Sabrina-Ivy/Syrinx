@@ -29,7 +29,11 @@
 //   neutrally, not as off target — a lower voice is not less masculine.
 //   No resonance (F2) target: per-frame F2 is dominated by the vowel (the
 //   bands held near-chance shares of men's and women's vowels), so it is a
-//   neutral readout in every direction (2026-10-07 review).
+//   neutral readout in every direction (2026-10-07 review); the F2 readout
+//   left the Dashboard with the cue strip. The cue strip's resonance cue
+//   (spectral warp) shows the direction as an outline only — never judged,
+//   since its absolute position shifts with the microphone and room
+//   (resonanceTargetFor below).
 //   Vocal weight (relative to the user's own calibration baseline, so it
 //   has no population "in between"): feminine = the lighter side
 //   (σ ≥ +0.5), masculine = the heavier side (σ ≤ −0.5), androgynous /
