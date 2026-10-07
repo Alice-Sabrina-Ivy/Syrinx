@@ -35,7 +35,9 @@
 // synchronous pure function; there is nothing to hang.)
 //
 // `pitch`     — Hz, or null when the decoded frame is unvoiced OR decodes
-//               above PITCH_DISPLAY_RANGE.high (see processChunk)
+//               above PITCH_DISPLAY_RANGE.high (see processChunk; an
+//               above-range harmonic lock on a low voice is posted at
+//               its sub-multiple instead)
 // `confidence`— [0, 1]; preserves the SwiftF0-era invariant that
 //               pitch !== null ⟺ confidence ≥ 0.5, so the silence
 //               gate's voicedness arm (pitchGate.js, threshold 0.5)
@@ -55,6 +57,7 @@ import {
   BOERSMA_FRAME_LENGTH_16K,
 } from "./boersma-ac.js";
 import { createNoiseNotch, isNearNotch } from "./noise-notch.js";
+import { aboveRangeSubharmonic } from "./above-range-sub.js";
 import { createStreamingResampler } from "../ml/audio-utils.js";
 import { PITCH_DISPLAY_RANGE } from "../utils/constants.js";
 
@@ -182,10 +185,28 @@ function processChunk(msg) {
   // invariant (frameConfidence below) and every consumer's range assumption (trace, readout,
   // session stats, formant/ML hints) unchanged.
   // measurements/pitch-ceiling-2026-10-03.md
-  if (vetoed > PITCH_DISPLAY_RANGE.high) vetoed = null;
+  //
+  // Exception (2026-10-07, candidate "pitch-absub",
+  // measurements/low-voice-noise-2026-10-07.md): an above-range decode
+  // whose frame shows >= 2 partials of decode/k that are NOT multiples of
+  // the decode is a harmonic lock on a masked low voice (heavy
+  // low-frequency noise hides a man's low harmonics; the tracker locks at
+  // 5-8 x F0). It is posted at decode/k instead (above-range-sub.js).
+  // Such a frame has passed its own harmonic test (>= 2 partials at the
+  // guard's 10 dB rule), so it skips the guard and leaves its streak
+  // untouched, as every above-range frame did before.
+  let rescued = false;
+  if (vetoed > PITCH_DISPLAY_RANGE.high) {
+    const sub = aboveRangeSubharmonic(
+      bufferDelayLine[0], vetoed, TARGET_SAMPLE_RATE,
+      PITCH_DISPLAY_RANGE.low, PITCH_DISPLAY_RANGE.high,
+    );
+    vetoed = sub > 0 ? sub : null;
+    rescued = sub > 0;
+  }
   // Harmonic-structure guard on the decoded frame's own audio (delay
   // line front = the frame L hops back).
-  if (vetoed > 0 && !harmonicGuard.check(bufferDelayLine[0], vetoed, TARGET_SAMPLE_RATE)) {
+  if (vetoed > 0 && !rescued && !harmonicGuard.check(bufferDelayLine[0], vetoed, TARGET_SAMPLE_RATE)) {
     vetoed = null;
   }
   const voiced = vetoed !== null && vetoed !== undefined && vetoed > 0;
