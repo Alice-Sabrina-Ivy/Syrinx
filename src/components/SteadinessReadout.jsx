@@ -25,7 +25,7 @@ const EXPLAINER =
 export function SteadinessReadout({
   value,
   held = false,
-  variant = "stat", // "stat" (dashboard column) | "inline" (Pitch tab)
+  variant = "stat", // "stat" (column) | "inline" (Pitch tab) | "compact" (cue strip)
 }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef(null);
@@ -74,11 +74,23 @@ export function SteadinessReadout({
     <div
       id={tipId}
       role="note"
-      className={`absolute z-20 bottom-full mb-2 ${variant === "inline" ? "right-0" : "left-0"} w-60 max-w-[calc(100vw-2rem)] rounded-lg border border-neutral-700 bg-neutral-900/95 px-3 py-2 text-left text-xs leading-relaxed text-neutral-300 shadow-lg normal-case tracking-normal`}
+      className={`absolute z-20 bottom-full mb-2 ${variant === "stat" ? "left-0" : "right-0"} w-60 max-w-[calc(100vw-2rem)] rounded-lg border border-neutral-700 bg-neutral-900/95 px-3 py-2 text-left text-xs leading-relaxed text-neutral-300 shadow-lg normal-case tracking-normal`}
     >
       {EXPLAINER}
     </div>
   );
+
+  // Dashboard cue strip's pitch row header (2026-10-07): "±0.4 st ⓘ" in one
+  // 11 px line; the popover opens above, anchored right.
+  if (variant === "compact") {
+    return (
+      <span ref={wrapRef} className="relative inline-flex items-center" data-steadiness="">
+        <span className={`text-[11px] transition-opacity duration-300 ${dim}`} title="Steadiness (last ~1 s)">{valueNode}</span>
+        {infoButton}
+        {popover}
+      </span>
+    );
+  }
 
   if (variant === "inline") {
     return (

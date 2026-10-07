@@ -252,13 +252,15 @@ export function isImportableSettingsRow(row) {
 // Field-wise merge of an imported settings row into the local one: only
 // fills fields the local row doesn't have — never overwrites a local
 // value — and never imports recordAudio (whether THIS device records mic
-// audio is decided on this device). Returns the row to write, or null
-// when there is nothing new.
+// audio is decided on this device) or heardAsEnabled (an imported file never
+// switches the experimental "Likely heard as" panel on). Returns the row to
+// write, or null when there is nothing new.
+const NEVER_IMPORTED_SETTINGS = new Set(["recordAudio", "heardAsEnabled"]);
 export function mergeImportedSettings(local, imported) {
   const merged = { ...(local ?? {}) };
   let changed = !local;
   for (const [key, value] of Object.entries(imported)) {
-    if (key === "recordAudio") continue;
+    if (NEVER_IMPORTED_SETTINGS.has(key)) continue;
     if (merged[key] === undefined) {
       merged[key] = value;
       changed = true;

@@ -12,6 +12,7 @@ import {
   saveTrainingDirection,
   pitchTargetFor,
 } from "./utils/trainingDirection";
+import { loadHeardAsEnabled, saveHeardAsEnabled } from "./utils/heardAsSetting";
 import db from "./db";
 
 // Diagnostic overlay is dynamically imported and only rendered when the
@@ -68,7 +69,7 @@ function WelcomeOverlay({ onDismiss }) {
         <p className="text-sm text-neutral-300 leading-relaxed mb-5">
           Syrinx gives you real-time visual feedback on your voice pitch, resonance, and
           vocal weight — it needs microphone access to work.{" "}
-          Next, choose what you&apos;re aiming for — that sets the targets shown on the pitch trace and the vocal-weight gauge.
+          Next, choose what you&apos;re aiming for — that sets the targets highlighted on the pitch trace and the cue strip.
         </p>
         <button
           ref={buttonRef}
@@ -110,6 +111,9 @@ function App() {
   const [savedDirection, setSavedDirection] = useState(null);
   const [directionLoaded, setDirectionLoaded] = useState(false);
   const [showDirectionPrompt, setShowDirectionPrompt] = useState(true);
+  // Experimental "Likely heard as" panel: OFF by default (missing / blocked
+  // storage = off); the panel's switch and Settings' row share this state.
+  const [heardAsEnabled, setHeardAsEnabledState] = useState(false);
   // Settings returns focus to the gear when it closes.
   const gearRef = useRef(null);
   const settingsOpenedRef = useRef(false);
@@ -125,20 +129,19 @@ function App() {
     pitchLevel,
     steadiness,
     steadinessHeld,
-    formants,
-    spectralTilt,
     hnr,
     vocalWeight,
     modelStatus,
-    modelError,
     modelProgress,
+    resonanceStatus,
     start,
     stop,
     pitchTraceRef,
-    formantTrailRef,
-    genderTraceRef,
     genderStateRef,
-    dspGateRef,
+    resonanceRef,
+    heardAsRef,
+    audioClockRef,
+    setHeardAsEnabled,
     frameCallbackRef,
     streamRef,
   } = useAudioPipeline();
@@ -155,6 +158,29 @@ function App() {
     const timer = setTimeout(() => finish(null), DIRECTION_LOAD_TIMEOUT_MS);
     return () => clearTimeout(timer);
   }, []);
+
+  // The "Likely heard as" switch: same load / timeout pattern as the
+  // direction (a hung IndexedDB leaves it off). A user toggle before the
+  // load resolves wins.
+  const heardAsTouchedRef = useRef(false);
+  useEffect(() => {
+    let done = false;
+    loadHeardAsEnabled(db.settings).then((on) => {
+      if (done || heardAsTouchedRef.current) return;
+      done = true;
+      setHeardAsEnabledState(on);
+      setHeardAsEnabled(on);
+    });
+    const timer = setTimeout(() => { done = true; }, DIRECTION_LOAD_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [setHeardAsEnabled]);
+
+  function changeHeardAs(on) {
+    heardAsTouchedRef.current = true;
+    setHeardAsEnabledState(on);
+    setHeardAsEnabled(on);
+    saveHeardAsEnabled(db.settings, on);
+  }
 
   // The load-time question. Continue confirms AND starts listening (one
   // tap per load, as Start Listening alone was before the question
@@ -235,6 +261,8 @@ function App() {
           onClose={() => setShowSettings(false)}
           direction={direction}
           onDirectionChange={changeDirection}
+          heardAsEnabled={heardAsEnabled}
+          onHeardAsChange={changeHeardAs}
         />
       )}
 
@@ -353,12 +381,10 @@ function App() {
               ))}
             </nav>
 
-            {/* Tab content. Scrolls below lg: the stacked dashboard
-                (pitch 180 px + meter 260 px minimums + stats + controls)
-                is taller than a phone's tab area (< ~870 px viewport), and
-                with nothing scrolling the meter overflowed onto the stats
-                and session controls. At lg the side-by-side layout fills
-                the height as before. */}
+            {/* Tab content. Scrolls below lg: on a phone the trace and the
+                cue strip fit the first screen, the experimental panel and
+                the session row may need a scroll (small phones, landscape).
+                At lg the side-by-side layout fills the height. */}
             <div className="flex-1 flex flex-col min-h-0 overflow-y-auto lg:overflow-y-visible">
               {/* Always mounted while the pipeline runs: it owns the
                   session recording, and unmounting it finalizes the
@@ -374,18 +400,18 @@ function App() {
                 pitchLevel={pitchLevel}
                 steadiness={steadiness}
                 steadinessHeld={steadinessHeld}
-                formants={formants}
-                spectralTilt={spectralTilt}
                 hnr={hnr}
                 vocalWeight={vocalWeight}
                 modelStatus={modelStatus}
-                modelError={modelError}
                 modelProgress={modelProgress}
                 pitchTraceRef={pitchTraceRef}
-                formantTrailRef={formantTrailRef}
-                genderTraceRef={genderTraceRef}
                 genderStateRef={genderStateRef}
-                dspGateRef={dspGateRef}
+                resonanceRef={resonanceRef}
+                resonanceStatus={resonanceStatus}
+                heardAsRef={heardAsRef}
+                audioClockRef={audioClockRef}
+                heardAsEnabled={heardAsEnabled}
+                onHeardAsChange={changeHeardAs}
                 direction={direction}
                 sessionRef={sessionRef}
                 frameCallbackRef={frameCallbackRef}

@@ -460,6 +460,25 @@ export function setPitchModel(info) {
   diagState.pitchModel = { ...diagState.pitchModel, ...info };
 }
 
+// Resonance cue worker (src/resonance/resonance-worker.js, diag mode): its
+// latest perf block ({ msPerAudioS (EMA), meanMsPerAudioS, audioS, bins… })
+// and status, plus whether the lazy gender worker (the opt-in "Likely heard
+// as" panel) currently exists — the smoke harness reads these through
+// window.__syrinxDiag.
+export function setResonancePerf(perf) {
+  if (!diagState) return;
+  diagState.resonancePerf = perf;
+}
+export function setResonanceStatus(s) {
+  if (!diagState) return;
+  diagState.resonanceStatus = s;
+}
+export function setMlWorkerAlive(alive) {
+  if (!diagState) return;
+  diagState.mlWorkerAlive = alive;
+  if (alive) diagState.mlWorkerStarts = (diagState.mlWorkerStarts ?? 0) + 1;
+}
+
 export function pushTap(tap) {
   if (!diagState) return;
   diagState.taps.push(tap);
@@ -574,6 +593,10 @@ export function snapshot() {
     pitchModel: { ...diagState.pitchModel },
     vocalWeightEmits: diagState.vocalWeightEmits.toArray(),
     vocalWeightFrames: { ...diagState.vocalWeightFrames },
+    resonancePerf: diagState.resonancePerf ?? null,
+    resonanceStatus: diagState.resonanceStatus ?? null,
+    mlWorkerAlive: diagState.mlWorkerAlive ?? false,
+    mlWorkerStarts: diagState.mlWorkerStarts ?? 0,
   };
 }
 

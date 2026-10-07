@@ -9,6 +9,7 @@ import {
   PITCH_TRACE_SECONDS,
   RESONANCE_TRACE_SECONDS,
 } from "../utils/constants";
+import { createHeardAsAggregator } from "../ml/heard-as";
 import {
   pushAndMedianPitch,
   PITCH_SMOOTH_LEN,
@@ -40,6 +41,9 @@ import {
   setMlModel,
   pushPitchInference,
   setPitchModel,
+  setResonancePerf,
+  setResonanceStatus,
+  setMlWorkerAlive,
   noteVocalWeightFrame,
   pushVocalWeightEmit,
   resetVocalWeightCounters,
@@ -117,11 +121,15 @@ export function useAudioPipeline() {
       baselineProgress: 0,
       baselineReady: false,
     },
-    genderScore: null,        // 0-100 from ML worker, null until first inference
-    genderConfidence: null,
-    modelStatus: "idle",       // idle | loading | ready | error
+    // Gender worker (only while the opt-in "Likely heard as" panel is on —
+    // see setHeardAsEnabled): idle (not running) | loading | ready | error.
+    modelStatus: "idle",
     modelError: null,
     modelProgress: null,       // { loaded, total, file } during download
+    // Resonance cue worker (src/resonance/resonance-worker.js):
+    // idle | loading | ready | error | overloaded. Its readings are in
+    // resonanceRef (read by the cue strip's 4 Hz tick).
+    resonanceStatus: "idle",
   });
 
   // Throttle setState to reduce React renders on mobile.
@@ -135,6 +143,23 @@ export function useAudioPipeline() {
   const workerRef = useRef(null);
   const mlWorkerRef = useRef(null);
   const pitchWorkerRef = useRef(null);
+  // Dashboard resonance cue (src/resonance/resonance-worker.js, always on
+  // while listening) and its latest posted state { u, raw, n, fill, voicedS,
+  // clamp, verdict, startU, framesDropped } (null until the first one).
+  const resonanceWorkerRef = useRef(null);
+  const resonanceRef = useRef(null);
+  // Experimental "Likely heard as" panel (opt-in, off by default): whether it
+  // is on (the gender worker runs only then), and its aggregator
+  // (src/ml/heard-as.js) fed by the gender worker's scored windows and the
+  // posted pitch frames, on the audio clock.
+  const heardAsEnabledRef = useRef(false);
+  const heardAsRef = useRef(null);
+  if (heardAsRef.current === null) heardAsRef.current = createHeardAsAggregator();
+  // Newest audio-clock time (ms of capture contextTime) the hook has seen —
+  // the panel's "now".
+  const audioClockRef = useRef(null);
+  // Starts the gender worker on the running capture source (set in start()).
+  const startMlWorkerRef = useRef(null);
   // Experimental resonance lab: handle returned by the dynamically imported
   // labPipeline; stays null until the user opens the lab tab.
   const labRef = useRef(null);
@@ -162,28 +187,14 @@ export function useAudioPipeline() {
   // cleared in stop(). Diag-mode-only; the ref stays null in production.
   const ctxSamplerRef = useRef(null);
 
-  // Gender-score history for the trace canvas. Each entry:
-  // { time: <ms epoch>, score: 0-100, confidence: 0-1, voiced: bool }
-  // Trimmed to the last RESONANCE_TRACE_SECONDS. The `voiced` field
-  // captures the DSP voicedness gate's state at the moment the ML score
-  // was emitted — so the history strip can filter out dots produced
-  // during DSP-detected non-voice (ambient noise, breath, etc.). Without
-  // this, the strip's 6 s retention overlaps the 5 s silence-hold,
-  // producing a 1 s window of stale colored dots after the bar/indicator
-  // have blanked. (Codex finding on PR #70.)
-  const genderTraceRef = useRef([]);
-
-  // Mirror of the latest DSP gate state, updated each analysis frame.
-  // The mlWorker.onmessage handler runs on a different cadence than DSP
-  // (ML 6.7 Hz, DSP ~40 Hz) and is a closure that doesn't see React
-  // state updates in real time; the ref bridges them so each ML score
-  // can be tagged with the DSP gate's current verdict.
+  // Mirror of the latest DSP gate state, updated each analysis frame
+  // (exposed for canvas readers; `voiced` = audio present).
   const dspGateRef = useRef({ voiced: false, holding: false });
 
-  // Latest perceived-voice state from the ML worker ({ state, ts }; state
+  // Latest voice state from the gender worker ({ state, ts }; state
   // listening | updating | scoring | pause | sustained — see
-  // ml/utterance-gate.js). Read by the meter's rAF loop to decide between
-  // a number, "updating…", and "needs running speech".
+  // ml/utterance-gate.js). The "Likely heard as" panel hides on
+  // "sustained" (held vowel / note).
   const genderStateRef = useRef(null);
 
   // Smoothing buffers
@@ -451,25 +462,62 @@ export function useAudioPipeline() {
         [dspPort],
       );
 
-      // ML inference worker. Hosts a Transformers.js pipeline that emits
-      // a perceived-gender score (0-100) on a rolling 2-sec audio window.
-      // Audio is forked from the same AudioWorklet via a second MessagePort.
-      const mlWorker = new Worker(
-        new URL("../ml/gender-worker.js", import.meta.url),
+      // Resonance cue worker (2026-10-07): the resonance lab's spectral
+      // warp in "frames" mode — it reuses the pitch worker's posted
+      // decisions (relayed in handlePitchMessage) instead of re-running the
+      // pitch chain. measurements/resonance-cue-production-path-2026-10-07.md
+      const resonanceWorker = new Worker(
+        new URL("../resonance/resonance-worker.js", import.meta.url),
         { type: "module" },
       );
-      mlWorkerRef.current = mlWorker;
-      mlWorker.postMessage({
+      resonanceWorkerRef.current = resonanceWorker;
+      resonanceWorker.onmessage = (e) => {
+        if (!genAlive()) return;
+        const msg = e.data;
+        if (!msg?.type) return;
+        if (msg.type === "state") {
+          resonanceRef.current = msg;
+          if (DIAG_ENABLED && msg.perf) setResonancePerf(msg.perf);
+        } else if (msg.type === "status") {
+          setState((s) => ({ ...s, resonanceStatus: msg.status }));
+          if (DIAG_ENABLED) setResonanceStatus({ status: msg.status, message: msg.message ?? null });
+          if (msg.status === "error") pushError({ source: "resonance-worker", where: "worker", message: msg.message });
+        }
+      };
+      resonanceWorker.postMessage({
         type: "init",
-        inputSampleRate: captureSrc.sampleRate,
+        sampleRate: captureSrc.sampleRate,
+        assetBase: import.meta.env.BASE_URL,
         ...(DIAG_ENABLED ? { diag: true } : {}),
       });
+      const resonancePort = captureSrc.connectConsumer();
+      resonanceWorker.postMessage({ type: "audioPort", port: resonancePort }, [resonancePort]);
 
-      const mlPort = captureSrc.connectConsumer();
-      mlWorker.postMessage(
-        { type: "audioPort", port: mlPort },
-        [mlPort],
-      );
+      // Gender (ML) worker: started only while the opt-in "Likely heard
+      // as" panel is on — now, or later in this session through
+      // setHeardAsEnabled (startMlWorkerRef). Saves ~0.3 s of CPU per
+      // second of speech and the 16 MB model download for everyone else
+      // (measurements/heard-as-window-logit-2026-10-07.md §4).
+      startMlWorkerRef.current = () => {
+        if (mlWorkerRef.current || !genAlive() || captureSrcRef.current !== captureSrc) return;
+        const mlWorker = new Worker(
+          new URL("../ml/gender-worker.js", import.meta.url),
+          { type: "module" },
+        );
+        mlWorkerRef.current = mlWorker;
+        if (DIAG_ENABLED) setMlWorkerAlive(true);
+        heardAsRef.current.reset();
+        genderStateRef.current = null;
+        mlWorker.onmessage = (ev) => handleMlMessage(ev, mlWorker);
+        mlWorker.postMessage({
+          type: "init",
+          inputSampleRate: captureSrc.sampleRate,
+          ...(DIAG_ENABLED ? { diag: true } : {}),
+        });
+        const mlPort = captureSrc.connectConsumer();
+        mlWorker.postMessage({ type: "audioPort", port: mlPort }, [mlPort]);
+      };
+      if (heardAsEnabledRef.current) startMlWorkerRef.current();
 
       // Pitch detection worker. Hosts the Boersma-AC (Praat-style
       // autocorrelation) detector + bounded-Viterbi path tracker — pure
@@ -547,28 +595,19 @@ export function useAudioPipeline() {
         }
       };
 
-      mlWorker.onmessage = (e) => {
-        if (!genAlive()) return; // late message after stop()
+      // Gender worker messages (the worker exists only while the panel is
+      // on). A message from a worker that has since been terminated (panel
+      // switched off, or a new session) is dropped.
+      function handleMlMessage(e, fromWorker) {
+        if (!genAlive() || mlWorkerRef.current !== fromWorker) return;
         const msg = e.data;
         if (!msg || !msg.type) return;
         if (msg.type === "score") {
-          // Tag the entry with the DSP gate's current state so the
-          // history strip can filter out dots emitted during non-voice
-          // (Codex finding on PR #70). dspGateRef is updated by
-          // handleAnalysisResult on every DSP analysis frame.
-          const entry = {
-            time: Math.round(msg.ts),
-            score: msg.score,
-            confidence: msg.confidence,
-            voiced: dspGateRef.current.voiced || dspGateRef.current.holding,
-          };
-          genderTraceRef.current.push(entry);
-          trimHistory(genderTraceRef.current, RESONANCE_TRACE_SECONDS * 1000, entry.time);
-          throttledSetState((s) => ({
-            ...s,
-            genderScore: msg.score,
-            genderConfidence: msg.confidence,
-          }));
+          // The panel pools the UNSMOOTHED per-window logit at the window's
+          // audio-clock time (gated windows only — heard-as.js). The 0-100
+          // EMA score is no longer shown anywhere.
+          heardAsRef.current.addWindow({ audioMs: msg.audioMs, logit: msg.logit, mode: msg.mode });
+          if (typeof msg.audioMs === "number") audioClockRef.current = Math.max(audioClockRef.current ?? -Infinity, msg.audioMs);
           // Diag-only: capture per-inference timing so mobile-diag-
           // capture's snapshot summary can compute median/p95/p99
           // against the 150 ms hop budget. No-op when diag isn't on
@@ -620,7 +659,7 @@ export function useAudioPipeline() {
             modelProgress: { loaded: msg.loaded, total: msg.total, file: msg.file },
           }));
         }
-      };
+      }
 
       worker.onmessage = (e) => {
         if (!genAlive()) return; // late message after stop()
@@ -751,12 +790,13 @@ export function useAudioPipeline() {
         labRef.current.stop();
         labRef.current = null;
       }
-      for (const ref of [workerRef, mlWorkerRef, pitchWorkerRef]) {
+      for (const ref of [workerRef, mlWorkerRef, pitchWorkerRef, resonanceWorkerRef]) {
         if (ref.current) {
           try { ref.current.terminate(); } catch { /* */ }
           ref.current = null;
         }
       }
+      startMlWorkerRef.current = null;
       if (ctxSamplerRef.current) {
         clearInterval(ctxSamplerRef.current);
         ctxSamplerRef.current = null;
@@ -789,11 +829,20 @@ export function useAudioPipeline() {
     if (mlWorkerRef.current) {
       mlWorkerRef.current.terminate();
       mlWorkerRef.current = null;
+      if (DIAG_ENABLED) setMlWorkerAlive(false);
     }
+    startMlWorkerRef.current = null;
     if (pitchWorkerRef.current) {
       pitchWorkerRef.current.terminate();
       pitchWorkerRef.current = null;
     }
+    if (resonanceWorkerRef.current) {
+      resonanceWorkerRef.current.terminate();
+      resonanceWorkerRef.current = null;
+    }
+    resonanceRef.current = null;
+    heardAsRef.current.reset();
+    audioClockRef.current = null;
     if (labUnsubRef.current) { labUnsubRef.current(); labUnsubRef.current = null; }
     if (labRef.current) {
       labRef.current.stop();
@@ -828,7 +877,6 @@ export function useAudioPipeline() {
     };
     pitchTraceRef.current = [];
     formantTrailRef.current = [];
-    genderTraceRef.current = [];
     genderStateRef.current = null;
     dspGateRef.current = { voiced: false, holding: false };
     cppAggregatorRef.current = null;
@@ -857,12 +905,35 @@ export function useAudioPipeline() {
         baselineProgress: 0,
         baselineReady: false,
       },
-      genderScore: null,
-      genderConfidence: null,
       modelStatus: "idle",
       modelError: null,
       modelProgress: null,
+      resonanceStatus: "idle",
     });
+  }, []);
+
+  // The "Likely heard as" panel switched on / off (Settings or the panel's
+  // own switch; App owns the persisted setting). On: start the gender worker
+  // now if listening (else start() does). Off: terminate it and forget its
+  // windows. captureSource has no consumer-disconnect API, so the switched-
+  // off worker's capture port stays registered until Stop (one ~25 ms chunk
+  // copy to a closed port per chunk).
+  const setHeardAsEnabled = useCallback((on) => {
+    heardAsEnabledRef.current = !!on;
+    if (on) {
+      startMlWorkerRef.current?.();
+      return;
+    }
+    if (mlWorkerRef.current) {
+      mlWorkerRef.current.terminate();
+      mlWorkerRef.current = null;
+      if (DIAG_ENABLED) setMlWorkerAlive(false);
+    }
+    heardAsRef.current.reset();
+    genderStateRef.current = null;
+    setState((s) => (s.modelStatus === "idle" && s.modelProgress === null && s.modelError === null
+      ? s
+      : { ...s, modelStatus: "idle", modelError: null, modelProgress: null }));
   }, []);
 
   // Unmount cleanup. Placed here (rather than at the top of the hook body
@@ -939,13 +1010,26 @@ export function useAudioPipeline() {
     // (measurements/perceived-voice-gate-2026-10-07.md). Sent voiced or
     // not, so utterances close promptly. contextTime (the frame's capture
     // time) puts the hint on the audio clock the gate runs on.
+    const hint = {
+      type: "pitch-hint",
+      voiced: msg.voiced,
+      pitch: msg.pitch,
+      contextTime: msg.contextTime ?? null,
+    };
     if (mlWorkerRef.current) {
-      mlWorkerRef.current.postMessage({
-        type: "pitch-hint",
-        voiced: msg.voiced,
-        pitch: msg.pitch,
-        contextTime: msg.contextTime ?? null,
-      });
+      mlWorkerRef.current.postMessage(hint);
+      // The "Likely heard as" estimate's F0: every posted frame (the posted
+      // value, never the smoothed / painted / held one), on the audio clock.
+      if (typeof msg.contextTime === "number") {
+        heardAsRef.current.addPitch({ audioMs: msg.contextTime * 1000, f0: msg.pitch });
+      }
+    }
+    // The resonance cue reuses these decisions (bit-identical to the lab's
+    // own pitch replica — tests/resonance/vtln-production-parity-test.js)
+    // and gates on them with the same utterance gate.
+    if (resonanceWorkerRef.current) resonanceWorkerRef.current.postMessage(hint);
+    if (typeof msg.contextTime === "number") {
+      audioClockRef.current = Math.max(audioClockRef.current ?? -Infinity, msg.contextTime * 1000);
     }
     if (DIAG_ENABLED && typeof msg.inferMs === "number") {
       pushPitchInference({
@@ -1366,8 +1450,11 @@ export function useAudioPipeline() {
     stop,
     pitchTraceRef,
     formantTrailRef,
-    genderTraceRef,
     genderStateRef,
+    resonanceRef,
+    heardAsRef,
+    audioClockRef,
+    setHeardAsEnabled,
     // Exposed so canvas-based components can read the DSP voicedness gate
     // at full rAF rate, bypassing the ~5 fps throttledSetState. Note the
     // ref's `voiced` means "audio present" (silence gate not engaged),

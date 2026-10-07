@@ -1,19 +1,26 @@
-// CombinedDashboard.jsx — Default practice view: pitch trace + resonance
-// thermometer side by side (stacked on mobile), with vocal-weight + HNR
-// stats + session controls below. Handles session recording: buffers
-// frames and writes to IndexedDB every ~1s.
+// CombinedDashboard.jsx — Default practice view (Design A "cue strip",
+// 2026-10-07): the 15 s pitch trace with the cue strip directly under it —
+// Pitch, Resonance · approx. and Vocal weight, each on a neutral axis with
+// typical-speaker bands, a dot and a ~2 s trail (CueStrip.jsx) — then the
+// opt-in "Likely heard as · Experimental" panel (HeardAsPanel.jsx) and one
+// session row. Replaced the Perceived-voice bar, the F2 readout and the
+// stats row (F0 + steadiness live in the pitch row, HNR in the strip
+// caption). Handles session recording: buffers frames and writes to
+// IndexedDB every ~1s (no cue values are recorded).
+//
+// Layout: phones (portrait) stack trace / strip / panel / session row, the
+// trace sized clamp(150px, 26dvh, 240px) so trace + strip fit the first
+// screen at 448 × 890 (Pixel 8 Pro) down to 360 × 690; short landscape
+// (≤ 480 px tall, ≥ 640 px wide) puts trace and strip side by side; desktop
+// (lg) puts the trace left and a 420 px column (strip + panel) right.
 //
 // The pitch target follows the user's training direction
 // (utils/trainingDirection.js) and judges the pitch LEVEL (running 1.5 s
 // median), not single frames; with no target ("Just exploring") readouts
-// are neutral. F2 is a neutral readout in every direction (no reliable
-// target — see the measurement note). The vocal-weight gauge marks the
-// lighter side for "More feminine" and the heavier side for "More
-// masculine" (none otherwise), and whenever it does, a note under the
-// stats row says the reading also moves with pitch. A recorded
-// session keeps a log of the direction(s) in effect so its on-target
-// stats are measured against the right target even if it changed
-// mid-session.
+// are neutral. The strip shows each direction as the same soft highlight
+// (only pitch is judged). A recorded session keeps a log of the
+// direction(s) in effect so its on-target stats are measured against the
+// right target even if it changed mid-session.
 //
 // App keeps this component mounted for the whole time the pipeline runs
 // (so a recording survives switching to the Pitch / History tabs) and
@@ -24,21 +31,26 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { PitchTrace } from "./PitchTrace";
-import { ResonanceMeter } from "./ResonanceMeter";
-import { VocalWeightGauge, WeightPitchNote } from "./VocalWeightGauge";
-import { SteadinessReadout } from "./SteadinessReadout";
-import {
-  pitchTargetFor,
-  pitchStatus,
-  weightTargetFor,
-  appendDirection,
-} from "../utils/trainingDirection";
-import { statusTextClass } from "../utils/constants";
+import { CueStrip } from "./CueStrip";
+import { HeardAsPanel } from "./HeardAsPanel";
+import { pitchTargetFor, appendDirection } from "../utils/trainingDirection";
 import { computeSummaryStats } from "../utils/sessionStats";
 import { holdRecordingLock } from "../utils/sessionRepair";
 import db from "../db";
 
 const FRAME_FLUSH_INTERVAL = 1000; // Flush buffered frames every 1s
+
+function useMediaQuery(query) {
+  const [m, setM] = useState(() => typeof window !== "undefined" && !!window.matchMedia && window.matchMedia(query).matches);
+  useEffect(() => {
+    if (!window.matchMedia) return undefined;
+    const mq = window.matchMedia(query);
+    const on = () => setM(mq.matches);
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, [query]);
+  return m;
+}
 
 export function CombinedDashboard({
   active = true,
@@ -48,16 +60,18 @@ export function CombinedDashboard({
   pitchLevel = null,
   steadiness,
   steadinessHeld,
-  formants,
   hnr,
   vocalWeight,
   modelStatus,
-  modelError,
   modelProgress,
   pitchTraceRef,
-  genderTraceRef,
   genderStateRef,
-  dspGateRef,
+  resonanceRef,
+  resonanceStatus,
+  heardAsRef,
+  audioClockRef,
+  heardAsEnabled = false,
+  onHeardAsChange,
   direction = null,
   sessionRef,
   frameCallbackRef,
@@ -120,6 +134,10 @@ export function CombinedDashboard({
     mountedRef.current = true;
     return () => { mountedRef.current = false; };
   }, []);
+
+  // Layout switches the strip / panel need in JS (the rest is CSS).
+  const wide = useMediaQuery("(min-width: 1024px)");
+  const shortLandscape = useMediaQuery("(max-height: 480px) and (min-width: 640px)");
 
   // Flush buffered frames to IndexedDB
   const flushFrames = useCallback(async () => {
@@ -477,14 +495,8 @@ export function CombinedDashboard({
     return `${m}:${s.toString().padStart(2, "0")}`;
   };
 
-  // null = no target (exploring / not chosen): neutral readout. The
-  // number is this moment's pitch; its colour judges the pitch level.
+  // null = no target (exploring / not chosen): neutral readout.
   const pitchTarget = pitchTargetFor(direction);
-  const pitchLevelStatus = pitch !== null ? pitchStatus(pitchLevel, pitchTarget) : null;
-  // Vocal-weight zone side for this direction (null = no zone, no note).
-  const weightTarget = weightTargetFor(direction);
-
-  const statOpacity = !voiced && !holding ? "opacity-40" : holding ? "opacity-50" : "";
 
   // Another tab is showing: stay mounted (recording continues), render
   // nothing. After all hooks — the hook order must not change.
@@ -492,13 +504,14 @@ export function CombinedDashboard({
 
   return (
     // min-h-0 only at lg: below lg the parent scrolls, and these must not
-    // shrink below their content (shrinking is what let the traces row
-    // overflow onto the stats + session controls).
-    <div className="flex-1 flex flex-col w-full max-w-6xl lg:min-h-0">
-      {/* Two scrolling traces: pitch (left) + resonance (right), stacked on mobile */}
-      <div className="lg:flex-1 flex flex-col lg:flex-row gap-3 lg:min-h-0">
-        {/* Pitch trace — 50% */}
-        <div className="lg:w-1/2 min-h-[180px] lg:min-h-0">
+    // shrink below their content.
+    <div className="flex-1 flex flex-col w-full max-w-6xl lg:min-h-0 gap-2" data-dashboard="">
+      <div className="flex flex-col gap-2 lg:flex-1 lg:flex-row lg:min-h-0 shortland:flex-row shortland:flex-1 shortland:min-h-[180px]">
+        {/* Pitch trace: the moment-to-moment pitch */}
+        <div
+          className="h-[clamp(150px,26dvh,240px)] shrink-0 lg:h-auto lg:flex-1 lg:min-h-0 shortland:h-auto shortland:flex-1 shortland:min-h-0"
+          data-pitch-trace-box=""
+        >
           <PitchTrace
             pitchTraceRef={pitchTraceRef}
             voiced={voiced}
@@ -510,130 +523,86 @@ export function CombinedDashboard({
           />
         </div>
 
-        {/* Resonance meter (vertical thermometer) — 50%.
-            The meter reads its score directly from genderTraceRef each
-            frame, so we don't pass genderScore/genderConfidence as
-            props (those go through useAudioPipeline's throttledSetState
-            and would lag — see the meter's header comment). */}
-        <div className="lg:w-1/2 min-h-[260px] lg:min-h-0">
-          <ResonanceMeter
-            genderTraceRef={genderTraceRef}
-            genderStateRef={genderStateRef}
-            dspGateRef={dspGateRef}
-            modelStatus={modelStatus}
-            modelProgress={modelProgress}
-            modelError={modelError}
+        {/* Cue strip (+ the experimental panel on desktop) */}
+        <div className="flex flex-col gap-2 lg:w-[420px] lg:shrink-0 lg:overflow-y-auto shortland:w-[52%] shortland:shrink-0">
+          <CueStrip
+            direction={direction}
+            voiced={voiced}
+            holding={holding}
+            pitch={pitch}
+            pitchLevel={pitchLevel}
+            steadiness={steadiness}
+            steadinessHeld={steadinessHeld}
+            hnr={hnr}
+            vocalWeight={vocalWeight}
+            resonanceRef={resonanceRef}
+            resonanceStatus={resonanceStatus}
+            shortLandscape={shortLandscape}
           />
-        </div>
-      </div>
-
-      {/* Live stats — columnar layout: F0 + steadiness | F2 + VocalWeight | HNR.
-          Perceived voice is shown by the thermometer above. */}
-      <div data-live-stats className="flex-shrink-0 mt-3 px-2">
-        <div className="flex items-end justify-center gap-x-3 sm:gap-x-6">
-          {/* Column 1: F0 value + pitch steadiness (last ~1 s) */}
-          <div className="text-center shrink-0">
-            <div className={`${statOpacity} transition-opacity duration-300`}>
-              <span className="text-[10px] text-neutral-500 uppercase tracking-wider block">
-                F0
-              </span>
-              <span
-                className={`text-xl sm:text-2xl font-light tabular-nums ${
-                  pitch !== null ? statusTextClass(pitchLevelStatus) : "text-neutral-600"
-                }`}
-              >
-                {pitch !== null ? `${Math.round(pitch)}` : "—"}
-                <span className="text-xs text-neutral-500 ml-0.5">Hz</span>
-              </span>
-            </div>
-            <div className="mt-0.5">
-              <SteadinessReadout value={steadiness} held={steadinessHeld} />
-            </div>
-          </div>
-
-          {/* Column 2: F2 value + Vocal weight gauge (12 rem from sm up: room
-              for the info button in the gauge's Lighter / title / Heavier row) */}
-          <div className="flex-1 max-w-40 sm:max-w-48">
-            <div className={`text-center mb-1.5 ${statOpacity} transition-opacity duration-300`}>
-              <span className="text-[10px] text-neutral-500 uppercase tracking-wider block">
-                F2
-              </span>
-              <span
-                className={`text-xl sm:text-2xl font-light tabular-nums ${
-                  formants?.f2 !== null && formants?.f2 !== undefined
-                    ? "text-neutral-200"
-                    : "text-neutral-600"
-                }`}
-              >
-                {formants?.f2 !== null && formants?.f2 !== undefined ? `${Math.round(formants.f2)}` : "\u2014"}
-                <span className="text-xs text-neutral-500 ml-0.5">Hz</span>
-              </span>
-            </div>
-            <VocalWeightGauge
-              vocalWeight={vocalWeight}
-              voiced={voiced}
-              holding={holding}
-              target={weightTarget}
+          {wide && (
+            <HeardAsPanel
+              enabled={heardAsEnabled}
+              onToggle={onHeardAsChange}
+              modelStatus={modelStatus}
+              modelProgress={modelProgress}
+              heardAsRef={heardAsRef}
+              audioClockRef={audioClockRef}
+              genderStateRef={genderStateRef}
+              resonanceRef={resonanceRef}
             />
-          </div>
-
-          {/* Column 3: HNR */}
-          <div className={`text-center shrink-0 pb-3 ${statOpacity} transition-opacity duration-300`}>
-            <span className="text-[10px] text-neutral-500 uppercase tracking-wider block">
-              HNR
-            </span>
-            <span className="text-sm font-light tabular-nums text-neutral-300">
-              {hnr !== null ? `${hnr.toFixed(1)}` : "\u2014"}
-              <span className="text-xs text-neutral-500 ml-0.5">dB</span>
-            </span>
-          </div>
+          )}
         </div>
-        {/* The weight reading's pitch confound, whenever a weight zone is
-            in effect (also during calibration, so the line doesn't appear
-            mid-session). Full row width, centred under the gauge. */}
-        <WeightPitchNote target={weightTarget} />
       </div>
 
-      {/* Session controls */}
-      <div className="flex-shrink-0 mt-3 pb-2">
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-          <div className="flex items-center gap-2">
-            <button
-              onClick={recording ? stopRecording : startRecording}
-              disabled={stopping}
-              className={`flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-medium transition-colors cursor-pointer border disabled:opacity-60 disabled:cursor-wait ${
-                recording
-                  ? "bg-red-500/15 text-red-400 border-red-500/30 hover:bg-red-500/25"
-                  : "bg-neutral-800/60 text-neutral-300 border-neutral-700 hover:bg-neutral-700/60"
+      {/* The experimental panel below the strip on phones */}
+      {!wide && (
+        <HeardAsPanel
+          enabled={heardAsEnabled}
+          onToggle={onHeardAsChange}
+          modelStatus={modelStatus}
+          modelProgress={modelProgress}
+          heardAsRef={heardAsRef}
+          audioClockRef={audioClockRef}
+          genderStateRef={genderStateRef}
+          resonanceRef={resonanceRef}
+        />
+      )}
+
+      {/* Session row: Save, timer, notes — one line */}
+      <div className="flex-shrink-0 pb-1" data-session-row="">
+        <div className="flex items-center gap-2 w-full">
+          <button
+            onClick={recording ? stopRecording : startRecording}
+            disabled={stopping}
+            className={`shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm font-medium transition-colors cursor-pointer border disabled:opacity-60 disabled:cursor-wait ${
+              recording
+                ? "bg-red-500/15 text-red-400 border-red-500/30 hover:bg-red-500/25"
+                : "bg-neutral-800/60 text-neutral-300 border-neutral-700 hover:bg-neutral-700/60"
+            }`}
+          >
+            <span
+              className={`w-2.5 h-2.5 rounded-full ${
+                recording ? "bg-red-400 animate-pulse" : "bg-neutral-500"
               }`}
-            >
-              <span
-                className={`w-2.5 h-2.5 rounded-full ${
-                  recording ? "bg-red-400 animate-pulse" : "bg-neutral-500"
-                }`}
-              />
-              {stopping ? "Saving…" : recording ? "Stop & Save" : "Save Session"}
-            </button>
-
-            {/* Recording indicator + timer */}
-            {recording && (
-              <span className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                <span className="text-xs text-red-400 font-medium">REC</span>
-              </span>
-            )}
-          </div>
-
-          <span className="text-sm tabular-nums text-neutral-400 font-mono">
+            />
+            {stopping ? "Saving…" : recording ? "Stop & Save" : "Save Session"}
+          </button>
+          {recording && (
+            <span className="shrink-0 flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+              <span className="text-xs text-red-400 font-medium">REC</span>
+            </span>
+          )}
+          <span className="shrink-0 text-sm tabular-nums text-neutral-400 font-mono">
             {formatTime(elapsed)}
           </span>
-
           <input
             type="text"
             placeholder="Session notes..."
+            aria-label="Session notes"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            className="bg-neutral-800/60 border border-neutral-700 rounded-lg px-3 py-1.5 text-sm text-neutral-300 placeholder:text-neutral-600 focus:outline-none focus:border-neutral-500 w-48 sm:w-56"
+            className="flex-1 min-w-0 bg-neutral-800/60 border border-neutral-700 rounded-lg px-3 py-1.5 text-sm text-neutral-300 placeholder:text-neutral-600 focus:outline-none focus:border-neutral-500"
           />
         </div>
         {recordError && (

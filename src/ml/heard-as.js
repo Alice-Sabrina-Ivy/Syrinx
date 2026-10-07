@@ -26,8 +26,8 @@
 //   voicedMs   = the audio-clock spacing before each such voiced frame,
 //                capped at 100 ms (25 ms per frame normally; stays right under
 //                the ?chunk= diag flag).
-// Hidden (with a reason) when: no scored window yet ("listening"), the
-// worker's voice state is "sustained" (held vowel / note), the newest
+// Hidden (with a reason) when: the worker's voice state is "sustained"
+// (held vowel / note), no scored window yet ("listening"), the newest
 // scored window is older than freshMs ("stale"), or the span holds fewer
 // than minWindows windows or less than minVoicedMs voiced ("short").
 
@@ -119,8 +119,8 @@ export function createHeardAsAggregator({
     },
     /** -> { hidden: reason } | { meterLogit, lnF0, nWindows, voicedMs, ageMs } */
     estimate(nowMs, voiceState = null) {
-      if (!everScored) return { hidden: "listening" };
       if (voiceState === "sustained") return { hidden: "sustained" };
+      if (!everScored) return { hidden: "listening" };
       const newest = windows.length ? windows[windows.length - 1].audioMs : null;
       if (newest === null || nowMs - newest > freshMs) return { hidden: "stale" };
       const g = this.aggregate(nowMs);

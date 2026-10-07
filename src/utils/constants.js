@@ -21,6 +21,17 @@ export const PITCH_TRACE_SECONDS = 15;
 export const RESONANCE_TRACE_SECONDS = 15;
 export const SILENCE_HOLD_MS = 5000;
 
+// Dashboard cue strip axes (components/cueStripModel.js). Every axis puts
+// the typically-men end on the LEFT. Pitch: log Hz; resonance: the spectral
+// warp cue's u units (0 = typical LibriSpeech man, 1 = typical woman; the
+// resonance lab's U_MIN / U_MAX); weight: σ from the session's own baseline
+// (negative = heavier, on the left; BASELINE_SIGMA = 3).
+export const CUE_AXES = Object.freeze({
+  pitch: Object.freeze({ min: 75, max: 320, log: true, ticks: Object.freeze([100, 150, 200, 250, 300]) }),
+  resonance: Object.freeze({ min: -1.0, max: 2.2 }),
+  weight: Object.freeze({ min: -3, max: 3, ticks: Object.freeze([0]) }),
+});
+
 // HNR display range (dB) — higher = cleaner voice
 export const HNR_RANGE = { min: 0, max: 35 };
 
@@ -34,13 +45,8 @@ export const COLORS = {
   outOfTarget: "#f87171",
   targetBand: "rgba(74, 222, 128, 0.08)",
   targetBandBorder: "rgba(74, 222, 128, 0.25)",
+  // Neutral trace / cue-strip dot colour (no colour implies a gender).
   neutralTrace: "#c4b5fd",
-  // Perceived Voice meter: one neutral hue for every reading — the
-  // meter's ends are descriptions, not goals (an indicator line, no fill
-  // growing from either end).
-  meterIndicator: "#c4b5fd",
-  meterBand: "rgba(255, 255, 255, 0.035)",
-  meterBandBorder: "rgba(255, 255, 255, 0.14)",
   // Shared
   grid: "rgba(255, 255, 255, 0.06)",
   gridLabel: "rgba(255, 255, 255, 0.3)",

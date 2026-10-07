@@ -178,6 +178,14 @@ const expected = { version: EXPORT_VERSION, exportedAt, settings, sessions, fram
   check("settings merge never turns recordAudio on (local row lacks it)",
     !("recordAudio" in mergeImportedSettings({ id: "default", targetF0Low: 150 }, imported)));
   check("settings merge with nothing new → null (no write)", mergeImportedSettings({ ...local, displayName: "x" }, imported) === null);
+  // The experimental "Likely heard as" switch is never imported: an imported
+  // file must never switch an experiment on (or off).
+  const withHeardAs = { id: "default", heardAsEnabled: true, targetF0Low: 165 };
+  check("settings merge never imports heardAsEnabled (no local row)", !("heardAsEnabled" in mergeImportedSettings(undefined, withHeardAs)));
+  check("settings merge never turns heardAsEnabled on (local row lacks it)",
+    mergeImportedSettings({ id: "default", targetF0Low: 150 }, withHeardAs) === null);
+  check("settings merge keeps a local heardAsEnabled off",
+    mergeImportedSettings({ id: "default", heardAsEnabled: false }, withHeardAs).heardAsEnabled === false);
   check("settings row validity", isImportableSettingsRow({ id: "default" }) && !isImportableSettingsRow({}) && !isImportableSettingsRow(null) && !isImportableSettingsRow({ id: {} }));
 }
 

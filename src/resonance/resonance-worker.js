@@ -40,6 +40,10 @@ let sinceLastPostS = 0;
 let emaMsPerS = null;
 let totalMs = 0;
 let totalAudioS = 0;
+// Busy ms spent on relayed pitch frames since the last chunk (most of the
+// vtln work runs there, when a frame resolves grid time); folded into the
+// next chunk's rate so the overload EMA sees all of it.
+let pendingFrameMs = 0;
 // Pitch hints that arrive before the assets have loaded are dropped; chunks
 // too (the engine starts with the first chunk it sees, and a frame whose
 // chunk it never saw is dropped and counted).
@@ -92,7 +96,8 @@ function onChunk(msg) {
   const t0 = performance.now();
   cue.noteChunk(ct);
   engine.pushChunk(x, null, ct);
-  const ms = performance.now() - t0;
+  const ms = performance.now() - t0 + pendingFrameMs;
+  pendingFrameMs = 0;
   const audioS = x.length / sampleRate;
   totalMs += ms;
   totalAudioS += audioS;
@@ -116,7 +121,7 @@ function onPitchHint(msg) {
   cue.notePitchHint({ voiced: !!msg.voiced, pitch: msg.pitch, contextTime: ct });
   const t0 = performance.now();
   engine.pushPitchFrame(ct, msg.voiced ? msg.pitch : 0);
-  totalMs += performance.now() - t0;
+  pendingFrameMs += performance.now() - t0;
 }
 
 self.onmessage = async (e) => {
@@ -131,6 +136,7 @@ self.onmessage = async (e) => {
     emaMsPerS = null;
     totalMs = 0;
     totalAudioS = 0;
+    pendingFrameMs = 0;
     status("loading");
     try {
       const base = msg.assetBase ?? "/";

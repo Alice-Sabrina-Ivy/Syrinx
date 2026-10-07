@@ -135,6 +135,35 @@ export function weightZoneForDisplay(target, span = BASELINE_SIGMA) {
   return target.side === "lighter" ? { left: 0, width } : { left: 100 - width, width };
 }
 
+// The weight zone as a σ range on the cue strip's −span…+span axis
+// (heavier on the left, lighter on the right): { low, high } or null.
+export function weightRangeFor(direction, span = BASELINE_SIGMA) {
+  const t = weightTargetFor(direction);
+  if (t == null || !(span > t.sigma)) return null;
+  return t.side === "lighter" ? { low: t.sigma, high: span } : { low: -span, high: -t.sigma };
+}
+
+// ---------------------------------------------------------------------------
+// Resonance (the Dashboard's spectral-warp cue, 2026-10-07): the cue strip's
+// soft highlight, in the cue's u units (0 = the typical LibriSpeech man,
+// 1 = the typical woman), from the reference speakers' 10th–90th percentile
+// 5 s readouts (public/resonance-lab/reference.json, "vtln"): feminine = the
+// women's band, masculine = the men's band, androgynous = the gap between
+// them (men's q90 → women's q10), exploring / none = no highlight. An outline
+// only — the cue's absolute position across microphones is approximate, so
+// it never judges on / off target. ref: reference.json's "vtln" entry.
+export function resonanceU(ref, value) {
+  return (value - ref.menMedian) / (ref.womenMedian - ref.menMedian);
+}
+export function resonanceTargetFor(direction, ref) {
+  if (ref == null) return null;
+  const u = (v) => resonanceU(ref, v);
+  if (direction === "feminine") return { low: u(ref.women.q10), high: u(ref.women.q90) };
+  if (direction === "masculine") return { low: u(ref.men.q10), high: u(ref.men.q90) };
+  if (direction === "androgynous") return { low: u(ref.men.q90), high: u(ref.women.q10) };
+  return null;
+}
+
 // The drawn band, e.g. "165–255 Hz".
 export function formatTarget(target) {
   if (target == null) return null;

@@ -615,6 +615,9 @@ function summarize(snap) {
     nFrames: frames.length,
     nLowRes: lowRes.length,
     nMlInferences: mlInferences.length,
+    // Dashboard resonance cue worker (2026-10-07): its busy ms per audio s.
+    resonancePerf: snap.resonancePerf ?? null,
+    resonanceStatus: snap.resonanceStatus ?? null,
     diagFlags: snap.diagFlags ?? null,
     chunkArrivalMs: stats(arrivalSeries),
     totalMs: stats(totalSeries),
@@ -659,6 +662,10 @@ function printSummary(s) {
     }ms outputLat=${
       ((s.audio.outputLatencySec ?? 0) * 1000).toFixed(1)
     }ms granted.latency=${granted.latency ?? "—"}`);
+  }
+  if (s.resonancePerf) {
+    const r = s.resonancePerf;
+    console.log(`  resonance cue worker: ${r.meanMsPerAudioS?.toFixed(1) ?? "—"} ms per audio s (mean), EMA ${r.msPerAudioS?.toFixed(1) ?? "—"}, status ${s.resonanceStatus?.status ?? "—"}`);
   }
   if (s.statusErrors > 0) {
     console.log(`  ⚠ status errors: ${s.statusErrors}`);

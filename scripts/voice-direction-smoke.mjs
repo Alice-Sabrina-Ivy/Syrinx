@@ -1,5 +1,8 @@
 // voice-direction-smoke.mjs — headless check of the training-direction
 // question and the Perceived Voice meter fixes against the BUILT app
+// **Historical (superseded 2026-10-07):** its Dashboard checks (Perceived
+// Voice meter, vocal-weight gauge, F2 / stats row) target the dashboard the
+// cue strip replaced; scripts/cue-strip-smoke.mjs checks the current one.
 // (dist/, served by `vite preview`), with Chrome's fake mic playing a WAV.
 //
 //   npm run build && node scripts/voice-direction-smoke.mjs --speech=<wav> --held=<wav> \

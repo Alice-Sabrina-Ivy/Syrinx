@@ -1,5 +1,6 @@
 // DataManagement.jsx — Settings/data panel: training direction, audio
-// recording toggle, export, import, delete all.
+// recording toggle, the experimental "Likely heard as" switch (the same
+// setting as the panel's own switch; App owns it), export, import, delete all.
 //
 // A modal dialog (App makes the page behind it inert): focus moves to the
 // panel when it opens and back to the gear when it closes (App), Escape
@@ -15,6 +16,7 @@ import {
   importExport,
 } from "../utils/exportFormat";
 import { DirectionOptions } from "./DirectionPrompt";
+import { HeardAsSwitch } from "./HeardAsPanel";
 
 // Export assembly: frame lines are concatenated into ~1 MB strings, and
 // every ~32 MB of those are folded into a Blob (the browser's blob store,
@@ -30,7 +32,7 @@ function announceDataChanged() {
   window.dispatchEvent(new CustomEvent("syrinx:data-changed"));
 }
 
-export function DataManagement({ onClose, direction = null, onDirectionChange }) {
+export function DataManagement({ onClose, direction = null, onDirectionChange, heardAsEnabled = false, onHeardAsChange }) {
   const [recordAudio, setRecordAudio] = useState(false);
   const [importing, setImporting] = useState(false);
   const [status, setStatus] = useState(null);
@@ -193,8 +195,10 @@ export function DataManagement({ onClose, direction = null, onDirectionChange })
       announceDataChanged();
     }
     // The settings row (and its recordAudio flag) is gone — reflect the
-    // default in the toggle instead of a stale "on".
+    // default in the toggle instead of a stale "on". Same for the
+    // experimental panel (default off).
     setRecordAudio(false);
+    if (heardAsEnabled) onHeardAsChange?.(false);
     setStatus("All data deleted");
     setTimeout(() => setStatus(null), 2000);
   }
@@ -263,6 +267,23 @@ export function DataManagement({ onClose, direction = null, onDirectionChange })
             </button>
           </label>
         </div>
+
+        {/* Experimental "Likely heard as" panel (off by default) */}
+        {onHeardAsChange && (
+          <div className="mb-4" data-settings-heard-as="">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <span className="text-sm text-neutral-300">
+                  Show the experimental &lsquo;Likely heard as&rsquo; estimate
+                </span>
+                <p className="text-[11px] text-neutral-500 mt-0.5">
+                  A rough, research-based guess shown as ranges, not a verdict. Downloads a 16 MB voice model when first turned on.
+                </p>
+              </div>
+              <HeardAsSwitch on={heardAsEnabled} onChange={onHeardAsChange} label="Show the experimental 'Likely heard as' estimate" />
+            </div>
+          </div>
+        )}
 
         <hr className="border-neutral-800 mb-4" />
 

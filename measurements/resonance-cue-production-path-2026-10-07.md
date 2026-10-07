@@ -141,7 +141,29 @@ expected from the lab benchmark's utterance-to-utterance wobble.
 
 ## 7. Desktop Chrome and mobile
 
-(Filled in after the cue is wired; see below.)
+`node scripts/resonance/chrome-cpu.mjs` — the built app (vite preview) in
+headless Chrome 154 (desktop, i9-11900K) under `?diag=1`, the fake mic
+playing a 72 s LibriSpeech test-clean reading (one woman reader, CC BY 4.0),
+60 s; `window.__syrinxDiag.snapshot().resonancePerf` = the worker's own busy
+time (`performance.now()` around its chunk and pitch-frame processing) per
+second of audio. Other jobs held the machine at ~70 % CPU load during both
+runs, so these are upper-side figures.
+
+| Run | Session mean | Overload EMA (τ 10 s) | Bins admitted / dropped | Grid frames forced unvoiced |
+|---|---|---|---|---|
+| 1 | 45.9 ms per audio s | 48.9 | 377 / 24 | 0 |
+| 2 | 45.2 ms per audio s | 46.2 | 392 / 7 | 0 |
+
+Target ≤ 45 ms/s: at the target under this load (≈ 1.4 × the Node figure);
+the stop threshold (60 ms/s)
+is not reached. The overload guard trips at 500 ms/s. (A first run exposed
+that the overload EMA counted only chunk processing while most vtln work
+runs when a relayed pitch frame resolves grid time; it now counts both.)
+
+**Mobile: unmeasured.** No phone was attached while this was built.
+`scripts/mobile-diag-capture.js` now prints the worker's `resonancePerf`;
+until it is measured, the overload guard (§1) turns the row into
+"unavailable on this device" rather than letting the worker fall behind.
 
 ## 8. Honest position
 

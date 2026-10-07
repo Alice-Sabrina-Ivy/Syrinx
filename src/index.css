@@ -6,3 +6,7 @@ body {
   color: #e5e5e5;
   font-family: system-ui, -apple-system, sans-serif;
 }
+
+/* Phones held sideways (short landscape): the Dashboard puts the pitch trace
+   and the cue strip side by side (CombinedDashboard). */
+@custom-variant shortland (@media (max-height: 480px) and (min-width: 640px));

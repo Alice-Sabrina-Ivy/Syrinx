@@ -1,4 +1,10 @@
-// perceivedVoiceView.js — what the Perceived Voice meter shows right now.
+// perceivedVoiceView.js — what the Perceived Voice meter showed.
+//
+// No production consumer since the cue strip (2026-10-07: the Perceived-voice
+// bar, ResonanceMeter.jsx, was removed); kept for the measurement replay
+// (scripts/perceived-voice-gate/replay.mjs reproduces
+// measurements/perceived-voice-gate-2026-10-07.md with it).
+//
 // Pure (no React, no canvas) so the rules are unit-tested and replayed by
 // the measurement harness exactly as the meter runs them
 // (measurements/perceived-voice-gate-2026-10-07.md).
