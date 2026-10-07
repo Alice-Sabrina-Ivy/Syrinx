@@ -7,8 +7,16 @@
 //   noise.wav         20 s synthetic pink noise (-30 dBFS rms)
 //   silence.wav       20 s of digital silence
 //
+//   pitch-only-man.wav / pitch-only-woman.wav  (with --pitch-only=<jobs_hcs.json>
+//                     of scripts/heard-as/pitch-only/build_jobs.py) one Hillenbrand
+//                     & Clark sentence-proxy session each: ~50 s of a LibriSpeech
+//                     reader's natural speech, then ~40 s with the pitch moved
+//                     and the resonance kept (man raised, woman lowered); the
+//                     shift time goes to the matching .json — the pitch-only
+//                     warning check of scripts/cue-strip-smoke.mjs --pitch-only
+//
 //   node scripts/cue-strip-smoke-wavs.mjs --r1=<jobs.json [{audio: float32 16 kHz file, speaker, sex}]>
-//        [--woman=<speaker>] [--man=<speaker>]
+//        [--woman=<speaker>] [--man=<speaker>] [--pitch-only=<jobs_hcs.json>]
 
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
@@ -48,6 +56,33 @@ if (r1) {
   const w = pick("f", arg("woman", "")), m = pick("m", arg("man", ""));
   writeWav("speech-woman.wav", w.y); console.log(`  (LibriSpeech test-clean reader ${w.spk})`);
   writeWav("speech-man.wav", m.y); console.log(`  (LibriSpeech test-clean reader ${m.spk})`);
+}
+
+const pitchOnlyJobs = arg("pitch-only", "");
+if (pitchOnlyJobs) {
+  // session.mjs layout: each file followed by a 0.25 s gap (or the phase's gapS)
+  const jobs = JSON.parse(readFileSync(pitchOnlyJobs, "utf8"));
+  for (const [name, key] of [["man", arg("pitch-only-man", "hcs_908_PO")], ["woman", arg("pitch-only-woman", "hcs_4970_PO")]]) {
+    const job = jobs.find((j) => j.key === key);
+    if (!job) { console.error(`no job ${key} in ${pitchOnlyJobs}`); continue; }
+    const parts = []; let n = 0, shiftS = null;
+    for (const ph of job.phases) {
+      if (ph.phase === "shift") shiftS = n / 16000;
+      for (const f of ph.files) {
+        if (f.sr !== 16000) throw new Error(`${f.audio}: sr ${f.sr}`);
+        const b = readFileSync(f.audio);
+        const x = new Float32Array(b.buffer, b.byteOffset, b.byteLength / 4);
+        parts.push(x, new Float32Array(Math.round((ph.gapS ?? 0.25) * 16000)));
+        n += x.length + Math.round((ph.gapS ?? 0.25) * 16000);
+      }
+    }
+    const x = new Float32Array(n); let o = 0;
+    for (const p of parts) { x.set(p, o); o += p.length; }
+    let pk = 0; for (const v of x) pk = Math.max(pk, Math.abs(v));
+    writeWav(`pitch-only-${name}.wav`, Float32Array.from(upsample(x)).map((v) => (0.5 * v) / pk));
+    writeFileSync(path.join(OUT, `pitch-only-${name}.json`), JSON.stringify({ key, shiftS, durS: n / 16000 }));
+    console.log(`  (${key}: shift at ${shiftS.toFixed(1)} s of ${(n / 16000).toFixed(1)} s)`);
+  }
 }
 
 const SR = 48000;

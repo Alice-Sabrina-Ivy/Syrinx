@@ -70,6 +70,7 @@ export function CombinedDashboard({
   resonanceRef,
   resonanceStatus,
   heardAsRef,
+  pitchOnlyRef,
   audioClockRef,
   heardAsEnabled = false,
   onHeardAsChange,
@@ -547,6 +548,7 @@ export function CombinedDashboard({
               modelStatus={modelStatus}
               modelProgress={modelProgress}
               heardAsRef={heardAsRef}
+              pitchOnlyRef={pitchOnlyRef}
               audioClockRef={audioClockRef}
               genderStateRef={genderStateRef}
               resonanceRef={resonanceRef}
@@ -563,6 +565,7 @@ export function CombinedDashboard({
           modelStatus={modelStatus}
           modelProgress={modelProgress}
           heardAsRef={heardAsRef}
+          pitchOnlyRef={pitchOnlyRef}
           audioClockRef={audioClockRef}
           genderStateRef={genderStateRef}
           resonanceRef={resonanceRef}

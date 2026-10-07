@@ -17,10 +17,14 @@
 // measurements/heard-as-calibration-2026-10-07.md.
 //
 // Note slots under the axis, shown only while the estimate is: the
-// pitch–resonance conflict note (computed here) and `extraNote` — a prop for
-// an additional note supplied by the parent (reserved for the pitch-only-
-// change warning designed separately); rendered as given, in
-// [data-heard-as-note="extra"].
+// pitch–resonance conflict note (computed here) and the extra slot
+// [data-heard-as-note="extra"]: the pitch-only-change warning
+// (src/ml/pitch-only-warning.js, updated here on the panel's cadence from
+// `pitchOnlyRef`; data-pitch-only="1") or, if the parent passes one, the
+// `extraNote` prop rendered as given. The warning compares with this
+// session's start: "your pitch has moved a lot more than your resonance
+// since you started" — same words in every direction.
+// measurements/heard-as-pitch-only-warning-2026-10-07.md
 //
 // The gender worker runs only while this is on (useAudioPipeline
 // setHeardAsEnabled); off, nothing runs and nothing downloads.
@@ -29,6 +33,7 @@ import { useEffect, useRef, useState } from "react";
 import { heardAsShares, conflictNote } from "../ml/heard-as";
 import { heardAsAxis, AXIS_ENDS } from "./heardAsAxisModel";
 import { HEARD_AS_CALIBRATION } from "../ml/heardAsCalibration";
+import { PITCH_ONLY_TEXT } from "../ml/pitch-only-warning";
 
 const STALE_DIM_MS = 2000;
 const HIDE_CHECK_MS = 250;
@@ -116,6 +121,7 @@ export function HeardAsPanel({
   audioClockRef,
   genderStateRef,
   resonanceRef,
+  pitchOnlyRef = null,
   extraNote = null,
 }) {
   const [view, setView] = useState({ hidden: "listening" });
@@ -127,14 +133,19 @@ export function HeardAsPanel({
   useEffect(() => {
     if (!enabled) return undefined;
     const show = (v) => { shownRef.current = !v.hidden; setView(v); };
+    // Every update — hidden ones too — goes to the pitch-only warning: a
+    // hidden panel is an ineligible update and clears it. (The hook's
+    // warning object lives for the whole page; captured for the cleanup.)
+    const warning = pitchOnlyRef?.current ?? null;
+    const warn = (lnF0) => warning?.update({ lnF0, resonance: resonanceRef?.current ?? null }) === true;
     const compute = () => {
       const st = statusRef.current;
-      if (st === "error") { show({ hidden: "error" }); return; }
-      if (st !== "ready") { show({ hidden: "loading" }); return; }
+      if (st === "error") { warn(null); show({ hidden: "error" }); return; }
+      if (st !== "ready") { warn(null); show({ hidden: "loading" }); return; }
       const now = audioClockRef?.current;
       const voiceState = genderStateRef?.current?.state ?? null;
       const e = now == null ? { hidden: "listening" } : heardAsRef.current.estimate(now, voiceState);
-      if (e.hidden) { show({ hidden: e.hidden }); return; }
+      if (e.hidden) { warn(null); show({ hidden: e.hidden }); return; }
       const shares = heardAsShares(e.meterLogit, e.lnF0);
       const r = resonanceRef?.current;
       const resonanceLive = r && r.u != null && (r.fill ?? 0) >= 1 && r.verdict !== "sustained";
@@ -142,6 +153,7 @@ export function HeardAsPanel({
         axis: heardAsAxis(shares),
         ageMs: e.ageMs,
         conflict: resonanceLive ? conflictNote(e.lnF0, r.u) : null,
+        pitchOnly: warn(e.lnF0),
       });
     };
     compute();
@@ -151,8 +163,12 @@ export function HeardAsPanel({
     const fast = setInterval(() => {
       if (shownRef.current && genderStateRef?.current?.state === "sustained") compute();
     }, HIDE_CHECK_MS);
-    return () => { clearInterval(id); clearInterval(fast); };
-  }, [enabled, heardAsRef, audioClockRef, genderStateRef, resonanceRef]);
+    return () => {
+      clearInterval(id); clearInterval(fast);
+      // Switched off (or remounted): a later switch-on starts a fresh run.
+      warning?.resetRun();
+    };
+  }, [enabled, heardAsRef, audioClockRef, genderStateRef, resonanceRef, pitchOnlyRef]);
 
   // Loading progress is shown as it arrives (not on the 2 s cadence).
   const progress = modelProgress?.total ? Math.round((100 * modelProgress.loaded) / modelProgress.total) : 0;
@@ -204,7 +220,11 @@ export function HeardAsPanel({
               {CONFLICT_TEXT[view.conflict]} (Where resonance reads also depends on your microphone.)
             </p>
           )}
-          {extraNote != null && extraNote !== false && (
+          {view.pitchOnly ? (
+            <p className="mt-1 text-[11px] leading-snug text-amber-200/80" data-heard-as-note="extra" data-pitch-only="1" role="status">
+              {PITCH_ONLY_TEXT}
+            </p>
+          ) : extraNote != null && extraNote !== false && (
             <div className="mt-1 text-[11px] leading-snug text-amber-200/80" data-heard-as-note="extra">{extraNote}</div>
           )}
           <p className="mt-0.5 text-[11px] text-neutral-400">From your last ~8 s of speech · updates every 2 s · shaded = range{view.axis.wide ? "" : ", dot = middle guess"}</p>

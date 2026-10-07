@@ -4,7 +4,7 @@
 // (scripts/cue-strip-smoke-wavs.mjs -> build/cue-strip-smoke/).
 //
 //   npm run build && node scripts/cue-strip-smoke-wavs.mjs --r1=<jobs> &&
-//   node scripts/cue-strip-smoke.mjs --viewport=phone|p402|p360|landscape|desktop [--out=<dir>]
+//   node scripts/cue-strip-smoke.mjs --viewport=phone|p402|p360|landscape|desktop [--out=<dir>] [--pitch-only=man,woman]
 //
 // Per viewport, one fresh profile (Chrome relaunched on it per WAV, since the
 // fake-capture file is a launch flag):
@@ -37,6 +37,11 @@
 //                   its first second; the panel says "sustained", never ranges.
 //   4 noise / 5 silence  no dot on any row after the 5 s hold; the panel never
 //                   shows ranges.
+//   (--pitch-only=man,woman) pitch-only-<who>  ~50 s natural, then pitch moved
+//                   with the resonance kept (scripts/cue-strip-smoke-wavs.mjs
+//                   --pitch-only): the pitch-only warning is never shown before
+//                   the shift, appears within 25 s after it, inside the shown
+//                   estimate in the extra note slot, with the shipped words.
 // Screenshots: <out>/<viewport>/.
 //
 // Process hygiene (CLAUDE.md hard rule 2, copied from voice-direction-smoke.mjs):
@@ -46,17 +51,20 @@
 // exit / SIGINT / SIGTERM / uncaughtException.
 
 import { spawn, execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, existsSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import puppeteer from "puppeteer-core";
+import { PITCH_ONLY_TEXT } from "../src/ml/pitch-only-warning.js";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const arg = (k, d) => (process.argv.find((a) => a.startsWith(`--${k}=`)) ?? `=${d}`).split("=").slice(1).join("=");
 const WAVDIR = arg("wavs", path.join(repo, "build", "cue-strip-smoke"));
 const WAV = Object.fromEntries(["speech-woman", "speech-man", "held", "noise", "silence"].map((k) => [k, path.join(WAVDIR, `${k}.wav`)]));
 const VIEWPORT = arg("viewport", "phone");
+const PITCH_ONLY = arg("pitch-only", "").split(",").filter(Boolean);
+for (const who of PITCH_ONLY) WAV[`pitch-only-${who}`] = path.join(WAVDIR, `pitch-only-${who}.wav`);
 const OUT = path.join(arg("out", path.join(repo, "build", "cue-strip-smoke")), VIEWPORT);
 const PORT = Number(arg("port", "4191"));
 const CHROME = ["C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
@@ -178,6 +186,10 @@ const state = (page) => page.evaluate(() => {
           range: p.querySelector("[data-heard-as-range]")?.textContent ?? "", unsure: p.querySelector("[data-heard-as-unsure]")?.textContent ?? "",
           fits: p.scrollWidth <= p.clientWidth + 1 && ends.length === 2 && ends.every((e) => e.left >= pr.left - 0.5 && e.right <= pr.right + 0.5)
             && ends[0].right <= ends[1].left && !!range && range.left >= pr.left - 0.5 && range.right <= pr.right + 0.5 };
+      })(),
+      pitchOnly: (() => {
+        const n = p.querySelector("[data-pitch-only]");
+        return n ? { text: n.textContent.trim(), slot: n.dataset.heardAsNote ?? null, inShares: !!n.closest("[data-heard-as-shares]") } : null;
       })() } : null,
     listening: document.body.innerText.includes("Stop Listening"),
   };
@@ -456,6 +468,37 @@ check("man: listening", await continueAfterReload(page));
   await shot(page, "05b-heard-as-panel");
   log(`  axis: ${JSON.stringify(s.heardAs?.axis)}`);
   check("no page errors (man)", errors.length === 0, errors.slice(0, 3).join(" | "));
+}
+
+// ============================================================ pitch-only (optional)
+for (const who of PITCH_ONLY) {
+  const meta = JSON.parse(readFileSync(path.join(WAVDIR, `pitch-only-${who}.json`), "utf8"));
+  log(`pitch-only ${who} (${meta.key}, shift at ${meta.shiftS.toFixed(1)} s)`);
+  await launch(WAV[`pitch-only-${who}`]);
+  ({ page, errors } = await open());
+  check(`pitch-only ${who}: listening`, await continueAfterReload(page));
+  const t0 = Date.now();
+  let before = 0, first = null, firstState = null, shownTicks = 0;
+  await sample(page, (meta.shiftS + 25) * 1000, (s) => {
+    const t = (Date.now() - t0) / 1000;
+    if (s.heardAs?.mode === "shown") shownTicks++;
+    const w = s.heardAs?.pitchOnly;
+    if (w && t < meta.shiftS) before++;
+    if (w && t >= meta.shiftS && first === null) { first = t - meta.shiftS; firstState = s; return true; }
+  });
+  check(`pitch-only ${who}: the warning is never shown before the shift`, before === 0, `${before} samples`);
+  check(`pitch-only ${who}: the warning appears within 25 s after the shift`, first !== null, first === null ? `panel shown on ${shownTicks} samples` : `${first.toFixed(1)} s after`);
+  const w = firstState?.heardAs?.pitchOnly;
+  check(`pitch-only ${who}: shown in the extra note slot, inside the shown estimate, with the shipped words and no '%'`,
+    !!w && w.slot === "extra" && w.inShares && firstState.heardAs.mode === "shown" && w.text === PITCH_ONLY_TEXT && !firstState.heardAs.text.includes("%"), JSON.stringify(w));
+  if (first !== null) {
+    await page.evaluate(() => document.querySelector("[data-pitch-only]")?.scrollIntoView({ block: "center" }));
+    await sleep(200);
+    await shot(page, `05c-pitch-only-${who}`);
+    const fits = await page.evaluate(() => { const p = document.querySelector("[data-heard-as]"); return p ? p.scrollWidth <= p.clientWidth + 1 && document.documentElement.scrollWidth <= innerWidth : false; });
+    check(`pitch-only ${who}: the note wraps inside the panel (no horizontal overflow)`, fits);
+  }
+  check(`no page errors (pitch-only ${who})`, errors.length === 0, errors.slice(0, 3).join(" | "));
 }
 
 // ============================================================ 3 held

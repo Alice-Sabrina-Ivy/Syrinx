@@ -10,6 +10,7 @@ import {
   RESONANCE_TRACE_SECONDS,
 } from "../utils/constants";
 import { createHeardAsAggregator } from "../ml/heard-as";
+import { createPitchOnlyWarning } from "../ml/pitch-only-warning";
 import {
   pushAndMedianPitch,
   PITCH_SMOOTH_LEN,
@@ -161,6 +162,13 @@ export function useAudioPipeline() {
   const heardAsEnabledRef = useRef(false);
   const heardAsRef = useRef(null);
   if (heardAsRef.current === null) heardAsRef.current = createHeardAsAggregator();
+  // The panel's pitch-only-change warning (src/ml/pitch-only-warning.js):
+  // fed every posted pitch frame and every resonance state message whether
+  // or not the panel is on (its start reference is the session's start);
+  // the panel calls update() on its 2 s cadence.
+  // measurements/heard-as-pitch-only-warning-2026-10-07.md
+  const pitchOnlyRef = useRef(null);
+  if (pitchOnlyRef.current === null) pitchOnlyRef.current = createPitchOnlyWarning();
   // Newest audio-clock time (ms of capture contextTime) the hook has seen —
   // the panel's "now".
   const audioClockRef = useRef(null);
@@ -340,6 +348,7 @@ export function useAudioPipeline() {
     lastCppAggregateRef.current = { time: -1 };
     if (DIAG_ENABLED) resetVocalWeightCounters();
     steadinessRef.current = createSteadinessTracker();
+    pitchOnlyRef.current.reset();
 
     setState((s) => ({ ...s, status: "requesting", error: null }));
 
@@ -485,11 +494,15 @@ export function useAudioPipeline() {
         if (!msg?.type) return;
         if (msg.type === "state") {
           resonanceRef.current = msg;
+          pitchOnlyRef.current.noteResonance(msg, audioClockRef.current);
           if (DIAG_ENABLED && msg.perf) setResonancePerf(msg.perf);
         } else if (msg.type === "status") {
           // "overloaded" is a back-off pause (the worker resumes with a
           // fresh engine and posts "ready"): drop the stale reading.
-          if (msg.status === "overloaded") resonanceRef.current = null;
+          if (msg.status === "overloaded") {
+            resonanceRef.current = null;
+            pitchOnlyRef.current.noteResonance(null);
+          }
           setState((s) => ({ ...s, resonanceStatus: msg.status }));
           if (DIAG_ENABLED) setResonanceStatus({ status: msg.status, message: msg.message ?? null });
           if (msg.status === "error") pushError({ source: "resonance-worker", where: "worker", message: msg.message });
@@ -855,6 +868,7 @@ export function useAudioPipeline() {
     }
     resonanceRef.current = null;
     heardAsRef.current.reset();
+    pitchOnlyRef.current.reset();
     audioClockRef.current = null;
     if (labUnsubRef.current) { labUnsubRef.current(); labUnsubRef.current = null; }
     if (labRef.current) {
@@ -1050,6 +1064,8 @@ export function useAudioPipeline() {
     // and gates on them with the same utterance gate.
     if (resonanceWorkerRef.current) resonanceWorkerRef.current.postMessage(hint);
     if (typeof msg.contextTime === "number") {
+      // The pitch-only warning's pitch start: posted voiced values only.
+      pitchOnlyRef.current.addPitch({ audioMs: msg.contextTime * 1000, f0: msg.voiced && msg.pitch > 0 ? msg.pitch : null });
       audioClockRef.current = Math.max(audioClockRef.current ?? -Infinity, msg.contextTime * 1000);
     }
     if (DIAG_ENABLED && typeof msg.inferMs === "number") {
@@ -1476,6 +1492,7 @@ export function useAudioPipeline() {
     genderStateRef,
     resonanceRef,
     heardAsRef,
+    pitchOnlyRef,
     audioClockRef,
     setHeardAsEnabled,
     // Exposed so canvas-based components can read the DSP voicedness gate

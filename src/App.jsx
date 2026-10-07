@@ -140,6 +140,7 @@ function App() {
     genderStateRef,
     resonanceRef,
     heardAsRef,
+    pitchOnlyRef,
     audioClockRef,
     setHeardAsEnabled,
     frameCallbackRef,
@@ -409,6 +410,7 @@ function App() {
                 resonanceRef={resonanceRef}
                 resonanceStatus={resonanceStatus}
                 heardAsRef={heardAsRef}
+                pitchOnlyRef={pitchOnlyRef}
                 audioClockRef={audioClockRef}
                 heardAsEnabled={heardAsEnabled}
                 onHeardAsChange={changeHeardAs}
