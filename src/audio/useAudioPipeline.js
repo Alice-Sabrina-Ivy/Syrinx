@@ -632,6 +632,12 @@ export function useAudioPipeline() {
               confidence: msg.confidence,
             });
           }
+        } else if (msg.type === "scored") {
+          // A window the gate scored between classifier runs (the worker
+          // classifies every 450 ms): counts for the panel's window count,
+          // voiced time and F0, not for the logit mean (heard-as.js).
+          heardAsRef.current.addWindow({ audioMs: msg.audioMs, logit: null, mode: msg.mode, classified: false });
+          if (typeof msg.audioMs === "number") audioClockRef.current = Math.max(audioClockRef.current ?? -Infinity, msg.audioMs);
         } else if (msg.type === "inference-event") {
           // Diag-only: capture defensive-timeout events from the gender
           // worker into the errors ring so snapshots reveal hang frequency.

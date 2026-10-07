@@ -2,9 +2,10 @@
 //
 // Hosts an audio-classification pipeline (Transformers.js) and produces a
 // 0-100 "femininity" score from a rolling 0.75-second window of
-// microphone audio. Inference runs at ~6.7 Hz (every 150 ms) on windows
-// the utterance gate (utterance-gate.js) clears: recent AND voiced
-// running speech, at most half pre-onset audio, never held phonation.
+// microphone audio. A window is decided every 150 ms (~6.7 Hz) by the
+// utterance gate (utterance-gate.js): recent AND voiced running speech, at
+// most half pre-onset audio, never held phonation; the classifier runs on
+// every 3rd scored window (ML_CLASSIFY_HOP_MS 450 ms, 2026-10-07).
 // Scores are EMA-smoothed within an utterance; the EMA restarts at each
 // utterance onset so a new utterance never blends with the previous one
 // or with the noise before it.
@@ -31,6 +32,11 @@
 //                                                by the experimental "Likely heard as" panel
 //                                                (src/ml/heard-as.js; 2026-10-07,
 //                                                measurements/heard-as-window-logit-2026-10-07.md)
+//                  { type: "scored", audioMs, spanId, mode }  a window the gate
+//                                                scored but the classifier skipped
+//                                                (it runs every ML_CLASSIFY_HOP_MS;
+//                                                2026-10-07, measurements/
+//                                                heard-as-cpu-2026-10-07.md)
 //                  { type: "voice-state", state, ts }  on change — what the
 //                                                meter should say: "listening"
 //                                                | "updating" | "scoring" |
@@ -58,6 +64,9 @@ import {
   windowPeak,
   ema,
   TARGET_SAMPLE_RATE,
+  ML_DECISION_HOP_MS,
+  ML_CLASSIFY_HOP_MS,
+  classifyDue,
 } from "./audio-utils.js";
 import { createUtteranceGate, decideMlWindow } from "./utterance-gate.js";
 
@@ -77,7 +86,16 @@ env.allowLocalModels = false;
 // measurements/gender-model-latency-2026-07-19.md
 const WINDOW_SECONDS = 0.75;
 const WINDOW_SAMPLES = Math.floor(TARGET_SAMPLE_RATE * WINDOW_SECONDS);
-const INFERENCE_INTERVAL_MS = 150;        // ~6.7 Hz emit rate
+// The utterance gate decides on a window every 150 ms (~6.7 Hz); the
+// classifier runs on a scored window only every ML_CLASSIFY_HOP_MS (450 ms,
+// 2026-10-07): the old 0-100 meter bar is gone and the only consumer, the
+// "Likely heard as" panel, pools 8 s — a third of the inferences (scored
+// windows between runs are still posted, as "scored", so the panel's window
+// count, voiced time and F0 are unchanged; audio-utils classifyDue,
+// measurements/heard-as-cpu-2026-10-07.md). The EMA score below therefore
+// steps once per classified window (its α was tuned for 150 ms; nothing
+// shows it any more — kept for diag).
+const INFERENCE_INTERVAL_MS = ML_DECISION_HOP_MS;
 // EMA α=0.2. The previous model (prithivMLmods wav2vec2-base) had
 // female-voice raw_std median 0.32, which the original α=0.55 (~270 ms
 // time-constant) was too short to average out — caught and fixed in
@@ -138,7 +156,8 @@ let _diag = false;                      // populated by init.diag, gates inferMs
 const ring = new RingWindow(WINDOW_SAMPLES);
 
 let inferenceInProgress = false;
-let lastInferenceMs = 0;
+let lastInferenceMs = 0;                // last window DECISION (gate tick)
+let lastClassifyMs = null;              // last classifier run (classifyDue)
 let smoothedFemale = null;              // EMA over recent inferences
 // EMA reset for the amplitude-only fallback below (pitch feed dead):
 // after a sustained run of gated windows the score is treated as stale.
@@ -240,6 +259,15 @@ async function maybeInfer() {
     lastInferenceMs = now;
     return;
   }
+  if (!classifyDue(now, lastClassifyMs, ML_CLASSIFY_HOP_MS)) {
+    // Scored but not classified (between classifier runs): the panel still
+    // counts the window — its span, voiced time and the window-count hide
+    // rule stay those of the 150 ms schedule; only the logit mean thins.
+    lastInferenceMs = now;
+    self.postMessage({ type: "scored", audioMs: windowAudioMs, spanId: d.spanId, mode: d.mode });
+    return;
+  }
+  lastClassifyMs = now;
 
   inferenceInProgress = true;
   // Hop is timed START-to-start (2026-07-19; was set in the finally

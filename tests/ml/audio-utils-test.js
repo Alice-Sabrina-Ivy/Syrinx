@@ -24,6 +24,9 @@ import {
   VOICED_RECENCY_MS,
   subFloorVoiced,
   createStreamingResampler,
+  ML_DECISION_HOP_MS,
+  ML_CLASSIFY_HOP_MS,
+  classifyDue,
 } from "../../src/ml/audio-utils.js";
 
 let passed = 0;
@@ -469,6 +472,20 @@ check(
   `VAD_SILENCE_FLOOR is below the legacy stale-fallback threshold`,
   VAD_SILENCE_FLOOR < VAD_PEAK_THRESHOLD,
 );
+
+console.log("\nclassifyDue (classifier hop, 2026-10-07)");
+{
+  // Which of a run of decision ticks the classifier runs on.
+  const runOn = (ticks, hop) => { let last = null; return ticks.filter((t) => (classifyDue(t, last, hop) ? ((last = t), true) : false)); };
+  const steady = Array.from({ length: 13 }, (_, i) => 1000 + i * ML_DECISION_HOP_MS);
+  check("decision hop 150 ms, classifier hop 450 ms", ML_DECISION_HOP_MS === 150 && ML_CLASSIFY_HOP_MS === 450);
+  check("the first scored tick is always classified", classifyDue(1000, null) && classifyDue(1000, undefined));
+  check("hop 150 = every scored tick (the pre-2026-10-07 schedule)", runOn(steady, 150).length === steady.length);
+  check("hop 450 = every 3rd tick on a 150 ms tick", JSON.stringify(runOn(steady, 450)) === JSON.stringify(steady.filter((_, i) => i % 3 === 0)));
+  const late = Array.from({ length: 13 }, (_, i) => 1000 + i * 160); // ticks on 40 ms capture bursts
+  check("hop 450 = every 3rd tick when ticks land late (160 ms)", JSON.stringify(runOn(late, 450)) === JSON.stringify(late.filter((_, i) => i % 3 === 0)));
+  check("a pause longer than the hop: the next scored tick is classified", classifyDue(5000, 4000, 450));
+}
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);

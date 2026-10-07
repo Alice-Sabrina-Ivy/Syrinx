@@ -7,19 +7,25 @@
 // measurements/heard-as-calibration-2026-10-07.md
 //
 // Inputs (all on the AUDIO clock, ms):
-//   addWindow({ audioMs, logit, mode })  every window the gender worker
-//       scored: audioMs = the window's end, logit = ln p_female − ln p_male
-//       of that window (unsmoothed), mode "gated" | "fallback". Only gated
-//       windows with a finite logit are kept — the utterance gate decided
-//       them (fallback windows are the amplitude path, never used).
+//   addWindow({ audioMs, logit, mode, classified = true })  every window the
+//       gender worker's utterance gate scored: audioMs = the window's end,
+//       logit = ln p_female − ln p_male of that window (unsmoothed), mode
+//       "gated" | "fallback". Only gated windows are kept (fallback windows
+//       are the amplitude path, never used). Since 2026-10-07 the worker runs
+//       the classifier on a scored window only every 450 ms
+//       (measurements/heard-as-cpu-2026-10-07.md): the others arrive with
+//       classified: false and no logit — they still count as scored windows
+//       (the window count, the voiced time and the F0 spans below are exactly
+//       the 150 ms schedule's), only meterLogit averages the classified ones.
+//       A classified window without a finite logit is dropped.
 //   addPitch({ audioMs, f0 })  every posted pitch-worker frame (f0 null /
 //       0 = unvoiced), at its capture time — the posted value, never the
 //       smoothed / painted / held one.
 //
 // The aggregate (one definition, live and at fit time), over the trailing
 // windowMs (8 s):
-//   meterLogit = arithmetic mean of the kept windows' logits whose END lies
-//                in the span;
+//   meterLogit = arithmetic mean of the classified windows' logits whose END
+//                lies in the span;
 //   lnF0       = ln(median of the voiced posted pitch values) of the frames
 //                whose time lies inside at least one of those windows
 //                ([end − 750 ms, end]);
@@ -69,10 +75,11 @@ export function createHeardAsAggregator({
   }
 
   return {
-    addWindow({ audioMs, logit, mode }) {
-      if (mode !== "gated" || typeof logit !== "number" || !Number.isFinite(logit)) return false;
+    addWindow({ audioMs, logit, mode, classified = true }) {
+      if (mode !== "gated") return false;
+      if (classified && (typeof logit !== "number" || !Number.isFinite(logit))) return false;
       if (typeof audioMs !== "number" || !Number.isFinite(audioMs)) return false;
-      windows.push({ audioMs, logit });
+      windows.push({ audioMs, logit: classified ? logit : null });
       everScored = true;
       trim(audioMs);
       return true;
@@ -89,9 +96,9 @@ export function createHeardAsAggregator({
     aggregate(nowMs) {
       const lo = Number.isFinite(windowMs) ? nowMs - windowMs : -Infinity;
       const W = windows.filter((w) => w.audioMs > lo && w.audioMs <= nowMs);
-      if (!W.length) return { nWindows: 0, meterLogit: null, lnF0: null, voicedMs: 0, newestMs: null };
-      let sum = 0;
-      for (const w of W) sum += w.logit;
+      if (!W.length) return { nWindows: 0, nClassified: 0, meterLogit: null, lnF0: null, voicedMs: 0, newestMs: null };
+      let sum = 0, nL = 0;
+      for (const w of W) if (w.logit !== null) { sum += w.logit; nL++; }
       // union of the windows' spans (ascending ends, equal lengths -> merge)
       const spans = [];
       for (const w of W) {
@@ -113,7 +120,8 @@ export function createHeardAsAggregator({
       const med = median(f0s);
       return {
         nWindows: W.length,
-        meterLogit: sum / W.length,
+        nClassified: nL,
+        meterLogit: nL ? sum / nL : null,
         lnF0: med === null ? null : Math.log(med),
         voicedMs,
         nVoicedFrames: f0s.length,
@@ -127,7 +135,7 @@ export function createHeardAsAggregator({
       const newest = windows.length ? windows[windows.length - 1].audioMs : null;
       if (newest === null || nowMs - newest > freshMs) return { hidden: "stale" };
       const g = this.aggregate(nowMs);
-      if (g.nWindows < minWindows || g.voicedMs < minVoicedMs || g.lnF0 === null) return { hidden: "short", nWindows: g.nWindows, voicedMs: g.voicedMs };
+      if (g.nWindows < minWindows || g.voicedMs < minVoicedMs || g.lnF0 === null || g.meterLogit === null) return { hidden: "short", nWindows: g.nWindows, voicedMs: g.voicedMs };
       if (outsideTestedRange(g.meterLogit, g.lnF0)) return { hidden: "outside", meterLogit: g.meterLogit, lnF0: g.lnF0 };
       return { meterLogit: g.meterLogit, lnF0: g.lnF0, nWindows: g.nWindows, voicedMs: g.voicedMs, ageMs: nowMs - newest };
     },

@@ -180,6 +180,36 @@ function feed(agg, { from, to, voiced, f0, scored, logit, mode = "gated" }) {
   check("median of an even count = mean of the middle two", near(agg3.aggregate(1100).lnF0, Math.log(250), 1e-12));
 }
 {
+  // 2026-10-07 (measurements/heard-as-cpu-2026-10-07.md): the worker classifies
+  // every 450 ms; the scored windows in between arrive with classified: false.
+  // They count as windows (count, spans, voiced time); only the logit mean thins.
+  const full = createHeardAsAggregator(), thin = createHeardAsAggregator();
+  let k = 0;
+  for (let t = 25; t <= 8000; t += 25) {
+    const f0 = t < 4000 ? 140 : 160;
+    full.addPitch({ audioMs: t, f0 }); thin.addPitch({ audioMs: t, f0 });
+    if (t % 150 === 0 && t >= 750) {
+      const logit = (k % 3) - 1; // -1, 0, 1, -1, ...
+      full.addWindow({ audioMs: t, logit, mode: "gated" });
+      thin.addWindow(k % 3 === 0 ? { audioMs: t, logit, mode: "gated" } : { audioMs: t, logit: null, mode: "gated", classified: false });
+      k++;
+    }
+  }
+  const gf = full.aggregate(8000), gt = thin.aggregate(8000);
+  check("unclassified windows count: same window count, voiced time and F0",
+    gt.nWindows === gf.nWindows && gt.voicedMs === gf.voicedMs && gt.lnF0 === gf.lnF0 && gt.nVoicedFrames === gf.nVoicedFrames,
+    `${gt.nWindows}/${gf.nWindows} windows, ${gt.voicedMs}/${gf.voicedMs} ms`);
+  check("meterLogit = the mean of the classified windows only", gt.meterLogit === -1 && gt.nClassified === Math.ceil(gf.nWindows / 3),
+    `${gt.meterLogit}, ${gt.nClassified} classified`);
+  check("estimate() shown with the same counts", !thin.estimate(8000).hidden && thin.estimate(8000).nWindows === full.estimate(8000).nWindows);
+  const none = createHeardAsAggregator();
+  feed(none, { from: 25, to: 8000, voiced: () => true, f0: () => 180, scored: () => false });
+  for (let t = 750; t <= 8000; t += 150) none.addWindow({ audioMs: t, logit: null, mode: "gated", classified: false });
+  check("no classified window in the span -> hidden 'short'", none.estimate(8000).hidden === "short", JSON.stringify(none.estimate(8000)));
+  check("a classified window without a finite logit is still dropped",
+    !createHeardAsAggregator().addWindow({ audioMs: 1000, logit: null, mode: "gated" }));
+}
+{
   // a clock jump back (new capture stream) clears everything
   const agg = createHeardAsAggregator();
   feed(agg, { from: 25, to: 9000, voiced: () => true, f0: () => 200, scored: () => true, logit: () => 2 });
