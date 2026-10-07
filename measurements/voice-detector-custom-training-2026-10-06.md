@@ -46,8 +46,20 @@ verdict. The verdict is the one evaluation look, which the pre-registration
 python scripts/voice-detector/score.py build/vad/cand/custom-vd --json=build/vad/scores/custom-vd.json
 ```
 
-The per-stream probability files are written by `infer.py --onnx` only after
-this file and the frozen `candidate.json` are committed and pushed (§4).
+**Harness candidate written after the freeze.** The freeze (this note and the
+frozen `candidate.json`) was committed and pushed as 40d151a. Only after that
+did `infer.py --onnx` write the per-stream probability files to
+`build/vad/cand/custom-vd/`:
+
+- every harness set: 4,305 streams, 26.8 h;
+- the streaming ONNX model with onnxruntime CPU, 1 thread, state carried;
+- each stream's own samples, read by `lib/streams.py`, through the pitch
+  worker's linear resampler;
+- 3 shards of about 2 minutes each.
+
+A metadata-only check (no labels, no scoring) found that every stream's file
+covers every frame its last hop needs. `score.py` has not been run on it. That
+run is the one evaluation look.
 
 ## 1. What was built
 
