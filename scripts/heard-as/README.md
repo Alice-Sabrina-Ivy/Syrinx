@@ -12,8 +12,11 @@ output goes to the gitignored `build/heard-as/`.
 
 | Script | What it does |
 |---|---|
-| `chain.mjs` | The app's chain on the audio clock: real pitch worker (fake `self`), the gender worker's window schedule (streaming resampler, 0.75 s ring, 150 ms hop, `decideMlWindow` + the real utterance gate fed the relayed pitch frames, the silence floor). `replay()` needs no model; `loadClassifier()` loads the deployed q8-v2 pipeline from the transformers.js cache |
-| `run_chain.mjs <jobs.json> <out.jsonl> [--burst=40 --jitter=5]` | Per stimulus: replay → classifier → `heard-as.js` aggregate over the whole stimulus. `--burst` times the hop on a bursty arrival clock (the burst-jitter check) |
+| `chain.mjs` | The app's chain on the audio clock: real pitch worker (fake `self`), the gender worker's window schedule (streaming resampler, 0.75 s ring, 150 ms decision hop, the classifier every `ML_CLASSIFY_HOP_MS` via `classifyDue` (option `classifyHopMs`), `decideMlWindow` + the real utterance gate fed the relayed pitch frames, the silence floor). `replay()` needs no model; `loadClassifier()` loads the deployed q8-v2 pipeline from the transformers.js cache |
+| `run_chain.mjs <jobs.json> <out.jsonl> [--burst=40 --jitter=5] [--hop=450] [--logits=<chain.jsonl>]` | Per stimulus: replay → classifier → `heard-as.js` aggregate over the whole stimulus. `--burst` times the hop on a bursty arrival clock (the burst-jitter check); `--hop` sets the classifier hop; `--logits` reuses a previous run's logits for windows at the same time |
+| `compare_hop.py <pov_stimuli.csv> <base.jsonl> <variant.jsonl>...` | Palette share change between two `run_chain.mjs` runs (e.g. classifier hops) and each one's error vs the listeners |
+| `hop-study.mjs --r1=<jobs.json>` + `hop_study_report.py` | The live panel (2 s updates, 250 ms held-note check, hide rules) at several classifier hops on continuous LibriSpeech readers, short utterances and synthetic held vowel / noise / silence: time to the first estimate, hide-state changes, shown-estimate change, women and men separately |
+| `ort-bench.mjs` | Classifier cost per inference under onnxruntime-web builds and session options (Node) |
 | `make_golden.mjs` | Writes `tests/ml/fixtures/heard-as-golden.json` from the three lab fixtures (public LibriSpeech); aggregates by `golden_check.py` (independent Python). **Re-run after any change to the utterance gate, the pitch chain or `decideMlWindow`** — after re-checking the constants |
 | `analyze_palette.py <pov_stimuli.csv> <chain.jsonl> [<burst.jsonl>]` | Production-chain vs lab-chain inputs on the Palette and the shipped constants' error on each |
 | `logit-check.mjs` | `femaleLogitFromResult` vs the model's raw fc7 difference on public windows |
