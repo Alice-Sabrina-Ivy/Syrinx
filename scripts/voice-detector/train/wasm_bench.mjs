@@ -10,7 +10,7 @@
 //
 //   node scripts/voice-detector/train/wasm_bench.mjs --ort=<dir with node_modules/onnxruntime-web> --model=FILE.onnx
 //        [--val=build/vad-train/val] [--ref=<candidate dir with vneg/ vvoice/ .f32>] [--mode=node|chrome]
-//        [--chrome=PATH] [--n=6] [--sec=60] [--json=OUT]
+//        [--chrome=PATH] [--n=6] [--sec=60] [--json=OUT] [--copies=2  (round 2 staggered reset: two model copies per 25 ms)]
 //
 // mode=chrome launches a headless Chrome with its own temporary --user-data-dir,
 // serves the page + ort files + model + audio from 127.0.0.1, and on exit
@@ -48,19 +48,26 @@ function pickStreams() {
 // the streaming loop, shared verbatim by node mode and the chrome page
 const LOOP_SRC = `
 async function vdStream(ort, sess, x, shapes) {
-  const HOP = ${HOP}, PADEXTRA = ${PADEXTRA}, PER = 2;
+  const HOP = ${HOP}, PADEXTRA = ${PADEXTRA}, PER = 2, COPIES = ${Number(A.copies ?? 1)};
   const xs = new Float32Array(PADEXTRA + x.length); xs.set(x, PADEXTRA);
   const n = Math.floor(xs.length / HOP);
   const probs = new Float32Array(n);
-  const st = {};
-  for (const [name, shape] of Object.entries(shapes)) st[name] = new ort.Tensor("float32", new Float32Array(shape.reduce((a, b) => a * b, 1)), shape);
+  const sts = [];
+  for (let c = 0; c < COPIES; c++) {
+    const st = {};
+    for (const [name, shape] of Object.entries(shapes)) st[name] = new ort.Tensor("float32", new Float32Array(shape.reduce((a, b) => a * b, 1)), shape);
+    sts.push(st);
+  }
   const times = [];
   for (let i = 0; i + PER <= n; i += PER) {
     const t0 = performance.now();
-    const chunk = new ort.Tensor("float32", xs.slice(i * HOP, (i + PER) * HOP), [1, PER * HOP]);
-    const out = await sess.run({ chunk, ...st });
-    probs.set(out.p.data, i);
-    st.ctx = out.ctx_out; st.s0 = out.s0_out; st.s1 = out.s1_out; st.s2 = out.s2_out; st.h = out.h_out;
+    for (let c = 0; c < COPIES; c++) {          // round 2 (stagger.py): one run per model copy
+      const st = sts[c];
+      const chunk = new ort.Tensor("float32", xs.slice(i * HOP, (i + PER) * HOP), [1, PER * HOP]);
+      const out = await sess.run({ chunk, ...st });
+      if (c === 0) probs.set(out.p.data, i);
+      st.ctx = out.ctx_out; st.s0 = out.s0_out; st.s1 = out.s1_out; st.s2 = out.s2_out; st.h = out.h_out;
+    }
     times.push(performance.now() - t0);
   }
   return { probs: probs.subarray(0, Math.floor(n / PER) * PER), times };
@@ -197,7 +204,8 @@ r.mode = MODE;
 r.cpu = cpus()[0]?.model;
 r.model = MODEL;
 r.model_bytes = readFileSync(MODEL).length;
-r.ms_per_25ms = r.per_run.mean_ms;          // one run = 2 frames = 25 ms of audio
+r.copies = Number(A.copies ?? 1);
+r.ms_per_25ms = r.per_run.mean_ms;          // one timed step = 2 frames = 25 ms of audio (all copies)
 r.ms_per_25ms_wall = r.wall_ms / r.per_run.runs;
 const ds = r.parity.map((p) => p.max_abs_diff).filter((v) => v != null);
 r.max_parity_diff = ds.length ? Math.max(...ds) : null;

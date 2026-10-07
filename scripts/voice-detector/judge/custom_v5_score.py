@@ -29,7 +29,7 @@ OUT = A["out"]
 POINTS = [(None, None)] + [tuple(float(v) for v in p.split("/")) for p in A.get("points", "").split(",") if p]
 SESS = ["2025-09-08", "2026-05-07", "2026-05-26", "2026-06-09"]
 GAP = 0.3
-spec0 = S.load_cand("build/vad/cand/custom-vd")
+spec0 = S.load_cand(A.get("cand", "build/vad/cand/custom-vd"))   # round 2: --cand=build/vad/cand/custom-vd-r2
 
 
 def per_session(s, spec):

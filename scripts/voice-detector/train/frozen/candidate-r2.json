@@ -1,0 +1,103 @@
+{
+ "name": "custom-vd-r2",
+ "hop_ms": 12.5,
+ "first_avail_ms": 12.375,
+ "frame_ms": 82.0,
+ "lookahead_ms": 0,
+ "threshold": 0.03,
+ "hangover_ms": 1250.0,
+ "agg": "last",
+ "p_before_first": 0.0,
+ "v4": {
+  "license": "MIT",
+  "license_file": "build/vad-train/model-r2/LICENSE",
+  "license_text_checked": true,
+  "attribution_file": "build/vad-train/model-r2/ATTRIBUTION.md",
+  "model_bytes": 1485026,
+  "runtime": "onnxruntime-web-wasm",
+  "wasm_ms_per_25ms": 1.713,
+  "wasm_measured_on": "desktop 11th Gen Intel(R) Core(TM) i9-11900K @ 3.50GHz; two model copies per 25 ms (staggered state reset); node v24.14.1 1.570 ms (wall 1.578); headless Chrome 154 1.673 ms (wall 1.713); onnxruntime-web 1.26.0-dev WASM EP, 1 thread, one session.run per copy per 25 ms (400 samples = 2 frames), state carried; 10 x 60 s validation streams; shared machine at 73-96 % CPU from other jobs"
+ },
+ "stagger": {
+  "T_s": 10.0,
+  "rule": "two copies; GRU state reset every 2T, copy B offset by T; p = max(p_A, p_B)",
+  "code": "scripts/voice-detector/train/stagger.py"
+ },
+ "model": {
+  "onnx": "build/vad-train/model-r2/custom-vd-r2.onnx",
+  "onnx_sha256": "4f3f3f989bc191b9688d64e7b5a0b5e5711b15adf6d10efe51804a96931249fe",
+  "checkpoint": "build/vad-train/train/runs/r8a/ckpt_ema_008000.pt",
+  "checkpoint_sha256": "60fb603152b899f66aa36b851af7c1e5f266fca457a602b2a081efabe83d09bc",
+  "state_sha256": "2098116f6bb40fee28bf31ee5b5aae27a191add91ed08f5a2fe9882c888f888f",
+  "params": 89257,
+  "run": "r8a",
+  "step": 8000,
+  "weights": "EMA (decay 0.999)",
+  "cfg": {
+   "n_mels": 64,
+   "convs": [
+    [
+     24,
+     3
+    ],
+    [
+     48,
+     3
+    ],
+    [
+     48,
+     1
+    ]
+   ],
+   "gru": 96,
+   "gru_layers": 1,
+   "fc": 64,
+   "fmin": 50.0,
+   "fmax": 7800.0,
+   "win": 512
+  }
+ },
+ "selection": {
+  "agg": "last",
+  "thr": 0.03,
+  "hang": 1250.0,
+  "clean speech": 0.020761245674740483,
+  "clean vowels": 0.014699808902484268,
+  "clean singing": 0.0,
+  "clean clinical": 0.31842893598136024,
+  "clean exercises": 0.0014242883899131895,
+  "clean children": 0.0,
+  "mix vmix20 +10": 0.11801384460923327,
+  "mix vmix20 +0": 0.6018371872030409,
+  "mix vmix0 +10": 0.10284599698554836,
+  "mix vmix0 +0": 0.2921840759678597,
+  "worst_clean": 0.31842893598136024,
+  "worst_mix": 0.6018371872030409,
+  "onset_median_worst": 0.0,
+  "tune194_v2": 28.084016005452963,
+  "vneg_v2": 47.944245288686844,
+  "latency_ms": 82.0,
+  "feasible": true,
+  "fresh_feasible": true
+ },
+ "selection_carried": {
+  "clean speech": 0.07398039835599114,
+  "clean vowels": 0.4044933940073424,
+  "clean singing": 0.0,
+  "clean clinical": 0.4371463441695329,
+  "clean exercises": 0.4799851874007449,
+  "clean children": 0.4538313841857218,
+  "mix vmix20 +10": 0.04227361597942684,
+  "mix vmix20 +0": 0.9547943345852754,
+  "mix vmix0 +10": 0.05142299849277418,
+  "mix vmix0 +0": 0.4529921322419137,
+  "worst_clean": 0.4799851874007449,
+  "worst_mix": 0.9547943345852754,
+  "onset_median_worst": 0.0,
+  "tune194_v2": 30.457064236395997,
+  "vneg_v2": 48.442913504095486,
+  "latency_ms": 82.0,
+  "feasible": true
+ },
+ "notes": "Round 2 custom voice-vs-machine detector (pre-registration Addenda D-F; measurements/voice-detector-custom-training-2026-10-06.md 'Round 2'). Frozen before any evaluation stream was read; operating point chosen by the pre-registered rule on the val split + the 194-clip tuning split, fresh and carried state, with the staggered state reset (T = 10 s). Probability files: infer.py --onnx --stagger=10 (streaming ONNX, onnxruntime CPU EP, 1 thread) on each stream's own samples through the pitch worker's linear resampler."
+}

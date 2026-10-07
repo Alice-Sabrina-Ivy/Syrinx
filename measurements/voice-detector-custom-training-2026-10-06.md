@@ -14,7 +14,7 @@ is 4c93913.
 
 ## Status
 
-**Evaluated 2026-10-07: the frozen model does not pass the pre-registered bar** (V1 fails in three voice-in-noise cells, worst male 0 dB lead 0 at 6.88 %; V2, V3 and V4 pass, 79.58 / 74.48 / 75.38 % removed). Verdict, full table and post-hoc trade-off: [voice-detector-custom-2026-10-06.md](voice-detector-custom-2026-10-06.md). The status text below is as written at the freeze.
+**Round 2 (2026-10-07): a second model was trained and frozen; see "Round 2" at the end and the evaluation note.** **Evaluated 2026-10-07: the frozen model does not pass the pre-registered bar** (V1 fails in three voice-in-noise cells, worst male 0 dB lead 0 at 6.88 %; V2, V3 and V4 pass, 79.58 / 74.48 / 75.38 % removed). Verdict, full table and post-hoc trade-off: [voice-detector-custom-2026-10-06.md](voice-detector-custom-2026-10-06.md). The status text below is as written at the freeze.
 
 **Historical (superseded 2026-10-07):** A model is frozen, and the evaluation look has not been taken yet.
 
@@ -557,3 +557,127 @@ $VENV scripts/voice-detector/train/infer.py --onnx=build/vad-train/model/custom-
 
 
 (The last EMA evaluation of r6 and r7 is missing from `log.jsonl` because the line was not flushed before exit; this is fixed in `train.py`. The values are in the console logs: r6 step 16,000 AUC 0.9930, TNR 0.8832; r7 step 14,000 AUC 0.9918, TNR 0.8583.)
+
+## Round 2 (2026-10-07): training and selection
+
+Pre-registration Addenda D (round-2 plan, 0ee0827), E (data step, 93b5414)
+and F (staggered state reset, b1e67cf), each committed and pushed before the
+step it governs. Selection used only the validation streams and the tuning
+194; no round-2 model read an evaluation stream before the freeze.
+
+### What was trained
+
+One recipe, two seeds (`train.py`, 16,000 steps each, 73 and 82 minutes on the
+shared RTX 3090):
+
+```bash
+VS='{"librispeech":0.12,"vctk":0.06,"coswara_counting":0.06,"coswara_vowel":0.18,"mdvr":0.04,"dcs":0.09,"esmuc":0.09,"csd":0.08,"svd":0.14,"singbap":0.07,"imitations":0.02,"kids":0.02,"fsvoice":0.03}'
+(cd scripts/voice-detector/train && $VENV train.py --name=r8a --seed=11 --steps=16000 --ema=0.999 --whard_ac=3 --vtag=r2 \
+   --p_rough=0.2 --p_breath=0.15 --p_state=0.75 --bank=8192 --cfg='{"convs":[[24,3],[48,3],[48,1]],"gru":96}' --vsrc="$VS")   # r8b: --seed=12
+```
+
+It is the round-1 `r5-bighard` recipe (89,257 parameters, `frame_ms` 82) plus
+the round-2 positives (78.06 h of training voice instead of 58.2 h), the
+roughness / breathiness resynthesis of the voice layer and the GRU state bank.
+
+### Validation data the rule now reads
+
+What the current app paints on the selection streams (`valtable.py`; the
+round-1 rows are unchanged):
+
+| set | streams | hours | CORRECT hops f / m / unknown |
+|---|---|---|---|
+| clean speech / vowels / singing (round 1) | 2,528 / 779 / 56 | 5.81 / 2.41 / 2.42 | as round 1 |
+| clean clinical (SVD) | 249 | 2.35 | 93,832 / 90,130 / 0 |
+| clean exercises (SingBAP, Freesound) | 895 | 1.33 | 0 / 0 / 140,421 |
+| clean children | 112 | 0.28 | 5,729 / 2,969 / 0 |
+| mixes, each SNR × lead variant (round 1 + round 2) | 300 | 3.53–5.20 | 37,749–56,773 / 48,614–69,915 / 20,535–31,114 |
+| val negatives | 150 | 1.97 | — (49,933 FALSE hops) |
+
+Carried-state files: every selection stream (6,163) resampled to 16 kHz and
+concatenated in a seeded order (seed 20261007) into 207 sessions of at least
+10 minutes, 36.5 h (`infer_carried.py`).
+
+### Selection (D.4 with the reset of Addendum F)
+
+`opselect.py --carried` on the fresh and carried files of every candidate
+(`run-r2-select.sh`; GPU torch outputs; the long carried sessions run in
+20,000-frame chunks through the streaming form, within 4e-5 of the batch form).
+Each row is the rule's pick if a feasible point exists, else its fallback (the
+point with the smallest worst vetoes / limit ratio over fresh and carried):
+
+| model | rule pick (agg / p / hangover) | tune-194 V2 % | fresh worst clean / mix % | carried: speech / vowels / singing / clinical / exercises / children | carried mix vmix20 +10 / vmix20 +0 / vmix0 +10 / vmix0 +0 | vneg V2 % |
+|---|---|---|---|---|---|---|
+| r8ae-s10000 | fallback: last / 0.01 / 3 s | 21.71 | 0.23 / 0.36 | 0.13 / 0.20 / 0.00 / 1.04 / 0.35 / 0.40 | 0.09 / 1.79 / 0.18 / 0.51 | 43.20 |
+| r8ae-s10000-st10 | PICK: max / 0.02 / 1 s | 24.50 | 0.12 / 0.64 | 0.07 / 0.29 / 0.00 / 0.26 / 0.46 / 0.28 | 0.03 / 0.68 / 0.04 / 0.79 | 45.90 |
+| r8ae-s12000 | fallback: max / 0.01 / 3 s | 21.28 | 0.11 / 0.33 | 0.11 / 0.24 / 0.00 / 1.08 / 0.59 / 0.24 | 0.03 / 1.92 / 0.15 / 0.73 | 42.10 |
+| r8ae-s12000-st10 | PICK: mean / 0.02 / 1.5 s | 23.37 | 0.08 / 0.61 | 0.07 / 0.27 / 0.00 / 0.22 / 0.43 / 0.38 | 0.04 / 1.13 / 0.04 / 0.45 | 42.04 |
+| r8ae-s14000 | fallback: max / 0.01 / 3 s | 22.11 | 0.11 / 0.33 | 0.17 / 0.35 / 0.00 / 1.03 / 0.82 / 0.21 | 0.04 / 2.43 / 0.15 / 0.66 | 43.43 |
+| r8ae-s14000-st10 | PICK: max / 0.02 / 1.5 s | 21.99 | 0.14 / 0.60 | 0.07 / 0.31 / 0.00 / 0.36 / 0.49 / 0.17 | 0.03 / 0.99 / 0.03 / 0.79 | 40.18 |
+| r8ae-s16000 | fallback: max / 0.01 / 3 s | 21.96 | 0.31 / 0.38 | 0.17 / 0.39 / 0.00 / 1.16 / 0.74 / 0.21 | 0.04 / 2.81 / 0.15 / 0.98 | 42.58 |
+| r8ae-s16000-st10 | PICK: max / 0.02 / 1.25 s | 24.16 | 0.19 / 0.37 | 0.08 / 0.36 / 0.00 / 0.37 / 0.47 / 0.12 | 0.04 / 1.16 / 0.03 / 0.71 | 44.11 |
+| r8ae-s8000 | fallback: last / 0.01 / 3 s | 19.45 | 0.12 / 0.28 | 0.06 / 0.64 / 0.00 / 1.04 / 0.31 / 0.42 | 0.08 / 0.79 / 0.03 / 0.53 | 39.13 |
+| r8ae-s8000-st10 | PICK: last / 0.03 / 1.25 s | 28.09 | 0.32 / 0.60 | 0.07 / 0.40 / 0.00 / 0.44 / 0.48 / 0.45 | 0.04 / 0.95 / 0.05 / 0.45 | 47.94 |
+| r8be-s10000 | fallback: max / 0.01 / 3 s | 20.30 | 0.35 / 0.36 | 0.09 / 0.11 / 0.00 / 0.59 / 2.32 / 0.33 | 0.08 / 0.31 / 0.23 / 0.73 | 34.37 |
+| r8be-s10000-st10 | PICK: mean / 0.02 / 2 s | 9.66 | 0.03 / 0.00 | 0.04 / 0.07 / 0.00 / 0.06 / 0.49 / 0.47 | 0.00 / 0.07 / 0.03 / 0.03 | 23.56 |
+| r8be-s12000 | fallback: max / 0.01 / 3 s | 20.05 | 0.22 / 0.25 | 0.09 / 0.10 / 0.00 / 0.57 / 2.06 / 0.40 | 0.07 / 0.31 / 0.20 / 0.56 | 32.65 |
+| r8be-s12000-st10 | PICK: mean / 0.02 / 2 s | 9.33 | 0.00 / 0.07 | 0.05 / 0.06 / 0.00 / 0.00 / 0.46 / 0.45 | 0.00 / 0.01 / 0.00 / 0.05 | 24.66 |
+| r8be-s14000 | fallback: max / 0.01 / 3 s | 25.31 | 0.35 / 0.34 | 0.11 / 0.28 / 0.00 / 1.04 / 3.68 / 0.72 | 0.16 / 1.60 / 0.46 / 1.11 | 35.84 |
+| r8be-s14000-st10 | PICK: mean / 0.02 / 3 s | 7.80 | 0.09 / 0.21 | 0.06 / 0.04 / 0.00 / 0.12 / 0.46 / 0.47 | 0.00 / 0.01 / 0.01 / 0.03 | 18.94 |
+| r8be-s16000 | fallback: max / 0.01 / 3 s | 28.72 | 0.35 / 0.27 | 0.16 / 0.92 / 0.00 / 1.08 / 3.95 / 0.47 | 0.14 / 1.51 / 0.32 / 1.60 | 39.94 |
+| r8be-s16000-st10 | PICK: max / 0.01 / 1.25 s | 6.93 | 0.04 / 0.02 | 0.06 / 0.13 / 0.00 / 0.05 / 0.49 / 0.37 | 0.00 / 0.00 / 0.00 / 0.03 | 20.03 |
+| r8be-s8000 | fallback: max / 0.01 / 3 s | 18.42 | 0.34 / 0.42 | 0.12 / 0.18 / 0.00 / 0.96 / 2.03 / 0.40 | 0.20 / 0.47 / 0.33 / 0.62 | 34.75 |
+| r8be-s8000-st10 | PICK: max / 0.02 / 1.5 s | 9.16 | 0.09 / 0.13 | 0.05 / 0.07 / 0.00 / 0.07 / 0.47 / 0.44 | 0.03 / 0.15 / 0.01 / 0.02 | 26.14 |
+
+- **Without the reset no candidate is feasible.** With fresh state each one
+  meets the limits at a low threshold, but on the carried sessions even the
+  most permissive grid point leaves `clinical` at 0.57–1.16 %, `exercises` up
+  to 3.95 % and, for r8a after step 8,000, vmix20 0 dB at 1.79–2.81 %. The
+  carried vetoes do not shrink with training; for r8b they grow. The state
+  bank did not teach the model to recover from a scene change within the
+  hangover.
+- **With the reset every candidate is feasible**, but only at thresholds of
+  0.01–0.03 with hangovers of 1–3 s, where little noise is vetoed: 6.9–28.1 %
+  of the tuning-194 false line. What binds is the carried `exercises`,
+  `children`, `clinical` and `vowels` groups (0.40–0.49 % at the pick); the
+  fresh files alone would allow more (a fresh-only rule run for information
+  on five of the checkpoints without the reset gives 32–47 %, `clinical`
+  binding).
+- **The rule picks r8a, step 8,000, EMA weights, with the reset (T = 10 s),
+  at agg `last`, p ≥ 0.03, hangover 1,250 ms**: tuning-194 V2 28.09 %. The
+  runner-up, r8a step 10,000 with the reset, scores 24.50 %, outside the 1 pp
+  window. The round-1 frozen model scored on the same selection data has no
+  feasible point (fallback ratio 2.25).
+
+### The frozen round-2 candidate
+
+- **Checkpoint**: `build/vad-train/train/runs/r8a/ckpt_ema_008000.pt`, sha256
+  `60fb603152b899f66aa36b851af7c1e5f266fca457a602b2a081efabe83d09bc`; state
+  dict sha256 `2098116f6bb40fee28bf31ee5b5aae27a191add91ed08f5a2fe9882c888f888f`
+  (in the ONNX metadata).
+- **Deployable model**: `build/vad-train/model-r2/custom-vd-r2.onnx`, the same
+  streaming interface as round 1, 1,485,026 B, sha256
+  `4f3f3f989bc191b9688d64e7b5a0b5e5711b15adf6d10efe51804a96931249fe`; batch
+  torch vs streaming ONNX ≤ 6.8e-6.
+- **Gate as deployed**: the staggered state reset (T = 10 s: two copies, GRU
+  state reset every 20 s, offset 10 s, p = max), agg `last`, **p ≥ 0.03,
+  hangover 1,250 ms**.
+- **Re-checked on the deployable file**: the selection data re-run with the
+  streaming ONNX model (onnxruntime CPU, both copies; fresh and carried) gives
+  the same pick, tuning-194 V2 28.08 % (torch 28.09 %), worst fresh clean /
+  mix 0.32 / 0.60 %, worst carried clean / mix 0.48 / 0.95 %. ONNX vs GPU
+  torch: max |Δp| 2.8e-3 (fresh) and 2.2e-3 (carried); 228 of 9.78 M and 147
+  of 5.59 M frames change side of p = 0.03.
+- **V4**: MIT (`build/vad-train/model-r2/LICENSE`, `ATTRIBUTION.md` with
+  per-clip titles and licence URLs; 36,939 training files, 1,091 CC BY
+  uploaders); 1,485,026 B; onnxruntime-web WASM, 1 thread, **two runs per
+  25 ms**: 1.57 ms (Node 24, wall 1.58) and 1.67 ms (headless Chrome 154,
+  wall 1.71) per 25 ms, measured with the shared machine at 73–96 % CPU from
+  other jobs. Bar 2 ms.
+- **Frozen candidate file**:
+  [scripts/voice-detector/train/frozen/candidate-r2.json](../scripts/voice-detector/train/frozen/candidate-r2.json),
+  committed before any evaluation stream was read.
+
+At the frozen point the selection data already predict a V2 failure: 28 % of
+the tuning-194 false line removed, against the bar's 60 % on the 279. The
+look is taken anyway, as Addendum D.5 fixes.

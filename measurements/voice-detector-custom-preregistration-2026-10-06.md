@@ -814,3 +814,17 @@ capture chunk.
 - V4 for a reset candidate is measured as two model runs per 25 ms.
 - Everything in D.5 is unchanged; the look's carried-state rows (D.5 item 1)
   apply to the chosen candidate as deployed (with the reset).
+
+## Addendum G — the round-2 freeze (2026-10-07, before the round-2 look)
+
+The rule of D.4 with the reset of Addendum F chose run r8a, step 8,000, EMA
+weights, with the staggered state reset (T = 10 s), at agg `last`, p ≥ 0.03,
+hangover 1,250 ms, among the 20 candidates (10 checkpoints × with / without
+the reset; the ten without the reset have no feasible point). Its tuning-194
+V2 is 28.09 % (28.08 % re-checked on the deployable ONNX file). The frozen
+candidate file,
+[scripts/voice-detector/train/frozen/candidate-r2.json](../scripts/voice-detector/train/frozen/candidate-r2.json),
+carries the operating point and the sha256 of the checkpoint (`60fb6031…09bc`),
+its state dict (`2098116f…888f`) and the ONNX file (`4f3f3f98…49fe`,
+1,485,026 B). It is committed before the runner touches any evaluation stream.
+Training and selection: the training note, "Round 2".

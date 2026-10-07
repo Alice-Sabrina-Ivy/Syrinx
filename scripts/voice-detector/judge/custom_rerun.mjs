@@ -4,7 +4,7 @@
 // the PRODUCTION streaming resampler (src/ml/audio-utils.js
 // createStreamingResampler, 25 ms capture chunks), and
 //  (1) compare with the harness probability files (onnxruntime CPU EP + the
-//      Python resampler port, infer.py --onnx): max |dp| and decisions at p >= 0.3;
+//      Python resampler port, infer.py --onnx): max |dp| and decisions at the candidate's threshold;
 //  (2) "live" feeding: every frame run as soon as its last sample arrived
 //      (1-3 frames per session.run), against the offline 8-frame chunks;
 //  (3) causality: zero the audio from a random cut sample on and re-run; every
@@ -12,6 +12,7 @@
 //      must be bit-identical; frames after it should change.
 // Run from the repo root (the ONNX file and probability files are gitignored build outputs):
 //   node scripts/voice-detector/judge/custom_rerun.mjs --ort=<dir with node_modules/onnxruntime-web> [--per=2] [--seed=20261007] [--json=OUT]
+//        [--cand=DIR --model=FILE.onnx] [--thr=P] [--stagger=T  (round 2: the staggered state reset)]
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -19,8 +20,9 @@ const { listStreams, loadAudio, SETS } = await import(pathToFileURL(resolve("scr
 
 const A = Object.fromEntries(process.argv.slice(2).filter((a) => a.startsWith("--")).map((a) => { const [k, v] = a.slice(2).split("="); return [k, v ?? "1"]; }));
 const ROOT = "build/vad";
-const CAND = "build/vad/cand/custom-vd";
-const MODEL = "build/vad-train/model/custom-vd.onnx";
+const CAND = A.cand ?? "build/vad/cand/custom-vd";                 // round 2: --cand=build/vad/cand/custom-vd-r2
+const MODEL = A.model ?? "build/vad-train/model/custom-vd.onnx";    // round 2: --model=build/vad-train/model-r2/custom-vd-r2.onnx
+const THR = Number(A.thr ?? JSON.parse(readFileSync(join(CAND, "candidate.json"), "utf8")).threshold);
 const PER = Number(A.per ?? 2);
 const HOP = 200, OFF = 4, CTX = 312, FIRST_AVAIL_MS = 12.375, HOP_MS = 12.5;
 const { createStreamingResampler } = await import(pathToFileURL(resolve("src/ml/audio-utils.js")).href);
@@ -52,22 +54,43 @@ function resampleLive(x, sr) {
   return { y, avail };
 }
 
-async function runFrames(x16, groups) {
-  // groups: list of frame counts per session.run, in order
+// round 2 (Addendum F, train/stagger.py): --stagger=T runs two copies whose GRU
+// state is reset every 2T (copy B offset by T) and returns max(p_A, p_B)
+const STAGGER_FR = A.stagger ? Math.round(Number(A.stagger) * 1000 / HOP_MS) : 0;
+
+async function runCopy(x16, groups, resets) {
+  // groups: list of frame counts per session.run, in order (split at reset frames)
   const xp = new Float32Array(OFF + x16.length); xp.set(x16, OFF);
   const n = Math.floor(xp.length / HOP);
   const out = new Float32Array(n);
   let st = zeroState(), i = 0;
+  const rs = new Set(resets);
   for (const g0 of groups) {
-    const g = Math.min(g0, n - i);
-    if (g <= 0) continue;
-    const chunk = new ort.Tensor("float32", xp.slice(i * HOP, (i + g) * HOP), [1, g * HOP]);
-    const r = await sess.run({ chunk, ...st });
-    out.set(r.p.data, i);
-    st = { ctx: r.ctx_out, s0: r.s0_out, s1: r.s1_out, s2: r.s2_out, h: r.h_out };
-    i += g;
+    let left = Math.min(g0, n - i);
+    while (left > 0) {
+      if (rs.has(i)) st.h = zeroState().h;
+      let g = left;
+      for (const r of resets) if (r > i && r < i + g) g = r - i;
+      const chunk = new ort.Tensor("float32", xp.slice(i * HOP, (i + g) * HOP), [1, g * HOP]);
+      const r = await sess.run({ chunk, ...st });
+      out.set(r.p.data, i);
+      st = { ctx: r.ctx_out, s0: r.s0_out, s1: r.s1_out, s2: r.s2_out, h: r.h_out };
+      i += g; left -= g;
+    }
   }
   return out.subarray(0, i);
+}
+
+async function runFrames(x16, groups) {
+  if (!STAGGER_FR) return runCopy(x16, groups, []);
+  const n = Math.floor((x16.length + OFF) / HOP);
+  const ra = [], rb = [];
+  for (let f = 2 * STAGGER_FR; f < n; f += 2 * STAGGER_FR) ra.push(f);
+  for (let f = STAGGER_FR; f < n; f += 2 * STAGGER_FR) rb.push(f);
+  const pa = await runCopy(x16, groups, ra), pb = await runCopy(x16, groups, rb);
+  const out = new Float32Array(Math.min(pa.length, pb.length));
+  for (let i = 0; i < out.length; i++) out[i] = Math.max(pa[i], pb[i]);
+  return out;
 }
 
 function offlineGroups(n, c = 8) { const g = []; for (let i = 0; i < n; i += c) g.push(Math.min(c, n - i)); return g; }
@@ -107,11 +130,11 @@ for (const m of picks) {
   const nn = Math.min(ref.length, off.length);
   for (let i = 0; i < nn; i++) {
     dRef = Math.max(dRef, Math.abs(ref[i] - off[i]));
-    if ((ref[i] >= 0.3) !== (off[i] >= 0.3)) fR++;
+    if ((ref[i] >= THR) !== (off[i] >= THR)) fR++;
   }
   for (let i = 0; i < Math.min(live.length, off.length); i++) {
     dLive = Math.max(dLive, Math.abs(live[i] - off[i]));
-    if ((live[i] >= 0.3) !== (off[i] >= 0.3)) fL++;
+    if ((live[i] >= THR) !== (off[i] >= THR)) fL++;
   }
   // causality: zero from a random cut sample on (at least 1 s in, at least 1 s before the end)
   const lo = Math.min(sr, x.length - 1), hi = Math.max(lo + 1, x.length - sr);

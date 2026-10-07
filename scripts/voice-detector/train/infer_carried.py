@@ -15,7 +15,7 @@
 # availability time as in a fresh run, only the state before it differs.
 #
 #   python infer_carried.py --ckpt=A[,B..]|--onnx=PATH --out=DIR[,DIR..] --streams=ROOT:set,set[@tune];ROOT:set... \
-#          --seed=20261007 --minutes=10 [--sessions-json=PATH]
+#          --seed=20261007 --minutes=10 [--sessions-json=PATH] [--shard=i/n] [--reverse]
 import json
 import os
 import random
@@ -117,7 +117,12 @@ def main():
         json.dump({"seed": int(A.get("seed", "20261007")), "minutes": target / 60, "streams": A["streams"],
                    "sessions": [[f"{metas[i]['set']}/{metas[i]['id']}" for i in s] for s in sessions]}, f)
     t0 = time.time()
-    for k, sess in enumerate(sessions):
+    sh, nsh = (int(v) for v in A.get("shard", "0/1").split("/"))       # sessions k % nsh == sh
+    order = [k for k in range(len(sessions)) if k % nsh == sh]
+    if "reverse" in A:
+        order = order[::-1]
+    for k in order:
+        sess = sessions[k]
         if all(all(os.path.exists(os.path.join(o, metas[i]["set"], metas[i]["id"] + ".f32")) for i in sess) for o in outs) and "force" not in A:
             continue
         parts, offs, nfr, pos = [], [], [], 0

@@ -14,16 +14,23 @@ import soundfile as sf
 
 REPO = os.getcwd()
 sys.path.insert(0, os.path.join(REPO, "scripts", "voice-detector", "train"))
+ARGV = sys.argv[1:]
 sys.argv = [sys.argv[0]]
 from infer import OnnxEngine  # noqa: E402
 from tcommon import resample_stream  # noqa: E402
 
-ONNX = "build/vad-train/model/custom-vd.onnx"
-assert hashlib.sha256(open(ONNX, "rb").read()).hexdigest() == "4230d27a8dc336dccc7b30afb53941998471f8b1fb5a444b66bc96869ca8c23d"
+MY = dict((a[2:].split("=", 1) + ["1"])[:2] for a in ARGV if a.startswith("--"))
+ONNX = MY.get("onnx", "build/vad-train/model/custom-vd.onnx")   # round 2: --onnx=... --sha=... --out=...
+SHA = MY.get("sha", "4230d27a8dc336dccc7b30afb53941998471f8b1fb5a444b66bc96869ca8c23d")
+assert hashlib.sha256(open(ONNX, "rb").read()).hexdigest() == SHA
 ROOT = os.environ["SYRINX_SESSIONS_DIR"]
-OUT = "build/vad/v5/probs"
+OUT = MY.get("out", "build/vad/v5/probs")
 os.makedirs(OUT, exist_ok=True)
-eng = OnnxEngine(ONNX, 8)
+if MY.get("stagger"):   # round 2 (Addendum F): the staggered state reset, as deployed
+    from stagger import OnnxStagger
+    eng = OnnxStagger(ONNX, float(MY["stagger"]), 8)
+else:
+    eng = OnnxEngine(ONNX, 8)
 for s in ["2025-09-08", "2026-05-07", "2026-05-26", "2026-06-09"]:
     x, sr = sf.read(f"{ROOT}/{s}/session.wav", dtype="float32", always_2d=True)
     x = x[:, 0]
