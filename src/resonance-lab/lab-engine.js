@@ -16,6 +16,21 @@
 //   * the four finalists, driven frame by frame once the pitch decision for
 //     a frame is known (~90 ms behind the audio, the production decode lag);
 //   * per-finalist sliding 5 s-voiced readouts (readout.js).
+//
+// Production use (2026-10-07, the Dashboard's resonance cue): with
+// `pitchSource: "frames"` the engine does NOT run its own pitch replica.
+// The resonance worker (src/resonance/resonance-worker.js) relays the
+// pitch worker's POSTED decisions through pushPitchFrame(contextTime, f0);
+// the engine only counts 16 kHz samples with the same streaming linear
+// resampler so each posted frame lands at exactly the time the replica
+// would have given it (n16After / 16000 - 0.04 of the chunk whose
+// contextTime it carries). Values are bit-identical to the internal path
+// (tests/resonance/vtln-production-parity-test.js); relay latency only
+// delays when bins appear. Known edge, not handled: the replica skips a
+// chunk whose resampled output is empty while the pitch worker still
+// evaluates its unchanged buffer — only possible with chunks of a few
+// input samples, never with the 5-50 ms chunks the capture paths emit.
+// Lab behaviour is unchanged (pitchSource defaults to "internal").
 
 import { createBoersmaAC, createPathTracker, createHarmonicVoicingGuard, BOERSMA_FRAME_LENGTH_16K } from "../dsp/boersma-ac.js";
 import { createNoiseNotch, isNearNotch } from "../dsp/noise-notch.js";
@@ -45,14 +60,32 @@ const AGG = { vtln: "median", pnml: "median", le: "mean", fv: "median" };
  *   externalF0      optional Float32Array/Array: 10 ms grid F0 (test mode; disables the tracker)
  *   pnmlMaxPending  inference requests allowed in flight before new windows are dropped
  *   onBin           optional (name, te, value) hook for every finalist output (tests)
+ *   pitchSource     "internal" (default: the production pitch replica) | "frames"
+ *                   (production: pitch decisions arrive through pushPitchFrame)
+ *   onStamped       optional (name, te, voicedStampS, value) hook, called where a
+ *                   bin is added to the engine's readout (same arguments), so a
+ *                   caller can run its own gated readout
  */
 export function createLabEngine(opts) {
   const { sampleRate, models, reference, externalF0 = null, pnmlMaxPending = 2, horizonS = 5 } = opts;
   const onBinHook = opts.onBin ?? null;
+  const onStampedHook = opts.onStamped ?? null;
+  const framesMode = opts.pitchSource === "frames";
+  if (framesMode && externalF0) throw new Error("pitchSource 'frames' and externalF0 are exclusive");
   const ring16 = createSampleRing(1 << 15);
-  // capture-rate ring (fv). Tests pass nativeFloat64 to keep a float64 bench upsample exact.
-  const ringN = createSampleRing(1 << Math.ceil(Math.log2(sampleRate * 3)), opts.nativeFloat64 ? Float64Array : Float32Array);
+  // capture-rate ring (fv only). Tests pass nativeFloat64 to keep a float64 bench upsample exact.
+  const ringN = models.fv
+    ? createSampleRing(1 << Math.ceil(Math.log2(sampleRate * 3)), opts.nativeFloat64 ? Float64Array : Float32Array)
+    : null;
   const analysisResample = createSincResampler(sampleRate, SR16);
+
+  // ---- "frames" mode: contextTime -> 16 kHz sample count after that chunk ----
+  const chunkN16 = new Map();
+  const chunkOrder = [];      // [contextTime, n16After] oldest first (trim)
+  const FRAME_KEEP_S = 4;     // chunks older than this can't be matched
+  const STALL_S = 1.5;        // unresolved grid time this far behind the ring end -> unvoiced
+  let framesDropped = 0;
+  let gridForcedUnvoiced = 0;
 
   // ---- production pitch path replica ----
   const pitchResample = createStreamingResampler(sampleRate, SR16);
@@ -134,7 +167,12 @@ export function createLabEngine(opts) {
   function gridF0At(j) {
     if (externalF0) return j < externalF0.length ? +externalF0[j] || 0 : null;
     const tj = 0.005 + 0.01 * j;
-    if (!decoded.length || decoded[decoded.length - 1].t < tj) return null; // not decided yet
+    if (!decoded.length || decoded[decoded.length - 1].t < tj) {
+      // Relay stalled (frames mode): never let vtln read 16 kHz samples the
+      // 2.05 s ring is about to overwrite — resolve the frame as unvoiced.
+      if (framesMode && !finished && ring16.end / SR16 - tj > STALL_S) { gridForcedUnvoiced++; return 0; }
+      return null; // not decided yet
+    }
     if (decK >= decoded.length) decK = decoded.length - 1;
     while (decK + 1 < decoded.length && Math.abs(decoded[decK + 1].t - tj) <= Math.abs(decoded[decK].t - tj)) decK++;
     const f = Math.abs(decoded[decK].t - tj) <= 0.0125 ? decoded[decK].f0 : 0;
@@ -230,6 +268,7 @@ export function createLabEngine(opts) {
       while (i < q.length && q[i].te <= rt) {
         const { te, s } = q[i];
         if (readouts[name]) readouts[name].add(cumAt(te) * 0.01, s);
+        if (onStampedHook) onStampedHook(name, te, cumAt(te) * 0.01, s);
         i++;
       }
       if (i) q.splice(0, i);
@@ -246,12 +285,43 @@ export function createLabEngine(opts) {
 
   return {
     sampleRate,
-    /** One capture chunk. `x16` (tests): a pre-made 16 kHz chunk for the analysis stream. */
-    pushChunk(native, x16 = null) {
-      ringN.push(native);
+    /**
+     * One capture chunk. `x16` (tests): a pre-made 16 kHz chunk for the analysis stream.
+     * `contextTime` ("frames" mode): the chunk's capture time, as the pitch worker
+     * will post it with the frame this chunk completes.
+     */
+    pushChunk(native, x16 = null, contextTime = null) {
+      if (ringN) ringN.push(native);
       ring16.push(x16 ?? analysisResample(native));
-      if (!externalF0) pitchStep(native);
+      if (framesMode) {
+        // Same resampler as the pitch worker, only to count its output.
+        n16pitch += pitchResample(native).length;
+        if (contextTime !== null) {
+          chunkN16.set(contextTime, n16pitch);
+          chunkOrder.push([contextTime, n16pitch]);
+          while (chunkOrder.length && (n16pitch - chunkOrder[0][1]) / SR16 > FRAME_KEEP_S) {
+            const [ct, n] = chunkOrder.shift();
+            if (chunkN16.get(ct) === n) chunkN16.delete(ct);
+          }
+        }
+      } else if (!externalF0) {
+        pitchStep(native);
+      }
       step();
+    },
+    /**
+     * "frames" mode: one posted pitch-worker decision, in posting order.
+     * f0OrNull: the posted pitch (null / 0 = unvoiced). Returns false when the
+     * frame's chunk is unknown (never seen, or older than 4 s) — dropped, counted.
+     */
+    pushPitchFrame(contextTime, f0OrNull) {
+      if (!framesMode) return false;
+      const n = chunkN16.get(contextTime);
+      if (n === undefined) { framesDropped++; return false; }
+      const f0 = f0OrNull > 0 ? f0OrNull : 0;
+      decoded.push({ t: n / SR16 - 0.04, f0 });
+      step();
+      return true;
     },
     /** Next window awaiting inference: {k, win} (marks it requested), or null. */
     takePnmlRequest() {
@@ -282,7 +352,7 @@ export function createLabEngine(opts) {
     finish() {
       finished = true;
       ring16.finish();
-      ringN.finish();
+      if (ringN) ringN.finish();
       resolveGrid();
       processFv();
       const durS = ring16.end / SR16;
@@ -306,6 +376,8 @@ export function createLabEngine(opts) {
         lastPitch: lastF0 || null,
         lagS: ring16.end / SR16 - resolvedT(),
         pnml: { scored: pnmlScored, dropped: pnmlDropped, inFlight: pnmlInFlight, deployedLogit: lastB2 },
+        framesDropped,
+        gridForcedUnvoiced,
         finalists: out,
       };
     },
