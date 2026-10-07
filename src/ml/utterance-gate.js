@@ -66,7 +66,9 @@
 
 export const UTTERANCE_GATE_DEFAULTS = Object.freeze({
   windowMs: 750,            // ML window length (gender-worker WINDOW_SECONDS)
-  onsetRunMs: 150,          // consecutive voicing that opens an utterance
+  onsetRunMs: 100,          // consecutive voicing that opens an utterance
+                            //   (150 until candidate pitch-absub C4, 2026-10-07:
+                            //   low voices in noise, low-voice-noise-2026-10-07.md)
   gapMs: 1000,              // no voicing this long closes it
   recencyMs: 500,           // newest voiced hint must be this recent to score
   minVoicedShare: 0.15,     // voiced share of the window's hints
