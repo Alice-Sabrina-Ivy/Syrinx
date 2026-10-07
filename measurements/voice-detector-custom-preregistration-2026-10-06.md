@@ -828,3 +828,23 @@ carries the operating point and the sha256 of the checkpoint (`60fb6031…09bc`)
 its state dict (`2098116f…888f`) and the ONNX file (`4f3f3f98…49fe`,
 1,485,026 B). It is committed before the runner touches any evaluation stream.
 Training and selection: the training note, "Round 2".
+
+## Addendum H — the round-2 look (2026-10-07)
+
+The one round-2 look was taken on the frozen round-2 candidate (b4a89e3), with
+the unchanged `score.py` over all 4,305 harness streams:
+[voice-detector-custom-2026-10-06.md](voice-detector-custom-2026-10-06.md),
+"Round 2". It is the second look at these evaluation sets.
+
+- **Verdict: the bar is not met.** V2 fails: 27.99 % removed on the 279,
+  27.82 % on held-out A and 31.67 % on held-out B (limits 60 / 50 / 50 %).
+- V1 passes (worst clean set 0.17 %, worst voice-in-noise cell 0.51 %); V3
+  passes (82 ms; median onset delay 0 ms); V4 passes (MIT, 1,485,026 B, two
+  WASM runs per 25 ms: 1.57 / 1.67 ms under machine load).
+- Reported rows (D.5): with the state carried every V1 row passes and V2 is
+  31.24 / 32.49 / 33.50 %; the per-band, per-source, bootstrap and probe rows
+  and the judge checks are in the evaluation note.
+- V5 was run once, at the frozen point. Results on the private session
+  recordings are kept outside this repository.
+- Post-hoc grids on the same files are reported there as post hoc. None of
+  their points is a selection or a pass.

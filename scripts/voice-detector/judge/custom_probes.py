@@ -11,7 +11,7 @@
 # pitch worker's linear resampler and the model with its state carried
 # (infer.py OnnxEngine); score.py's hop_probs / voice_flags give the vetoes of
 # CORRECTLY painted hops per probe group and gender.
-#   <venv python> scripts/voice-detector/judge/custom_probes.py --onnx=PATH --cand=DIR --chain=D1,D2 --cache=DIR --out=JSON [--points=0.07/1000,...]
+#   <venv python> scripts/voice-detector/judge/custom_probes.py --onnx=PATH --cand=DIR --chain=D1,D2 --cache=DIR --out=JSON [--points=0.07/1000,...] [--stagger=T]
 import collections
 import glob
 import json
@@ -37,7 +37,11 @@ def main():
     for p in [p for p in MY.get("points", "").split(",") if p]:
         t, h = p.split("/")
         points[f"p{t}/{float(h) / 1000:g}s"] = (float(t), float(h))
-    eng = OnnxEngine(MY["onnx"], 8)
+    if MY.get("stagger"):   # round 2 (Addendum F): the staggered state reset, as deployed
+        from stagger import OnnxStagger
+        eng = OnnxStagger(MY["onnx"], float(MY["stagger"]), 8)
+    else:
+        eng = OnnxEngine(MY["onnx"], 8)
     nz_cache = {}
     agg = collections.defaultdict(lambda: collections.Counter())
     rows = []

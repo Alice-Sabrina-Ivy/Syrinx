@@ -17,7 +17,12 @@ All numbers below come from public data. The private session recordings were
 used only for V5, which is reported outside this repository (§7). No PR was
 opened, and no audio or weights are committed.
 
-## Decision
+**Status 2026-10-07: round 2 — a retrained detector, frozen and looked at
+once more — does not pass the bar either: V1, V3 and V4 pass, V2 fails
+(27.99 / 27.82 / 31.67 % removed). See "Round 2" at the end. §11 corrects
+parts of the round-1 text below.**
+
+## Decision (round 1)
 
 **The frozen detector does not pass the pre-registered bar.** It fails V1
 (voice kept) and passes V2, V3 and V4. Phase 2 does not start on this look.
@@ -420,4 +425,401 @@ node scripts/voice-detector/train/wasm_bench.mjs --ort=$ORT --model=build/vad-tr
 node --import ./scripts/session-oracle/lib/register.mjs scripts/session-oracle/run.mjs --src=src --tag=vd_dd92037 --out=build/vad/v5/runs
 build/vad-train/venv/Scripts/python.exe scripts/voice-detector/judge/custom_v5_infer.py
 python scripts/voice-detector/judge/custom_v5_score.py --refs=<session-oracle refs> --out=build/vad/v5/v5.json
+```
+
+## 11. Corrections and post-hoc checks of round 1 (2026-10-07)
+
+A review of the look above found statements that read broader than the data,
+and voice vetoes the harness does not measure. The text of §1–§10 is left as
+written; this section corrects it. Everything here is post hoc: it was
+computed after the look, on files the look had already scored (or, for the
+probes, on audio built after the look). The figures were computed with
+`judge/custom_r2_report.py` and `judge/custom_probes.py` (score.py's own
+functions) and agree with the review's.
+
+**V2 is narrower than "75–80 % on every set".**
+
+- `fstrain` searched pages 1–3 of the same 38 queries that produced the
+  279-set's Freesound clips, and held-out A is a split of the 279 by clip.
+  46 of held-out A's 85 clips (29,562 of its 43,213 false hops, 68 %) are
+  Freesound clips from those topics. Held-out A by source:
+
+  | held-out A source | clips | false hops | removed % |
+  |---|---|---|---|
+  | Freesound | 46 | 29,562 | 82.42 |
+  | MS-SNSD | 15 | 4,098 | 80.33 |
+  | DCASE | 18 | 3,249 | 70.05 |
+  | DEMAND | 6 | 6,304 | 35.69 (OMEETING 0.28, PCAFETER 47.17) |
+  | **all but Freesound** | 39 | 13,651 | **57.27** (95 % CI 36.3–79.8) |
+
+- Held-out B shares class labels with training (pre-registration Addendum
+  D.1): its query wording is new, but 52 of its 101 Freesound clips carry a
+  class `fstrain` trained on. Removal: shared classes 79.26 % (CI 70.5–88.9),
+  new classes 73.33 % (CI 59.3–88.6), DCASE eval 69.48 % (CI 50.0–86.9).
+- Clip-bootstrap 95 % intervals (2,000 resamples of clips): all 279
+  79.58 % (73.4–84.9), tuning 194 82.36 % (77.0–87.2), held-out A 74.48 %
+  (59.1–87.4), held-out B 75.38 % (67.2–83.4). The V2 pass stands, and
+  held-out B and held-out A without Freesound are the closer estimates of
+  removal on unseen machine topics.
+- Per-source lows the decision text did not show: DEMAND NPARK 0 % and
+  OMEETING 0.3 % (both have talkers in the background); DCASE slider anomaly
+  0 % and slider 4.8 %, DCASE pump 10–20 % (tuning); held-out B DCASE pump
+  12.6 % and valve 26.4 %; held-out B small motor 42.4 %. "Every class and
+  machine room" is at least 63 % only for the census classes and the five
+  rooms of §2.
+
+**The V1 failure is not a sampling accident; the post-hoc passes are within
+noise.** Clip-bootstrap of the frozen point's male mix cells (95 % CI):
++10 dB / 20 s lead 2.33 % (0.35–5.05), 0 dB / 20 s lead 3.47 % (1.35–6.46),
++10 dB / lead 0 3.52 % (1.11–6.63), 0 dB / lead 0 6.88 % (3.31–11.08); for
+the worst cell P(worse gender ≤ 3 %) = 0.001. Each cell is decided by
+10–38 streams, so the 16 post-hoc points of §5 with worst cells of
+1.66–2.96 % cannot be told apart from failing.
+
+**Where the mix vetoes sit: the 300–400 Hz band.** Split by the reference
+F0 of each CORRECT hop, male hops at 300–400 Hz (head / falsetto long tones of
+four VocalSet singers) are vetoed 8.0–19.3 % per cell at the frozen point,
+male 90–300 Hz hops 0.06–1.63 %, and male 75–90 Hz hops 1.6–13.3 % (a few
+hundred hops). The pooled cells dilute the 300–400 Hz band.
+
+**VOICED voice119 is a detector veto, not a label problem** (§2, §8). It is a
+female sustained /a/ at 274 Hz (hyperkinetic dysphonia, 8 kHz origin); the
+app paints 181 hops within 5 % of the Praat F0, and the model's p over the
+clip has a median of 0.009 (maximum 0.35).
+
+**Voice the harness never shows (post hoc).**
+
+- **Carried state.** The harness starts every stream from zero state; a
+  deployed gate does not. All 4,305 harness streams resampled to 16 kHz and
+  concatenated in a seeded random order into 20-minute sessions (seed
+  20261008, `train/infer_carried.py`, the frozen ONNX model with its state
+  carried), scored by the unchanged `score.py`: **every V1 row but
+  vocadito fails** — FDA 2.82 %, PTDB-TUG 4.52 %, VocalSet 1.94 %,
+  PVQD + VOICED 7.20 %, Hillenbrand 1.14 %, mixes 5.65–13.22 % — while V2
+  rises to
+  86.56 / 82.79 / 82.12 %. After long stretches of noise the GRU state drifts
+  toward "no voice", which training (crops of 4–32 s from zero state) never
+  showed it. The review found the same with paired blocks (2–4×).
+- **Lip trills.** Clean VocalSet lip-trill scales (20 singers; VocalSet's
+  other techniques were never used) are vetoed 19.14 % (female 32.68 %, male
+  13.11 %) at the frozen point and 15.32 % at p ≥ 0.07 / 1 s; every other
+  VocalSet technique stays at or under 0.09 %.
+- **Real-room voice exercises** (the review's 38 Freesound recordings, found
+  by title): children's singing 7.81 %, singing 5.48 %, sirens 6.33 %,
+  warm-ups 2.21 %, humming 1.44 % at the frozen point.
+
+These are the defects round 2 addresses.
+
+## Round 2 (2026-10-07): defect fixes, one retrain, second look
+
+Round 2 follows the review of the round-1 look (§11). Every step was fixed in
+the pre-registration before it ran: Addendum D (plan, 0ee0827), Addendum E
+(data, 93b5414), Addendum F (staggered state reset, b1e67cf); training and
+selection are in
+[voice-detector-custom-training-2026-10-06.md](voice-detector-custom-training-2026-10-06.md)
+("Round 2"). No round-2 model read an evaluation stream before the freeze.
+The private session recordings were used only for V5 (outside this
+repository). No PR was opened; no audio or weights are committed.
+
+### R2.0 Decision
+
+**The round-2 detector does not pass the pre-registered bar either. It now
+fails the other way: V1, V3 and V4 pass, V2 fails.** On the one round-2 look
+(the unchanged `score.py` over all 4,305 harness streams, at the frozen point)
+it keeps voice everywhere — worst clean set 0.17 %, worst voice-in-noise cell
+0.51 % — but removes only **27.99 / 27.82 / 31.67 %** of the false line on the
+279 clips and held-out A and B, against 60 / 50 / 50 %.
+
+- **How close.** About half way on V2, with a wide V1 margin to spend. The
+  selection rule placed the gate at p ≥ 0.03 because the new validation data
+  (dysphonic vowels, singing exercises, children, and every group again with
+  the state carried across recordings) allowed nothing higher; the selection
+  data predicted the result (28.1 % on the tuning 194, 28.0 % at the look).
+- **What round 2 fixed** (all reported rows, not gates):
+  - the round-1 V1 failure: male mix cells 2.33–6.88 % → 0.00–0.17 %; male
+    300–400 Hz held notes in noise 8.0–19.3 % → 0.003–0.57 % per cell;
+  - carried state: with the state carried through 20-minute sessions every V1
+    row passes (worst PVQD + VOICED 0.85 %, mixes ≤ 0.68 %); round 1 failed
+    every row but one (up to 13.2 %);
+  - the review's voice probes: VocalSet lip trills 19.14 % → 0.00 %
+    (female 32.68 → 0.00 %), children's singing 7.81 → 0.00 %, sirens 6.33 →
+    0.00 %, every other probe group 0.00 %;
+  - the private sessions (V5): no correctly painted hop of either voice
+    vetoed (details outside this repository).
+- **Why V2 fell** (post hoc, §R2.5): the retrained network itself still
+  separates machines from voice about as well as round 1's on fresh streams —
+  without the state reset 12 grid points meet both V1 and V2 there, best
+  67.1 / 64.3 / 64.3 %. Two things took that away: the carried-state
+  validation constraints, which only the lowest thresholds meet, and the
+  staggered reset, whose max over two model copies raises p on noise as well
+  as on voice (at the frozen threshold: 46.5 % removed without the reset, 28.0 %
+  with it). With the state carried, no operating point of the round-2 gate
+  meets V1 and V2 (best 38.1 / 38.1 / 42.1 % among points that keep voice).
+
+### R2.1 What changed
+
+- **Corrections** (no retrain): §11 of this note and Addendum D.1 (held-out A
+  and B overlap with training topics, spurious fingerprint matches, bootstrap
+  intervals, VOICED voice119); `attribution.py` now writes each CC BY clip's
+  title and licence URL, dataset licence links and a note of the changes made.
+- **One retrain for coverage** — the round-1 recipe with:
+  - openly licensed positives of the voice types that failed: 19.85 h more
+    training voice — Saarbrücken Voice Database vowel takes from 1,472
+    speakers (healthy and 71 diagnoses; normal, high, low and gliding pitch),
+    SingBAP singing exercises (hummed octave glissandi, breathy phonation,
+    beginners, studio microphone and phone), vocal imitations, children's
+    speech and screened Freesound voice recordings (CC BY 4.0 / CC0 /
+    CC BY 3.0 only);
+  - roughness (15–40 Hz shimmer, lip low-pass) and breathiness resynthesis of
+    the voice layer — the only route to lip-trill-like phonation, since no
+    openly licensed lip-trill recordings were found outside VocalSet;
+  - a bank of GRU states so training crops start after histories of any
+    length;
+  - selection data that can see the failures: validation groups `clinical`,
+    `exercises` and `children`, 300 more validation mixes per lead variant,
+    and feasibility required on carried-state validation sessions as well as
+    on fresh streams.
+- **Staggered state reset** (Addendum F): the state bank did not remove the
+  carried-state vetoes on validation, so each candidate was also scored with
+  two model copies whose GRU states reset every 20 s, offset by 10 s, gating
+  on the larger probability.
+
+### R2.2 Selection (training note, "Round 2")
+
+- 20 candidates: ten EMA checkpoints of two seeds, each scored without and
+  with the staggered reset, on fresh and carried-state validation files
+  (6,163 selection streams; 207 carried sessions, 36.5 h).
+- Without the reset no candidate has a feasible point: even at p ≥ 0.01 with a
+  3 s hangover, the carried files veto 0.57–1.16 % of `clinical` voice and up
+  to 3.95 % of `exercises`. The state bank did not teach recovery from a
+  change of recording. The round-1 model has no feasible point on these data
+  either (fallback ratio 2.25).
+- With the reset every candidate is feasible only at p 0.01–0.03, where the
+  tuning-194 V2 is 6.9–28.1 %. The rule picked r8a step 8,000 with the reset,
+  agg `last`, p ≥ 0.03, hangover 1,250 ms (tuning-194 V2 28.09 %; 28.08 % on
+  the deployable ONNX file). Frozen as b4a89e3 (candidate file
+  `scripts/voice-detector/train/frozen/candidate-r2.json`) before any harness
+  stream was read; the probability files were written after the commit.
+
+### R2.3 The round-2 look, next to round 1
+
+Command: `python scripts/voice-detector/score.py build/vad/cand/custom-vd-r2 --json=build/vad/scores/custom-vd-r2.json --worst=25`
+(`score.py` unchanged since 7cd4e86). "Carried" = all 4,305 harness streams
+concatenated in a seeded random order (seed 20261008) into 79 sessions of
+about 20 minutes, the model's state carried (round 2: with its reset), scored by
+the same `score.py`; reported, not a gate (Addendum D.5). Worse gender per row;
+**bold** = outside the bar.
+
+| row | bar | round 1, fresh (the look) | round 1, carried (post hoc) | round 2, fresh (the look) | round 2, carried |
+|---|---|---|---|---|---|
+| V1 FDA speech | ≤ 1 | f 0.00 | **m 2.82** | f 0.00 | m 0.47 |
+| V1 PTDB-TUG speech | ≤ 1 | m 0.03 | **m 4.52** | f 0.00 | m 0.13 |
+| V1 vocadito singing | ≤ 1 | unknown 0.00 | unknown 0.05 | unknown 0.00 | unknown 0.00 |
+| V1 VocalSet long tones (held notes) | ≤ 1 | m 0.00 | **f 1.94** | m 0.00 | f 0.07 |
+| V1 PVQD + VOICED sustained vowels | ≤ 1 | f 0.84 | **m 7.20** | f 0.17 | f 0.85 |
+| V1 Hillenbrand vowels | ≤ 1 | f 0.00 | **m 1.14** | f 0.00 | m 0.14 |
+| V1 voice in noise +10 dB, lead 20 s | ≤ 3 | m 2.33 | **m 5.84** | unknown 0.14 | m 0.05 |
+| V1 voice in noise 0 dB, lead 20 s | ≤ 3 | **m 3.47** | **m 13.22** | unknown 0.28 | m 0.28 |
+| V1 voice in noise +10 dB, lead 0 | ≤ 3 | **m 3.52** | **m 5.65** | f 0.03 | f 0.18 |
+| V1 voice in noise 0 dB, lead 0 | ≤ 3 | **m 6.88** | **m 10.94** | unknown 0.51 | unknown 0.68 |
+| V2 all 279 (tuning) | ≥ 60 | 79.58 | 86.56 | **27.99** | **31.24** |
+| V2 … tuning split 194 | — | 82.36 | 88.61 | 28.08 | 30.55 |
+| V2 held-out A: in-set split 85 | ≥ 50 | 74.48 | 82.79 | **27.82** | **32.49** |
+| V2 held-out B: second set 119 | ≥ 50 | 75.38 | 82.12 | **31.67** | **33.50** |
+| V3 onset delay, worse gender: median; share over 100 ms; never shown | median ≤ 100 | 0 ms; >100 ms 3.33 %; never 2.11 % | 0 ms; >100 ms 9.17 %; never 5.30 % | 0 ms; >100 ms 0.05 %; never 0.05 % | 0 ms; >100 ms 0.43 %; never 0.13 % |
+| verdict (V1 / V2 / V3 / V4) | | FAIL / pass / pass / pass | FAIL / pass / pass / pass | pass / FAIL / pass / pass | pass / FAIL / pass / pass |
+
+- V4, round 2: MIT; 1,485,026 B; onnxruntime-web WASM, **two model runs per
+  25 ms** (the reset): 1.57 ms in Node 24 and 1.67 ms in headless Chrome 154
+  per 25 ms, measured with the shared machine at 73–96 % CPU from other jobs
+  (round 1, one run: 0.50 / 0.39 ms at 23 % load). Bar 2 ms. Mobile would be
+  about 2.4–4.5× the desktop figure, over the bar on slower phones; V4 does not
+  require mobile.
+- V3, round 2: frame 82 ms + lookahead 0; median onset delay 0 ms in every
+  set; onsets delayed > 100 ms 0.03–0.05 % per gender (round 1:
+  0.66–3.33 %).
+- V2 by class and room, round 2 (279): stationary-tonal 33.27 %,
+  intermittent 27.51 %, mixed 23.83 %, broadband 23.11 %; hvac 32.19 %, mains
+  hum 25.41 %, microwave 28.32 %, refrigerator 37.64 %, generator 59.99 %.
+- False painting next to voice, round 2: 26.7–29.1 % of the noise-only lead
+  and 5.5–10.4 % of the gaps between phrases vetoed (round 1: 75–78 % and
+  18–21 %).
+
+### R2.4 Where the round-2 numbers come from
+
+**V2 per source** (round 2, fresh; clip-bootstrap 95 % intervals):
+
+| set | false hops | removed % | 95 % CI | round 1 |
+|---|---|---|---|---|
+| all 279 | 122,436 | 27.99 | 23.2–32.6 | 79.58 (73.4–84.9) |
+| tuning 194 | 79,223 | 28.08 | 23.7–32.7 | 82.36 |
+| held-out A | 43,213 | 27.82 | 17.6–38.1 | 74.48 (59.1–87.4) |
+| … Freesound (topics seen in training) | 29,562 | 35.53 | 22.0–48.5 | 82.42 |
+| … MS-SNSD / DCASE / DEMAND | 4,098 / 3,249 / 6,304 | 25.89 / 8.10 / 3.09 | — | 80.33 / 70.05 / 35.69 |
+| … all but Freesound | 13,651 | 11.13 | 4.9–20.3 | 57.27 (36.3–79.8) |
+| held-out B | 46,033 | 31.67 | 23.9–39.9 | 75.38 (67.2–83.4) |
+| … Freesound, classes shared with training | 19,370 | 37.78 | 28.3–46.0 | 79.26 |
+| … Freesound, new classes | 21,391 | 29.72 | 17.7–44.4 | 73.33 |
+| … DCASE eval | 5,272 | 17.19 | 5.8–31.9 | 69.48 |
+
+**V1 mix cells, clip-bootstrap** (round 2, worse gender, 95 % CI):
++10 dB / 20 s lead 0.14 % (0.00–0.47), 0 dB / 20 s lead 0.28 % (0.10–0.58),
++10 dB / lead 0 0.03 % (0.00–0.09), 0 dB / lead 0 0.51 % (0.05–1.38); in every
+cell P(worse gender ≤ 3 %) = 1.00 over 2,000 resamples (round 1: 0.001–0.72).
+
+**V1 by reference-F0 band** (mix cells, % of CORRECT hops vetoed):
+
+| band, gender | round 1 fresh | round 2 fresh | round 2 carried |
+|---|---|---|---|
+| 300–400 Hz, m (19,450–29,724 hops per cell) | 7.98–19.33 | 0.003–0.57 | 0.04–0.72 |
+| 300–400 Hz, f (299–576 hops) | 0.00–31.79 | 0.00 | 0.00 |
+| 75–90 Hz, m (368–1,286 hops) | 1.63–13.33 | 0.16–1.36 | 0.00–0.82 |
+| 75–90 Hz, unknown (486–920 hops) | 0.00–16.46 | 0.00 | 0.00–2.03 |
+| 90–300 Hz, all genders | 0.06–4.95 | ≤ 0.57 | ≤ 0.71 |
+
+The worst round-2 mix programs are PVQD voices in machine noise (Sj6002
+4.64 %, LA9017 3.62 %, LA7012 3.60 % of their correct hops); VocalSet male10
+n-4, round 1's worst, is at 0.90 %.
+
+### R2.5 Post-hoc trade-off (not a pass)
+
+Taken after the round-2 look, on the same files (`judge/custom_r2_tradeoff.py`,
+which reproduces each `score.py` JSON exactly: 0 mismatches). Grid: 13
+thresholds (0.01–0.5) × 8 hangovers (0–5 s), agg as frozen. "Meets V1" = clean
+sets ≤ 1 %, every mix cell ≤ 3 %. **None of these points is a selection, and
+every evaluation set has now been looked at twice.**
+
+| gate | frozen point: V2 279 / A / B | points meeting V1 | … and V2 | best V2 among points meeting V1 |
+|---|---|---|---|---|
+| round 1, fresh | 79.58 / 74.48 / 75.38 (V1 fails) | 36 / 104 | 14 | p ≥ 0.07, 1 s: 69.14 / 65.66 / 63.51 |
+| round 1, carried | 86.56 / 82.79 / 82.12 (V1 fails) | 3 / 104 | 2 | p ≥ 0.01, 2 s: 65.91 / 64.98 / 58.01 |
+| round 2 as frozen (reset), fresh | 27.99 / 27.82 / 31.67 | 56 / 104 | 0 | p ≥ 0.16, 1.25 s: 55.09 / 51.71 / 59.44 |
+| round 2 as frozen (reset), carried | 31.24 / 32.49 / 33.50 | 20 / 104 | 0 | p ≥ 0.05, 1.25 s: 38.12 / 38.14 / 42.14 |
+| round 2 network without the reset, fresh | 46.47 / 46.28 / 45.34 | 47 / 104 | 12 | p ≥ 0.07, 0.25 s: 67.10 / 64.30 / 64.33 |
+| round 2 network without the reset, carried | not completed (the shared machine suspended the run) | | | |
+
+- The retraining did not cost separability on fresh streams: without the reset
+  the round-2 network's frontier matches round 1's (12 vs 14 grid points
+  meeting both, best 67 / 64 / 64 vs 69 / 66 / 64), and it keeps the voice
+  types round 1 lost.
+- The reset costs it: max(p_A, p_B) raises p on noise, so at every threshold
+  less noise is vetoed (46.5 → 28.0 % at the frozen p).
+- The carried state is what binds, because it moves the gate's calibration.
+  With its state carried, the round-1 network's p falls so far that V1 holds
+  only at p ≥ 0.01 — where it removes 65.9 / 65.0 / 58.0 % with the state
+  carried but 36.6 / 39.2 / 30.9 % from a fresh state. One threshold cannot
+  serve both regimes. Round 2 with the reset behaves alike in both (V1 holds
+  at 20–56 of the 104 points), but with the state carried no point that keeps
+  voice removes more than 38 % on the 279.
+
+### R2.6 Voice probes of the round-1 review (post hoc; already seen)
+
+`judge/custom_probes.py` over the review's probe dumps (the app's chain over
+VocalSet's other techniques and the review's 38 Freesound voice recordings),
+each probe through the app's resampler and the model with its state carried,
+round 2 with the reset (% of CORRECT hops vetoed):
+
+| probe | correct hops | round 1 frozen | round 2 frozen | round 2 at p ≥ 0.16, 1.25 s |
+|---|---|---|---|---|
+| VocalSet lip trills (20 singers) | 3,662 | 19.14 (f 32.68, m 13.11) | 0.00 | 0.00 |
+| other VocalSet techniques (10 kinds) | 67,981 | ≤ 0.06 per kind | 0.00 | 0.00 |
+| Freesound children's singing | 1,178 | 7.81 | 0.00 | 0.00 |
+| Freesound singing / sirens / warm-ups / humming | 4,085 / 221 / 3,845 / 11,588 | 5.48 / 6.33 / 2.21 / 1.44 | 0.00 | 0.00 |
+
+These probes were built after the round-1 look and were not used for training
+or selection (their 66 clips and 52 uploaders were excluded from the round-2
+Freesound data). The review has seen them, so they are not confirmatory.
+
+### R2.7 Judge checks
+
+| check | what | result |
+|---|---|---|
+| freeze order | freeze commit b4a89e3 (12:18:27) before the harness files (written 12:19–12:47) and the look; `build/vad/scores/` held no round-2 score before | ok; the look's `candidate.json` is byte-identical to the frozen file |
+| re-score | `custom_r2_tradeoff.py` (score.py's functions with a cache) against each `score.py` JSON at its point | 0 mismatches (round 1 and 2, fresh and carried) |
+| browser runtime | `custom_rerun.mjs --stagger=10`: onnxruntime-web WASM, 1 thread, both copies, 22 seeded streams (2 per set) through the app's `createStreamingResampler` in 25 ms chunks | 39,619 frames: max \|Δp\| 1.3e-5 against the harness files, 0 decisions flip at p ≥ 0.03; live feeding (1–3 frames per run) vs 8-frame chunks 1.0e-6, 0 flips |
+| causality by truncation | zero the audio from a random sample, re-run (both copies) | 14,106 frames available before the cut bit-identical; 25,513 of 25,513 after it changed |
+| deployable vs selection | the selection data re-run with the streaming ONNX file | same pick; tuning-194 V2 28.08 vs 28.09 %; max \|Δp\| 2.8e-3 (fresh), 2.2e-3 (carried) |
+| WASM CPU | `wasm_bench.mjs --copies=2`, Node and headless Chrome (temporary profile, closed by its own PID) | 1.57 / 1.67 ms per 25 ms under 73–96 % machine load |
+| licence and attribution | `build/vad-train/model-r2/LICENSE` (MIT), `ATTRIBUTION.md` (per-clip title, link and licence URL; 36,939 training files; CC BY 4.0, CC BY 3.0 and CC0 1.0 only) | ok |
+
+### R2.8 V5: private session recordings (reported, not a gate)
+
+The frozen round-2 gate, as deployed (with the reset), was run once over the
+four private session recordings through the same chain dumps and scorer as
+round 1. Results on the private session recordings are kept outside this
+repository.
+
+### R2.9 Limits
+
+- **Two looks.** Every evaluation set has now been looked at twice (round 1
+  and round 2) and by the round-1 review; no figure in this note is a
+  confirmatory result.
+- **The carried-state sessions are a worst case.** They splice unrelated
+  recordings, so the gate meets a new room, microphone and level every 20 s
+  on average; a real session changes scene far less often. The selection rule
+  required carried feasibility on such sessions, which is what forced the low
+  threshold. A realistic carried test (one room per session, the review's
+  paired-block design) was not built.
+- **The reset was chosen after the state bank failed on validation** (Addendum
+  F), with one fixed T and the max rule; neither was tuned.
+- **V4 under load.** The two-copy WASM cost was measured with the machine
+  busy; mobile is not measured.
+- **Lip trills come only from resynthesis.** No openly licensed lip-trill
+  recordings exist outside VocalSet, so the 0.00 % on VocalSet lip trills rests
+  on the roughness augmentation; there is no unseen lip-trill set left.
+
+### R2.10 What it would take to go further
+
+1. **Fix the state, not the threshold.** The network separates well from a
+   fresh state; what fails is recovery after a change of recording.
+   Candidates, each needing its own pre-registration and fresh data:
+   - train on long, continuous sessions (one room, one microphone, many voice
+     and noise episodes) with truncated back-propagation through time, instead
+     of random banked states from unrelated crops;
+   - bound the memory by design (a recurrent state that decays to a neutral
+     value within a few seconds, or a feed-forward context of 1–2 s at a
+     coarser rate), so no long history can hold the gate shut;
+   - if a reset is kept, gate on the copy with the longer history (2T ≥ age
+     ≥ T) or the mean of the copies rather than the maximum, and choose T on
+     validation.
+2. **Make the carried-state validation realistic** — one scene per session,
+   scene changes only where a user would cause them — and keep the spliced
+   sessions as a stress row rather than a feasibility constraint.
+3. **A confirmatory round needs unseen evaluation data**: voice sets with male
+   head-voice and low held notes, dysphonic vowels, children and SOVT
+   exercises (real lip trills) in stationary machine noise, plus noise sets of
+   machine topics absent from training (Addendum D.1). Every current set has
+   been seen.
+4. **What the numbers say about the target.** At the bar's V1 limits the
+   fresh-stream frontier reaches 67–69 % on the 279 and 63–66 % on the
+   held-out sets in both rounds, so the network class can meet the bar's V2
+   from a fresh state. What it cannot do yet is keep one calibration through
+   a real session: round 1's calibration drifts with history, and round 2's
+   reset, which removes the drift, costs most of the removal (38 / 38 / 42 %
+   at best with the state carried). A gate in the 60 % range needs the state
+   handling solved (item 1) and its operating point chosen on validation
+   sessions that look like real use (item 2).
+
+### R2.11 Reproduction (repo root)
+
+Data, packs, training and selection: the training note, "Round 2". The look
+and the reported rows (all outputs gitignored):
+
+```bash
+bash scripts/voice-detector/train/run-r2-look.sh          # harness files after the freeze: fresh (3 shards) + carried (seed 20261008), both with the reset
+python scripts/voice-detector/score.py build/vad/cand/custom-vd-r2 --json=build/vad/scores/custom-vd-r2.json --worst=25        # the look
+python scripts/voice-detector/score.py build/vad/cand/custom-vd-r2-carried --json=build/vad/scores/custom-vd-r2-carried.json   # carried row
+python scripts/voice-detector/judge/custom_r2_report.py --cand=build/vad/cand/custom-vd-r2 --carried=build/vad/cand/custom-vd-r2-carried --out=build/vad/judge/r2-report.json
+python scripts/voice-detector/judge/custom_r2_report.py --cand=build/vad/cand/custom-vd --carried=build/vad/cand/custom-vd-carried --out=build/vad/judge/r1-report.json
+python scripts/voice-detector/judge/custom_r2_tradeoff.py --cand=build/vad/cand/custom-vd-r2 --ref=build/vad/scores/custom-vd-r2.json --out=build/vad/judge/r2-tradeoff-fresh.json   # post hoc (likewise for the other rows of §R2.5)
+$VENV scripts/voice-detector/judge/custom_probes.py --onnx=build/vad-train/model-r2/custom-vd-r2.onnx --stagger=10 --cand=build/vad/cand/custom-vd-r2 \
+  --chain=<review probe dumps: chain/tech,chain/fsvoice> --cache=build/vad/judge/probes-r2 --out=build/vad/judge/probes-r2.json --points=0.16/1250
+node scripts/voice-detector/judge/custom_rerun.mjs --ort=<dir with node_modules/onnxruntime-web> --per=2 --cand=build/vad/cand/custom-vd-r2 \
+  --model=build/vad-train/model-r2/custom-vd-r2.onnx --stagger=10 --json=build/vad/judge/custom-rerun-r2.json
+node scripts/voice-detector/train/wasm_bench.mjs --ort=<same> --model=build/vad-train/model-r2/custom-vd-r2.onnx --n=10 --sec=60 --copies=2 [--mode=chrome --shapes='<json>']
+# round 1 with the state carried (post hoc), and the round-2 network without the reset (post hoc):
+$VENV scripts/voice-detector/train/infer_carried.py --onnx=build/vad-train/model/custom-vd.onnx --out=build/vad/cand/custom-vd-carried \
+  --streams="build/vad:noise,noiseho,vin20,vin0,fda,ptdb,voc,hil,vocalset,pvqd,voiced" --seed=20261008 --minutes=20 --cand-from=build/vad/cand/custom-vd
+$VENV scripts/voice-detector/train/infer.py --onnx=build/vad-train/model-r2/custom-vd-r2.onnx --out=build/vad/cand/custom-vd-r2-noreset --root=build/vad --sets=<all>
+# V5 (private; results outside this repository): judge/custom_v5_infer.py --onnx=... --sha=... --stagger=10, then judge/custom_v5_score.py --cand=build/vad/cand/custom-vd-r2
 ```

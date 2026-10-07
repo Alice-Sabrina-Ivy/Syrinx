@@ -14,7 +14,7 @@ is 4c93913.
 
 ## Status
 
-**Round 2 (2026-10-07): a second model was trained and frozen; see "Round 2" at the end and the evaluation note.** **Evaluated 2026-10-07: the frozen model does not pass the pre-registered bar** (V1 fails in three voice-in-noise cells, worst male 0 dB lead 0 at 6.88 %; V2, V3 and V4 pass, 79.58 / 74.48 / 75.38 % removed). Verdict, full table and post-hoc trade-off: [voice-detector-custom-2026-10-06.md](voice-detector-custom-2026-10-06.md). The status text below is as written at the freeze.
+**Round 2 (2026-10-07): a second model was trained, frozen and evaluated — it passes V1, V3 and V4 and fails V2 (27.99 / 27.82 / 31.67 % removed); see "Round 2" at the end and the evaluation note.** **Evaluated 2026-10-07: the frozen model does not pass the pre-registered bar** (V1 fails in three voice-in-noise cells, worst male 0 dB lead 0 at 6.88 %; V2, V3 and V4 pass, 79.58 / 74.48 / 75.38 % removed). Verdict, full table and post-hoc trade-off: [voice-detector-custom-2026-10-06.md](voice-detector-custom-2026-10-06.md). The status text below is as written at the freeze.
 
 **Historical (superseded 2026-10-07):** A model is frozen, and the evaluation look has not been taken yet.
 
