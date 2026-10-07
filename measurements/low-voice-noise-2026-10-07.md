@@ -515,3 +515,206 @@ end that is robust to low-frequency noise.
 
 R6 commits the attribution chain, the frozen metric code and the rule
 checker with the shipping candidate.
+
+## Candidate: voice-detector-gate (2026-10-07)
+
+**Recorded verdict: FAIL** (R5). PRIMARY: PASS. 1 of 122 criteria fails:
+H3, women's coverage at real noise 10 dB on the held-out set, −0.59 pp
+against a −0.5 pp tolerance. Every other primary and guard passes, including
+the private session-meter guard.
+
+Branch `lowvoice-voice-detector-gate` (from `lowvoice-noise`). Code at
+0528fce, kind **meter**: nothing under `src/dsp` or `src/audio` changes, and
+the pitch worker's posted message is unchanged, so G8 does not apply. The
+full public verdict tables of the candidate and every variant are in
+[low-voice-noise-voice-detector-gate-verdicts-2026-10-07.txt](low-voice-noise-voice-detector-gate-verdicts-2026-10-07.txt).
+
+### What it changes
+
+Whether someone is speaking now comes from a dedicated speech detector, not
+from pitch voicing. Pitch evidence only shapes the held-note tests.
+
+- **Detector.** `src/ml/speech-detector.js` runs Silero VAD v6.2.3 (MIT,
+  2,327,524 bytes) in the gender worker, on the same 16 kHz stream the
+  classifier reads. It uses the reference streaming protocol: 512-sample
+  frames plus a 64-sample context, with the LSTM state carried. That gives
+  one speech probability per 32 ms, stamped on the audio clock. The model
+  is fetched at runtime from the v6.2.3 tag through jsDelivr and checked
+  against its pinned sha256. It runs on the onnxruntime-web instance that
+  Transformers.js already loads, so no second WASM runtime is shipped.
+  The gender-worker chunk grows by 3.2 KB.
+- **Why this detector.** The custom voice-vs-machine detector on the
+  `voice-detector` branch is still in round 2, so it could not be used.
+  Silero, at its own default threshold of 0.5, was the round-1 benchmark's
+  best speech separator: it removed 98 % of the false pitch line on real
+  noise-only audio and kept all FDA and PTDB-TUG speech
+  (`measurements/voice-detector-benchmark-2026-10-06.md` on that branch). It failed there because it scores held notes and
+  sustained vowels near 0. That is harmless here, because the meter does
+  not score held phonation, and the pitch-based held-note test is kept. The
+  gate takes a probability, so the custom detector can replace Silero in
+  `speech-detector.js` if it passes its own bar.
+- **Gate.** `src/ml/utterance-gate.js` gains `noteSpeech({ ts, p })`. While
+  speech hints are live (one arrived within `staleMs`), a speech utterance
+  decides when scoring can happen:
+  - It opens on 150 ms of frames with p ≥ 0.5 and closes after 1 s without
+    one.
+  - A window scores only if the newest speech frame is at most 500 ms old
+    and at least 15 % of the window's frames are speech.
+  - At least 40 % of a scored window must follow the speech onset
+    (`speechMinPostOnsetFrac`). With pitch alone the requirement stays at
+    50 %.
+- **Pitch utterance.** The pitch utterance still runs in the background,
+  exactly as before. The "sustained" verdict ("needs running speech") and
+  the steady-onset hold both use it unchanged.
+- **Hold release.** A speech run that is still going when a held-note
+  verdict ends may reopen the meter. Its span then starts at the end of
+  the note.
+- **Fallback.** With no speech hints (detector loading or failed), the
+  gate is the 852b5cc gate. The candidate tree replayed without speech
+  hints reproduces the base replay with 0 differing streams on all 10 sets,
+  and the four private session-meter outputs byte for byte.
+
+### Measurement (the frozen commands, K = voice-detector-gate, REV = 0528fce, KIND = meter)
+
+- **Speech hints.** A recorder (scratch tool
+  `speech-hints-voice-detector-gate.mjs`) produces the hints the candidate
+  gender worker would feed its gate. It runs the candidate tree's own
+  `createStreamingResampler`, `createSpeechFramer` and `createSileroRunner`
+  over each stream's exact 16 kHz samples, in 25 ms capture chunks with
+  contextTime at the chunk end. Inference uses onnxruntime-web WASM in
+  Node, 1 thread, with the hash-checked model. The hints were recorded for
+  every public set and the private sessions. They are identical, file for
+  file, between the two candidate revisions.
+- **Replay** (`replay_voice-detector-gate.mjs`). This is the frozen replay
+  with one change to hint construction: before each decision it forwards
+  the speech frames with ts ≤ now, as the worker does, since it runs the
+  detector on each chunk before `maybeInfer`.
+  - Parity on the base tree: 0 differing streams on all 10 sets.
+  - 0 missing logits on chanx and dyn.
+- **Session meter** (`meter_session_voice-detector-gate.mjs`). It imports
+  the gate and view from the candidate tree and adds the speech hints.
+  - Parity: byte-identical to the base outputs on all four sessions, both
+    with the base tree and with the candidate tree without hints.
+- **Assumption.** The replay assumes the detector is live from the
+  stream's first sample. In the R3 browser run the model was ready 4.5 s
+  after page load, from the network with a cold cache. Until it is ready,
+  the meter behaves as the baseline.
+
+### Results (public, paired against the frozen baseline)
+
+| | base | candidate | rule | |
+|---|---|---|---|---|
+| P1 noisy gap women − men (pp) | 9.94 | **−1.51** | ≤ 4.97 | pass |
+| P2a the 94 / 100 Hz voices, noisy (%) | 58.56 | **95.09** | ≥ 73.56 | pass |
+| P2b noisy gap women − men < 105 Hz (pp) | 10.04 | **−1.80** | ≤ 5.02 | pass |
+| P3 men's median settle in noise (s) | 0.675 | 0.400 | ≤ 0.675 | pass |
+| H1 held-out noisy gap (pp) | 4.96 | −1.37 | ≤ 3.00 | pass |
+| H2 held-out gap < 105 Hz (pp) | 4.41 | −1.73 | ≤ 3.00 | pass |
+| noisy coverage W / M / M < 105 Hz, 38-speaker (%) | 89.90 / 79.96 / 79.85 | 93.29 / 94.79 / 95.08 | | |
+| clean-ish coverage W / M / M < 105 Hz, 38-speaker (%) | 92.00 / 91.64 / 92.80 | 93.63 / 95.22 / 95.15 | G2 ≥ base | pass |
+| noisy coverage W / M / M < 105 Hz, held-out (%) | 87.84 / 82.88 / 83.43 | 92.66 / 94.03 / 94.38 | | |
+| clean-ish coverage W / M, held-out (%) | 88.77 / 92.87 | 90.94 / 94.83 | H3 ≥ base | pass |
+| G1 / H3: 48 condition × sex cells | | 47 pass | ≥ base − 0.5 | **H3 women real 10 dB: 94.29 → 93.70, FAIL** |
+| G3 noise-only time with a number (%) | 22.26 | **0.13** | ≤ 23.26 | pass |
+| G3 noise-only time, any non-blank state (%) | 25.41 | 1.87 | ≤ 26.41 | pass |
+| G3 / H4 real-noise lead with a number (%) | 12.18 / 16.06 | 0.84 / 0.00 | ≤ base + 1 | pass |
+| G4 number during holds, VOICED f / m (%) | 3.90 / 3.06 | 1.66 / 2.28 | ≤ base + 1 | pass |
+| G4 … VocalSet ≤ 400 Hz f / m (%) | 2.55 / 6.05 | 0.71 / 0.80 | | pass |
+| G4 … PVQD ≤ 400 Hz f / m (%) | 9.40 / 11.91 | 9.02 / 11.28 | | pass |
+| G4 … all holds > 400 Hz (%) | 5.62 | 1.47 | | pass |
+| G4 "needs running speech" from 1.25 s, every set × sex | | unchanged | ≥ base − 1 | pass |
+| G2 PVQD speech portions with a number f / m (%) | 92.56 / 88.08 | 92.91 / 89.99 | ≥ base | pass |
+| G5 false "needs running speech", every row | | unchanged | | pass |
+| G6 median first number, W / M clean-ish (s) | 0.485 / 0.525 | 0.405 / 0.375 | ≤ base + 0.15 | pass |
+| G6 median first number, W / M noisy (s) | 0.545 / 0.550 | 0.405 / 0.395 | | pass |
+| G6 median settle W clean-ish / W noisy / M clean-ish (s) | 0.755 / 0.695 / 0.545 | 0.695 / 0.615 / 0.395 | | pass |
+| G6 first value in the wrong range, all four cells | | equal or lower | ≤ base + 5 | pass |
+| G7 speaker change, all 12 rows | | first values in range; lags equal or shorter | | pass |
+
+- **The sex gap closes.** Men's noisy coverage rises by 14.8 pp and women's
+  by 3.4 pp, so the noisy gap reverses sign on both sets. Real 0 dB, men:
+  71.1 → 94.1 % (38-speaker set) and 72.8 → 92.3 % (held-out).
+- **Reverberation.** The opposite asymmetry flagged in the baseline
+  narrows. Women's 1.0 s reverb coverage goes 83.3 → 89.9 % and 77.7 →
+  85.4 % (held-out).
+- **Noise-only time.** The meter shows a number on 0.13 % of noise-only
+  time, against 22.26 %.
+- **Babble.** Babble is still scored, at 100 % for both sexes in both
+  conditions. Silero calls babble speech, as the pitch gate did.
+
+**Why H3 fails.** Of the 20 held-out women's streams at real 10 dB:
+
+- In 7, the baseline was already showing a number over the stationary-tonal
+  noise lead before the speech began (59 % of the lead, on average). It
+  scored the first speaking hops with a number "left open" by the noise:
+  97.4 % coverage.
+- The candidate shows nothing over the lead and pays its normal onset time
+  (first number 0.35 s after onset, median): 92.7 % on those 7 streams.
+- On the other 13 streams it goes 92.6 → 94.2 %.
+
+The failing cell therefore measures the baseline's false display on noise
+as speaking-time coverage. The rule makes no exception for this, so the
+verdict is FAIL. The user may override (R5).
+
+### Every variant tried (R4)
+
+All variants use Silero v6.2.3 at p ≥ 0.5 with a 150 ms onset run. Full
+public tables are in the verdicts file.
+
+| variant | change | fails (public, of 118) |
+|---|---|---|
+| v0 (preview, 38-speaker set only, not the full evaluator) | one utterance; a speech run that began during a held-note verdict could not reopen it until the run broke | G1: 6 cells fail. Women babble 0 / 10 dB 100 → 95.4 / 99.9 → 91.4; real 10 dB women 93.4 → 92.4 and men 93.0 → 88.7; men 0.5 s reverb 91.2 → 88.0; men < 105 Hz 1.0 s reverb 92.6 → 86.8 %. Cause: a steady hum the pitch tracker called a held note kept the meter shut for the rest of the sentence. |
+| v1 (c08a6d7) | v0 + reopen after a held-note verdict; the steady-onset hold measured from the speech span; post-onset 0.5 | 5: H3 women real 10 dB 94.29 → 93.04; G4 numbers during holds PVQD f 9.40 → 12.93, m 11.91 → 16.10, VOICED f 3.90 → 9.23, m 3.06 → 12.63. The speech span starts before voicing, so the steady-onset share fell below 0.95 and held dysphonic vowels were scored. |
+| v2 | the final structure (background pitch utterance drives the steady-onset hold); post-onset 0.5 | 2: H3 women real 10 dB 94.29 → 92.82; G2 PVQD speech portions, women 92.56 → 92.44 |
+| **v3 = candidate (0528fce)** | v2 with speech post-onset fraction 0.4 | **1: H3 women real 10 dB 94.29 → 93.70** |
+| v4 | v2 with speech post-onset fraction 0.3 | 2: G4 numbers during holds, PVQD f 9.40 → 10.51 and m 11.91 → 13.28 (tolerance +1.0). H3 passes at 94.62. |
+
+The post-onset fraction (0.5 / 0.4 / 0.3) is the only value tuned. It was
+tuned after the H3 failure was seen, so for this parameter H3 is no longer
+held out. The speech detector's onset leads the pitch onset by only about
+15–18 ms (median, clean-ish streams), so 0.4 has no derivation of its own.
+It is the value with the fewest failures.
+
+### Other required checks
+
+- **R3 (validity).** Production build (`vite build` + `vite preview`) in
+  headless Chrome 154, launched by puppeteer with a temporary profile and
+  closed by PID. Fake microphone: 105 s of LibriSpeech (clean and real
+  0 dB). `?diag=1`, 406 inferences.
+  - Classifier inference: median 78.6 ms, p95 103.7 ms.
+  - Detector time between consecutive inferences: median 5.0 ms, p95
+    10.4 ms.
+  - **Inference + detector: p95 129.1 ms < 150 ms (pass).** The p99 is
+    202 ms. The machine was shared with other jobs, and the inference
+    median was above the 52 ms in
+    [gender-model-latency-2026-07-19.md](gender-model-latency-2026-07-19.md).
+  - The model loaded 4.5 s after page load.
+- **G9.** `npm run lint` passes. `npm run test:unit` passes 24/24 scripts,
+  including the new `tests/ml/speech-detector-test.js` and 20 new
+  speech-evidence cases in `tests/ml/utterance-gate-test.js`.
+  `npm run build` passes.
+  - These were run with a complete `npm ci` install in scratch. The shared
+    `node_modules` of the main checkout currently lacks `.bin` and
+    `@babel/core`.
+- **G8.** Does not apply: no pitch-chain change.
+- **Private.** On the private session recordings, the meter's display far
+  from any reference voicing does not exceed the baseline by more than the
+  1 pp tolerance for any speaker label or overall. Results on the private
+  session recordings are kept outside this repository.
+
+### Open points if this were adopted
+
+- **Model hosting.** The model is fetched from jsDelivr (GitHub tag
+  v6.2.3). It could instead go on the project's Hugging Face account next
+  to the gender model.
+- **Cost and mobile.** The detector adds a 2.3 MB download and about
+  1 ms of CPU per 32 ms on desktop. Mobile is unmeasured.
+- **Whisper.** Speech the detector hears without voicing, such as
+  whispering, can now open the meter and be scored. This was not
+  measured.
+- **Held vowels before pitch locks.** A held vowel that the detector calls
+  speech is scored until the pitch tracker's held-note test fires. This is
+  the same 1 s rule as before; G4 holds.
+- **Round 2.** The voice-detector branch's round-2 detector can be
+  swapped in behind the same `noteSpeech` interface and re-run through
+  this evaluator.
