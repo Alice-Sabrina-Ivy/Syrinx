@@ -22,6 +22,19 @@ are not shipped in the built app.
   [JaesungHuh/voice-gender-classifier](https://github.com/JaesungHuh/voice-gender-classifier)
   (MIT), fetched at runtime from Hugging Face
   (`Alice-Sabrina-Ivy/voice-gender-classifier-onnx-q8-v2`).
+- **Speech detector for the Perceived Voice meter.**
+  [Silero VAD](https://github.com/snakers4/silero-vad) v6.2.3
+  (`src/silero_vad/data/silero_vad.onnx` at tag v6.2.3, commit 5cd7945,
+  2,327,524 bytes, sha256
+  `1a153a22f4509e292a94e67d6f9b85e8deb25b4988682b7e174c65279d8788e3`) — MIT,
+  Copyright (c) 2020-present Silero Team. The unmodified file is fetched at
+  runtime from the GitHub tag through jsDelivr
+  (`https://cdn.jsdelivr.net/gh/snakers4/silero-vad@v6.2.3/src/silero_vad/data/silero_vad.onnx`)
+  and checked against that sha256 before use (`src/ml/speech-detector.js`).
+  A byte-identical mirror on the project's Hugging Face account
+  (`Alice-Sabrina-Ivy/silero-vad-v6.2.3-onnx`, with Silero's LICENSE and a
+  model card that credits the upstream project) is planned and not yet
+  published.
 - **Resonance lab models** (`public/resonance-lab/`: `vtln_warp.json`,
   `le_ens_h64.json`, `pnml_head.json`, `fv_model.json`) were trained or fitted
   on LibriSpeech dev-clean, and the reference bands in `reference.json` come

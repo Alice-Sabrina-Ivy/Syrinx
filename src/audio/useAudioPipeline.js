@@ -577,9 +577,21 @@ export function useAudioPipeline() {
             pushMlInference({
               tEpochMs: msg.ts,
               inferMs: msg.inferMs,
+              // speech detector's run time since the previous inference
+              // (shares the 150 ms hop; null before it is live)
+              vadMs: typeof msg.vadMs === "number" ? msg.vadMs : null,
               score: msg.score,
               confidence: msg.confidence,
             });
+          }
+        } else if (msg.type === "speech-detector") {
+          // The utterance gate's speech detector (speech-detector.js):
+          // diag-only record of whether it loaded (setMlModel is a no-op
+          // without diag). On "error" the gate keeps running on pitch
+          // voicing, so there is nothing to show the user.
+          setMlModel({ speechDetector: msg.status, speechDetectorError: msg.message ?? null });
+          if (DIAG_ENABLED && msg.status === "error") {
+            pushError({ source: "mlWorker", where: "speech-detector", message: msg.message ?? "error", ts: Date.now() });
           }
         } else if (msg.type === "inference-event") {
           // Diag-only: capture defensive-timeout events from the gender

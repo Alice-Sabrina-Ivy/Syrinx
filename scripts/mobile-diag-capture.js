@@ -603,6 +603,15 @@ function summarize(snap) {
   const inferSeries = mlInferences
     .map((e) => e.inferMs)
     .filter((v) => typeof v === "number" && Number.isFinite(v));
+  // Speech detector (utterance gate, Silero VAD) time between inferences,
+  // and classifier + detector per hop — the R3 budget check of
+  // measurements/low-voice-noise-2026-10-07.md (p95 < 150 ms).
+  const vadSeries = mlInferences
+    .map((e) => e.vadMs)
+    .filter((v) => typeof v === "number" && Number.isFinite(v));
+  const hopSeries = mlInferences
+    .filter((e) => typeof e.inferMs === "number" && typeof e.vadMs === "number")
+    .map((e) => e.inferMs + e.vadMs);
   const statsP99 = (a) => {
     const base = stats(a);
     if (!base) return null;
@@ -623,6 +632,9 @@ function summarize(snap) {
       totalMs: stats(longTotal),
     },
     mlInferenceMs: statsP99(inferSeries),
+    speechDetector: snap.mlModel?.speechDetector ?? null,
+    speechDetectorMs: statsP99(vadSeries),
+    mlInferencePlusDetectorMs: statsP99(hopSeries),
     chunkArrivalDriftMsPerSec_recent: drift("frames", (f) => f.timings?.chunkArrivalMs),
     chunkArrivalDriftMsPerSec_long: drift("lowRes", (f) => f.chunkArrivalMs),
     totalDriftMsPerSec_recent: drift("frames", (f) => f.timings?.totalMs),
@@ -723,6 +735,20 @@ function printSummary(s) {
     );
   } else if (s.nMlInferences === 0) {
     console.log(`  ml infer:    no inferences captured (model still loading? VAD gating?)`);
+  }
+  if (s.speechDetector || s.speechDetectorMs) {
+    const v = s.speechDetectorMs;
+    const h = s.mlInferencePlusDetectorMs;
+    console.log(
+      `  speech det:  ${s.speechDetector ?? "no status"}` +
+      (v ? `; per hop median=${v.median.toFixed(1)}ms p95=${v.p95.toFixed(1)}ms (n=${v.n})` : ""),
+    );
+    if (h) {
+      console.log(
+        `  infer + det: median=${h.median.toFixed(1)}ms p95=${h.p95.toFixed(1)}ms p99=${h.p99.toFixed(1)}ms` +
+        (h.p95 < 150 ? " ✓ (p95 < 150ms hop)" : " ⚠ p95 OVER the 150ms hop"),
+      );
+    }
   }
   console.log("─".repeat(78));
 }

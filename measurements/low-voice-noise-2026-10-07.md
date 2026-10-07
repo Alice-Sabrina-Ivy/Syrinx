@@ -1,5 +1,8 @@
 # Perceived Voice meter: men's voices in heavy noise — diagnosis and pre-registered ship rule — 2026-10-07
 
+**Update 2026-10-07: adopted by user decision, with the recorded verdict
+FAIL (H3)** — see "Decision" at the end. The text below is unchanged.
+
 **Status: pre-registration.** This file fixes the baseline and the rule a fix
 must pass **before any candidate is tried**. No candidate result exists at the
 time of this commit. Each candidate adds its own results section below the
@@ -718,3 +721,160 @@ It is the value with the fewest failures.
 - **Round 2.** The voice-detector branch's round-2 detector can be
   swapped in behind the same `noteSpeech` interface and re-run through
   this evaluator.
+
+## Decision (2026-10-07): adopted, overriding the H3 miss
+
+**The user adopted voice-detector-gate on 2026-10-07, overriding the H3
+failure under R5.** The recorded verdict stays **FAIL**: 1 of 122 criteria
+fails (H3, held-out women at real noise 10 dB, 94.29 → 93.70 %, −0.59 pp
+against a −0.5 pp tolerance). Two facts stay attached to the override:
+
+- The failing cell is explained by the baseline showing a number over the
+  noise before speech began (see "Why H3 fails").
+- `speechMinPostOnsetFrac` 0.4 was chosen after H3 had been seen, so H3 is
+  not a held-out test of that one parameter.
+
+The user made the adoption conditional on two follow-ups before any PR:
+
+1. host the model on the project's Hugging Face account, and
+2. test background chatter, music, TV / podcast speech, whispering, the
+   startup window before the detector is ready, and phone CPU.
+
+Both are reported below. The candidate (0528fce) is merged into
+`voice-direction` unchanged. The integration adds diag-only
+instrumentation: `?diag=1` snapshots record the detector status and
+per-inference `vadMs`, and `scripts/mobile-diag-capture.js` prints
+inference + detector time per hop for the phone run.
+
+### Follow-up probes (public audio only)
+
+The probes used the same tooling as the evaluation:
+
+- **Pitch chain:** the real pitch / DSP / hook chain on the base tree.
+- **Speech hints:** the candidate's Silero hints, from the frozen recorder.
+- **Replay:** both arms through the frozen replay scripts.
+- **Classifier:** the deployed q8-v2 model scored on every 150 ms tick.
+  No logits were missing.
+
+As a sanity check, the probe's clean condition reproduces the frozen
+evaluator's clean coverage (candidate women / men 94.6 / 95.5 %).
+
+Inputs:
+
+- **Targets:** the 38 LibriSpeech test-clean talkers, 19 women and 18 men.
+- **Chatter:** reverberant 6- and 3-talker LibriSpeech babble.
+- **Music:** MUSDB18 7-s excerpts (CC BY 4.0), instrumental and full mix,
+  taken from the same excerpts.
+- **TV / podcast:** a band-limited, reverberant LibriSpeech dev-clean
+  talker.
+- **Whisper:** real whisper from EARS and Expresso (CC BY-NC 4.0, used for
+  measurement only; 14 women, 8 men), each paired with the same talker's
+  regular reading of the same text. Also LPC-synthesised whisper from
+  LibriSpeech.
+
+Levels are relative to the user's (target's) speech level. "Alone" means
+nobody is at the mic.
+
+The probe scripts are scratch tools and are not committed. Base = 852b5cc,
+cand = this candidate.
+
+**Results by case:**
+
+| case | base → cand | verdict |
+|---|---|---|
+| Chatter alone, 6 talkers, 0 / −10 / −20 / −30 dB: time with a number | 96.0 / 95.9 / 97.0 / 96.9 → 95.3 / 89.5 / 67.6 / **0.0** % (number ≈ 33–46) | Not a regression. **User decision:** the meter scores a nearby crowd at normal chatter levels in both versions. |
+| Babble under speech, 20 / 10 / 0 dB: coverage, women; men | 99.9 / 99.9 / 100 → 96.8 / 99.7 / 98.9 %; 100 / 100 / 100 → 97.3 / 99.1 / 99.3 % | Above clean coverage. The baseline's figure includes numbers it opened on the babble. |
+| Babble lead before speech, 20 dB: time with a number, women; men | 59.3 → 11.5 %; 54.3 → 17.9 % | Better. |
+| Babble 0 dB: pull on the number during speech | women −17.2 → −17.3, men +15.7 → +15.5 points | Unchanged. The classifier hears the mix. |
+| Music alone, instrumental 0 / −10 / −20 dB: time with a number | 73.9 / 74.9 / 72.0 → 0.7 / 0.0 / 0.0 % | **Large improvement.** |
+| Music alone, with vocals 0 / −10 / −20 dB | 82.8 / 87.9 / 75.2 → 1.9 / 1.0 / 4.4 % | **Large improvement.** |
+| Music under speech: coverage, women; men; men < 110 Hz at instrumental 0 dB | cand 92.6–95.9 %; 93.3–95.8 %; 86.8 → 91.2 % | Within 0–3 pp of the candidate's clean coverage. |
+| Music under speech: pull on women's number | −6 … −14 → −1 … −10 points | Pulled less. |
+| TV voice alone, −10 / −20 / −30 / −40 dB: time with a number, woman's TV voice | 91.3 / 91.8 / 72.3 / 7.8 → 94.0 / 93.6 / 54.0 / 2.3 % | Unchanged. **User decision:** the meter scores the TV voice as the user, showing that voice's own reading (≈ 91–96). |
+| TV voice alone, same levels, man's TV voice | 94.4 / 92.1 / 88.0 / 8.1 → 96.0 / 92.2 / 75.6 / 2.3 % | Same as above (reading ≈ 9–14). |
+| Opposite-sex TV voice 10–20 dB under speech | pulls the number 5–12 points in both versions | Unchanged. |
+| Real whisper: share with a number, women; men | 23.2 → **54.1** %; 4.2 → **72.4** % | **User decision:** the meter now scores whisper. |
+| Real whisper: median number, women; men | 95.1 → 91.0; 10.6 → 9.9 | Read mostly correctly. |
+| Real whisper: numbers on the other sex's side of 50, women; men | 3.7 → 4.1 %; 14.0 → 13.3 % | For comparison, the same talkers' regular speech in cand: 0.2 % and 8.6 %. |
+| LPC whisper at speech level: share with a number, women / men | 0.0 / 2.4 → 94.8 / 94.9 % | Women's mean number 68 vs 90 clean. LPC exaggerates the drop compared with real whisper. |
+| Startup: first speech probability vs classifier ready, cold; warm (s after Continue) | — → 2.03 vs 4.00; 1.38 vs 1.61 | **Acceptable.** The detector is live before or with the classifier, and in every run no number was posted before it. |
+| Startup: first number, cold; warm (s) | 3.97 → 4.45; 2.06 → 1.97 | The cold ranges overlap on a loaded machine. |
+| Startup: detector live late, 2.5 or 4.5 s in | meter = baseline until the switch; over music the number clears ≈ 2 s after; over speech the switch costs nothing | Acceptable. |
+| Desktop CPU (i9-11900K under load) | detector 16–26 ms per audio second in Node WASM, ≤ 35 ms in Chrome; per hop p50 5.7, p95 9.0 ms; inference + detector p95 118.7 ms (< 150) | Acceptable. |
+| Phone CPU | not measured: no phone attached (`adb devices` empty) | **Pending.** |
+
+**Whisper.** Asymmetry: women's whisper gets a number less often than
+men's (54 vs 72 %; Expresso women only 32 %). The options for the user:
+
+- (a) accept it as is;
+- (b) require some pitch voicing in each scored window, which brings
+  whisper back near the baseline but needs the noisy-men gain re-checked;
+- (c) show whisper with its own label.
+
+**Chatter and TV.** Neither can be fixed by a better speech detector. A fix
+needs "is it the user": a level floor set at calibration, or voice
+enrolment. The q8-v2 model can already output its ECAPA embedding, as the
+resonance lab's pnml finalist does.
+
+**Preloading.** Not needed for the gate. Starting the gender worker while
+the user reads the welcome screen or the direction question (≥ 3 s)
+brought the first number from 4.0–4.5 s to 1.9–2.0 s after Continue. The
+cost is downloading both models before the user agrees to listen. Not
+implemented. The cue-strip redesign starts the gender worker only when the
+opt-in "Likely heard as" panel is switched on, and that is the natural
+trigger if it is wanted.
+
+**Phone CPU.** This is an estimate only, from the known 2.4–4.5× desktop
+→ mobile WASM ratios: 40–160 ms per audio second, 14–41 ms per 150 ms
+hop. That load sits on top of a classifier whose mobile time is itself
+unmeasured (52 ms desktop × 2.4–4.5 ≈ 125–235 ms per hop). When a hop
+overruns, the `inferenceInProgress` guard drops inferences, so the meter
+updates less often; it does not fail.
+
+**Integration check (built app, 2026-10-07).** `scripts/voice-direction-smoke.mjs`
+passes at desktop / phone / landscape (52 / 51 / 5 checks). It now
+confirms that the detector model is fetched from the pinned URL (HTTP 200).
+In a `--diag=1` desktop run with a LibriSpeech fake mic, the detector
+reported "ready" and ran on all 64 inferences. Inference p50 / p95 was
+76.4 / 114.6 ms, detector time per hop 5.9 / 10.7 ms, and inference +
+detector p95 127.2 ms, under the 150 ms hop. The machine was shared with
+other jobs.
+
+### Model hosting
+
+The model is still fetched from jsDelivr, from the v6.2.3 tag.
+
+The Hugging Face mirror `Alice-Sabrina-Ivy/silero-vad-v6.2.3-onnx` was not
+created, because there is no Hugging Face write token on the build machine.
+The upload is prepared (the unmodified ONNX, Silero's MIT LICENSE, and a
+model card that credits the upstream project).
+
+- **Bytes.** The jsDelivr and raw.githubusercontent copies at tag v6.2.3
+  (commit 5cd7945) are byte-identical, 2,327,524 bytes, and match the
+  pinned sha256.
+- **CORS.** The account's existing model (the q8-v2 gender model) serves
+  CORS for the app's origin on both redirect hops. The new repo needs the
+  same check after upload.
+- **Caching.** The probes found that HF's `/resolve/` redirect is sent
+  `no-store` and points at a signed, expiring CDN URL. Every visit
+  therefore re-downloads the model: warm fetch 1.75 s vs 0.29 s from
+  jsDelivr, which sends `immutable`. With the HF copy, the detector came on
+  0.6 s after the classifier on return visits. The first window then opened
+  on pitch evidence, but no number was shown before the detector was live.
+- **To switch.** Move `modelUrl` to the commit-pinned
+  `resolve/<commit>/silero_vad.onnx` and keep `modelSha256`. Add a Cache
+  Storage layer keyed by the sha256 in the same change. The TODO is in
+  `src/ml/speech-detector.js`.
+
+### Still pending
+
+- **Phone CPU** on the Pixel. The user must plug it in: USB debugging on,
+  file-transfer mode, screen awake. Then run `node
+  scripts/mobile-diag-capture.js` against `?diag=1` and read "speech det" /
+  "infer + det".
+- **The Hugging Face mirror**, which needs a Hugging Face write token.
+- **R6.** Commit the public part of the frozen evaluator under
+  `scripts/low-voice-noise/` and its results here. Not done in this
+  integration.
+- **User decisions:** chatter / TV ("is it the user"), whisper (a / b / c),
+  and preloading (with cue-strip).

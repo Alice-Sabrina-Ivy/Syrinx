@@ -35,6 +35,16 @@ export const SPEECH_DETECTOR = Object.freeze({
   stateSize: 2 * 128,
   // Fetched at runtime (not bundled): the official release file served by
   // jsDelivr from the GitHub tag, verified against the pinned sha256.
+  // TODO(hosting, user decision 2026-10-07): move to the project's Hugging
+  // Face mirror `Alice-Sabrina-Ivy/silero-vad-v6.2.3-onnx` once it exists
+  // (it could not be created: no Hugging Face write token on the build
+  // machine). Use the commit-pinned resolve URL
+  //   https://huggingface.co/Alice-Sabrina-Ivy/silero-vad-v6.2.3-onnx/resolve/<commit>/silero_vad.onnx
+  // and keep modelSha256. HF's /resolve/ redirect is `no-store` and points
+  // at a signed, expiring CDN URL, so the browser re-downloads the model on
+  // every visit (warm fetch 1.75 s vs 0.29 s from jsDelivr, which sends
+  // `immutable`): add a Cache Storage layer keyed by modelSha256 in the
+  // same change (measurements/low-voice-noise-2026-10-07.md, "Decision").
   modelUrl: "https://cdn.jsdelivr.net/gh/snakers4/silero-vad@v6.2.3/src/silero_vad/data/silero_vad.onnx",
   modelSha256: "1a153a22f4509e292a94e67d6f9b85e8deb25b4988682b7e174c65279d8788e3",
 });

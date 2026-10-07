@@ -204,6 +204,8 @@ function _createState() {
     //   tEpochMs,    // performance.timeOrigin + now() at score postMessage
     //   inferMs,     // wall-clock duration of classifier(...) — the only
     //                // load-bearing number for the 150 ms hop budget
+    //   vadMs,       // speech detector run time since the previous
+    //                // inference (shares the hop; null before it is live)
     //   score,       // 0..100 perceived-femininity score (post-EMA)
     //   confidence,  // 0..1
     // }
@@ -247,7 +249,10 @@ function _createState() {
     // for post-hoc snapshot inspection — answers "did the worker
     // actually load the expected model on this device?" and
     // "was WebGPU available for it?".
-    mlModel: { modelId: null, device: null },
+    // speechDetector: the utterance gate's speech detector (Silero VAD,
+    // src/ml/speech-detector.js) — null until the worker reports,
+    // then "ready" or "error" (speechDetectorError holds the message).
+    mlModel: { modelId: null, device: null, speechDetector: null, speechDetectorError: null },
     // Which pitch model + device the pitch worker loaded. Mirror of
     // mlModel for the pitch-worker — currently always SwiftF0 ONNX on
     // wasm, but recorded for snapshot reproducibility.
