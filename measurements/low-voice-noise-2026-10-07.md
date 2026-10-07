@@ -515,3 +515,485 @@ end that is robust to low-frequency noise.
 
 R6 commits the attribution chain, the frozen metric code and the rule
 checker with the shipping candidate.
+
+## Candidate "pitch-absub" (2026-10-07) — VERDICT: FAIL (both variants)
+
+Branch `lowvoice-pitch-absub` (variant **absub**, commit 3d9da7e) and
+branch `lowvoice-pitch-absub-c4` (variant **absub_c4**, commit 3b64654 =
+3d9da7e + the 100 ms onset). This is a pitch-chain candidate
+(`KIND=pitch`), and this file is its hard-rule-3 measurement file.
+
+### What it changes
+
+- A new module, `src/dsp/above-range-sub.js`, is called by
+  `pitch-worker.js` where an above-400 Hz decode used to be posted as null.
+  This is the diagnosis lever "absub2". When the tracker's decode d is above
+  the display range and the decoded frame shows **at least 2 partials of d/k
+  that are not multiples of d**, **d/k is posted voiced**. The search uses:
+  - k = 2…10, with d/k in 75–400 Hz;
+  - harmonics 1…12, up to 1 kHz;
+  - the harmonic guard's 10 dB peak-vs-band-median rule for each partial;
+  - the k with the most such partials wins, the smaller k on a tie.
+
+  A rescued frame skips the harmonic guard and leaves its streak untouched,
+  as every above-range frame did before. (Above-range frames that advanced
+  the streak cost PTDB men 0.8 pp in 2026-10-03.)
+- **One addition to the diagnosis algorithm.** A qualifying partial must
+  also reach **−40 dB of the frame's strongest bin below 1 kHz**.
+  - Without it (variant **v0**, the diagnosis algorithm exactly), a clean
+    synthetic 520 Hz tone is posted at 520/6 = 86.6 Hz on every frame. Hann
+    sidelobe leakage between its harmonics passes the median-ratio test.
+  - With v0, `tests/dsp/pitch-worker-above-range-test.js` fails 3 of 7
+    checks (G9), so v0 was not evaluated further.
+  - On the 18 lowest-voice clean / pink 0 / real 0 streams, the floor
+    removes none of the rescues the diagnosis counted (189 of 189 kept).
+- **absub_c4** also sets the utterance gate's `onsetRunMs` from 150 to
+  100 ms.
+
+### How it was measured
+
+- Both variants ran the frozen `prereg/run_candidate.sh` step by step, with
+  `K=absub` or `K=absub_c4` and `KIND=pitch`.
+- **One deviation.** `replay_lvn.mjs` looks up the hint construction by
+  variant name. It has no entry for these keys, so it exits with "unknown
+  hint variant". The replay was therefore run with `--hint=base` added. That
+  is the base hint construction (posted pitch → voiced), which is exactly
+  what the unchanged `gender-worker.js` sends. Nothing else changed.
+- **Parity checks:**
+  - With the 852b5cc gate and view, the session-meter copies reproduce the
+    stored baseline byte for byte.
+  - The absub and absub_c4 pitch-chain runs are byte-identical (same
+    `src/dsp` and `src/audio`).
+  - The evaluator SHA-256 and harness checks passed.
+- **Tests, on both branches:**
+  - `npm run lint`, `npm run test:unit` (23/23) and `npm run build` pass
+    (G9).
+  - `npm run test:dsp` passes on both trees (G8e).
+  - The main checkout's `node_modules` lacks `@babel/core` and `.bin`, so
+    lint and build ran against a complete `npm ci` of the same lockfile.
+
+### Primary results (public)
+
+| criterion | rule | base | absub | absub_c4 |
+|---|---|---|---|---|
+| P1 noisy gap women − men (pp) | ≤ 4.97 | 9.94 | 6.33 FAIL | **2.81** pass |
+| P2a the 94 / 100 Hz voices, noisy (%) | ≥ 73.56 | 58.56 | 70.07 FAIL | **79.75** pass |
+| P2b noisy gap women − men < 105 Hz (pp) | ≤ 5.02 | 10.04 | 6.58 FAIL | **3.12** pass |
+| P3 men's median settle in noise (s) | ≤ 0.675 | 0.675 | 0.665 pass | 0.550 pass |
+| H1 held-out noisy gap (pp) | ≤ 3.00 | 4.96 | 5.10 FAIL | 2.70 pass |
+| H2 held-out gap < 105 Hz (pp) | ≤ 3.00 | 4.41 | 7.06 FAIL | 3.46 FAIL |
+
+Noisy coverage on the 38-speaker set, by `attr_lvn.py` group:
+
+| | women | men 115–147 Hz | men < 110 Hz |
+|---|---|---|---|
+| base | 89.9 % | 80.0 % | 79.9 % |
+| absub | 90.3 % | 84.1 % | 83.7 % |
+| absub_c4 | 91.9 % | 89.2 % | 88.8 % |
+
+These match the diagnosis sizes: absub +0.4 / +4.1 / +3.8 pp and C4
++2.0 / +9.2 / +8.9 pp.
+
+### Failed guards (public)
+
+| guard | rule | base | absub | absub_c4 |
+|---|---|---|---|---|
+| G3 noise-only time with a number (%) | ≤ 23.26 | 22.26 | 29.03 | 34.40 |
+| G3 noise-only time, any non-blank state (%) | ≤ 26.41 | 25.41 | 32.14 | 38.13 |
+| G3 real-noise lead with a number (%) | ≤ 13.18 | 12.18 | 14.51 | 19.23 |
+| H4 held-out real-noise lead (%) | ≤ 17.06 | 16.06 | 17.12 | 20.45 |
+| G4 holds > 400 Hz with a number (%) | ≤ 6.62 | 5.62 | **28.60** | **45.11** |
+| G4 VocalSet women ≤ 400 Hz with a number (%) | ≤ 3.55 | 2.55 | 3.57 | 3.57 |
+| G4 VocalSet men ≤ 400 Hz with a number (%) | ≤ 7.05 | 6.05 | 6.87 pass | 7.18 |
+| G1 women, 1.0 s reverb (%) | ≥ 82.80 | 83.30 | 81.78 | 81.97 |
+| H3 held-out women, 1.0 s reverb (%) | ≥ 77.19 | 77.69 | 76.74 | 77.06 |
+| G8b painted FDA women correct (%) | ≥ 86.89 | 87.19 | 86.89 (−0.307) | same |
+
+- **G8a** (`noise-augment-oracle.js`, FDA): all 87 class × SNR criteria are
+  identical to the baseline (0.0 pp change), so all pass.
+- **G8b:** every other criterion passes (table below).
+- **Private guards.** On the private session recordings, both variants fail
+  the session-oracle and session false-voicing guards (G8c, G8d), and
+  absub_c4 also fails the meter's display-away-from-voicing guard (G3).
+  Results on the private session recordings are kept outside this
+  repository.
+
+| | public criteria failed | full rule failed | PRIMARY | VERDICT |
+|---|---|---|---|---|
+| absub | 13 | 33 of 363 | FAIL | FAIL |
+| absub_c4 | 10 | 33 of 363 | FAIL | FAIL |
+
+### Why it fails
+
+- **Sung and held tones above 400 Hz.** This is the aliasing the 400 Hz
+  null exists to stop.
+  - 10.3 % of all VocalSet frames are newly posted at a sub-multiple
+    (median 86 Hz, mostly k = 6). Almost all of them are on the women's
+    long tones at 509–558 Hz.
+  - The meter shows a number on 28.6 % of held time above 400 Hz (45.1 %
+    with the 100 ms onset). The sub-multiple pitch jumps between k values,
+    so the held-note rule no longer sees a steady note.
+  - At the posted stage, vocadito references ≥ 400 Hz go from 99.0 % null
+    to 62.8 % null. Those frames are posted at d/k, which the corpus report
+    counts neither as correct nor as octave-down, so G8b's ≥ 400 Hz guard
+    does not see them.
+- **Noise.** 5.1 % of noise-only frames are rescued (median 94 Hz).
+  Noise-only display rises +6.8 pp (absub) and +12.1 pp (C4), as the
+  diagnosis predicted (+6.9 / +12.2). The 1 : 1 trade of evidence against
+  noise display holds.
+- **Wrong values on women.** Choosing the k with the most off-multiple
+  partials favours large k, because large k gives noise more slots to fill.
+  On Praat-voiced frames of the 38-speaker set at real 0 dB, the share of
+  rescued frames within ±3 st of Praat is:
+  - men < 110 Hz: 73 %;
+  - men 115–147 Hz: 62 %;
+  - women: 22 % (41 % an octave low, 37 % other).
+
+  This is a plausible cause of the women's 1.0 s reverb loss.
+
+### Variants tried (all of them)
+
+| variant | change | evaluated | outcome |
+|---|---|---|---|
+| v0 | diagnosis algorithm exactly | unit test only | G9 FAIL (clean 520 Hz tone posted at 86.6 Hz) |
+| **absub** | v0 + −40 dB floor | full rule | FAIL (13 public / 33 total) |
+| **absub_c4** | absub + onset 100 ms | full rule | FAIL (10 public / 33 total; P1, P2a, P2b, P3, H1 pass) |
+| vA (probe) | floor −20 dB instead of −40 dB | exploration subsets | VocalSet tones > 400 Hz: 3.1 % of frames still rescued (median 80 Hz). Women's rescued frames at real 0 dB: 24 % correct. Noise: 3.9 % of frames rescued |
+| vB (probe) | absub + partials k−1 and k+1 must both pass | exploration subsets | Worse. VocalSet tones > 400 Hz: 16.7 % rescued. Low men's rescued frames: 42 % correct |
+
+The probes ran the real chain on subsets and were scored against Praat:
+
+- VocalSet tones above 400 Hz;
+- the 38-speaker men's clean, pink 0, real 0 and real 10 streams;
+- the women's clean, pink 0 and real 0 streams;
+- half of the noise set.
+
+They are exploration, not candidates. They were not run through the rule
+because neither removes the sub-multiple aliasing of held tones.
+
+### R3 (validity)
+
+- The added step runs on the pitch worker, not the gender worker, and only
+  on above-range decodes.
+- It was timed in headless Chrome on the production build: puppeteer-core,
+  a temporary profile closed by PID, and a fake mic playing LibriSpeech 1089
+  at real 0 dB.
+  - Per call: 0.8–0.9 ms median, 1.1–1.5 ms p95.
+  - Pitch-worker chunk p95 stays at 2–5.5 ms, against the 25 ms cadence.
+- Gender inference p95 in the same runs was 118–175 ms for the candidate
+  and 134–364 ms for the baseline. Other jobs loaded the machine heavily, so
+  the 150 ms budget could not be shown cleanly for either tree.
+- The added work is about 1 % of that budget, and it runs on another
+  thread.
+
+### Full public criterion tables
+
+`check_rule.py` output, public part (`verdict_public.txt`). **absub:**
+
+```text
+   section                                                  criterion    base    cand  delta                            rule  pass
+P/G 38-spk                              P1 noisy gap women - men (pp)   9.939   6.333 -3.606  <= max(3.0, 0.5 x 9.94) = 4.97 False
+P/G 38-spk              P2b noisy gap women - men < 105 Hz (n=6) (pp)  10.042   6.581 -3.461 <= max(3.0, 0.5 x 10.04) = 5.02 False
+P/G 38-spk             P2a noisy coverage, the 94 / 100 Hz voices (%)  58.560  70.071 11.511                  >= base + 15.0 False
+P/G 38-spk                                G1 coverage women clean (%)  93.014  93.014  0.000                   >= base - 0.5  True
+P/G 38-spk                                  G1 coverage men clean (%)  92.322  92.771  0.449                   >= base - 0.5  True
+P/G 38-spk                              G1 coverage women quiet20 (%)  92.739  92.739  0.000                   >= base - 0.5  True
+P/G 38-spk                                G1 coverage men quiet20 (%)  92.022  92.626  0.604                   >= base - 0.5  True
+P/G 38-spk                               G1 coverage women laptop (%)  93.577  93.577  0.000                   >= base - 0.5  True
+P/G 38-spk                                 G1 coverage men laptop (%)  91.909  92.069  0.160                   >= base - 0.5  True
+P/G 38-spk                                G1 coverage women phone (%)  93.459  93.459  0.000                   >= base - 0.5  True
+P/G 38-spk                                  G1 coverage men phone (%)  89.942  91.265  1.323                   >= base - 0.5  True
+P/G 38-spk                             G1 coverage women reverb05 (%)  87.219  87.329  0.110                   >= base - 0.5  True
+P/G 38-spk                               G1 coverage men reverb05 (%)  92.009  92.222  0.213                   >= base - 0.5  True
+P/G 38-spk                             G1 coverage women reverb10 (%)  83.304  81.777 -1.527                   >= base - 0.5 False
+P/G 38-spk                               G1 coverage men reverb10 (%)  89.251  90.320  1.069                   >= base - 0.5  True
+P/G 38-spk                               G1 coverage women pink10 (%)  92.713  92.713  0.000                   >= base - 0.5  True
+P/G 38-spk                                 G1 coverage men pink10 (%)  91.437  91.708  0.271                   >= base - 0.5  True
+P/G 38-spk                                G1 coverage women pink0 (%)  91.724  91.891  0.168                   >= base - 0.5  True
+P/G 38-spk                                  G1 coverage men pink0 (%)  76.050  76.953  0.903                   >= base - 0.5  True
+P/G 38-spk                               G1 coverage women real10 (%)  93.370  93.370  0.000                   >= base - 0.5  True
+P/G 38-spk                                 G1 coverage men real10 (%)  92.687  93.345  0.658                   >= base - 0.5  True
+P/G 38-spk                                G1 coverage women real0 (%)  84.593  85.554  0.961                   >= base - 0.5  True
+P/G 38-spk                                  G1 coverage men real0 (%)  71.133  81.519 10.386                   >= base - 0.5  True
+P/G 38-spk                             G1 coverage women babble10 (%)  99.931  99.931  0.000                   >= base - 0.5  True
+P/G 38-spk                               G1 coverage men babble10 (%) 100.000 100.000  0.000                   >= base - 0.5  True
+P/G 38-spk                              G1 coverage women babble0 (%) 100.000 100.000  0.000                   >= base - 0.5  True
+P/G 38-spk                                G1 coverage men babble0 (%) 100.000 100.000  0.000                   >= base - 0.5  True
+P/G 38-spk                            G2 clean-ish coverage women (%)  92.002  92.024  0.022       >= base (0.05 resolution)  True
+P/G 38-spk                              G2 clean-ish coverage men (%)  91.641  92.191  0.550       >= base (0.05 resolution)  True
+P/G 38-spk         G3 real-noise lead before speech with a number (%)  12.179  14.506  2.326                   <= base + 1.0 False
+H held-out                              H1 noisy gap women - men (pp)   4.960   5.103  0.143  <= max(3.0, 0.5 x 4.96) = 3.00 False
+H held-out               H2 noisy gap women - men < 105 Hz (n=5) (pp)   4.407   7.062  2.655  <= max(3.0, 0.5 x 4.41) = 3.00 False
+H held-out                                H3 coverage women clean (%)  91.362  91.661  0.299                   >= base - 0.5  True
+H held-out                                  H3 coverage men clean (%)  93.743  93.743  0.000                   >= base - 0.5  True
+H held-out                              H3 coverage women quiet20 (%)  86.248  86.354  0.106                   >= base - 0.5  True
+H held-out                                H3 coverage men quiet20 (%)  93.506  93.506  0.000                   >= base - 0.5  True
+H held-out                               H3 coverage women laptop (%)  90.859  90.965  0.106                   >= base - 0.5  True
+H held-out                                 H3 coverage men laptop (%)  93.386  93.461  0.075                   >= base - 0.5  True
+H held-out                                H3 coverage women phone (%)  91.123  91.915  0.792                   >= base - 0.5  True
+H held-out                                  H3 coverage men phone (%)  91.557  92.763  1.206                   >= base - 0.5  True
+H held-out                             H3 coverage women reverb05 (%)  84.238  84.608  0.370                   >= base - 0.5  True
+H held-out                               H3 coverage men reverb05 (%)  92.154  92.480  0.326                   >= base - 0.5  True
+H held-out                             H3 coverage women reverb10 (%)  77.690  76.737 -0.953                   >= base - 0.5 False
+H held-out                               H3 coverage men reverb10 (%)  90.415  91.785  1.370                   >= base - 0.5  True
+H held-out                               H3 coverage women pink10 (%)  90.808  91.002  0.194                   >= base - 0.5  True
+H held-out                                 H3 coverage men pink10 (%)  91.810  92.907  1.098                   >= base - 0.5  True
+H held-out                                H3 coverage women pink0 (%)  86.344  88.011  1.667                   >= base - 0.5  True
+H held-out                                  H3 coverage men pink0 (%)  83.375  84.421  1.046                   >= base - 0.5  True
+H held-out                               H3 coverage women real10 (%)  94.292  95.951  1.660                   >= base - 0.5  True
+H held-out                                 H3 coverage men real10 (%)  92.456  93.407  0.950                   >= base - 0.5  True
+H held-out                                H3 coverage women real0 (%)  82.879  87.518  4.639                   >= base - 0.5  True
+H held-out                                  H3 coverage men real0 (%)  72.804  78.343  5.540                   >= base - 0.5  True
+H held-out                             H3 coverage women babble10 (%) 100.000 100.000  0.000                   >= base - 0.5  True
+H held-out                               H3 coverage men babble10 (%) 100.000 100.000  0.000                   >= base - 0.5  True
+H held-out                              H3 coverage women babble0 (%) 100.000 100.000  0.000                   >= base - 0.5  True
+H held-out                                H3 coverage men babble0 (%) 100.000 100.000  0.000                   >= base - 0.5  True
+H held-out                            H3 clean-ish coverage women (%)  88.766  89.101  0.334       >= base (0.05 resolution)  True
+H held-out                              H3 clean-ish coverage men (%)  92.869  93.191  0.321       >= base (0.05 resolution)  True
+H held-out         H4 real-noise lead before speech with a number (%)  16.056  17.122  1.066                   <= base + 1.0 False
+P/G 38-spk                        P3 men's median settle in noise (s)   0.675   0.665 -0.010                         <= base  True
+  G6 onset                         G6 median settle men clean-ish (s)   0.545   0.525 -0.020                  <= base + 0.15  True
+  G6 onset                   G6 median first number men clean-ish (s)   0.525   0.485 -0.040                  <= base + 0.15  True
+  G6 onset        G6 first value in the wrong range men clean-ish (%)   0.000   0.000  0.000                   <= base + 5.0  True
+  G6 onset                       G6 median settle women clean-ish (s)   0.755   0.755  0.000                  <= base + 0.15  True
+  G6 onset                 G6 median first number women clean-ish (s)   0.485   0.485  0.000                  <= base + 0.15  True
+  G6 onset      G6 first value in the wrong range women clean-ish (%)   4.211   4.211  0.000                   <= base + 5.0  True
+  G6 onset                       G6 median first number men noisy (s)   0.550   0.535 -0.015                  <= base + 0.15  True
+  G6 onset            G6 first value in the wrong range men noisy (%)   3.846   3.846  0.000                   <= base + 5.0  True
+  G6 onset                           G6 median settle women noisy (s)   0.695   0.705  0.010                  <= base + 0.15  True
+  G6 onset                     G6 median first number women noisy (s)   0.545   0.545  0.000                  <= base + 0.15  True
+  G6 onset          G6 first value in the wrong range women noisy (%)   5.263   5.263  0.000                   <= base + 5.0  True
+  G3 noise                         G3 noise-only time with number (%)  22.256  29.027  6.772                   <= base + 1.0 False
+  G3 noise            G3 noise-only time with any non-blank state (%)  25.412  32.143  6.731                   <= base + 1.0 False
+   G4 held     G4 held pvqd f: 'needs running speech' from 1.25 s (%)  96.666  96.666  0.000                   >= base - 1.0  True
+   G4 held     G4 held pvqd m: 'needs running speech' from 1.25 s (%)  96.689  96.689  0.000                   >= base - 1.0  True
+   G4 held G4 held vocalset f: 'needs running speech' from 1.25 s (%)  99.129  99.129  0.000                   >= base - 1.0  True
+   G4 held G4 held vocalset m: 'needs running speech' from 1.25 s (%) 100.000 100.000  0.000                   >= base - 1.0  True
+   G4 held   G4 held voiced f: 'needs running speech' from 1.25 s (%)  95.278  95.278  0.000                   >= base - 1.0  True
+   G4 held   G4 held voiced m: 'needs running speech' from 1.25 s (%) 100.000 100.000  0.000                   >= base - 1.0  True
+   G4 held                               G4 held all >400: number (%)   5.617  28.602 22.984                   <= base + 1.0 False
+   G4 held                                 G4 held pvqd f: number (%)   9.402   9.567  0.165                   <= base + 1.0  True
+   G4 held                                 G4 held pvqd m: number (%)  11.906  12.339  0.433                   <= base + 1.0  True
+   G4 held                             G4 held vocalset f: number (%)   2.554   3.573  1.019                   <= base + 1.0 False
+   G4 held                             G4 held vocalset m: number (%)   6.046   6.866  0.821                   <= base + 1.0  True
+   G4 held                               G4 held voiced f: number (%)   3.903   3.903  0.000                   <= base + 1.0  True
+   G4 held                               G4 held voiced m: number (%)   3.055   3.055  0.000                   <= base + 1.0  True
+   G5 note                  G5 PVQD speech portions f: false note (%)   0.110   0.126  0.016                   <= base + 0.5  True
+   G5 note                  G5 PVQD speech portions m: false note (%)   0.250   0.250  0.000                   <= base + 0.5  True
+  G2 clean                      G2 PVQD speech portions f: number (%)  92.558  92.889  0.330       >= base (0.05 resolution)  True
+  G2 clean                      G2 PVQD speech portions m: number (%)  88.078  88.780  0.702       >= base (0.05 resolution)  True
+   G5 note         G5 ls mono f: 'needs running speech' on speech (%)   7.190   7.639  0.449                   <= base + 1.0  True
+   G5 note         G5 ls mono m: 'needs running speech' on speech (%)   3.328   3.328  0.000                   <= base + 1.0  True
+   G5 note  G5 ls mono_slow15 f: 'needs running speech' on speech (%)   8.001   8.648  0.647                   <= base + 1.0  True
+   G5 note  G5 ls mono_slow15 m: 'needs running speech' on speech (%)   3.872   4.019  0.147                   <= base + 1.0  True
+   G5 note         G5 ls orig f: 'needs running speech' on speech (%)   0.000   0.000  0.000                   <= base + 0.5  True
+   G5 note         G5 ls orig m: 'needs running speech' on speech (%)   0.000   0.000  0.000                   <= base + 0.5  True
+   G5 note       G5 ls slow15 f: 'needs running speech' on speech (%)   0.422   0.422  0.000                   <= base + 0.5  True
+   G5 note       G5 ls slow15 m: 'needs running speech' on speech (%)   0.000   0.000  0.000                   <= base + 0.5  True
+   G5 note       G5 ls slow20 f: 'needs running speech' on speech (%)   2.009   2.009  0.000                   <= base + 0.5  True
+   G5 note       G5 ls slow20 m: 'needs running speech' on speech (%)   0.385   0.385  0.000                   <= base + 0.5  True
+   G5 note         G5 pv mono f: 'needs running speech' on speech (%)   7.950   8.265  0.315                   <= base + 1.0  True
+   G5 note         G5 pv mono m: 'needs running speech' on speech (%)   6.812   6.812  0.000                   <= base + 1.0  True
+   G5 note         G5 pv orig f: 'needs running speech' on speech (%)   0.193   0.193  0.000                   <= base + 0.5  True
+   G5 note         G5 pv orig m: 'needs running speech' on speech (%)   0.123   0.123  0.000                   <= base + 0.5  True
+   G5 note       G5 pv slow15 f: 'needs running speech' on speech (%)   1.637   1.887  0.250                   <= base + 0.5  True
+   G5 note       G5 pv slow15 m: 'needs running speech' on speech (%)   1.293   1.293  0.000                   <= base + 0.5  True
+ G7 change           G7 first value after a 1.5 s pause, f2m (median)   0.610   0.610  0.000                           <= 30  True
+ G7 change                G7 lag to 90 % after a 1.5 s pause, f2m (s)   0.900   0.900  0.000                  <= base + 0.15  True
+ G7 change           G7 first value after a 1.5 s pause, m2f (median)  90.540  90.540  0.000                           >= 70  True
+ G7 change                G7 lag to 90 % after a 1.5 s pause, m2f (s)   0.975   0.975  0.000                  <= base + 0.15  True
+ G7 change           G7 first value after a 2.5 s pause, f2m (median)   0.990   0.990  0.000                           <= 30  True
+ G7 change                G7 lag to 90 % after a 2.5 s pause, f2m (s)   0.950   0.950  0.000                  <= base + 0.15  True
+ G7 change           G7 first value after a 2.5 s pause, m2f (median)  88.040  88.040  0.000                           >= 70  True
+ G7 change                G7 lag to 90 % after a 2.5 s pause, m2f (s)   1.025   1.025  0.000                  <= base + 0.15  True
+ G7 change           G7 first value after a 4.0 s pause, f2m (median)   0.995   0.995  0.000                           <= 30  True
+ G7 change                G7 lag to 90 % after a 4.0 s pause, f2m (s)   0.950   0.950  0.000                  <= base + 0.15  True
+ G7 change           G7 first value after a 4.0 s pause, m2f (median)  87.795  87.795  0.000                           >= 70  True
+ G7 change                G7 lag to 90 % after a 4.0 s pause, m2f (s)   1.175   1.175  0.000                  <= base + 0.15  True
+
+118 criteria evaluated, 13 FAIL; missing inputs: 0
+PRIMARY: FAIL
+VERDICT: FAIL```
+
+**absub_c4:**
+
+```text
+   section                                                  criterion    base    cand  delta                            rule  pass
+P/G 38-spk                              P1 noisy gap women - men (pp)   9.939   2.814 -7.124  <= max(3.0, 0.5 x 9.94) = 4.97  True
+P/G 38-spk              P2b noisy gap women - men < 105 Hz (n=6) (pp)  10.042   3.116 -6.926 <= max(3.0, 0.5 x 10.04) = 5.02  True
+P/G 38-spk             P2a noisy coverage, the 94 / 100 Hz voices (%)  58.560  79.750 21.190                  >= base + 15.0  True
+P/G 38-spk                                G1 coverage women clean (%)  93.014  93.763  0.749                   >= base - 0.5  True
+P/G 38-spk                                  G1 coverage men clean (%)  92.322  93.656  1.334                   >= base - 0.5  True
+P/G 38-spk                              G1 coverage women quiet20 (%)  92.739  93.237  0.498                   >= base - 0.5  True
+P/G 38-spk                                G1 coverage men quiet20 (%)  92.022  93.363  1.341                   >= base - 0.5  True
+P/G 38-spk                               G1 coverage women laptop (%)  93.577  93.978  0.401                   >= base - 0.5  True
+P/G 38-spk                                 G1 coverage men laptop (%)  91.909  92.581  0.672                   >= base - 0.5  True
+P/G 38-spk                                G1 coverage women phone (%)  93.459  93.721  0.262                   >= base - 0.5  True
+P/G 38-spk                                  G1 coverage men phone (%)  89.942  92.843  2.901                   >= base - 0.5  True
+P/G 38-spk                             G1 coverage women reverb05 (%)  87.219  87.766  0.547                   >= base - 0.5  True
+P/G 38-spk                               G1 coverage men reverb05 (%)  92.009  93.052  1.043                   >= base - 0.5  True
+P/G 38-spk                             G1 coverage women reverb10 (%)  83.304  81.966 -1.338                   >= base - 0.5 False
+P/G 38-spk                               G1 coverage men reverb10 (%)  89.251  90.905  1.653                   >= base - 0.5  True
+P/G 38-spk                               G1 coverage women pink10 (%)  92.713  93.093  0.380                   >= base - 0.5  True
+P/G 38-spk                                 G1 coverage men pink10 (%)  91.437  92.666  1.229                   >= base - 0.5  True
+P/G 38-spk                                G1 coverage women pink0 (%)  91.724  92.639  0.915                   >= base - 0.5  True
+P/G 38-spk                                  G1 coverage men pink0 (%)  76.050  85.316  9.265                   >= base - 0.5  True
+P/G 38-spk                               G1 coverage women real10 (%)  93.370  94.707  1.338                   >= base - 0.5  True
+P/G 38-spk                                 G1 coverage men real10 (%)  92.687  93.782  1.095                   >= base - 0.5  True
+P/G 38-spk                                G1 coverage women real0 (%)  84.593  88.380  3.787                   >= base - 0.5  True
+P/G 38-spk                                  G1 coverage men real0 (%)  71.133  88.185 17.052                   >= base - 0.5  True
+P/G 38-spk                             G1 coverage women babble10 (%)  99.931  99.931  0.000                   >= base - 0.5  True
+P/G 38-spk                               G1 coverage men babble10 (%) 100.000 100.000  0.000                   >= base - 0.5  True
+P/G 38-spk                              G1 coverage women babble0 (%) 100.000 100.000  0.000                   >= base - 0.5  True
+P/G 38-spk                                G1 coverage men babble0 (%) 100.000 100.000  0.000                   >= base - 0.5  True
+P/G 38-spk                            G2 clean-ish coverage women (%)  92.002  92.493  0.492       >= base (0.05 resolution)  True
+P/G 38-spk                              G2 clean-ish coverage men (%)  91.641  93.099  1.458       >= base (0.05 resolution)  True
+P/G 38-spk         G3 real-noise lead before speech with a number (%)  12.179  19.227  7.048                   <= base + 1.0 False
+H held-out                              H1 noisy gap women - men (pp)   4.960   2.704 -2.255  <= max(3.0, 0.5 x 4.96) = 3.00  True
+H held-out               H2 noisy gap women - men < 105 Hz (n=5) (pp)   4.407   3.455 -0.952  <= max(3.0, 0.5 x 4.41) = 3.00 False
+H held-out                                H3 coverage women clean (%)  91.362  91.936  0.574                   >= base - 0.5  True
+H held-out                                  H3 coverage men clean (%)  93.743  93.898  0.155                   >= base - 0.5  True
+H held-out                              H3 coverage women quiet20 (%)  86.248  86.822  0.574                   >= base - 0.5  True
+H held-out                                H3 coverage men quiet20 (%)  93.506  93.906  0.400                   >= base - 0.5  True
+H held-out                               H3 coverage women laptop (%)  90.859  91.745  0.886                   >= base - 0.5  True
+H held-out                                 H3 coverage men laptop (%)  93.386  93.822  0.436                   >= base - 0.5  True
+H held-out                                H3 coverage women phone (%)  91.123  92.130  1.007                   >= base - 0.5  True
+H held-out                                  H3 coverage men phone (%)  91.557  93.349  1.792                   >= base - 0.5  True
+H held-out                             H3 coverage women reverb05 (%)  84.238  84.608  0.370                   >= base - 0.5  True
+H held-out                               H3 coverage men reverb05 (%)  92.154  92.706  0.551                   >= base - 0.5  True
+H held-out                             H3 coverage women reverb10 (%)  77.690  77.064 -0.625                   >= base - 0.5 False
+H held-out                               H3 coverage men reverb10 (%)  90.415  92.045  1.630                   >= base - 0.5  True
+H held-out                               H3 coverage women pink10 (%)  90.808  91.648  0.840                   >= base - 0.5  True
+H held-out                                 H3 coverage men pink10 (%)  91.810  93.065  1.255                   >= base - 0.5  True
+H held-out                                H3 coverage women pink0 (%)  86.344  89.030  2.686                   >= base - 0.5  True
+H held-out                                  H3 coverage men pink0 (%)  83.375  87.947  4.571                   >= base - 0.5  True
+H held-out                               H3 coverage women real10 (%)  94.292  96.837  2.545                   >= base - 0.5  True
+H held-out                                 H3 coverage men real10 (%)  92.456  94.193  1.737                   >= base - 0.5  True
+H held-out                                H3 coverage women real0 (%)  82.879  89.989  7.110                   >= base - 0.5  True
+H held-out                                  H3 coverage men real0 (%)  72.804  85.603 12.799                   >= base - 0.5  True
+H held-out                             H3 coverage women babble10 (%) 100.000 100.000  0.000                   >= base - 0.5  True
+H held-out                               H3 coverage men babble10 (%) 100.000 100.000  0.000                   >= base - 0.5  True
+H held-out                              H3 coverage women babble0 (%) 100.000 100.000  0.000                   >= base - 0.5  True
+H held-out                                H3 coverage men babble0 (%) 100.000 100.000  0.000                   >= base - 0.5  True
+H held-out                            H3 clean-ish coverage women (%)  88.766  89.448  0.682       >= base (0.05 resolution)  True
+H held-out                              H3 clean-ish coverage men (%)  92.869  93.536  0.667       >= base (0.05 resolution)  True
+H held-out         H4 real-noise lead before speech with a number (%)  16.056  20.453  4.397                   <= base + 1.0 False
+P/G 38-spk                        P3 men's median settle in noise (s)   0.675   0.550 -0.125                         <= base  True
+  G6 onset                         G6 median settle men clean-ish (s)   0.545   0.480 -0.065                  <= base + 0.15  True
+  G6 onset                   G6 median first number men clean-ish (s)   0.525   0.475 -0.050                  <= base + 0.15  True
+  G6 onset        G6 first value in the wrong range men clean-ish (%)   0.000   0.000  0.000                   <= base + 5.0  True
+  G6 onset                       G6 median settle women clean-ish (s)   0.755   0.695 -0.060                  <= base + 0.15  True
+  G6 onset                 G6 median first number women clean-ish (s)   0.485   0.475 -0.010                  <= base + 0.15  True
+  G6 onset      G6 first value in the wrong range women clean-ish (%)   4.211   4.211  0.000                   <= base + 5.0  True
+  G6 onset                       G6 median first number men noisy (s)   0.550   0.515 -0.035                  <= base + 0.15  True
+  G6 onset            G6 first value in the wrong range men noisy (%)   3.846   3.704 -0.142                   <= base + 5.0  True
+  G6 onset                           G6 median settle women noisy (s)   0.695   0.685 -0.010                  <= base + 0.15  True
+  G6 onset                     G6 median first number women noisy (s)   0.545   0.485 -0.060                  <= base + 0.15  True
+  G6 onset          G6 first value in the wrong range women noisy (%)   5.263   8.772  3.509                   <= base + 5.0  True
+  G3 noise                         G3 noise-only time with number (%)  22.256  34.398 12.142                   <= base + 1.0 False
+  G3 noise            G3 noise-only time with any non-blank state (%)  25.412  38.132 12.720                   <= base + 1.0 False
+   G4 held     G4 held pvqd f: 'needs running speech' from 1.25 s (%)  96.666  96.666  0.000                   >= base - 1.0  True
+   G4 held     G4 held pvqd m: 'needs running speech' from 1.25 s (%)  96.689  96.689  0.000                   >= base - 1.0  True
+   G4 held G4 held vocalset f: 'needs running speech' from 1.25 s (%)  99.129  99.129  0.000                   >= base - 1.0  True
+   G4 held G4 held vocalset m: 'needs running speech' from 1.25 s (%) 100.000 100.000  0.000                   >= base - 1.0  True
+   G4 held   G4 held voiced f: 'needs running speech' from 1.25 s (%)  95.278  95.278  0.000                   >= base - 1.0  True
+   G4 held   G4 held voiced m: 'needs running speech' from 1.25 s (%) 100.000 100.000  0.000                   >= base - 1.0  True
+   G4 held                               G4 held all >400: number (%)   5.617  45.110 39.492                   <= base + 1.0 False
+   G4 held                                 G4 held pvqd f: number (%)   9.402   9.567  0.165                   <= base + 1.0  True
+   G4 held                                 G4 held pvqd m: number (%)  11.906  12.586  0.680                   <= base + 1.0  True
+   G4 held                             G4 held vocalset f: number (%)   2.554   3.573  1.019                   <= base + 1.0 False
+   G4 held                             G4 held vocalset m: number (%)   6.046   7.182  1.136                   <= base + 1.0 False
+   G4 held                               G4 held voiced f: number (%)   3.903   3.903  0.000                   <= base + 1.0  True
+   G4 held                               G4 held voiced m: number (%)   3.055   3.055  0.000                   <= base + 1.0  True
+   G5 note                  G5 PVQD speech portions f: false note (%)   0.110   0.126  0.016                   <= base + 0.5  True
+   G5 note                  G5 PVQD speech portions m: false note (%)   0.250   0.250  0.000                   <= base + 0.5  True
+  G2 clean                      G2 PVQD speech portions f: number (%)  92.558  93.252  0.694       >= base (0.05 resolution)  True
+  G2 clean                      G2 PVQD speech portions m: number (%)  88.078  89.592  1.514       >= base (0.05 resolution)  True
+   G5 note         G5 ls mono f: 'needs running speech' on speech (%)   7.190   7.639  0.449                   <= base + 1.0  True
+   G5 note         G5 ls mono m: 'needs running speech' on speech (%)   3.328   3.328  0.000                   <= base + 1.0  True
+   G5 note  G5 ls mono_slow15 f: 'needs running speech' on speech (%)   8.001   8.648  0.647                   <= base + 1.0  True
+   G5 note  G5 ls mono_slow15 m: 'needs running speech' on speech (%)   3.872   4.019  0.147                   <= base + 1.0  True
+   G5 note         G5 ls orig f: 'needs running speech' on speech (%)   0.000   0.000  0.000                   <= base + 0.5  True
+   G5 note         G5 ls orig m: 'needs running speech' on speech (%)   0.000   0.000  0.000                   <= base + 0.5  True
+   G5 note       G5 ls slow15 f: 'needs running speech' on speech (%)   0.422   0.422  0.000                   <= base + 0.5  True
+   G5 note       G5 ls slow15 m: 'needs running speech' on speech (%)   0.000   0.000  0.000                   <= base + 0.5  True
+   G5 note       G5 ls slow20 f: 'needs running speech' on speech (%)   2.009   2.009  0.000                   <= base + 0.5  True
+   G5 note       G5 ls slow20 m: 'needs running speech' on speech (%)   0.385   0.385  0.000                   <= base + 0.5  True
+   G5 note         G5 pv mono f: 'needs running speech' on speech (%)   7.950   8.265  0.315                   <= base + 1.0  True
+   G5 note         G5 pv mono m: 'needs running speech' on speech (%)   6.812   6.812  0.000                   <= base + 1.0  True
+   G5 note         G5 pv orig f: 'needs running speech' on speech (%)   0.193   0.193  0.000                   <= base + 0.5  True
+   G5 note         G5 pv orig m: 'needs running speech' on speech (%)   0.123   0.123  0.000                   <= base + 0.5  True
+   G5 note       G5 pv slow15 f: 'needs running speech' on speech (%)   1.637   1.887  0.250                   <= base + 0.5  True
+   G5 note       G5 pv slow15 m: 'needs running speech' on speech (%)   1.293   1.293  0.000                   <= base + 0.5  True
+ G7 change           G7 first value after a 1.5 s pause, f2m (median)   0.610   0.610  0.000                           <= 30  True
+ G7 change                G7 lag to 90 % after a 1.5 s pause, f2m (s)   0.900   0.900  0.000                  <= base + 0.15  True
+ G7 change           G7 first value after a 1.5 s pause, m2f (median)  90.540  90.540  0.000                           >= 70  True
+ G7 change                G7 lag to 90 % after a 1.5 s pause, m2f (s)   0.975   0.975  0.000                  <= base + 0.15  True
+ G7 change           G7 first value after a 2.5 s pause, f2m (median)   0.990   0.990  0.000                           <= 30  True
+ G7 change                G7 lag to 90 % after a 2.5 s pause, f2m (s)   0.950   0.950  0.000                  <= base + 0.15  True
+ G7 change           G7 first value after a 2.5 s pause, m2f (median)  88.040  88.040  0.000                           >= 70  True
+ G7 change                G7 lag to 90 % after a 2.5 s pause, m2f (s)   1.025   1.025  0.000                  <= base + 0.15  True
+ G7 change           G7 first value after a 4.0 s pause, f2m (median)   0.995   0.995  0.000                           <= 30  True
+ G7 change                G7 lag to 90 % after a 4.0 s pause, f2m (s)   0.950   0.950  0.000                  <= base + 0.15  True
+ G7 change           G7 first value after a 4.0 s pause, m2f (median)  87.795  87.795  0.000                           >= 70  True
+ G7 change                G7 lag to 90 % after a 4.0 s pause, m2f (s)   1.175   1.175  0.000                  <= base + 0.15  True
+
+118 criteria evaluated, 10 FAIL; missing inputs: 0
+PRIMARY: FAIL
+VERDICT: FAIL```
+
+G8b (public corpora; identical for both variants, same pitch chain):
+
+```text
+   section                                                  criterion    base    cand  delta                            rule  pass
+       G8b corpora                        G8b post|fda_m|all<400: correct (%)  85.727  85.813  0.087                   >= base - 0.3  True
+       G8b corpora                    G8b post|fda_m|all<400: octave down (%)   0.043   0.087  0.043                   <= base + 0.3  True
+       G8b corpora                      G8b post|fda_m|all<400: octave up (%)   0.216   0.216  0.000                   <= base + 0.3  True
+       G8b corpora                        G8b post|fda_f|all<400: correct (%)  87.614  87.652  0.038                   >= base - 0.3  True
+       G8b corpora                    G8b post|fda_f|all<400: octave down (%)   0.644   0.795  0.152                   <= base + 0.3  True
+       G8b corpora                      G8b post|fda_f|all<400: octave up (%)   0.265   0.265  0.000                   <= base + 0.3  True
+       G8b corpora                       G8b post|ptdb_m|all<400: correct (%)  84.294  84.380  0.086                   >= base - 0.3  True
+       G8b corpora                   G8b post|ptdb_m|all<400: octave down (%)   0.150   0.150  0.000                   <= base + 0.3  True
+       G8b corpora                     G8b post|ptdb_m|all<400: octave up (%)   0.150   0.193  0.043                   <= base + 0.3  True
+       G8b corpora                       G8b post|ptdb_f|all<400: correct (%)  95.023  95.023  0.000                   >= base - 0.3  True
+       G8b corpora                   G8b post|ptdb_f|all<400: octave down (%)   0.880   0.923  0.043                   <= base + 0.3  True
+       G8b corpora                     G8b post|ptdb_f|all<400: octave up (%)   0.236   0.236  0.000                   <= base + 0.3  True
+       G8b corpora                        G8b post|hil_m|all<400: correct (%)  60.437  60.839  0.401                   >= base - 0.3  True
+       G8b corpora                    G8b post|hil_m|all<400: octave down (%)   0.013   0.078  0.065                   <= base + 0.3  True
+       G8b corpora                      G8b post|hil_m|all<400: octave up (%)   0.298   0.298  0.000                   <= base + 0.3  True
+       G8b corpora                        G8b post|hil_f|all<400: correct (%)  61.550  61.561  0.010                   >= base - 0.3  True
+       G8b corpora                    G8b post|hil_f|all<400: octave down (%)   0.499   0.655  0.156                   <= base + 0.3  True
+       G8b corpora                      G8b post|hil_f|all<400: octave up (%)   0.052   0.052  0.000                   <= base + 0.3  True
+       G8b corpora                          G8b post|voc|all<400: correct (%)  98.307  98.307  0.000                   >= base - 0.3  True
+       G8b corpora                      G8b post|voc|all<400: octave down (%)   0.926   0.935  0.009                   <= base + 0.3  True
+       G8b corpora                        G8b post|voc|all<400: octave up (%)   0.009   0.014  0.005                   <= base + 0.3  True
+       G8b corpora                       G8b post fda: max(F_err, M_err) (pp)  14.273  14.187 -0.087                   <= base + 0.3  True
+       G8b corpora                      G8b post ptdb: max(F_err, M_err) (pp)  15.706  15.620 -0.086                   <= base + 0.3  True
+       G8b corpora                       G8b post hil: max(F_err, M_err) (pp)  39.563  39.161 -0.401                   <= base + 0.3  True
+       G8b corpora                        G8b post|voc|>=400: octave down (%)   0.000   0.000  0.000                   <= base + 0.3  True
+       G8b corpora                       G8b paint|fda_m|all<400: correct (%)  83.290  83.464  0.174                   >= base - 0.3  True
+       G8b corpora                   G8b paint|fda_m|all<400: octave down (%)   0.000   0.000  0.000                   <= base + 0.3  True
+       G8b corpora                     G8b paint|fda_m|all<400: octave up (%)   0.087   0.087  0.000                   <= base + 0.3  True
+       G8b corpora                       G8b paint|fda_f|all<400: correct (%)  87.193  86.887 -0.307                   >= base - 0.3 False
+       G8b corpora                   G8b paint|fda_f|all<400: octave down (%)   0.153   0.192  0.038                   <= base + 0.3  True
+       G8b corpora                     G8b paint|fda_f|all<400: octave up (%)   0.307   0.268 -0.038                   <= base + 0.3  True
+       G8b corpora                      G8b paint|ptdb_m|all<400: correct (%)  80.928  80.971  0.043                   >= base - 0.3  True
+       G8b corpora                  G8b paint|ptdb_m|all<400: octave down (%)   0.128   0.128  0.000                   <= base + 0.3  True
+       G8b corpora                    G8b paint|ptdb_m|all<400: octave up (%)   0.150   0.150  0.000                   <= base + 0.3  True
+       G8b corpora                      G8b paint|ptdb_f|all<400: correct (%)  92.301  92.280 -0.021                   >= base - 0.3  True
+       G8b corpora                  G8b paint|ptdb_f|all<400: octave down (%)   0.150   0.150  0.000                   <= base + 0.3  True
+       G8b corpora                    G8b paint|ptdb_f|all<400: octave up (%)   0.214   0.214  0.000                   <= base + 0.3  True
+       G8b corpora                       G8b paint|hil_m|all<400: correct (%)  63.584  64.519  0.935                   >= base - 0.3  True
+       G8b corpora                   G8b paint|hil_m|all<400: octave down (%)   0.000   0.015  0.015                   <= base + 0.3  True
+       G8b corpora                     G8b paint|hil_m|all<400: octave up (%)   0.163   0.148 -0.015                   <= base + 0.3  True
+       G8b corpora                       G8b paint|hil_f|all<400: correct (%)  64.411  64.637  0.226                   >= base - 0.3  True
+       G8b corpora                   G8b paint|hil_f|all<400: octave down (%)   0.079   0.124  0.045                   <= base + 0.3  True
+       G8b corpora                     G8b paint|hil_f|all<400: octave up (%)   0.034   0.034  0.000                   <= base + 0.3  True
+       G8b corpora                         G8b paint|voc|all<400: correct (%)  97.339  97.217 -0.122                   >= base - 0.3  True
+       G8b corpora                     G8b paint|voc|all<400: octave down (%)   0.459   0.459  0.000                   <= base + 0.3  True
+       G8b corpora                       G8b paint|voc|all<400: octave up (%)   0.000   0.000  0.000                   <= base + 0.3  True
+       G8b corpora                      G8b paint fda: max(F_err, M_err) (pp)  16.710  16.536 -0.174                   <= base + 0.3  True
+       G8b corpora                     G8b paint ptdb: max(F_err, M_err) (pp)  19.072  19.029 -0.043                   <= base + 0.3  True
+       G8b corpora                      G8b paint hil: max(F_err, M_err) (pp)  36.416  35.481 -0.935                   <= base + 0.3  True
+       G8b corpora                       G8b paint|voc|>=400: octave down (%)   0.478   0.478  0.000                   <= base + 0.3  True
+```
