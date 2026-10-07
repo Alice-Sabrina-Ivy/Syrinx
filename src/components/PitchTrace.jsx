@@ -1,7 +1,11 @@
 // PitchTrace.jsx — Scrolling canvas pitch trace (last 15 seconds)
-// With a target (the user's training direction): band drawn, line green
-// inside it and red outside. With none ("Just exploring" / not chosen
-// yet): no band, neutral line. Gaps during silence.
+// With a target (the user's training direction): band drawn, and the line
+// coloured by the pitch LEVEL at each point (utils/pitchLevel.js: median
+// of the last 1.5 s) — green on target, red off target, neutral past the
+// band in the direction of travel. The bands are ranges of average
+// speaking pitch, so intonation peaks and dips don't flip the colour.
+// With no target ("Just exploring" / not chosen yet): no band, neutral
+// line. Gaps during silence.
 
 import { useRef, useEffect } from "react";
 import { hzToNote } from "../utils/pitchUtils";
@@ -10,14 +14,18 @@ import {
   PITCH_DISPLAY_RANGE,
   PITCH_TRACE_SECONDS,
   COLORS,
+  statusColor,
+  statusTextClass,
 } from "../utils/constants";
-import { inTarget as isInTarget, bandForDisplay } from "../utils/trainingDirection";
+import { pitchStatus, bandForDisplay } from "../utils/trainingDirection";
+import { pitchLevelAt } from "../utils/pitchLevel";
 
 export function PitchTrace({
   pitchTraceRef,
   voiced,
   holding,
   pitch,
+  pitchLevel = null,
   target = null,
   steadiness = null,
   steadinessHeld = false,
@@ -58,6 +66,19 @@ export function PitchTrace({
     const ctx = canvas.getContext("2d");
     let animId;
     let lastTargetAttr = null;
+    // Pitch level per trace point, computed once — when the point is first
+    // drawn, from the points before it — so a point's colour never changes
+    // as it scrolls. Points are objects the hook appends and trims.
+    const levels = new WeakMap();
+    const levelAt = (data, i) => {
+      const pt = data[i];
+      let lv = levels.get(pt);
+      if (lv === undefined) {
+        lv = pitchLevelAt(data, pt.time, undefined, i);
+        levels.set(pt, lv);
+      }
+      return lv;
+    };
 
     const displayLow = PITCH_DISPLAY_RANGE.low;
     const displayHigh = PITCH_DISPLAY_RANGE.high;
@@ -148,10 +169,7 @@ export function PitchTrace({
       // Target band (none without a training-direction target)
       const target = targetRef.current;
       const band = bandForDisplay(target, PITCH_DISPLAY_RANGE);
-      const colorFor = (hz) => {
-        const t = isInTarget(hz, target);
-        return t === null ? COLORS.neutralTrace : t ? COLORS.inTarget : COLORS.outOfTarget;
-      };
+      const colorFor = (data, i) => statusColor(pitchStatus(levelAt(data, i), target));
       // The drawn target, mirrored to the DOM for assistive tech / checks
       // (written only when it changes).
       const targetAttr = band ? `${band.low}-${band.high}` : "none";
@@ -222,7 +240,7 @@ export function PitchTrace({
         }
 
         const y = hzToY(pt.pitch);
-        const color = colorFor(pt.pitch);
+        const color = colorFor(data, i);
 
         if (!inSegment) {
           ctx.beginPath();
@@ -233,7 +251,7 @@ export function PitchTrace({
           // Check if color needs to change
           const prevPt = data[i - 1];
           const prevColor =
-            prevPt?.voiced && prevPt.pitch !== null ? colorFor(prevPt.pitch) : null;
+            prevPt?.voiced && prevPt.pitch !== null ? colorFor(data, i - 1) : null;
 
           if (color !== prevColor) {
             // Finish old segment, start new with different color
@@ -250,14 +268,14 @@ export function PitchTrace({
       if (inSegment) ctx.stroke();
 
       // Current position glow dot (backward scan avoids array copy + reverse)
-      let lastVoiced = null;
+      let lastVoiced = null, lastVoicedIdx = -1;
       for (let i = data.length - 1; i >= 0; i--) {
-        if (data[i].voiced && data[i].pitch !== null) { lastVoiced = data[i]; break; }
+        if (data[i].voiced && data[i].pitch !== null) { lastVoiced = data[i]; lastVoicedIdx = i; break; }
       }
       if (lastVoiced && now - lastVoiced.time < 500) {
         const x = timeToX(lastVoiced.time, now);
         const y = hzToY(lastVoiced.pitch);
-        const color = colorFor(lastVoiced.pitch);
+        const color = colorFor(data, lastVoicedIdx);
 
         ctx.beginPath();
         ctx.arc(x, y, 5 * dpr, 0, Math.PI * 2);
@@ -284,9 +302,10 @@ export function PitchTrace({
     return () => cancelAnimationFrame(animId);
   }, [pitchTraceRef]);
 
-  // Readout
+  // Readout: the number is this moment's pitch; its colour judges the
+  // pitch level, like the trace (null target = neutral).
   const noteInfo = pitch ? hzToNote(pitch) : null;
-  const inTarget = isInTarget(pitch, target); // null = no target: neutral
+  const levelStatus = pitch !== null ? pitchStatus(pitchLevel, target) : null;
 
   return (
     <div className="flex flex-col h-full">
@@ -306,11 +325,7 @@ export function PitchTrace({
                 ? "text-neutral-600 opacity-40"
                 : holding
                   ? "text-white opacity-50"
-                  : inTarget === null
-                    ? "text-neutral-200"
-                    : inTarget
-                      ? "text-green-400"
-                      : "text-red-400"
+                  : statusTextClass(levelStatus)
             }`}
           >
             {pitch !== null ? `${Math.round(pitch)} Hz` : "— Hz"}

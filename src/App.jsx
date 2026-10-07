@@ -40,19 +40,40 @@ const WELCOME_KEY = "syrinx_welcomed";
 // the question from appearing.
 const DIRECTION_LOAD_TIMEOUT_MS = 1500;
 
+// First visit only. A modal like the direction question (App makes the page
+// behind it inert): focus starts on Get Started, Escape also continues,
+// and the panel scrolls on short (landscape) viewports.
 function WelcomeOverlay({ onDismiss }) {
+  const buttonRef = useRef(null);
+  const dismissRef = useRef(onDismiss);
+  useEffect(() => { dismissRef.current = onDismiss; }, [onDismiss]);
+  useEffect(() => {
+    buttonRef.current?.focus();
+    const onKey = (e) => {
+      if (e.key === "Escape") { e.preventDefault(); dismissRef.current(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4">
-      <div className="bg-neutral-900 border border-neutral-700 rounded-2xl p-6 max-w-sm w-full text-center shadow-xl">
-        <h2 className="text-xl font-light text-white mb-3">Welcome to Syrinx</h2>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4 py-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="welcome-title"
+      data-dialog="welcome"
+    >
+      <div className="bg-neutral-900 border border-neutral-700 rounded-2xl p-6 max-w-sm w-full text-center shadow-xl max-h-full overflow-y-auto">
+        <h2 id="welcome-title" className="text-xl font-light text-white mb-3">Welcome to Syrinx</h2>
         <p className="text-sm text-neutral-300 leading-relaxed mb-5">
           Syrinx gives you real-time visual feedback on your voice pitch, resonance, and
           vocal weight — it needs microphone access to work.{" "}
-          Next, choose what you&apos;re aiming for; the green zones then show that target range.
+          Next, choose what you&apos;re aiming for — that sets the pitch target shown on the trace.
         </p>
         <button
+          ref={buttonRef}
           onClick={onDismiss}
-          className="px-6 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium transition-colors cursor-pointer"
+          className="px-6 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-300"
         >
           Get Started
         </button>
@@ -89,9 +110,9 @@ function App() {
   const [savedDirection, setSavedDirection] = useState(null);
   const [directionLoaded, setDirectionLoaded] = useState(false);
   const [showDirectionPrompt, setShowDirectionPrompt] = useState(true);
-  // First visit: Welcome's "Get Started" used to start listening; it now
-  // leads to the direction question, whose Continue starts listening.
-  const startAfterDirectionRef = useRef(false);
+  // Settings returns focus to the gear when it closes.
+  const gearRef = useRef(null);
+  const settingsOpenedRef = useRef(false);
   // Ref for session metadata (notes, elapsed, recording state) —
   // kept in sync by CombinedDashboard, readable by a future save/export feature.
   const sessionRef = useRef({ recording: false, elapsed: 0, notes: "" });
@@ -101,6 +122,7 @@ function App() {
     voiced,
     holding,
     pitch,
+    pitchLevel,
     steadiness,
     steadinessHeld,
     formants,
@@ -134,15 +156,15 @@ function App() {
     return () => clearTimeout(timer);
   }, []);
 
-  function confirmDirection(next) {
+  // The load-time question. Continue confirms AND starts listening (one
+  // tap per load, as Start Listening alone was before the question
+  // existed); Escape only confirms.
+  function confirmDirection(next, { start: startListening = true } = {}) {
     setDirection(next);
     setSavedDirection(next);
     setShowDirectionPrompt(false);
     saveTrainingDirection(db.settings, next);
-    if (startAfterDirectionRef.current) {
-      startAfterDirectionRef.current = false;
-      start();
-    }
+    if (startListening && status === "idle") start();
   }
 
   // Settings panel, any time (also mid-session): applies at once.
@@ -169,8 +191,21 @@ function App() {
       // Site data blocked — dismissal lasts for this page load only.
     }
     setShowWelcome(false);
-    startAfterDirectionRef.current = true;
   }
+
+  useEffect(() => {
+    if (showSettings) settingsOpenedRef.current = true;
+    else if (settingsOpenedRef.current) {
+      settingsOpenedRef.current = false;
+      gearRef.current?.focus();
+    }
+  }, [showSettings]);
+
+  // While the welcome, the direction question (also while the saved
+  // answer is still loading) or Settings is open, everything behind it is
+  // inert: no focus, no clicks — so the microphone can't be started and
+  // Settings can't be opened behind the question.
+  const blocked = showWelcome || showDirectionPrompt || showSettings;
 
   // h-dvh, not h-screen: on phones 100vh is the viewport with the URL bar
   // HIDDEN, so with it showing the bottom row (Stop Listening) sat below
@@ -204,7 +239,7 @@ function App() {
       )}
 
       {/* Header */}
-      <header className="text-center mb-2 flex-shrink-0 relative">
+      <header className="text-center mb-2 flex-shrink-0 relative" inert={blocked}>
         <h1 className="text-2xl font-light text-white tracking-tight">
           Syrinx
         </h1>
@@ -213,9 +248,11 @@ function App() {
         </p>
         {/* Gear icon */}
         <button
+          ref={gearRef}
           onClick={() => setShowSettings(true)}
           className="absolute right-0 top-1 text-neutral-600 hover:text-neutral-400 transition-colors cursor-pointer"
           title="Settings & Data"
+          aria-label="Settings & Data"
         >
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
             <path fillRule="evenodd" d="M8.34 1.804A1 1 0 0 1 9.32 1h1.36a1 1 0 0 1 .98.804l.295 1.473c.497.144.971.342 1.416.587l1.25-.834a1 1 0 0 1 1.262.125l.962.962a1 1 0 0 1 .125 1.262l-.834 1.25c.245.445.443.919.587 1.416l1.473.294a1 1 0 0 1 .804.98v1.361a1 1 0 0 1-.804.98l-1.473.295a6.95 6.95 0 0 1-.587 1.416l.834 1.25a1 1 0 0 1-.125 1.262l-.962.962a1 1 0 0 1-1.262.125l-1.25-.834a6.953 6.953 0 0 1-1.416.587l-.294 1.473a1 1 0 0 1-.98.804H9.32a1 1 0 0 1-.98-.804l-.295-1.473a6.957 6.957 0 0 1-1.416-.587l-1.25.834a1 1 0 0 1-1.262-.125l-.962-.962a1 1 0 0 1-.125-1.262l.834-1.25a6.957 6.957 0 0 1-.587-1.416l-1.473-.294A1 1 0 0 1 1 10.68V9.32a1 1 0 0 1 .804-.98l1.473-.295c.144-.497.342-.971.587-1.416l-.834-1.25a1 1 0 0 1 .125-1.262l.962-.962A1 1 0 0 1 5.38 3.08l1.25.834a6.957 6.957 0 0 1 1.416-.587l.294-1.524ZM13 10a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" clipRule="evenodd" />
@@ -224,7 +261,7 @@ function App() {
       </header>
 
       {/* Main content */}
-      <div className="flex-1 flex flex-col items-center min-h-0">
+      <div className="flex-1 flex flex-col items-center min-h-0" inert={blocked}>
         {status === "idle" && activeTab !== "history" && (
           <div className="flex-1 flex flex-col w-full max-w-6xl min-h-0">
             {/* Tab navigation even when idle */}
@@ -334,6 +371,7 @@ function App() {
                 voiced={voiced}
                 holding={holding}
                 pitch={pitch}
+                pitchLevel={pitchLevel}
                 steadiness={steadiness}
                 steadinessHeld={steadinessHeld}
                 formants={formants}
@@ -362,6 +400,7 @@ function App() {
                       voiced={voiced}
                       holding={holding}
                       pitch={pitch}
+                      pitchLevel={pitchLevel}
                       target={pitchTargetFor(direction)}
                       steadiness={steadiness}
                       steadinessHeld={steadinessHeld}

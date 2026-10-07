@@ -21,20 +21,14 @@ export const PITCH_TRACE_SECONDS = 15;
 export const RESONANCE_TRACE_SECONDS = 15;
 export const SILENCE_HOLD_MS = 5000;
 
-// Spectral tilt display range (dB) — lower = lighter voice, higher = heavier
-export const SPECTRAL_TILT_RANGE = { min: -5, max: 25 };
-// Target zone of the (currently unmounted) SpectralTiltGauge — a
-// lighter-voice zone from before training directions existed; direction-
-// aware targets live in utils/trainingDirection.js.
-export const SPECTRAL_TILT_TARGET = { low: -2, high: 8 };
-
 // HNR display range (dB) — higher = cleaner voice
 export const HNR_RANGE = { min: 0, max: 35 };
 
-// Colors. Target colouring is the same for every training direction
-// (green in target / red outside); with no target ("Just exploring", or
-// sessions recorded before directions existed) traces use the neutral
-// colour and no band is drawn.
+// Colors. Target colouring is the same for every training direction and
+// judges the pitch LEVEL (utils/pitchLevel.js): green on target, red off
+// target, neutral past the band in the direction of travel ("beyond") and
+// with no target ("Just exploring", or sessions recorded before
+// directions existed — no band drawn then either).
 export const COLORS = {
   inTarget: "#4ade80",
   outOfTarget: "#f87171",
@@ -42,8 +36,8 @@ export const COLORS = {
   targetBandBorder: "rgba(74, 222, 128, 0.25)",
   neutralTrace: "#c4b5fd",
   // Perceived Voice meter: one neutral hue for every reading — the
-  // meter's ends are descriptions, not goals.
-  meterFill: "rgba(167, 139, 250, 0.45)",
+  // meter's ends are descriptions, not goals (an indicator line, no fill
+  // growing from either end).
   meterIndicator: "#c4b5fd",
   meterBand: "rgba(255, 255, 255, 0.035)",
   meterBandBorder: "rgba(255, 255, 255, 0.14)",
@@ -52,3 +46,12 @@ export const COLORS = {
   gridLabel: "rgba(255, 255, 255, 0.3)",
   silenceLine: "rgba(255, 255, 255, 0.05)",
 };
+
+// Trace colour / readout class for a pitchStatus() result
+// (utils/trainingDirection.js): "in" | "beyond" | "out" | null.
+export function statusColor(status) {
+  return status === "in" ? COLORS.inTarget : status === "out" ? COLORS.outOfTarget : COLORS.neutralTrace;
+}
+export function statusTextClass(status) {
+  return status === "in" ? "text-green-400" : status === "out" ? "text-red-400" : "text-neutral-200";
+}

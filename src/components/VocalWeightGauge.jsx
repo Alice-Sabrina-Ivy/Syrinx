@@ -18,11 +18,15 @@
 //   - Ready, holding (silence < 5 s): marker at last-known position,
 //     dimmed.
 //
-// Target zone (2026-10-07): follows the training direction — the lighter
-// side of the user's own baseline for "more feminine", the heavier side
-// for "more masculine", none for "androgynous" / "just exploring" (the
-// gauge is relative to the user's own recent voice, so it has no
-// population "in between"). Same look on either side.
+// No target zone, in any training direction (2026-10-07 review): the CPP
+// correlate reads a raised voice as lighter and a lowered one as heavier
+// from CPP's dependence on pitch alone (CLAUDE.md "Register confound";
+// measurements/vocal-weight-floor-and-register-2026-10-03.md), so a
+// "lighter = on target" zone for feminising — and its mirror for
+// masculinising — rewarded a pitch change as a weight change. The gauge
+// is a neutral readout until pitch is factored out of it
+// (measurements/training-direction-targets-2026-10-07.md). Until
+// 2026-10-07 the lighter side was drawn as the target for everyone.
 //
 // Each session calibrates from scratch (no cross-session persistence,
 // no buttons, no target voice). Mic/room/voice differ between
@@ -32,15 +36,10 @@
 // this simpler zero-interaction model in the same-day course
 // correction.
 
-import { BASELINE_SIGMA } from "../audio/vocal-weight-baseline";
-
-const TARGET_BAND_SIGMA = 0.5;   // target = at least 0.5σ toward the target side
-
 export function VocalWeightGauge({
   vocalWeight,
   voiced,
   holding,
-  target = null,                  // "lighter" | "heavier" | null
 }) {
   const cpp = vocalWeight?.cpp ?? null;
   const positionFromHook = vocalWeight?.position ?? null;
@@ -54,20 +53,6 @@ export function VocalWeightGauge({
   // match the "Lighter ← → Heavier" label arrangement.
   const visualPct = positionFromHook !== null ? (1 - positionFromHook) * 100 : null;
 
-  // Target band: "lighter" covers σ ∈ (+TARGET_BAND_SIGMA, +BASELINE_SIGMA)
-  // — visual LEFT = lighter (high σ), so it anchors at the LEFT edge
-  // (σ=+BASELINE_SIGMA) and extends to where σ=+0.5 falls on the
-  // ±BASELINE_SIGMA span; "heavier" mirrors it from the RIGHT edge. Both
-  // derive from the same constant the baseline's gaugePosition uses, so
-  // the drawn band always agrees with the inTarget marker color below.
-  const targetWidthPct = ((BASELINE_SIGMA - TARGET_BAND_SIGMA) / (2 * BASELINE_SIGMA)) * 100;
-  const targetLeftPct = !ready || target === null ? null
-    : target === "heavier" ? 100 - targetWidthPct : 0;
-
-  const inTarget = sigmaDelta !== null && (
-    target === "lighter" ? sigmaDelta >= TARGET_BAND_SIGMA
-      : target === "heavier" ? sigmaDelta <= -TARGET_BAND_SIGMA
-        : false);
   const opacity = !voiced && !holding ? 0.3 : holding ? 0.5 : 1;
 
   return (
@@ -87,21 +72,6 @@ export function VocalWeightGauge({
 
       {/* Gauge track */}
       <div className="relative h-3 rounded-full bg-neutral-800 overflow-hidden">
-        {/* Target zone highlight (only after baseline locks) */}
-        {ready && targetLeftPct !== null && (
-          <div
-            className="absolute top-0 h-full rounded-full"
-            style={{
-              left: `${targetLeftPct}%`,
-              width: `${targetWidthPct}%`,
-              background:
-                "linear-gradient(90deg, rgba(74,222,128,0.08), rgba(74,222,128,0.15), rgba(74,222,128,0.08))",
-              borderTop: "1px solid rgba(74,222,128,0.25)",
-              borderBottom: "1px solid rgba(74,222,128,0.25)",
-            }}
-          />
-        )}
-
         {/* Marker (only when baseline is ready and we have a position) */}
         {ready && visualPct !== null && (
           <div
@@ -109,11 +79,7 @@ export function VocalWeightGauge({
             style={{ left: `${visualPct}%` }}
           >
             <div
-              className={`w-3.5 h-3.5 -ml-[7px] rounded-full border-2 ${
-                inTarget
-                  ? "bg-green-400 border-green-300 shadow-[0_0_6px_rgba(74,222,128,0.5)]"
-                  : "bg-purple-400 border-purple-300 shadow-[0_0_6px_rgba(192,132,252,0.4)]"
-              }`}
+              className="w-3.5 h-3.5 -ml-[7px] rounded-full border-2 bg-purple-400 border-purple-300 shadow-[0_0_6px_rgba(192,132,252,0.4)]"
             />
           </div>
         )}
@@ -139,11 +105,7 @@ export function VocalWeightGauge({
               : `Calibrating: ${Math.round(progress * 100)} %`}
           </span>
         ) : sigmaDelta !== null ? (
-          <span
-            className={`text-xs tabular-nums ${
-              inTarget ? "text-green-400" : "text-neutral-400"
-            }`}
-          >
+          <span className="text-xs tabular-nums text-neutral-400">
             {sigmaDelta >= 0 ? "+" : ""}
             {sigmaDelta.toFixed(1)} σ
             <span className="text-neutral-500 ml-1">

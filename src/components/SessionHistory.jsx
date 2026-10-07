@@ -2,10 +2,12 @@
 //
 // Targets come from each session's own direction log (the training
 // direction(s) in effect while it was recorded — utils/trainingDirection.js),
-// so a session is always judged against what the user was aiming for then.
-// Sessions recorded before directions existed have no log: their traces
-// are drawn neutrally with no band, and their stored time-in-range figures
-// are labelled with the fixed range they were computed against.
+// so a session is always judged against what the user was aiming for then,
+// on the pitch LEVEL (utils/pitchLevel.js), as live. Sessions recorded
+// before directions existed have no log: their traces are drawn neutrally
+// with no band, and their stored time-in-range figures are shown in a
+// neutral colour, labelled with the fixed range they were computed
+// against — never judged as on or off target. F2 has no target (neutral).
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import db from "../db";
@@ -15,17 +17,18 @@ import {
   PITCH_DISPLAY_RANGE,
   F2_DISPLAY_RANGE,
   COLORS,
+  statusColor,
 } from "../utils/constants";
 import {
   directionAt,
-  directionsUsed,
+  directionSequence,
   directionLabel,
   pitchTargetFor,
-  f2TargetFor,
-  inTarget as isInTarget,
+  pitchStatus,
   bandForDisplay,
-  formatTarget,
+  formatOnTarget,
 } from "../utils/trainingDirection";
+import { pitchLevels } from "../utils/pitchLevel";
 
 // The fixed ranges sessions recorded before training directions existed
 // were scored against (their stored pctTimeIn* figures) — labels only.
@@ -36,24 +39,36 @@ function hasDirectionLog(session) {
   return Array.isArray(session.directionLog) && session.directionLog.length > 0;
 }
 
-// "More feminine", "More feminine → Just exploring", or null (legacy).
+// "More feminine", "More feminine → Just exploring → More feminine" (the
+// log in order, returns included), or null (legacy).
 function goalText(session) {
   if (!hasDirectionLog(session)) return null;
-  return directionsUsed(session.directionLog).map(directionLabel).join(" → ");
+  return directionSequence(session.directionLog).map(directionLabel).join(" → ");
 }
 
-// Label for a time-in-target stat: "Pitch in target (165–255 Hz)" for a
-// single-direction session, "Pitch in target" when it changed, the fixed
+// Label for the pitch figure: "Pitch on target (≥ 165 Hz)" for a
+// single-direction session, "Pitch on target" when it changed, the fixed
 // range for legacy sessions.
-function targetStatLabel(session, kind) {
-  if (!hasDirectionLog(session)) {
-    return kind === "pitch" ? `Pitch in ${LEGACY_PITCH_RANGE_LABEL}` : `F2 ${LEGACY_F2_RANGE_LABEL}`;
-  }
-  const used = directionsUsed(session.directionLog);
-  const base = kind === "pitch" ? "Pitch in target" : "F2 in target";
-  if (used.length !== 1) return base;
-  const t = kind === "pitch" ? pitchTargetFor(used[0]) : f2TargetFor(used[0]);
-  return t ? `${base} (${formatTarget(t)})` : base;
+function pitchStatLabel(session) {
+  if (!hasDirectionLog(session)) return `Pitch in ${LEGACY_PITCH_RANGE_LABEL}`;
+  const seq = directionSequence(session.directionLog);
+  const t = seq.length === 1 ? pitchTargetFor(seq[0]) : null;
+  return t ? `Pitch on target (${formatOnTarget(t)})` : "Pitch on target";
+}
+
+// Colour of a percentage: judged only for sessions with a direction log;
+// legacy figures are neutral (they were computed against the old
+// feminising range and are not re-interpreted).
+function pctClass(session, v) {
+  if (!hasDirectionLog(session)) return "text-neutral-300";
+  return v >= 50 ? "text-green-400" : "text-red-400";
+}
+
+// "of 57% of voiced time" when only part of the session had a target
+// (e.g. part of it was "Just exploring"); null otherwise.
+function coverageNote(session) {
+  const c = session.pctVoicedWithPitchTarget;
+  return c != null && c < 100 ? `over the ${c}% of voiced time with a target` : null;
 }
 
 export function SessionHistory() {
@@ -237,30 +252,20 @@ function SessionCard({ session, expanded, onToggle, onDelete }) {
           </span>
           {session.pctTimeInPitchTarget != null && (
             <span className="text-neutral-400">
-              {targetStatLabel(session, "pitch")}:{" "}
-              <span
-                className={
-                  session.pctTimeInPitchTarget >= 50
-                    ? "text-green-400"
-                    : "text-red-400"
-                }
-              >
+              {pitchStatLabel(session)}:{" "}
+              <span className={pctClass(session, session.pctTimeInPitchTarget)}>
                 {fmtPct(session.pctTimeInPitchTarget)}
               </span>
+              {coverageNote(session) && (
+                <span className="text-neutral-500"> {coverageNote(session)}</span>
+              )}
             </span>
           )}
+          {/* Legacy rows only: F2 has no target since 2026-10-07. */}
           {session.pctTimeInResonanceTarget != null && (
             <span className="text-neutral-400">
-              {targetStatLabel(session, "f2")}:{" "}
-              <span
-                className={
-                  session.pctTimeInResonanceTarget >= 50
-                    ? "text-green-400"
-                    : "text-red-400"
-                }
-              >
-                {fmtPct(session.pctTimeInResonanceTarget)}
-              </span>
+              F2 {LEGACY_F2_RANGE_LABEL}:{" "}
+              <span className="text-neutral-300">{fmtPct(session.pctTimeInResonanceTarget)}</span>
             </span>
           )}
         </div>
@@ -301,8 +306,14 @@ function SessionCard({ session, expanded, onToggle, onDelete }) {
             <Stat label="Avg HNR" value={
               session.avgHnr != null ? `${session.avgHnr.toFixed(1)} dB` : "--"
             } />
-            <Stat label={targetStatLabel(session, "pitch")} value={fmtPct(session.pctTimeInPitchTarget)} />
-            <Stat label={targetStatLabel(session, "f2")} value={fmtPct(session.pctTimeInResonanceTarget)} />
+            <Stat label={pitchStatLabel(session)} value={
+              session.pctTimeInPitchTarget != null && coverageNote(session)
+                ? `${fmtPct(session.pctTimeInPitchTarget)} (${coverageNote(session)})`
+                : fmtPct(session.pctTimeInPitchTarget)
+            } />
+            {session.pctTimeInResonanceTarget != null && (
+              <Stat label={`F2 ${LEGACY_F2_RANGE_LABEL}`} value={fmtPct(session.pctTimeInResonanceTarget)} />
+            )}
             <Stat label="Total Duration" value={formatDuration(session.durationSeconds)} />
             <Stat label="Voiced Duration" value={formatDuration(session.voicedDurationSeconds)} />
           </div>
@@ -423,8 +434,8 @@ function SessionTraces({ sessionId, directionLog }) {
     canvas.width = rect.width * dpr;
     canvas.height = rect.height * dpr;
 
-    drawStaticResonanceTrace(canvas, frames, dpr, directionLog);
-  }, [frames, resizeTick, directionLog]);
+    drawStaticResonanceTrace(canvas, frames, dpr);
+  }, [frames, resizeTick]);
 
   if (framesError) {
     return (
@@ -508,11 +519,10 @@ function drawTargetBands(ctx, log, targetFor, displayRange, totalMs, msToX, hzTo
   }
 }
 
-// Line colour for a value at a session time: in/out of that moment's
-// target, neutral without one.
-function traceColor(log, targetFor, atMs, value) {
-  const t = log ? isInTarget(value, targetFor(directionAt(log, atMs))) : null;
-  return t === null ? COLORS.neutralTrace : t ? COLORS.inTarget : COLORS.outOfTarget;
+// Line colour for a pitch level at a session time: that moment's target
+// status (on / off / beyond), neutral without one.
+function traceColor(log, atMs, level) {
+  return log ? statusColor(pitchStatus(level, pitchTargetFor(directionAt(log, atMs)))) : COLORS.neutralTrace;
 }
 
 function drawStaticPitchTrace(canvas, frames, dpr, log) {
@@ -597,6 +607,10 @@ function drawStaticPitchTrace(canvas, frames, dpr, log) {
   // hops on the private session recordings, 2026-10-04) — history is
   // not an exact replica.
   // Legacy frames (no field) draw as before. Stats keep using voiced/f0.
+  // Pitch level per frame (running 1.5 s median of the voiced pitch), as
+  // the live trace and the session's on-target figure judge it.
+  const levels = pitchLevels(frames, (f) => f.timestampMs, (f) => (f.voiced && f.f0 != null ? f.f0 : null));
+
   let inSegment = false;
   let lastDrawnF0 = null;
   for (let i = 0; i < frames.length; i++) {
@@ -608,7 +622,7 @@ function drawStaticPitchTrace(canvas, frames, dpr, log) {
     }
     const x = msToX(f.timestampMs);
     const y = hzToY(f.f0);
-    const color = traceColor(log, pitchTargetFor, f.timestampMs, f.f0);
+    const color = traceColor(log, f.timestampMs, levels[i]);
     // Octave-class step: start a new segment rather than stroking a
     // near-vertical connecting line (same rule as the live trace).
     if (inSegment && lastDrawnF0 !== null &&
@@ -625,7 +639,7 @@ function drawStaticPitchTrace(canvas, frames, dpr, log) {
       inSegment = true;
     } else {
       const prev = frames[i - 1];
-      const prevColor = prev?.voiced && prev.f0 != null ? traceColor(log, pitchTargetFor, prev.timestampMs, prev.f0) : null;
+      const prevColor = prev?.voiced && prev.f0 != null ? traceColor(log, prev.timestampMs, levels[i - 1]) : null;
       if (color !== prevColor) {
         ctx.lineTo(x, y);
         ctx.stroke();
@@ -641,7 +655,7 @@ function drawStaticPitchTrace(canvas, frames, dpr, log) {
   ctx.restore(); // end plot-rect clip
 }
 
-function drawStaticResonanceTrace(canvas, frames, dpr, log) {
+function drawStaticResonanceTrace(canvas, frames, dpr) {
   const ctx = canvas.getContext("2d");
   const w = canvas.width;
   const h = canvas.height;
@@ -701,14 +715,13 @@ function drawStaticResonanceTrace(canvas, frames, dpr, log) {
     ctx.fillText(label, x, plotBottom + 3 * dpr);
   }
 
-  // Target band(s)
-  drawTargetBands(ctx, log, f2TargetFor, F2_DISPLAY_RANGE, totalMs, msToX, hzToY, plotLeft, plotRight, dpr);
-
-  // F2 line
+  // F2 line (neutral: per-frame F2 is dominated by the vowel, so it has no
+  // target in any direction)
   ctx.lineWidth = 1.5 * dpr;
   ctx.lineJoin = "round";
   ctx.lineCap = "round";
 
+  ctx.strokeStyle = COLORS.neutralTrace;
   let inSegment = false;
   for (let i = 0; i < frames.length; i++) {
     const f = frames[i];
@@ -718,25 +731,12 @@ function drawStaticResonanceTrace(canvas, frames, dpr, log) {
     }
     const x = msToX(f.timestampMs);
     const y = hzToY(f.f2);
-    const color = traceColor(log, f2TargetFor, f.timestampMs, f.f2);
-
     if (!inSegment) {
       ctx.beginPath();
-      ctx.strokeStyle = color;
       ctx.moveTo(x, y);
       inSegment = true;
     } else {
-      const prev = frames[i - 1];
-      const prevColor = prev?.voiced && prev.f2 != null ? traceColor(log, f2TargetFor, prev.timestampMs, prev.f2) : null;
-      if (color !== prevColor) {
-        ctx.lineTo(x, y);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.strokeStyle = color;
-        ctx.moveTo(x, y);
-      } else {
-        ctx.lineTo(x, y);
-      }
+      ctx.lineTo(x, y);
     }
   }
   if (inSegment) ctx.stroke();

@@ -18,6 +18,7 @@ import {
 import { createGateState, evaluateFrameGate } from "./pitchGate";
 import { createPaintGate, EXCURSION_SEMI } from "./pitchPaintGate";
 import { createSteadinessTracker } from "./steadiness";
+import { pitchLevelAt } from "../utils/pitchLevel";
 import { createCaptureSource } from "./captureSource";
 import { VocalWeightAggregator } from "./vocal-weight-aggregator";
 import { VocalWeightBaseline } from "./vocal-weight-baseline";
@@ -83,6 +84,10 @@ export function useAudioPipeline() {
     voiced: false,
     holding: false,
     pitch: null,
+    // Pitch LEVEL the training-direction target is judged on
+    // (utils/pitchLevel.js: median of the last 1.5 s of painted pitch) —
+    // what colours the F0 readouts; null when nothing is shown.
+    pitchLevel: null,
     intensity: null,
     noteName: null,
     // Pitch steadiness (steadiness.js): SD in semitones of the posted
@@ -234,6 +239,7 @@ export function useAudioPipeline() {
   const heldReadoutStaleRef = useRef(false);
   const lastVoicedRef = useRef({
     pitch: null,
+    pitchLevel: null,
     noteName: null,
     formants: { f1: null, f2: null, f3: null },
     spectralTilt: null,
@@ -814,6 +820,7 @@ export function useAudioPipeline() {
     // 5 s before the first utterance.
     lastVoicedRef.current = {
       pitch: null,
+      pitchLevel: null,
       noteName: null,
       formants: { f1: null, f2: null, f3: null },
       spectralTilt: null,
@@ -835,6 +842,7 @@ export function useAudioPipeline() {
       voiced: false,
       holding: false,
       pitch: null,
+      pitchLevel: null,
       intensity: null,
       noteName: null,
       steadiness: null,
@@ -929,13 +937,14 @@ export function useAudioPipeline() {
     // phonation from the pitch track — so noise-only windows stop
     // feeding masculine-leaning scores into the meter
     // (measurements/perceived-voice-gate-2026-10-07.md). Sent voiced or
-    // not, so utterances close promptly.
+    // not, so utterances close promptly. contextTime (the frame's capture
+    // time) puts the hint on the audio clock the gate runs on.
     if (mlWorkerRef.current) {
       mlWorkerRef.current.postMessage({
         type: "pitch-hint",
         voiced: msg.voiced,
         pitch: msg.pitch,
-        ts: msg.ts,
+        contextTime: msg.contextTime ?? null,
       });
     }
     if (DIAG_ENABLED && typeof msg.inferMs === "number") {
@@ -1086,6 +1095,7 @@ export function useAudioPipeline() {
           voiced: false,
           holding: true,
           pitch: heldStale ? null : held.pitch,
+          pitchLevel: heldStale ? null : held.pitchLevel,
           intensity,
           noteName: heldStale ? null : held.noteName,
           steadiness: steady.value,
@@ -1111,6 +1121,7 @@ export function useAudioPipeline() {
           voiced: false,
           holding: false,
           pitch: null,
+          pitchLevel: null,
           intensity,
           noteName: null,
           steadiness: steady.value,
@@ -1268,6 +1279,9 @@ export function useAudioPipeline() {
         : { time: now, pitch: null, voiced: false },
     );
     trimHistory(pitchTraceRef.current, PITCH_TRACE_SECONDS * 1000, now);
+    // The level the readouts' target colour judges (display only — the
+    // painted values themselves are untouched).
+    const pitchLevel = displayPitched ? pitchLevelAt(pitchTraceRef.current, now) : null;
 
     if (f1 !== null && f2 !== null) {
       formantTrailRef.current.push({ time: now, f1, f2, f3: f3, voiced: true });
@@ -1283,6 +1297,7 @@ export function useAudioPipeline() {
     // displayed pitch is kept so hold states can dim-display it.
     lastVoicedRef.current = {
       pitch: displayPitched ? smoothedPitch : lastVoicedRef.current.pitch,
+      pitchLevel: displayPitched ? pitchLevel : lastVoicedRef.current.pitchLevel,
       noteName: displayPitched ? noteName : lastVoicedRef.current.noteName,
       formants: smoothedFormants,
       spectralTilt: currentTilt,
@@ -1327,6 +1342,7 @@ export function useAudioPipeline() {
       voiced: displayPitched,
       holding: displayHolding,
       pitch: displayPitched ? smoothedPitch : (showHeldReadout ? lastVoicedRef.current.pitch : null),
+      pitchLevel: displayPitched ? pitchLevel : (showHeldReadout ? lastVoicedRef.current.pitchLevel : null),
       intensity,
       noteName: displayPitched ? noteName : (showHeldReadout ? lastVoicedRef.current.noteName : null),
       steadiness: steady.value,

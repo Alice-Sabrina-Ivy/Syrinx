@@ -12,7 +12,7 @@ The name comes from the vocal organ of songbirds (the most resonant voices in na
 
 Voice training is one of the most impactful and most under-tooled aspects of transition. The existing landscape is fragmented:
 
-- **Pitch-only apps** (Voice Tools, Voice Pitch Analyzer): Only track F0, which is actually the *least* important metric for voice feminization. They give users a false sense that pitch is all that matters.
+- **Pitch-only apps** (Voice Tools, Voice Pitch Analyzer): Only track F0, which on its own is one of the weaker cues to how a voice is perceived — in either direction. They give users a false sense that pitch is all that matters.
 - **Praat**: The gold standard for acoustic analysis, used by speech pathologists and linguists. Incredibly powerful, but its interface is hostile to anyone without a phonetics PhD.
 - **Commercial voice coaching apps**: Subscription-based, closed-source, and generally shallow in their analysis.
 - **Nothing** that combines real-time multi-metric feedback, guided exercises, and long-term progress tracking in a free, private, zero-install tool.
@@ -21,10 +21,14 @@ Syrinx fills this gap. It runs entirely on your device — your voice data never
 
 ### Target Users
 
-- Transgender women and transfeminine people doing voice training (primary)
-- Transmasculine people tracking vocal changes on testosterone
+Voice training in any direction — no direction is assumed (the app asks
+what the user is trying to sound like on every load: more feminine, more
+masculine, androgynous / in between, or just exploring;
+`src/utils/trainingDirection.js`):
+
+- Trans and gender-diverse people training toward a more feminine, more masculine or more androgynous voice (including tracking vocal changes on testosterone)
 - Voice coaches who want clients to have a free practice tool between sessions
-- Anyone doing intentional vocal modification work
+- Anyone doing intentional vocal modification work (singers, speakers)
 
 ### Design Principles
 
@@ -51,7 +55,7 @@ Syrinx fills this gap. It runs entirely on your device — your voice data never
 
 7. **Progress charts**: Plot key metrics over weeks/months — pitch median, F2 average, % time in target, spectral tilt trend
 8. **Baseline capture**: A guided "record your starting point" flow. Progress is measured relative to where *you* started, not population averages.
-9. **Goal configuration**: Personal target ranges for all metrics, with presets for common goals ("voice feminization," "androgynous," "voice masculinization")
+9. **Goal configuration**: Personal target ranges for all metrics, with presets for common goals ("more feminine," "androgynous / in between," "more masculine") — the training-direction question (2026-10-07) is the first step: it sets the pitch target; resonance and vocal-weight targets wait for readouts that can carry one
 10. **Data export/import**: Export all data as JSON for backup or migration between devices. Import to restore.
 
 ### v0.3 — Training Modules
@@ -557,7 +561,7 @@ These are population averages and should be configurable per user.
 - **Scrolling pitch trace**: F0 over time, scrolling left to right, Y-axis spanning configured range
 - **Target band**: Shaded horizontal region for the user's target pitch range
 - **Instantaneous readout**: Current pitch in Hz + nearest musical note (e.g., "196 Hz — G3")
-- **Color coding**: Green in target, yellow close, red far off
+- **Color coding**: Green in target, yellow close, red far off (as built: green on target / red off target / neutral beyond the band in the direction of travel, judged on the running pitch level — `src/utils/pitchLevel.js` — not single frames; neutral with no direction)
 - **Pitch histogram** sidebar: Distribution of pitch values for the current session
 - **Pitch statistics**: Running min, max, mean, standard deviation
 
@@ -947,18 +951,26 @@ Push to `main` → GitHub Actions builds → deploys to Pages. That's it.
 
 ---
 
-## Reference: Voice Feminization Metrics
+## Reference: Voice Gender Perception Metrics
 
-| Metric | Typical Male Range | Typical Female Range | Training Goal | Importance |
-|--------|-------------------|---------------------|---------------|------------|
-| **F2 (resonance)** | Varies by vowel | **~10-20% higher** | **Raise via vocal tract shaping** | **Highest** |
-| F1 | Varies by vowel | ~10-20% higher | Moderate shift | Moderate |
-| F0 (pitch) | 85–180 Hz | 165–255 Hz | Raise habitual pitch | Moderate — necessary but not sufficient |
-| Vocal weight (CPP-based correlate) | Lower CPP (heavier) | Higher CPP (lighter) | Lighten phonatory density | High — often undertrained. Per-user-baseline calibrated; published correlate of phonatory density (Aaen et al. 2025) rather than an absolute measurement. |
-| HNR | Higher (cleaner) | Similar or slightly lower | Maintain clarity | Low — mainly diagnostic |
-| Pitch variability (σ) | Lower (flatter) | Higher (more expressive) | Increase intonation range | Moderate |
+Population ranges, for orientation — not targets in themselves. The app's
+targets come from the user's training direction
+(`src/utils/trainingDirection.js`, sources in
+`measurements/training-direction-targets-2026-10-07.md`): today a pitch
+band per direction; no resonance or vocal-weight target until those
+readouts can carry one without misleading (per-frame F2 mostly tracks the
+vowel; the vocal-weight correlate moves with pitch).
 
-**Key insight**: Pitch gets all the attention, but resonance and vocal weight are what listeners primarily use to gender a voice. Syrinx treats voice feminization as the multi-dimensional problem it actually is.
+| Metric | Typical adult male | Typical adult female | Moving toward feminine | Moving toward masculine | Notes |
+|--------|-------------------|---------------------|------------------------|-------------------------|-------|
+| **F2 (resonance)** | Varies by vowel | **~10-20% higher, same vowel** | Raise (vocal tract shaping) | Lower | Strongest single cue listeners use |
+| F1 | Varies by vowel | ~10-20% higher | Raise | Lower | |
+| F0 (pitch) | ~85–155 Hz | ~165–255 Hz | Raise habitual pitch | Lower habitual pitch | Necessary but not sufficient; ~145–175 Hz is ambiguous, resonance decides |
+| Vocal weight (CPP-based correlate) | Lower CPP (heavier) | Higher CPP (lighter) | Lighten | Heavier | Per-user-baseline correlate of phonatory density (Aaen et al. 2025); reads a raised voice lighter (pitch confound) |
+| HNR | Higher (cleaner) | Similar or slightly lower | — | — | Mainly diagnostic |
+| Pitch variability (σ) | Lower (flatter) | Higher (more expressive) | More intonation range | Flatter | |
+
+**Key insight**: Pitch gets all the attention, but resonance and vocal weight are what listeners primarily use to gender a voice. Syrinx treats changing how a voice is perceived — in any direction — as the multi-dimensional problem it actually is.
 
 ---
 

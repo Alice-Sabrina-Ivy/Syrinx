@@ -54,15 +54,16 @@ const frame = (f0, extra = {}) => ({
 //    time-in-target / voiced duration).
 {
   const f0s = [150, 170, 200, 260, 300];
-  const s = computeSummaryStats([...f0s.map((f) => frame(f)), frame(null)],
+  // 2 s apart, so each frame's pitch level (running 1.5 s median) is itself.
+  const s = computeSummaryStats([...f0s.map((f, i) => frame(f, { timestampMs: i * 2000 })), frame(null)],
     { directionLog: [{ atMs: 0, direction: "feminine" }] });
   const mean = f0s.reduce((a, b) => a + b, 0) / f0s.length;
   const sd = Math.sqrt(f0s.reduce((a, v) => a + (v - mean) ** 2, 0) / (f0s.length - 1));
   check("avgF0 unchanged (mean)", near(s.avgF0, mean));
   check("medianF0 unchanged", s.medianF0 === 200);
   check("pitchStdev unchanged (sample stdev)", near(s.pitchStdev, sd));
-  check("pctTimeInPitchTarget vs the feminine target (165–255 Hz → 2 of 5)", s.pctTimeInPitchTarget === 40);
-  check("pctTimeInResonanceTarget vs the feminine target", s.pctTimeInResonanceTarget === 100);
+  check("pctTimeInPitchTarget vs the feminine target (165–255 Hz in, above it beyond → 4 of 5)", s.pctTimeInPitchTarget === 80);
+  check("no resonance (F2) target any more", s.pctTimeInResonanceTarget === null);
   const noDir = computeSummaryStats(f0s.map((f) => frame(f)));
   check("no direction log → no time-in-target (never assumed)",
     noDir.pctTimeInPitchTarget === null && noDir.pctTimeInResonanceTarget === null);

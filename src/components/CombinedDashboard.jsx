@@ -3,10 +3,14 @@
 // stats + session controls below. Handles session recording: buffers
 // frames and writes to IndexedDB every ~1s.
 //
-// Targets follow the user's training direction (utils/trainingDirection.js);
-// with none ("Just exploring") readouts are neutral. A recorded session
-// keeps a log of the direction(s) in effect so its time-in-target stats
-// are measured against the right target even if it changed mid-session.
+// The pitch target follows the user's training direction
+// (utils/trainingDirection.js) and judges the pitch LEVEL (running 1.5 s
+// median), not single frames; with no target ("Just exploring") readouts
+// are neutral. F2 and vocal weight are neutral readouts in every
+// direction (no reliable target — see the measurement note). A recorded
+// session keeps a log of the direction(s) in effect so its on-target
+// stats are measured against the right target even if it changed
+// mid-session.
 //
 // App keeps this component mounted for the whole time the pipeline runs
 // (so a recording survives switching to the Pitch / History tabs) and
@@ -22,11 +26,10 @@ import { VocalWeightGauge } from "./VocalWeightGauge";
 import { SteadinessReadout } from "./SteadinessReadout";
 import {
   pitchTargetFor,
-  f2TargetFor,
-  weightTargetFor,
-  inTarget as isInTarget,
+  pitchStatus,
   appendDirection,
 } from "../utils/trainingDirection";
+import { statusTextClass } from "../utils/constants";
 import { computeSummaryStats } from "../utils/sessionStats";
 import { holdRecordingLock } from "../utils/sessionRepair";
 import db from "../db";
@@ -38,6 +41,7 @@ export function CombinedDashboard({
   voiced,
   holding,
   pitch,
+  pitchLevel = null,
   steadiness,
   steadinessHeld,
   formants,
@@ -469,11 +473,10 @@ export function CombinedDashboard({
     return `${m}:${s.toString().padStart(2, "0")}`;
   };
 
-  // null = no target (exploring / not chosen): neutral readout.
+  // null = no target (exploring / not chosen): neutral readout. The
+  // number is this moment's pitch; its colour judges the pitch level.
   const pitchTarget = pitchTargetFor(direction);
-  const inPitchTarget = isInTarget(pitch, pitchTarget);
-  const inF2Target = isInTarget(formants?.f2 ?? null, f2TargetFor(direction));
-  const targetClass = (t) => (t === null ? "text-neutral-200" : t ? "text-green-400" : "text-red-400");
+  const pitchLevelStatus = pitch !== null ? pitchStatus(pitchLevel, pitchTarget) : null;
 
   const statOpacity = !voiced && !holding ? "opacity-40" : holding ? "opacity-50" : "";
 
@@ -495,6 +498,7 @@ export function CombinedDashboard({
             voiced={voiced}
             holding={holding}
             pitch={pitch}
+            pitchLevel={pitchLevel}
             target={pitchTarget}
             compact
           />
@@ -529,7 +533,7 @@ export function CombinedDashboard({
               </span>
               <span
                 className={`text-xl sm:text-2xl font-light tabular-nums ${
-                  pitch !== null ? targetClass(inPitchTarget) : "text-neutral-600"
+                  pitch !== null ? statusTextClass(pitchLevelStatus) : "text-neutral-600"
                 }`}
               >
                 {pitch !== null ? `${Math.round(pitch)}` : "—"}
@@ -550,7 +554,7 @@ export function CombinedDashboard({
               <span
                 className={`text-xl sm:text-2xl font-light tabular-nums ${
                   formants?.f2 !== null && formants?.f2 !== undefined
-                    ? targetClass(inF2Target)
+                    ? "text-neutral-200"
                     : "text-neutral-600"
                 }`}
               >
@@ -562,7 +566,6 @@ export function CombinedDashboard({
               vocalWeight={vocalWeight}
               voiced={voiced}
               holding={holding}
-              target={weightTargetFor(direction)}
             />
           </div>
 

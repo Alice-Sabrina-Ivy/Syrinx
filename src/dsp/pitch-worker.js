@@ -198,10 +198,10 @@ function processChunk(msg) {
     contextTime: meta.contextTime,
     ...(_diag && inferMs !== null ? { inferMs } : {}),
     // Active notch frequencies (empty ⇒ omitted, the overwhelmingly
-    // common case). Not diag-gated: the main thread relays these with
-    // the ML pitch-hint so the gender worker's sub-floor voicing probe
-    // can exclude actively-notched interferers (audio-utils
-    // subFloorVoiced). Also the notch's field-observability surface.
+    // common case). Not diag-gated: a diagnostic / field-observability
+    // field (diag snapshots, the session oracle). Not relayed to the ML
+    // worker since 2026-10-07 — its utterance gate dropped the sub-floor
+    // voicing probe that consumed them (audio-utils subFloorVoiced).
     ...(noiseNotch.activeFreqs().length > 0
       ? { notchedFreqs: noiseNotch.activeFreqs() }
       : {}),

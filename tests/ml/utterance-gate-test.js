@@ -153,6 +153,64 @@ console.log("\nheld note then speech");
   check("...once the window is mostly past the note", back && back.t - 3000 >= D.minPostOnsetFrac * D.windowMs);
 }
 
+console.log("\nbursty delivery (capture frames of B ms, chunks emitted back to back)");
+{
+  // Wall time w = B, 2B, ...: every complete 25 ms chunk up to w arrives
+  // at once. The ML worker sees each chunk (now = its audio end time) and
+  // decides at most every 150 ms of wall time; the pitch hint for frame c
+  // (ts = its audio end) is posted when chunk c+2 is processed (L = 2
+  // decode delay) and relayed through the main thread AFTER the burst's
+  // chunks reached the ML worker. Before the 2026-10-07 review the hints
+  // carried decode wall time, and with B >= 64 ms no utterance ever opened.
+  const stream = (t) => (t > 1000 && t <= 7000 ? speech(120)(t - 1000) : silent());
+  for (const B of [10, 25, 40, 64, 80, 100]) {
+    const g = createUtteranceGate();
+    let nextChunk = 0, lastDecideWall = -1e9, pendingHints = [];
+    let ticks = 0, scored = 0, first = null;
+    for (let wall = B; wall <= 8500; wall += B) {
+      const burst = [];
+      while ((nextChunk + 1) * HOP <= wall) burst.push(++nextChunk);
+      // hints relayed from the previous burst land first
+      for (const h of pendingHints) g.notePitchHint(h);
+      pendingHints = [];
+      for (const c of burst) {
+        const now = c * HOP;
+        if (wall - lastDecideWall >= TICK) {
+          lastDecideWall = wall;
+          const d = g.decide(now);
+          if (now > 2000 && now <= 7000) { ticks++; if (d.verdict === "score") scored++; }
+          if (d.verdict === "score" && first === null) first = now - 1000;
+        }
+        const frame = c - 2;
+        if (frame >= 1) pendingHints.push({ ts: frame * HOP, ...stream(frame * HOP) });
+      }
+    }
+    check(`B = ${B} ms: scores >= 85 % of decisions 1-6 s into speech`, ticks > 0 && scored >= 0.85 * ticks, `${scored}/${ticks}`);
+    check(`B = ${B} ms: first score within 0.9 s of onset`, first !== null && first <= 900, first === null ? "never" : `${first} ms`);
+  }
+}
+
+console.log("\naudio clock restarting (a new capture stream) resets the gate");
+{
+  const g = createUtteranceGate();
+  run(speech(120), 4000, g);
+  check("speech scores before the restart", g.decide(4000).verdict === "score");
+  // New stream: the clock starts again near 0 with silence.
+  for (let t = HOP; t <= 600; t += HOP) g.notePitchHint({ ts: t, voiced: false, pitch: null });
+  check("old stream's voicing doesn't carry over", g.decide(600).verdict === "silent");
+}
+
+console.log("\nheld-phonation share: 95 % voiced over the second");
+{
+  // Flat pitch with an unvoiced frame every 300 ms (~92 % voiced): speech
+  // on a deliberately level pitch, not a held vowel.
+  const flatSpeech = (t) => (t % 300 < 25 ? silent() : { voiced: true, pitch: 180 });
+  const ds = run((t) => (t <= 500 ? silent() : flatSpeech(t)), 5000);
+  check("~92 % voiced flat-pitch speech is not 'sustained'", ds.every((d) => d.verdict !== "sustained"),
+    ds.map((d) => d.verdict[0]).join(""));
+  check("default share is 0.95", D.sustainMinShare === 0.95);
+}
+
 console.log("\nmeter state mapping");
 check("score -> scoring", meterStateForVerdict("score") === "scoring");
 check("warming -> updating", meterStateForVerdict("warming") === "updating");

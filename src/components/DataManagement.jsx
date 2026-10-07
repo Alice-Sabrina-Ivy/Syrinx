@@ -1,5 +1,9 @@
 // DataManagement.jsx — Settings/data panel: training direction, audio
 // recording toggle, export, import, delete all.
+//
+// A modal dialog (App makes the page behind it inert): focus moves to the
+// panel when it opens and back to the gear when it closes (App), Escape
+// closes it. It is where the training direction is changed mid-session.
 
 import { useState, useRef, useEffect } from "react";
 import db from "../db";
@@ -31,11 +35,23 @@ export function DataManagement({ onClose, direction = null, onDirectionChange })
   const [importing, setImporting] = useState(false);
   const [status, setStatus] = useState(null);
   const fileInputRef = useRef(null);
+  const closeRef = useRef(null);
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
 
   useEffect(() => {
     db.settings.get("default").then((s) => {
       if (s?.recordAudio) setRecordAudio(true);
     });
+  }, []);
+
+  useEffect(() => {
+    closeRef.current?.focus();
+    const onKey = (e) => {
+      if (e.key === "Escape") { e.preventDefault(); onCloseRef.current(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, []);
 
   async function toggleRecordAudio() {
@@ -184,13 +200,21 @@ export function DataManagement({ onClose, direction = null, onDirectionChange })
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4 py-4">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4 py-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="settings-title"
+      data-dialog="settings"
+    >
       <div className="bg-neutral-900 border border-neutral-700 rounded-2xl p-5 max-w-sm w-full shadow-xl max-h-full overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-light text-white">Settings & Data</h2>
+          <h2 id="settings-title" className="text-lg font-light text-white">Settings & Data</h2>
           <button
+            ref={closeRef}
             onClick={onClose}
-            className="text-neutral-500 hover:text-neutral-300 transition-colors cursor-pointer text-xl leading-none"
+            aria-label="Close settings"
+            className="text-neutral-500 hover:text-neutral-300 transition-colors cursor-pointer text-xl leading-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-300 rounded"
           >
             &times;
           </button>
@@ -201,7 +225,7 @@ export function DataManagement({ onClose, direction = null, onDirectionChange })
           <>
             <div className="mb-4">
               <h3 className="text-sm text-neutral-300 mb-0.5">What are you trying to sound like?</h3>
-              <p className="text-[11px] text-neutral-500 mb-2">Sets the target ranges. Changes apply right away.</p>
+              <p className="text-[11px] text-neutral-500 mb-2">Sets the pitch target. Changes apply right away — close this panel to see them.</p>
               <DirectionOptions value={direction} onChange={onDirectionChange} compact name="training-direction-settings" />
             </div>
             <hr className="border-neutral-800 mb-4" />

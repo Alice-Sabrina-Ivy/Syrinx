@@ -13,20 +13,24 @@
 //   Pitch (speaking F0)
 //     feminine     165-255 Hz  typical adult women's speaking F0
 //     masculine     85-155 Hz  typical adult men's speaking F0
-//                               (Baken 2000 p. 177, from Fitch & Holbrook 1970)
+//                               (Baken & Orlikoff 2000, from Fitch & Holbrook 1970)
 //     androgynous  145-175 Hz  the zone where listeners' gender judgements
 //                               are ambiguous and resonance decides (Gelfer &
-//                               Bennett 2013: formants decide at 145-165 Hz,
-//                               men's voices misheard from 165 Hz; Wolfe et
-//                               al. 1990: lowest mean F0 heard as female 155 Hz)
-//   F2 (per-frame second formant; dominated by the vowel, so a weak cue —
-//   thresholds are the pooled-vowel medians of Hillenbrand et al. 1995)
-//     feminine     >= 1375 Hz  at/above the typical man's median F2
-//     masculine    <= 1575 Hz  at/below the typical woman's median F2
-//     androgynous  1375-1575 Hz between the two
-//   Vocal weight (relative to the user's own recent voice, so it has no
-//   population "in between"): feminine = lighter side, masculine =
-//   heavier side, androgynous / exploring = no target.
+//                               Bennett 2013: formants decide at 145-165 Hz;
+//                               Wolfe et al. 1990: lowest mean F0 heard as
+//                               female 155 Hz). The 175 Hz upper bound is an
+//                               extrapolation above the highest ambiguous
+//                               value tested (165 Hz).
+//   These are ranges of speakers' AVERAGE speaking pitch, so the app judges
+//   the running pitch LEVEL (utils/pitchLevel.js: median of the last 1.5 s
+//   of voiced pitch), never a single frame — per-frame judgement mostly
+//   measured intonation. Beyond the band in the direction of travel (above
+//   255 Hz for feminine, below 85 Hz for masculine) is "beyond": shown
+//   neutrally, not as off target — a lower voice is not less masculine.
+//   No resonance (F2) or vocal-weight target: per-frame F2 is dominated by
+//   the vowel (the bands held near-chance shares of men's and women's
+//   vowels) and the vocal-weight reading moves with pitch, so both are
+//   neutral readouts in every direction (2026-10-07 review).
 
 export const TRAINING_DIRECTIONS = Object.freeze([
   Object.freeze({ id: "feminine", label: "More feminine" }),
@@ -37,23 +41,11 @@ export const TRAINING_DIRECTIONS = Object.freeze([
 
 const IDS = new Set(TRAINING_DIRECTIONS.map((d) => d.id));
 
+// toward: the direction of travel ("up" / "down"), or null for a zone.
 export const PITCH_TARGETS = Object.freeze({
-  feminine: Object.freeze({ low: 165, high: 255 }),
-  masculine: Object.freeze({ low: 85, high: 155 }),
-  androgynous: Object.freeze({ low: 145, high: 175 }),
-});
-
-// null bound = open-ended on that side.
-export const F2_TARGETS = Object.freeze({
-  feminine: Object.freeze({ low: 1375, high: null }),
-  masculine: Object.freeze({ low: null, high: 1575 }),
-  androgynous: Object.freeze({ low: 1375, high: 1575 }),
-});
-
-// Which side of the user's own baseline the vocal-weight gauge marks.
-export const WEIGHT_TARGETS = Object.freeze({
-  feminine: "lighter",
-  masculine: "heavier",
+  feminine: Object.freeze({ low: 165, high: 255, toward: "up" }),
+  masculine: Object.freeze({ low: 85, high: 155, toward: "down" }),
+  androgynous: Object.freeze({ low: 145, high: 175, toward: null }),
 });
 
 export function isTrainingDirection(value) {
@@ -68,39 +60,47 @@ export function pitchTargetFor(direction) {
   return PITCH_TARGETS[direction] ?? null;
 }
 
-export function f2TargetFor(direction) {
-  return F2_TARGETS[direction] ?? null;
+// Where a pitch level sits relative to a target:
+//   "in"      inside the band (on target)
+//   "beyond"  past the band in the direction of travel (on target, shown
+//             neutrally: past the typical range, not short of it)
+//   "out"     short of the band, or outside a zone (off target)
+//   null      no target or no level — rendered neutrally
+export function pitchStatus(level, target) {
+  if (target == null || level == null || !Number.isFinite(level)) return null;
+  if (level >= target.low && level <= target.high) return "in";
+  if (target.toward === "up" && level > target.high) return "beyond";
+  if (target.toward === "down" && level < target.low) return "beyond";
+  return "out";
 }
 
-export function weightTargetFor(direction) {
-  return WEIGHT_TARGETS[direction] ?? null;
-}
-
-// true / false against a { low, high } target (null bounds open); null
-// when there is no target or no value — callers render that neutrally.
-export function inTarget(value, target) {
-  if (target == null || value == null || !Number.isFinite(value)) return null;
-  if (target.low != null && value < target.low) return false;
-  if (target.high != null && value > target.high) return false;
-  return true;
+// Counts toward a session's "on target" time.
+export function isOnTarget(status) {
+  return status === "in" || status === "beyond";
 }
 
 // The band to draw for a target on an axis spanning displayRange
-// ({ low, high }): open ends extend to the axis edge. null = draw nothing.
+// ({ low, high }), clipped to the axis. null = draw nothing.
 export function bandForDisplay(target, displayRange) {
   if (target == null) return null;
-  const low = Math.max(target.low ?? displayRange.low, displayRange.low);
-  const high = Math.min(target.high ?? displayRange.high, displayRange.high);
+  const low = Math.max(target.low, displayRange.low);
+  const high = Math.min(target.high, displayRange.high);
   return high > low ? { low, high } : null;
 }
 
-// Human-readable range, e.g. "165–255 Hz", "≥ 1375 Hz", "≤ 1575 Hz".
+// The drawn band, e.g. "165–255 Hz".
 export function formatTarget(target) {
   if (target == null) return null;
-  if (target.low != null && target.high != null) return `${target.low}–${target.high} Hz`;
-  if (target.low != null) return `≥ ${target.low} Hz`;
-  if (target.high != null) return `≤ ${target.high} Hz`;
-  return null;
+  return `${target.low}–${target.high} Hz`;
+}
+
+// What counts as on target, e.g. "≥ 165 Hz" (feminine), "≤ 155 Hz"
+// (masculine), "145–175 Hz" (androgynous).
+export function formatOnTarget(target) {
+  if (target == null) return null;
+  if (target.toward === "up") return `≥ ${target.low} Hz`;
+  if (target.toward === "down") return `≤ ${target.high} Hz`;
+  return formatTarget(target);
 }
 
 // ---------------------------------------------------------------------------
@@ -127,11 +127,14 @@ export function appendDirection(log, atMs, direction) {
   return [...list, { atMs: Math.max(0, Math.round(atMs)), direction }];
 }
 
-// The distinct directions a session used, in order of first use.
-export function directionsUsed(log) {
+// The directions a session went through, in order (a return to an earlier
+// direction is listed again; consecutive repeats are never logged).
+export function directionSequence(log) {
   if (!Array.isArray(log)) return [];
   const out = [];
-  for (const e of log) if (isTrainingDirection(e.direction) && !out.includes(e.direction)) out.push(e.direction);
+  for (const e of log) {
+    if (isTrainingDirection(e.direction) && out[out.length - 1] !== e.direction) out.push(e.direction);
+  }
   return out;
 }
 

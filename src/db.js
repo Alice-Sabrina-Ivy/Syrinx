@@ -17,7 +17,8 @@ db.version(1).stores({
   // User settings (single row for now; multi-profile in future)
   // Row shape: { id: "default", displayName, goalPreset,
   //   targetF0Low, targetF0High, targetF2Low, targetF2High,
-  //   targetSpectralTiltMax, recordAudio, createdAt, updatedAt }
+  //   targetSpectralTiltMax, recordAudio, trainingDirection (the last
+  //   answer to the direction question, 2026-10-07), createdAt, updatedAt }
   settings: "id",
 
   // Sessions — practice sessions with summary stats
@@ -26,6 +27,8 @@ db.version(1).stores({
   //   avgF0, avgF1, avgF2, avgF3, medianF0, medianF2,
   //   avgSpectralTilt, avgHnr,
   //   pctTimeInPitchTarget, pctTimeInResonanceTarget,
+  //   pctVoicedWithPitchTarget, directionLog: [{ atMs, direction }]
+  //   (2026-10-07, non-indexed; see utils/sessionStats.js),
   //   pitchRangeLow, pitchRangeHigh, pitchStdev,
   //   voicedDurationSeconds, notes }
   sessions: "++id, startedAt, sessionType",

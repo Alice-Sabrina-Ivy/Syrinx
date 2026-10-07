@@ -12,7 +12,9 @@
 // Protocol:
 //   main → worker: { type: "init", inputSampleRate, modelId?, diag? }
 //                  { type: "audioPort", port }       MessagePort from AudioWorklet
-//                  { type: "pitch-hint", voiced, ts, pitch }  relayed per pitch frame
+//                  { type: "pitch-hint", voiced, pitch, contextTime }  relayed
+//                                                per pitch frame; contextTime =
+//                                                capture seconds of the frame
 //   worker → main: { type: "status", status, message?, modelId?, device? }
 //                                                "loading"|"ready"|"error";
 //                                                modelId + device populated on
@@ -139,7 +141,14 @@ const silenceTracker = new SilenceTracker();
 // sub-75 Hz periodicity probe, which together scored 41 % of real-noise
 // windows and the mostly-pre-onset first windows of every utterance:
 // measurements/perceived-voice-gate-2026-10-07.md.
+// The gate runs on the AUDIO clock: hints carry their frame's capture
+// contextTime and "now" is the contextTime of the newest chunk in the
+// window, so its timing rules can't be upset by how the hints are
+// delivered (capture emits chunks in bursts, one burst per hardware
+// audio frame; on wall-clock decode times, frames >= 64 ms apart kept the
+// meter blank). No audio time yet = "stale" (amplitude fallback).
 const gate = createUtteranceGate({ windowMs: WINDOW_SECONDS * 1000 });
+let audioNowMs = null;                  // contextTime (ms) of the newest chunk
 let lastVoiceState = null;
 let lastGateMode = null;                // "gated" | "fallback"
 
@@ -205,7 +214,7 @@ async function maybeInfer() {
   // silencing it. Peak, not RMS: a speech-with-pauses window has a low
   // average but clearly speech-level peaks.
   const peak = windowPeak(windowCopy);
-  const decision = gate.decide(performance.timeOrigin + performance.now());
+  const decision = audioNowMs === null ? { verdict: "stale", resetEma: false } : gate.decide(audioNowMs);
   const mode = decision.verdict === "stale" ? "fallback" : "gated";
   if (mode !== lastGateMode) {
     // Never carry a score across a switch between the two paths.
@@ -316,8 +325,9 @@ async function loadModel(modelId) {
 
 function attachAudioPort(port) {
   port.onmessage = (e) => {
-    const { buffer } = e.data;
+    const { buffer, contextTime } = e.data;
     if (!buffer || !resample) return;
+    if (typeof contextTime === "number" && Number.isFinite(contextTime)) audioNowMs = contextTime * 1000;
     const incoming = new Float32Array(buffer);
     ring.append(resample(incoming));
     maybeInfer();
@@ -338,7 +348,12 @@ self.onmessage = (e) => {
       attachAudioPort(msg.port);
       break;
     case "pitch-hint":
-      gate.notePitchHint(msg);
+      // Audio clock: the frame's capture time. A hint without one can't be
+      // placed on the window's clock and is dropped (never in practice —
+      // both capture paths stamp every chunk).
+      if (typeof msg.contextTime === "number" && Number.isFinite(msg.contextTime)) {
+        gate.notePitchHint({ voiced: msg.voiced, pitch: msg.pitch, ts: msg.contextTime * 1000 });
+      }
       break;
   }
 };

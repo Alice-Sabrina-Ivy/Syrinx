@@ -3,7 +3,8 @@
 // sessions that never got finalized (tab close / crash / mobile discard),
 // so both write identical stat definitions. Pure — runnable in Node.
 
-import { directionAt, pitchTargetFor, f2TargetFor, inTarget } from "./trainingDirection.js";
+import { directionAt, pitchTargetFor, pitchStatus, isOnTarget } from "./trainingDirection.js";
+import { pitchLevels } from "./pitchLevel.js";
 
 // Linear-interpolated percentile of an ascending-sorted numeric array.
 function percentileSorted(sorted, p) {
@@ -24,12 +25,19 @@ export const PITCH_RANGE_HIGH_PCT = 0.95;
 
 // Compute summary statistics from recorded frames.
 //
-// Time-in-target is measured against the training direction in effect at
-// each frame (`directionLog`: [{ atMs, direction }] on the frames'
-// timestampMs clock — see utils/trainingDirection.js). Frames recorded
-// while "Just exploring" have no target and don't count either way; with
-// no direction log at all (sessions recorded before directions existed)
-// the in-target figures are null rather than assumed.
+// Time on target (pctTimeInPitchTarget) is the share of voiced frames
+// whose pitch LEVEL (utils/pitchLevel.js: running 1.5 s median — the
+// targets are ranges of average speaking pitch, so single frames would
+// mostly measure intonation) is on target — in the band, or beyond it in
+// the direction of travel — for the training direction in effect at that
+// frame (`directionLog`: [{ atMs, direction }] on the frames' timestampMs
+// clock — see utils/trainingDirection.js). Frames recorded while "Just
+// exploring" have no target and don't count either way;
+// pctVoicedWithPitchTarget says what share of the voiced time had one.
+// With no direction log at all (sessions recorded before directions
+// existed) both are null rather than assumed. There is no resonance (F2)
+// target any more (pctTimeInResonanceTarget is null; older rows keep
+// theirs).
 export function computeSummaryStats(frames, { directionLog = null } = {}) {
   const voicedFrames = frames.filter((f) => f.voiced && f.f0 !== null);
   const f0Values = voicedFrames.map((f) => f.f0);
@@ -53,16 +61,16 @@ export function computeSummaryStats(frames, { directionLog = null } = {}) {
     return Math.sqrt(variance);
   };
 
-  // Time in target (per frame, against that frame's direction).
-  let pitchWithTarget = 0, pitchInTarget = 0, f2WithTarget = 0, f2InTarget = 0;
-  if (Array.isArray(directionLog) && directionLog.length > 0) {
-    for (const f of voicedFrames) {
-      const dir = directionAt(directionLog, f.timestampMs ?? 0);
-      const p = inTarget(f.f0, pitchTargetFor(dir));
-      if (p !== null) { pitchWithTarget++; if (p) pitchInTarget++; }
-      const r = inTarget(f.f2, f2TargetFor(dir));
-      if (r !== null) { f2WithTarget++; if (r) f2InTarget++; }
-    }
+  // Time on target (per frame's pitch level, against that frame's direction).
+  const hasLog = Array.isArray(directionLog) && directionLog.length > 0;
+  let pitchWithTarget = 0, pitchOnTarget = 0;
+  if (hasLog && voicedFrames.length > 0) {
+    const ordered = [...voicedFrames].sort((a, b) => (a.timestampMs ?? 0) - (b.timestampMs ?? 0));
+    const levels = pitchLevels(ordered, (f) => f.timestampMs ?? 0, (f) => f.f0);
+    ordered.forEach((f, i) => {
+      const st = pitchStatus(levels[i], pitchTargetFor(directionAt(directionLog, f.timestampMs ?? 0)));
+      if (st !== null) { pitchWithTarget++; if (isOnTarget(st)) pitchOnTarget++; }
+    });
   }
 
   // Estimate voiced duration. DSP analysis runs once per chunk arrival
@@ -89,11 +97,12 @@ export function computeSummaryStats(frames, { directionLog = null } = {}) {
     pitchRangeHigh: percentileSorted(f0Sorted, PITCH_RANGE_HIGH_PCT),
     pitchStdev: stdev(f0Values),
     pctTimeInPitchTarget: pitchWithTarget
-      ? Math.round((pitchInTarget / pitchWithTarget) * 100)
+      ? Math.round((pitchOnTarget / pitchWithTarget) * 100)
       : null,
-    pctTimeInResonanceTarget: f2WithTarget
-      ? Math.round((f2InTarget / f2WithTarget) * 100)
+    pctVoicedWithPitchTarget: hasLog && voicedFrames.length > 0
+      ? Math.round((pitchWithTarget / voicedFrames.length) * 100)
       : null,
+    pctTimeInResonanceTarget: null,
     voicedDurationSeconds,
   };
 }

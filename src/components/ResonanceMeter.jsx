@@ -6,13 +6,16 @@
 // Layout:
 //   - "Perceived voice" caption above the canvas (matches the styling of
 //     the Vocal Weight title)
-//   - main vertical bar fills from 0 (bottom, "Masculine") to the current
-//     score (top, "Feminine") in ONE neutral colour; faint identical
-//     bands mark the 0-30 and 70-100 ranges with the uncertain range in
-//     between. No end of the scale is coloured as the goal — the user's
-//     training direction doesn't change how this meter looks.
-//   - horizontal indicator rides at the current score; opacity scales
-//     with confidence so low-confidence predictions read dim
+//   - vertical scale from 0 (bottom, "Masculine") to 100 (top,
+//     "Feminine"); faint identical bands mark the 0-30 and 70-100 ranges
+//     with the uncertain range in between. No end of the scale is
+//     coloured as the goal — the user's training direction doesn't change
+//     how this meter looks — and nothing fills up from either end (a bar
+//     growing from the masculine end showed a feminine reading as "full"
+//     and a masculine one as empty; removed 2026-10-07)
+//   - a horizontal indicator line with a halo, in ONE neutral colour,
+//     rides at the current score; opacity scales with confidence so
+//     low-confidence predictions read dim
 //   - thin history strip on the right shows the last ~10 scores fading
 //     by age
 //   - big score readout below the bar with a status line
@@ -27,8 +30,10 @@
 //   - "updating…" while a voice onset is being collected (the first
 //     score of an utterance waits until at most half its window predates
 //     the onset);
-//   - "needs running speech" on held vowels / sung notes (the worker's
-//     held-phonation test), which the classifier reads near 50;
+//   - "needs running speech" on held single vowels / notes of about 1 s
+//     or longer (the worker's held-phonation test), which the classifier
+//     reads near 50 — melodic singing is mostly still scored (see the
+//     measurement's limitations);
 //   - nothing while no voice is heard.
 //
 // The middle 30-70 score band is the uncertain region: classifier
@@ -109,7 +114,9 @@ export function ResonanceMeter({
     let animId;
     let lastLabel = null;
 
-    const pad = { left: 16, right: 16, top: 26, bottom: 60 };
+    // bottom: the "Masculine" end label, then a clear gap, then the score
+    // readout and its status line (the label sat right on the number).
+    const pad = { left: 16, right: 16, top: 26, bottom: 76 };
     const HISTORY_COL_WIDTH = 18; // px (logical)
 
     function scoreToY(score, plotTop, plotBottom) {
@@ -223,26 +230,23 @@ export function ResonanceMeter({
       const showNumber = dispScore != null && modelStatus === "ready";
 
       if (showNumber) {
-        const fillTop = scoreToY(dispScore, plotTop, plotBottom);
+        // Indicator line + halo at the score (no fill from either end).
+        const y = scoreToY(dispScore, plotTop, plotBottom);
         ctx.save();
         if (view.dim) ctx.globalAlpha = 0.55;
-        ctx.fillStyle = COLORS.meterFill;
-        ctx.fillRect(barLeft, fillTop, barWidth, plotBottom - fillTop);
-
-        // Indicator at the top of the fill.
         const conf = Math.max(0, Math.min(1, displayConfRef.current));
         ctx.globalAlpha *= 0.4 + 0.6 * conf;
-        const halo = ctx.createRadialGradient(barCx, fillTop, 2 * dpr, barCx, fillTop, 24 * dpr);
+        const halo = ctx.createRadialGradient(barCx, y, 2 * dpr, barCx, y, 24 * dpr);
         halo.addColorStop(0, COLORS.meterIndicator);
         halo.addColorStop(1, "transparent");
         ctx.fillStyle = halo;
-        ctx.fillRect(barLeft - 14 * dpr, fillTop - 24 * dpr, barWidth + 28 * dpr, 48 * dpr);
+        ctx.fillRect(barLeft - 14 * dpr, y - 24 * dpr, barWidth + 28 * dpr, 48 * dpr);
 
         ctx.strokeStyle = COLORS.meterIndicator;
         ctx.lineWidth = 2.5 * dpr;
         ctx.beginPath();
-        ctx.moveTo(barLeft - 4 * dpr, fillTop);
-        ctx.lineTo(barRight + 4 * dpr, fillTop);
+        ctx.moveTo(barLeft - 4 * dpr, y);
+        ctx.lineTo(barRight + 4 * dpr, y);
         ctx.stroke();
         ctx.restore();
       }
@@ -289,7 +293,7 @@ export function ResonanceMeter({
       ctx.font = `300 ${30 * dpr}px system-ui`;
       ctx.textAlign = "center";
       ctx.textBaseline = "alphabetic";
-      const readoutY = plotBottom + 38 * dpr;
+      const readoutY = plotBottom + 54 * dpr;
       ctx.fillText(showNumber ? String(Math.round(dispScore)) : "—", barCx, readoutY);
 
       // Status line below the readout.

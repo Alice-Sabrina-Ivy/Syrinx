@@ -15,7 +15,15 @@
 // an utterance were mostly the silence or noise before it.
 //
 // The gate works only on the relayed pitch-voicing stream (one hint per
-// pitch-worker frame: { voiced, ts, pitch }):
+// pitch-worker frame: { voiced, ts, pitch }). Every time is on ONE clock,
+// the AUDIO clock (gender-worker.js passes the capture contextTime, in
+// ms, of the frame a hint describes, and of the newest audio chunk as
+// "now"): hints are then exactly one capture chunk apart however bursty
+// their delivery is. (Until the 2026-10-07 review they carried the pitch
+// worker's decode wall time; capture delivers chunks in bursts, one burst
+// per hardware audio frame, so with frames >= 64 ms apart every burst
+// looked like a hole in the stream, no voiced run ever reached the onset
+// length, and the meter never showed a number.)
 //
 //   utterance  opens on a run of >= onsetRunMs consecutive voiced hints
 //              (onset = the run's first hint), closes after gapMs with no
@@ -31,14 +39,19 @@
 //   sustained  long steady voicing with little pitch movement: over the
 //              trailing sustainMs, >= sustainMinShare of hints voiced AND
 //              the voiced pitch's 10th-90th percentile spread
-//              <= sustainMaxSpreadSt semitones. Held vowels and sung notes
-//              are not what the classifier reads (it puts women's held
-//              vowels near 50), so the meter shows "needs running speech"
-//              instead. While a young span has been steady since its
-//              start it is held at "warming" rather than scored, so a held
-//              note doesn't flash a number before the full-second test
-//              can fire. Running speech breaks voicing or moves pitch
-//              within a syllable or two, which releases it.
+//              <= sustainMaxSpreadSt semitones. Held single vowels / notes
+//              (about 1 s or longer) are not what the classifier reads (it
+//              puts women's held vowels near 50), so the meter shows
+//              "needs running speech" instead. While a young span has been
+//              steady since its start it is held at "warming" rather than
+//              scored, so a held note doesn't flash a number before the
+//              full-second test can fire. Running speech breaks voicing or
+//              moves pitch within a syllable or two, which releases it.
+//              Limits (measurements/perceived-voice-gate-2026-10-07.md):
+//              it is a single-held-note test — melodic singing (vibrato
+//              wider than ~1 st, glides, legato notes under ~0.5 s) is
+//              mostly scored; and speech on a deliberately flat pitch with
+//              almost no unvoiced frames can trip it.
 //
 // Verdicts from decide(nowTs):
 //   "stale"     no pitch hint for staleMs (pitch worker dead / not warm):
@@ -60,10 +73,16 @@ export const UTTERANCE_GATE_DEFAULTS = Object.freeze({
   minPostOnsetFrac: 0.5,    // >= this much of the window must follow the span start
   staleMs: 2000,            // no hints at all this long = pitch feed dead
   sustainMs: 1000,          // trailing span the held-phonation test looks at
-  sustainMinShare: 0.9,     //   voiced share over it
+  sustainMinShare: 0.95,    //   voiced share over it (0.9 until the
+                            //   2026-10-07 review: flat-intonation speech
+                            //   tripped it; held vowels are ~100 % voiced)
   sustainMaxSpreadSt: 2.0,  //   p90 - p10 of voiced pitch, semitones
   holdSteadyOnset: true,    // keep a young, steady span at "warming"
-  maxHopMs: 60,             // longest plausible gap between consecutive hints
+  // Longest gap between consecutive hints (audio clock) that still
+  // counts as continuous: hints are one capture chunk apart (25 ms; at
+  // most 50 ms with the ?chunk= diag flag), so a larger gap is lost audio.
+  maxHopMs: 100,
+  resetBackMs: 1000,        // the clock jumping back this far = a new stream
 });
 
 // Linear-interpolated percentile of an ascending-sorted array.
@@ -113,11 +132,25 @@ export function createUtteranceGate(options = {}) {
     if (open && (lastVoicedTs === null || ts - lastVoicedTs > o.gapMs)) open = false;
   }
 
+  function reset() {
+    hints = [];
+    lastHintTs = null;
+    lastVoicedTs = null;
+    runStartTs = null;
+    open = false;
+    spanStartTs = null;
+    lastSustainedTs = null;
+  }
+
   return {
-    // { voiced, ts, pitch } — one per pitch-worker frame, in order.
+    // { voiced, ts, pitch } — one per pitch-worker frame, in order; ts on
+    // the audio clock (ms).
     notePitchHint(hint) {
       if (!hint || typeof hint.ts !== "number" || !Number.isFinite(hint.ts)) return;
       const ts = hint.ts;
+      // A clock that jumps back is a new stream (capture restarted):
+      // nothing from the old one may count.
+      if (lastHintTs !== null && ts < lastHintTs - o.resetBackMs) reset();
       const voiced = !!hint.voiced;
       // A hole in the hint stream breaks the voiced run (the frames that
       // would have filled it are unknown).
@@ -146,6 +179,7 @@ export function createUtteranceGate(options = {}) {
       }
     },
 
+    // nowTs: audio-clock ms of the newest audio in the ML window.
     // -> { verdict, resetEma, spanId }
     decide(nowTs) {
       const out = (verdict, resetEma = false) => ({ verdict, resetEma, spanId });

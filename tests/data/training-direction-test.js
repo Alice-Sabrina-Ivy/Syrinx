@@ -1,29 +1,31 @@
 // training-direction-test.js — the training-direction setting and the
-// targets computed from it (src/utils/trainingDirection.js), plus
-// direction-aware session stats (src/utils/sessionStats.js).
+// targets computed from it (src/utils/trainingDirection.js), the pitch
+// level they are judged on (src/utils/pitchLevel.js), and direction-aware
+// session stats (src/utils/sessionStats.js).
 //
 //   node tests/data/training-direction-test.js
 
 import {
   TRAINING_DIRECTIONS,
   PITCH_TARGETS,
-  F2_TARGETS,
   isTrainingDirection,
   directionLabel,
   pitchTargetFor,
-  f2TargetFor,
-  weightTargetFor,
-  inTarget,
+  pitchStatus,
+  isOnTarget,
   bandForDisplay,
   formatTarget,
+  formatOnTarget,
   directionAt,
   appendDirection,
-  directionsUsed,
+  directionSequence,
   loadTrainingDirection,
   saveTrainingDirection,
 } from "../../src/utils/trainingDirection.js";
+import * as TD from "../../src/utils/trainingDirection.js";
+import { createPitchLevel, pitchLevels, pitchLevelAt, PITCH_LEVEL_WINDOW_MS } from "../../src/utils/pitchLevel.js";
 import { computeSummaryStats } from "../../src/utils/sessionStats.js";
-import { PITCH_DISPLAY_RANGE, F2_DISPLAY_RANGE } from "../../src/utils/constants.js";
+import { PITCH_DISPLAY_RANGE } from "../../src/utils/constants.js";
 
 let failures = 0;
 function check(name, ok, detail = "") {
@@ -45,48 +47,64 @@ function check(name, ok, detail = "") {
 // 2. Pitch targets: literature bands, every direction except exploring.
 {
   const f = pitchTargetFor("feminine"), m = pitchTargetFor("masculine"), a = pitchTargetFor("androgynous");
-  check("feminine 165–255 Hz", f.low === 165 && f.high === 255);
-  check("masculine 85–155 Hz", m.low === 85 && m.high === 155);
-  check("androgynous 145–175 Hz", a.low === 145 && a.high === 175);
+  check("feminine 165–255 Hz, travelling up", f.low === 165 && f.high === 255 && f.toward === "up");
+  check("masculine 85–155 Hz, travelling down", m.low === 85 && m.high === 155 && m.toward === "down");
+  check("androgynous 145–175 Hz, a zone", a.low === 145 && a.high === 175 && a.toward === null);
   check("exploring: no target", pitchTargetFor("exploring") === null);
   check("not chosen: no target", pitchTargetFor(null) === null);
   check("androgynous zone overlaps both typical ranges", a.low < m.high && a.high > f.low);
   check("all bands inside the display range", Object.values(PITCH_TARGETS).every(
     (t) => t.low >= PITCH_DISPLAY_RANGE.low && t.high <= PITCH_DISPLAY_RANGE.high));
-  check("150 Hz: masculine yes, feminine no, androgynous yes",
-    inTarget(150, m) === true && inTarget(150, f) === false && inTarget(150, a) === true);
-  check("200 Hz: feminine only", inTarget(200, f) && !inTarget(200, m) && !inTarget(200, a));
-  check("band edges inclusive", inTarget(165, f) && inTarget(255, f) && inTarget(85, m) && inTarget(155, m));
-  check("no target -> null (neutral), whatever the value", inTarget(200, null) === null);
-  check("no value -> null", inTarget(null, f) === null && inTarget(NaN, f) === null);
-}
-
-// 3. F2 targets: open-ended bounds.
-{
-  check("feminine F2 >= 1375", inTarget(1375, f2TargetFor("feminine")) && inTarget(3000, f2TargetFor("feminine"))
-    && !inTarget(1300, f2TargetFor("feminine")));
-  check("masculine F2 <= 1575", inTarget(900, f2TargetFor("masculine")) && inTarget(1575, f2TargetFor("masculine"))
-    && !inTarget(1600, f2TargetFor("masculine")));
-  check("androgynous F2 1375–1575", inTarget(1500, f2TargetFor("androgynous")) && !inTarget(1300, f2TargetFor("androgynous"))
-    && !inTarget(1700, f2TargetFor("androgynous")));
-  check("exploring: no F2 target", f2TargetFor("exploring") === null);
-  const fb = bandForDisplay(F2_TARGETS.feminine, F2_DISPLAY_RANGE);
-  check("open top drawn to the axis top", fb.low === 1375 && fb.high === F2_DISPLAY_RANGE.high);
-  const mb = bandForDisplay(F2_TARGETS.masculine, F2_DISPLAY_RANGE);
-  check("open bottom drawn from the axis bottom", mb.low === F2_DISPLAY_RANGE.low && mb.high === 1575);
-  check("no target -> no band", bandForDisplay(null, F2_DISPLAY_RANGE) === null);
+  check("150 Hz: masculine in, feminine out, androgynous in",
+    pitchStatus(150, m) === "in" && pitchStatus(150, f) === "out" && pitchStatus(150, a) === "in");
+  check("200 Hz: feminine in, masculine out, androgynous out",
+    pitchStatus(200, f) === "in" && pitchStatus(200, m) === "out" && pitchStatus(200, a) === "out");
+  check("band edges inclusive", pitchStatus(165, f) === "in" && pitchStatus(255, f) === "in"
+    && pitchStatus(85, m) === "in" && pitchStatus(155, m) === "in");
+  check("past the band in the direction of travel = beyond (not off target), both directions alike",
+    pitchStatus(300, f) === "beyond" && pitchStatus(78, m) === "beyond");
+  check("androgynous: both sides are off target", pitchStatus(120, a) === "out" && pitchStatus(220, a) === "out");
+  check("on target = in or beyond", isOnTarget("in") && isOnTarget("beyond") && !isOnTarget("out") && !isOnTarget(null));
+  check("no target -> null (neutral), whatever the value", pitchStatus(200, null) === null);
+  check("no value -> null", pitchStatus(null, f) === null && pitchStatus(NaN, f) === null);
   check("band clipped to the axis", bandForDisplay({ low: 50, high: 120 }, PITCH_DISPLAY_RANGE).low === 75);
-  check("formatTarget", formatTarget(PITCH_TARGETS.feminine) === "165–255 Hz"
-    && formatTarget(F2_TARGETS.feminine) === "≥ 1375 Hz" && formatTarget(F2_TARGETS.masculine) === "≤ 1575 Hz"
-    && formatTarget(null) === null);
+  check("no target -> no band", bandForDisplay(null, PITCH_DISPLAY_RANGE) === null);
+  check("formatTarget", formatTarget(PITCH_TARGETS.feminine) === "165–255 Hz" && formatTarget(null) === null);
+  check("formatOnTarget: open in the direction of travel", formatOnTarget(PITCH_TARGETS.feminine) === "≥ 165 Hz"
+    && formatOnTarget(PITCH_TARGETS.masculine) === "≤ 155 Hz" && formatOnTarget(PITCH_TARGETS.androgynous) === "145–175 Hz");
 }
 
-// 4. Vocal-weight side.
+// 3. No resonance (F2) or vocal-weight target in any direction (both are
+//    neutral readouts — measurements/training-direction-targets-2026-10-07.md).
 {
-  check("weight: feminine -> lighter, masculine -> heavier",
-    weightTargetFor("feminine") === "lighter" && weightTargetFor("masculine") === "heavier");
-  check("weight: androgynous / exploring / none -> no target",
-    weightTargetFor("androgynous") === null && weightTargetFor("exploring") === null && weightTargetFor(null) === null);
+  check("no F2 / weight target helpers exported", !("f2TargetFor" in TD) && !("weightTargetFor" in TD)
+    && !("F2_TARGETS" in TD) && !("WEIGHT_TARGETS" in TD));
+}
+
+// 4. Pitch level: running median of the last 1.5 s of voiced pitch.
+{
+  check("window 1.5 s", PITCH_LEVEL_WINDOW_MS === 1500);
+  const lv = createPitchLevel();
+  check("first voiced frame = its own value", lv.push(0, 200) === 200);
+  check("unvoiced frame -> null", lv.push(25, null) === null);
+  check("median of the window", lv.push(50, 100) === 150 && lv.push(75, 300) === 200);
+  check("values older than the window drop out", lv.push(1600, 120) === 120, "only 120 is within 1.5 s");
+  const pts = [{ time: 0, pitch: 100 }, { time: 500, pitch: null }, { time: 1000, pitch: 200 }, { time: 1200, pitch: 210 }];
+  check("pitchLevelAt: median of voiced points in (t - 1.5 s, t]", pitchLevelAt(pts, 1200) === 200);
+  check("pitchLevelAt ignores later points", pitchLevelAt(pts, 1000) === 150);
+  check("pitchLevelAt: nothing voiced -> null", pitchLevelAt(pts, 9000) === null);
+  check("pitchLevels: one per point", pitchLevels(pts, (p) => p.time, (p) => p.pitch).join() === "100,,150,200");
+  // Intonation: a voice whose average is the androgynous zone's centre,
+  // moving +-3 semitones once a second. Per frame it is in the 3.3 st zone
+  // well under half the time; its level stays in the zone.
+  const a = pitchTargetFor("androgynous");
+  const fr = [];
+  for (let t = 0; t < 6000; t += 25) fr.push({ time: t, pitch: 159 * 2 ** ((3 * Math.sin(2 * Math.PI * t / 1000)) / 12) });
+  const perFrame = fr.filter((p) => pitchStatus(p.pitch, a) === "in").length / fr.length;
+  const levels = pitchLevels(fr, (p) => p.time, (p) => p.pitch);
+  const byLevel = levels.filter((l) => pitchStatus(l, a) === "in").length / levels.length;
+  check("intonation around the zone centre: per frame mostly out, level in", perFrame < 0.6 && byLevel > 0.9,
+    `per frame ${(100 * perFrame).toFixed(0)} %, level ${(100 * byLevel).toFixed(0)} %`);
 }
 
 // 5. Direction log.
@@ -100,8 +118,9 @@ function check(name, ok, detail = "") {
   check("directionAt before/at/after the change", directionAt(log, 0) === "feminine"
     && directionAt(log, 11999) === "feminine" && directionAt(log, 12000) === "exploring" && directionAt(log, 99999) === "exploring");
   check("directionAt with no log -> null", directionAt(null, 10) === null && directionAt([], 10) === null);
-  check("directionsUsed in first-use order",
-    directionsUsed(appendDirection(appendDirection(log, 30000, "feminine"), 40000, "masculine")).join() === "feminine,exploring,masculine");
+  check("directionSequence keeps returns to an earlier direction",
+    directionSequence(appendDirection(appendDirection(log, 30000, "feminine"), 40000, "masculine")).join()
+      === "feminine,exploring,feminine,masculine");
   check("starting with no direction -> empty log", appendDirection([], 0, null).length === 0);
 }
 
@@ -130,27 +149,39 @@ function check(name, ok, detail = "") {
   check("storage blocked: save -> false, no throw", (await saveTrainingDirection(broken, "feminine")) === false);
 }
 
-// 7. Session stats against the direction(s) in effect.
+// 7. Session stats against the direction(s) in effect, on the pitch level.
 {
-  const fr = (f0, f2, timestampMs) => ({ voiced: true, f0, f2, f1: 500, f3: 2700, intensity: -30, spectralTilt: 5, hnr: 15, timestampMs });
-  const frames = [fr(120, 1300, 0), fr(150, 1500, 100), fr(170, 1500, 200), fr(200, 1700, 300), fr(240, 2000, 400)];
+  // Frames 2 s apart: each frame's level is its own value.
+  const fr = (f0, timestampMs) => ({ voiced: true, f0, f2: 1500, f1: 500, f3: 2700, intensity: -30, spectralTilt: 5, hnr: 15, timestampMs });
+  const f0s = [120, 150, 170, 200, 240, 300, 80];
+  const frames = f0s.map((f0, i) => fr(f0, i * 2000));
   const pct = (dir) => computeSummaryStats(frames, { directionLog: [{ atMs: 0, direction: dir }] });
   const f = pct("feminine"), m = pct("masculine"), a = pct("androgynous"), x = pct("exploring");
-  check("feminine: 3 of 5 in 165–255 Hz", f.pctTimeInPitchTarget === 60, `${f.pctTimeInPitchTarget}`);
-  check("masculine: 2 of 5 in 85–155 Hz", m.pctTimeInPitchTarget === 40, `${m.pctTimeInPitchTarget}`);
-  check("androgynous: 2 of 5 in 145–175 Hz", a.pctTimeInPitchTarget === 40, `${a.pctTimeInPitchTarget}`);
-  check("exploring: no in-target figures", x.pctTimeInPitchTarget === null && x.pctTimeInResonanceTarget === null);
-  check("F2 feminine >= 1375: 4 of 5", f.pctTimeInResonanceTarget === 80, `${f.pctTimeInResonanceTarget}`);
-  check("F2 masculine <= 1575: 3 of 5", m.pctTimeInResonanceTarget === 60, `${m.pctTimeInResonanceTarget}`);
-  check("F2 androgynous 1375–1575: 2 of 5", a.pctTimeInResonanceTarget === 40, `${a.pctTimeInResonanceTarget}`);
-  const mixed = computeSummaryStats(frames, { directionLog: [{ atMs: 0, direction: "masculine" }, { atMs: 250, direction: "feminine" }] });
-  // 120,150 -> masculine in; 170 -> masculine out; 200,240 -> feminine in = 4/5
-  check("changed mid-session: each frame vs its own target", mixed.pctTimeInPitchTarget === 80, `${mixed.pctTimeInPitchTarget}`);
-  const partly = computeSummaryStats(frames, { directionLog: [{ atMs: 0, direction: "exploring" }, { atMs: 250, direction: "feminine" }] });
-  check("exploring frames don't count either way", partly.pctTimeInPitchTarget === 100, `${partly.pctTimeInPitchTarget}`);
+  check("feminine: 170/200/240 in + 300 beyond = 4 of 7", f.pctTimeInPitchTarget === 57, `${f.pctTimeInPitchTarget}`);
+  check("masculine: 120/150 in + 80 beyond = 3 of 7", m.pctTimeInPitchTarget === 43, `${m.pctTimeInPitchTarget}`);
+  check("androgynous: 150/170 = 2 of 7", a.pctTimeInPitchTarget === 29, `${a.pctTimeInPitchTarget}`);
+  check("single direction: the figure covers all voiced time", f.pctVoicedWithPitchTarget === 100);
+  check("exploring: no on-target figure, 0 % of voiced time had a target",
+    x.pctTimeInPitchTarget === null && x.pctVoicedWithPitchTarget === 0);
+  check("no resonance figure for new sessions", f.pctTimeInResonanceTarget === null && m.pctTimeInResonanceTarget === null);
+  const mixed = computeSummaryStats(frames, { directionLog: [{ atMs: 0, direction: "masculine" }, { atMs: 5000, direction: "feminine" }] });
+  // 120,150 -> masculine in; 170 (t=4000) -> masculine out; 200,240,300 -> feminine on; 80 -> feminine out = 5/7
+  check("changed mid-session: each frame vs its own target", mixed.pctTimeInPitchTarget === 71, `${mixed.pctTimeInPitchTarget}`);
+  const partly = computeSummaryStats(frames, { directionLog: [{ atMs: 0, direction: "exploring" }, { atMs: 5000, direction: "feminine" }] });
+  check("exploring frames don't count either way", partly.pctTimeInPitchTarget === 75, `${partly.pctTimeInPitchTarget}`);
+  check("...and the share of voiced time with a target says so", partly.pctVoicedWithPitchTarget === 57, `${partly.pctVoicedWithPitchTarget}`);
   const legacy = computeSummaryStats(frames);
-  check("no direction log -> no assumed target", legacy.pctTimeInPitchTarget === null && legacy.pctTimeInResonanceTarget === null);
+  check("no direction log -> no assumed target", legacy.pctTimeInPitchTarget === null
+    && legacy.pctVoicedWithPitchTarget === null && legacy.pctTimeInResonanceTarget === null);
   check("other stats unaffected by direction", legacy.medianF0 === f.medianF0 && legacy.avgF2 === m.avgF2);
+  // Intonation, 25 ms frames: a feminine-target voice averaging 200 Hz with
+  // peaks above 255 Hz and dips under 165 Hz is on target throughout.
+  const tone = [];
+  for (let t = 0; t < 8000; t += 25) tone.push(fr(200 * 2 ** ((5 * Math.sin(2 * Math.PI * t / 1300)) / 12), t));
+  const s = computeSummaryStats(tone, { directionLog: [{ atMs: 0, direction: "feminine" }] });
+  check("intonation peaks and dips don't count against the level", s.pctTimeInPitchTarget >= 95, `${s.pctTimeInPitchTarget}`);
+  const shuffled = computeSummaryStats([...frames].reverse(), { directionLog: [{ atMs: 0, direction: "feminine" }] });
+  check("frame order doesn't matter (sorted by time)", shuffled.pctTimeInPitchTarget === f.pctTimeInPitchTarget);
 }
 
 console.log(failures === 0 ? "\nAll training-direction checks passed." : `\n${failures} check(s) FAILED.`);
