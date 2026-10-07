@@ -534,7 +534,8 @@ it keeps voice everywhere — worst clean set 0.17 %, worst voice-in-noise cell
   selection rule placed the gate at p ≥ 0.03 because the new validation data
   (dysphonic vowels, singing exercises, children, and every group again with
   the state carried across recordings) allowed nothing higher; the selection
-  data predicted the result (28.1 % on the tuning 194, 28.0 % at the look).
+  data predicted the result (28.1 % on the tuning 194 at selection, 28.0 % on
+  the 279 at the look).
 - **What round 2 fixed** (all reported rows, not gates):
   - the round-1 V1 failure: male mix cells 2.33–6.88 % → 0.00–0.17 %; male
     300–400 Hz held notes in noise 8.0–19.3 % → 0.003–0.57 % per cell;
