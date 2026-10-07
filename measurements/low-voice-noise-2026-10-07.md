@@ -842,29 +842,69 @@ other jobs.
 
 ### Model hosting
 
-The model is still fetched from jsDelivr, from the v6.2.3 tag.
+**Historical (superseded 2026-10-07, fix round):** this section said the
+Hugging Face mirror could not be created (no write token on the build
+machine). It had in fact been created before the integration commit; the
+text was out of date.
 
-The Hugging Face mirror `Alice-Sabrina-Ivy/silero-vad-v6.2.3-onnx` was not
-created, because there is no Hugging Face write token on the build machine.
-The upload is prepared (the unmodified ONNX, Silero's MIT LICENSE, and a
-model card that credits the upstream project).
+The mirror `Alice-Sabrina-Ivy/silero-vad-v6.2.3-onnx` exists, at commit
+`6c8942f41b1e6a85ef5b092537f0db565f099c49` (created 2026-10-07). Checked:
 
-- **Bytes.** The jsDelivr and raw.githubusercontent copies at tag v6.2.3
-  (commit 5cd7945) are byte-identical, 2,327,524 bytes, and match the
-  pinned sha256.
-- **CORS.** The account's existing model (the q8-v2 gender model) serves
-  CORS for the app's origin on both redirect hops. The new repo needs the
-  same check after upload.
-- **Caching.** The probes found that HF's `/resolve/` redirect is sent
-  `no-store` and points at a signed, expiring CDN URL. Every visit
-  therefore re-downloads the model: warm fetch 1.75 s vs 0.29 s from
-  jsDelivr, which sends `immutable`. With the HF copy, the detector came on
-  0.6 s after the classifier on return visits. The first window then opened
-  on pitch evidence, but no number was shown before the detector was live.
-- **To switch.** Move `modelUrl` to the commit-pinned
-  `resolve/<commit>/silero_vad.onnx` and keep `modelSha256`. Add a Cache
-  Storage layer keyed by the sha256 in the same change. The TODO is in
-  `src/ml/speech-detector.js`.
+- **Bytes.** Its `silero_vad.onnx` is byte-identical to the jsDelivr and
+  raw.githubusercontent copies at tag v6.2.3 (commit 5cd7945): 2,327,524
+  bytes, the pinned sha256. Its LICENSE is byte-identical to upstream
+  v6.2.3, and the model card credits Silero.
+- **CORS.** The `huggingface.co` 302 reflects the page origin (checked for
+  `https://alice-sabrina-ivy.github.io`); the CDN hop sends `*`.
+- **In the app.** A build with the commit-pinned resolve URL loaded the
+  detector ("ready") and scored women and men normally.
+
+**Caching, measured before the switch (hard rule 3).** HF's `/resolve/`
+redirect is sent `Cache-Control: no-store` and points at a signed CDN URL,
+so the browser's HTTP cache cannot serve it; jsDelivr sends `immutable`.
+The gender worker is recreated on every Start Listening, so without a
+cache of its own the model would be downloaded again on every start, not
+only on every visit.
+
+Method: a dedicated worker on a `localhost` page (a secure context) in
+headless Chrome 154 (puppeteer, temporary profile, closed by PID), on
+this PC's home connection. Each fetch is timed to the verified bytes:
+`fetch` → `arrayBuffer` → sha256. Five repeats in one browser process,
+then one more in a new process on the same profile (a return visit).
+Three runs. The scratch script is not committed.
+
+| source | first fetch (cold) | repeat, same process | return visit, new process |
+|---|---|---|---|
+| HF resolve URL (HTTP cache only) | 711–841 ms | 218–356 ms | 688–763 ms |
+| jsDelivr (HTTP cache) | 179–336 ms | 27–36 ms | 28–34 ms |
+| Cache Storage entry (read + sha256) | — | 6–10 ms | 7–10 ms |
+
+So moving the URL alone would cost 0.2–0.8 s of download on every start.
+Earlier probes on a busier connection saw 1.75 s. With a Cache Storage
+entry, a warm start reads the model in under 10 ms, faster than jsDelivr's
+HTTP cache.
+
+**Change (made after this measurement).** `modelUrl` is the commit-pinned
+resolve URL
+`https://huggingface.co/Alice-Sabrina-Ivy/silero-vad-v6.2.3-onnx/resolve/6c8942f41b1e6a85ef5b092537f0db565f099c49/silero_vad.onnx`;
+`modelSha256` is unchanged. `loadVerifiedModel` in
+`src/ml/speech-detector.js` reads the bytes from Cache Storage (cache
+`syrinx-speech-detector`, key = the URL plus `?sha256=<hash>`). It checks
+the sha256 on every read and drops a bad entry. On a miss it fetches,
+checks the sha256, stores the entry and deletes any other entries in that
+cache. If Cache Storage is unavailable or throws (an insecure origin, some
+private windows, quota), it falls back to a plain fetch.
+
+**Not moved: the ONNX Runtime WASM.** The runtime's
+`ort-wasm-simd-threaded.asyncify.{mjs,wasm}` still comes from
+`cdn.jsdelivr.net/npm/onnxruntime-web@…` (Transformers.js's default
+`wasmPaths`). The speech detector and the gender classifier both run on
+it. A review that blocked the jsDelivr host saw the classifier fail too
+(meter status "error"). This dependency predates the speech detector.
+Moving the Silero model therefore does not remove jsDelivr from the
+meter's critical path. Serving the runtime from the app's own bundle
+(`env.backends.onnx.wasm.wasmPaths`) would remove it; that would be a
+separate measured change, and the user decides whether to make it.
 
 ### Still pending
 
