@@ -211,6 +211,85 @@ console.log("\nheld-phonation share: 95 % voiced over the second");
   check("default share is 0.95", D.sustainMinShare === 0.95);
 }
 
+console.log("\nspeech-detector evidence (noteSpeech, 32 ms frames)");
+{
+  const SP = 32;
+  // Pitch hints every 25 ms and speech hints every 32 ms (both on the
+  // audio clock); a decision every 150 ms after feeding everything <= now.
+  function runBoth(pitchFrame, speechP, durationMs, gate = createUtteranceGate()) {
+    const out = [];
+    let tp = HOP, ts = SP;
+    for (let now = TICK; now <= durationMs; now += TICK) {
+      for (; tp <= now; tp += HOP) gate.notePitchHint({ ts: tp, ...pitchFrame(tp) });
+      for (; ts <= now; ts += SP) gate.noteSpeech({ ts, p: speechP(ts) });
+      out.push({ t: now, ...gate.decide(now) });
+    }
+    return out;
+  }
+  const talking = (from, to) => (t) => (t > from && t <= to ? 0.95 : 0.02);
+  // Speech the pitch tracker mostly loses (heavy noise on a low voice):
+  // one voiced frame in four.
+  const lostPitch = (t) => (t > 1000 && t <= 6000 && t % 100 < 25 ? { voiced: true, pitch: 95 } : silent());
+  const ds = runBoth(lostPitch, talking(1000, 6000), 6000);
+  const first = firstAt(ds, "score");
+  check("speech the pitch tracker loses still scores", !!first);
+  check("...first score within 0.8 s of the onset", first && first.t - 1000 <= 800, first && `${first.t - 1000} ms`);
+  check("...and keeps scoring", ds.filter((d) => d.t >= 2000 && d.t <= 6000).every((d) => d.verdict === "score"));
+  const pitchOnly = run(lostPitch, 6000);
+  check("(the same pitch stream alone never scores)", pitchOnly.every((d) => d.verdict !== "score"));
+
+  // Noise the pitch tracker voices but the detector rejects: never scored.
+  const dsN = runBoth((t) => (t % 400 < 200 ? { voiced: true, pitch: 120 + (t % 7) } : silent()), () => 0.03, 6000);
+  check("pitch-voiced noise without speech is never scored", dsN.every((d) => d.verdict !== "score"),
+    dsN.map((d) => d.verdict[0]).join(""));
+
+  // Speech probability blips (< onsetRunMs) never open an utterance.
+  const dsB = runBoth(silent, (t) => (t % 800 < 64 ? 0.9 : 0.05), 6000);
+  check("short speech blips never open", dsB.every((d) => d.verdict === "silent"));
+
+  // Held note: pitch steady, detector near 0 -> 'sustained', never scored.
+  const dsH = runBoth((t) => (t > 500 ? heldNote(220)(t) : silent()), () => 0.05, 4500);
+  check("held note: never scored", dsH.every((d) => d.verdict !== "score"));
+  check("held note: 'sustained' after ~1 s", dsH.some((d) => d.verdict === "sustained"));
+
+  // A steady hum the pitch tracker calls a held note, under continuous
+  // speech: once the hold verdict ends, the still-running speech reopens.
+  const humThenVoice = (t) => (t <= 3000 ? { voiced: true, pitch: 100 } : speech(200)(t));
+  const dsR = runBoth(humThenVoice, talking(2000, 7000), 7000);
+  const back = dsR.find((d) => d.t > 3000 && d.verdict === "score");
+  check("speech running through the end of a hold verdict is scored again", !!back);
+  check("...with a fresh EMA, once the window is mostly past the hold",
+    back?.resetEma === true && back.t - 3000 >= D.minPostOnsetFrac * D.windowMs, back && `${back.t - 3000} ms`);
+  const dsR0 = runBoth(humThenVoice, talking(2000, 7000), 7000, createUtteranceGate({ speechReopenAfterHold: false }));
+  check("(speechReopenAfterHold off: shut until the speech run breaks)", dsR0.every((d) => d.t <= 3000 || d.verdict !== "score"));
+
+  // Gap / recency on speech evidence.
+  const dsG = runBoth(silent, (t) => (t > 1000 && t <= 3000 ? 0.95 : 0.02), 5000);
+  check("scores during speech", dsG.some((d) => d.verdict === "score"));
+  check("no score once speech is older than recencyMs",
+    dsG.filter((d) => d.t > 3000 + D.recencyMs + SP).every((d) => d.verdict !== "score"));
+  check("closed after gapMs", dsG.filter((d) => d.t > 3000 + D.gapMs + SP).every((d) => d.verdict === "silent"));
+
+  // Detector stops (failed / stalled): pitch voicing decides again after staleMs.
+  {
+    const g = createUtteranceGate();
+    runBoth(silent, () => 0.02, 1500, g);
+    let scored = false;
+    for (let t = 1525; t <= 7000 && !scored; t += HOP) {
+      g.notePitchHint({ ts: t, ...speech(150)(t) });
+      if (t % TICK === 0 && g.decide(t).verdict === "score") scored = true;
+    }
+    check("stale speech hints -> pitch voicing decides again", scored);
+  }
+
+  // Variant switch: speechOrPitch lets pitch voicing open too.
+  const dsO = runBoth(speech(150), () => 0.02, 4000, createUtteranceGate({ speechOrPitch: true }));
+  check("speechOrPitch: pitch-voiced speech the detector misses scores", dsO.some((d) => d.verdict === "score"));
+  const dsS = runBoth(speech(150), () => 0.02, 4000);
+  check("default: the detector decides (pitch voicing alone does not open)", dsS.every((d) => d.verdict !== "score"));
+  check("speech defaults: Silero threshold 0.5, 32 ms frames", D.speechThreshold === 0.5 && D.speechHopMs === 32);
+}
+
 console.log("\nmeter state mapping");
 check("score -> scoring", meterStateForVerdict("score") === "scoring");
 check("warming -> updating", meterStateForVerdict("warming") === "updating");
