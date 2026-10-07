@@ -7,8 +7,9 @@
 // The BUILT app (vite preview) in headless Chrome under ?diag=1, the fake mic
 // playing a public LibriSpeech WAV. Reads window.__syrinxDiag.snapshot()
 // .resonancePerf: the worker's own busy time (performance.now() around its
-// chunk + pitch-frame processing) per second of audio — an EMA (τ 10 s) and
-// the session mean. The panel stays off (no gender worker).
+// chunk + pitch-frame processing) per second of audio — the overload guard's
+// trailing 10 s mean and the session mean. --panel=on turns the experimental
+// "Likely heard as" panel on (the gender worker runs alongside); default off.
 //
 // Process hygiene (CLAUDE.md hard rule 2): puppeteer with a temporary
 // --user-data-dir, browser.close() then taskkill of ITS pid only; the preview
@@ -27,6 +28,7 @@ const arg = (k, d) => (process.argv.find((a) => a.startsWith(`--${k}=`)) ?? `=${
 const WAV = arg("wav", path.join(repo, "build/cue-strip-smoke/speech-woman.wav"));
 const SECONDS = Number(arg("seconds", "60"));
 const PORT = Number(arg("port", "4195"));
+const PANEL = arg("panel", "off") === "on";
 const CHROME = ["C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
   "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe"].find(existsSync);
 if (!CHROME || !existsSync(WAV)) { console.error("need Chrome and the WAV"); process.exit(2); }
@@ -63,6 +65,10 @@ await page.waitForFunction(() => document.body.innerText.includes("What are you 
 await page.evaluate(() => document.querySelector('input[data-direction="exploring"]')?.closest("label").click());
 await click("Continue");
 await page.waitForFunction(() => document.body.innerText.includes("Stop Listening"), { timeout: 30000 });
+if (PANEL) {
+  await page.evaluate(() => [...document.querySelectorAll("[data-heard-as] button")].find((b) => b.textContent.includes("Turn on"))?.click());
+  await page.waitForFunction(() => document.querySelector("[data-heard-as]")?.dataset.modelWorker === "ready", { timeout: 180000 });
+}
 const ua = await browser.version();
 const rows = [];
 for (let t = 10; t <= SECONDS; t += 10) {
@@ -70,10 +76,11 @@ for (let t = 10; t <= SECONDS; t += 10) {
   const s = await page.evaluate(() => window.__syrinxDiag?.snapshot());
   const p = s?.resonancePerf;
   rows.push(p);
-  console.log(`t=${t}s  ema ${p?.msPerAudioS?.toFixed(1)} ms/s  mean ${p?.meanMsPerAudioS?.toFixed(1)} ms/s  audio ${p?.audioS?.toFixed(0)} s  bins ${p?.binsAdmitted}+${p?.binsDropped} dropped  forced ${p?.gridForcedUnvoiced}  status ${s?.resonanceStatus?.status}  ml worker ${s?.mlWorkerAlive}`);
+  console.log(`t=${t}s  trailing10s ${p?.msPerAudioS?.toFixed(1)} ms/s  mean ${p?.meanMsPerAudioS?.toFixed(1)} ms/s  audio ${p?.audioS?.toFixed(0)} s  bins ${p?.binsAdmitted}+${p?.binsDropped} dropped  forced ${p?.gridForcedUnvoiced}  status ${s?.resonanceStatus?.status}  ml worker ${s?.mlWorkerAlive}`);
 }
 const last = rows[rows.length - 1];
-console.log(`${ua}: resonance worker ${last?.meanMsPerAudioS?.toFixed(1)} ms per audio second (session mean), EMA ${last?.msPerAudioS?.toFixed(1)}`);
+const peak = Math.max(...rows.map((r) => r?.msPerAudioS ?? 0));
+console.log(`${ua} (panel ${PANEL ? "on" : "off"}): resonance worker ${last?.meanMsPerAudioS?.toFixed(1)} ms per audio second (session mean), trailing 10 s ${last?.msPerAudioS?.toFixed(1)}, peak ${peak.toFixed(1)}, overloads ${last?.overloads ?? 0}`);
 await browser.close().catch(() => {});
 cleanup();
 process.exit(0);

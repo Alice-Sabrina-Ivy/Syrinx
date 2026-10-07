@@ -5,19 +5,35 @@ OUT = []
 say = lambda *a: (print(*a), OUT.append(" ".join(str(x) for x in a)))
 LO = pd.read_csv("units_loso.csv", index_col=0)
 VU = pd.read_csv("units_val.csv", index_col=0)
-VU = VU[VU.vset.isin(["hc-syl", "picka-jebens-ls", "picka-jebens-vnt-sent", "picka-nagels-ls", "mooshammer"])]
-A = pd.concat([LO.assign(set=LO.fset), VU.assign(set=VU.vset)])
-A["r"] = lg(A.y.values) - A.eta.values
-say("== Condition-level held-out coverage by side (source-balanced; LOSO fit sources + licence-validation sources) ==")
-for w in [1.79, 2.0, 2.25, 2.5]:
-    parts = []
-    for sd in ["fem", "mid", "masc"]:
-        d = A[A.side == sd]
-        wt = 1 / d.set.map(d.set.value_counts())
-        parts.append(f"{sd} {np.average(np.abs(d.r) <= w, weights=wt):.2f} (n {len(d)})")
-    nonpal = A[A.set != "palette"]
-    wt = 1 / nonpal.set.map(nonpal.set.value_counts())
-    say(f"   w {w}: " + ", ".join(parts) + f" | all non-Palette {np.average(np.abs(nonpal.r) <= w, weights=wt):.2f}")
+# The width is SELECTED on licence-clean held-out data only: the fit sources
+# leave-one-source-out (Palette, Skuk, Meyer: CC BY; RB695 listener data:
+# CC BY; Hillenbrand & Clark published rates: facts) plus hc-syl (the H&C
+# syllable condition, facts). The CC BY-NC-SA PICKA sets (Jebens, Nagels)
+# and Mooshammer (no data licence) are reported separately as validation
+# and can never enter the selection (licence rule: shipped constants only
+# from CC BY / CC0 / MIT / facts).
+CLEAN_VAL = ["hc-syl"]
+NONCLEAN_VAL = ["picka-jebens-ls", "picka-jebens-vnt-sent", "picka-nagels-ls", "mooshammer"]
+def stack(vsets):
+    V = VU[VU.vset.isin(vsets)]
+    X = pd.concat([LO.assign(set=LO.fset), V.assign(set=V.vset)]) if vsets is CLEAN_VAL else V.assign(set=V.vset)
+    X = X.copy(); X["r"] = lg(X.y.values) - X.eta.values
+    return X
+A = stack(CLEAN_VAL)
+assert not A.set.isin(NONCLEAN_VAL).any()
+def cover(X, label):
+    say(label)
+    for w in [1.79, 2.0, 2.25, 2.5]:
+        parts = []
+        for sd in ["fem", "mid", "masc"]:
+            d = X[X.side == sd]
+            if not len(d): parts.append(f"{sd} - (n 0)"); continue
+            wt = 1 / d.set.map(d.set.value_counts())
+            parts.append(f"{sd} {np.average(np.abs(d.r) <= w, weights=wt):.2f} (n {len(d)})")
+        say(f"   w {w}: " + ", ".join(parts))
+cover(A, "== SELECTION: condition-level held-out coverage by side (source-balanced; licence-clean only: LOSO fit sources + hc-syl) ==")
+say("")
+cover(stack(NONCLEAN_VAL), "== VALIDATION ONLY (never used to choose w): PICKA Jebens / Nagels (CC BY-NC-SA) + Mooshammer (no data licence) ==")
 say("\n== Three-way word on the same held-out listener data (w 2.25) vs what listeners did ==")
 w = 2.25
 A["word"] = np.where(sig(A.eta - w) > 50, "likely man", np.where(sig(A.eta + w) < 50, "likely woman", "split"))
