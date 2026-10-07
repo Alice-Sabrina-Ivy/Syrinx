@@ -1,9 +1,10 @@
 # "Likely heard as" (experimental, opt-in): calibration — 2026-10-07
 
 The Dashboard's opt-in **"Likely heard as · Experimental"** panel shows how
-listeners in published studies might hear a voice: the shares who would say
-*man*, *neither or unsure* and *woman*, each as a **range** in "x in 10", never a
-verdict. It is off by default. This note records what its constants are, what
+listeners in published studies might hear a voice: the two-way share who
+would say *man* rather than *woman* as a **range** on one man ↔ woman axis, in
+tenths, plus the share who might be *unsure or say neither* as a text line —
+never a verdict (display: §8). It is off by default. This note records what its constants are, what
 they were fitted on, how well they do on held-out listener data, and the known
 failures the panel must (and does) disclose. Every number comes from public
 listener data, or public / rebuilt stimuli measured with the app's own chain.
@@ -258,9 +259,30 @@ the range rule hides 29 % of sung items), and neither are children's voices
 "More" instead — a deviation from the spec's "must hide", because no cheap
 detector exists.
 
+## 8. Display
+
+User decision 2026-10-07: **one horizontal axis** instead of three bracket
+rows. Left end "would say man" (the cue strip's orientation: typically-men
+end on the left), right end "would say woman", ticks in tenths. The axis is
+the two-way share `s` of §1 (unsure listeners counted half each way):
+position 1 − s. The shaded band is the range [sLow, sHigh] of §5 rounded
+outward to tenths (the same rounding as the words, so band and text agree);
+the dot is the unrounded middle guess s. Under it: "About A–B in 10 would say
+man · about C–D in 10 would say woman" and "About E–F in 10 might be unsure
+or say neither" (the §1 unsure range). A band spanning ≥ 8 tenths — at this
+half-width that is |eta| ≲ 1.3, i.e. every in-between voice — is dimmed, has
+no dot and says "Can't tell yet — the range covers most of the scale". No
+verdict word, no percent sign, neutral colours, the same template in every
+direction; a mirrored estimate gives a mirrored axis and the same words with
+man / woman swapped (`tests/ml/heard-as-axis-test.js`). The always-visible
+caveat, the experiment label and the hide rules (§7) are unchanged. Code:
+`src/components/heardAsAxisModel.js` (geometry + words), `HeardAsPanel.jsx`.
+No estimate, constant or coverage figure changed.
+
 ## Reproduce
 
 ```
+node tests/ml/heard-as-axis-test.js            # the axis: geometry, words, can't-tell, mirror symmetry
 node tests/ml/heard-as-test.js                 # constants, test vectors, shares, formatting, hide rules
 node tests/ml/heard-as-equivalence-test.js     # live aggregation == fit-time definition; window-set guard
 node scripts/heard-as/run_chain.mjs <jobs_pov.json> build/heard-as/palette_chain.jsonl

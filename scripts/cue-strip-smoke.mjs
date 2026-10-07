@@ -26,9 +26,13 @@
 //                   panel -> the worker starts, Settings' switch agrees, three
 //                   ranges appear with no "%" in the panel; reload -> still on;
 //                   switched off in Settings -> the panel agrees, the worker is
-//                   gone.
+//                   gone. The panel is ONE man <-> woman axis (no bracket
+//                   rows): shaded range, a dot unless "can't tell yet", the
+//                   range and unsure lines, end words and range inside the
+//                   panel, screen-reader label present.
 //   2 speech-man    (heard-as back on) pitch / resonance live, resonance reads
-//                   lower than the woman's; three ranges.
+//                   lower than the woman's; the axis is shown and the man's
+//                   middle guess sits left of the woman's (orientation).
 //   3 held          resonance "sustained" for >= 60 % of the voiced hold after
 //                   its first second; the panel says "sustained", never ranges.
 //   4 noise / 5 silence  no dot on any row after the 5 s hold; the panel never
@@ -162,7 +166,19 @@ const state = (page) => page.evaluate(() => {
   return {
     rows,
     heardAs: p ? { mode: p.dataset.heardAs, reason: p.dataset.reason ?? null, worker: p.dataset.modelWorker ?? null, text: p.innerText,
-      shares: p.querySelectorAll("[data-share]").length } : null,
+      axes: p.querySelectorAll("[data-heard-as-axis]").length, legacyRows: p.querySelectorAll("[data-share]").length,
+      axis: (() => {
+        const a = p.querySelector("[data-heard-as-axis]");
+        if (!a) return null;
+        const pr = p.getBoundingClientRect();
+        const ends = [...a.querySelectorAll("[data-axis-ends] span")].map((e) => e.getBoundingClientRect());
+        const range = a.querySelector("[data-axis-range]")?.getBoundingClientRect();
+        return { wide: a.dataset.axisWide === "1", dot: Number(a.dataset.axisDot), lo: Number(a.dataset.axisLo), hi: Number(a.dataset.axisHi),
+          dotShown: !!a.querySelector("[data-axis-dot-mark]"), sr: a.querySelector("[role=img]")?.getAttribute("aria-label") ?? "",
+          range: p.querySelector("[data-heard-as-range]")?.textContent ?? "", unsure: p.querySelector("[data-heard-as-unsure]")?.textContent ?? "",
+          fits: p.scrollWidth <= p.clientWidth + 1 && ends.length === 2 && ends.every((e) => e.left >= pr.left - 0.5 && e.right <= pr.right + 0.5)
+            && ends[0].right <= ends[1].left && !!range && range.left >= pr.left - 0.5 && range.right <= pr.right + 0.5 };
+      })() } : null,
     listening: document.body.innerText.includes("Stop Listening"),
   };
 });
@@ -252,6 +268,18 @@ async function sample(page, ms, fn) {
     await sleep(250);
   }
   return false;
+}
+
+// The heard-as axis, whenever it is shown.
+let womanDot = null;
+function axisChecks(who, s) {
+  const a = s.heardAs?.axis;
+  check(`${who}: axis range shaded, dot shown exactly when not "can't tell yet"`, !!a && a.hi > a.lo && a.dotShown === !a.wide, JSON.stringify(a));
+  check(`${who}: axis words — range line ("can't tell yet" when wide) and unsure line`, !!a
+    && (a.wide ? /^Can't tell yet/.test(a.range) : /would say man · .* would say woman$/.test(a.range))
+    && / might be unsure or say neither$/.test(a.unsure), `${a?.range} | ${a?.unsure}`);
+  check(`${who}: axis screen-reader label`, !!a && a.sr.startsWith("Scale from would say man"), a?.sr);
+  check(`${who}: axis, end words and range fit inside the panel`, !!a && a.fits);
 }
 
 const SPEC_HL = {
@@ -369,11 +397,13 @@ for (const label of ["About the pitch cue", "About the resonance cue", "About th
   await closeSettings(page);
   const shown = await sample(page, 120000, (st) => st.heardAs?.mode === "shown");
   s = await state(page);
-  check("heard-as: three ranges appear on speech", shown && s.heardAs.shares === 3, `${s.heardAs?.mode}/${s.heardAs?.reason}`);
+  check("heard-as: one man <-> woman axis appears on speech (no bracket rows)", shown && s.heardAs.axes === 1 && s.heardAs.legacyRows === 0, `${s.heardAs?.mode}/${s.heardAs?.reason}`);
+  axisChecks("woman", s);
+  womanDot = s.heardAs?.axis?.dot ?? null;
   check("heard-as: no '%' in the panel while it shows ranges", shown && !s.heardAs.text.includes("%"));
   check("heard-as: no verdict word", shown && !/likely (a )?(man|woman)|likely heard as a/i.test(s.heardAs.text.replace("Likely heard as", "")));
   await shot(page, "04-heard-as-woman");
-  log(`  ranges: ${s.heardAs?.text.split("\n").slice(1, 7).join(" | ")}`);
+  log(`  axis: ${JSON.stringify(s.heardAs?.axis)}`);
 }
 // reload: persists
 {
@@ -415,9 +445,16 @@ check("man: listening", await continueAfterReload(page));
   const s = await state(page);
   check("man: pitch and resonance live", pitchLive && resLive);
   check("man: resonance reads lower than the woman's", manU !== null && womanU !== null && manU < womanU, `man ${manU} vs woman ${womanU}`);
-  check("man: three ranges", s.heardAs?.mode === "shown" && s.heardAs.shares === 3 && !s.heardAs.text.includes("%"), `${s.heardAs?.mode}/${s.heardAs?.reason}`);
+  check("man: one man <-> woman axis, no '%'", s.heardAs?.mode === "shown" && s.heardAs.axes === 1 && s.heardAs.legacyRows === 0 && !s.heardAs.text.includes("%"), `${s.heardAs?.mode}/${s.heardAs?.reason}`);
+  axisChecks("man", s);
+  const manDot = s.heardAs?.axis?.dot ?? null;
+  check("orientation: the man's middle guess sits left of the woman's", manDot !== null && womanDot !== null && manDot < womanDot, `man ${manDot} vs woman ${womanDot}`);
   await shot(page, "05-man-live");
-  log(`  ranges: ${s.heardAs?.text.split("\n").slice(1, 7).join(" | ")}`);
+  // the panel itself (below the first screen on short / narrow viewports)
+  await page.evaluate(() => document.querySelector("[data-heard-as]")?.scrollIntoView({ block: "center" }));
+  await sleep(200);
+  await shot(page, "05b-heard-as-panel");
+  log(`  axis: ${JSON.stringify(s.heardAs?.axis)}`);
   check("no page errors (man)", errors.length === 0, errors.slice(0, 3).join(" | "));
 }
 

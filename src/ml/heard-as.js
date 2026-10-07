@@ -180,9 +180,10 @@ export function formatShare([lo, hi]) {
   const [a, b] = shareTenths([lo, hi]);
   return a === b ? `about ${a} in 10` : `about ${a}–${b} in 10`;
 }
-// A row whose rounded range spans 8 tenths or more says almost nothing
-// (2026-10-07 review: "about 0–10 in 10" read as a full bar). The panel
-// shows it dimmed, as "can't tell (A–B in 10)".
+// A range whose rounded ends span 8 tenths or more says almost nothing
+// (2026-10-07 review: "about 0–10 in 10" read as a full bar). The panel's
+// man <-> woman axis (heardAsAxisModel.js) applies it to the two-way range:
+// band dimmed, no dot, "Can't tell yet".
 export const WIDE_SHARE_TENTHS = 8;
 export function isWideShare(range) {
   const [a, b] = shareTenths(range);

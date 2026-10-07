@@ -225,7 +225,9 @@ girls 0 of 38) or most singing (Kong: 29 % of sung items; 43 % of feminine,
 
 ## 8. Display changes without new measurements
 
-- Heard-as ranges are drawn as brackets (end caps, a light band, a dot at the
+- **Historical (superseded 2026-10-07):** heard-as ranges were drawn as
+  brackets — replaced the same day, by user decision, with one man ↔ woman
+  axis (heard-as-calibration-2026-10-07.md §8). At this review: brackets (end caps, a light band, a dot at the
   central estimate), never a bar filled from the left; a row whose rounded
   range spans ≥ 8 tenths is dimmed and says "can't tell (A–B)"; two or more
   such rows add "Too uncertain to say much about this voice yet". The middle

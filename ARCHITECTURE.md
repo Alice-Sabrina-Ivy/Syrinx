@@ -595,8 +595,9 @@ The default practice mode — everything at a glance. **As built (Design A
   (colour, a hollow dot and "↑ higher" / "↓ lower" — never colour alone). The
   pitch level and steadiness sit in the pitch row, HNR in the strip's caption.
 - **"Likely heard as · Experimental"** — opt-in, off by default: listener
-  shares (man / neither or unsure / woman) as bracketed ranges in "x in 10",
-  never a verdict, with its known weaknesses stated (including that it was
+  shares on one man ↔ woman axis (a shaded range in tenths with a dot for
+  the middle guess, "can't tell yet" when the range covers most of it; the
+  unsure / neither share as a text line), never a verdict, with its known weaknesses stated (including that it was
   not tested on trans women or nonbinary speakers); hidden outside the range
   it was fitted on.
 - **Session row**: Save, timer, notes.
