@@ -12,9 +12,11 @@
 // Protocol:
 //   main → worker: { type: "init", inputSampleRate, modelId?, diag? }
 //                  { type: "audioPort", port }       MessagePort from AudioWorklet
-//                  { type: "pitch-hint", voiced, pitch, contextTime }  relayed
-//                                                per pitch frame; contextTime =
-//                                                capture seconds of the frame
+//                  { type: "pitch-hint", voiced, pitch, contextTime, weak? }
+//                                                relayed per pitch frame;
+//                                                contextTime = capture seconds
+//                                                of the frame; weak = the pitch
+//                                                worker's `subharmonic` flag
 //   worker → main: { type: "status", status, message?, modelId?, device? }
 //                                                "loading"|"ready"|"error";
 //                                                modelId + device populated on
@@ -352,7 +354,7 @@ self.onmessage = (e) => {
       // placed on the window's clock and is dropped (never in practice —
       // both capture paths stamp every chunk).
       if (typeof msg.contextTime === "number" && Number.isFinite(msg.contextTime)) {
-        gate.notePitchHint({ voiced: msg.voiced, pitch: msg.pitch, ts: msg.contextTime * 1000 });
+        gate.notePitchHint({ voiced: msg.voiced, weak: msg.weak === true, pitch: msg.pitch, ts: msg.contextTime * 1000 });
       }
       break;
   }

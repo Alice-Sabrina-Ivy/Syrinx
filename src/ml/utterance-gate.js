@@ -15,8 +15,8 @@
 // an utterance were mostly the silence or noise before it.
 //
 // The gate works only on the relayed pitch-voicing stream (one hint per
-// pitch-worker frame: { voiced, ts, pitch }). Every time is on ONE clock,
-// the AUDIO clock (gender-worker.js passes the capture contextTime, in
+// pitch-worker frame: { voiced, ts, pitch, weak? }). Every time is on ONE
+// clock, the AUDIO clock (gender-worker.js passes the capture contextTime, in
 // ms, of the frame a hint describes, and of the newest audio chunk as
 // "now"): hints are then exactly one capture chunk apart however bursty
 // their delivery is. (Until the 2026-10-07 review they carried the pitch
@@ -27,7 +27,17 @@
 //
 //   utterance  opens on a run of >= onsetRunMs consecutive voiced hints
 //              (onset = the run's first hint), closes after gapMs with no
-//              voiced hint. A span starts at the onset (and restarts
+//              voiced (or weak) hint.
+//   weak       (2026-10-07, low-voice-noise candidate meter-c1) an unvoiced
+//              hint the pitch worker flagged `subharmonic`: it decoded
+//              above 400 Hz on a frame that carries a lower voice's own
+//              partials — a low voice in heavy low-frequency noise, locked
+//              onto a formant-region harmonic. Hysteresis only: a weak hint
+//              keeps an OPEN utterance alive (gap, recency, voiced share)
+//              but never opens one (it breaks a voiced run like any
+//              unvoiced hint) and counts as unvoiced in the held-phonation
+//              test. measurements/low-voice-noise-2026-10-07.md
+//   span       starts at the onset (and restarts
 //              after sustained phonation, below); the worker resets its
 //              EMA on the first scored window of every span, so a new
 //              utterance never blends with the previous one or with the
@@ -66,7 +76,8 @@
 
 export const UTTERANCE_GATE_DEFAULTS = Object.freeze({
   windowMs: 750,            // ML window length (gender-worker WINDOW_SECONDS)
-  onsetRunMs: 150,          // consecutive voicing that opens an utterance
+  onsetRunMs: 100,          // consecutive voicing that opens an utterance
+                            //   (150 until candidate meter-c1, 2026-10-07)
   gapMs: 1000,              // no voicing this long closes it
   recencyMs: 500,           // newest voiced hint must be this recent to score
   minVoicedShare: 0.15,     // voiced share of the window's hints
@@ -94,14 +105,17 @@ function pct(sorted, p) {
 }
 
 // Voiced share + pitch spread (semitones, p90 - p10) of the hints with
-// ts > fromTs. spread is null with fewer than 5 voiced hints.
-function stats(hints, fromTs) {
+// ts > fromTs. spread is null with fewer than 5 voiced hints. weakAsVoiced:
+// weak hints count toward the share (the scoring rule; never the
+// held-phonation test).
+function stats(hints, fromTs, weakAsVoiced = false) {
   let n = 0, v = 0;
   const st = [];
   for (let i = hints.length - 1; i >= 0; i--) {
     const h = hints[i];
     if (h.ts <= fromTs) break;
     n++;
+    if (weakAsVoiced && !h.voiced && h.weak) { v++; continue; }
     if (h.voiced) {
       v++;
       if (h.st !== null) st.push(h.st);
@@ -143,8 +157,8 @@ export function createUtteranceGate(options = {}) {
   }
 
   return {
-    // { voiced, ts, pitch } — one per pitch-worker frame, in order; ts on
-    // the audio clock (ms).
+    // { voiced, ts, pitch, weak? } — one per pitch-worker frame, in order;
+    // ts on the audio clock (ms).
     notePitchHint(hint) {
       if (!hint || typeof hint.ts !== "number" || !Number.isFinite(hint.ts)) return;
       const ts = hint.ts;
@@ -152,20 +166,23 @@ export function createUtteranceGate(options = {}) {
       // nothing from the old one may count.
       if (lastHintTs !== null && ts < lastHintTs - o.resetBackMs) reset();
       const voiced = !!hint.voiced;
+      const weak = !voiced && !!hint.weak;
       // A hole in the hint stream breaks the voiced run (the frames that
       // would have filled it are unknown).
       if (lastHintTs !== null && ts - lastHintTs > o.maxHopMs) runStartTs = null;
       const hop = lastHintTs !== null ? Math.min(Math.max(ts - lastHintTs, 0), o.maxHopMs) : 25;
       closeIfGap(ts);
       const p = typeof hint.pitch === "number" && hint.pitch > 0 ? hint.pitch : null;
-      hints.push({ ts, voiced, st: voiced && p !== null ? 12 * Math.log2(p / 100) : null });
+      hints.push({ ts, voiced, weak, st: voiced && p !== null ? 12 * Math.log2(p / 100) : null });
       let drop = 0;
       while (drop < hints.length && hints[drop].ts < ts - keepMs) drop++;
       if (drop > 0) hints = hints.slice(drop);
       lastHintTs = ts;
+      // Weak evidence only keeps an open utterance alive (gap / recency);
+      // while closed this has no effect (an opening run sets it anyway).
+      if (voiced || weak) lastVoicedTs = ts;
       if (voiced) {
         if (runStartTs === null) runStartTs = ts;
-        lastVoicedTs = ts;
         // Opens on a long-enough run that began AFTER any held note: the
         // rest of a held note (or a note's tail) never opens one.
         if (!open && ts - runStartTs + hop >= o.onsetRunMs
@@ -212,7 +229,7 @@ export function createUtteranceGate(options = {}) {
         }
       }
       if (lastVoicedTs === null || nowTs - lastVoicedTs > o.recencyMs) return out("pause");
-      if (stats(hints, nowTs - o.windowMs).share < o.minVoicedShare) return out("pause");
+      if (stats(hints, nowTs - o.windowMs, true).share < o.minVoicedShare) return out("pause");
       const resetEma = spanId !== lastScoredSpanId;
       lastScoredSpanId = spanId;
       return out("score", resetEma);

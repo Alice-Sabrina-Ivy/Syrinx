@@ -211,6 +211,42 @@ console.log("\nheld-phonation share: 95 % voiced over the second");
   check("default share is 0.95", D.sustainMinShare === 0.95);
 }
 
+console.log("\nweak hints (pitch worker's subharmonic flag): keep an open utterance alive only");
+{
+  const weak = () => ({ voiced: false, weak: true, pitch: null });
+  // Weak-only evidence never opens an utterance.
+  const ds = run(weak, 4000);
+  check("weak hints alone never open an utterance", ds.every((d) => d.verdict === "silent"),
+    ds.map((d) => d.verdict[0]).join(""));
+  // Weak frames between short voiced fragments (< the onset run) never open one either.
+  const frag = (t) => (t % 300 < 50 ? { voiced: true, pitch: 100 } : weak());
+  const ds2 = run(frag, 4000);
+  check("weak frames don't extend a voiced run", ds2.every((d) => d.verdict === "silent"),
+    ds2.map((d) => d.verdict[0]).join(""));
+  // Speech, then 1.6 s of weak-only frames (a low voice whose voicing the
+  // tracker lost to noise), then speech again: the utterance stays open
+  // and the EMA is not restarted.
+  const stream = (t) => (t <= 2000 ? speech(100)(t) : t <= 3600 ? weak() : speech(100)(t));
+  const ds3 = run(stream, 5500);
+  check("weak frames keep an open utterance alive past gapMs",
+    ds3.filter((d) => d.verdict === "score" && d.resetEma).length === 1);
+  const mid = ds3.filter((d) => d.t > 2200 && d.t <= 3600);
+  check("an open utterance keeps scoring on weak evidence", mid.every((d) => d.verdict === "score"),
+    mid.map((d) => d.verdict[0]).join(""));
+  // The same stream with plain unvoiced frames closes and restarts.
+  const ds4 = run((t) => (t <= 2000 ? speech(100)(t) : t <= 3600 ? silent() : speech(100)(t)), 5500);
+  check("(control: unvoiced frames close it)", ds4.filter((d) => d.verdict === "score" && d.resetEma).length === 2);
+  // Weak frames count as unvoiced in the held-phonation test: a held note
+  // whose every 4th frame is weak (75 % voiced) is not 'sustained'; a
+  // voiced hint that also carries the flag is simply voiced.
+  const heldWeak = (t) => (t % 100 === 0 ? weak() : { voiced: true, pitch: 200 });
+  const ds5 = run((t) => (t <= 500 ? silent() : heldWeak(t)), 4000);
+  check("weak frames are not voiced for the held-note test", ds5.every((d) => d.verdict !== "sustained"),
+    ds5.map((d) => d.verdict[0]).join(""));
+  check("a voiced hint flagged weak is just voiced",
+    run((t) => (t <= 500 ? silent() : { ...heldNote(200)(t), weak: true }), 4000).some((d) => d.verdict === "sustained"));
+}
+
 console.log("\nmeter state mapping");
 check("score -> scoring", meterStateForVerdict("score") === "scoring");
 check("warming -> updating", meterStateForVerdict("warming") === "updating");

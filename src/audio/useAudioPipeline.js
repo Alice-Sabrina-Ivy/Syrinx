@@ -945,6 +945,10 @@ export function useAudioPipeline() {
         voiced: msg.voiced,
         pitch: msg.pitch,
         contextTime: msg.contextTime ?? null,
+        // Above-range decode with a lower voice's partials (pitch worker,
+        // subharmonic-evidence.js): keeps an open utterance alive in heavy
+        // noise. The frame stays unvoiced everywhere else.
+        weak: msg.subharmonic === true,
       });
     }
     if (DIAG_ENABLED && typeof msg.inferMs === "number") {

@@ -137,7 +137,8 @@ export const BOERSMA_DEFAULTS = {
 export const BOERSMA_FRAME_LENGTH_16K = 1280;
 
 // In-place iterative radix-2 complex FFT (re/im arrays, length power of 2).
-function fft(re, im, invert) {
+// Exported for subharmonic-evidence.js (2026-10-07); behaviour unchanged.
+export function fft(re, im, invert) {
   const n = re.length;
   for (let i = 1, j = 0; i < n; i++) {
     let bit = n >> 1;

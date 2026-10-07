@@ -28,7 +28,8 @@
 //   main → worker: { type: "init", inputSampleRate, diag? }
 //                  { type: "audioPort", port }       MessagePort from captureSource
 //   worker → main: { type: "status", status, message? }     "ready"|"error"
-//                  { type: "pitch", pitch, confidence, voiced, ts, contextTime, inferMs? }
+//                  { type: "pitch", pitch, confidence, voiced, ts, contextTime, inferMs?,
+//                    notchedFreqs?, subharmonic? }
 //
 // (The main thread tears workers down via Worker.terminate(). The
 // SwiftF0-era inference timeout machinery is gone — the detector is a
@@ -47,6 +48,12 @@
 //               decoded frame's chunk (i.e. the chunk L hops back —
 //               the ring below carries it through the decode delay).
 // `inferMs`   — candidates+decode duration, only when init.diag === true.
+// `subharmonic`— true (else omitted) when the tracker decoded above
+//               PITCH_DISPLAY_RANGE.high and the frame shows >= 2 partials
+//               of a sub-multiple d/k that d itself can't have
+//               (subharmonic-evidence.js): weak voice evidence for the
+//               perceived-voice utterance gate only. The frame stays
+//               unvoiced (pitch null) for every other consumer.
 
 import {
   createBoersmaAC,
@@ -55,6 +62,7 @@ import {
   BOERSMA_FRAME_LENGTH_16K,
 } from "./boersma-ac.js";
 import { createNoiseNotch, isNearNotch } from "./noise-notch.js";
+import { subharmonicPartialCount } from "./subharmonic-evidence.js";
 import { createStreamingResampler } from "../ml/audio-utils.js";
 import { PITCH_DISPLAY_RANGE } from "../utils/constants.js";
 
@@ -189,6 +197,13 @@ function processChunk(msg) {
     vetoed = null;
   }
   const voiced = vetoed !== null && vetoed !== undefined && vetoed > 0;
+  // Above-range decode that carries a lower voice's own partials: in heavy
+  // low-frequency noise the tracker locks onto a formant-region harmonic of
+  // a low voice (5-8x F0). Flagged as weak evidence for the perceived-voice
+  // meter's utterance gate (keeps an open utterance alive); never a pitch.
+  // measurements/low-voice-noise-2026-10-07.md (candidate meter-c1)
+  const subharmonic = decoded > PITCH_DISPLAY_RANGE.high
+    && subharmonicPartialCount(bufferDelayLine[0], decoded, TARGET_SAMPLE_RATE) >= 2;
   self.postMessage({
     type: "pitch",
     pitch: voiced ? vetoed : null,
@@ -205,6 +220,7 @@ function processChunk(msg) {
     ...(noiseNotch.activeFreqs().length > 0
       ? { notchedFreqs: noiseNotch.activeFreqs() }
       : {}),
+    ...(subharmonic ? { subharmonic: true } : {}),
   });
 }
 
