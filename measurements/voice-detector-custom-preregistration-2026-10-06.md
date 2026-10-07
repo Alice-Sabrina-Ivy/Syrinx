@@ -509,3 +509,193 @@ the unchanged `score.py` over all 4,305 harness streams:
 - After the look, a threshold × hangover grid was scored on the same files.
   It is reported there as post-hoc. None of its points is a selection, and none
   counts as a pass.
+
+## Addendum D — round 2: corrections, defect fixes and one retrain (2026-10-07, before any round-2 data or model)
+
+The round-1 look (Addendum C) failed V1. A review of that look found the
+corrections and voice-veto defects below. This addendum fixes how round 2 is
+run. It is committed and pushed **before** any round-2 audio is downloaded or
+prepared and before any round-2 model is trained. The bar of §4 is unchanged.
+The private session recordings are not used for training or selection.
+
+### D.1 Corrections to this file (dated 2026-10-07; the text above is left as written)
+
+1. **Held-out B is a new-wording set, not a new-machine set.** §1.2 (`fstrain`
+   row) and `splits.json` say held-out B "stays a set of machine types never
+   trained on". Only the query strings are disjoint. 9 of the 16 `fsheld`
+   class labels (mains_hum, hvac, pump, exhaust_fan, computer_fan,
+   transformer, electronics_whine, engine_idle, appliance_motor: 52 of 101
+   clips, 19,370 of 40,761 false hops) are classes `fstrain` trained on
+   through the 279-set topics. Several of the 8 extra `fstrain` queries are
+   near-synonyms of held-out B topics ('furnace', 'pc fan noise',
+   'cooling fan', 'electrical buzz', 'diesel generator'), and FSD50K training
+   clips include Printer, Bus, Train, Aircraft and Mechanisms.
+2. **Held-out A tests topics seen in training.** `fetch_fstrain.py` searched
+   pages 1–3 of the same 38 queries that produced the 279-set's Freesound
+   clips, and held-out A is a split of the 279 by clip, not by topic: 46 of its
+   85 clips (29,562 of its 43,213 false hops, 68 %) are Freesound clips from
+   those topics. Held-out A without its Freesound clips, and held-out B, are
+   the closer out-of-topic estimates.
+3. **Addendum A's "one held-out B clip and one 279-set clip under other ids
+   (BER 0.24 and 0.29)" were not copies.** They were spurious matches of
+   sub-second clips: fsd50k__87433 (0.5 s glass clink) against fsheld
+   mains_hum 40860, and fsd50k__72126 (0.93 s alarm) against the refrigerator
+   hum freesound 116866 (line-spectrum correlation 0.018). fsd50k__209393
+   (0.52 s punch) matched an ESC-50 engine clip in the same way. Through the
+   matched-uploader rule they removed 33 more training clips. This errs on the
+   safe side and is not a leak, but the matcher's false-positive rate on clips
+   shorter than 1 s was never measured. For any future data step a match needs
+   at least 3 s of aligned overlap; shorter matches are "unconfirmed" and stay
+   out of the matched-uploader rule. Round 2 adds no negatives, so the rule is
+   not re-run.
+
+The figures in 1–3 are the round-1 reviewer's, computed with score.py's own
+functions on the round-1 files.
+
+### D.2 What round 2 changes, and why
+
+Round 1 failed on male held notes and dysphonic sustained vowels in stationary
+machine noise. The review then found, with the frozen model:
+
+- clean VocalSet **lip trills** vetoed 19 % (female 33 %), at every operating
+  point with a hangover of 3 s or less;
+- **carried state**: in a continuous session the vetoes rise 2–4× over the
+  fresh-state harness figure (training crops and harness streams all start
+  from zero GRU state);
+- in the mixes, **male 300–400 Hz held notes** (head / falsetto long tones)
+  vetoed 11.8 %, and **75–90 Hz** held notes 4–8 %;
+- **children's singing, sirens, a cappella and humming** from Freesound
+  vetoed 1.4–7.8 % per group; **breathy and soft singing** at 0 dB above 3 %.
+
+One cause runs through all of them: **coverage**. None of these voice types,
+and no long session history, was in the training data or in the selection
+data. Round 2 is **one retrain** of the round-1 recipe that closes this gap.
+It changes three things and nothing else:
+
+1. **Positives** (§D.3): openly licensed sustained vowels at normal, high, low
+   and gliding pitch from healthy and dysphonic speakers (Saarbrücken Voice
+   Database); singing exercises from beginners and professionals, including
+   hummed octave glissandi and breathy phonation (SingBAP); vocal imitations
+   of machines and everyday sounds; children's speech; Freesound recordings
+   of humming, warm-ups, sirens and children singing.
+2. **Augmentation of the voice layer**, within the §1.2 family "breathiness and
+   roughness resynthesis (aperiodicity, jitter, shimmer)":
+   - roughness: periodic shimmer, an amplitude modulation at 15–40 Hz, depth
+     0.3–0.95, half of the time followed by a one-pole low-pass at 0.8–3 kHz
+     (closed lips), on 20 % of voice layers;
+   - breathiness: aspiration noise (white noise high-passed at 500 Hz, shaped
+     by the voice layer's 20 ms envelope) at −25 to −6 dB re the voice, on
+     15 % of voice layers.
+
+   Labels are unchanged: they come from the Praat track of the clean voice.
+3. **Carried state in training.** Each training crop starts, with probability
+   0.75, from a GRU state drawn at random from a bank holding the final states
+   of the most recent training crops (8,192 states, first in first out);
+   otherwise from zero. Because banked states themselves came from crops that
+   started from banked states, the model trains on states after histories of
+   any length (truncated back-propagation through time across crops).
+
+Everything else is the frozen round-1 recipe (`r5-bighard`): architecture
+(89,257 parameters, `frame_ms` 82), log-mel front end, `whard_ac` 3, EMA
+0.999, 16,000 steps, crops 4 / 8 / 16 / 32 s, the negatives, the mixing and
+the other augmentation. At most two seeds of this one recipe are trained. The
+selection candidates are the EMA checkpoints at steps 8,000, 10,000, 12,000,
+14,000 and 16,000 of each.
+
+### D.3 New training and validation sources
+
+Licences were read at the source before this addendum. Rules and lists:
+`splits.json` key `round2`.
+
+| key | source | licence, where read | what is used | split (val rule) |
+|---|---|---|---|---|
+| `svd` | Saarbrücken Voice Database (Pützer and Barry; hosted by Essen University Hospital), zenodo 16874898 | CC BY 4.0: the Zenodo record licence. The database's official site (stimmdb.coli.uni-saarland.de) links to this record as its distribution | per recording session, `iau.nsp` of `data.zip`: the continuous vowel take, /i a u/ at normal, high and low pitch and rising-falling. EGG channels and the sentence are not used. Gender, speaker id and diagnosis from the `overview.csv` files of the category zips. 50 kHz, converted to 16 kHz; the val copies are kept at 48 kHz | speaker: FNV-1a("svd:" + speaker id) % 8 == 0 |
+| `singbap` | SingBAP (Häärä and Ramirez-Melendez, UPF), zenodo 20744738 | CC BY 4.0: Zenodo record licence and `LICENSE.md` of the record | `VOICE_DATA.zip`, the inexperienced and professional participants (9 of 14; the intermediate archive, 6.3 GB, is not downloaded). Audio of the Behringer C-3 and iPhone 14 Pro microphones; the MacBook microphone is not used (its fan). Exercises: triad and vowel scales, the sustained legato *ruu* phrase and the hummed *mm* octave glissando, in natural and breathy phonation. Gender is not given: "unknown" | participant: FNV-1a(participant id) % 4 == 0 (INEX-2, INEX-6, PROF-1). Val streams: at most 30 min per participant and microphone, lowest FNV-1a(file id) first |
+| `imitations` | Vocal imitations of non-vocal sounds (Lemaitre), zenodo 57468 | CC0 1.0: Zenodo record licence | every imitation (10 imitators): voiced, buzzed and trilled imitations of machines and everyday sounds | training only |
+| `kids` | Children speech recording (Kennedy et al.), zenodo 200495 | CC BY 4.0: Zenodo record licence | 11 children (about 5 years old; 5 F, 6 M): words, sentences, counting and free speech. Studio and portable microphones; the NAO robot's microphones are not used (robot fan) | child: FNV-1a("kids:" + child folder) % 4 == 0 (03_F, 07_F, 08_F, 10_M) |
+| `fsvoice` | Freesound HQ previews found by the search-page queries listed in `splits.json` | per sound, from the sound page; **CC0 1.0, CC BY 3.0 and CC BY 4.0 only** | humming, lip / tongue trills, warm-ups and scales, vocal sirens and glides, held and sung vowels, a cappella singing, children singing and speaking. Up to 15 per query, pages 1–2, 3–300 s, first 120 s. Skipped: the instrument / effects / non-human keyword rule of `splits.json` on title, description and tags; uploaders of a benchmark Freesound preview; the 66 clips of the round-1 review's Freesound voice probes and their 52 uploaders | uploader: FNV-1a(uploader) % 5 == 0 |
+
+Positives get the labels of §1.1 (Praat AC 60–1100 Hz, within 30 dB of the
+recording's 95th-percentile voiced level). The manifest records source, URL or
+archive member, licence, where it was read and attribution per file, as for
+round 1.
+
+**Considered and not used.**
+
+| candidate | why not |
+|---|---|
+| MTG-QBH (zenodo 1290712) | the Zenodo record shows CC BY 4.0, but the dataset's own README says "offered free of charge for internal non-commercial use only": conflicting terms, excluded |
+| VocalSet's other techniques (lip trills, vibrato, …) | VocalSet is an evaluation set (§1.3) |
+| SingBAP intermediate participants; URSing (16.8 GB); Jingju a cappella (part 1 is NC; part 2 and JaCRC are 6–7 GB) | download size on this machine (Zenodo serves about 1.3 MB/s per transfer) |
+| SVD per-vowel excerpt files and sentences | the `iau` take contains the same vowels; speech is already covered |
+| the NAO robot microphone tracks of `kids`, the MacBook tracks of `singbap` | a device fan would be labelled as voice by the reference tracker |
+
+### D.4 Selection (rule of §3, with more validation streams and carried state)
+
+- **Validation streams.** The round-1 validation streams, with their dumps,
+  stay as they are. Added through the same production chain (`valdump.mjs`):
+  - clean val voice: `svd` val sessions (48 kHz), `singbap` val (native rate),
+    `kids` val (native rate) and `fsvoice` val (preview rate);
+  - **one more program per val noise clip**: 150 new mixes per SNR, built like
+    the round-1 val mixes (+10 / 0 dB, 20 s lead and lead 0). The kinds rotate
+    over `svd` (one val speaker's whole `iau` take), `exercise` (a 25 s
+    `singbap` val excerpt with ≥ 40 % Praat-voiced frames, or `fsvoice` val
+    clips joined with 0.5 s gaps to ≥ 20 s) and `children` (one `kids` val
+    child's utterances with 0.3–1.5 s pauses, ≥ 20 s).
+- **Groups.** The clean groups of §3 (speech, vowels, singing) gain three:
+  `clinical` (`svd`), `exercises` (`singbap` + `fsvoice`) and `children`
+  (`kids`). The limits are unchanged: every clean group ≤ 0.5 %, every mix
+  cell ≤ 1.5 % (old and new mixes pooled per cell), worse gender.
+- **Carried state.** Every selection stream (val voice, val mixes, val
+  negatives and the tuning 194) is resampled to 16 kHz by the app's resampler
+  and concatenated, in a seeded random order (seed 20261007), into sessions of
+  at least 10 minutes; each stream starts on a model frame boundary (zero
+  padding of < 12.5 ms). The model runs over each session with its state
+  carried, and each stream's probabilities are cut out of the session run. A
+  point is feasible only if every group and cell meets its limit **both** on
+  the fresh files and on the carried files.
+- **Objective, tie-breaks and choice between models**: unchanged (fresh
+  tuning-194 V2; within 0.5 pp the shorter hangover; between models the best
+  objective, within 1 pp the lower WASM cost, then val-negatives V2). The grid
+  is round 1's (24 thresholds × 16 hangovers of 0–3 s × agg).
+- If no candidate has a feasible point, the candidate and point with the
+  smallest worst ratio (vetoes / limit over every group and cell, fresh and
+  carried) is frozen and evaluated, and the note says that the selection
+  limits were not met.
+
+### D.5 Evaluation (the round-2 look)
+
+- The chosen model is frozen (checkpoint, state and ONNX sha256, operating
+  point) and committed **before** its runner touches any evaluation stream.
+- **One look**: the unchanged `score.py` over all 4,305 harness streams, at
+  the frozen point. The verdict is the bar of §4. This is the **second look**
+  at these evaluation sets (the first was round 1's; the review has seen them
+  too). It is reported as such, not as a confirmatory test.
+- Reported with it, not gates:
+  1. **Carried state**: all 4,305 harness streams resampled to 16 kHz and
+     concatenated in a seeded random order (seed 20261008) into sessions of
+     about 20 minutes, the model's state carried; `score.py` on those
+     probability files;
+  2. **V1 per reference-F0 band** (75–90, 90–300, 300–400 Hz) per cell and
+     gender, and per voice program;
+  3. **V2 per source** on held-out A and B; held-out B split into the classes
+     shared with training and the new ones (D.1); held-out A without Freesound;
+  4. clip-bootstrap 95 % intervals (2,000 resamples of streams) for the V2 sets
+     and the V1 mix cells;
+  5. the probes the round-1 review ran (VocalSet lip trills and other
+     techniques, the Freesound voice clips), labelled post hoc and already
+     seen.
+- Judge checks as in round 1: re-score, re-run in onnxruntime-web WASM through
+  the app's resampler, truncation causality, WASM CPU re-measured in Node and
+  headless Chrome (temporary profile, closed by its own PID), licence and
+  attribution re-read.
+- V5 (private session recordings, not a gate) once, at the frozen point;
+  results outside this repository.
+
+### D.6 Attribution
+
+`attribution.py` will write, per CC BY clip, the work's title and the
+creativecommons.org licence URL, and per dataset its licence link, with a
+note that the audio was resampled, mixed and used for training (the round-1
+file gave neither titles nor licence links). The round-1 model's files are
+regenerated with it, and the round-2 model gets the same.
