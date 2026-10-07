@@ -158,6 +158,13 @@ and under the 60 ms/s stop line; the figure is wall time, so time descheduled
 behind other threads counts. **Mobile is still unmeasured** (no phone was
 attached; `scripts/mobile-diag-capture.js` prints `resonancePerf`).
 
+**Correction (2026-10-07, review round 2):** the on/off difference did not
+reproduce. At ~100 % machine load, 8 interleaved runs at e664eb9, the
+resonance worker's thread CPU was 51.4 ms per audio second with the panel off
+and 51.7 on (its own busy-time figure 54.9 / 49.6); `heard-as-cpu-2026-10-07.md`
+§2 found the same (56.1 / 56.5). The panel's cost is the gender worker
+(~+400 ms CPU per audio second at that load), not contention in this worker.
+
 ## 5. "Likely heard as": the conflict note
 
 The note compares the pitch scale u_F0 = (ln F0 − 4.8035) / 0.4451 (0 at the

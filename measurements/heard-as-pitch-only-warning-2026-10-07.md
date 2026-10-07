@@ -14,7 +14,10 @@ works. This note records:
 
 - the pre-registered study;
 - its result (a rule **passes**);
-- the one flagged deviation (K = 2);
+- the flagged deviations (K = 2, §5; the hold through brief panel hides,
+  §6 — review round 2);
+- the wording (since review round 2 the pre-registered direction-neutral
+  sentence, §4);
 - how the app implements it.
 
 Public data only: LibriSpeech test-clean (CC BY 4.0) and resyntheses of it,
@@ -127,11 +130,17 @@ Evaluated once on test, it passed every criterion:
 | Resonance-only shifts W / M | 0 / 0 % | 3.2 / 0 % | 1.6 / 0 % |
 | Vocoder-only controls W / M | 0 / 1.1 % | 2.7 / 0.6 % | 1.3 / 0.8 % |
 | Baseline phase of shift sessions W / M | 0.7 / 0 % | 0.6 / 0 % | 0.7 / 0 % |
-| PTDB-TUG | 0 % | 0 % | 0 % |
+| PTDB-TUG (12 eligible updates W, 2 M — too few to count) | 0 % | 0 % | 0 % |
 
 **The one miss.** The RB695 Google male TTS was raised by 4.0 st, but the
 resonance cue read a change of 1.72 u. The pitch change was read as a
 resonance change, so the condition |Δu| ≤ 0.6 is false.
+
+**PTDB-TUG** contributes almost nothing: over ~21 min of audio its short
+sentences gave 12 eligible updates for the two women and 2 for the two men
+(none for M02), so its "0 %" is not evidence. The natural-speech checks are
+the LibriSpeech readers above, FDA and the fresh LibriSpeech dev-clean set in
+§5.
 
 **Timing (K = 1).** The first warning came a median 6 s after a pitch-only
 shift (q90 8 s, max 10 s). Once on, it stayed on for 95 % / 97 % of later
@@ -166,17 +175,37 @@ It is kept unchanged. Whether to drop or rethink it is a separate decision.
 
 The pre-registration allows the direction claim ("listeners heard less
 change") only if ≥ 80 % of the failure sessions the rule catches are
-optimistic. They are **83 %** (59 of 71). With the Jebens reference the share
-is 78 %. All 12 pessimistic sessions are isolated-syllable concatenations,
-which are outside the panel's scope (it hides on single words). The shipped
-text adds "usually", and is the same in every direction:
+optimistic. Pooled they are **83 %** (59 of 71); with the Jebens reference
+78 %. **Split by base sex** (review round 2; the house rule asks for error
+rates by sex):
 
-> Your pitch has moved a lot more than your resonance since you started — in
-> published tests, listeners usually heard less change than this shows when
-> only pitch changed.
+| Caught failures that are optimistic | Meyer reference | Jebens reference |
+|---|---|---|
+| Male base (pitch raised) | 18 / 18 (100 %) | 18 / 18 (100 %) |
+| Female base (pitch lowered) | 41 / 53 (77 %) | 25 / 37 (68 %) |
 
-It names no direction or target and has no percent sign. Screen readers get
-the same sentence.
+Every pessimistic case is a lowered female voice (the H&C syllable
+concatenations): for a user lowering pitch the claim "listeners heard less
+change" is wrong in about 1 caught case in 4. (The first version of this note
+called those 12 sessions "outside the panel's scope because it hides on
+single words". That was wrong: a session counts as a failure only if it had
+at least 3 shown updates after the shift, so the panel did show estimates on
+them.)
+
+So the pooled bar was met but the claim does not hold for both directions.
+Since review round 2 the app shows the **pre-registered direction-neutral
+wording**, the same in every direction:
+
+> Your pitch has moved a lot more than your resonance since you started —
+> this guess can be far off, in either direction, when only pitch changes.
+
+It names no direction or target and has no percent sign. It also refers to
+the guess in general, not to "this" reading: about 80–90 % of the warning's
+appearances in the built app came while the axis said "Can't tell yet", where
+"less change than this shows" read as a contradiction (review round 2,
+built-app timelines). Screen readers get the same sentence. **Historical
+(superseded 2026-10-07, review round 2):** "… — in published tests, listeners
+usually heard less change than this shows when only pitch changed."
 
 ## 5. Deviation, flagged: K = 2 instead of K = 1
 
@@ -195,7 +224,7 @@ so it could not see this.
 eligible updates (about 2–4 s). K = 2 is in the pre-registered grid and
 passes **every criterion on both dev and test**:
 
-| X 4, Y 0.6, P8, K = 2 | Dev | TEST | All data |
+| X 4, Y 0.6, P8, K = 2 (chosen after the test split was seen: its TEST column is a post-selection look, not an untouched check) | Dev | TEST (post-selection) | All data |
 |---|---|---|---|
 | Hits, male / female base | 0.88 / 0.78 | 0.91 / 0.90 | 0.89 / 0.85 |
 | Natural false alarms W / M | 0.4 / 1.1 % | 1.0 / 0 % | 0.7 / 0.5 % |
@@ -214,6 +243,24 @@ What K = 2 changes:
   female base. One female-base session took 34 s.
 - Natural reading: 11 episodes in 128 min (24 with K = 1). 4 of 20 women and
   2 of 20 men ever see the warning.
+
+**Out-of-sample check for K = 2 (false alarms only).** Review round 2 ran
+fresh public speech the study never used — LibriSpeech dev-clean, 20 women
+and 20 men, ~190 s each, plus FDA rl / sb — through the same production-chain
+harness and the shipped module: natural false alarms **0.77 % women / 1.07 %
+men** (reader-balanced; K = 1: 1.30 / 1.67 %), FDA 0 / 0 % (49 eligible
+updates each). That is independent support for K = 2's false-alarm rate, not
+for its hit rate (that would need new pitch-only material). **But the worst
+fresh readers are well above the study's worst (7.1 % W / 6.6 % M):** dev
+reader 251 (a man) saw the warning on **21.4 %** of eligible updates (18 of
+84; K = 1: 31 %), dev reader 3081 (a woman) on **10.3 %** (6 of 58). Reader
+251's start window fell on an expressive passage (median 170.8 Hz against his
+session median 140.8 Hz, +3.35 st), so his ordinary reading near 120–130 Hz
+sat ≥ 4 st from P0 while resonance did not move. Any user whose first ~15 s
+are not at their usual pitch can see a persistent false warning — §7. With
+the hold through brief hides (§6) the same fresh set gives **0.94 % women /
+1.07 % men** (worst 13.8 % — reader 3081, 8 of 58 instead of 6 — / 21.4 %);
+no other reader changes.
 
 **The app ships K = 2** (`PITCH_ONLY_WARNING.consecutive`). A brief false
 warning right after the user changes pitch and resonance together, which is
@@ -249,9 +296,27 @@ The logic is in `src/ml/pitch-only-warning.js`, a pure module.
 - verdict ≠ "sustained";
 - `sinceResumeS` ≥ 2.
 
-**Showing and clearing.** The warning shows after K = 2 consecutive updates
-that are both eligible and meet the condition. It clears on the first update
-that fails either.
+**Showing and clearing.** The warning shows after K = 2 consecutive shown
+updates that are both eligible and meet the condition. It clears on the first
+shown update that fails either.
+
+**Brief panel hides (flagged post-hoc deviation, review round 2).** Until
+review round 2 a hidden-panel update ("Keep talking", "stale", …; lnF0 null)
+counted as ineligible and reset the run, so each time the panel came back the
+estimate the warning qualifies showed for ≥ 2 s without it: in the built app
+7–24 % of the shown estimates from shift + 10 s on had no warning. Now a
+hidden update is **neutral**: nothing is shown, the run is kept, and the
+warning is back at once if the first shown update still meets the condition;
+more than 5 hidden updates in a row (~10 s) drop the run
+(`PITCH_ONLY_WARNING.maxHiddenUpdates`). A shown update that is ineligible on
+the resonance side or fails the condition still clears it. This was not
+pre-registered. Replayed on the study's 469 sessions
+(`rules.display(hold=True)`; heard-as-panel-review-2-2026-10-07.md §2): shown
+estimates in failure sessions after shift + 10 s that carry the warning
+**0.91 / 0.92 → 0.95 / 0.96** (male / female base; worst female session
+0.33 → 0.53); every criterion number in §3 and §5 — hits, natural, expressive,
+together, resonance-only, PTDB, the together flash — is unchanged on dev,
+test and all data.
 
 **Resets.**
 
@@ -261,9 +326,17 @@ that fails either.
 | Panel switched off and on | Only the run is dropped |
 | Stop / start listening | Everything is dropped |
 
-**Display.** The warning renders in `HeardAsPanel`'s `extraNote` slot
-(`[data-heard-as-note="extra"]`, `data-pitch-only="1"`), under the axis and
-only while the estimate is shown. It sits alongside the conflict note.
+**Display (since review round 2).** The warning renders directly under the
+axis (`[data-heard-as-note="pitch-only"]`, `data-pitch-only="1"`), before the
+range and unsure lines, only while the estimate is shown — so it is on the
+first screen wherever the axis is. At most one note shows: while the warning
+is on, the conflict note and any `extraNote` are left out. Screen readers get
+it through a live region that stays mounted while the panel is on
+(`[data-heard-as-live]`, `role="status"`, polite, atomic), filled when the
+warning switches on and kept through brief hides. **Historical (superseded
+2026-10-07, review round 2):** the `extraNote` slot under the range lines,
+alongside the conflict note, with `role="status"` on the note itself (a live
+region mounted already filled is often not announced).
 
 **Live vs study.** Small differences:
 
@@ -285,9 +358,13 @@ None of these changes the rule.
   not;
 - mirror symmetry;
 - the K-run, including restarts after ineligible updates;
-- clearing;
+- clearing, and the hold through brief hides (on → hidden → shown keeps it;
+  more than 5 hidden updates drop it; a resonance-side ineligible update still
+  clears it);
 - every reset;
-- the panel wiring;
+- the panel wiring (slot under the axis, one note at a time, the
+  always-mounted live region, a resonance worker error dropping the stale
+  snapshot);
 - a **golden replay** of 8 public sessions
   (`tests/ml/fixtures/pitch-only-golden.json`; LibriSpeech and H&C sentence
   proxies only, no NC material).
@@ -300,16 +377,50 @@ P0 against the Python value to 1e-12. Its sessions:
   10 s and persists;
 - one together session per sex: K = 1 flashes and K = 2 does not;
 - one resonance-only session per sex: never on;
-- one natural reader per sex: on for ≤ 5 % of eligible updates.
+- one natural reader per sex: on for ≤ 5 % of eligible updates;
+- (review round 2) one pitch-only session per sex with brief hides while the
+  warning is on (hcs_260_PO man, hcs_2961_PO woman), where the hold differs
+  from reset-on-hide; the fixture's rule is now the shipped one
+  (`hold: true, maxHidden: 5`).
 
-`scripts/cue-strip-smoke.mjs --pitch-only=<wav>` plays a pitch-only session
-through the built app and checks that the note appears in the panel after the
-shift and not before.
+`scripts/cue-strip-smoke.mjs --pitch-only=man,woman` plays a pitch-only
+session through the built app and checks that the note appears in the panel
+after the shift and not before, directly under the axis, as the only note,
+mirrored in the live region, on the first screen (448×890, 1280×800;
+elsewhere wherever the axis is), and on ≥ 80 % of the shown estimates in the
+next 20 s.
 
 ## 7. Limits
 
 - **Relative to the session start only.** A user who starts in an already
   pitch-shifted voice gets no warning. The caveat still covers this case.
+- **The start reference is one ~15 s window, so it depends on where the
+  session starts** (review round 2). Four expressive public readers replayed
+  through the production chain with the start moved by skipping their first
+  0, 1, 2, 3 or 5 utterances (shipped module, K = 2 with the hold; share of
+  eligible updates with the warning on natural reading):
+
+  | Reader | Shares over the 5 starts | P0 vs the reader's session median |
+  |---|---|---|
+  | LibriSpeech test-clean 672 (man, character voices) | 6.6 / 9.6 / 23.5 / 61.3 / 45.5 % | −2.8 … +1.8 st |
+  | LibriSpeech dev-clean 251 (man) | 21.4 / 4.9 / 12.5 / 18.2 / 10.3 % | −1.6 … +3.4 st |
+  | LibriSpeech dev-clean 3081 (woman) | 13.8 / 0 / 11.5 / 33.3 / 0 % | −1.7 … +3.5 st |
+  | LibriSpeech test-clean 3575 (woman) | 0 / 0 / 0 / 0 / 0 % | −0.3 st every time |
+
+  So for a lively, wide-ranging speaker the warning can appear on a large
+  share of ordinary speech, for women and men alike, and how often depends on
+  the first ~15 s. The study's per-reader figures (one pass per session, max
+  7.1 / 6.6 %) do not show this spread. A steadier start reference (a longer
+  window, or no warning when the start window's own pitch spread is wide)
+  would need its own pre-registered study; not done.
+- **A brief false warning right after pitch and resonance change together
+  can still show for some voices.** In the built app, a man's (LibriSpeech
+  260) pitch-and-resonance shift showed it for 1–4 s about 6 s after the
+  shift in 3 of 5 runs (always with the conflict note, before review round 2
+  suppressed that note while the warning shows); the woman's never did.
+  Consistent with the study's 9 % of together sessions, but speaker-dependent.
+  Gating on the resonance readout having caught up was suggested and not
+  tried (it needs its own check on the together set).
 - **Pitch read as resonance.** It cannot see a pitch change that the
   resonance reading mistakes for a resonance change (the RB695 Google miss).
 - **Partial resonance change.** Changes of 0.6–1.2 u in resonance alongside a

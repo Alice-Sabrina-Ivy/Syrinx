@@ -176,7 +176,9 @@ the stop threshold (60 ms/s)
 is not reached. The overload guard trips at 500 ms/s. With the experimental
 panel on (the gender worker competing for CPU) the review measured 51.8 ms per
 audio second (session mean, ~74 % machine load) vs 44.1 with it off —
-measurements/cue-strip-review-fixes-2026-10-07.md §4. (A first run exposed
+measurements/cue-strip-review-fixes-2026-10-07.md §4. (That difference did
+not reproduce in two later re-measures at ~100 % load: thread CPU 56.1 / 56.5
+and 51.4 / 51.7 ms/s off / on — heard-as-cpu-2026-10-07.md.) (A first run exposed
 that the overload EMA counted only chunk processing while most vtln work
 runs when a relayed pitch frame resolves grid time; it now counts both.)
 

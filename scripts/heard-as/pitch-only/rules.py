@@ -79,11 +79,26 @@ def condition(f, rule, p):
             uF = (f["P8"] - LN0) / GAP
             c = np.abs(uF - f["u"]) > p["C"]
     c = np.nan_to_num(c, nan=0).astype(bool) & f["elig"]
-    # warning on at tick i iff condition at the last K ticks, all eligible & consecutive
-    K = p["K"]
+    return display(c, f["vis"], p["K"], p.get("hold", False), p.get("maxHidden", 5))
+
+
+def display(c, vis, K, hold=False, max_hidden=5):
+    """Warning on at tick i iff the condition held at the last K ticks, all
+    eligible and consecutive (the study's rule, hold=False). hold=True is the
+    POST-HOC 2026-10-07 review-round-2 change (measurements/
+    heard-as-panel-review-2-2026-10-07.md §2), shipped in
+    src/ml/pitch-only-warning.js: a tick where the panel is hidden shows
+    nothing but keeps the run; more than max_hidden hidden ticks in a row
+    (~10 s) drop it. A shown tick that is ineligible or fails still drops it."""
     on = np.zeros(len(c), bool)
-    run = 0
+    run = hidden = 0
     for i in range(len(c)):
+        if hold and not vis[i]:
+            hidden += 1
+            if hidden > max_hidden:
+                run = 0
+            continue
+        hidden = 0
         run = run + 1 if c[i] else 0
         on[i] = run >= K
     return on

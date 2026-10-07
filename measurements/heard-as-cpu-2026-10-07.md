@@ -1,32 +1,55 @@
 # CPU with the "Likely heard as" panel on — 2026-10-07
 
-> **Status on branch `cue-strip` (2026-10-07): not merged — the pass did not
-> meet its own pre-registered bar.** §1's decision rule adopts a change only if
-> it "meets the target with every guard passing". The 450 ms classifier hop
-> passed every guard but missed target 1 (panel-on app CPU −28.6 % against the
-> pre-registered ≥ 30 %), and target 2 (resonance worker ≤ 45 ms per audio
-> second with the panel on) was not demonstrated — at ~100 % machine load the
-> worker read 60–69 ms/s with the panel off as well. The only hop that met
-> target 1 (600 ms, −32.5 %) failed guard 1 under bursty capture (Palette
-> change 1.10 points against the ≤ 1.0 bar). Per the user's instruction ("if
-> neither can be improved, ship as is"), `cue-strip` keeps the 150 ms hop and
-> the gender worker exactly as before this pass. The variant, its tooling
-> (`chrome-cpu.mjs` thread-CPU extension, `ort-bench.mjs`, `hop-study.mjs`,
-> `compare_hop.py`, `hop_study_report.py`, the `run_chain.mjs --hop/--logits`
-> options) and the regenerated golden file live on branch **`cue-strip-cpu`**
-> only (commits 4f213b6, 00d130d, 591da94, 548d9f8), so §3–§5 below describe
-> that branch, not `cue-strip`. "Adopted" in §4 means adopted on that branch.
-> Open decisions for the user: accept −28.6 % (the panel's own increment over
-> panel off falls 57 %), take the 600 ms hop despite the burst-timing guard,
-> or re-measure target 2 on a quieter machine. The main thread (~310–350 ms
-> per audio second at this load, panel on or off) is now the largest consumer
-> and was outside this pass.
+> **Status on branch `cue-strip` (2026-10-07; corrected in review round 2):
+> not merged — the pass did not meet its own pre-registered bar.** §1's
+> decision rule adopts a change only if it "meets the target with every guard
+> passing". Against the bar as written:
+>
+> | hop | target 1 (app CPU −30 %) | target 2 (resonance) | guard 1 (Palette ≤ 1.0, audio clock) | guard 6 (every guard number for women and men separately) |
+> |---|---|---|---|---|
+> | 300 ms | −21.5 %, **missed** | — | 0.49, passes | heard-as-man 0.45 / heard-as-woman 0.61, passes |
+> | 450 ms | −28.6 %, **missed** | passes under the pre-registered fallback (63.6 ≤ 64.0) | 0.81, passes | 0.79 / 0.90, passes |
+> | 600 ms | −32.5 %, met | — | 0.99, passes | 0.95 / **1.15, fails** |
+>
+> So 450 ms fails only target 1, and **600 ms fails guard 6** (the
+> heard-as-woman Palette stimuli move 1.15 points). An earlier version of
+> this block said 600 ms "failed guard 1 under bursty capture (1.10)": the
+> bursty-capture check (40 ms bursts + jitter; 600 ms: 1.02 / 1.38, 450 ms:
+> 0.92 / 0.81) was added after the pre-registration and is not guard 1.
+> Target 2 under the fallback is met at 450 ms, but the head meets it too in
+> these runs (59.7 on), so it shows nothing about the variant. "Heard-as-man"
+> / "heard-as-woman" = the Palette listeners' majority (188 / 52 stimuli).
+>
+> Per the user's instruction ("if neither can be improved, ship as is"),
+> `cue-strip` keeps the 150 ms hop and the gender worker exactly as before
+> this pass. The variant, its tooling (`chrome-cpu.mjs` thread-CPU extension,
+> `ort-bench.mjs`, `hop-study.mjs`, `compare_hop.py`, `hop_study_report.py`,
+> the `run_chain.mjs --hop/--logits` options) and the regenerated golden file
+> live on branch **`cue-strip-cpu`** only (commits 4f213b6, 00d130d, 591da94,
+> 548d9f8), so §3–§5 below describe that branch, not `cue-strip`. "Adopted"
+> in §4 means adopted on that branch. Open decisions for the user: accept
+> −28.6 % at 450 ms (the panel's own increment over panel off falls 57 %), or
+> take 600 ms despite guard 6 (the heard-as-woman stimuli move 1.15 points
+> against the 1.0 bar). The main thread (~300–350 ms per audio second at this
+> load, panel on or off) is now the largest consumer and was outside this
+> pass.
+>
+> **What the panel costs (review round 2 re-measure at e664eb9, desktop
+> Chrome 154, built app, 8 interleaved runs, ~100 % machine load):** about
+> **+400 ms of CPU per audio second, almost all of it the gender worker**
+> (383 ms/s; 4.5–5.1 inferences per second at a median 78–86 ms each at this
+> load — ~49 ms on a quiet machine). App threads 418 → 816 ms/s, renderer
+> process 602 → 993 ms/s. The resonance worker's thread CPU does **not**
+> change with the panel on (51.4 off / 51.7 on; its own busy-time figure
+> 54.9 / 49.6). The 44.1 → 51.8 ms/s "contention" pair from the first
+> correctness review (~74 % load) did not reproduce, here or in §2.
 
 With the experimental, opt-in "Likely heard as" panel on, the gender worker
 runs the q8-v2 ECAPA classifier on a 0.75 s window every 150 ms of scored
 speech (~49 ms per inference on desktop at low load), and the resonance
 worker's own busy time rose from 44.1 to 51.8 ms per audio second in the
-correctness review (contention). The user asked (2026-10-07) to try to reduce
+correctness review (read then as contention; it did not reproduce — §2 and
+the status block). The user asked (2026-10-07) to try to reduce
 the panel-on CPU, and to ship as is if no change passes. This note
 pre-registers the targets, guards and variants **before any code change**,
 then records the baseline and every variant tried. Public data only:
@@ -194,6 +217,17 @@ the head's file exactly; `compare_hop.py`), two-way share "man", 240 stimuli:
 | **450** | **0.81** (2.39, 5.7) | 58 / 240 | 6.37 |
 | 600 | 0.99 (2.47, 10.6) | 64 / 240 | 6.31 |
 
+**Guard 6 split of guard 1** (added in review round 2 — the pass reported
+guard 1 pooled only): |Δ| vs head in points, by the Palette listeners'
+majority (heard-as-man 188 stimuli / heard-as-woman 52;
+`hopsplit`-style recomputation from the same `run_chain.mjs` outputs):
+
+| hop | audio clock: heard-as-man / heard-as-woman | 40 ms bursts: heard-as-man / heard-as-woman | guard 6 |
+|---|---|---|---|
+| 300 | 0.45 / 0.61 | — | passes |
+| 450 | 0.79 / 0.90 | 0.92 / 0.81 | passes |
+| 600 | 0.95 / **1.15** | 1.02 / 1.38 | **fails** |
+
 With 40 ms capture bursts plus 0–5 ms jitter (the live tick clock), against
 the head under the same bursts (head 6.38 vs listeners): 450 ms 0.90 (2.40,
 7.0), 61 / 240 stimuli with different rows, 6.44 vs listeners; 600 ms
@@ -288,20 +322,26 @@ with the panel on (§2), so there is no panel cost to remove there.
 **Adopted: A at 450 ms** (`ML_CLASSIFY_HOP_MS = 450` and `classifyDue` in
 `src/ml/audio-utils.js`; the `"scored"` message; the `classified: false`
 windows in `heard-as.js`). It passes every guard, including under bursty
-capture: Palette 0.81 / 0.90 points; hide rules and first-estimate time
+capture: Palette 0.81 / 0.90 points (audio clock / bursts; by listeners'
+majority heard-as-man 0.79 / heard-as-woman 0.90 on the audio clock — guard
+6); hide rules and first-estimate time
 unchanged; the resonance code untouched, its parity tests unchanged.
 
 - **Target 1 is narrowly missed.** App CPU with the panel on is −28.6 %
   (889.5 → 634.9 ms per audio second). For the workers alone it is −47 %, for
   the whole renderer process −22 %, and for the panel's own increment −57 %.
   - The 600 ms hop meets the target (−32.5 %) but is not adopted: its Palette
-    change is 0.99 points on the audio clock and 1.10 under 40 ms capture
-    bursts, over the 1.0 guard as the app actually ticks.
+    change is 0.99 points on the audio clock (guard 1 passes as
+    pre-registered), but split by the listeners' majority it is 0.95
+    (heard-as-man) / **1.15 (heard-as-woman)**, so it fails guard 6. (This
+    bullet first gave the 40 ms-burst figure, 1.10, as the reason; that check
+    was added after the pre-registration — corrected in review round 2.)
   - 450 ms and 525 ms give the same schedule (every 3rd 150 ms tick), so there
     is no step between 450 and 600.
   - The rest of the panel-on total is the main thread (~350 ms/s at this load,
     panel on or off), outside this pass.
-- **Target 2 is not demonstrated.** At ~100 % machine load the resonance
+- **Target 2 passes under the pre-registered fallback, but shows nothing
+  about the variant.** At ~100 % machine load the resonance
   worker's busy figure is 60–69 ms per audio second with the panel off too.
   - With the panel on it is 63.6 (450 ms) vs 62.7 off. That is within the
     pre-registered fallback (≤ off × 45 / 44.1 = 64.0), but the head also
