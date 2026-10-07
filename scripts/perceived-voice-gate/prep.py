@@ -7,6 +7,10 @@ Sets (each built in its own process run for reproducible random streams):
   chan      16 LibriSpeech test-clean speakers (8 women, 8 men) x 9 channel conditions
             (clean, -20 dB, phone band, laptop mic, 0.5 s reverb, pink 0 dB, real noise
             10 / 0 dB, 6-talker babble 10 dB), 2 s of the condition's background before
+            (jobs_chan.full.json: all 38 speakers x 12 conditions, incl. pink 10 dB, babble 0 dB,
+            1.0 s reverb — the 38-speaker set of measurements/low-voice-noise-2026-10-07.md)
+  chandev   the same builder over LibriSpeech dev-clean (39 speakers x 12 conditions, all
+            measured): held-out set of measurements/low-voice-noise-2026-10-07.md
   noise     100 noise-only clips (<= 30 s): Freesound, DCASE, MS-SNSD, DEMAND, ESC-50
   voiced    VOICED sustained /a/ (healthy + 40 clinical)
   vocalset  VocalSet long tones (/a/, /i/)
@@ -20,7 +24,7 @@ Sets (each built in its own process run for reproducible random streams):
 
 Sources (no private data is ever read):
   - LibriSpeech + Praat F0 tracks: the resonance lab's benchmark manifests
-    (r1_test, manip_test) under $SYRINX_RLAB_BUILD (default build/resonance-lab;
+    (r1_test, r1_dev, manip_test) under $SYRINX_RLAB_BUILD (default build/resonance-lab;
     built by scripts/resonance-lab/build_bench.py).
   - Noise / voice corpora: the notch real-data build under $NOTCHVD_ROOT (default
     build/notchvd; scripts/notch-adversarial/realdata/fetch_noise.py, fetch_voice.py,
@@ -142,11 +146,14 @@ def save(set_, jobs, meta, keep=None):
 
 # ---------------------------------------------------------------------------
 
-def chan():
-    m = manifest("r1_test")
+def chan(man="r1_test", set_="chan"):
+    """`chan`: LibriSpeech test-clean (r1_test). `chandev`: the same builder over dev-clean (r1_dev),
+    every speaker x all 12 conditions measured — the held-out set of
+    measurements/low-voice-noise-2026-10-07.md (built in its own run, own seed)."""
+    m = manifest(man)
     m = m[(m.order < 8) & (m.dur_s >= 6) & (m.dur_s <= 14)]
     src = m.groupby("speaker").head(1)
-    bab_pool = manifest("r1_test"); bab_pool = bab_pool[bab_pool.order >= 20]
+    bab_pool = manifest(man); bab_pool = bab_pool[bab_pool.order >= 20]
     nz = [r for r in noise_index() if r["label"] in ("stationary-tonal", "mixed", "broadband")]
     jobs, meta = [], []
     LEAD, TAIL = 2.0, 1.0
@@ -172,16 +179,25 @@ def chan():
             "quiet20": xs * 0.1 + floor_noise(N),
         }
         for c, y in conds.items():
-            iid = f"{r.item_id}.{c}"; p = f"{SETS}/chan/{iid}.f32"; f32_write(p, y)
+            iid = f"{r.item_id}.{c}"; p = f"{SETS}/{set_}/{iid}.f32"; f32_write(p, y)
             jobs.append(dict(id=iid, f32=p))
             meta.append(dict(id=iid, src=r.item_id, cond=c, speaker=r.speaker, sex=r.sex, f0_median=r.f0_median,
                              lead_s=LEAD, voice_s=len(x) / SR, noise_id=rn["id"] if c.startswith("real") else "",
                              noise_label=rn["label"] if c.startswith("real") else "", f0_path=r.f0_path))
+    if set_ != "chan":
+        save(set_, jobs, meta)
+        return
     mm = pd.DataFrame(meta)
     spk = mm.drop_duplicates("speaker")
     sel = list(spk[spk.sex == "m"].speaker[:8]) + list(spk[spk.sex == "f"].speaker[:8])
     conds = ["clean", "pink0", "babble10", "real10", "real0", "phone", "laptop", "reverb05", "quiet20"]
     save("chan", jobs, meta, mm[mm.speaker.isin(sel) & mm.cond.isin(conds)].id)
+
+
+def chandev():
+    global rng
+    rng = np.random.default_rng(20261007)
+    chan("r1_dev", "chandev")
 
 
 def noise():
@@ -347,7 +363,7 @@ def vo():
 
 
 BUILDERS = {
-    "chan": chan, "noise": noise, "dyn": dyn, "ls": ls, "pv": pv, "vo": vo,
+    "chan": chan, "chandev": chandev, "noise": noise, "dyn": dyn, "ls": ls, "pv": pv, "vo": vo,
     "voiced": lambda: voice_set("voiced", "voiced", subset=lambda m: list(m[m.diagnosis == "healthy"].id)
                                 + list(m[m.diagnosis != "healthy"].sample(40, random_state=2).id)),
     "vocalset": lambda: voice_set("vocalset", "vocalset", lambda r: r["class"] in ("long_tone_forte", "long_tone_pp"),
