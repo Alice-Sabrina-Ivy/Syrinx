@@ -138,7 +138,6 @@ console.log("5. K consecutive updates");
   check("K = 2: one qualifying update shows nothing", w.update(hit) === false);
   check("K = 2: the second consecutive one shows it", w.update(hit) === true);
   const ineligible = [
-    ["panel hidden", { lnF0: null, resonance: snap() }],
     ["verdict sustained", { lnF0: lnAt(6), resonance: snap({ verdict: "sustained" }) }],
     ["sinceResumeS < 2", { lnF0: lnAt(6), resonance: snap({ sinceResumeS: 1.9 }) }],
     ["fill < 1", { lnF0: lnAt(6), resonance: snap({ fill: 0.9 }) }],
@@ -150,6 +149,10 @@ console.log("5. K consecutive updates");
     const after = v.update(hit);
     check(`an ineligible update between two qualifying ones restarts the run (${name})`, mid === false && after === false && v.update(hit) === true);
   }
+  const h = primed();
+  h.update(hit);
+  const hid = h.update({ lnF0: null, resonance: snap() });
+  check("a hidden-panel update between two qualifying ones is neutral: nothing shown, run kept", hid === false && h.update(hit) === true);
 }
 
 console.log("6. clearing");
@@ -160,8 +163,20 @@ console.log("6. clearing");
   check("shown after two qualifying updates", w.isOn());
   check("cleared on the first update where the condition fails (resonance moved too)", w.update({ lnF0: lnAt(-7), resonance: snap({ u: 0.2 - 0.9 }) }) === false && !w.isOn());
   check("returns only after K new qualifying updates", w.update(hit) === false && w.update(hit) === true);
-  check("cleared when the panel hides", w.update({ lnF0: null, resonance: snap() }) === false && !w.isOn());
+  check("nothing shown while the panel is hidden", w.update({ lnF0: null, resonance: snap() }) === false && !w.isOn() && w.held());
+  check("on -> hidden ('Keep talking') -> shown: back at once if the condition still holds", w.update(hit) === true && w.isOn());
+  check("on -> hidden -> shown but the condition fails: cleared", (w.update({ lnF0: null, resonance: snap() }), w.update({ lnF0: lnAt(-1), resonance: snap() }) === false && !w.held()));
   check("cleared when pitch comes back near the start", (w.update(hit), w.update(hit), w.update({ lnF0: lnAt(-1), resonance: snap() }) === false));
+  const hidden = { lnF0: null, resonance: snap() };
+  const a = primed(); a.update(hit); a.update(hit);
+  for (let i = 0; i < C.maxHiddenUpdates; i++) a.update(hidden);
+  check(`kept through ${C.maxHiddenUpdates} hidden updates in a row (~10 s)`, a.held() && a.update(hit) === true);
+  const b = primed(); b.update(hit); b.update(hit);
+  for (let i = 0; i <= C.maxHiddenUpdates; i++) b.update(hidden);
+  check(`dropped after more than ${C.maxHiddenUpdates} hidden updates in a row: needs K new ones`, !b.held() && b.update(hit) === false && b.update(hit) === true);
+  const c = primed(); c.update(hit); c.update(hit);
+  c.update(hidden);
+  check("a hide on the resonance side (sustained) while shown still clears", c.update({ lnF0: lnAt(-7), resonance: snap({ verdict: "sustained" }) }) === false && !c.held());
 }
 
 console.log("7. resets");
@@ -196,15 +211,28 @@ console.log("8. wiring");
   const panel = readFileSync(path.join(here, "../../src/components/HeardAsPanel.jsx"), "utf8");
   const hook = readFileSync(path.join(here, "../../src/audio/useAudioPipeline.js"), "utf8");
   const iText = panel.indexOf("{PITCH_ONLY_TEXT}");
-  const iShown = panel.indexOf("data-heard-as-shares");
+  const iShown = panel.indexOf("data-heard-as-shares=");
+  const iAxis = panel.indexOf("<HeardAsAxis axis={view.axis} />");
+  const iRange = panel.indexOf("data-heard-as-range=");
   const iCaveat = panel.indexOf("data-heard-as-caveat");
   const slotOpen = panel.lastIndexOf("<p", iText);
-  check("the panel renders the warning text exactly once", iText > 0 && panel.indexOf("{PITCH_ONLY_TEXT}", iText + 1) === -1);
-  check("…inside the shown-estimate block (after the axis, before the caveat)", iText > iShown && iText < iCaveat && iShown > 0);
-  check("…in the extra note slot [data-heard-as-note=\"extra\"]", /data-heard-as-note="extra"[^>]*data-pitch-only="1"/.test(panel.slice(slotOpen, iText)));
-  check("…only when the panel's update said so (view.pitchOnly)", /\{view\.pitchOnly \? \(/.test(panel.slice(iShown, iText)));
-  check("hidden panel updates go to the warning as lnF0 null", (panel.match(/warn\(null\)/g) ?? []).length >= 3 && /pitchOnly: warn\(e\.lnF0\)/.test(panel));
+  const iLive = panel.indexOf("data-heard-as-live=\"\"");
+  check("the panel renders the visible warning once and the live-region copy once",
+    iText > 0 && (panel.match(/\{PITCH_ONLY_TEXT\}/g) ?? []).length === 1 && /\{liveOn \? PITCH_ONLY_TEXT : ""\}/.test(panel));
+  check("…inside the shown-estimate block, directly under the axis (before the range line)", iShown > 0 && iAxis > iShown && iText > iAxis && iText < iRange && iRange < iCaveat);
+  check("…in its own note slot [data-heard-as-note=\"pitch-only\"], plain text (no role on the visible note)",
+    /data-heard-as-note="pitch-only"[^>]*data-pitch-only="1"/.test(panel.slice(slotOpen, iText)) && !/role=/.test(panel.slice(slotOpen, iText)));
+  check("…only when the panel's update said so (view.pitchOnly)", /\{view\.pitchOnly && \(/.test(panel.slice(iAxis, iText)));
+  check("at most one note: the conflict note and extraNote are left out while the warning is on",
+    /\{!view\.pitchOnly && view\.conflict && \(/.test(panel) && /\{!view\.pitchOnly && extraNote != null/.test(panel));
+  check("an always-mounted polite live region (outside the shown block) carries the warning for screen readers",
+    iLive > 0 && /className="sr-only" role="status" aria-live="polite" aria-atomic="true" data-heard-as-live=""/.test(panel)
+    && panel.lastIndexOf(")}", iLive) > panel.indexOf("data-heard-as-legend") && iLive < iCaveat);
+  check("no opacity dimming of the estimate (stale = 'Older reading' text)", !/opacity: view\.ageMs/.test(panel) && /Older reading/.test(panel));
+  check("hidden panel updates go to the warning as lnF0 null", (panel.match(/hide\("/g) ?? []).length >= 2 && /const hide = \(why\) => \{ warn\(null\);/.test(panel) && /const pitchOnly = warn\(e\.lnF0\)/.test(panel));
   check("switching the panel off drops the run", /warning\?\.resetRun\(\)/.test(panel));
+  check("a resonance worker error drops the stale snapshot like an overload (cue row, conflict note, warning)",
+    /if \(msg\.status === "overloaded" \|\| msg\.status === "error"\) \{\s*resonanceRef\.current = null;\s*pitchOnlyRef\.current\.noteResonance\(null\);/.test(hook));
   check("the hook feeds POSTED voiced pitch (msg.voiced && msg.pitch), not painted / held values",
     /pitchOnlyRef\.current\.addPitch\(\{ audioMs: msg\.contextTime \* 1000, f0: msg\.voiced && msg\.pitch > 0 \? msg\.pitch : null \}\)/.test(hook));
   check("the hook feeds every resonance state, null on overload, and resets on start / stop",
@@ -215,7 +243,8 @@ console.log("8. wiring");
 console.log("9. golden replay (public sessions, the study's own rule)");
 {
   const G = JSON.parse(readFileSync(path.join(here, "fixtures/pitch-only-golden.json"), "utf8"));
-  check("fixture rule matches the module (X 4 st, Y 0.6 u, P8)", G.rule.X === C.minPitchSt && G.rule.Y === C.maxResonanceU && G.rule.pitch === "P8");
+  check("fixture rule matches the module (X 4 st, Y 0.6 u, P8, hold through hides, 5 hidden updates)",
+    G.rule.X === C.minPitchSt && G.rule.Y === C.maxResonanceU && G.rule.pitch === "P8" && G.rule.hold === true && G.rule.maxHidden === C.maxHiddenUpdates);
   const replay = (s, K) => {
     const w = createPitchOnlyWarning({ ...C, consecutive: K });
     const { t0Ms, stepMs, f0 } = s.pitch;
@@ -253,6 +282,11 @@ console.log("9. golden replay (public sessions, the study's own rule)");
       check(`${s.key} (${s.sex}, natural reading): on for <= 5 % of eligible updates (${(100 * sh).toFixed(1)} %)`, sh <= 0.05);
     }
   }
+  // The hold rule (review round 2): some golden ticks show the warning right
+  // after a hidden tick (it came back at once instead of waiting K updates).
+  const backAtOnce = G.sessions.filter((s) => s.ticks.some((x, i) => i > 0 && s.ticks[i - 1][1] === null && s.expect.on2[i - 1] === "0" && s.expect.on2[i] === "1"
+    && (i < 2 || s.ticks[i - 2][1] === null || s.expect.on2[i - 2] === "1")));
+  check(`golden set exercises the hold through brief hides (${backAtOnce.map((s) => s.key).join(", ")})`, backAtOnce.length >= 2 && new Set(backAtOnce.map((s) => s.sex)).size === 2);
   const kinds = G.sessions.map((s) => `${s.kind}:${s.sex}`);
   check("golden set covers pitch-only / together / resonance-only / natural for both sexes",
     ["pitch", "together", "resonance", "natural"].every((k) => kinds.includes(`${k}:m`) && kinds.includes(`${k}:f`)));

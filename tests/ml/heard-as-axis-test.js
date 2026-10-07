@@ -1,6 +1,6 @@
 // heard-as-axis-test.js — src/components/heardAsAxisModel.js: the "Likely
 // heard as" panel's single man <-> woman axis (orientation, range rounding,
-// middle guess, "can't tell yet", words, screen-reader text) and its gender
+// best guess, "can't tell yet", words, screen-reader text) and its gender
 // symmetry (a mirrored estimate gives a mirrored axis and the same words with
 // man / woman swapped).
 //
@@ -8,7 +8,7 @@
 
 import { heardAsShares, shareTenths, formatShare } from "../../src/ml/heard-as.js";
 import { HEARD_AS_CALIBRATION as C } from "../../src/ml/heardAsCalibration.js";
-import { heardAsAxis, AXIS_ENDS } from "../../src/components/heardAsAxisModel.js";
+import { heardAsAxis, AXIS_ENDS, unsureWords } from "../../src/components/heardAsAxisModel.js";
 
 let passed = 0, failed = 0;
 function check(name, cond, detail = "") {
@@ -57,24 +57,31 @@ console.log("\ncan't tell yet");
 
 console.log("\nwords");
 {
-  let noPct = true, noVerdict = true, unsureOk = true;
+  let noPct = true, noVerdict = true, unsureOk = true, unsureDetail = "";
   for (const e of ETAS) {
     const sh = sharesAt(e), ax = heardAsAxis(sh);
-    for (const t of [ax.rangeText, ax.unsureText, ax.srText]) {
+    for (const t of [ax.rangeText, ax.unsureText ?? "", ax.srText]) {
       if (t.includes("%")) noPct = false;
       if (/likely (a )?(man|woman)|\bis a (man|woman)|sounds like a/i.test(t)) noVerdict = false;
     }
-    const f = formatShare(sh.unsure);
-    if (ax.unsureText !== `${f.charAt(0).toUpperCase()}${f.slice(1)} might be unsure or say neither`) unsureOk = false;
+    const n = Math.round(10 * sh.centre.unsure);
+    const want = ax.wide ? null : n === 0 ? "Fewer than 1 in 10 might be unsure or say neither" : `About ${n} in 10 might be unsure or say neither`;
+    if (ax.unsureText !== want) { unsureOk = false; unsureDetail = `eta ${e}: ${ax.unsureText} vs ${want}`; }
   }
   check("no '%' anywhere", noPct);
   check("no verdict wording", noVerdict);
-  check("unsure line = 'About A–B in 10 might be unsure or say neither' (formatShare of the unsure range)", unsureOk, heardAsAxis(sharesAt(0)).unsureText);
+  check("unsure line = the share at the best guess, nearest tenth ('About N in 10' / 'Fewer than 1 in 10'); left out when wide", unsureOk, unsureDetail);
+  check("unsureWords: 0.04 -> fewer than 1, 0.05 -> about 1, 0.42 -> about 4", unsureWords(0.04) === "fewer than 1 in 10" && unsureWords(0.05) === "about 1 in 10" && unsureWords(0.42) === "about 4 in 10");
+  for (const e of [3.5, -3.5]) {
+    const t = heardAsAxis(sharesAt(e)).unsureText;
+    check(`typical voice (eta ${e}): unsure line is small, not 'up to 5 in 10' (${t})`, t !== null && !/[–-]\s*5 in 10|[3-9] in 10/.test(t) && /^(Fewer than 1|About 1) in 10/.test(t), t);
+  }
+  check("the old outward-rounded range is gone (it read 'About 0–5 in 10' on typical voices)", !/–/.test(heardAsAxis(sharesAt(2.6)).unsureText ?? ""), formatShare(sharesAt(2.6).unsure));
   const ax = heardAsAxis(sharesAt(2.6));
-  check("screen-reader text names the scale, the range and the middle guess",
-    ax.srText.includes("would say man, on the left") && ax.srText.includes("Shaded range:") && /Middle guess: about \d+ in 10 man, \d+ in 10 woman/.test(ax.srText), ax.srText);
+  check("screen-reader text names the scale, the range and the best guess",
+    ax.srText.includes("would say man, on the left") && ax.srText.includes("Shaded range:") && /Best guess: about \d+ in 10 man, \d+ in 10 woman/.test(ax.srText), ax.srText);
   const w = heardAsAxis(sharesAt(0));
-  check("screen-reader text says can't tell yet when wide", w.srText.includes("Can't tell yet") && !w.srText.includes("Middle guess"));
+  check("screen-reader text says can't tell yet when wide; no unsure line then", w.srText.includes("Can't tell yet") && !w.srText.includes("Best guess") && w.unsureText === null);
 }
 
 console.log("\ngender symmetry (mirrored estimate -> mirrored axis, same words)");
@@ -89,12 +96,12 @@ console.log("\ngender symmetry (mirrored estimate -> mirrored axis, same words)"
     const rangeMirror = A.wide ? A.rangeText === B.rangeText : (rA[0] === rB[1] && rA[1] === rB[0]);
     if (!rangeMirror || A.unsureText !== B.unsureText) { words = false; detail = `${A.rangeText} / ${B.rangeText}`; }
     if (!A.wide) {
-      const midA = A.srText.match(/Middle guess: about (\d+) in 10 man, (\d+) in 10 woman/), midB = B.srText.match(/Middle guess: about (\d+) in 10 man, (\d+) in 10 woman/);
+      const midA = A.srText.match(/Best guess: about (\d+) in 10 man, (\d+) in 10 woman/), midB = B.srText.match(/Best guess: about (\d+) in 10 man, (\d+) in 10 woman/);
       if (!(midA && midB && midA[1] === midB[2] && midA[2] === midB[1])) { words = false; detail = `${A.srText} / ${B.srText}`; }
     }
   }
   check("positions mirror about the middle and 'can't tell' agrees", geo, detail);
-  check("range, unsure and middle-guess words mirror (man <-> woman), identical template", words, detail);
+  check("range, unsure and best-guess words mirror (man <-> woman), identical template", words, detail);
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

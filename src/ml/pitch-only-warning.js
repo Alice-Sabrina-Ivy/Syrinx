@@ -32,12 +32,21 @@
 // P0 known, fill ≥ 1, verdict ≠ "sustained", sinceResumeS ≥ 2.
 // Condition: |12·(lnF0 − P0)/ln 2| ≥ 4 st AND |u − startU| ≤ 0.6 u — the
 // same in both directions (absolute values only).
-// Shown when the condition holds on K = 2 consecutive eligible updates
-// (~2–4 s); cleared on the first update where it fails, is ineligible, or
-// the panel is hidden. (The study's mechanical choice was K = 1; K = 2 is in
-// the pre-registered grid, passes every criterion on the test split too, and
+// Shown when the condition holds on K = 2 consecutive SHOWN updates that are
+// eligible (~2–4 s); cleared on the first shown update where it fails or is
+// ineligible (resonance side: sustained, fill < 1, sinceResumeS < 2, no
+// startU). (The study's mechanical choice was K = 1; K = 2 is in the
+// pre-registered grid, passes every criterion on the test split too, and
 // cuts the brief flash right after a pitch + resonance change from 44 % to
 // 9 % of such sessions — measurement note §5.)
+// Hidden-panel updates (lnF0 null: "Keep talking", "stale", …) are neutral:
+// nothing is shown, but the run is kept, so when the panel comes back the
+// warning is back at once if the first shown update still meets the
+// condition; more than maxHiddenUpdates hidden updates in a row (~10 s) drop
+// the run. (Post-hoc review fix 2026-10-07; replayed on the study's sessions:
+// shown estimates in failure sessions after shift + 10 s carrying the warning
+// 0.91 / 0.92 -> 0.95 / 0.96, every other figure unchanged —
+// measurements/heard-as-panel-review-2-2026-10-07.md §2.)
 //
 // Resets: a resonance restart (snapshot null, or startU going back to null)
 // drops P0 and the run; resetRun() (panel switched off / on) drops only the
@@ -49,12 +58,18 @@ export const PITCH_ONLY_WARNING = Object.freeze({
   consecutive: 2,         // K
   minStartFrames: 20,     // voiced frames needed for P0
   minSinceResumeS: 2,
+  maxHiddenUpdates: 5,    // hidden-panel updates in a row (~10 s) that drop the run
 });
 
 // Same words in every direction; no direction, target or percent sign.
+// The pre-registered direction-neutral wording (2026-10-07 review round 2):
+// the "listeners usually heard less change" claim held pooled (83 %) but not
+// for lowered women's voices (77 %; 68 % with the Jebens reference), and
+// "than this shows" read as a contradiction while the axis said "Can't tell
+// yet" (most of the warning's appearances).
 export const PITCH_ONLY_TEXT =
-  "Your pitch has moved a lot more than your resonance since you started — in published tests, " +
-  "listeners usually heard less change than this shows when only pitch changed.";
+  "Your pitch has moved a lot more than your resonance since you started — " +
+  "this guess can be far off, in either direction, when only pitch changes.";
 
 const ST_PER_LN = 12 / Math.LN2;
 const EPS = 1e-9; // boundary values (4.00 st, 0.60 u) count as met despite float rounding
@@ -95,10 +110,11 @@ export function createPitchOnlyWarning(C = PITCH_ONLY_WARNING) {
   // Display state
   let run = 0;
   let on = false;
+  let hidden = 0;       // hidden-panel updates in a row
 
   function resetReference() {
     tFill = null; tStart = null; p0 = null; p0Done = false; frames = []; sawStartU = false;
-    run = 0; on = false;
+    run = 0; on = false; hidden = 0;
   }
 
   function startWindowP0() {
@@ -149,6 +165,14 @@ export function createPitchOnlyWarning(C = PITCH_ONLY_WARNING) {
     },
     /** -> true while the warning is shown. lnF0 null = the panel is hidden. */
     update({ lnF0 = null, resonance = null } = {}) {
+      if (typeof lnF0 !== "number" || !Number.isFinite(lnF0)) {
+        // Panel hidden: show nothing, keep the run unless hidden for long.
+        hidden++;
+        if (hidden > C.maxHiddenUpdates) run = 0;
+        on = false;
+        return false;
+      }
+      hidden = 0;
       const ref = currentP0();
       if (!pitchOnlyEligible({ lnF0, p0: ref, resonance }, C)) { run = 0; on = false; return false; }
       if (pitchOnlyCondition({ lnF0, p0: ref, u: resonance.u, startU: resonance.startU }, C)) run++;
@@ -157,9 +181,12 @@ export function createPitchOnlyWarning(C = PITCH_ONLY_WARNING) {
       return on;
     },
     isOn: () => on,
+    /** The run that showed the warning is still kept (true while shown, and
+     *  through a brief hide after it was shown) — for the panel's live region. */
+    held: () => run >= C.consecutive,
     pitchStart: () => currentP0(),
     /** The panel was switched off (or hidden for good): forget the run, keep P0. */
-    resetRun() { run = 0; on = false; },
+    resetRun() { run = 0; on = false; hidden = 0; },
     /** Stop / start listening. */
     reset: resetReference,
   };

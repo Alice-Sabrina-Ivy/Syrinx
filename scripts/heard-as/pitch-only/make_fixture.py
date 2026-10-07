@@ -24,8 +24,11 @@ KEYS = [
     "hcs_908_PE", "hcs_237_PE",      # pitch + resonance together (K = 1 flashes, K = 2 does not)
     "hcs_908_EO", "hcs_2961_EO",     # resonance only
     "nat_61", "nat_1995",            # natural readers with a few warnings (K = 2: 4.2 % / 2.4 %)
+    "hcs_260_PO", "hcs_2961_PO",     # pitch only, man raised / woman lowered, with brief hides
+                                     # while the warning is on (the hold rule differs from reset-on-hide)
 ]
-P = dict(X=4, Y=0.6, pitch="P8")
+# hold: the shipped hidden-panel handling (rules.display; review round 2, post hoc)
+P = dict(X=4, Y=0.6, pitch="P8", hold=True, maxHidden=5)
 
 raw = {}
 for pat in sys.argv[1:]:

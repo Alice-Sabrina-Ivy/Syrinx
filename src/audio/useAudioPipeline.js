@@ -498,8 +498,13 @@ export function useAudioPipeline() {
           if (DIAG_ENABLED && msg.perf) setResonancePerf(msg.perf);
         } else if (msg.type === "status") {
           // "overloaded" is a back-off pause (the worker resumes with a
-          // fresh engine and posts "ready"): drop the stale reading.
-          if (msg.status === "overloaded") {
+          // fresh engine and posts "ready"): drop the stale reading. On
+          // "error" too (2026-10-07 review): the worker keeps running after
+          // a caught error, and a frozen last snapshot must not keep driving
+          // the cue row, the conflict note or the pitch-only warning — a
+          // later state message brings the reading back (the warning's
+          // start reference waits for the next cue restart).
+          if (msg.status === "overloaded" || msg.status === "error") {
             resonanceRef.current = null;
             pitchOnlyRef.current.noteResonance(null);
           }

@@ -3,28 +3,35 @@
 // its known weaknesses disclosed). Shows how listeners in published studies
 // might hear the voice on ONE horizontal axis, "would say man" (left, the
 // cue strip's orientation) <-> "would say woman" (right), ticks in tenths:
-// the two-way estimate as a dot (middle guess) inside a shaded ~80 % range,
-// the range in words ("about A–B in 10 would say man · about C–D in 10 would
-// say woman") and the unsure / neither share as one text line — never a
-// single verdict, no percent signs, the same words and colours in every
-// direction (user decision 2026-10-07; it replaced three bracket rows).
-// When the range spans 8 tenths or more the band is dimmed, the dot dropped
-// and it says "Can't tell yet". Layout numbers and words:
+// the two-way estimate as a small hollow ring (single best guess) inside a
+// shaded ~80 % range, the range in words ("about A–B in 10 would say man ·
+// about C–D in 10 would say woman") and the unsure / neither share as one
+// text line — never a single verdict, no percent signs, the same words and
+// colours in every direction (user decision 2026-10-07; it replaced three
+// bracket rows). When the range spans 8 tenths or more the band is dashed,
+// the ring and the unsure line dropped and it says "Can't tell yet". An
+// estimate older than 2 s says "Older reading" in its legend line (nothing is
+// dimmed: dimming took text and the band outline below WCAG contrast).
+// Layout numbers and words:
 // heardAsAxisModel.js (unit-tested). Updates every 2 s from the last ~8 s of
 // running speech (src/ml/heard-as.js); hides with a reason otherwise —
 // within 250 ms when a held note starts.
 // Constants, errors and the evidence for every caveat sentence:
 // measurements/heard-as-calibration-2026-10-07.md.
 //
-// Note slots under the axis, shown only while the estimate is: the
-// pitch–resonance conflict note (computed here) and the extra slot
-// [data-heard-as-note="extra"]: the pitch-only-change warning
+// Notes, shown only while the estimate is, and AT MOST ONE at a time
+// (review round 2): the pitch-only-change warning
 // (src/ml/pitch-only-warning.js, updated here on the panel's cadence from
-// `pitchOnlyRef`; data-pitch-only="1") or, if the parent passes one, the
-// `extraNote` prop rendered as given. The warning compares with this
-// session's start: "your pitch has moved a lot more than your resonance
-// since you started" — same words in every direction.
-// measurements/heard-as-pitch-only-warning-2026-10-07.md
+// `pitchOnlyRef`; [data-heard-as-note="pitch-only"], data-pitch-only="1")
+// sits directly under the axis, so it stays on the first screen wherever the
+// axis does; while it is on, the pitch–resonance conflict note and the
+// `extraNote` prop (rendered as given otherwise, below the range lines) are
+// left out. The warning compares with this session's start — same words in
+// every direction. Screen readers hear it through a live region that stays
+// mounted while the panel is on ([data-heard-as-live]; a region mounted
+// together with its text is often not announced), kept through brief hides.
+// measurements/heard-as-pitch-only-warning-2026-10-07.md,
+// measurements/heard-as-panel-review-2-2026-10-07.md
 //
 // The gender worker runs only while this is on (useAudioPipeline
 // setHeardAsEnabled); off, nothing runs and nothing downloads.
@@ -35,7 +42,7 @@ import { heardAsAxis, AXIS_ENDS } from "./heardAsAxisModel";
 import { HEARD_AS_CALIBRATION } from "../ml/heardAsCalibration";
 import { PITCH_ONLY_TEXT } from "../ml/pitch-only-warning";
 
-const STALE_DIM_MS = 2000;
+const STALE_MS = 2000;
 const HIDE_CHECK_MS = 250;
 export const MODEL_DOWNLOAD_MB = 16;
 
@@ -77,8 +84,9 @@ export function HeardAsSwitch({ on, onChange, label = "Likely heard as · Experi
 }
 
 // The man <-> woman axis: a line with ticks in tenths (the middle one
-// taller), the shaded range (rounded outward to tenths, outlined), the
-// middle-guess dot, end words below the ends. Purely visual (role img with
+// taller), the shaded range (rounded outward to tenths, outlined; dashed when
+// it is "can't tell yet"), the best-guess ring (small and hollow, so the
+// range reads first), end words below the ends. Purely visual (role img with
 // the full sentence as its label); the visible text lines follow it.
 function HeardAsAxis({ axis }) {
   const L = axis.lo * 100, R = axis.hi * 100, D = axis.dot * 100;
@@ -92,13 +100,13 @@ function HeardAsAxis({ axis }) {
             style={{ left: `${i * 10}%` }} />
         ))}
         <span
-          className={`absolute top-1/2 h-3 -translate-y-1/2 rounded-sm border border-neutral-400 bg-neutral-400/30 transition-[left,width] duration-300 ${axis.wide ? "opacity-45" : ""}`}
+          className={`absolute top-1/2 h-3 -translate-y-1/2 rounded-sm border border-neutral-400 transition-[left,width] duration-300 ${axis.wide ? "border-dashed bg-neutral-400/15" : "bg-neutral-400/30"}`}
           style={{ left: `${L}%`, width: `${Math.max(0, R - L)}%` }}
           data-axis-range=""
         />
         {!axis.wide && (
           <span
-            className="absolute top-1/2 w-3 h-3 -ml-1.5 -translate-y-1/2 rounded-full bg-neutral-100 ring-2 ring-[#141414] transition-[left] duration-300"
+            className="absolute top-1/2 w-2.5 h-2.5 -ml-[5px] -translate-y-1/2 rounded-full border-2 border-neutral-200 transition-[left] duration-300"
             style={{ left: `${D}%` }}
             data-axis-dot-mark=""
           />
@@ -134,26 +142,30 @@ export function HeardAsPanel({
     if (!enabled) return undefined;
     const show = (v) => { shownRef.current = !v.hidden; setView(v); };
     // Every update — hidden ones too — goes to the pitch-only warning: a
-    // hidden panel is an ineligible update and clears it. (The hook's
-    // warning object lives for the whole page; captured for the cleanup.)
+    // hidden-panel update (lnF0 null) shows nothing but keeps its run through
+    // a brief hide (src/ml/pitch-only-warning.js). (The hook's warning object
+    // lives for the whole page; captured for the cleanup.)
     const warning = pitchOnlyRef?.current ?? null;
     const warn = (lnF0) => warning?.update({ lnF0, resonance: resonanceRef?.current ?? null }) === true;
+    const hide = (why) => { warn(null); show({ hidden: why, live: warning?.held() === true }); };
     const compute = () => {
       const st = statusRef.current;
-      if (st === "error") { warn(null); show({ hidden: "error" }); return; }
-      if (st !== "ready") { warn(null); show({ hidden: "loading" }); return; }
+      if (st === "error") { hide("error"); return; }
+      if (st !== "ready") { hide("loading"); return; }
       const now = audioClockRef?.current;
       const voiceState = genderStateRef?.current?.state ?? null;
       const e = now == null ? { hidden: "listening" } : heardAsRef.current.estimate(now, voiceState);
-      if (e.hidden) { warn(null); show({ hidden: e.hidden }); return; }
+      if (e.hidden) { hide(e.hidden); return; }
       const shares = heardAsShares(e.meterLogit, e.lnF0);
       const r = resonanceRef?.current;
       const resonanceLive = r && r.u != null && (r.fill ?? 0) >= 1 && r.verdict !== "sustained";
+      const pitchOnly = warn(e.lnF0);
       show({
         axis: heardAsAxis(shares),
         ageMs: e.ageMs,
         conflict: resonanceLive ? conflictNote(e.lnF0, r.u) : null,
-        pitchOnly: warn(e.lnF0),
+        pitchOnly,
+        live: pitchOnly,
       });
     };
     compute();
@@ -176,6 +188,10 @@ export function HeardAsPanel({
     : modelStatus === "error" ? "error"
       : modelStatus !== "ready" ? "loading"
         : view.hidden ?? null;
+  const stale = !reason && view.ageMs > STALE_MS;
+  // The live region keeps the warning through a brief hide (the module holds
+  // its run), so screen readers are not re-told after every "Keep talking".
+  const liveOn = view.live === true;
 
   if (!enabled) {
     return (
@@ -208,28 +224,36 @@ export function HeardAsPanel({
       {reason ? (
         <p className="text-[11px] text-neutral-400 min-h-[18px] leading-[18px]" data-heard-as-reason="">{REASONS[reason](progress)}</p>
       ) : (
-        <div style={{ opacity: view.ageMs > STALE_DIM_MS ? 0.5 : 1 }} className="transition-opacity duration-300" data-heard-as-shares="">
+        <div data-heard-as-shares="" data-stale={stale ? "1" : "0"}>
           <HeardAsAxis axis={view.axis} />
+          {view.pitchOnly && (
+            <p className="mt-1 text-[11px] leading-snug text-amber-200/80" data-heard-as-note="pitch-only" data-pitch-only="1">
+              {PITCH_ONLY_TEXT}
+            </p>
+          )}
           <p className={`mt-1 text-[11px] leading-snug tabular-nums ${view.axis.wide ? "text-neutral-400 italic" : "text-neutral-300"}`}
             data-heard-as-range="" data-wide={view.axis.wide ? "1" : "0"}>
             {view.axis.rangeText}
           </p>
-          <p className="text-[11px] leading-snug tabular-nums text-neutral-400" data-heard-as-unsure="">{view.axis.unsureText}</p>
-          {view.conflict && (
+          {view.axis.unsureText && (
+            <p className="text-[11px] leading-snug tabular-nums text-neutral-400" data-heard-as-unsure="">{view.axis.unsureText}</p>
+          )}
+          {!view.pitchOnly && view.conflict && (
             <p className="mt-1 text-[11px] leading-snug text-amber-200/80" data-heard-as-note="conflict" data-conflict={view.conflict}>
               {CONFLICT_TEXT[view.conflict]} (Where resonance reads also depends on your microphone.)
             </p>
           )}
-          {view.pitchOnly ? (
-            <p className="mt-1 text-[11px] leading-snug text-amber-200/80" data-heard-as-note="extra" data-pitch-only="1" role="status">
-              {PITCH_ONLY_TEXT}
-            </p>
-          ) : extraNote != null && extraNote !== false && (
+          {!view.pitchOnly && extraNote != null && extraNote !== false && (
             <div className="mt-1 text-[11px] leading-snug text-amber-200/80" data-heard-as-note="extra">{extraNote}</div>
           )}
-          <p className="mt-0.5 text-[11px] text-neutral-400">From your last ~8 s of speech · updates every 2 s · shaded = range{view.axis.wide ? "" : ", dot = middle guess"}</p>
+          <p className="mt-0.5 text-[11px] text-neutral-400" data-heard-as-legend="">
+            {stale ? "Older reading — waiting for more speech · " : ""}From your last ~8 s of speech · updates every 2 s · shaded = likely range{view.axis.wide ? "" : ", ring = single best guess"}
+          </p>
         </div>
       )}
+      <div className="sr-only" role="status" aria-live="polite" aria-atomic="true" data-heard-as-live="">
+        {liveOn ? PITCH_ONLY_TEXT : ""}
+      </div>
       <p className="mt-1 text-[11px] leading-snug text-neutral-400" data-heard-as-caveat="">
         {HEARD_AS_CAVEAT}{" "}
         <button type="button" onClick={() => setMore((m) => !m)} aria-expanded={more}

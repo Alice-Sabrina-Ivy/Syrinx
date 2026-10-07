@@ -27,12 +27,13 @@
 //                   ranges appear with no "%" in the panel; reload -> still on;
 //                   switched off in Settings -> the panel agrees, the worker is
 //                   gone. The panel is ONE man <-> woman axis (no bracket
-//                   rows): shaded range, a dot unless "can't tell yet", the
-//                   range and unsure lines, end words and range inside the
-//                   panel, screen-reader label present.
+//                   rows): shaded range, a best-guess ring unless "can't tell
+//                   yet", the range line and (unless "can't tell yet") the
+//                   unsure line, end words and range inside the panel,
+//                   screen-reader label present.
 //   2 speech-man    (heard-as back on) pitch / resonance live, resonance reads
 //                   lower than the woman's; the axis is shown and the man's
-//                   middle guess sits left of the woman's (orientation).
+//                   best guess sits left of the woman's (orientation).
 //   3 held          resonance "sustained" for >= 60 % of the voiced hold after
 //                   its first second; the panel says "sustained", never ranges.
 //   4 noise / 5 silence  no dot on any row after the 5 s hold; the panel never
@@ -41,7 +42,11 @@
 //                   with the resonance kept (scripts/cue-strip-smoke-wavs.mjs
 //                   --pitch-only): the pitch-only warning is never shown before
 //                   the shift, appears within 25 s after it, inside the shown
-//                   estimate in the extra note slot, with the shipped words.
+//                   estimate in its own slot directly under the axis, with the
+//                   shipped words, as the only note, mirrored in the
+//                   always-mounted live region; on the first screen at
+//                   scrollTop 0 (phone, desktop; elsewhere wherever the axis
+//                   is); kept on >= 80 % of shown estimates in the next 20 s.
 // Screenshots: <out>/<viewport>/.
 //
 // Process hygiene (CLAUDE.md hard rule 2, copied from voice-direction-smoke.mjs):
@@ -189,8 +194,12 @@ const state = (page) => page.evaluate(() => {
       })(),
       pitchOnly: (() => {
         const n = p.querySelector("[data-pitch-only]");
-        return n ? { text: n.textContent.trim(), slot: n.dataset.heardAsNote ?? null, inShares: !!n.closest("[data-heard-as-shares]") } : null;
-      })() } : null,
+        return n ? { text: n.textContent.trim(), slot: n.dataset.heardAsNote ?? null, inShares: !!n.closest("[data-heard-as-shares]"),
+          underAxis: n.previousElementSibling?.matches("[data-heard-as-axis]") ?? false,
+          otherNotes: p.querySelectorAll("[data-heard-as-note]:not([data-pitch-only])").length } : null;
+      })(),
+      live: (() => { const l = p.querySelector("[data-heard-as-live]"); return l ? { role: l.getAttribute("role"), text: l.textContent.trim() } : null; })(),
+      wide: p.querySelector("[data-heard-as-axis]")?.dataset.axisWide === "1" } : null,
     listening: document.body.innerText.includes("Stop Listening"),
   };
 });
@@ -287,11 +296,54 @@ let womanDot = null;
 function axisChecks(who, s) {
   const a = s.heardAs?.axis;
   check(`${who}: axis range shaded, dot shown exactly when not "can't tell yet"`, !!a && a.hi > a.lo && a.dotShown === !a.wide, JSON.stringify(a));
-  check(`${who}: axis words — range line ("can't tell yet" when wide) and unsure line`, !!a
-    && (a.wide ? /^Can't tell yet/.test(a.range) : /would say man · .* would say woman$/.test(a.range))
-    && / might be unsure or say neither$/.test(a.unsure), `${a?.range} | ${a?.unsure}`);
+  check(`${who}: axis words — range line ("can't tell yet" when wide) and unsure line (one tenth value; none when wide)`, !!a
+    && (a.wide ? /^Can't tell yet/.test(a.range) && a.unsure === ""
+      : /would say man · .* would say woman$/.test(a.range) && /^(About \d+|Fewer than 1) in 10 might be unsure or say neither$/.test(a.unsure)), `${a?.range} | ${a?.unsure}`);
   check(`${who}: axis screen-reader label`, !!a && a.sr.startsWith("Scale from would say man"), a?.sr);
   check(`${who}: axis, end words and range fit inside the panel`, !!a && a.fits);
+}
+
+// WCAG contrast inside the heard-as panel (adapted from the review round 2
+// probe): every text node >= 4.5:1, the range outline and the best-guess ring
+// >= 3:1 (1.4.11), all against the composited background and with every
+// ancestor's opacity applied.
+async function contrastCheck(page, who) {
+  const r = await page.evaluate(() => {
+    const cv = document.createElement("canvas"); cv.width = cv.height = 1;
+    const cx = cv.getContext("2d", { willReadFrequently: true });
+    const rgba = (c) => {
+      if (!c || c === "transparent") return { r: 0, g: 0, b: 0, a: 0 };
+      cx.clearRect(0, 0, 1, 1); cx.fillStyle = "#000"; cx.fillStyle = c; cx.fillRect(0, 0, 1, 1);
+      const d = cx.getImageData(0, 0, 1, 1).data;
+      return { r: d[0], g: d[1], b: d[2], a: d[3] / 255 };
+    };
+    const over = (t, b) => ({ r: t.r * t.a + b.r * (1 - t.a), g: t.g * t.a + b.g * (1 - t.a), b: t.b * t.a + b.b * (1 - t.a), a: 1 });
+    const lum = (c) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b); };
+    const ratio = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+    const bgOf = (el) => { const ch = []; for (let e = el; e; e = e.parentElement) ch.push(e); let bg = { r: 255, g: 255, b: 255, a: 1 }; for (const e of ch.reverse()) { const c = rgba(getComputedStyle(e).backgroundColor); if (c.a > 0) bg = over(c, bg); } return bg; };
+    const opOf = (el) => { let o = 1; for (let e = el; e; e = e.parentElement) o *= Number(getComputedStyle(e).opacity); return o; };
+    const p = document.querySelector("[data-heard-as]");
+    if (!p) return null;
+    let minText = Infinity, worst = "";
+    for (const el of p.querySelectorAll("h3, h3 span, p, li, button, [data-axis-ends] span")) {
+      if (el.closest(".sr-only")) continue;
+      const t = [...el.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join("").trim();
+      if (!t) continue;
+      const bg = bgOf(el), fg0 = rgba(getComputedStyle(el).color), fg = over({ ...fg0, a: fg0.a * opOf(el) }, bg);
+      const q = ratio(fg, bg);
+      if (q < minText) { minText = q; worst = t.slice(0, 40); }
+    }
+    const g = {};
+    for (const sel of ["[data-axis-range]", "[data-axis-dot-mark]"]) {
+      const el = p.querySelector(sel); if (!el) continue;
+      const bg = bgOf(el.parentElement), c = rgba(getComputedStyle(el).borderTopColor);
+      g[sel] = ratio(over({ ...c, a: c.a * opOf(el) }, bg), bg);
+    }
+    return { minText, worst, range: g["[data-axis-range]"] ?? null, ring: g["[data-axis-dot-mark]"] ?? null };
+  });
+  log(`  contrast (${who}): ${JSON.stringify(r)}`);
+  check(`${who}: heard-as panel text >= 4.5:1, range outline and best-guess ring >= 3:1`,
+    !!r && r.minText >= 4.5 && (r.range === null || r.range >= 3) && (r.ring === null || r.ring >= 3), JSON.stringify(r));
 }
 
 const SPEC_HL = {
@@ -411,6 +463,7 @@ for (const label of ["About the pitch cue", "About the resonance cue", "About th
   s = await state(page);
   check("heard-as: one man <-> woman axis appears on speech (no bracket rows)", shown && s.heardAs.axes === 1 && s.heardAs.legacyRows === 0, `${s.heardAs?.mode}/${s.heardAs?.reason}`);
   axisChecks("woman", s);
+  await contrastCheck(page, "woman");
   womanDot = s.heardAs?.axis?.dot ?? null;
   check("heard-as: no '%' in the panel while it shows ranges", shown && !s.heardAs.text.includes("%"));
   check("heard-as: no verdict word", shown && !/likely (a )?(man|woman)|likely heard as a/i.test(s.heardAs.text.replace("Likely heard as", "")));
@@ -432,7 +485,9 @@ for (const label of ["About the pitch cue", "About the resonance cue", "About th
   await sleep(300);
   check("Settings' switch now off", (await settingsSwitch(page)) === "false");
   await closeSettings(page);
-  await sleep(500);
+  // Puppeteer drops a terminated worker's target asynchronously; under load
+  // that can take over 0.5 s (review round 2), so wait up to 3 s for it.
+  for (let i = 0; i < 12 && gw(page) !== 0; i++) await sleep(250);
   const s = await state(page);
   check("panel agrees (off) and the gender worker is gone", s.heardAs?.mode === "off" && gw(page) === 0, `${s.heardAs?.mode}, ${gw(page)} workers`);
   // back on for the other voices
@@ -459,8 +514,9 @@ check("man: listening", await continueAfterReload(page));
   check("man: resonance reads lower than the woman's", manU !== null && womanU !== null && manU < womanU, `man ${manU} vs woman ${womanU}`);
   check("man: one man <-> woman axis, no '%'", s.heardAs?.mode === "shown" && s.heardAs.axes === 1 && s.heardAs.legacyRows === 0 && !s.heardAs.text.includes("%"), `${s.heardAs?.mode}/${s.heardAs?.reason}`);
   axisChecks("man", s);
+  await contrastCheck(page, "man");
   const manDot = s.heardAs?.axis?.dot ?? null;
-  check("orientation: the man's middle guess sits left of the woman's", manDot !== null && womanDot !== null && manDot < womanDot, `man ${manDot} vs woman ${womanDot}`);
+  check("orientation: the man's best guess sits left of the woman's", manDot !== null && womanDot !== null && manDot < womanDot, `man ${manDot} vs woman ${womanDot}`);
   await shot(page, "05-man-live");
   // the panel itself (below the first screen on short / narrow viewports)
   await page.evaluate(() => document.querySelector("[data-heard-as]")?.scrollIntoView({ block: "center" }));
@@ -489,14 +545,46 @@ for (const who of PITCH_ONLY) {
   check(`pitch-only ${who}: the warning is never shown before the shift`, before === 0, `${before} samples`);
   check(`pitch-only ${who}: the warning appears within 25 s after the shift`, first !== null, first === null ? `panel shown on ${shownTicks} samples` : `${first.toFixed(1)} s after`);
   const w = firstState?.heardAs?.pitchOnly;
-  check(`pitch-only ${who}: shown in the extra note slot, inside the shown estimate, with the shipped words and no '%'`,
-    !!w && w.slot === "extra" && w.inShares && firstState.heardAs.mode === "shown" && w.text === PITCH_ONLY_TEXT && !firstState.heardAs.text.includes("%"), JSON.stringify(w));
+  check(`pitch-only ${who}: shown in its own note slot directly under the axis, inside the shown estimate, with the shipped words and no '%'`,
+    !!w && w.slot === "pitch-only" && w.underAxis && w.inShares && firstState.heardAs.mode === "shown" && w.text === PITCH_ONLY_TEXT && !firstState.heardAs.text.includes("%"), JSON.stringify(w));
+  check(`pitch-only ${who}: the only note while it is on (no conflict / extra note beside it)`, !!w && w.otherNotes === 0, JSON.stringify(w));
+  check(`pitch-only ${who}: the always-mounted live region carries the same words`, firstState?.heardAs?.live?.role === "status" && firstState.heardAs.live.text === PITCH_ONLY_TEXT, JSON.stringify(firstState?.heardAs?.live));
   if (first !== null) {
+    // First screen: the warning's box at scrollTop 0, above the fixed bottom bar.
+    const fold = await page.evaluate(() => {
+      window.scrollTo(0, 0);
+      for (const e of document.querySelectorAll("*")) if (e.scrollTop > 0) e.scrollTop = 0;
+      const n = document.querySelector("[data-pitch-only]"), a = document.querySelector("[data-heard-as-axis]");
+      if (!n) return null;
+      const bar = [...document.querySelectorAll("body *")].find((e) => getComputedStyle(e).position === "fixed" && /Stop Listening/.test(e.textContent ?? "") && e.getBoundingClientRect().top > innerHeight / 2);
+      const limit = bar ? bar.getBoundingClientRect().top : innerHeight;
+      const r = n.getBoundingClientRect(), ra = a?.getBoundingClientRect();
+      return { top: Math.round(r.top), bottom: Math.round(r.bottom), limit: Math.round(limit), inView: r.top >= 0 && r.bottom <= limit + 0.5,
+        axisInView: !!ra && ra.top >= 0 && ra.bottom <= limit + 0.5 };
+    });
+    await sleep(150);
+    await shot(page, `05c-pitch-only-${who}-first-screen`);
+    log(`  pitch-only ${who} at scrollTop 0: ${JSON.stringify(fold)}`);
+    if (VIEWPORT === "phone" || VIEWPORT === "desktop") {
+      check(`pitch-only ${who}: the warning is on the first screen (scrollTop 0, above the bottom bar)`, !!fold?.inView, JSON.stringify(fold));
+    } else {
+      check(`pitch-only ${who}: wherever the axis is on the first screen, so is the warning`, !!fold && (!fold.axisInView || fold.inView), JSON.stringify(fold));
+    }
+    // Hold through brief hides: shown estimates in the next 20 s that carry it.
+    let shownAfter = 0, warnedAfter = 0, wideWarned = 0;
+    await sample(page, 20000, (s) => {
+      if (s.heardAs?.mode !== "shown") return;
+      shownAfter++;
+      if (s.heardAs.pitchOnly) { warnedAfter++; if (s.heardAs.wide) wideWarned++; }
+    });
+    log(`  pitch-only ${who}: next 20 s — ${warnedAfter}/${shownAfter} shown samples carry the warning (${wideWarned} of them while "Can't tell yet")`);
+    check(`pitch-only ${who}: kept on most shown estimates in the next 20 s (>= 80 %)`, shownAfter > 0 && warnedAfter / shownAfter >= 0.8, `${warnedAfter}/${shownAfter}`);
     await page.evaluate(() => document.querySelector("[data-pitch-only]")?.scrollIntoView({ block: "center" }));
     await sleep(200);
     await shot(page, `05c-pitch-only-${who}`);
     const fits = await page.evaluate(() => { const p = document.querySelector("[data-heard-as]"); return p ? p.scrollWidth <= p.clientWidth + 1 && document.documentElement.scrollWidth <= innerWidth : false; });
     check(`pitch-only ${who}: the note wraps inside the panel (no horizontal overflow)`, fits);
+    await contrastCheck(page, `pitch-only ${who}`);
   }
   check(`no page errors (pitch-only ${who})`, errors.length === 0, errors.slice(0, 3).join(" | "));
 }
