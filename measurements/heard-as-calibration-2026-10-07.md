@@ -267,11 +267,18 @@ end on the left), right end "would say woman", ticks in tenths. The axis is
 the two-way share `s` of §1 (unsure listeners counted half each way):
 position 1 − s. The shaded band is the range [sLow, sHigh] of §5 rounded
 outward to tenths (the same rounding as the words, so band and text agree);
-the dot is the unrounded middle guess s. Under it: "About A–B in 10 would say
-man · about C–D in 10 would say woman" and "About E–F in 10 might be unsure
-or say neither" (the §1 unsure range). A band spanning ≥ 8 tenths — at this
-half-width that is |eta| ≲ 1.3, i.e. every in-between voice — is dimmed, has
-no dot and says "Can't tell yet — the range covers most of the scale". No
+a small hollow ring marks the unrounded single best guess s. Under it: "About
+A–B in 10 would say man · about C–D in 10 would say woman" and "About N in 10
+might be unsure or say neither" (the §1 unsure share at s, rounded to the
+nearest tenth; "fewer than 1 in 10" below 0.05). A band spanning ≥ 8 tenths
+— at this half-width that is |eta| ≲ 1.3, i.e. every in-between voice — is
+dashed, has no ring and no unsure line and says "Can't tell yet — the range
+covers most of the scale". **Historical (superseded 2026-10-07, review round
+2):** a filled "middle guess" dot (the most prominent mark, though it often
+sits near one end of the band), the unsure line as the §1 unsure range rounded
+outward (it read "About 0–5 in 10" on 57–100 % of readings for every voice,
+typical natural voices included), and a dimmed band
+(`measurements/heard-as-panel-review-2-2026-10-07.md` §4–5). No
 verdict word, no percent sign, neutral colours, the same template in every
 direction; a mirrored estimate gives a mirrored axis and the same words with
 man / woman swapped (`tests/ml/heard-as-axis-test.js`). The always-visible
@@ -286,10 +293,16 @@ chain, dev / test split) selected a live warning for failure 1: the posted
 pitch has moved ≥ 4 st from the pitch over the resonance cue's start window
 while the resonance readout is within 0.6 u of its start, on 2 consecutive
 updates. On the test split it catches 10 / 11 male-base and 27 / 30
-female-base failure sessions (K = 2), with natural false alarms of 1.0 % /
-0 % of women's / men's updates. It cannot see shifts that predate the session
-start or pitch changes the resonance cue reads as resonance, so the caveat
-stays. Full study, pre-registration and the K = 2 deviation:
+female-base failure sessions (K = 2, chosen after the test split was seen),
+with natural false alarms of 1.0 % / 0 % of women's / men's updates (fresh
+LibriSpeech dev-clean: 0.94 % / 1.07 %, but up to 13.8 % / 21.4 % for a reader
+whose start window is atypical, and up to 61 % for one expressive reader
+depending on where the session started). It cannot see shifts that predate the
+session start or pitch changes the resonance cue reads as resonance, so the
+caveat stays. Its wording is direction-neutral since review round 2 ("this
+guess can be far off, in either direction, when only pitch changes"): the
+"listeners heard less change" direction held for raised men's voices but
+only 77 % of the time for lowered women's. Full study, pre-registration and the K = 2 deviation:
 `measurements/heard-as-pitch-only-warning-2026-10-07.md`.
 
 ## Reproduce

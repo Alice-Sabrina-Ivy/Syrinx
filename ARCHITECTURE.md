@@ -595,14 +595,16 @@ The default practice mode — everything at a glance. **As built (Design A
   (colour, a hollow dot and "↑ higher" / "↓ lower" — never colour alone). The
   pitch level and steadiness sit in the pitch row, HNR in the strip's caption.
 - **"Likely heard as · Experimental"** — opt-in, off by default: listener
-  shares on one man ↔ woman axis (a shaded range in tenths with a dot for
-  the middle guess, "can't tell yet" when the range covers most of it; the
-  unsure / neither share as a text line), never a verdict, with its known weaknesses stated (including that it was
-  not tested on trans women or nonbinary speakers); hidden outside the range
-  it was fitted on. A live note warns when the pitch has moved a lot more
-  than the resonance since the session's start (where the guess overstates
-  the change listeners hear; pre-registered rule,
-  `measurements/heard-as-pitch-only-warning-2026-10-07.md`).
+  shares on one man ↔ woman axis (a shaded range in tenths with a small
+  ring for the single best guess, "can't tell yet" when the range covers most
+  of it; the unsure / neither share at the best guess as a text line), never
+  a verdict, with its known weaknesses stated (including that it was not
+  tested on trans women or nonbinary speakers); hidden outside the range it
+  was fitted on. A live note directly under the axis warns when the pitch has
+  moved a lot more than the resonance since the session's start ("this guess
+  can be far off, in either direction, when only pitch changes";
+  pre-registered rule, `measurements/heard-as-pitch-only-warning-2026-10-07.md`);
+  it is the only note while it shows and stays through brief pauses.
 - **Session row**: Save, timer, notes.
 
 On **phones** these stack in that order (trace and strip fit the first screen
