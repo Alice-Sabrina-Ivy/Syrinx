@@ -16,6 +16,11 @@
 //   its pixels differing by > 8/255 in any channel, and none outside the plot
 //   rectangle. Also reported, not judged: a capture 7 ms after a data step
 //   (between data frames).
+// trace DPR: the device pixel ratio alone changes (1 -> 2 -> 3 -> 1, same CSS
+//   size; under emulation only window "resize" fires, not the resolution
+//   media query, and the ResizeObserver sees no size change). Pass: after
+//   each change and one frame, canvas.width / height = round(CSS size x DPR),
+//   in both trees (review of 3297f9f, §3 F2).
 // cue: the real CueStrip, a scripted 60 s of props / resonance snapshots,
 //   the 250 ms tick stepped by hand, transitions off; after every tick each
 //   row's data attributes, header / screen-reader text, the dot, start ring,
@@ -147,6 +152,35 @@ if (ONLY !== "cue") {
         else check(`trace target=${target} dpr=${dpr} '${b[i].name}'`, ok, detail);
       }
       writeFileSync(path.join(OUT, `trace-${target}-dpr${dpr}.json`), JSON.stringify({ base: b.map((x) => ({ name: x.name, w: x.px.w, h: x.px.h })), head: h.map((x) => ({ name: x.name, w: x.px.w, h: x.px.h })) }));
+    }
+  }
+}
+
+async function dprRun(which) {
+  const page = await browser.newPage();
+  await page.setViewport({ width: 700, height: 300, deviceScaleFactor: 1 });
+  await page.goto(`${urls[which]}/build/fixture/trace.html?target=feminine`);
+  await page.waitForFunction(() => window.__ready === true && document.querySelector("canvas"));
+  await sleep(300);
+  await page.evaluate(() => window.__step(40));
+  const out = [];
+  for (const dpr of [2, 3, 1]) {
+    await page.setViewport({ width: 700, height: 300, deviceScaleFactor: dpr });
+    await sleep(300); // resize / media-query events on the real event loop
+    await page.evaluate(() => window.__idle(25));
+    out.push(await page.evaluate(() => {
+      const c = document.querySelector("canvas"), r = c.getBoundingClientRect(), d = window.devicePixelRatio;
+      return { dpr: d, w: c.width, h: c.height, wantW: Math.round(r.width * d), wantH: Math.round(r.height * d) };
+    }));
+  }
+  await page.close();
+  return out;
+}
+if (ONLY !== "cue") {
+  for (const which of ["base", "head"]) {
+    for (const r of await dprRun(which)) {
+      check(`trace ${which}: DPR-only change to ${r.dpr} resizes the canvas`, r.w === r.wantW && r.h === r.wantH,
+        `canvas ${r.w} x ${r.h}, expected ${r.wantW} x ${r.wantH}`);
     }
   }
 }

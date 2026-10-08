@@ -940,3 +940,24 @@ Any further number is descriptive.
 - S0 against the same bar, as a description only.
 - Public data only; no private recordings.
 ````
+
+**Erratum (2026-10-08, after review; the verbatim block above is left
+untouched).** Two truncated hashes in its §1 were mistyped when the file was
+written: "build_jobs.py f4914280…f535" and "features.py 02f5786b…d4af635"
+(the "d4af635" suffix belongs to build_jobs.py; "f535" matches neither
+file). Both files predate the registration (modified 02:20 and 02:19, the
+registration was hashed at 03:38:15) and features.py is byte-identical to
+the steady study's copy. Full sha256 of every file the registration lists,
+as they are in the study's scratch folder:
+
+| file | sha256 |
+|---|---|
+| session.mjs | `8ccbfa834d058db0b7e78385520374e37cd2fe2da1d978f3df1a28f8e46365d9` |
+| build_jobs.py | `f49142802a3f86c1d7d4136b0dbebe3796305cf71fb20adccf3bf700dd4af635` |
+| features.py | `02f5786b1be1688a432595291cebeef08e35fa5fcad1d9eabb212c3ab894aee5` |
+| evaluate.py | `652dc467314d46a0a201392e77db6b4b8002183f6813334fc337222dde223893` |
+| evaluate_confirm.py | `c19c24583bcbf9a9c95e780c4423ff030a7c181c9e86fd14357dd9edd6bac632` |
+| select_extract.py | `9374b96c6160368db04388985798db7e15da1771fabbe81a9ef1d08d7726c5e8` |
+| used_speakers.py | `400bbfa0ec6a8509d1707f7638fa110048c8e6ae2f0247910de3a33ae26a532b` |
+| used_speakers.json | `c10563f968bee5bd94e876bbdff24b2288e53d9ffc18c780a101acc79cce6a21` |
+| speakers.json | `fb3f6a0aa4d52adcc571ffc9493998fca31ca8b49f57ac829a6abf901be2127d` |

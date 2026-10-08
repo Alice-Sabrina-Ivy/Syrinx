@@ -22,7 +22,11 @@
 //      (PerformanceObserver "longtask").
 //   3. (--diag=1) the painted-latency ring of window.__syrinxDiag
 //      (capture -> the trace draw that first shows a voiced point) and the
-//      handler latency (capture -> display-state update).
+//      handler latency (capture -> display-state update), and per frame
+//      their difference, draw - readout update (the judged latency figure:
+//      the capture epoch, which carries a run-to-run clock offset, cancels).
+//   (--panel=on) changes per second of the heard-as axis range and ring
+//      (data-axis-lo / -hi, data-axis-dot) during the CPU window.
 //   4. (--profile) a 15 s main-thread JS sampling profile after the trace.
 //
 // Process hygiene (CLAUDE.md hard rule 2): puppeteer with a temporary
@@ -126,12 +130,27 @@ await sleep(Math.max(0, WARMUP * 1000 - (Date.now() - t0)));
 // ---- trace ----
 const s0 = DIAG ? await page.evaluate(() => window.__syrinxDiag?.snapshot()) : null;
 await page.evaluate(() => window.__mtProbe.armLongTasks());
+if (PANEL) {
+  await page.evaluate(() => {
+    const c = { range: 0, dot: 0 };
+    window.__mtAxis = c;
+    window.__mtAxisObs = new MutationObserver((list) => {
+      for (const m of list) {
+        if (m.attributeName === "data-axis-dot") c.dot++;
+        else c.range++;
+      }
+    });
+    window.__mtAxisObs.observe(document.body, { subtree: true, attributes: true, attributeFilter: ["data-axis-lo", "data-axis-hi", "data-axis-dot"] });
+  });
+}
 const w0 = Date.now();
 await page.tracing.start({ categories: ["toplevel", "devtools.timeline", "disabled-by-default-devtools.timeline", "v8", "blink"] });
 await sleep(TRACE * 1000);
 const buf = await page.tracing.stop();
 const wallS = (Date.now() - w0) / 1000;
 const longTasks = await page.evaluate(() => window.__mtProbe.readLongTasks());
+const axisChanges = PANEL ? await page.evaluate(() => { window.__mtAxisObs?.disconnect(); return window.__mtAxis ?? null; }) : null;
+if (axisChanges) { axisChanges.rangePerS = +(axisChanges.range / wallS).toFixed(3); axisChanges.dotPerS = +(axisChanges.dot / wallS).toFixed(3); }
 const SMOOTH = Number(arg("smooth", "10"));
 await page.evaluate(() => window.__mtProbe.armRaf());
 await sleep(SMOOTH * 1000);
@@ -267,8 +286,16 @@ if (DIAG && s1) {
   const gaps = draws.slice(1).map((d, i) => d.t - draws[i].t).sort((a, b) => a - b);
   const steps = draws.map((d) => d.step).filter((x) => typeof x === "number").sort((a, b) => a - b);
   const q = (a, f) => (a.length ? a[Math.min(a.length - 1, Math.floor(a.length * f))] : null);
+  // Per frame: draw - readout update = paint latency - handler latency (same
+  // capture epoch, so its clock offset cancels), joined on the point time.
+  const handlerByT = new Map();
+  for (const f of s1.frames ?? []) {
+    if (typeof f.tEpochMs === "number" && typeof f.timings?.totalMs === "number") handlerByT.set(Math.round(f.tEpochMs), f.timings.totalMs);
+  }
+  const drawMinusHandler = pl.map((x) => (handlerByT.has(x.t) ? x.ms - handlerByT.get(x.t) : null)).filter((x) => x !== null);
   latency = {
     paintedMedianMs: med(pl.map((x) => x.ms)), paintedN: pl.length, handlerMedianMs: med(tot), handlerN: tot.length,
+    drawMinusHandlerMedianMs: med(drawMinusHandler), drawMinusHandlerN: drawMinusHandler.length,
     drawsPerS: draws.length / ((s1.capturedAtEpochMs - t0d) / 1000), drawGapP99Ms: q(gaps, 0.99), drawGapMaxMs: gaps[gaps.length - 1] ?? null,
     stepP99CssPx: q(steps, 0.99), stepMaxCssPx: steps[steps.length - 1] ?? null,
   };
@@ -299,12 +326,13 @@ const result = {
   mainByFirstChild: toMsPerS(firstChild).slice(0, 25),
   mainByExclusive: toMsPerS(exclusive).slice(0, 40),
   mainFunctionCalls: toMsPerS(fnIncl).slice(0, 30),
-  frameStats, latency, profileTop, errors,
+  frameStats, latency, axisChanges, profileTop, errors,
 };
 console.log(`${ua} ${DIST} ${VIEWPORT} panel ${PANEL ? "on" : "off"} diag ${DIAG ? 1 : 0} wav ${path.basename(WAV)}: MAIN ${result.mainMsPerS} ms/s; ` +
   Object.entries(perAudioS).filter(([k]) => !k.startsWith("other")).map(([k, v]) => `${k} ${v}`).join(", "));
 console.log(`  CPU window: main frames ${frameStats.beginMainFramesPerS.toFixed(1)}/s, main tasks >16.7 ms ${mainTaskOver16}, >50 ms ${mainTaskOver50}, long tasks ${frameStats.longTasks} (${frameStats.longTaskMs.toFixed(0)} ms); rAF probe ${SMOOTH} s: ${frames} frames (${frameStats.fps.toFixed(1)} fps, median ${frameStats.medianMs?.toFixed(1)} ms), >25 ms ${frameStats.over25}, >50 ms ${frameStats.over50}`);
-if (latency) console.log(`  latency: painted median ${latency.paintedMedianMs?.toFixed(1)} ms (n ${latency.paintedN}), handler median ${latency.handlerMedianMs?.toFixed(1)} ms; trace draws ${latency.drawsPerS.toFixed(1)}/s, gap p99 ${latency.drawGapP99Ms?.toFixed(1)} max ${latency.drawGapMaxMs?.toFixed(1)} ms, step p99 ${latency.stepP99CssPx?.toFixed(2)} max ${latency.stepMaxCssPx?.toFixed(2)} CSS px`);
+if (axisChanges) console.log(`  heard-as axis attribute changes: range lo/hi ${axisChanges.rangePerS}/s, ring ${axisChanges.dotPerS}/s`);
+if (latency) console.log(`  latency: draw - readout update median ${latency.drawMinusHandlerMedianMs?.toFixed(2)} ms (n ${latency.drawMinusHandlerN}); painted median ${latency.paintedMedianMs?.toFixed(1)} ms (n ${latency.paintedN}), handler median ${latency.handlerMedianMs?.toFixed(1)} ms; trace draws ${latency.drawsPerS.toFixed(1)}/s, gap p99 ${latency.drawGapP99Ms?.toFixed(1)} max ${latency.drawGapMaxMs?.toFixed(1)} ms, step p99 ${latency.stepP99CssPx?.toFixed(2)} max ${latency.stepMaxCssPx?.toFixed(2)} CSS px`);
 if (process.env.MT_VERBOSE) {
   console.log("  by first child of top-level task (ms/s):"); for (const [k, v] of result.mainByFirstChild) console.log(`    ${String(v).padStart(7)}  ${k}`);
   console.log("  by exclusive event (ms/s):"); for (const [k, v] of result.mainByExclusive.slice(0, 25)) console.log(`    ${String(v).padStart(7)}  ${k}`);

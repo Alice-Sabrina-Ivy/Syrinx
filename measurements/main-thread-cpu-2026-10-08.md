@@ -261,8 +261,11 @@ confirmation failed, so no other code changed (fc2a207 is docs only). Desktop
 CPU per thread, re-measured with `scripts/resonance/chrome-cpu.mjs --diag=0`
 (the production URL, no overlay; 30 s Chrome trace after a 20 s warm-up;
 headless Chrome 154, 1280 × 800, ~150 Hz frames), base = `cue-strip` adf19c3,
-head = the integrated `cue-strip` build, interleaved base / head per run,
-2 runs × {LibriSpeech woman, man} per panel state (16 runs). Median ms of
+head = the integrated `cue-strip` build, base then head in every pair (a
+fixed order — not alternated, as §1 asked; corrected 2026-10-08 after review),
+2 runs × {LibriSpeech woman, man} per panel state (16 runs). A review run
+with the order alternated (one run per voice and panel state) reproduced the
+cut: main thread −57 … −69 %, app −34 … −44 % (§3). Median ms of
 thread CPU per audio second:
 
 | | Main | App (main + 4 workers) | Pitch worker | DSP worker | Resonance worker | Gender worker | Compositor | Renderer threads total | GPU process |
@@ -291,3 +294,82 @@ Checks on the integrated build: `npm run lint`, `npm run test:unit` (38 / 38),
 `scripts/cue-strip-smoke.mjs --pitch-only=man,woman` passes 90 / 90 at every
 viewport (phone 448 × 890, p402 402 × 750, p360 360 × 690, landscape
 890 × 360, desktop 1280 × 800).
+
+## 3. Review fixes (pre-registered 2026-10-08, before any change or result)
+
+A review of `cue-strip` 3297f9f reproduced the main-thread cut with base /
+head order alternated (one run per voice and panel state, busier PC: main
+thread panel off woman 223.6 → 91.8 ms/s, −59.0 %, man 197.9 → 85.7,
+−56.7 %; panel on woman 248.3 → 100.1, −59.7 %, man 280.8 → 87.3, −68.9 %;
+app total −34 … −44 %). It raised the points below. **Prev** = 3297f9f.
+
+**F1 — trace redraw fallback.** Since K2 the trace draws when a point is
+appended, plus a 100 ms `setInterval` fallback that only draws if ≥ 100 ms
+passed since the last draw, so a delivery hiccup can freeze the trace for up
+to ~200 ms. In one of five review runs (prev, diag, desktop) the longest gap
+between draws was 121.2 ms (step 5.08 CSS px) — guard 3c (max ≤ 100 ms)
+fails there; the §2.3 figure (max 41.3 ms) came from fewer runs. Change: the
+fallback becomes a timeout re-armed after every draw — 50 ms while data is
+arriving (a notification in the last 1 s), 100 ms otherwise (idle cadence as
+before) — so a stalled feed still scrolls at ≥ ~20 draws/s and a gap is at
+most ~50 ms plus one display frame. The scheduling logic moves to a small
+module (`src/components/traceRedrawScheduler.js`) with a Node unit test
+(`tests/audio/trace-redraw-test.js`): a 25 ms feed draws once per point with
+no fallback draws; a stalled feed draws every ≤ 50 ms + 1 frame; idle draws
+every ~100 ms; a pending frame in a hidden page is not duplicated; stop()
+cancels everything. A display-rate rAF loop capped at 60 Hz (the review's
+other option) is **not** adopted: it would bring back per-frame main-thread
+work, which is the cost this pass removed; the phone session judges the
+data-driven cadence on a real 40 ms-buffer device (phone plan).
+
+**F2 — device-pixel-ratio change.** Under Chrome's emulation a DPR-only
+change (same CSS size) fires `window` `resize` but not the
+`(resolution: Ndppx)` media query, and the ResizeObserver sees no size
+change, so the canvas kept its old backing size. Change: a `resize` listener
+also invalidates the geometry (the media query stays). Check: a new
+`visual-check.mjs` step — the fixture at DPR 1, then DPR 2 at the same CSS
+size — asserts `canvas.width == round(rect.width × dpr)` (and height) for
+base and head; pass = both trees.
+
+**F3 — latency statistic.** Capture → painted carries a run-to-run clock
+offset of the capture epoch (~10 ms, review). Judged figure from now on:
+draw − readout update per frame (diag paint latency − handler latency, the
+same capture epoch cancels); `mt-cpu.mjs` prints it. Guard 1 is re-run with
+it: head vs base 5e26866, 3 × {woman, man}, order alternated, 1280 × 800,
+panel off, diag; median of run medians head − base ≤ +5 ms. Capture →
+painted is reported, not judged.
+
+**F4 — erratum** (D2-0.1 confirmation, Appendix B of
+heard-as-pitch-only-warning-2026-10-07.md): two truncated hashes were
+mistyped; a dated erratum with full hashes goes after the verbatim block.
+
+**F5 — wording.** §2.5's runs were base then head in every pair (fixed order),
+not alternated; reworded, and the review's alternated reproduction cited.
+
+**F6 — heard-as range box.** The shaded range still has a
+`transition-[left,width] duration-300` (main-thread style + layout every
+frame for 300 ms after each change of the range). Attribution first
+(attribution build, not a candidate): prev vs prev with that transition
+removed, `mt-cpu.mjs`, 1280 × 800, panel on, no diag, 3 × {woman, man},
+order alternated; also counted: changes of the range (`data-axis-lo` /
+`-hi`) per second during the CPU window. Decision: if removing it lowers
+the main-thread median by **≥ 6 ms/s** (3 % of the §2.5 panel-on base,
+198.5 — the ladder's bar) the transition is removed (the range then jumps
+between tenths; the ring keeps its composited slide — a transform + scale
+version would distort the 1 px border, rounded corners and the dashed
+"can't tell yet" outline); otherwise it stays and is recorded as an accepted
+exception in CLAUDE.md's main-thread budget.
+
+**Re-measure after F1 + F2 (+ F6 if adopted)** — all must pass:
+- Guard 1 as F3 above.
+- Guard 3c: head, diag, 1280 × 800, panel off, 5 × {woman, man} (the 6
+  guard-1 runs + 4 more): in **every** run gap p99 ≤ 50 ms, max ≤ 100 ms,
+  step p99 ≤ 2 CSS px.
+- TARGET still met: `mt-cpu.mjs` (the §2.1 harness, no diag; it also
+  counts guard 3a / 3b), base adf19c3 vs head, 1280 × 800, 2 × {woman, man}
+  per panel state, order alternated per pair; main-thread cut ≥ 35 % in both
+  panel states (women and men reported), worker threads reported.
+- Guards 2 and 4 (`visual-check.mjs` vs 5e26866) incl. the F2 step; guard
+  3a / 3b counts (tasks > 50 ms, rAF probe > 50 ms) in the TARGET runs ≤
+  base + 1; lint, `npm run test:unit`, `npm run build`, smoke at the five
+  viewports.
