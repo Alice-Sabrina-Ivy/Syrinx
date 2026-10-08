@@ -501,7 +501,7 @@ export function useAudioPipeline() {
           // fresh engine and posts "ready"): drop the stale reading. On
           // "error" too (2026-10-07 review): the worker keeps running after
           // a caught error, and a frozen last snapshot must not keep driving
-          // the cue row, the conflict note or the pitch-only warning — a
+          // the cue row or the pitch-only warning — a
           // later state message brings the reading back (the warning's
           // start reference waits for the next cue restart).
           if (msg.status === "overloaded" || msg.status === "error") {

@@ -14,7 +14,6 @@ import {
   unsureShare,
   formatShare,
   shareTenths,
-  conflictNote,
   outsideTestedRange,
   isWideShare,
   ML_WINDOW_MS,
@@ -93,12 +92,6 @@ check("0 low end", formatShare([0.0041, 0.4957]) === "about 0–5 in 10");
 check("no percent sign anywhere", [[0, 0.5], [0.2, 0.7], [0, 0.01], [0.97, 1]].every((r) => !formatShare(r).includes("%")));
 
 console.log("\nnotes");
-check("conflict: low F0 with a far-feminine resonance reading -> opposite", conflictNote(Math.log(110), 1.6) === "opposite");
-check("conflict: no note when they agree", conflictNote(Math.log(210), 1.0) === null && conflictNote(Math.log(120), 0.1) === null);
-check("conflict: high F0 with a masculine resonance reading -> opposite", conflictNote(Math.log(220), -0.4) === "opposite");
-check("conflict: same side, far apart -> 'apart', never 'opposite' (168 Hz with resonance u 1.83)", conflictNote(Math.log(168), 1.83) === "apart");
-check("conflict: same side, far apart on the men's side too (symmetry)", conflictNote(Math.log(150), -1.0) === "apart");
-check("conflict: no resonance reading -> no note", conflictNote(Math.log(110), null) === null);
 check("wide share: 0–10 and 1–9 are wide, 4–10 and 0–5 are not",
   isWideShare([0.0, 0.99]) && isWideShare([0.15, 0.85]) && !isWideShare([0.4366, 0.9871]) && !isWideShare([0.0041, 0.4957]));
 check("range note above the fit q99 (~293 Hz)", outsideTestedRange(0, Math.log(320)) === true && outsideTestedRange(0, Math.log(200)) === false);

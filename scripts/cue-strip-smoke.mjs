@@ -547,7 +547,7 @@ for (const who of PITCH_ONLY) {
   const w = firstState?.heardAs?.pitchOnly;
   check(`pitch-only ${who}: shown in its own note slot directly under the axis, inside the shown estimate, with the shipped words and no '%'`,
     !!w && w.slot === "pitch-only" && w.underAxis && w.inShares && firstState.heardAs.mode === "shown" && w.text === PITCH_ONLY_TEXT && !firstState.heardAs.text.includes("%"), JSON.stringify(w));
-  check(`pitch-only ${who}: the only note while it is on (no conflict / extra note beside it)`, !!w && w.otherNotes === 0, JSON.stringify(w));
+  check(`pitch-only ${who}: the only note while it is on (no extra note beside it)`, !!w && w.otherNotes === 0, JSON.stringify(w));
   check(`pitch-only ${who}: the always-mounted live region carries the same words`, firstState?.heardAs?.live?.role === "status" && firstState.heardAs.live.text === PITCH_ONLY_TEXT, JSON.stringify(firstState?.heardAs?.live));
   if (first !== null) {
     // First screen: the warning's box at scrollTop 0, above the fixed bottom bar.

@@ -223,15 +223,15 @@ console.log("8. wiring");
   check("…in its own note slot [data-heard-as-note=\"pitch-only\"], plain text (no role on the visible note)",
     /data-heard-as-note="pitch-only"[^>]*data-pitch-only="1"/.test(panel.slice(slotOpen, iText)) && !/role=/.test(panel.slice(slotOpen, iText)));
   check("…only when the panel's update said so (view.pitchOnly)", /\{view\.pitchOnly && \(/.test(panel.slice(iAxis, iText)));
-  check("at most one note: the conflict note and extraNote are left out while the warning is on",
-    /\{!view\.pitchOnly && view\.conflict && \(/.test(panel) && /\{!view\.pitchOnly && extraNote != null/.test(panel));
+  check("at most one note: extraNote is left out while the warning is on, and the old conflict note is gone (user decision 2026-10-07)",
+    /\{!view\.pitchOnly && extraNote != null/.test(panel) && !/view\.conflict|conflictNote|data-heard-as-note="conflict"/.test(panel));
   check("an always-mounted polite live region (outside the shown block) carries the warning for screen readers",
     iLive > 0 && /className="sr-only" role="status" aria-live="polite" aria-atomic="true" data-heard-as-live=""/.test(panel)
     && panel.lastIndexOf(")}", iLive) > panel.indexOf("data-heard-as-legend") && iLive < iCaveat);
   check("no opacity dimming of the estimate (stale = 'Older reading' text)", !/opacity: view\.ageMs/.test(panel) && /Older reading/.test(panel));
   check("hidden panel updates go to the warning as lnF0 null", (panel.match(/hide\("/g) ?? []).length >= 2 && /const hide = \(why\) => \{ warn\(null\);/.test(panel) && /const pitchOnly = warn\(e\.lnF0\)/.test(panel));
   check("switching the panel off drops the run", /warning\?\.resetRun\(\)/.test(panel));
-  check("a resonance worker error drops the stale snapshot like an overload (cue row, conflict note, warning)",
+  check("a resonance worker error drops the stale snapshot like an overload (cue row, warning)",
     /if \(msg\.status === "overloaded" \|\| msg\.status === "error"\) \{\s*resonanceRef\.current = null;\s*pitchOnlyRef\.current\.noteResonance\(null\);/.test(hook));
   check("the hook feeds POSTED voiced pitch (msg.voiced && msg.pitch), not painted / held values",
     /pitchOnlyRef\.current\.addPitch\(\{ audioMs: msg\.contextTime \* 1000, f0: msg\.voiced && msg\.pitch > 0 \? msg\.pitch : null \}\)/.test(hook));

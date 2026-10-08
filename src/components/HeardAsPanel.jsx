@@ -24,9 +24,11 @@
 // (src/ml/pitch-only-warning.js, updated here on the panel's cadence from
 // `pitchOnlyRef`; [data-heard-as-note="pitch-only"], data-pitch-only="1")
 // sits directly under the axis, so it stays on the first screen wherever the
-// axis does; while it is on, the pitch–resonance conflict note and the
-// `extraNote` prop (rendered as given otherwise, below the range lines) are
-// left out. The warning compares with this session's start — same words in
+// axis does; while it is on, the `extraNote` prop (rendered as given
+// otherwise, below the range lines) is left out. The old pitch–resonance
+// conflict note ("Pitch and resonance point different ways …") was removed
+// by user decision 2026-10-07 (E); the pitch-only warning is the panel's
+// only built-in note. The warning compares with this session's start — same words in
 // every direction. Screen readers hear it through a live region that stays
 // mounted while the panel is on ([data-heard-as-live]; a region mounted
 // together with its text is often not announced), kept through brief hides.
@@ -37,7 +39,7 @@
 // setHeardAsEnabled); off, nothing runs and nothing downloads.
 
 import { useEffect, useRef, useState } from "react";
-import { heardAsShares, conflictNote } from "../ml/heard-as";
+import { heardAsShares } from "../ml/heard-as";
 import { heardAsAxis, AXIS_ENDS } from "./heardAsAxisModel";
 import { HEARD_AS_CALIBRATION } from "../ml/heardAsCalibration";
 import { PITCH_ONLY_TEXT } from "../ml/pitch-only-warning";
@@ -61,11 +63,6 @@ const REASONS = {
   short: () => "Keep talking — needs a few seconds of running speech",
   stale: () => "Waiting for running speech",
   outside: () => "Outside the range it was tested on — no guess shown",
-};
-
-const CONFLICT_TEXT = {
-  opposite: "Pitch and resonance point different ways — listeners split most here, and this guess (which leans on pitch) is least reliable now.",
-  apart: "Pitch and resonance read at quite different places — this guess leans on pitch more than listeners do.",
 };
 
 export function HeardAsSwitch({ on, onChange, label = "Likely heard as · Experimental" }) {
@@ -157,13 +154,10 @@ export function HeardAsPanel({
       const e = now == null ? { hidden: "listening" } : heardAsRef.current.estimate(now, voiceState);
       if (e.hidden) { hide(e.hidden); return; }
       const shares = heardAsShares(e.meterLogit, e.lnF0);
-      const r = resonanceRef?.current;
-      const resonanceLive = r && r.u != null && (r.fill ?? 0) >= 1 && r.verdict !== "sustained";
       const pitchOnly = warn(e.lnF0);
       show({
         axis: heardAsAxis(shares),
         ageMs: e.ageMs,
-        conflict: resonanceLive ? conflictNote(e.lnF0, r.u) : null,
         pitchOnly,
         live: pitchOnly,
       });
@@ -237,11 +231,6 @@ export function HeardAsPanel({
           </p>
           {view.axis.unsureText && (
             <p className="text-[11px] leading-snug tabular-nums text-neutral-400" data-heard-as-unsure="">{view.axis.unsureText}</p>
-          )}
-          {!view.pitchOnly && view.conflict && (
-            <p className="mt-1 text-[11px] leading-snug text-amber-200/80" data-heard-as-note="conflict" data-conflict={view.conflict}>
-              {CONFLICT_TEXT[view.conflict]} (Where resonance reads also depends on your microphone.)
-            </p>
           )}
           {!view.pitchOnly && extraNote != null && extraNote !== false && (
             <div className="mt-1 text-[11px] leading-snug text-amber-200/80" data-heard-as-note="extra">{extraNote}</div>

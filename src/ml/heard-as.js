@@ -198,24 +198,6 @@ export function isWideShare(range) {
   return b - a >= WIDE_SHARE_TENTHS;
 }
 
-// Pitch and resonance reading at different places (perception report §4.1
-// F0 scale: u_F0 = 0 at the typical man's, 1 at the typical woman's speaking
-// F0; u = the resonance cue). -> null | "opposite" (the two sit on opposite
-// sides of the midpoint 0.5) | "apart" (same side, but more than 1 u apart).
-// Threshold 1 u: on 40 matched natural LibriSpeech readers it fires on 2 %
-// of men's and 0 % of women's live readouts; 0.5 u would fire on 47 % / 8 %
-// (resonance readouts wobble), so the note cannot be made sensitive enough
-// to catch most pitch-only changes (RB695 male raised to ~161 Hz: Δ 0.62) —
-// the always-visible caveat carries that disclosure.
-// measurements/cue-strip-review-fixes-2026-10-07.md §5.
-export const U_F0 = Object.freeze({ ln0: 4.8035, gap: 0.4451 });
-export const CONFLICT_U = 1;
-export function conflictNote(lnF0, uResonance) {
-  if (lnF0 == null || uResonance == null || !Number.isFinite(uResonance)) return null;
-  const uF0 = (lnF0 - U_F0.ln0) / U_F0.gap;
-  if (Math.abs(uF0 - uResonance) <= CONFLICT_U) return null;
-  return (uF0 - 0.5) * (uResonance - 0.5) < 0 ? "opposite" : "apart";
-}
 export function outsideTestedRange(meterLogit, lnF0, C = HEARD_AS_CALIBRATION) {
   return lnF0 < C.range.lnF0[0] || lnF0 > C.range.lnF0[1] || meterLogit < C.range.meterLogit[0] || meterLogit > C.range.meterLogit[1];
 }
