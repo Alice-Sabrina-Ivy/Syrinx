@@ -1021,11 +1021,17 @@ export function useAudioPipeline() {
   // Throttled setState: only fires at STATE_UPDATE_INTERVAL to avoid
   // saturating the main thread with React renders on mobile.
   // Canvas animations read from refs at full rAF rate (unaffected).
+  // An update whose values all equal the current ones keeps the current
+  // state object, so React skips the re-render (silence: the same nulls
+  // every 200 ms). Values are unchanged either way.
   function throttledSetState(updater) {
     const now = performance.now();
     if (now - lastStateUpdateRef.current >= STATE_UPDATE_INTERVAL) {
       lastStateUpdateRef.current = now;
-      setState(updater);
+      setState((s) => {
+        const n = updater(s);
+        return sameReadouts(s, n) ? s : n;
+      });
     }
   }
 
@@ -1543,6 +1549,23 @@ export function useAudioPipeline() {
     frameCallbackRef,
     streamRef,
   };
+}
+
+// True when every field of `n` equals `s`'s (plain-object fields such as
+// vocalWeight / formants compared one level deep).
+function sameReadouts(s, n) {
+  for (const k in n) {
+    const a = s[k], b = n[k];
+    if (Object.is(a, b)) continue;
+    if (a && b && typeof a === "object" && typeof b === "object" && !Array.isArray(a) && !Array.isArray(b)) {
+      const ka = Object.keys(a), kb = Object.keys(b);
+      if (ka.length !== kb.length) return false;
+      for (const j of kb) if (!Object.is(a[j], b[j])) return false;
+      continue;
+    }
+    return false;
+  }
+  return true;
 }
 
 function pushAndMedianGated(ref, value, maxLen, maxJump) {

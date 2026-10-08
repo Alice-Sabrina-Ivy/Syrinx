@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, lazy, Suspense } from "react";
+import { useState, useRef, useEffect, useCallback, lazy, Suspense } from "react";
 import { useAudioPipeline } from "./audio/useAudioPipeline";
 import { PitchTrace } from "./components/PitchTrace";
 import { CombinedDashboard } from "./components/CombinedDashboard";
@@ -177,12 +177,13 @@ function App() {
     return () => clearTimeout(timer);
   }, [setHeardAsEnabled]);
 
-  function changeHeardAs(on) {
+  // Stable identity, so the memoised panel skips the 5 Hz readout renders.
+  const changeHeardAs = useCallback((on) => {
     heardAsTouchedRef.current = true;
     setHeardAsEnabledState(on);
     setHeardAsEnabled(on);
     saveHeardAsEnabled(db.settings, on);
-  }
+  }, [setHeardAsEnabled]);
 
   // The load-time question. Continue confirms AND starts listening (one
   // tap per load, as Start Listening alone was before the question

@@ -43,7 +43,7 @@
 // shortReason. Since 2026-10-08 only voiced windows count toward the reading
 // (heard-as.js logitMinVoicedMs; measurements/heard-as-voiced-windows-2026-10-08.md).
 
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { heardAsShares } from "../ml/heard-as";
 import { heardAsAxis, AXIS_ENDS, shortReason } from "./heardAsAxisModel";
 import { HEARD_AS_CALIBRATION } from "../ml/heardAsCalibration";
@@ -165,7 +165,9 @@ function HeardAsAxis({ axis }) {
   );
 }
 
-export function HeardAsPanel({
+// Memoised: its props are refs, the model status and the switch, so the
+// 5 Hz readout renders of the dashboard skip it.
+export const HeardAsPanel = memo(function HeardAsPanel({
   enabled,
   onToggle,
   modelStatus,
@@ -315,4 +317,4 @@ export function HeardAsPanel({
       )}
     </section>
   );
-}
+});
