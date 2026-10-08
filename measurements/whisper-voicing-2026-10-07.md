@@ -123,3 +123,35 @@ means; **S1** unphonated whisper (Praat phonation < 20 % of active time)
 fail is reported as FAIL with the numbers (the user decides, as with H3).
 **Validity (R3):** the added work is a count over ≤ 30 hints per 150 ms
 decision; no browser timing run is needed.
+
+## Amendment 1 — round 2 (registered after the round-1 dev selection)
+
+**Round 1 outcome (dev, by the rule above).** No variant met the cost
+criterion: every W variant lost > 0.5 pp of men's `pmix` mi0 + mv0
+coverage, every T variant lost > 0.5 pp of dev regular speech. Step 3
+selected **W25** (worst cost drop 0.76 pp). Its dev whisper is still
+44.7 % (women) / 39.1 % (men), against 57.6 / 60.7 % at 5db2663. Why: the
+pitch chain posts isolated voiced frames in unphonated whisper (2–8 % of
+frames, mostly runs of 1–2 frames), so almost every 750 ms window holds a
+few, while a larger N removes voiced frames that men's speech in music
+also has only sparsely. W25 was then run through the full evaluation as
+registered; its results are reported below with the round-1 grid. Seen
+before this amendment: the round-1 dev table, W25's full whisper numbers
+(primary FAIL) and W25's public evaluator verdict.
+
+**Round 2 design (same principle, a run instead of a count).** Speech
+voicing comes in syllable-length runs; the isolated frames in whisper do
+not. While speech hints are live, a window scores only if a run of
+consecutive posted voiced pitch hints of **≥ R ms** ends within the
+trailing span S (a run's length counts in full, also the part before the
+span; a hole in the hint stream breaks a run, as for the utterance onset).
+Variants (7, every one reported):
+
+- **R** — S = the 750 ms window: R ∈ {50, 75, 100, 125, 150} ms.
+- **Q** — S = 1000 ms (the utterance's close gap): R ∈ {100, 150} ms.
+
+Selection: the same dev-only rule (cost step 1, then the lowest
+max(women, men) dev whisper, ties → smaller R, then R before Q; step 3 if
+none meets step 1), over the round-2 variants only. Primary, secondary
+and guards are unchanged. The round-2 selection is the candidate; if it
+fails, W25 and the round-2 selection are both reported as FAIL.
