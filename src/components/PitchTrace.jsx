@@ -19,6 +19,7 @@ import {
 } from "../utils/constants";
 import { pitchStatus, bandForDisplay } from "../utils/trainingDirection";
 import { pitchLevelAt } from "../utils/pitchLevel";
+import { DIAG_ENABLED, noteTraceDraw } from "../diag/diag";
 
 export function PitchTrace({
   pitchTraceRef,
@@ -66,6 +67,19 @@ export function PitchTrace({
     const ctx = canvas.getContext("2d");
     let animId;
     let lastTargetAttr = null;
+    // Diag only: paint latency + redraw cadence (noteTraceDraw).
+    let diagLastNow = null, diagLastPointTime = -Infinity;
+    const diagNote = (now, data, plotCssW) => {
+      let newest = null;
+      for (let i = data.length - 1; i >= 0; i--) {
+        if (data[i].voiced && data[i].pitch !== null) { newest = data[i].time; break; }
+      }
+      const fresh = newest !== null && newest > diagLastPointTime ? newest : null;
+      if (fresh !== null) diagLastPointTime = fresh;
+      const step = diagLastNow === null ? null : ((now - diagLastNow) * plotCssW) / (PITCH_TRACE_SECONDS * 1000);
+      diagLastNow = now;
+      noteTraceDraw(performance.timeOrigin + performance.now(), fresh, step);
+    };
     // Pitch level per trace point, computed once — when the point is first
     // drawn, from the points before it — so a point's colour never changes
     // as it scrolls. Points are objects the hook appends and trims.
@@ -202,6 +216,7 @@ export function PitchTrace({
       // Pitch trace line
       const data = pitchTraceRef.current;
       if (data.length < 2) {
+        if (DIAG_ENABLED) diagNote(now, data, (plotRight - plotLeft) / dpr);
         animId = requestAnimationFrame(draw);
         return;
       }
@@ -293,7 +308,7 @@ export function PitchTrace({
       }
 
       ctx.restore(); // end plot-rect clip
-
+      if (DIAG_ENABLED) diagNote(now, data, (plotRight - plotLeft) / dpr);
 
       animId = requestAnimationFrame(draw);
     }

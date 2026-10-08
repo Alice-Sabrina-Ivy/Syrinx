@@ -773,6 +773,7 @@ export function useAudioPipeline() {
           const handlerEnd = performance.timeOrigin + performance.now();
           pushFrame({
             tEpochMs: data.absoluteTime,
+            capturedEpochMs: audioCapturedEpochMs,
             pitch: latest.pitch,
             intensity: data.intensity,
             inputRms: data.diag.inputRms,

@@ -127,6 +127,9 @@ const VOCAL_WEIGHT_CAP = 600;
 // 600 × ~120 B ≈ 72 KB.
 const LOW_RES_CAP = 600;
 
+// Pitch-trace draws (~40-150 Hz) and first-paint latencies: >= 26 s at 150 Hz.
+const PAINT_CAP = 4000;
+
 class RingBuffer {
   constructor(cap) {
     this.cap = cap;
@@ -241,6 +244,14 @@ function _createState() {
     //   sigmaDelta,      // (cpp - μ) / σ, null if not locked
     // }
     vocalWeightEmits: new RingBuffer(VOCAL_WEIGHT_CAP),
+    // Pitch-trace paint latency + redraw cadence
+    // (measurements/main-thread-cpu-2026-10-08.md): capture epoch per DSP
+    // frame keyed by its rounded absoluteTime (the trace point's time), and
+    // per trace draw the draw-end epoch, the newest voiced point first shown
+    // by it (capture -> painted) and the scroll step since the previous draw.
+    _captureByPointTime: new Map(),
+    paintLatency: new RingBuffer(PAINT_CAP),
+    traceDraws: new RingBuffer(PAINT_CAP),
     // Cumulative tally of frames pushed to the vocal-weight aggregator
     // and how many of those were voiced. Used to surface "voiced-frame
     // fraction" — if it's surprisingly low, the silence gate is firing
@@ -334,6 +345,11 @@ export function getStatus() {
 export function pushFrame(frame) {
   if (!diagState) return;
   diagState.frames.push(frame);
+  if (typeof frame.capturedEpochMs === "number" && typeof frame.tEpochMs === "number") {
+    const m = diagState._captureByPointTime;
+    m.set(Math.round(frame.tEpochMs), frame.capturedEpochMs);
+    if (m.size > 400) m.delete(m.keys().next().value);
+  }
   if (typeof document !== "undefined" && document.visibilityState === "hidden") {
     diagState.framesWhileHidden++;
   }
@@ -607,7 +623,20 @@ export function snapshot() {
     resonanceStatus: diagState.resonanceStatus ?? null,
     mlWorkerAlive: diagState.mlWorkerAlive ?? false,
     mlWorkerStarts: diagState.mlWorkerStarts ?? 0,
+    paintLatency: diagState.paintLatency.toArray(),
+    traceDraws: diagState.traceDraws.toArray(),
   };
+}
+
+// One pitch-trace draw (PitchTrace, diag only): drawEndEpochMs, the time of
+// the newest voiced point this draw shows for the first time (or null) and
+// the scroll step in CSS px since the previous draw.
+export function noteTraceDraw(drawEndEpochMs, newPointTime, stepCssPx) {
+  if (!diagState) return;
+  diagState.traceDraws.push({ t: drawEndEpochMs, step: stepCssPx });
+  if (newPointTime == null) return;
+  const cap = diagState._captureByPointTime.get(newPointTime);
+  if (typeof cap === "number") diagState.paintLatency.push({ t: newPointTime, ms: drawEndEpochMs - cap });
 }
 
 // Trigger a browser download of the snapshot as a JSON file.
