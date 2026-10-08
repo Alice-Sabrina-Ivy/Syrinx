@@ -14,6 +14,15 @@
 //      window only every ML_CLASSIFY_HOP_MS (audio-utils classifyDue: 450 ms
 //      since 2026-10-07, measurements/heard-as-cpu-2026-10-07.md; option
 //      classifyHopMs, 150 = every scored decision as before);
+//   2b. optional (option `speech`): the speech detector exactly as the gender
+//      worker's handleChunk feeds it — after the relayed pitch hints, the
+//      chunk's 16 kHz samples (the same resampler output that fills the ring)
+//      go through createSpeechFramer; each 32 ms frame's probability goes to
+//      gate.noteSpeech before the decision. `speech` = { framer, run: async
+//      (input) => p } (createSileroRunner) or { probs: [p, ...] } (recorded
+//      probabilities, frame i = the i-th framer output — the CI fixture).
+//      Omitted = the gate's pitch-voicing path (detector loading / failed).
+//      measurements/heard-as-voiced-windows-2026-10-08.md;
 //   3. (callers) each classified window through the deployed classifier ->
 //      femaleLogitFromResult, then src/ml/heard-as.js (scored windows the
 //      classifier skipped go in with classified: false).
@@ -27,6 +36,7 @@ const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
 const imp = (p) => import(pathToFileURL(path.join(repo, p)).href);
 const { createStreamingResampler, RingWindow, SilenceTracker, windowPeak, TARGET_SAMPLE_RATE, ML_DECISION_HOP_MS, ML_CLASSIFY_HOP_MS, classifyDue } = await imp("src/ml/audio-utils.js");
 const { createUtteranceGate, decideMlWindow } = await imp("src/ml/utterance-gate.js");
+const { createSpeechFramer, createSileroRunner, SPEECH_DETECTOR, sha256Hex } = await imp("src/ml/speech-detector.js");
 
 // The pitch worker is a module with global state: one shared instance,
 // re-initialised per stimulus. It posts through globalThis.self.
@@ -62,7 +72,7 @@ export const ML_HOP_MS = ML_DECISION_HOP_MS;
  *        window; classify = the classifier runs on it, win only then),
  *      decisions: number, ticks: [[audioMs, voiceState, scored (0/1), classified (0/1)]] }
  */
-export async function replay(y, { sr = 48000, chunk = Math.round(sr * 0.025), burstMs = 0, jitterMs = 0, seed = 1, classifyHopMs = ML_CLASSIFY_HOP_MS } = {}) {
+export async function replay(y, { sr = 48000, chunk = Math.round(sr * 0.025), burstMs = 0, jitterMs = 0, seed = 1, classifyHopMs = ML_CLASSIFY_HOP_MS, speech = null } = {}) {
   let rnd = seed >>> 0 || 1;
   const rand = () => { rnd = (Math.imul(rnd, 1664525) + 1013904223) >>> 0; return rnd / 4294967296; };
   const onMsg = await pitchWorker();
@@ -84,6 +94,9 @@ export async function replay(y, { sr = 48000, chunk = Math.round(sr * 0.025), bu
     const pitch = [];
     const windows = [];
     let decisions = 0;
+    const framer = speech ? (speech.framer ?? createSpeechFramer()) : null;
+    framer?.reset();
+    const probs = [];        // every speech probability fed to the gate, in order
     for (let s = 0; s < y.length; s += chunk) {
       const e = Math.min(y.length, s + chunk);
       const x = y.slice(s, e);
@@ -93,7 +106,19 @@ export async function replay(y, { sr = 48000, chunk = Math.round(sr * 0.025), bu
       relay = [];
       const audioNowMs = ct * 1000;
       const wallMs = burstMs > 0 ? Math.ceil(audioNowMs / burstMs - 1e-9) * burstMs + jitterMs * rand() : audioNowMs;
-      ring.append(resample(x));
+      const x16 = resample(x);
+      ring.append(x16);
+      if (framer) {
+        for (const f of framer.push(x16, audioNowMs)) {
+          let p;
+          if (speech.probs) {
+            p = speech.probs[probs.length];
+            if (typeof p !== "number") throw new Error(`recorded speech probabilities ran out at frame ${probs.length}`);
+          } else p = await speech.run(f.input);
+          probs.push(p);
+          gate.noteSpeech({ ts: f.ts, p });
+        }
+      }
       if (ring.isFull() && wallMs - lastInferMs >= ML_HOP_MS - 1e-6) {
         const win = ring.snapshot();
         const d = decideMlWindow({ gate, audioNowMs, peak: windowPeak(win), lastGateMode, silenceTracker: silence });
@@ -114,7 +139,7 @@ export async function replay(y, { sr = 48000, chunk = Math.round(sr * 0.025), bu
         relay.push(m);
       }
     }
-    return { pitch, windows, decisions, ticks };
+    return { pitch, windows, decisions, ticks, speechProbs: framer ? probs : null };
   } finally {
     globalThis.self = saved;
   }
@@ -153,4 +178,24 @@ export function readWav16(buf) {
 export async function upsample16to48(x16) {
   const { upsample } = await imp("scripts/resonance-lab/candidates/formant-vtl/extract_app.mjs");
   return Float32Array.from(upsample(x16));
+}
+
+/**
+ * The speech detector in Node: onnxruntime-web (WASM, 1 thread — the browser
+ * runtime) on the pinned Silero file at `modelPath` (sha256 checked against
+ * SPEECH_DETECTOR.modelSha256). -> () => { framer, run, reset } — one fresh
+ * framer + LSTM state per stream, as the worker has per start.
+ */
+export async function loadSpeechDetector(modelPath) {
+  const { readFileSync } = await import("node:fs");
+  const bytes = readFileSync(modelPath);
+  const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+  if ((await sha256Hex(ab)) !== SPEECH_DETECTOR.modelSha256) throw new Error(`${modelPath}: not the pinned Silero model`);
+  const ort = await import(pathToFileURL(path.join(repo, "node_modules/onnxruntime-web/dist/ort.node.min.mjs")).href);
+  ort.env.wasm.numThreads = 1;
+  const session = await ort.InferenceSession.create(new Uint8Array(ab), { executionProviders: ["wasm"] });
+  return () => {
+    const runner = createSileroRunner(ort, session);
+    return { framer: createSpeechFramer(), run: (input) => runner.run(input) };
+  };
 }

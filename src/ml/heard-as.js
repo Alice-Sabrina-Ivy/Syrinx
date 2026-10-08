@@ -32,6 +32,14 @@
 //   voicedMs   = the audio-clock spacing before each such voiced frame,
 //                capped at 100 ms (25 ms per frame normally; stays right under
 //                the ?chunk= diag flag).
+// Voiced windows only (measurements/heard-as-voiced-windows-2026-10-08.md,
+// user decision A: whisper must not get readings): with logitMinVoicedMs > 0
+// a classified window's logit enters meterLogit only if its own span holds
+// >= logitMinVoicedMs of posted voiced frames (each counted as voicedMs
+// counts it); with logitMinRunMs > 0, only if a run of consecutive posted
+// voiced frames inside the span lasts >= logitMinRunMs (broken by an unvoiced
+// frame or a > 100 ms gap). Such a window still counts as a scored window
+// (count, voiced time, F0 spans); nClassified counts only the qualifying ones.
 // Hidden (with a reason) when: the worker's voice state is "sustained"
 // (held vowel / note), no scored window yet ("listening"), the newest
 // scored window is older than freshMs ("stale"), the span holds fewer
@@ -57,9 +65,11 @@ export function createHeardAsAggregator({
   minVoicedMs = HEARD_AS_CALIBRATION.minVoicedMs,
   minWindows = HEARD_AS_CALIBRATION.minWindows,
   freshMs = HEARD_AS_CALIBRATION.freshMs,
+  logitMinVoicedMs = HEARD_AS_CALIBRATION.logitMinVoicedMs ?? 0,
+  logitMinRunMs = HEARD_AS_CALIBRATION.logitMinRunMs ?? 0,
 } = {}) {
   let windows = []; // { audioMs, logit } ascending
-  let frames = [];  // { audioMs, f0, dt } ascending
+  let frames = [];  // { audioMs, f0, dt, gap } ascending (gap = raw spacing, uncapped)
   let lastFrameMs = null;
   let everScored = false;
 
@@ -72,6 +82,24 @@ export function createHeardAsAggregator({
     let j = 0;
     while (j < frames.length && frames[j].audioMs < cut) j++;
     if (j) frames = frames.slice(j);
+  }
+
+  // Does the classified window ending at endMs pass the voiced-windows rule?
+  function voicedEnough(endMs) {
+    if (!(logitMinVoicedMs > 0) && !(logitMinRunMs > 0)) return true;
+    const a = endMs - ML_WINDOW_MS;
+    let lo = 0, hi = frames.length;
+    while (lo < hi) { const m = (lo + hi) >> 1; if (frames[m].audioMs < a) lo = m + 1; else hi = m; }
+    let voiced = 0, run = 0, best = 0;
+    for (let i = lo; i < frames.length && frames[i].audioMs <= endMs; i++) {
+      const f = frames[i];
+      if (f.f0 > 0) {
+        voiced += f.dt;
+        run = i > lo && f.gap <= MAX_HOP_MS ? run + f.dt : f.dt;
+        if (run > best) best = run;
+      } else run = 0;
+    }
+    return voiced >= logitMinVoicedMs && best >= logitMinRunMs;
   }
 
   return {
@@ -87,9 +115,10 @@ export function createHeardAsAggregator({
     addPitch({ audioMs, f0 }) {
       if (typeof audioMs !== "number" || !Number.isFinite(audioMs)) return;
       if (lastFrameMs !== null && audioMs < lastFrameMs - 1000) { windows = []; frames = []; lastFrameMs = null; } // new stream
-      const dt = lastFrameMs === null ? 25 : Math.min(Math.max(audioMs - lastFrameMs, 0), MAX_HOP_MS);
+      const gap = lastFrameMs === null ? 25 : Math.max(audioMs - lastFrameMs, 0);
+      const dt = Math.min(gap, MAX_HOP_MS);
       lastFrameMs = audioMs;
-      frames.push({ audioMs, f0: typeof f0 === "number" && f0 > 0 ? f0 : 0, dt });
+      frames.push({ audioMs, f0: typeof f0 === "number" && f0 > 0 ? f0 : 0, dt, gap });
       trim(audioMs);
     },
     /** The raw aggregate over (nowMs − windowMs, nowMs], no hide rules (fit-time use). */
@@ -98,7 +127,7 @@ export function createHeardAsAggregator({
       const W = windows.filter((w) => w.audioMs > lo && w.audioMs <= nowMs);
       if (!W.length) return { nWindows: 0, nClassified: 0, meterLogit: null, lnF0: null, voicedMs: 0, newestMs: null };
       let sum = 0, nL = 0;
-      for (const w of W) if (w.logit !== null) { sum += w.logit; nL++; }
+      for (const w of W) if (w.logit !== null && voicedEnough(w.audioMs)) { sum += w.logit; nL++; }
       // union of the windows' spans (ascending ends, equal lengths -> merge)
       const spans = [];
       for (const w of W) {
