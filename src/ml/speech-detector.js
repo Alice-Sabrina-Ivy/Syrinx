@@ -1,6 +1,8 @@
-// speech-detector.js — streaming speech-presence detector for the
-// Perceived Voice meter's utterance gate (low-voice-noise candidate
-// "voice-detector-gate", 2026-10-07).
+// speech-detector.js — streaming speech-presence detector for the gender
+// worker's utterance gate (low-voice-noise candidate "voice-detector-gate",
+// 2026-10-07). It was built for the always-on Perceived Voice meter; since
+// the cue strip replaced that meter it runs only while the opt-in "Likely
+// heard as" panel is on (the gender worker's only consumer).
 //
 // Why: the utterance gate opened only on pitch voicing. At 0 dB SNR the
 // pitch tracker loses men's (low) voices far more often than women's

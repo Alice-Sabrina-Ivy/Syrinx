@@ -6,7 +6,11 @@ Definition (measurements/heard-as-calibration-2026-10-07.md):
   scored     = the gated windows: [end, logit, mode, classified]; a classified
                window needs a finite logit, a skipped one (classified 0, the
                classifier runs every 450 ms since 2026-10-07) has none
-  meterLogit = arithmetic mean of the classified windows' logits
+  meterLogit = arithmetic mean of the classified windows' logits whose own
+               span [end - 750 ms, end] holds >= logitMinVoicedMs of voiced
+               posted frames (each frame counts its spacing to the previous
+               frame, capped at 100 ms; 25 ms for the first) -- the voiced-windows
+               rule, measurements/heard-as-voiced-windows-2026-10-08.md
   lnF0       = ln(median of the voiced posted pitch values whose time lies in
                at least one scored window [end - 750 ms, end])
   eta        = a + bMeter * meterLogit + bLnF0 * lnF0;  s = sigmoid(eta) ("man")
@@ -37,10 +41,23 @@ def unsure(s):
     return min(max(C["unsureFloor"], C["unsureK"] * 4 * s * (1 - s)), 2 * min(s, 1 - s))
 
 
+MINV = C.get("logitMinVoicedMs", 0)
+
+
+def voiced_ms(pitch, a, b):
+    tot, last = 0.0, None
+    for t, f in pitch:
+        dt = 25.0 if last is None else min(max(t - last, 0.0), 100.0)
+        last = t
+        if f > 0 and a <= t <= b:
+            tot += dt
+    return tot
+
+
 for name, fx in g["fixtures"].items():
     wins = [(t, l if c else None) for t, l, mode, c in fx["windows"]
             if mode == "gated" and (not c or (l is not None and math.isfinite(l)))]
-    logits = [l for _, l in wins if l is not None]
+    logits = [l for t, l in wins if l is not None and (MINV <= 0 or voiced_ms(fx["pitch"], t - W, t) >= MINV)]
     meter = sum(logits) / len(logits)
     f0s = [f for t, f in fx["pitch"] if f > 0 and any(e - W <= t <= e for e, _ in wins)]
     lnf0 = math.log(statistics.median(f0s))

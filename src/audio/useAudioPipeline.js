@@ -525,7 +525,8 @@ export function useAudioPipeline() {
       // Gender (ML) worker: started only while the opt-in "Likely heard
       // as" panel is on — now, or later in this session through
       // setHeardAsEnabled (startMlWorkerRef). Saves ~0.3 s of CPU per
-      // second of speech and the 16 MB model download for everyone else
+      // second of speech and the first-time download (voice model + speech
+      // detector + ONNX Runtime engine, src/ml/heard-as-download.js) for everyone else
       // (measurements/heard-as-window-logit-2026-10-07.md §4).
       startMlWorkerRef.current = () => {
         if (mlWorkerRef.current || !genAlive() || captureSrcRef.current !== captureSrc) return;

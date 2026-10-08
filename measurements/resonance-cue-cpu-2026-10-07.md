@@ -287,9 +287,21 @@ every run.
   candidate set; alone it moves readouts by ≤ 4.5e-13 u, and the
   configuration was held to every pre-registered guard unchanged.
 
-**Target: PASS** — production-path CPU 0.41–0.47 × the head on the Node bench
-and 0.44 × on desktop Chrome, with every accuracy guard passing and the
-readouts within 2.6e-6 u of the head for women and men alike.
+**Target: PASS with a post-hoc candidate (N3)** — production-path CPU
+0.41–0.47 × the head on the Node bench and 0.44 × on desktop Chrome, with
+every accuracy guard passing and the readouts within 2.6e-6 u of the head for
+women and men alike. **Every configuration built only from pre-registered
+candidates missed the ≤ 0.50 target** (E+N1+N3 0.507 / 0.534; E+N1+N2 was
+not run on the official bench); only E+N1+N2+N3 meets it, and N3 was added
+after the first results (relabelled in the 2026-10-07 review; the earlier
+heading read "Target: PASS"). N3 is numerically near-exact (≤ 4.5e-13 u
+alone: it abandons only GMM components more than 40 nats below the best,
+each contributing < e^-40). **Out-of-sample confirmation** (review
+2026-10-07, after the selection): 40 fresh LibriSpeech dev-clean readers
+(20 women, 20 men, 200 utterances, streams and single utterances) — every
+pre-registered guard passes for both sexes, largest readout change
+3.1e-6 u, 0 reading / null mismatches; at 44.1 kHz (not in the original
+pass) the largest change is 1.1e-6 u.
 
 ### 3.6 Where the time goes now (E+N1+N2+N3, Node profile, 4 × 60 s)
 

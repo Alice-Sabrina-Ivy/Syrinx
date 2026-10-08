@@ -30,7 +30,37 @@ export function unsureWords(u) {
   return n <= 0 ? "fewer than 1 in 10" : `about ${n} in 10`;
 }
 
+/**
+ * The single best guess (two-way share "man" s) in words for screen readers,
+ * worded like formatShare: never "0 in 10" or "10 in 10" ("fewer than 1 in 10"
+ * / "nearly all" at the ends), so it is no sharper than the visible range
+ * (2026-10-07 UX review). -> [man words, woman words]; mirrored for 1 − s.
+ */
+export function bestGuessWords(s) {
+  if (s < 0.05) return ["fewer than 1 in 10", "nearly all"];
+  if (s > 0.95) return ["nearly all", "fewer than 1 in 10"];
+  const n = Math.min(9, Math.max(1, Math.round(10 * s)));
+  return [`about ${n} in 10`, `about ${10 - n} in 10`];
+}
+
 const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
+
+// "short" splits in two for the words the panel shows (2026-10-07 UX review:
+// continuous whisper read "Keep talking" forever). The speech detector
+// scores whisper, so a whisperer has plenty of scored windows but almost no
+// posted voiced pitch in them; at the start of ordinary speech it is the
+// window count / voiced time that is still filling. "unvoiced" = at least
+// minWindows scored windows whose voiced pitch covers under UNVOICED_SHARE
+// of their span (150 ms per decision + one 600 ms window tail): unphonated
+// whisper posts 0-8 % voiced, running speech ~40-60 %
+// (measurements/whisper-voicing-2026-10-07.md;
+// measurements/heard-as-voiced-windows-2026-10-08.md checks the split).
+export const UNVOICED_SHARE = 0.1;
+export function shortReason(e, minWindows) {
+  if (e?.hidden !== "short") return e?.hidden ?? null;
+  const span = 150 * (e.nWindows ?? 0) + 600;
+  return (e.nWindows ?? 0) >= minWindows && (e.voicedMs ?? 0) < UNVOICED_SHARE * span ? "unvoiced" : "short";
+}
 
 export const AXIS_ENDS = Object.freeze({ left: "would say man", right: "would say woman" });
 
@@ -52,11 +82,11 @@ export function heardAsAxis(shares) {
     ? "Can't tell yet — the range covers most of the scale"
     : `${cap(man)} would say man · ${woman} would say woman`;
   const unsureText = wide ? null : `${cap(unsureWords(shares.centre.unsure))} might be unsure or say neither`;
-  const midMan = Math.round(10 * shares.s), midWoman = 10 - midMan;
+  const [midMan, midWoman] = bestGuessWords(shares.s);
   const scale = "Scale from would say man, on the left, to would say woman, on the right, in tenths of listeners.";
   const srText = wide
     ? `${scale} Can't tell yet: the range covers most of the scale — ${man} would say man, ${woman} would say woman.`
-    : `${scale} Shaded range: ${man} would say man, ${woman} would say woman. Best guess: about ${midMan} in 10 man, ${midWoman} in 10 woman.`;
+    : `${scale} Shaded range: ${man} would say man, ${woman} would say woman. Best guess: ${midMan} would say man, ${midWoman} would say woman.`;
   return {
     lo: c / 10,
     hi: d / 10,

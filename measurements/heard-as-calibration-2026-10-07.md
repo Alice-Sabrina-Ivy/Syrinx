@@ -166,6 +166,21 @@ windows defined above. Palette share Δ vs every window: MAE 0.81 points
 the time to the first estimate unchanged —
 `measurements/heard-as-cpu-2026-10-07.md`.
 
+**Speech-detector windows and voiced windows only (2026-10-08).** Since the
+voice-direction merge the gate asks the Silero speech detector whether
+someone is speaking, and since 2026-10-08 a classified window's logit counts
+only if its own span holds ≥ 200 ms of posted voiced pitch
+(`logitMinVoicedMs`, so whispered stretches between voiced speech do not
+feed the reading — user decision A). A pre-registered re-check
+(`measurements/heard-as-voiced-windows-2026-10-08.md`) found the constants
+hold on both window sets: Palette share Δ vs the pitch-gate windows 0.37 /
+0.09 points (heard-as-man / heard-as-woman; with the voiced-windows rule
+0.39 / 0.09), error vs listeners 6.16 → 6.14 / 7.11 → 7.02, and on held-out
+LibriSpeech readers a mean eta shift of +0.03 / −0.01 (dev-clean) and
++0.03 / −0.03 (test-clean) for women / men, against a ±0.225 bar. No
+constant changed. The CI window-set guard replays the detector's stored
+probabilities (`make_golden.mjs --silero=`).
+
 ## 4. Errors (held out)
 
 MAE in points of "% man" per listener datum, offset 0, (bias = prediction − heard).
@@ -255,6 +270,7 @@ LibriTTS-P voices); the cost is a wide "split" for many clear voices.
 | no scored window for > 5 s | never show an old estimate; 2–5 s old it is dimmed | "Waiting for running speech" |
 | 8 s aggregate outside 81–293 Hz or meter logit −7.31…+5.72 | extrapolation beyond the fit data (§6 row 6) | "Outside the range it was tested on — no guess shown" |
 | model loading / error, nothing scored yet | — | a one-line reason |
+| (words only, 2026-10-07 review) "short" with ≥ 10 scored windows whose voiced pitch covers < 10 % of their span | continuous whisper read "Keep talking" forever | "Needs voiced (pitched) speech — whispering gets no reading, and loud noise can hide your pitch" (`heardAsAxisModel.js` `shortReason`; never on reader streams) |
 
 The minimum-input rule is a **display** rule, not a calibration-domain rule:
 the fit stimuli are single ~2 s utterances (217 of the 240 Palette stimuli

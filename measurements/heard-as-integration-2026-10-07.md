@@ -70,15 +70,30 @@ Clips (48 kHz mono):
 | phonated whisper, 5 women | ready | 4.05 | 1.43 | **54.0 %** | short |
 | music, instrumental 0 dB | ready | **0** | 0 | **0 %** | listening / sustained |
 | music, instrumental 0 dB | none | 3.70 | 1.33 | 34.3 % | short |
-| music with vocals 0 dB | ready | **0.13** | 0.06 | **0 %** | stale |
+| music with vocals 0 dB | ready | **0.13** | 0.06 | **0 %** (one run; see the correction below) | stale |
 | music with vocals 0 dB | none | 4.41 | 1.57 | 60.0 % | short |
+
+**Correction (2026-10-07 review).** The music-with-vocals row is a single
+70 s run. The review re-ran the same harness on the same build three times:
+0.53, 0.27 and 0.57 windows scored per second, and the panel showed a
+reading on 8.8 % of the samples in one run (about 4 s; windows at 2.8–7.8 s
+of audio), 0 % in the other two. Offline (heard-as-voiced-windows-2026-10-08.md,
+12 MUSDB18 streams per cell, nobody at the mic) music with vocals at 0 /
+−10 dB got 0 % on every stream and at −20 dB one of 12 streams got 32 %.
+So music with vocals gets **rare, short readings**, not none; the panel's
+"singing … not detected" text covers it. **Mixed speech and whisper:**
+whisper on its own gets no reading, but until 2026-10-08 whispered stretches
+*between* voiced speech fed the reading (21 / 22 % of the pooled logits,
+women / men); the voiced-windows rule (heard-as-voiced-windows-2026-10-08.md)
+cuts that to 1.0 / 0.5 %.
 
 **Findings.**
 - **Windows are gated by speech.** With the detector ready, every scored
   window was in the gate's `gated` mode, and music windows are almost never
   scored: 0 and 0.13 per second, against 3.7 and 4.4 per second on pitch
-  voicing alone. The panel showed no reading on music. Without the detector
-  it showed one on 34 % and 60 % of the samples.
+  voicing alone. The panel showed no reading on music in this run (other
+  runs: rare, short readings with vocals — correction above). Without the
+  detector it showed one on 34 % and 60 % of the samples.
 - **Speech coverage stays the same or improves.** With the detector, the
   panel showed on 90.6 % (women) and 87.2 % (men) of the speech samples,
   against 91.3 % and 80.6 % without it. The rest is the "keep talking" hide
@@ -160,14 +175,15 @@ ms of thread CPU per second of audio:
 
 ## 3. Open
 
-- The heard-as constants were fitted on pitch-gate windows. They need a
-  re-check against speech-detector windows (§1).
-- With the requirement off, unphonated whisper is classified (CPU), though
-  never shown. Phonated whisper is shown about half the time. The user
-  decides on the whisper requirement (whisper-voicing-2026-10-07.md options).
-- The panel's "More" list still says low voices in noise are recognised as
-  speech less often. That described the pitch gate. With the detector, noisy
-  coverage was 93.3 / 94.8 % (women / men) in low-voice-noise-2026-10-07.md,
-  measured on the old meter's windows, not on this panel's hide rules. Not
-  re-worded here.
+- **Done 2026-10-08:** the heard-as constants were re-checked on the
+  speech detector's windows and hold
+  (heard-as-voiced-windows-2026-10-08.md, Part A).
+- **Done 2026-10-08:** only windows with ≥ 200 ms of voiced pitch feed the
+  reading, so whispered stretches between voiced speech no longer count
+  (same note, Part B). Unphonated whisper is still classified (CPU while the
+  panel is on), never shown. Phonated whisper is shown about half the time,
+  as decision A asks.
+- **Done 2026-10-08:** the "More" line on noise was re-worded from this
+  panel's own hide rules (same note: men's readings are hidden more in
+  noise and on phone / laptop channels — the ≥ 3 s voiced-pitch rule).
 - Phone: not re-measured with the merged tree.

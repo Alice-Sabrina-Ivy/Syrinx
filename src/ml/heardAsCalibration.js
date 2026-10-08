@@ -73,6 +73,15 @@ export const HEARD_AS_CALIBRATION = Object.freeze({
   minVoicedMs: 3000,
   minWindows: 10,
   freshMs: 5000,
+  // Voiced windows only (2026-10-08, user decision A — whisper must not get
+  // readings): a classified window's logit counts only if its own 750 ms
+  // span holds >= 200 ms of posted voiced pitch (heard-as.js). Pre-registered
+  // selection V200: whispered windows' share of the pooled logits 20.9 / 22.2
+  // -> 1.0 / 0.5 % (women / men) on speech + whisper; every guard passes
+  // (Palette 0.06 points, running speech / noise / music / hide rules
+  // unchanged): measurements/heard-as-voiced-windows-2026-10-08.md.
+  logitMinVoicedMs: 200,
+  logitMinRunMs: 0,
   fitDate: "2026-10-07",
   measurement: "measurements/heard-as-calibration-2026-10-07.md",
 });

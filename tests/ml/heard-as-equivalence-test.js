@@ -11,11 +11,13 @@
 //
 //   1. src/ml/heard-as.js on the stored windows + pitch == the Python values
 //      (meterLogit, lnF0 to 1e-9; the shares to 1e-12).
-//   2. Window-set guard (no ONNX): replaying the chain gives exactly the
-//      stored scored-window times, which of them the classifier runs on
-//      (ML_CLASSIFY_HOP_MS) and the stored posted pitch. A change to the
-//      utterance gate, the pitch chain, decideMlWindow or the classifier hop
-//      fails here.
+//   2. Window-set guard (no ONNX): replaying the chain — with the speech
+//      detector's stored probabilities fed to the gate as the gender worker
+//      feeds them (since 2026-10-08; the live gate is the detector's) — gives
+//      exactly the stored scored-window times, which of them the classifier
+//      runs on (ML_CLASSIFY_HOP_MS) and the stored posted pitch. A change to
+//      the utterance gate, the speech framing, the pitch chain,
+//      decideMlWindow or the classifier hop fails here.
 //   3. Logits (optional): with the classifier in the transformers.js cache,
 //      re-scoring the windows reproduces the stored logits within 1e-4;
 //      otherwise SKIPPED.
@@ -44,7 +46,8 @@ const REFIT = "the utterance gate, the pitch chain, decideMlWindow or the classi
 
 console.log("golden constants = shipped constants");
 check("a / bMeter / bLnF0 / halfWidth / unsure", G.constants.a === C.a && G.constants.bMeter === C.bMeter && G.constants.bLnF0 === C.bLnF0
-  && G.constants.halfWidth === C.halfWidth && G.constants.unsureK === C.unsureK && G.constants.unsureFloor === C.unsureFloor,
+  && G.constants.halfWidth === C.halfWidth && G.constants.unsureK === C.unsureK && G.constants.unsureFloor === C.unsureFloor
+  && G.constants.logitMinVoicedMs === C.logitMinVoicedMs && !(C.logitMinRunMs > 0),
   "regenerate the golden file after changing the constants");
 
 console.log("\n1. heard-as.js == the independent Python aggregate");
@@ -76,7 +79,9 @@ console.log("\n2. window-set guard (production chain replay, no classifier)");
 const wins = {};
 for (const [name, fx] of Object.entries(G.fixtures)) {
   const { x } = readWav16(readFileSync(path.join(repo, "tests/resonance-lab/fixtures", `${name}.wav`)));
-  const r = await replay(await upsample16to48(x), { sr: 48000 });
+  if (!Array.isArray(fx.speechProbs) || !fx.speechProbs.length) { check(`${name}: golden file has the speech detector's probabilities`, false, REFIT); continue; }
+  const r = await replay(await upsample16to48(x), { sr: 48000, speech: { probs: fx.speechProbs } });
+  check(`${name}: every stored speech probability consumed`, r.speechProbs.length === fx.speechProbs.length, `${r.speechProbs.length} of ${fx.speechProbs.length}`);
   wins[name] = r.windows;
   const sameW = r.windows.length === fx.windows.length
     && r.windows.every((w, i) => w.audioMs === fx.windows[i][0] && w.mode === fx.windows[i][2] && (w.classify ? 1 : 0) === fx.windows[i][3]);

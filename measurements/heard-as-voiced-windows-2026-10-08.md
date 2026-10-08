@@ -175,3 +175,186 @@ the user decides.
   gate.
 - Music alone: shown share per stream (distribution, head) — the earlier
   "music got none" came from one built-app run.
+
+---
+
+## Results (2026-10-08)
+
+**Verdict: Part A — the constants are confirmed for the speech detector's
+window set. Part B — V200 selected and SHIP-ELIGIBLE (primary and every
+guard pass); it is now the default** (`HEARD_AS_CALIBRATION.logitMinVoicedMs
+= 200`, `src/ml/heardAsCalibration.js`).
+
+**Order and integrity.** The pre-registration above was committed (6424c39,
+sha256 `2f3cfb99…f422`, unchanged since) before the harness ran on any
+study stream. The selection was written to scratch (`selection.json`,
+05:31:31 UTC, sha256 `07331ab2…ac9f`) by `eval.mjs --phase=select`, which
+computes only the dev whisper share and the dev-clean exclusion counts; the
+guard numbers came after it (`--phase=all`). Every shown update's pooled
+logits were recomputed independently in `eval.mjs` and matched heard-as.js's
+`meterLogit` to 1e-9 (the run aborts otherwise).
+
+**Runs.** 895 streams, 6.2 h of audio (whisper mixes 35 min, readers 56 min
+× 2 arms, Palette 13 min × 2, `chanx` 96 min, music 30 min, synthetic
+1 min) through the production chain in Node with the speech detector live
+(arm S; arm P for readers, Palette and synthetic), the deployed q8-v2
+classifier on every classified window (logits shared by window time), and
+the live panel simulated as pre-registered. Tooling:
+`scripts/heard-as/voiced-windows/` (`build_streams.py`, `run.mjs`,
+`eval.mjs`) and the speech-detector option of `scripts/heard-as/chain.mjs`.
+
+### Part A — the constants on the detector's windows: PASS
+
+| check | women / heard-as-woman | men / heard-as-man | bar |
+|---|---|---|---|
+| A1 Palette \|s_S − s_P\| MAE (points) | 0.09 (52 stimuli) | 0.37 (188) | ≤ 1.0 — pass (overall 0.31) |
+| A1 error vs listeners, S vs P (points) | 7.02 vs 7.11 | 6.14 vs 6.16 | S ≤ P + 0.5 — pass |
+| A1 stimuli with no classified window | 0 | 0 | ≤ 5 % — pass |
+| A2 mean eta S − P, dev-clean readers | +0.031 (332 updates) | −0.009 (373) | ± 0.225 — pass |
+| A2 mean eta S − P, test-clean readers | +0.029 (332) | −0.029 (417) | ± 0.225 — pass |
+
+Reported (shown share of panel samples / "Can't tell yet" share of shown
+samples / median time to the first estimate), P → S: dev-clean women
+83.9 → 84.4 % / 5.4 → 6.5 % / 6 → 6 s, men 84.9 → 84.9 % / 7.1 → 7.4 % /
+6 → 6 s; test-clean women 83.8 → 83.8 % / 19.7 → 20.4 % / 6 → 6 s, men
+84.4 → 84.6 % / 6.3 → 6.3 % / 6 → 6 s. The speech detector moves the
+estimate less than the 450 ms classifier hop did (Palette 0.31 vs 0.81
+points). The selection V200 against P: Palette MAE 0.39 (heard-as-man) /
+0.09 (heard-as-woman), error vs listeners 6.12 / 7.02; readers' mean eta
+difference +0.006 / −0.000 (dev-clean), +0.000 / −0.001 (test-clean) —
+closer to the pitch-gate windows than the head.
+
+### Part B — voiced windows only
+
+**Selection (dev talkers only).** Whisper windows' share of the pooled
+logits, unphonated dev talkers, women / men; classified windows the variant
+drops on the 40 dev-clean readers (of 3,307):
+
+| variant | dev B1 W / M (%) | dev-clean windows dropped |
+|---|---|---|
+| head | 20.28 / 21.32 | 0 |
+| V25 | 13.06 / 12.69 | 31 |
+| V100 | 5.07 / 5.71 | 112 |
+| **V200** | **1.43 / 0.45** | 300 |
+| R75 | 6.32 / 4.71 | 93 |
+| R150 | 1.71 / 0.87 | 316 |
+
+Qualifying (≤ 5.0 % for both sexes): V200, R150. Selected: **V200** (fewer
+dropped windows).
+
+**Primary B1** (all unphonated talkers, dev + test; 142 / 153 shown
+updates; %):
+
+| variant | women | men | test talkers W / M | phonated EARS women |
+|---|---|---|---|---|
+| head | 20.87 | 22.21 | 21.65 / 23.32 | 27.72 |
+| V25 | 13.29 | 14.10 | 13.61 / 15.78 | 26.79 |
+| V100 | 5.45 | 5.62 | 5.98 / 5.52 | 26.19 |
+| **V200** | **0.96** | **0.50** | 0.32 / 0.56 | 25.23 |
+| R75 | 6.37 | 5.77 | 6.44 / 7.02 | 26.77 |
+| R150 | 1.92 | 0.97 | 2.20 / 1.09 | 24.95 |
+
+**PRIMARY: PASS** (V200 ≤ 5.0 % for women and for men). The phonated
+women's "whisper" windows stay in (~25 %), as decision A asks: they hold
+voiced sound.
+
+**B2** (mean |s_whisper − s_silence| over updates shown in both arms, points
+of the two-way share): head women 0.58, men 3.30; V200 women 0.28, men
+1.64. Shown share, whisper / silence arm: women 61.1 / 54.5 %, men 62.6 /
+58.1 % (the same for every variant). What remains comes from windows that
+straddle a speech / whisper boundary; they hold voiced speech.
+
+**Guards (V200 vs head):**
+
+| guard | result | bar |
+|---|---|---|
+| G1 Palette \|Δs\| MAE | 0.06 overall; heard-as-man 0.08, heard-as-woman 0.00 points; error vs listeners 6.12 vs 6.14 / 7.02 vs 7.02; 0 stimuli lost | ≤ 1.0 — pass |
+| G2 shown share, dev-clean | women 84.4 → 84.4 %, men 84.9 → 84.9 % | ≥ −0.5 pp — pass |
+| G2 shown share, test-clean | women 83.8 → 83.8 %, men 84.6 → 84.6 % | ≥ −0.5 pp — pass |
+| G2 median first estimate | 6 s → 6 s, every sex and corpus | ≤ +1 s — pass |
+| G2 mean \|Δs\| on shown updates | dev-clean 0.34 / 0.41, test-clean 0.41 / 0.27 points (W / M) | reported |
+| G3 `chanx`, 12 conditions × 2 sexes | identical shown share in all 24 cells | ≥ −1.0 pp — pass |
+| G4 held vowel / pink noise / silence | identical state and reason at every sample | identical — pass |
+| G5 music alone, 6 cells | identical per stream | ≤ +0.1 pp — pass |
+| G6 CI | equivalence test with the regenerated golden file (speech-detector probabilities stored; the independent Python check implements the rule); lint, unit tests, resonance-lab parity, build and the cue-strip smoke at every viewport — recorded with the commit | see the commit |
+
+**What it does not do.** It drops a classified window's logit only; the
+window still counts for the panel's window count, voiced time and F0, so no
+hide rule moves. The classifier still runs on whispered windows (CPU while
+the panel is on and someone whispers). Skipping them in the worker would
+need the pitch hints at decision time — they lag the audio by the ~90 ms
+decode delay — and would change which windows are classified on speech;
+not done.
+
+## Also from these runs (descriptive)
+
+**"Can't tell yet" per sex** (share of shown samples, head):
+
+| readers | women | men |
+|---|---|---|
+| LibriSpeech dev-clean (20 + 20, in no fit) | 6.5 % | 7.4 % |
+| LibriSpeech test-clean (20 + 20) | 20.4 % | 6.3 % |
+| pooled | ~13 % | ~7 % |
+
+It depends on the voice more than on sex: in test-clean three women (ls1284,
+ls1995, ls2961) and one man (ls6930) get it on 79–100 % of their shown
+readings, and most readers never do. The panel's "More" list now says so.
+
+**Panel shown share in noise and on other channels** (`chanx`, head, %;
+samples from 3 s after speech onset to 1 s after the end of each ~10 s
+utterance, so quiet is ~60 %, not the ~84 % of continuous reading):
+
+| condition | women | men |
+|---|---|---|
+| quiet (clean) | 62.6 | 55.6 |
+| −20 dB level | 58.2 | 55.6 |
+| pink noise 10 / 0 dB | 58.2 / 29.7 | 45.7 / 16.3 |
+| real noise 10 / 0 dB | 59.3 / 17.6 | 46.2 / 18.1 |
+| babble 10 / 0 dB | 96.3 / 97.8 | 94.9 / 94.2 |
+| phone band / laptop mic | 59.6 / 61.1 | 47.6 / 51.3 |
+| reverb 0.5 / 1.0 s | 60.9 / 64.0 | 59.5 / 59.9 |
+
+Men's readings are shown less often, most in 10 dB noise and on the phone /
+laptop channels (about 12 pp). The hide reason is the panel's own ≥ 3 s of
+voiced pitch ("short"), not the speech detector: the pitch tracker posts
+less voiced pitch for low voices in noise. Reverb does not hide it longer.
+Babble shows a reading most of the time because the babble's own speech is
+read (disclosed: "works best when you're the only one talking"). The old
+"More" line ("low voices are recognised as speech less often") is replaced
+by one worded from this table.
+
+**Music alone, nobody at the mic** (head, 12 streams per cell, shown share
+of panel samples): instrumental at 0 / −10 / −20 dB and music with vocals
+at 0 / −10 dB: 0 % on every stream; music with vocals at −20 dB: 1 of 12
+streams 32 % (mean 2.7 %). With the built-app runs (integration note: one
+run, 0 %; review: three runs, 8.8 %, 0 %, 0 %), music with vocals gets
+**rare, short readings**, not none.
+
+**The whisper hide words** (scratch check on the `pwhis` streams as they
+are: 2 s lead, one reading each). The panel now says "Needs voiced
+(pitched) speech — whispering gets no reading, and loud noise can hide your
+pitch" when ≥ 10 scored windows hold voiced pitch on < 10 % of their span
+(`heardAsAxisModel.js` `shortReason`). Unphonated whisper: women 25 % /
+men 50 % of samples show it (the rest: "Waiting for running speech" / "Keep
+talking" while the pool fills); regular reading and every reader stream:
+never; real 0 dB noise, men: 5.9 % of samples (hence "loud noise" in the
+words).
+
+## Reproduce
+
+```
+python scripts/heard-as/voiced-windows/build_streams.py --out=<dir> --pwhis=<speech-gate probes> \
+  --r1=<jobs_r1.json> --r1dev=<jobs_r1dev.json> --pov=<jobs_pov.json> --chanx=<chanx sets> \
+  --palone=<speech-gate probes> --smoke=build/cue-strip-smoke
+node scripts/heard-as/voiced-windows/run.mjs --jobs=<dir>/jobs.json --out=run.0.jsonl --shard=0/2 --silero=<silero_vad.onnx>
+node scripts/heard-as/voiced-windows/run.mjs --jobs=<dir>/jobs.json --out=run.1.jsonl --shard=1/2 --silero=<silero_vad.onnx>
+node scripts/heard-as/voiced-windows/eval.mjs --runs=run.0.jsonl,run.1.jsonl --pov=<pov_stimuli.csv> --out=eval --phase=select
+node scripts/heard-as/voiced-windows/eval.mjs --runs=run.0.jsonl,run.1.jsonl --pov=<pov_stimuli.csv> --out=eval --phase=all
+node scripts/heard-as/make_golden.mjs --silero=<silero_vad.onnx>
+```
+
+The speech-gate probe sets (`pwhis`, `palone`: EARS / Expresso via the HF
+mirror `Malfaro43/whisperedAudio-benchmark`, MUSDB18) and the frozen
+evaluator's `chanx` set are built by the low-voice-noise tooling (scratch,
+not committed); `jobs_r1dev.json` lists the 40 dev-clean readers' five
+utterances each. Outputs stay outside the repository.

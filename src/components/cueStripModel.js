@@ -270,6 +270,9 @@ function bandWords(u, ref) {
   if (u > w[1]) return "above the typical women's band";
   return "between the typical men's and women's bands";
 }
+// A header that already ends a sentence ("finding your start…") gets no
+// extra period (2026-10-07 UX review: "…." read aloud).
+const sentence = (t) => (/[.…!?]$/.test(t) ? t : `${t}.`);
 export function cueSummary(cue, { state, direction = null, pitchLevel = null, snap = null, vtlnRef = null, vocalWeight = null } = {}) {
   if (cue === "pitch") {
     if (state === "idle" || pitchLevel == null) return "Pitch: no voice right now.";
@@ -285,7 +288,7 @@ export function cueSummary(cue, { state, direction = null, pitchLevel = null, sn
   if (cue === "resonance") {
     if (state !== "live" && state !== "holding") return `Resonance (approximate): ${resonanceHeader(state, snap)}`;
     const w = bandWords(snap?.u, vtlnRef);
-    return `Resonance (approximate)${w ? `: ${w}` : ""}, ${resonanceHeader(state, snap)}.`;
+    return sentence(`Resonance (approximate)${w ? `: ${w}` : ""}, ${resonanceHeader(state, snap)}`);
   }
-  return `Vocal weight: ${weightHeader(state, vocalWeight)}.`;
+  return sentence(`Vocal weight: ${weightHeader(state, vocalWeight)}`);
 }

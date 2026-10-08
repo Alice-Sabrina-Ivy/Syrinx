@@ -8,7 +8,7 @@
 
 import { heardAsShares, shareTenths, formatShare } from "../../src/ml/heard-as.js";
 import { HEARD_AS_CALIBRATION as C } from "../../src/ml/heardAsCalibration.js";
-import { heardAsAxis, AXIS_ENDS, unsureWords } from "../../src/components/heardAsAxisModel.js";
+import { heardAsAxis, AXIS_ENDS, unsureWords, bestGuessWords, shortReason, UNVOICED_SHARE } from "../../src/components/heardAsAxisModel.js";
 
 let passed = 0, failed = 0;
 function check(name, cond, detail = "") {
@@ -79,9 +79,27 @@ console.log("\nwords");
   check("the old outward-rounded range is gone (it read 'About 0–5 in 10' on typical voices)", !/–/.test(heardAsAxis(sharesAt(2.6)).unsureText ?? ""), formatShare(sharesAt(2.6).unsure));
   const ax = heardAsAxis(sharesAt(2.6));
   check("screen-reader text names the scale, the range and the best guess",
-    ax.srText.includes("would say man, on the left") && ax.srText.includes("Shaded range:") && /Best guess: about \d+ in 10 man, \d+ in 10 woman/.test(ax.srText), ax.srText);
+    ax.srText.includes("would say man, on the left") && ax.srText.includes("Shaded range:") && /Best guess: about \d in 10 would say man, about \d in 10 would say woman\./.test(ax.srText), ax.srText);
+  const ends = [0.995, 0.93, 0.07, 0.004].map((s) => bestGuessWords(s));
+  check("best guess never says 0 or 10 in 10 (nearly all / fewer than 1 in 10 at the ends; 1-9 otherwise)",
+    ends.every(([m, w]) => !/\b(0|10) in 10/.test(m + w)) && ends[0][0] === "nearly all" && ends[0][1] === "fewer than 1 in 10"
+    && ends[1][0] === "about 9 in 10" && ends[3][1] === "nearly all" && ends[2][1] === "about 9 in 10", JSON.stringify(ends));
+  for (const e of [6, -6]) {
+    const t = heardAsAxis(sharesAt(e)).srText;
+    check(`screen-reader best guess at eta ${e} uses the end words, no '0 in 10' / '10 in 10'`, !/\b(0|10) in 10/.test(t), t);
+  }
   const w = heardAsAxis(sharesAt(0));
   check("screen-reader text says can't tell yet when wide; no unsure line then", w.srText.includes("Can't tell yet") && !w.srText.includes("Best guess") && w.unsureText === null);
+}
+
+console.log("\nhide reason: 'short' vs 'unvoiced' (whisper gets its own words, 2026-10-07 UX review)");
+{
+  const mw = C.minWindows;
+  check("other reasons pass through", shortReason({ hidden: "stale" }, mw) === "stale" && shortReason({ hidden: "sustained" }, mw) === "sustained" && shortReason({ hidden: "outside" }, mw) === "outside");
+  check("few windows yet (utterance start) -> short", shortReason({ hidden: "short", nWindows: mw - 1, voicedMs: 0 }, mw) === "short");
+  check("enough windows, speech-like voicing still filling (40 %) -> short", shortReason({ hidden: "short", nWindows: 14, voicedMs: 0.4 * (150 * 14 + 600) }, mw) === "short");
+  check("whisper: many scored windows, almost no voiced pitch -> unvoiced", shortReason({ hidden: "short", nWindows: 53, voicedMs: 300 }, mw) === "unvoiced");
+  check(`the split sits at ${UNVOICED_SHARE * 100} % of the scored span`, shortReason({ hidden: "short", nWindows: 20, voicedMs: 0.099 * 3600 }, mw) === "unvoiced" && shortReason({ hidden: "short", nWindows: 20, voicedMs: 0.101 * 3600 }, mw) === "short");
 }
 
 console.log("\ngender symmetry (mirrored estimate -> mirrored axis, same words)");
@@ -96,7 +114,8 @@ console.log("\ngender symmetry (mirrored estimate -> mirrored axis, same words)"
     const rangeMirror = A.wide ? A.rangeText === B.rangeText : (rA[0] === rB[1] && rA[1] === rB[0]);
     if (!rangeMirror || A.unsureText !== B.unsureText) { words = false; detail = `${A.rangeText} / ${B.rangeText}`; }
     if (!A.wide) {
-      const midA = A.srText.match(/Best guess: about (\d+) in 10 man, (\d+) in 10 woman/), midB = B.srText.match(/Best guess: about (\d+) in 10 man, (\d+) in 10 woman/);
+      const bg = /Best guess: (.*?) would say man, (.*?) would say woman\./;
+      const midA = A.srText.match(bg), midB = B.srText.match(bg);
       if (!(midA && midB && midA[1] === midB[2] && midA[2] === midB[1])) { words = false; detail = `${A.srText} / ${B.srText}`; }
     }
   }

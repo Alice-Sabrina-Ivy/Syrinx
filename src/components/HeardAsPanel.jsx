@@ -36,23 +36,32 @@
 // measurements/heard-as-panel-review-2-2026-10-07.md
 //
 // The gender worker runs only while this is on (useAudioPipeline
-// setHeardAsEnabled); off, nothing runs and nothing downloads.
+// setHeardAsEnabled); off, nothing runs and nothing downloads. Turning it on
+// downloads up to HEARD_AS_DOWNLOAD_MB (src/ml/heard-as-download.js) the
+// first time. Hidden reasons come from heard-as.js estimate(); "short" is
+// split into "short" / "unvoiced" (whisper) by heardAsAxisModel.js
+// shortReason. Since 2026-10-08 only voiced windows count toward the reading
+// (heard-as.js logitMinVoicedMs; measurements/heard-as-voiced-windows-2026-10-08.md).
 
 import { useEffect, useRef, useState } from "react";
 import { heardAsShares } from "../ml/heard-as";
-import { heardAsAxis, AXIS_ENDS } from "./heardAsAxisModel";
+import { heardAsAxis, AXIS_ENDS, shortReason } from "./heardAsAxisModel";
 import { HEARD_AS_CALIBRATION } from "../ml/heardAsCalibration";
 import { PITCH_ONLY_TEXT } from "../ml/pitch-only-warning";
+import { HEARD_AS_DOWNLOAD_MB } from "../ml/heard-as-download";
 
 const STALE_MS = 2000;
 const HIDE_CHECK_MS = 250;
-export const MODEL_DOWNLOAD_MB = 16;
+// What turning it on downloads the first time: the voice model, the speech
+// detector and the ONNX Runtime engine (src/ml/heard-as-download.js; an
+// upper bound — GitHub Pages compresses the engine).
+export const MODEL_DOWNLOAD_MB = HEARD_AS_DOWNLOAD_MB;
 
 export const HEARD_AS_CAVEAT =
   "Experimental guess at how listeners in published studies might hear you — not a verdict. " +
   "Fitted on trans and cis men's voices, women's voices and computer-altered voices; not tested on trans " +
   "women or nonbinary speakers. It follows pitch more than listeners do: change your pitch without changing " +
-  "resonance and it shows a bigger change than listeners would hear — sometimes by more than half of " +
+  "resonance and it usually shows a bigger change than listeners would hear — sometimes by more than half of " +
   "them — in either direction. Listener groups disagree a lot. Adults' speaking voice only.";
 
 // User decision B (2026-10-07): disclose, in neutral words, that it can't
@@ -64,12 +73,42 @@ export const ONE_TALKER_TEXT =
   "It works best when you're the only one talking: it can't tell your voice from someone else's nearby, " +
   "or from a TV, radio or podcast, and it guesses for whichever voice it hears.";
 
+// User decision A (2026-10-07): whisper gets no reading. Since 2026-10-08
+// only classified windows whose own span holds >= 200 ms of voiced pitch
+// count toward the reading (heard-as.js; measurements/heard-as-voiced-windows-2026-10-08.md).
+export const WHISPER_TEXT =
+  "Whispering gets no reading: it only uses stretches with voiced (pitched) sound, so whispered parts between your voiced speech don't count either.";
+
+// The pitch-only warning misses many cases on new voices
+// (measurements/heard-as-pitch-only-warning-2026-10-07.md §8.2: 0.59 / 0.65
+// of pitch-only shifts caught within 10 s on fresh speakers).
+export const PITCH_ONLY_MISSES_TEXT =
+  "The note about pitch-only changes doesn't catch every case — on new voices it missed about 4 in 10 — so no note doesn't mean the guess is right.";
+
+// Replaces "In background noise, low voices are recognised as speech less
+// often …" (that described the old pitch-voicing gate). With the speech
+// detector, the panel's own rule — >= 3 s of voiced pitch in 8 s — is what
+// keeps it hidden: on 38 LibriSpeech talkers in noise / channel conditions
+// (measurements/heard-as-voiced-windows-2026-10-08.md) men's readings were
+// shown less often than women's (10 dB pink / real noise 46 vs 58-59 %,
+// phone / laptop mic 48-51 vs 60-61 %, quiet 56 vs 63 %); reverb did not
+// hide it longer.
+export const NOISE_TEXT =
+  "It needs a few seconds of your voiced (pitched) speech. In background noise or through a phone or laptop microphone it may stay hidden longer — more often for low voices, whose pitch is harder to pick out.";
+
+// "Can't tell yet" per sex (measurements/heard-as-voiced-windows-2026-10-08.md):
+// on 80 LibriSpeech readers ~13 % of women's and ~7 % of men's shown
+// readings, mostly from a few voices that get it nearly always.
+export const CANT_TELL_TEXT =
+  "Some voices get \u201cCan't tell yet\u201d most of the time. In tests on 80 audiobook readers that happened more often for women's voices (about 13 in 100 readings) than for men's (about 7 in 100), mostly for a few voices.";
+
 const REASONS = {
   loading: (p) => `Loading voice model… ${p} %`,
   error: () => "Unavailable — the voice model didn't load",
   listening: () => "Waiting for running speech",
   sustained: () => "Needs running speech — held vowels and notes don't count",
   short: () => "Keep talking — needs a few seconds of running speech",
+  unvoiced: () => "Needs voiced (pitched) speech — whispering gets no reading, and loud noise can hide your pitch",
   stale: () => "Waiting for running speech",
   outside: () => "Outside the range it was tested on — no guess shown",
 };
@@ -161,7 +200,7 @@ export function HeardAsPanel({
       const now = audioClockRef?.current;
       const voiceState = genderStateRef?.current?.state ?? null;
       const e = now == null ? { hidden: "listening" } : heardAsRef.current.estimate(now, voiceState);
-      if (e.hidden) { hide(e.hidden); return; }
+      if (e.hidden) { hide(shortReason(e, HEARD_AS_CALIBRATION.minWindows)); return; }
       const shares = heardAsShares(e.meterLogit, e.lnF0);
       const pitchOnly = warn(e.lnF0);
       show({
@@ -202,9 +241,9 @@ export function HeardAsPanel({
         data-heard-as="off" data-model-worker="off">
         <span className="text-[11px] text-neutral-400 truncate">Likely heard as · Experimental — off</span>
         <button type="button" onClick={() => onToggle(true)}
-          aria-label={`Turn on — downloads a ${MODEL_DOWNLOAD_MB} MB voice model the first time`}
+          aria-label={`Turn on — downloads a voice model, a speech detector and its engine the first time, up to ${MODEL_DOWNLOAD_MB} MB`}
           className="shrink-0 text-[11px] min-h-6 px-2.5 py-1 rounded-md bg-neutral-800 hover:bg-neutral-700 text-neutral-300 cursor-pointer transition-colors">
-          Turn on · {MODEL_DOWNLOAD_MB} MB
+          Turn on · up to {MODEL_DOWNLOAD_MB} MB
         </button>
       </div>
     );
@@ -262,12 +301,15 @@ export function HeardAsPanel({
       {more && (
         <ul className="mt-1 text-[11px] leading-snug text-neutral-400 list-disc pl-4 space-y-0.5" data-heard-as-more="">
           <li data-heard-as-one-talker="">{ONE_TALKER_TEXT}</li>
+          <li data-heard-as-whisper="">{WHISPER_TEXT}</li>
+          <li data-heard-as-pitch-only-misses="">{PITCH_ONLY_MISSES_TEXT}</li>
           <li>Typical voices are shown further from the ends than listeners put them: clearly feminine and clearly masculine voices look less clear-cut here than they are.</li>
+          <li data-heard-as-cant-tell="">{CANT_TELL_TEXT}</li>
           <li>Within clearly feminine or clearly masculine voices it does not track small changes — use the cue strip for those.</li>
           <li>It uses only your pitch and a voice classifier; it ignores intonation, vocal weight and articulation.</li>
           <li>Singing, children&apos;s voices, held vowels and single words are not supported. Held notes and very high or low voices hide it; singing and children are not detected — don&apos;t use it for them.</li>
           <li>The shaded range is where about 8 in 10 published listener groups fell for clearly feminine or clearly masculine voices; less is known for in-between voices. The scale is listeners choosing between man and woman: those who might be unsure or say neither are counted half on each side. The &ldquo;unsure or neither&rdquo; line counts listeners who answered &ldquo;another gender&rdquo; as well as those who weren&apos;t sure, and depends on how listeners are asked.</li>
-          <li>In background noise, low voices are recognised as speech less often, so it may stay hidden longer for them.</li>
+          <li data-heard-as-noise="">{NOISE_TEXT}</li>
           <li>Nothing is stored or sent anywhere; it is computed on this device and forgotten when you stop.</li>
         </ul>
       )}

@@ -210,5 +210,47 @@ function feed(agg, { from, to, voiced, f0, scored, logit, mode = "gated" }) {
   check("a clock jump back starts afresh", agg.aggregate(9000).nWindows === 0);
 }
 
+console.log("\nvoiced windows only (measurements/heard-as-voiced-windows-2026-10-08.md)");
+{
+  check("shipped default: >= 200 ms of posted voiced pitch in the window's own span", C.logitMinVoicedMs === 200 && C.logitMinRunMs === 0);
+  // 4 s of speech (voiced, logit -2) then 4 s of whisper (no voiced frame, logit +3), windows every 150 ms
+  const mk = (opts) => {
+    const a = createHeardAsAggregator(opts);
+    for (let t = 25; t <= 8000; t += 25) {
+      a.addPitch({ audioMs: t, f0: t <= 4000 ? 120 : 0 });
+      if (t % 150 === 0 && t >= 750) a.addWindow({ audioMs: t, logit: t <= 4000 ? -2 : 3, mode: "gated" });
+    }
+    return a;
+  };
+  const on = mk({}).aggregate(8000), off = mk({ logitMinVoicedMs: 0 }).aggregate(8000);
+  // windows ending after 4550 ms hold < 200 ms of voicing (the speech ends at 4000)
+  const kept = []; for (let t = 750; t <= 8000; t += 150) if (t > 0 && t <= 4550) kept.push(t <= 4000 ? -2 : 3);
+  const expect = kept.reduce((x, y) => x + y, 0) / kept.length;
+  check("whisper windows (< 200 ms voiced in their span) leave the logit mean", off.meterLogit > on.meterLogit && near(on.meterLogit, expect, 1e-12) && on.nClassified === kept.length,
+    `${off.meterLogit} -> ${on.meterLogit} (expected ${expect})`);
+  check("... but still count as scored windows (count, voiced time, F0 unchanged)", on.nWindows === off.nWindows && on.voicedMs === off.voicedMs && on.lnF0 === off.lnF0 && on.nClassified < off.nClassified,
+    `${on.nWindows} windows, ${on.nClassified} of ${off.nClassified} classified count`);
+  // threshold: a window whose span holds exactly 7 / 8 voiced frames (175 / 200 ms)
+  const edge = (n) => {
+    const a = createHeardAsAggregator({ windowMs: Infinity, minVoicedMs: 0, minWindows: 0 });
+    for (let t = 25; t <= 2000; t += 25) a.addPitch({ audioMs: t, f0: t > 2000 - 25 * n ? 150 : 0 });
+    a.addWindow({ audioMs: 2000, logit: 1, mode: "gated" });
+    return a.aggregate(2000).nClassified;
+  };
+  check("175 ms voiced in the span -> excluded, 200 ms -> counted", edge(7) === 0 && edge(8) === 1);
+  // run variant (measured, not shipped): a 100 ms gap breaks a run
+  const run = (gapMs) => {
+    const a = createHeardAsAggregator({ windowMs: Infinity, minVoicedMs: 0, minWindows: 0, logitMinVoicedMs: 0, logitMinRunMs: 150 });
+    let t = 1300;
+    for (let i = 0; i < 4; i++) { t += 25; a.addPitch({ audioMs: t, f0: 150 }); }
+    t += gapMs; a.addPitch({ audioMs: t, f0: 150 });
+    t += 25; a.addPitch({ audioMs: t, f0: 150 });
+    a.addWindow({ audioMs: 2000, logit: 1, mode: "gated" });
+    return a.aggregate(2000).nClassified;
+  };
+  // 6 frames: one 150 ms run; with a 125 ms gap: 100 ms + (100 ms capped spacing + 25 ms) = 125 ms < 150
+  check("run rule: one 150 ms run counts; a > 100 ms gap splits it", run(25) === 1 && run(125) === 0);
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);

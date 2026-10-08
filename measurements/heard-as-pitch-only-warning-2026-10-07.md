@@ -1,5 +1,12 @@
 # "Likely heard as": a live warning when pitch moved without resonance — 2026-10-07
 
+> **Update 2026-10-07 (§8.2):** on fresh speakers (LibriSpeech test-other)
+> the shipped rule catches only **0.59 (male base) / 0.65 (female base)** of
+> pitch-only shifts within 10 s, below the pre-registered 0.85 bar, and an
+> expressive reader can see it on up to 17.5 % of updates depending on where
+> the session starts. "Passes" below applies to the round-1/2 data only. The
+> panel's "More" list says it does not catch every case.
+
 The experimental, opt-in "Likely heard as" panel follows pitch more than
 listeners do. When a voice changes pitch without changing resonance, the panel
 shows a bigger change than listeners hear, in either direction (known failure
@@ -13,7 +20,8 @@ session's start, and to keep the caveat as the only disclosure if no rule
 works. This note records:
 
 - the pre-registered study;
-- its result (a rule **passes**);
+- its result (a rule **passes** on the round-1/2 data; it did not replicate at
+  the 0.85 bar on fresh speakers, §8.2);
 - the flagged deviations (K = 2, §5; the hold through brief panel hides,
   §6 — review round 2);
 - the wording (since review round 2 the pre-registered direction-neutral

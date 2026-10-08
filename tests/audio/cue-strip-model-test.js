@@ -220,6 +220,9 @@ console.log("\nrow states");
     cueSummary("resonance", { state: "live", snap: snap({ u: 0.52, startU: 0.1 }), vtlnRef: REF }) === "Resonance (approximate): between the typical men's and women's bands, brighter than your start."
     && cueSummary("resonance", { state: "warming", snap: snap({}) , vtlnRef: REF }) === "Resonance (approximate): keep talking…");
   check("screen-reader: weight", cueSummary("weight", { state: "live", vocalWeight: { sigmaLevel: 0.9 } }) === "Vocal weight: 0.9 σ lighter than your start.");
+  check("screen-reader: no '….' after a header that ends in an ellipsis",
+    cueSummary("resonance", { state: "live", snap: snap({ u: 0.52, startU: null }), vtlnRef: REF }) === "Resonance (approximate): between the typical men's and women's bands, finding your start…"
+    && cueSummary("weight", { state: "calibrating", vocalWeight: { baselineProgress: 0, cpp: null } }) === "Vocal weight: Calibrating…");
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

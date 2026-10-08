@@ -16,11 +16,14 @@ output goes to the gitignored `build/heard-as/`.
 | `run_chain.mjs <jobs.json> <out.jsonl> [--burst=40 --jitter=5] [--hop=450] [--logits=<chain.jsonl>]` | Per stimulus: replay → classifier → `heard-as.js` aggregate over the whole stimulus. `--burst` times the hop on a bursty arrival clock (the burst-jitter check); `--hop` sets the classifier hop; `--logits` reuses a previous run's logits for windows at the same time |
 | `compare_hop.py <pov_stimuli.csv> <base.jsonl> <variant.jsonl>...` | Palette share change between two `run_chain.mjs` runs (e.g. classifier hops) and each one's error vs the listeners |
 | `hop-study.mjs --r1=<jobs.json>` + `hop_study_report.py` | The live panel (2 s updates, 250 ms held-note check, hide rules) at several classifier hops on continuous LibriSpeech readers, short utterances and synthetic held vowel / noise / silence: time to the first estimate, hide-state changes, shown-estimate change, women and men separately |
+| `voiced-windows/` (`build_streams.py`, `run.mjs`, `eval.mjs`) | `measurements/heard-as-voiced-windows-2026-10-08.md`: the chain with and without the speech detector on whisper mixes, held-out readers, the Palette, noise / channel / reverb, music and synthetic streams; the voiced-windows rule variants; the constants re-check |
 | `ort-bench.mjs` | Classifier cost per inference under onnxruntime-web builds and session options (Node) |
 | `make_golden.mjs` | Writes `tests/ml/fixtures/heard-as-golden.json` from the three lab fixtures (public LibriSpeech); aggregates by `golden_check.py` (independent Python). **Re-run after any change to the utterance gate, the pitch chain or `decideMlWindow`** — after re-checking the constants |
 | `analyze_palette.py <pov_stimuli.csv> <chain.jsonl> [<burst.jsonl>]` | Production-chain vs lab-chain inputs on the Palette and the shipped constants' error on each |
 | `logit-check.mjs` | `femaleLogitFromResult` vs the model's raw fc7 difference on public windows |
 | `window-decision-replay.mjs --runs=<dir>` | `decideMlWindow` vs the pre-refactor inline decision over recorded perceived-voice-gate runs (`scripts/perceived-voice-gate/`) |
+
+`chain.mjs` takes `speech` (the Silero speech detector fed to the gate exactly as the gender worker does: `loadSpeechDetector(<silero_vad.onnx>)`, sha256-checked, or recorded probabilities); `run_chain.mjs --silero=` and `make_golden.mjs --silero=` (required) use it — the live gate is the detector's since the voice-direction merge.
 
 `tests/ml/heard-as-equivalence-test.js` (CI) fails when the window set or the
 posted pitch on the fixtures changes: then re-run `run_chain.mjs` on the

@@ -59,10 +59,11 @@
 // mlInferences ring; mobile-diag-capture surfaces median/p95/p99
 // for the 150 ms hop-budget check. With diag on, score messages also
 // carry `vadMs`: the speech detector's run time since the previous
-// posted score (the added work that shares the 150 ms hop). It is 0 while
-// the detector is not live, and it accumulates over ticks that post no
-// score, so the first score and the first after a pause carry more than
-// one hop's worth; per-hop summaries keep back-to-back scores only.
+// posted score, i.e. per classifier hop (ML_CLASSIFY_HOP_MS, 450 ms: three
+// 150 ms decision ticks). It is 0 while the detector is not live, and it
+// accumulates over ticks that post no score, so the first score and the
+// first after a pause carry more than one hop's worth; per-hop summaries
+// keep back-to-back scores only.
 
 import { pipeline, env } from "@huggingface/transformers";
 // The same onnxruntime-web module instance Transformers.js runs on (it

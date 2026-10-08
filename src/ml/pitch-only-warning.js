@@ -5,7 +5,10 @@
 // 2026-10-07.md §6 row 1). This module says so live, relative to the
 // session's own start. Pure; used by HeardAsPanel (via useAudioPipeline) and
 // by the golden replay test. Rule chosen by a pre-registered study:
-// measurements/heard-as-pitch-only-warning-2026-10-07.md.
+// measurements/heard-as-pitch-only-warning-2026-10-07.md. Replication
+// (§8.2 there, fresh LibriSpeech test-other speakers): it caught only 0.59
+// (male base) / 0.65 (female base) of pitch-only shifts within 10 s, below
+// the pre-registered 0.85 bar — no warning does not mean the reading is fine.
 //
 // Inputs (audio clock, ms):
 //   addPitch({ audioMs, f0 })        every POSTED pitch-worker frame (f0 null

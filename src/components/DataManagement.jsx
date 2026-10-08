@@ -17,6 +17,7 @@ import {
 } from "../utils/exportFormat";
 import { DirectionOptions } from "./DirectionPrompt";
 import { HeardAsSwitch } from "./HeardAsPanel";
+import { HEARD_AS_DOWNLOAD_MB } from "../ml/heard-as-download";
 
 // Export assembly: frame lines are concatenated into ~1 MB strings, and
 // every ~32 MB of those are folded into a Blob (the browser's blob store,
@@ -277,7 +278,7 @@ export function DataManagement({ onClose, direction = null, onDirectionChange, h
                   Show the experimental &lsquo;Likely heard as&rsquo; estimate
                 </span>
                 <p className="text-[11px] text-neutral-500 mt-0.5">
-                  A rough, research-based guess shown as ranges, not a verdict. Downloads a 16 MB voice model when first turned on.
+                  A rough, research-based guess shown as ranges, not a verdict. When first turned on it downloads a voice model, a speech detector and their engine (up to {HEARD_AS_DOWNLOAD_MB} MB).
                 </p>
               </div>
               <HeardAsSwitch on={heardAsEnabled} onChange={onHeardAsChange} label="Show the experimental 'Likely heard as' estimate" />

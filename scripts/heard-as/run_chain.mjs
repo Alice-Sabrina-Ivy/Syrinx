@@ -3,7 +3,13 @@
 // schedule with the real utterance gate, the deployed classifier pipeline,
 // src/ml/heard-as.js), pooled over the whole stimulus.
 //
-//   node scripts/heard-as/run_chain.mjs <jobs.json> <out.jsonl>
+//   node scripts/heard-as/run_chain.mjs <jobs.json> <out.jsonl> [--silero=<silero_vad.onnx>]
+//
+// --silero: the speech detector live in the gate, as the app runs it since
+// the voice-direction merge (chain.mjs `speech`; the pinned v6.2.3 file,
+// sha256-checked). Without it the gate runs on pitch voicing (the window set
+// the constants were first checked on); measurements/heard-as-voiced-windows-2026-10-08.md
+// compares the two.
 //
 // jobs: [{ key, audio: <float32 file>, sr: 48000 | 16000 }] — 16 kHz items
 // are band-limited-upsampled x3 to 48 kHz (as the resonance lab's harnesses
@@ -16,7 +22,7 @@
 import { readFileSync, openSync, writeSync, closeSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { replay, loadClassifier, upsample16to48 } from "./chain.mjs";
+import { replay, loadClassifier, loadSpeechDetector, upsample16to48 } from "./chain.mjs";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const { createHeardAsAggregator } = await import(pathToFileURL(path.join(repo, "src/ml/heard-as.js")).href);
@@ -31,6 +37,8 @@ const burstMs = opt("burst", 0), jitterMs = opt("jitter", 0);
 const hopArg = process.argv.find((a) => a.startsWith("--hop="));
 const classifyHopMs = hopArg ? Number(hopArg.split("=")[1]) : undefined;
 const logitsArg = process.argv.find((a) => a.startsWith("--logits="));
+const sileroArg = process.argv.find((a) => a.startsWith("--silero="));
+const newDetector = sileroArg ? await loadSpeechDetector(sileroArg.slice(9)) : null;
 const cached = new Map();
 if (logitsArg) {
   for (const line of readFileSync(logitsArg.slice(9), "utf8").split("\n")) {
@@ -59,7 +67,7 @@ for (const job of jobs) {
   const b = readFileSync(job.audio);
   const x = new Float32Array(b.buffer, b.byteOffset, b.byteLength / 4);
   const y = job.sr === 48000 ? Float32Array.from(x) : await upsample16to48(x);
-  const r = await replay(y, { sr: 48000, burstMs, jitterMs, seed: done + 1, ...(classifyHopMs ? { classifyHopMs } : {}) });
+  const r = await replay(y, { sr: 48000, burstMs, jitterMs, seed: done + 1, ...(classifyHopMs ? { classifyHopMs } : {}), speech: newDetector ? newDetector() : null });
   const agg = createHeardAsAggregator({ windowMs: Infinity, minVoicedMs: 0, minWindows: 0 });
   const wins = [];
   for (const [ms, f0] of r.pitch) agg.addPitch({ audioMs: ms, f0 });
