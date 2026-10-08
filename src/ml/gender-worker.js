@@ -66,10 +66,17 @@ import {
 } from "./audio-utils.js";
 import { createUtteranceGate, meterStateForVerdict } from "./utterance-gate.js";
 import { SPEECH_DETECTOR, createSpeechFramer, createSileroRunner, loadVerifiedModel } from "./speech-detector.js";
+import { pointOrtAtAppRuntime } from "./ort-runtime-files.js";
 
 // We don't ship the model in the bundle — fetch from the Hub at runtime.
 env.allowRemoteModels = true;
 env.allowLocalModels = false;
+// The ONNX Runtime WebAssembly runtime ships with the app (2026-10-07);
+// Transformers.js points it at jsDelivr on import, so re-point it here,
+// before either session is created. One env for both the voice model and
+// the speech detector (same onnxruntime-web instance, see above).
+// measurements/self-hosted-ort-2026-10-07.md
+pointOrtAtAppRuntime(env.backends.onnx.wasm);
 
 // 0.75-sec window at ~6.7 Hz design cadence. ECAPA-TDNN q8 inference
 // at this window length runs ~52 ms median on desktop browser WASM
