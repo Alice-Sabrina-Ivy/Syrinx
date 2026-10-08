@@ -173,6 +173,36 @@ ms of thread CPU per second of audio:
 - **The main thread (~310–330 ms/s) remains the largest consumer.** No pass
   so far has covered it.
 
+### 2b. Re-measure without the diag overlay (2026-10-08, review fix)
+
+The table above ran under `?diag=1`, which adds the overlay and its
+instrumentation; the review found that inflates the main thread by about
+45 ms/s. Re-run on the fixed `cue-strip` build (voiced-windows rule, the
+new panel text; nothing on the audio path changed), `chrome-cpu.mjs` with
+`--diag=0` (the production URL) and `--diag=1`, interleaved: woman / man ×
+panel off / on × diag 0 / 1, two runs each (16 runs, capture 1.00× real
+time in every run, no resonance overloads). The machine was less loaded than
+in §2, so compare within this table. Median ms of thread CPU per audio
+second:
+
+| | main | gender worker | resonance | pitch | DSP | compositor | app total (main + 4 workers) | renderer process |
+|---|---|---|---|---|---|---|---|---|
+| panel off, **diag=0 (production)** | **139** | — | 16.5 | 25.9 | 23.9 | 53 | **205** | 313 |
+| panel off, diag=1 | 172 | — | 16.8 | 25.8 | 23.9 | 60 | 240 | 363 |
+| panel on, **diag=0 (production)** | **153** | **115** | 17.4 | 27.2 | 24.8 | 58 | **337** | 462 |
+| panel on, diag=1 | 184 | 116 | 17.5 | 27.0 | 25.2 | 63 | 370 | 509 |
+
+- **Production (diag=0) is ~14 % lower than the diag=1 figures** for the
+  app total (205 vs 240 off, 337 vs 370 on); the overlay costs the main
+  thread ~31–33 ms/s. The production claim is the diag=0 row.
+- **The panel adds ~130 ms/s of app CPU in production** (205 → 337), ~115
+  of it the gender worker (classifier every 450 ms + speech detector).
+- **The main thread is still the largest consumer** (139–153 ms/s in
+  production, plus ~55 ms/s on the compositor thread). No pass has covered
+  it yet; a pre-registered main-thread / render pass (with
+  `chrome-cpu.mjs --main-profile`) is the next CPU item before the phone
+  re-validation.
+
 ## 3. Open
 
 - **Done 2026-10-08:** the heard-as constants were re-checked on the
@@ -187,3 +217,5 @@ ms of thread CPU per second of audio:
   panel's own hide rules (same note: men's readings are hidden more in
   noise and on phone / laptop channels — the ≥ 3 s voiced-pitch rule).
 - Phone: not re-measured with the merged tree.
+- Main thread (~140–150 ms/s in production on desktop, more on a phone):
+  not yet profiled or reduced (§2b).

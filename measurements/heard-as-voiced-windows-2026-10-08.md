@@ -276,7 +276,7 @@ straddle a speech / whisper boundary; they hold voiced speech.
 | G3 `chanx`, 12 conditions × 2 sexes | identical shown share in all 24 cells | ≥ −1.0 pp — pass |
 | G4 held vowel / pink noise / silence | identical state and reason at every sample | identical — pass |
 | G5 music alone, 6 cells | identical per stream | ≤ +0.1 pp — pass |
-| G6 CI | equivalence test with the regenerated golden file (speech-detector probabilities stored; the independent Python check implements the rule); lint, unit tests, resonance-lab parity, build and the cue-strip smoke at every viewport — recorded with the commit | see the commit |
+| G6 CI | equivalence test 28 / 28 with the regenerated golden file (speech-detector probabilities stored; the independent Python check implements the rule); `npm run lint` clean, `npm run test:unit` 38 / 38, `npm run test:resonance-lab` 89 / 89, `npm run build` ok, cue-strip smoke 90 / 90 at phone, p402, p360, landscape and desktop (with the pitch-only cases) | pass |
 
 **What it does not do.** It drops a classified window's logit only; the
 window still counts for the panel's window count, voiced time and F0, so no
@@ -339,6 +339,23 @@ men 50 % of samples show it (the rest: "Waiting for running speech" / "Keep
 talking" while the pool fills); regular reading and every reader stream:
 never; real 0 dB noise, men: 5.9 % of samples (hence "loud noise" in the
 words).
+
+## Built-app check (after the change, desktop Chrome headless, one run per arm)
+
+The 2026-10-07 UX review's probe (fake mic = WAV, panel on, display sampled
+every 250 ms, network bytes after switching on) on the built `cue-strip`
+with V200 and the new hide words, against the review's runs on 95700c3:
+
+| clip | shown | "Can't tell yet" of shown | median ring position (0 = man end) | hide words |
+|---|---|---|---|---|
+| EARS men: 6 s regular + 3 s whisper, repeated | 13.7 → 18.7 % before (whisper vs silence) / 16.2 vs 16.2 % now | before 72 vs 100 % (15 samples got a definite "would say man" reading the silence arm never gave) / now 100 vs 100 % | before 0.30 vs 0.39 / now 0.39 vs 0.35 | — |
+| EARS women: same | before 61.2 vs 58.4 % / now 54.8 vs 59.6 % | 0 % | before 0.894 vs 0.898 / now 0.899 vs 0.893 | — |
+| continuous unphonated whisper, men / women | 0 % / 0 % | — | — | "Needs voiced (pitched) speech …" on 113 / 131 of 228 samples (the rest loading, waiting, "Keep talking" while the pool fills) |
+
+Turning the panel on downloaded 41.99–42.03 MB in every run (vite preview,
+no compression), matching the "up to 42 MB" label; no jsDelivr request.
+One run per arm, so the shown shares and positions are indicative; the
+offline B1 / B2 numbers above are the evidence.
 
 ## Reproduce
 
