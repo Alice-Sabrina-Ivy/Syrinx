@@ -453,15 +453,15 @@ function App() {
             {activeTab !== "history" && (
               <div className="flex-shrink-0 mt-3 flex items-center justify-center gap-4">
                 <div className="flex items-center gap-2">
-                  <div
-                    className={`w-2 h-2 rounded-full transition-all duration-300 ${
-                      voiced
-                        ? "bg-green-400 shadow-[0_0_6px_rgba(74,222,128,0.5)]"
-                        : holding
-                          ? "bg-yellow-400/60"
-                          : "bg-neutral-600"
-                    }`}
-                  />
+                  {/* Three stacked dots cross-fading by opacity (composited)
+                      instead of one dot transitioning colour + shadow, which
+                      ran on the main thread every display frame
+                      (measurements/main-thread-cpu-2026-10-08.md). */}
+                  <div className="relative w-2 h-2" data-voice-status={voiced ? "voiced" : holding ? "holding" : "waiting"}>
+                    <div className={`absolute inset-0 rounded-full bg-green-400 shadow-[0_0_6px_rgba(74,222,128,0.5)] transition-opacity duration-300 ${voiced ? "opacity-100" : "opacity-0"}`} />
+                    <div className={`absolute inset-0 rounded-full bg-yellow-400/60 transition-opacity duration-300 ${!voiced && holding ? "opacity-100" : "opacity-0"}`} />
+                    <div className={`absolute inset-0 rounded-full bg-neutral-600 transition-opacity duration-300 ${!voiced && !holding ? "opacity-100" : "opacity-0"}`} />
+                  </div>
                   <span className="text-[11px] text-neutral-500">
                     {voiced
                       ? "Voice detected"

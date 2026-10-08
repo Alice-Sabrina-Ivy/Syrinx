@@ -150,11 +150,14 @@ function HeardAsAxis({ axis }) {
           data-axis-range=""
         />
         {!axis.wide && (
-          <span
-            className="absolute top-1/2 w-2.5 h-2.5 -ml-[5px] -translate-y-1/2 rounded-full border-2 border-neutral-200 transition-[left] duration-300"
-            style={{ left: `${D}%` }}
-            data-axis-dot-mark=""
-          />
+          // Moved by a transform on a full-width wrapper (a composited
+          // transition) instead of transitioning `left` (main thread).
+          <span className="absolute inset-0 transition-transform duration-300" style={{ transform: `translateX(${D}%)` }}>
+            <span
+              className="absolute left-0 top-1/2 w-2.5 h-2.5 -ml-[5px] -translate-y-1/2 rounded-full border-2 border-neutral-200"
+              data-axis-dot-mark=""
+            />
+          </span>
         )}
       </div>
       <div className="flex justify-between gap-2 text-[11px] text-neutral-400 leading-4" aria-hidden="true" data-axis-ends="">
