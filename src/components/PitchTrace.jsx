@@ -40,30 +40,19 @@ export function PitchTrace({
   const targetRef = useRef(target);
   useEffect(() => { targetRef.current = target; }, [target]);
 
-  // Handle canvas sizing with ResizeObserver
+  // Sizing + drawing in one effect (main-thread pass 2026-10-08,
+  // measurements/main-thread-cpu-2026-10-08.md). The backing store follows
+  // the container (ResizeObserver) and the device pixel ratio (a matchMedia
+  // resolution query: dragging the window between monitors changes
+  // devicePixelRatio WITHOUT firing ResizeObserver) — no layout read per
+  // frame. What does not move with time (background, grid, labels, target
+  // band) is drawn once into an offscreen canvas and copied each frame; the
+  // plot geometry is computed once per size, not per point (canvas.width /
+  // devicePixelRatio are DOM reads).
   useEffect(() => {
     const canvas = canvasRef.current;
     const container = containerRef.current;
-    if (!canvas || !container) return;
-
-    function resize() {
-      const dpr = window.devicePixelRatio || 1;
-      const rect = container.getBoundingClientRect();
-      canvas.width = rect.width * dpr;
-      canvas.height = rect.height * dpr;
-    }
-
-    const observer = new ResizeObserver(resize);
-    observer.observe(container);
-    resize();
-
-    return () => observer.disconnect();
-  }, []);
-
-  // Animation loop
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas || !container) return undefined;
     const ctx = canvas.getContext("2d");
     let animId;
     let lastTargetAttr = null;
@@ -96,94 +85,117 @@ export function PitchTrace({
 
     const displayLow = PITCH_DISPLAY_RANGE.low;
     const displayHigh = PITCH_DISPLAY_RANGE.high;
+    const traceMs = PITCH_TRACE_SECONDS * 1000;
 
     // Padding: enough room for Y-axis labels on left and "now" on right
     const pad = { left: 48, right: 28, top: 8, bottom: 24 };
 
-    function hzToY(hz) {
-      const dpr = window.devicePixelRatio || 1;
-      const plotTop = pad.top * dpr;
-      const plotBottom = canvas.height - pad.bottom * dpr;
-      const frac = (hz - displayLow) / (displayHigh - displayLow);
-      return plotBottom - frac * (plotBottom - plotTop);
-    }
+    // Geometry of the current backing store; null = measure on next draw.
+    let geo = null;
+    // Static layer (background, grid, labels, band), keyed by size + band.
+    const staticCanvas = document.createElement("canvas");
+    const sctx = staticCanvas.getContext("2d");
+    let staticKey = null;
 
-    function timeToX(t, now) {
+    function measure() {
       const dpr = window.devicePixelRatio || 1;
-      const plotLeft = pad.left * dpr;
-      const plotRight = canvas.width - pad.right * dpr;
-      const age = now - t;
-      const frac = 1 - age / (PITCH_TRACE_SECONDS * 1000);
-      return plotLeft + frac * (plotRight - plotLeft);
-    }
-
-    function draw() {
-      const dpr = window.devicePixelRatio || 1;
-      // DPR-change guard: dragging the window between monitors changes
-      // devicePixelRatio WITHOUT firing ResizeObserver (CSS size
-      // unchanged), leaving the backing store sized for the old dpr
-      // while the layout math below uses the new one — clipped plots
-      // and oversized labels until a real resize. Re-sync per frame.
-      {
-        const c = containerRef.current;
-        if (c) {
-          const rect = c.getBoundingClientRect();
-          const bw = Math.round(rect.width * dpr), bh = Math.round(rect.height * dpr);
-          if (bw > 0 && bh > 0 && (canvas.width !== bw || canvas.height !== bh)) {
-            canvas.width = bw;
-            canvas.height = bh;
-          }
-        }
+      const rect = container.getBoundingClientRect();
+      const bw = Math.round(rect.width * dpr), bh = Math.round(rect.height * dpr);
+      if (bw > 0 && bh > 0 && (canvas.width !== bw || canvas.height !== bh)) {
+        canvas.width = bw;
+        canvas.height = bh;
       }
-      const w = canvas.width;
-      const h = canvas.height;
+      const w = canvas.width, h = canvas.height;
+      geo = {
+        dpr, w, h,
+        plotLeft: pad.left * dpr,
+        plotRight: w - pad.right * dpr,
+        plotTop: pad.top * dpr,
+        plotBottom: h - pad.bottom * dpr,
+      };
+    }
 
-      const plotLeft = pad.left * dpr;
-      const plotRight = w - pad.right * dpr;
-      const plotTop = pad.top * dpr;
-      const plotBottom = h - pad.bottom * dpr;
+    // The same arithmetic as the per-call helpers these replaced, so every
+    // coordinate (and pixel) is unchanged.
+    function hzToY(hz) {
+      const frac = (hz - displayLow) / (displayHigh - displayLow);
+      return geo.plotBottom - frac * (geo.plotBottom - geo.plotTop);
+    }
+    function timeToX(t, now) {
+      const age = now - t;
+      const frac = 1 - age / traceMs;
+      return geo.plotLeft + frac * (geo.plotRight - geo.plotLeft);
+    }
 
-      ctx.clearRect(0, 0, w, h);
+    function drawStatic(band) {
+      const { dpr, w, h, plotLeft, plotRight, plotBottom } = geo;
+      staticCanvas.width = w;
+      staticCanvas.height = h;
+      const c = sctx;
+      c.clearRect(0, 0, w, h);
 
       // Background
-      ctx.fillStyle = "rgba(10, 10, 10, 0.95)";
-      ctx.fillRect(0, 0, w, h);
+      c.fillStyle = "rgba(10, 10, 10, 0.95)";
+      c.fillRect(0, 0, w, h);
 
       // Grid lines + labels
       const gridHz = [100, 150, 200, 250, 300, 350, 400];
-      ctx.textAlign = "right";
-      ctx.textBaseline = "middle";
-      ctx.font = `${11 * dpr}px system-ui`;
+      c.textAlign = "right";
+      c.textBaseline = "middle";
+      c.font = `${11 * dpr}px system-ui`;
 
       for (const hz of gridHz) {
         if (hz < displayLow || hz > displayHigh) continue;
         const y = hzToY(hz);
-        ctx.strokeStyle = COLORS.grid;
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(plotLeft, y);
-        ctx.lineTo(plotRight, y);
-        ctx.stroke();
+        c.strokeStyle = COLORS.grid;
+        c.lineWidth = 1;
+        c.beginPath();
+        c.moveTo(plotLeft, y);
+        c.lineTo(plotRight, y);
+        c.stroke();
 
-        ctx.fillStyle = COLORS.gridLabel;
-        ctx.fillText(`${hz}`, plotLeft - 6 * dpr, y);
+        c.fillStyle = COLORS.gridLabel;
+        c.fillText(`${hz}`, plotLeft - 6 * dpr, y);
       }
 
-      // Time labels
-      ctx.textAlign = "center";
-      ctx.textBaseline = "top";
-      const now = Math.round(performance.timeOrigin + performance.now());
+      // Time labels (their x does not depend on the clock)
+      c.textAlign = "center";
+      c.textBaseline = "top";
       for (let sec = 0; sec <= PITCH_TRACE_SECONDS; sec += 5) {
-        const x = timeToX(now - sec * 1000, now);
+        const x = timeToX(-sec * 1000, 0);
         if (x < plotLeft - 5 * dpr) continue;
-        ctx.fillStyle = COLORS.gridLabel;
-        ctx.fillText(sec === 0 ? "now" : `-${sec}s`, x, plotBottom + 4 * dpr);
+        c.fillStyle = COLORS.gridLabel;
+        c.fillText(sec === 0 ? "now" : `-${sec}s`, x, plotBottom + 4 * dpr);
       }
+
+      if (band) {
+        const bandTop = hzToY(band.high);
+        const bandBottom = hzToY(band.low);
+        c.fillStyle = COLORS.targetBand;
+        c.fillRect(plotLeft, bandTop, plotRight - plotLeft, bandBottom - bandTop);
+
+        // Target band borders
+        c.strokeStyle = COLORS.targetBandBorder;
+        c.lineWidth = 1;
+        c.setLineDash([4 * dpr, 4 * dpr]);
+        c.beginPath();
+        c.moveTo(plotLeft, bandTop);
+        c.lineTo(plotRight, bandTop);
+        c.moveTo(plotLeft, bandBottom);
+        c.lineTo(plotRight, bandBottom);
+        c.stroke();
+        c.setLineDash([]);
+      }
+    }
+
+    function draw() {
+      if (!geo) measure();
+      const { dpr, w, h, plotLeft, plotRight, plotTop, plotBottom } = geo;
+      const now = Math.round(performance.timeOrigin + performance.now());
 
       // Target band (none without a training-direction target)
       const target = targetRef.current;
       const band = bandForDisplay(target, PITCH_DISPLAY_RANGE);
-      const colorFor = (data, i) => statusColor(pitchStatus(levelAt(data, i), target));
       // The drawn target, mirrored to the DOM for assistive tech / checks
       // (written only when it changes).
       const targetAttr = band ? `${band.low}-${band.high}` : "none";
@@ -194,30 +206,19 @@ export function PitchTrace({
           ? `Pitch trace, target ${band.low} to ${band.high} Hz`
           : "Pitch trace, no target range");
       }
-      if (band) {
-        const bandTop = hzToY(band.high);
-        const bandBottom = hzToY(band.low);
-        ctx.fillStyle = COLORS.targetBand;
-        ctx.fillRect(plotLeft, bandTop, plotRight - plotLeft, bandBottom - bandTop);
-
-        // Target band borders
-        ctx.strokeStyle = COLORS.targetBandBorder;
-        ctx.lineWidth = 1;
-        ctx.setLineDash([4 * dpr, 4 * dpr]);
-        ctx.beginPath();
-        ctx.moveTo(plotLeft, bandTop);
-        ctx.lineTo(plotRight, bandTop);
-        ctx.moveTo(plotLeft, bandBottom);
-        ctx.lineTo(plotRight, bandBottom);
-        ctx.stroke();
-        ctx.setLineDash([]);
+      const key = `${w}x${h}@${dpr}:${targetAttr}`;
+      if (key !== staticKey) {
+        staticKey = key;
+        drawStatic(band);
       }
+
+      ctx.clearRect(0, 0, w, h);
+      ctx.drawImage(staticCanvas, 0, 0);
 
       // Pitch trace line
       const data = pitchTraceRef.current;
       if (data.length < 2) {
         if (DIAG_ENABLED) diagNote(now, data, (plotRight - plotLeft) / dpr);
-        animId = requestAnimationFrame(draw);
         return;
       }
 
@@ -238,7 +239,10 @@ export function PitchTrace({
       ctx.rect(plotLeft, plotTop, plotRight - plotLeft, plotBottom - plotTop);
       ctx.clip();
 
+      // The previous drawn point's colour is carried along (a gap ends the
+      // segment, so it is only compared within a segment).
       let inSegment = false;
+      let prevColor = null;
       for (let i = 0; i < data.length; i++) {
         const pt = data[i];
         const x = timeToX(pt.time, now);
@@ -255,30 +259,24 @@ export function PitchTrace({
         }
 
         const y = hzToY(pt.pitch);
-        const color = colorFor(data, i);
+        const color = statusColor(pitchStatus(levelAt(data, i), target));
 
         if (!inSegment) {
           ctx.beginPath();
           ctx.strokeStyle = color;
           ctx.moveTo(x, y);
           inSegment = true;
+        } else if (color !== prevColor) {
+          // Finish old segment, start new with different color
+          ctx.lineTo(x, y);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.strokeStyle = color;
+          ctx.moveTo(x, y);
         } else {
-          // Check if color needs to change
-          const prevPt = data[i - 1];
-          const prevColor =
-            prevPt?.voiced && prevPt.pitch !== null ? colorFor(data, i - 1) : null;
-
-          if (color !== prevColor) {
-            // Finish old segment, start new with different color
-            ctx.lineTo(x, y);
-            ctx.stroke();
-            ctx.beginPath();
-            ctx.strokeStyle = color;
-            ctx.moveTo(x, y);
-          } else {
-            ctx.lineTo(x, y);
-          }
+          ctx.lineTo(x, y);
         }
+        prevColor = color;
       }
       if (inSegment) ctx.stroke();
 
@@ -290,7 +288,7 @@ export function PitchTrace({
       if (lastVoiced && now - lastVoiced.time < 500) {
         const x = timeToX(lastVoiced.time, now);
         const y = hzToY(lastVoiced.pitch);
-        const color = colorFor(data, lastVoicedIdx);
+        const color = statusColor(pitchStatus(levelAt(data, lastVoicedIdx), target));
 
         ctx.beginPath();
         ctx.arc(x, y, 5 * dpr, 0, Math.PI * 2);
@@ -309,12 +307,33 @@ export function PitchTrace({
 
       ctx.restore(); // end plot-rect clip
       if (DIAG_ENABLED) diagNote(now, data, (plotRight - plotLeft) / dpr);
-
-      animId = requestAnimationFrame(draw);
     }
 
-    draw();
-    return () => cancelAnimationFrame(animId);
+    function loop() {
+      draw();
+      animId = requestAnimationFrame(loop);
+    }
+
+    // Size (container) and DPR (monitor switch, zoom) changes: re-measure
+    // on the next draw.
+    const invalidate = () => { geo = null; };
+    const observer = new ResizeObserver(invalidate);
+    observer.observe(container);
+    let mq = null;
+    function onDpr() { invalidate(); watchDpr(); }
+    function watchDpr() {
+      mq?.removeEventListener("change", onDpr);
+      mq = window.matchMedia ? window.matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`) : null;
+      mq?.addEventListener("change", onDpr);
+    }
+    watchDpr();
+
+    loop();
+    return () => {
+      cancelAnimationFrame(animId);
+      observer.disconnect();
+      mq?.removeEventListener("change", onDpr);
+    };
   }, [pitchTraceRef]);
 
   // Readout: the number is this moment's pitch; its colour judges the
