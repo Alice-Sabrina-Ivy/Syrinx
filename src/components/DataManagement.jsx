@@ -310,6 +310,21 @@ export function DataManagement({ onClose, direction = null, onDirectionChange })
         {status && (
           <p className="text-xs text-neutral-400 mt-3 text-center">{status}</p>
         )}
+
+        {/* Licence notices of the bundled third-party code (ONNX Runtime,
+            React, Dexie, Transformers.js) ship with the site:
+            scripts/third-party-notices.mjs. */}
+        <p className="text-[11px] text-neutral-400 mt-4" data-licence-notices="">
+          Syrinx is open source (MIT License).{" "}
+          <a
+            href={`${import.meta.env.BASE_URL}THIRD_PARTY_NOTICES.txt`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-neutral-300 underline underline-offset-2 hover:text-neutral-100"
+          >
+            Licences and third-party notices
+          </a>
+        </p>
       </div>
     </div>
   );
