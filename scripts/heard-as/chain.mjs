@@ -10,9 +10,13 @@
 //      never overruns), decideMlWindow with the REAL utterance gate fed the
 //      posted pitch frames as relayed by the main thread (a frame posted while
 //      chunk k is processed reaches the ML worker before chunk k + 1), the
-//      silence floor on the window peak;
-//   3. (callers) each scored window through the deployed classifier ->
-//      femaleLogitFromResult, then src/ml/heard-as.js.
+//      silence floor on the window peak; the classifier runs on a scored
+//      window only every ML_CLASSIFY_HOP_MS (audio-utils classifyDue: 450 ms
+//      since 2026-10-07, measurements/heard-as-cpu-2026-10-07.md; option
+//      classifyHopMs, 150 = every scored decision as before);
+//   3. (callers) each classified window through the deployed classifier ->
+//      femaleLogitFromResult, then src/ml/heard-as.js (scored windows the
+//      classifier skipped go in with classified: false).
 // No ONNX here: replay() returns the scored windows' audio and the posted
 // pitch so the window-set guard can run in CI without the model.
 
@@ -21,7 +25,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const imp = (p) => import(pathToFileURL(path.join(repo, p)).href);
-const { createStreamingResampler, RingWindow, SilenceTracker, windowPeak, TARGET_SAMPLE_RATE } = await imp("src/ml/audio-utils.js");
+const { createStreamingResampler, RingWindow, SilenceTracker, windowPeak, TARGET_SAMPLE_RATE, ML_DECISION_HOP_MS, ML_CLASSIFY_HOP_MS, classifyDue } = await imp("src/ml/audio-utils.js");
 const { createUtteranceGate, decideMlWindow } = await imp("src/ml/utterance-gate.js");
 
 // The pitch worker is a module with global state: one shared instance,
@@ -42,7 +46,7 @@ async function pitchWorker() {
 }
 
 export const ML_WINDOW_SAMPLES = 12000;
-export const ML_HOP_MS = 150;
+export const ML_HOP_MS = ML_DECISION_HOP_MS;
 
 /**
  * y: Float32Array at `sr`; chunk: samples per capture chunk (default 25 ms).
@@ -50,10 +54,15 @@ export const ML_HOP_MS = 150;
  *   hardware buffer of this length, plus 0-jitterMs of scheduling jitter;
  *   the worker's 150 ms hop is timed on that arrival ("wall") clock as in
  *   the app (performance.now()), not on the audio clock. 0 = no bursts.
- * -> { pitch: [[audioMs, f0 (0 = unvoiced)]], windows: [{ audioMs, mode, spanId, win: Float32Array }],
- *      decisions: number }
+ * classifyHopMs: the worker's classifier hop (audio-utils classifyDue; the
+ *   production ML_CLASSIFY_HOP_MS by default; 150 = every scored decision,
+ *   the pre-2026-10-07 schedule). Decisions stay on the 150 ms tick.
+ * -> { pitch: [[audioMs, f0 (0 = unvoiced)]],
+ *      windows: [{ audioMs, mode, spanId, classify, win: Float32Array | null }] (every SCORED
+ *        window; classify = the classifier runs on it, win only then),
+ *      decisions: number, ticks: [[audioMs, voiceState, scored (0/1), classified (0/1)]] }
  */
-export async function replay(y, { sr = 48000, chunk = Math.round(sr * 0.025), burstMs = 0, jitterMs = 0, seed = 1 } = {}) {
+export async function replay(y, { sr = 48000, chunk = Math.round(sr * 0.025), burstMs = 0, jitterMs = 0, seed = 1, classifyHopMs = ML_CLASSIFY_HOP_MS } = {}) {
   let rnd = seed >>> 0 || 1;
   const rand = () => { rnd = (Math.imul(rnd, 1664525) + 1013904223) >>> 0; return rnd / 4294967296; };
   const onMsg = await pitchWorker();
@@ -69,6 +78,8 @@ export async function replay(y, { sr = 48000, chunk = Math.round(sr * 0.025), bu
     const silence = new SilenceTracker();
     let lastGateMode = null;
     let lastInferMs = -Infinity;
+    let lastClassifyMs = null;
+    const ticks = [];
     let relay = [];
     const pitch = [];
     const windows = [];
@@ -89,7 +100,10 @@ export async function replay(y, { sr = 48000, chunk = Math.round(sr * 0.025), bu
         lastGateMode = d.mode;
         lastInferMs = wallMs;
         decisions++;
-        if (d.score) windows.push({ audioMs: audioNowMs, mode: d.mode, spanId: d.spanId, win });
+        const classify = d.score && classifyDue(wallMs, lastClassifyMs, classifyHopMs);
+        if (classify) lastClassifyMs = wallMs;
+        if (d.score) windows.push({ audioMs: audioNowMs, mode: d.mode, spanId: d.spanId, classify, win: classify ? win : null });
+        ticks.push([audioNowMs, d.voiceState, d.score ? 1 : 0, classify ? 1 : 0]);
       }
       // pitch worker
       sink.length = 0;
@@ -100,7 +114,7 @@ export async function replay(y, { sr = 48000, chunk = Math.round(sr * 0.025), bu
         relay.push(m);
       }
     }
-    return { pitch, windows, decisions };
+    return { pitch, windows, decisions, ticks };
   } finally {
     globalThis.self = saved;
   }

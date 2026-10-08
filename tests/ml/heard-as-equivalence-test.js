@@ -12,8 +12,10 @@
 //   1. src/ml/heard-as.js on the stored windows + pitch == the Python values
 //      (meterLogit, lnF0 to 1e-9; the shares to 1e-12).
 //   2. Window-set guard (no ONNX): replaying the chain gives exactly the
-//      stored scored-window times and the stored posted pitch. A change to the
-//      utterance gate, the pitch chain or decideMlWindow fails here.
+//      stored scored-window times, which of them the classifier runs on
+//      (ML_CLASSIFY_HOP_MS) and the stored posted pitch. A change to the
+//      utterance gate, the pitch chain, decideMlWindow or the classifier hop
+//      fails here.
 //   3. Logits (optional): with the classifier in the transformers.js cache,
 //      re-scoring the windows reproduces the stored logits within 1e-4;
 //      otherwise SKIPPED.
@@ -36,7 +38,7 @@ function check(name, cond, detail = "") {
   if (cond) { passed++; console.log(`  PASS ${name}${detail ? `  (${detail})` : ""}`); }
   else { failed++; console.log(`  FAIL ${name}${detail ? `  (${detail})` : ""}`); }
 }
-const REFIT = "the utterance gate, the pitch chain or decideMlWindow changed: re-run scripts/heard-as " +
+const REFIT = "the utterance gate, the pitch chain, decideMlWindow or the classifier hop changed: re-run scripts/heard-as " +
   "(run_chain.mjs on the calibration sources; refit or confirm the constants in src/ml/heardAsCalibration.js — " +
   "measurements/heard-as-calibration-2026-10-07.md), then node scripts/heard-as/make_golden.mjs";
 
@@ -49,12 +51,13 @@ console.log("\n1. heard-as.js == the independent Python aggregate");
 for (const [name, fx] of Object.entries(G.fixtures)) {
   const agg = createHeardAsAggregator({ windowMs: Infinity, minVoicedMs: 0, minWindows: 0 });
   for (const [ms, f0] of fx.pitch) agg.addPitch({ audioMs: ms, f0 });
-  for (const [ms, logit, mode] of fx.windows) agg.addWindow({ audioMs: ms, logit, mode });
+  for (const [ms, logit, mode, c] of fx.windows) agg.addWindow({ audioMs: ms, logit, mode, classified: !!c });
   const g = agg.aggregate(Infinity);
   const p = fx.python;
   check(`${name}: meterLogit`, Math.abs(g.meterLogit - p.meterLogit) <= 1e-9, `${g.meterLogit} vs ${p.meterLogit}`);
   check(`${name}: lnF0`, Math.abs(g.lnF0 - p.lnF0) <= 1e-9 && g.nVoicedFrames === p.nVoicedFrames && g.nWindows === p.nWindows,
     `${g.lnF0} vs ${p.lnF0}; ${g.nVoicedFrames} frames`);
+  check(`${name}: classified windows`, g.nClassified === p.nClassified, `${g.nClassified} of ${g.nWindows}`);
   const s = heardAsShares(p.meterLogit, p.lnF0);
   const d = Math.max(Math.abs(s.eta - p.eta), Math.abs(s.s - p.s),
     ...[0, 1].flatMap((i) => [Math.abs(s.man[i] - p.man[i]), Math.abs(s.unsure[i] - p.unsure[i]), Math.abs(s.woman[i] - p.woman[i])]));
@@ -62,7 +65,7 @@ for (const [name, fx] of Object.entries(G.fixtures)) {
   // the live path (8 s trailing window at the stimulus end) sees the same 5 s stimulus
   const live = createHeardAsAggregator({ minVoicedMs: 0, minWindows: 0 });
   for (const [ms, f0] of fx.pitch) live.addPitch({ audioMs: ms, f0 });
-  for (const [ms, logit, mode] of fx.windows) live.addWindow({ audioMs: ms, logit, mode });
+  for (const [ms, logit, mode, c] of fx.windows) live.addWindow({ audioMs: ms, logit, mode, classified: !!c });
   const end = fx.pitch[fx.pitch.length - 1][0];
   const e = live.estimate(end);
   check(`${name}: live estimate() at the stimulus end == the fit-time aggregate`,
@@ -75,9 +78,10 @@ for (const [name, fx] of Object.entries(G.fixtures)) {
   const { x } = readWav16(readFileSync(path.join(repo, "tests/resonance-lab/fixtures", `${name}.wav`)));
   const r = await replay(await upsample16to48(x), { sr: 48000 });
   wins[name] = r.windows;
-  const sameW = r.windows.length === fx.windows.length && r.windows.every((w, i) => w.audioMs === fx.windows[i][0] && w.mode === fx.windows[i][2]);
+  const sameW = r.windows.length === fx.windows.length
+    && r.windows.every((w, i) => w.audioMs === fx.windows[i][0] && w.mode === fx.windows[i][2] && (w.classify ? 1 : 0) === fx.windows[i][3]);
   const sameP = r.pitch.length === fx.pitch.length && r.pitch.every((q, i) => q[0] === fx.pitch[i][0] && q[1] === fx.pitch[i][1]);
-  check(`${name}: scored windows identical`, sameW, sameW ? `${r.windows.length} windows` : REFIT);
+  check(`${name}: scored windows identical (times, mode, which are classified)`, sameW, sameW ? `${r.windows.length} windows, ${r.windows.filter((w) => w.classify).length} classified` : REFIT);
   check(`${name}: posted pitch identical`, sameP, sameP ? `${r.pitch.length} frames` : REFIT);
 }
 
@@ -88,7 +92,10 @@ if (!score) {
 } else {
   for (const [name, fx] of Object.entries(G.fixtures)) {
     let maxd = 0;
-    for (let i = 0; i < wins[name].length; i++) maxd = Math.max(maxd, Math.abs((await score(wins[name][i].win)) - fx.windows[i][1]));
+    for (let i = 0; i < wins[name].length; i++) {
+      if (!wins[name][i].classify) continue;
+      maxd = Math.max(maxd, Math.abs((await score(wins[name][i].win)) - fx.windows[i][1]));
+    }
     check(`${name}: logits within 1e-4`, maxd <= 1e-4, `max |diff| ${maxd.toExponential(1)}`);
   }
 }

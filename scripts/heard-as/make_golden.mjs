@@ -5,7 +5,9 @@
 //
 // For each committed lab fixture (public LibriSpeech, tests/resonance-lab/fixtures/,
 // upsampled to 48 kHz): the production chain (chain.mjs) -> the scored windows
-// [audioMs, logit] and the posted pitch [audioMs, f0]; then
+// [audioMs, logit | null, mode, classified 0/1] (the classifier runs every
+// ML_CLASSIFY_HOP_MS; skipped windows carry no logit) and the posted pitch
+// [audioMs, f0]; then
 // scripts/heard-as/golden_check.py computes meterLogit, lnF0 and the shares
 // under the shipped constants INDEPENDENTLY (plain Python, its own reading of
 // the definition) and writes them into the file. The test then requires
@@ -37,9 +39,9 @@ for (const name of ["ls_woman_high", "ls_man_low", "ls_man_hi8_f105"]) {
   const y = await upsample16to48(x);
   const r = await replay(y, { sr: 48000 });
   const windows = [];
-  for (const w of r.windows) windows.push([w.audioMs, await score(w.win), w.mode]);
+  for (const w of r.windows) windows.push([w.audioMs, w.classify ? await score(w.win) : null, w.mode, w.classify ? 1 : 0]);
   out.fixtures[name] = { windows, pitch: r.pitch };
-  console.log(`${name}: ${windows.length} scored windows, ${r.pitch.length} pitch frames`);
+  console.log(`${name}: ${windows.length} scored windows (${windows.filter((w) => w[3]).length} classified), ${r.pitch.length} pitch frames`);
 }
 const tmp = path.join(repo, "build", "heard-as-golden.tmp.json");
 writeFileSync(tmp, JSON.stringify(out));

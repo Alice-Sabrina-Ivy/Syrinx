@@ -378,3 +378,21 @@ export function createStreamingResampler(srIn, srOut) {
     return out.subarray(0, m);
   };
 }
+
+// ---- Classifier cadence (2026-10-07, measurements/heard-as-cpu-2026-10-07.md) ----
+// The gender worker DECIDES on a window every ML_DECISION_HOP_MS (the
+// utterance gate's tick: voice states, held-note detection, span onsets —
+// unchanged), but runs the classifier only on a scored window at least
+// ML_CLASSIFY_HOP_MS after the previous classified one. The only consumer is
+// the experimental "Likely heard as" panel, which pools 8 s and updates every
+// 2 s, so a third of the 80 %-overlapping windows carry almost all of the
+// information at a third of the CPU. classifyDue() is the shared rule (worker
+// and the Node replay of scripts/heard-as/chain.mjs); half a decision hop of
+// tolerance keeps "every Nth scored tick" when ticks land a few ms late (the
+// worker times its hop on chunk arrival).
+export const ML_DECISION_HOP_MS = 150;
+export const ML_CLASSIFY_HOP_MS = 450;
+export function classifyDue(nowMs, lastClassifyMs, hopMs = ML_CLASSIFY_HOP_MS, decisionHopMs = ML_DECISION_HOP_MS) {
+  if (lastClassifyMs === null || lastClassifyMs === undefined) return true;
+  return nowMs - lastClassifyMs >= hopMs - decisionHopMs / 2;
+}

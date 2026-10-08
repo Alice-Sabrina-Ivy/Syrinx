@@ -1,5 +1,17 @@
 # CPU with the "Likely heard as" panel on — 2026-10-07
 
+> **Status (2026-10-07, integration): the 450 ms classifier hop is ADOPTED by
+> user decision 2026-10-07 (decision F), despite missing pre-registered
+> target 1 (app CPU −28.6 % against the −30 % bar).** Every guard passes at
+> 450 ms (guard 1: 0.81 points on the audio clock; guard 6: heard-as-man 0.79
+> / heard-as-woman 0.90). Branch `cue-strip-cpu` (4f213b6, 00d130d, 591da94,
+> 548d9f8) was merged into `cue-strip`, so §3–§5 now describe `cue-strip`.
+> The bar was not changed after the fact: the pass is recorded as a miss on
+> target 1 and adopted by the user's decision, not by the decision rule in §1.
+> 600 ms stays rejected (guard 6). The block below is the status as first
+> written on `cue-strip`, kept for the record.
+>
+> **Historical (superseded 2026-10-07 by the user's decision above):**
 > **Status on branch `cue-strip` (2026-10-07; corrected in review round 2):
 > not merged — the pass did not meet its own pre-registered bar.** §1's
 > decision rule adopts a change only if it "meets the target with every guard

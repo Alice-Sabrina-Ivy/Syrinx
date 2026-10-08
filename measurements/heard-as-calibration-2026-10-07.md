@@ -158,6 +158,14 @@ scheduling jitter on the hop clock vs the audio-clock hop: meterLogit Δ mean
 1.6, max 5.0 points (whole stimuli of ~2 s voiced; the live 8 s pooling
 averages more windows).
 
+**Classifier hop (2026-10-07, later).** The worker now classifies every 3rd
+scored window (450 ms); the scored windows in between still count for the
+window count, voiced time and F0, so only meterLogit is a subsample of the
+windows defined above. Palette share Δ vs every window: MAE 0.81 points
+(0.90 under the 40 ms bursts), error vs listeners 6.33 → 6.37; hide rules and
+the time to the first estimate unchanged —
+`measurements/heard-as-cpu-2026-10-07.md`.
+
 ## 4. Errors (held out)
 
 MAE in points of "% man" per listener datum, offset 0, (bias = prediction − heard).
