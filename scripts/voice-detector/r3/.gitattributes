@@ -1,0 +1,4 @@
+# The seal files are hashed byte for byte: never convert their line endings.
+seal-confirmatory.sha256 -text
+conf-manifest.jsonl -text
+seal.json -text

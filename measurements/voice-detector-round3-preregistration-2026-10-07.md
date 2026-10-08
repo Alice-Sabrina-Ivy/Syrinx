@@ -481,7 +481,7 @@ session recordings were not read.
 - Seal: `scripts/voice-detector/r3/seal-confirmatory.sha256` (59,969 files,
   15.2 GB; sha256 `e1aef115…98bc5`), `seal.json` (counts, sources, licences)
   and `conf-manifest.jsonl` (every confirmatory record, kept and dropped, with
-  its licence; sha256 `2e525eea…dbcaf6`). `seal.py verify` re-hashed
+  its licence; sha256 `b018cc6e…c0db2a`). `seal.py verify` re-hashed
   everything with 0 mismatches.
 - Guard: `train/tcommon.read_wav` and `lib/streams.py` now refuse any path
   in the sealed set unless `VAD_R3_LOOK=1`, which only the look sets.
