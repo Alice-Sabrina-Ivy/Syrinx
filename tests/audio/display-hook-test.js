@@ -138,5 +138,36 @@ console.log("\nevery painted value is a real detection (random sequences)");
   check(`no painted value outside the posted detections (${paintedTotal} painted frames)`, bad === 0 && paintedTotal > 1000, example);
 }
 
+console.log("\ntrace notification (PitchTrace redraws on append; main-thread pass 2026-10-08)");
+{
+  M.refs = []; M.effects = []; M.state = null;
+  const mod = await import(`${HOOK}?g=${++gen}`);
+  const api = mod.useAudioPipeline();
+  for (const e of M.effects) { try { e(); } catch { /* effects that need a DOM */ } }
+  const latest = M.refs.find((r) => r.current && typeof r.current === "object" &&
+    "pitch" in r.current && "ts" in r.current && "confidence" in r.current && "voiced" in r.current);
+  const har = M.refs.find((r) => typeof r.current === "function" && r.current.name === "handleAnalysisResult");
+  let calls = 0;
+  const lens = [];
+  const unsub = api.subscribeTrace(() => { calls++; lens.push(api.pitchTraceRef.current.length); });
+  let t = 2e6;
+  const frames = [...rep(150, 10), ...rep("q", 6), ...rep(300, 6), ...rep("l", 3)];
+  for (const x of frames) {
+    t += 25;
+    const pitch = typeof x === "number" ? x : null;
+    latest.current = { pitch, confidence: pitch ? 0.8 : 0.2, voiced: pitch !== null, ts: t };
+    har.current({ intensity: x === "q" ? -70 : pitch ? -28 : -38, formants: null, spectralTilt: null, hnr: null, cpp: null, absoluteTime: t });
+  }
+  check("subscribers are notified once per analysis frame, after the append",
+    calls === frames.length && lens.every((n) => n > 0), `${calls} calls for ${frames.length} frames`);
+  unsub();
+  t += 25;
+  har.current({ intensity: -70, formants: null, spectralTilt: null, hnr: null, cpp: null, absoluteTime: t });
+  check("unsubscribe stops notifications", calls === frames.length);
+  // Node drivers (session oracle, steadiness hook-check) read the hook's one
+  // state object through this mock: the trace notifier must not add state.
+  check("the hook keeps a single useState (its readout state)", M.state && typeof M.state === "object" && "steadiness" in M.state && "status" in M.state);
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);

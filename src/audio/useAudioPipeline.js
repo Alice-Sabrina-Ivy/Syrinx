@@ -278,12 +278,14 @@ export function useAudioPipeline() {
   // The pitch trace redraws when a point is appended, not on every display
   // frame (main-thread pass 2026-10-08, measurements/main-thread-cpu-2026-10-08.md):
   // PitchTrace subscribes; notifyTrace() runs after each append / reset.
-  const [traceListeners] = useState(() => new Set());
+  // (A ref, not a second useState: tools that drive this hook in Node read
+  // the hook's single state — scripts/session-oracle/lib/react-mock.mjs.)
+  const traceListenersRef = useRef(new Set());
   const subscribeTrace = useCallback((fn) => {
-    traceListeners.add(fn);
-    return () => { traceListeners.delete(fn); };
-  }, [traceListeners]);
-  const notifyTrace = () => { for (const fn of traceListeners) fn(); };
+    traceListenersRef.current.add(fn);
+    return () => { traceListenersRef.current.delete(fn); };
+  }, []);
+  const notifyTrace = () => { for (const fn of traceListenersRef.current) fn(); };
 
   // Optional callback for session recording — called with every analysis frame
   const frameCallbackRef = useRef(null);
@@ -938,7 +940,7 @@ export function useAudioPipeline() {
       hnr: null,
     };
     pitchTraceRef.current = [];
-    for (const fn of traceListeners) fn();
+    for (const fn of traceListenersRef.current) fn();
     formantTrailRef.current = [];
     genderStateRef.current = null;
     dspGateRef.current = { voiced: false, holding: false };
@@ -974,7 +976,7 @@ export function useAudioPipeline() {
       modelProgress: null,
       resonanceStatus: "idle",
     });
-  }, [traceListeners]);
+  }, []);
 
   // The "Likely heard as" panel switched on / off (Settings or the panel's
   // own switch; App owns the persisted setting). On: start the gender worker

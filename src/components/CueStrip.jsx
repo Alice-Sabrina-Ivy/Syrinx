@@ -8,9 +8,12 @@
 // Geometry, the direction highlight, colours, the trails, the row states,
 // the header words and the screen-reader summaries are pure
 // (cueStripModel.js, unit-tested). This file only lays them out: one inline
-// SVG per row in pixel units (the strip measures its width), the dot and
-// trail moved with a 200 ms CSS transform transition, re-rendered by one
-// 250 ms tick (4 Hz; no canvas, no rAF). Rows expose data-cue / data-state /
+// SVG per row in pixel units (the strip measures its width) for the axis,
+// bands, labels and trail; the dot is an HTML element over the SVG moved
+// with a 200 ms CSS transform transition (composited — an SVG element's
+// transition re-ran style + paint on the main thread every display frame,
+// measurements/main-thread-cpu-2026-10-08.md); rows are memoised and
+// re-rendered by one 250 ms tick (4 Hz; no canvas, no rAF). Rows expose data-cue / data-state /
 // data-target-low|high for the smoke test, and each is a labelled group
 // with a screen-reader summary refreshed once a second.
 //
