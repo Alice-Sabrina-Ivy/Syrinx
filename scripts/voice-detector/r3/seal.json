@@ -1,0 +1,293 @@
+{
+ "what": "round-3 confirmatory set seal (pre-registration §1.6)",
+ "code_commit": "f03d39b9dbcdc0ec34434688c7e694a7d545d865",
+ "files": 59969,
+ "bytes": 15196811513,
+ "seal_sha256": "e1aef115a1b6c2ddb8298e6ce6eef96e4b73a483f707ebbcdcef2d789f798bc5",
+ "conf_manifest_sha256": "b018cc6e0731ea78c315e02916aa3c7433ae2b90deeddb52dc7bfcbdb2c0db2a",
+ "exclude_sha256": "1b51f6b414a5b8abc50cc3f1acf4ca4b212e4420251393095a18e0a6729ccd09",
+ "records": {
+  "kept": 7935,
+  "dropped": 3925
+ },
+ "kept_by_source": {
+  "c_fry": 28,
+  "c_ipa": 10,
+  "c_aa": 27,
+  "c_qbh": 118,
+  "dcase23": 21,
+  "dcase24": 17,
+  "avq": 7,
+  "aid": 12,
+  "c_ls": 2287,
+  "c_sbi": 4064,
+  "c_jj": 38,
+  "c_gts": 1069,
+  "c_fsv": 103,
+  "na": 134
+ },
+ "licences_kept": {
+  "CC BY 4.0": 6523,
+  "CC BY-SA 4.0 (evaluation only)": 4,
+  "CC BY-SA 3.0 (evaluation only)": 5,
+  "CC BY 4.0 record / README 'internal non-commercial use only' (evaluation only)": 118,
+  "CC BY-NC-SA 4.0 (evaluation only)": 1086,
+  "CC0 1.0": 141,
+  "CC BY-NC 3.0 (evaluation only)": 10,
+  "CC BY 3.0": 12,
+  "CC BY-NC 4.0 (evaluation only)": 36
+ },
+ "sources": {
+  "aid": {
+   "licence": [
+    "CC BY 4.0"
+   ],
+   "licence_where": [
+    "Zenodo record 6974033 licence"
+   ],
+   "attribution": [
+    "AID: Open-Source Anechoic Interferer Dataset (zenodo 6974033), CC BY 4.0"
+   ],
+   "url": [
+    "https://zenodo.org/records/6974033"
+   ]
+  },
+  "avq": {
+   "licence": [
+    "CC BY 4.0"
+   ],
+   "licence_where": [
+    "Zenodo record 4553667 licence"
+   ],
+   "attribution": [
+    "Drone noises from the AVQ dataset (zenodo 4553667), CC BY 4.0"
+   ],
+   "url": [
+    "https://zenodo.org/records/4553667"
+   ]
+  },
+  "c_aa": {
+   "licence": [
+    "CC BY 4.0"
+   ],
+   "licence_where": [
+    "Zenodo records 7098345 / 7098349 licence"
+   ],
+   "attribution": [
+    "AcousticsAustraliaArticle_dataset: audio samples, vowel phonation (zenodo 7098345) and participant profiles (zenodo 7098349), CC BY 4.0"
+   ],
+   "url": [
+    "https://zenodo.org/records/7098345"
+   ]
+  },
+  "c_gts": {
+   "licence": [
+    "CC BY-NC-SA 4.0 (evaluation only)"
+   ],
+   "licence_where": [
+    "Hugging Face GTSinger/GTSinger dataset_license.md"
+   ],
+   "attribution": [
+    "GTSinger: A Global Multi-Technique Singing Corpus, Y. Zhang, C. Pan, W. Guo et al. (NeurIPS 2024 D&B; huggingface.co/datasets/GTSinger/GTSinger), CC BY-NC-SA 4.0"
+   ],
+   "url": [
+    "https://huggingface.co/datasets/GTSinger/GTSinger"
+   ]
+  },
+  "c_jj": {
+   "licence": [
+    "CC BY 4.0"
+   ],
+   "licence_where": [
+    "Zenodo record 1421692 licence"
+   ],
+   "attribution": [
+    "Jingju a cappella singing dataset part 2, R. Gong, R. Caro Repetto, Y. Yang, X. Serra (zenodo 1421692), CC BY 4.0"
+   ],
+   "url": [
+    "https://zenodo.org/records/1421692 (wav_part1.zip)",
+    "https://zenodo.org/records/1421692 (wav_part2.zip)"
+   ]
+  },
+  "c_ls": {
+   "licence": [
+    "CC BY 4.0"
+   ],
+   "licence_where": [
+    "OpenSLR 12 resource page + LICENSE.TXT of the tarball"
+   ],
+   "attribution": [
+    "LibriSpeech ASR corpus (openslr.org/12), train-clean-100, CC BY 4.0; audio derived from LibriVox recordings"
+   ],
+   "url": [
+    "https://openslr.elda.org/resources/12/train-clean-100.tar.gz"
+   ]
+  },
+  "c_qbh": {
+   "licence": [
+    "CC BY 4.0 record / README 'internal non-commercial use only' (evaluation only)"
+   ],
+   "licence_where": [
+    "Zenodo record 1290712 licence + the dataset README"
+   ],
+   "attribution": [
+    "MTG-QBH: Query By Humming dataset, J. Salamon, J. Serra, E. Gomez (zenodo 1290712)"
+   ],
+   "url": [
+    "https://zenodo.org/records/1290712 (MTG-QBH.zip)"
+   ]
+  },
+  "c_sbi": {
+   "licence": [
+    "CC BY 4.0"
+   ],
+   "licence_where": [
+    "Zenodo record 20744738 licence + LICENSE.md"
+   ],
+   "attribution": [
+    "SingBAP (intermediate participants), S. Haeaeraee and R. Ramirez-Melendez, Universitat Pompeu Fabra, Music Technology Group (zenodo 20744738), CC BY 4.0"
+   ],
+   "url": [
+    "https://zenodo.org/records/20744738 (VOICE_DATA.zip)"
+   ]
+  },
+  "dcase23": {
+   "licence": [
+    "CC BY 4.0"
+   ],
+   "licence_where": [
+    "Zenodo record 7830345 licence"
+   ],
+   "attribution": [
+    "DCASE 2023 Challenge Task 2 Additional Training Dataset (zenodo 7830345), CC BY 4.0"
+   ],
+   "url": [
+    "https://zenodo.org/records/7830345"
+   ]
+  },
+  "dcase24": {
+   "licence": [
+    "CC BY-NC-SA 4.0 (evaluation only)"
+   ],
+   "licence_where": [
+    "Zenodo record 11259435 licence"
+   ],
+   "attribution": [
+    "DCASE 2024 Challenge Task 2 Additional Training Dataset (zenodo 11259435), CC BY-NC-SA 4.0"
+   ],
+   "url": [
+    "https://zenodo.org/records/11259435"
+   ]
+  }
+ },
+ "spliced_sessions": {
+  "construction": "infer_carried.py over every confirmatory fresh stream (cvoice, cneg, cmix20, cmix0) in a seeded random order",
+  "seed": 20261011,
+  "minutes": 20
+ },
+ "counts": {
+  "sets": {
+   "cvoice": {
+    "streams": 5937,
+    "hours": 13.666
+   },
+   "cneg": {
+    "streams": 191,
+    "hours": 3.516
+   },
+   "cmix20": {
+    "streams": 764,
+    "hours": 10.422
+   },
+   "cmix0": {
+    "streams": 764,
+    "hours": 6.178
+   },
+   "csess": {
+    "streams": 160,
+    "hours": 13.333
+   }
+  },
+  "cvoice_correct": {
+   "breathy|f": 27042,
+   "breathy|m": 10331,
+   "breathy|unknown": 243582,
+   "children|unknown": 10131,
+   "held|f": 153827,
+   "held|m": 110833,
+   "held|unknown": 297990,
+   "humming|unknown": 70133,
+   "sirens|f": 29222,
+   "sirens|m": 9091,
+   "sirens|unknown": 87,
+   "speech|f": 57242,
+   "speech|m": 55619,
+   "speech|unknown": 21934,
+   "trills|unknown": 321
+  },
+  "cvoice_correct_held_band": {
+   "130-300|f": 71850,
+   "130-300|m": 57060,
+   "130-300|unknown": 206627,
+   "300-400|f": 78418,
+   "300-400|m": 51361,
+   "300-400|unknown": 69867,
+   "75-130|f": 36,
+   "75-130|m": 128,
+   "75-130|unknown": 19900,
+   "other|f": 3523,
+   "other|m": 2284,
+   "other|unknown": 1596
+  },
+  "cneg_false": {
+   "NA": 64677,
+   "NB": 51354
+  },
+  "cmix_correct": {
+   "cmix0|+0|f": 30722,
+   "cmix0|+0|m": 19571,
+   "cmix0|+0|unknown": 50938,
+   "cmix0|+10|f": 48059,
+   "cmix0|+10|m": 30381,
+   "cmix0|+10|unknown": 87703,
+   "cmix20|+0|f": 31151,
+   "cmix20|+0|m": 19964,
+   "cmix20|+0|unknown": 52033,
+   "cmix20|+10|f": 48663,
+   "cmix20|+10|m": 31064,
+   "cmix20|+10|unknown": 88153
+  },
+  "csess_clean_correct": {
+   "breathy|f": 17676,
+   "breathy|m": 31928,
+   "breathy|unknown": 15126,
+   "children|unknown": 3289,
+   "held|f": 5889,
+   "held|m": 7351,
+   "held|unknown": 45043,
+   "humming|unknown": 3869,
+   "sirens|f": 533,
+   "sirens|m": 2074,
+   "speech|f": 11005,
+   "speech|m": 13526,
+   "speech|unknown": 1946,
+   "trills|unknown": 15421
+  },
+  "csess_noisy_correct": {
+   "+0|f": 19417,
+   "+0|m": 32693,
+   "+0|unknown": 43340,
+   "+10|f": 29375,
+   "+10|m": 47110,
+   "+10|unknown": 72311
+  },
+  "csess_false_stretch10": {
+   "NA": 78749,
+   "NB": 48847
+  },
+  "csess_false_short": {
+   "NA": 53504,
+   "NB": 32739
+  }
+ }
+}

@@ -461,3 +461,330 @@ Process limits: at most two heavy processes at a time (shared machine); every
 spawned browser killed by its own PID; downloads and caches under
 `build/vad-train/` (gitignored); no audio, weights or private results
 committed; no PR opened.
+
+## Addendum R3-A — data step and seal (2026-10-08, before any round-3 model is trained)
+
+This file was committed and pushed as cb5ee91 before any round-3 data was
+downloaded. This addendum records what the data step produced and where it
+departs from §1–§2. **No round-3 model has been trained, and no model of any
+round has been run on a confirmatory stream.** Nobody listened to, plotted or
+scored a confirmatory clip. The only figures read from the confirmatory set
+are the current app's aggregate counts that §1.6 allows (A.4). The private
+session recordings were not read.
+
+- Code: [scripts/voice-detector/r3/](../scripts/voice-detector/r3/README.md),
+  committed as f03d39b before the seal was computed (`seal.json`
+  `code_commit`). Afterwards, `seal.py`'s export of `conf-manifest.jsonl` was
+  trimmed: licences of whole datasets now sit in `seal.json` `sources`. This
+  changes no hash and is committed with the seal.
+- Data: under `build/vad-train/r3/` (gitignored); no audio is committed.
+- Seal: `scripts/voice-detector/r3/seal-confirmatory.sha256` (59,969 files,
+  15.2 GB; sha256 `e1aef115…98bc5`), `seal.json` (counts, sources, licences)
+  and `conf-manifest.jsonl` (every confirmatory record, kept and dropped, with
+  its licence; sha256 `2e525eea…dbcaf6`). `seal.py verify` re-hashed
+  everything with 0 mismatches.
+- Guard: `train/tcommon.read_wav` and `lib/streams.py` now refuse any path
+  in the sealed set unless `VAD_R3_LOOK=1`, which only the look sets.
+
+### A.1 Exclusion list and duplicate check (§1.1)
+
+**Exclusion list.** `build/vad-train/r3/exclude.json` (sha256
+`1b51f6b4…cd09`) was written before the first confirmatory search. It holds
+54,531 Freesound ids, 7,761 uploaders and 12,139 speaker, singer,
+participant and uploader groups, collected from:
+
+- every record of the rounds 1–2 manifests, kept and dropped (88,460,
+  including all 51,197 FSD50K clips and their uploaders);
+- every id in the rounds 1–2 Freesound download indexes, kept and skipped;
+- the benchmark's public voice and noise manifests, plus all 1,524 ESC-50
+  source ids;
+- the Coswara held-out dates;
+- the 66 ids and 52 uploaders of the round-1 review probes;
+- every Freesound id found in the review scratch directories (21,412 files
+  scanned: 1,340 ids, 75 uploaders).
+
+**Fingerprints of all earlier audio.** 56,305 clips, 172.2 h:
+
+- rounds 1–2 training and validation files, kept and dropped;
+- benchmark voice and noise;
+- the review probes' audio.
+
+The matcher is round 1's, with round 3's rule that a match needs ≥ 3 s of
+aligned overlap at BER ≤ 0.35. Self-test on the rounds 1–2 known duplicates
+of ≥ 3 s:
+
+- 30 of 31 matched earlier audio: 19 the expected benchmark clip, 11 a
+  near-identical clip from the same bell series. The one miss is a clock-tick
+  clip (round 1: BER 0.206).
+- 20 of 214 random earlier clips matched another earlier clip. Every one was
+  the same recording (the same take on another microphone, a review-probe
+  variant, an FSD50K duplicate). No unrelated pair matched.
+
+**Matches in the confirmatory set.**
+
+- Freesound clips were checked before they were kept. 1 match, the
+  original of an MS-SNSD photocopier clip: the clip was dropped and its
+  uploader banned.
+- The other 8,077 clips were checked after preparation (`screen_conf.py`).
+  1 match: a GTSinger French tenor vibrato segment against a VocalSet female
+  *messa di voce* /u/ (BER 0.343, 8.3 s overlap). It is probably two similar
+  sustained vowels, not a copy. The rule is applied as written: the clip
+  **and the whole singer** (379 files) are dropped.
+
+**Disjointness.** `train_side.py check`: none of the 88,460 rounds 1–2
+records shares a group, Freesound id, uploader, LibriSpeech speaker or
+SingBAP participant with the confirmatory set. `r3/train_exclude.json` holds
+517 groups; 576 Freesound ids (every search result the confirmatory step
+read, kept or not); 428 uploaders; 48 LibriSpeech speakers; 5 SingBAP
+participants.
+
+### A.2 What was built
+
+**Voice** (kept records after every rule; "fresh" = clean streams at the
+native rate, `cvoice`):
+
+| key | files (fresh) | hours (fresh) | groups | gender (files) | subsets | licence |
+|---|---|---|---|---|---|---|
+| `c_ls` LibriSpeech train-clean-100 | 2,287 (480) | 8.06 (1.71) | 48 speakers (24 F, 24 M) | f 1,054 / m 1,233 | speech | CC BY 4.0 |
+| `c_sbi` SingBAP intermediate | 4,064 | 4.41 | 5 participants (10 participant × mic) | unknown | held 1,634, breathy 2,036, humming 394 | CC BY 4.0 |
+| `c_gts` GTSinger EN + FR | 1,069 | 2.96 | 4 singers | f 787 / m 282 | held 772, breathy 156, sirens 141 | CC BY-NC-SA 4.0 (evaluation only) |
+| `c_jj` Jingju part 2 | 38 | 2.33 | 7 singers | f 19 / m 19 | held | CC BY 4.0 |
+| `c_qbh` MTG-QBH | 118 | 0.88 | 118 (A.5) | unknown | held | record CC BY 4.0, README internal non-commercial use (evaluation only) |
+| `c_aa` vowel phonations | 27 | 0.02 | 27 participants | f 15 / m 11 / unknown 1 | breathy | CC BY 4.0 |
+| `c_fry` PLOS ONE vocal fry | 28 | 0.02 | 14 speakers | f 14 / m 14 | breathy 14 (fry), speech 14 (modal) | CC BY 4.0 |
+| `c_ipa` Commons IPA trills | 10 | 0.01 | 10 | unknown | trills | CC BY-SA 3.0 / 4.0 (9, evaluation only), CC BY 4.0 (1) |
+| `c_fsv` Freesound | 103 | 1.35 | 94 uploaders | unknown | held 33, children 25, speech 24, breathy 16, humming 4, sirens 1, trills 0 | CC0 62, CC BY 20, CC BY-NC 21 (evaluation only) |
+
+Fresh clean streams: 5,937 streams, 13.67 h. Native rates (as distributed;
+Freesound previews at their rate): 48 kHz 3,146; 44.1 kHz 2,293; 16 kHz 481;
+8 kHz 6; 96 kHz 4; 22.05 kHz 3; 32 kHz 2; 24 kHz 1; 192 kHz 1.
+
+**Noise** (`cneg`, first 90 s, ≥ 20 s, 16 kHz):
+
+| group | streams | hours | from | licence |
+|---|---|---|---|---|
+| NA (Freesound) | 134 | 2.40 | 35 of the 44 queries yielded a kept clip; 125 uploaders | CC0 79, CC BY 30, CC BY-NC 25 (evaluation only) |
+| NB | 57 | 1.12 | DCASE 2023 T2 additional (7 types: 21 streams), DCASE 2024 T2 additional (9 types: 17 streams), AVQ drones (7), AID (4 classes: blender, drill, hairdryer, vacuum; 12) | CC BY 4.0, except DCASE 2024 CC BY-NC-SA 4.0 (evaluation only) |
+
+**Freesound selection** (`fs_conf.py`):
+
+- Search: 412 pages read (plus the 51 pages of the trill fallback), giving
+  576 candidates. 1,693 results were rejected
+  by the cheap rules: 773 uploader used before, 486 id used before, 91 title
+  keyword, 6 Sampling+.
+- Selection: 494 candidates checked in FNV order of the id, 237 kept
+  (103 voice, 134 NA). Reasons for the 257 drops:
+  - 201 keyword rule on the description or tags;
+  - 51 YAMNet voice screen;
+  - 3 Silero speech screen;
+  - 1 fingerprint;
+  - 1 under 1 s Praat-voiced.
+
+**Mixes** (`cmix20`, `cmix0`):
+
+- 191 noise streams × 2 programs × {+10, 0} dB = 764 mixes per lead
+  variant: 10.42 h with the 20 s lead, 6.18 h at lead 0.
+- Programs rotate in the seeded order humming, speech, sirens, breathy,
+  held, trills. Each subset gets 126–128 mixes; NA 536, NB 228.
+- Program gender: f 202, m 122, unknown 440.
+
+**One-room sessions** (`csess`):
+
+- 160 sessions of 300 s (13.3 h) from 54 source groups: 54 clean, 106 noisy
+  (bed NA 75, NB 31).
+- Voice fraction 35.3–64.3 % (median 50.6 %). Longest noise-only stretch
+  after the lead ≥ 41.3 s in every session. No timeline needed the forced
+  fallback.
+
+### A.3 Licences of the kept confirmatory files (7,935)
+
+| licence | files |
+|---|---|
+| CC BY 4.0 | 6,523 |
+| CC BY-NC-SA 4.0 (GTSinger, DCASE 2024; evaluation only) | 1,086 |
+| CC0 1.0 | 141 |
+| MTG-QBH (record CC BY 4.0, README internal non-commercial use; evaluation only) | 118 |
+| CC BY-NC 3.0 / 4.0 (evaluation only) | 46 |
+| CC BY 3.0 | 12 |
+| CC BY-SA 3.0 / 4.0 (evaluation only) | 9 |
+
+None of these files is used for training or selection, and no audio is
+committed. Licence and source page are recorded per file in
+`conf-manifest.jsonl`; for whole datasets they are in `seal.json` `sources`.
+
+### A.4 Minimum sizes (§1.3, §1.4), from the current app's dumps only
+
+**Clean fresh streams, CORRECT hops** (f / m / unknown):
+
+| row | f | m | unknown | gating |
+|---|---|---|---|---|
+| speech | 57,242 | 55,619 | 21,934 | every group |
+| held notes and sung phrases | 153,827 | 110,833 | 297,990 | every group |
+| — 75–130 Hz | 36 | 128 | 19,900 | unknown alone; f and m are pooled into the all-gender row (20,064) |
+| — 130–300 Hz | 71,850 | 57,060 | 206,627 | every group |
+| — 300–400 Hz | 78,418 | 51,361 | 69,867 | every group |
+| breathy and dysphonic | 27,042 | 10,331 | 243,582 | every group |
+| **lip and tongue trills** | — | — | **321** | **below 400: cannot be evaluated** |
+| humming | — | — | 70,133 | unknown |
+| sirens and glides | 29,222 | 9,091 | 87 | f, m; unknown pooled (all-gender 38,400) |
+| children (reported) | — | — | 10,131 | — |
+
+**Noise-only streams, FALSE hops.** NA 64,677 and NB 51,354. Both are above
+5,000, so the noise size fallback was not applied.
+
+**Mix cells, CORRECT hops (f / m / unknown).** Every cell exceeds 400 in
+every group:
+
+| cell | f | m | unknown |
+|---|---|---|---|
+| +10 dB, 20 s lead | 48,663 | 31,064 | 88,153 |
+| 0 dB, 20 s lead | 31,151 | 19,964 | 52,033 |
+| +10 dB, lead 0 | 48,059 | 30,381 | 87,703 |
+| 0 dB, lead 0 | 30,722 | 19,571 | 50,938 |
+
+**One-room sessions.**
+
+- Clean, CORRECT hops per subset: every subset and gender group is ≥ 400.
+  The smallest groups are sirens f 533 and humming 3,869. Trills reach 15,421,
+  but only because the 10 Commons trill clips repeat through their sessions
+  (A.5).
+- Noisy, CORRECT hops per cell: +10 dB f 29,375 / m 47,110 / unknown 72,311;
+  0 dB f 19,417 / m 32,693 / unknown 43,340.
+- FALSE hops in noise-only stretches ≥ 10 s: NA 78,749, NB 48,847. Shorter
+  pauses: NA 53,504, NB 32,739.
+
+**The trills row (§7, Q2).** It stands at 321 CORRECT hops and cannot be
+evaluated.
+
+- Its one fallback was applied: pages 6–8 of all 17 trill queries. Every page
+  returned 0 results; pages 3–5 of the round-2 trill queries were already
+  empty except for "rolled r".
+- The Freesound search found 13 trill candidates; none survived the
+  automatic rules (9 keyword rule, 4 YAMNet voice screen).
+- The row is therefore the 10 Wikimedia Commons IPA samples (≈ 35 s in all),
+  only 2 of them bilabial (lip) trills.
+- **Real lip trills under open licences are not available in sufficient
+  number.** The user decides whether round 3 proceeds without the trills
+  clause.
+- The trill programs in the mixes (126) and the trill sessions (18) repeat
+  these same 10 clips.
+
+### A.5 Departures and readings (each decided before any model touched the data)
+
+1. **MTG-QBH has no per-file labels.** Its README gives no subject, gender or
+   hummed / sung label; subjects sang "with or without lyrics". So:
+   - every recording is a sung-phrase take of an unknown singer;
+   - each recording is its own group;
+   - QBH contributes nothing to the humming row.
+
+   The README also says "may not modify". The files are mixed only
+   internally for evaluation and are never redistributed.
+2. **Vocal-fry gender.** The Commons file descriptions give 7 female and
+   7 male speakers. Gender is taken from those descriptions, not the "all
+   women" of §1.3.
+3. **SingBAP.** A breathy *mm* glissando counts as breathy, not humming;
+   humming = the non-breathy glissandi. The ≤ 30 min cap per participant × microphone dropped 992 takes; the MacBook
+   microphone dropped 2,520.
+4. **Jingju.**
+   - The 13 files in the `accompaniment/` folders are instrumental tracks
+     and were dropped.
+   - Gender comes from the metadata role type: `nv…` → f, `nan…` → m,
+     dan → f, laosheng / jing → m.
+   - Singers come from the metadata. Two date folders belong to the same
+     singers, which gives 7 singers. They appear only as hashed keys.
+   - The 20-min cap per singer used the real durations and dropped 16
+     recordings.
+5. **NB "machine ids".**
+   - DCASE 2023/24 additional data has one section per type. A machine id is
+     therefore the first attribute pair of the file name (model, id or
+     operating condition).
+   - Four DCASE 2024 types have no attributes and give one stream each.
+   - An id with less than 20 s of normal clips is skipped, and the next id in
+     FNV order takes its place.
+   - AID: one microphone file per recording (FNV order). Recordings shorter
+     than 20 s are looped with 20 ms cross-fades to 20 s; AVQ the same.
+6. **Freesound.**
+   - The ≤ 2 clips per uploader cap counts voice and NA together ("over the
+     whole confirmatory set").
+   - An id found by several queries belongs to the first query in plan order.
+   - "Children queries" = the round-2 queries naming a child, kid, girl, boy,
+     toddler or baby.
+   - Two Freesound outages during selection were retried, never recorded as
+     drops.
+   - The IPA regex is applied literally, so *postalveolar*, *palatalized* and
+     *labialized alveolar* trills are included.
+7. **Contributor names.** Wikimedia Commons contributors appear in stream
+   ids and the committed manifest only as a hash of their key
+   (`c3.anon`). The renamed specs, dumps and audio were checked equal
+   to the originals apart from the ids.
+8. **Session construction details** (§2 does not fix them; fixed in
+   `sessions.py` before any session was built):
+   - Episodes last U(10, 30) s. They read the source's recordings with a
+     cursor, joined with 0.5 s gaps, so a long song or chapter is sung or
+     read in parts.
+   - A draw is accepted only if it meets the §2 voice-fraction and ≥ 40 s
+     stretch constraints; up to 400 seeded sub-draws are tried.
+   - Sessions take source groups in turn, FNV order within each source, so
+     that every source contributes. A purely global FNV order would leave the
+     small validation sources (Cantoría, SingBAP, children) without sessions.
+   - 88 of the 160 confirmatory sessions draw on a single recording. Some of
+     these sessions repeat a short clip throughout (c_aa vowels,
+     c_ipa trills, c_qbh queries, single Freesound clips).
+9. **Mix programs.** A recording of ≥ 20 s is a program on its own (its
+   first 30 s). Shorter recordings of one group are joined, cycling the
+   group's recordings when they are too few: 162 of the 764 mixes use a
+   cycled program.
+10. **Reference.** The §1.6 level rule (frames within 30 dB of the
+    recording's 95th-percentile voiced level) is applied to every
+    confirmatory reference and to the validation sessions' references.
+11. **Spliced sessions (reported, not gating).** The confirmatory spliced
+    construction is fixed in `seal.json`:
+    - streams: every fresh confirmatory stream (`cvoice`, `cneg`, `cmix20`,
+      `cmix0`) through `infer_carried.py`;
+    - seed 20261011;
+    - 20-min sessions.
+
+### A.6 Validation side (§2) and the training side
+
+**Validation one-room sessions** (`build/vad-train/r3/vsess`, from the
+rounds 1–2 validation split only): 240 sessions, 20.0 h, from 80 groups, with
+the current-app dumps complete.
+
+- Sessions per source:
+
+  | source | sessions |
+  |---|---|
+  | LibriSpeech test | 36 |
+  | Coswara | 36 |
+  | `fsvoice` | 36 |
+  | SVD | 33 |
+  | VCTK | 33 |
+  | MDVR-KCL | 24 |
+  | SingBAP | 18 |
+  | Cantoría | 12 |
+  | children | 12 |
+
+- Noise beds:
+  - the 6 FSD50K eval machine / room clips of ≥ 30 s (FSD50K clips
+    rarely reach 30 s);
+  - all 115 `fstrain` val clips;
+  - 40 synthetic val interferers (seeds 10⁹ + 1000 … + 1039).
+- Voice fraction 35.3–64.0 %, every session with a ≥ 41.6 s noise-only
+  stretch.
+- Current-app counts: every clean val row has ≥ 494 CORRECT hops in each
+  gender group present. FALSE hops in noise-only stretches ≥ 10 s: 151,930.
+
+**Training side.** Round-3 training, validation and selection read nothing
+under `build/vad-train/r3/conf` (the guard at the top of this addendum). Any record touching the
+confirmatory set is removed by `train_side.filter_records()`. The rounds 1–2
+manifests contain none (A.1).
+
+### A.7 What the user is asked before training
+
+- **Q2 (trills).** The trills row has 321 CORRECT hops and its fallback added
+  nothing. Should round 3 proceed without the trills clause of V1 clean?
+  Lip-trill safety would then rest on the reported (non-gating) rows: the
+  10 Commons trills, which repeat through 18 one-room sessions and 126 mixes.
+- **The GTSinger match (A.1).** Following the rule removed a likely-spurious
+  match together with a whole male singer. The set stays as sealed;
+  reported for transparency.

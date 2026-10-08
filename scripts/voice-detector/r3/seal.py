@@ -157,14 +157,23 @@ def seal():
             log(f"hashing {k}/{len(fs)}")
     open(SEAL, "w", encoding="utf8", newline="\n").write("\n".join(lines) + "\n")
     man = CManifest()
-    keep = ("id", "kind", "source", "subset", "group", "session_group", "gender", "ngroup", "cls", "machine", "url", "member", "licence", "licence_where",
-            "attribution", "freesound_id", "uploader", "query", "page", "origin", "dur", "sr", "orig_sr", "fresh", "drop")
+    keep = ("id", "kind", "source", "subset", "group", "session_group", "gender", "ngroup", "cls", "machine", "member", "licence",
+            "freesound_id", "query", "page", "origin", "dur", "sr", "orig_sr", "fresh", "drop")
+    per_file = ("c_fsv", "na", "c_fry", "c_ipa")         # sources whose licence / creator is per file (else: seal.json "sources")
+    src_info = {}
     with open(CMAN, "w", encoding="utf8", newline="\n") as f:
         for r in sorted(man.have.values(), key=lambda r: r["id"]):
+            if r["source"] not in per_file:
+                si = src_info.setdefault(r["source"], {"licence": set(), "licence_where": set(), "attribution": set(), "url": set()})
+                for k in si:
+                    if r.get(k):
+                        si[k].add(r[k])
             o = {k: r[k] for k in keep if r.get(k) is not None}
             for k in ("group", "session_group"):
                 if k in o:
                     o[k] = anon(o[k])
+            if r["source"] in per_file:
+                o.update({k: r[k] for k in ("url", "licence_where", "attribution") if r.get(k)})
             if r["source"] == "c_ipa":
                 o["attribution"] = "Wikimedia Commons file page (url); contributor as credited there"
             f.write(json.dumps(o, ensure_ascii=False) + "\n")
@@ -175,6 +184,7 @@ def seal():
          "records": {"kept": len(kept), "dropped": len(man.have) - len(kept)},
          "kept_by_source": dict(collections.Counter(r["source"] for r in kept)),
          "licences_kept": dict(collections.Counter(r["licence"] for r in kept)),
+         "sources": {k: {kk: sorted(vv) for kk, vv in v.items()} for k, v in sorted(src_info.items())},
          "spliced_sessions": {"construction": "infer_carried.py over every confirmatory fresh stream (cvoice, cneg, cmix20, cmix0) in a seeded random order",
                               "seed": 20261011, "minutes": 20},
          "counts": cnt}
