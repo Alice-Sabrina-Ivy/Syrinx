@@ -11,7 +11,7 @@ their own licences; the MIT License does not apply to them.
 | React, React DOM | MIT | https://github.com/facebook/react |
 | Dexie.js | Apache-2.0 | https://github.com/dexie/Dexie.js |
 | Transformers.js (`@huggingface/transformers`) | Apache-2.0 | https://github.com/huggingface/transformers.js |
-| ONNX Runtime Web (JavaScript bundled with Transformers.js; its WASM files are fetched at runtime from jsDelivr) | MIT | https://github.com/microsoft/onnxruntime |
+| ONNX Runtime Web 1.26.0-dev.20260416-b7804b056c (`onnxruntime-web`): the JavaScript bundled with Transformers.js, plus its WebAssembly runtime files shipped with the app since 2026-10-07 (`ort-wasm-simd-threaded.asyncify.{mjs,wasm}`, and `ort-wasm-simd-threaded.{mjs,wasm}` for Safari, copied unmodified from the npm package into the build's `assets/`) | MIT — Copyright (c) Microsoft Corporation. The WebAssembly binaries also contain third-party components that ONNX Runtime lists in its [ThirdPartyNotices.txt](https://github.com/microsoft/onnxruntime/blob/main/ThirdPartyNotices.txt) | https://github.com/microsoft/onnxruntime |
 
 Build-time tools (Vite, Tailwind CSS, ESLint and plugins) are MIT-licensed and
 are not shipped in the built app.

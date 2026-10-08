@@ -150,3 +150,158 @@ avoids even that revalidation.
   - Readiness times are reported against section 1 on the same harness.
     Localhost does not model the wire, so the wire cost is the Pages vs
     jsDelivr figure above.
+
+## 3. After (branch self-host-ort)
+
+### Change
+
+- **Shipped files.** `src/ml/ort-runtime-files.js` imports
+  `onnxruntime-web/ort-wasm-simd-threaded{.asyncify,}.{mjs,wasm}?url`, all
+  four subpaths that `onnxruntime-web` exports. Vite emits them unmodified as
+  content-hashed assets in `assets/`.
+- **Re-pointing.** `pointOrtAtAppRuntime(env.backends.onnx.wasm)` replaces
+  Transformers.js's jsDelivr `wasmPaths` with the app URLs. It keeps the
+  variant Transformers.js chose (`src/ml/ort-wasm-paths.js`, pure).
+  - The gender worker calls it once at module load, before any session. The
+    speech detector shares that ORT instance.
+  - The lab worker calls it right after its dynamic import of
+    Transformers.js.
+- **Guard.** `tests/ml/ort-runtime-files-test.js` (32 checks, in
+  `test:unit`) covers:
+  - the variant mapping;
+  - the installed Transformers.js asking only for shipped variants;
+  - the `onnxruntime-web` version matching Transformers.js's pin, with no
+    nested copy;
+  - both workers being wired.
+
+### Build output
+
+| | 5db2663 | self-host-ort |
+|---|---|---|
+| `dist/` total | 25,494,793 B | 38,511,208 B (+13.0 MB) |
+| largest file | `ort-wasm-simd-threaded.asyncify-DMmc6YqF.wasm`, 23,567,050 B | same file, same hash, 23,567,050 B |
+| added files | — | `ort-wasm-simd-threaded-DG5OvNve.wasm` 12,942,611 B (Safari), `ort-wasm-simd-threaded.asyncify-CVnZHRES.mjs` 47,389 B, `ort-wasm-simd-threaded-CSWrxU1M.mjs` 24,180 B |
+| gender / lab worker chunk | 534,555 / 38,477 B | 535,671 / 39,596 B |
+
+- **Size limits.** The largest file is 23.6 MB, under GitHub Pages' 100 MB
+  per-file limit. The site stays far below Pages' 1 GB limit.
+- **Asyncify runtime.** The asyncify `.wasm` was already in the build (see
+  section 1), and the `?url` import de-duplicates onto it.
+- **Safari runtime.** The plain `.wasm` is downloaded only by Safari.
+  Chrome, Edge and Firefox fetch only the asyncify pair.
+
+### MIME types (`vite preview`)
+
+| file | Content-Type |
+|---|---|
+| `.wasm` | `application/wasm` |
+| `.mjs` | `text/javascript` |
+
+ORT's streaming compile (`instantiateStreaming`) needs `application/wasm`.
+GitHub Pages already serves the deployed `.wasm` as `application/wasm`
+(section 1).
+
+### Requests
+
+Same probe and flow as section 1.
+
+- **Runs.** `vite preview`: 7 runs of each phase. A Pages-like server: 5
+  runs per phase, of which 2 with `max-age=600` and 3 with `max-age=0`. The
+  Pages-like server is a scratch static server with Pages' headers: gzip,
+  ETag, `Vary`, and `application/wasm`. In 6 of the 7 `vite preview` runs
+  per phase, the Resonance lab was opened too. The Pages-like runs did not
+  open the lab.
+- **Hosts, both logs.** Every app-initiated request went to the app origin,
+  `huggingface.co` or `us.aws.cdn.hf.co`. There were 0 requests to
+  `cdn.jsdelivr.net` or any other host, in every phase and every worker,
+  the lab included. Before the change, 92 such requests in `vite preview`
+  runs went to jsDelivr.
+- **Runtime fetches.** The gender worker fetches the asyncify `.mjs` and
+  `.wasm` from the app origin. Cold, that is 23.6 MB uncompressed on
+  `vite preview` (gzip on Pages: 5.86 MB). Warm and return visits are a
+  127–179 B revalidation. The lab reads the same URLs from the HTTP cache.
+- **Readiness.** The voice model, the speech detector and the lab model
+  were ready in every run. No worker reported an error.
+- **Dev server.** The `npm run dev` server also loads all three, from the
+  `/@fs/` URLs of the same package files, with 0 jsDelivr requests.
+- **Both variants work.** Each variant was loaded from the build's assets
+  into the ORT bundle Transformers.js imports (`ort.webgpu.bundle.min.mjs`,
+  in a module worker in Chrome 154). Each ran the Silero model 5 frames,
+  and the two gave identical outputs. This was a forced check: Chrome is
+  not Safari, and no Safari was run.
+
+### Readiness, median (range), ms
+
+Each cell is base → self-host-ort.
+
+| server | phase | voice model | speech detector | lab model |
+|---|---|---|---|---|
+| `vite preview` (`no-cache`, no gzip) | cold | 3367 → 3506 | 2626 → 2561 | 1093 → 1037 |
+| | warm | 1198 → 1386 | 1134 → 1294 | 1138 → 1124 |
+| | return | 1199 → **1794** (1652–2220) | 1199 → 1340 | 1051 → 1047 |
+| Pages-like, `max-age=600` | cold | 3749 → 3414 | 2665 → 2775 | — |
+| | warm | 1152 → 1186 | 1152 → 965 | — |
+| | return | 1184 → 1095 | 1184 → 1094 | — |
+| Pages-like, `max-age=0` (Pages after 10 min) | cold | 3226 → 3599 | 2527 → 2968 | — |
+| | warm | 1116 → 1036 | 1116 → 1036 | — |
+| | return | 1036 → 1079 | 1036 → 866 | — |
+
+- **Noise.** Other jobs shared this PC, so run-to-run spread is ±300–500 ms.
+  The interleaved base / self-host-ort runs agree with the blocked ones.
+- **Cold start.** It is dominated by the 16 MB voice model and the 2.3 MB
+  detector from Hugging Face, and moves within noise in both directions.
+  Localhost does not price the wire. On the real network the runtime costs
+  about 1.1 MB more cold (Pages gzip vs jsDelivr Brotli), which is
+  20–40 ms on this connection (section 1).
+- **Return visits on `vite preview`.** These are about 0.6 s slower for the
+  voice model (7 / 7 runs ≥ 1.65 s vs ≤ 1.38 s base). This does not happen
+  under the Pages-like headers, with either `max-age=600` or `max-age=0`.
+  Without gzip, the Pages-like server lands in between (1159–1519 ms, 3
+  runs). So it is a property of how `vite preview` serves the 23.6 MB
+  runtime (uncompressed, `no-cache`, mtime-based ETag). The app does not
+  cause it, and on GitHub Pages it was not seen.
+
+### Verdict
+
+Pass on every pre-registered criterion:
+
+- no app request to a host other than the app origin, `huggingface.co` or
+  its CDN;
+- all three models ready in every run;
+- largest file 23.6 MB;
+- `.wasm` served as `application/wasm`;
+- timing reported above.
+
+**Cost:**
+
+- **Build size.** The build grows by 13.0 MB, mostly the Safari runtime,
+  which other browsers never download.
+- **Cold download.** About 1.1 MB more on the wire per cold start, from
+  gzip instead of Brotli.
+- **Revalidation.** Return visits more than 10 minutes apart revalidate
+  the runtime (a 304) instead of jsDelivr's `immutable`.
+
+**Not measured:**
+
+- Safari itself.
+- A phone.
+- The deployed site. Its headers are known from section 1, and the branch
+  is not deployed.
+
+### Checks on the branch
+
+- **Lint and unit tests.** `npm run lint` passes. `npm run test:unit`
+  passes 25/25 scripts, including the new `ort-runtime-files-test.js`.
+- **Build.** `npm run build` gives the same asset hashes as above.
+- **Voice-direction smoke.** `scripts/voice-direction-smoke.mjs --diag=1`
+  passes 59/59 on the built app. The detector is ready, from the network
+  on the first visit and from cache later.
+- **Lab smoke.** `scripts/resonance-lab/lab-smoke.mjs` passes all four
+  runs:
+  - no lab activity until the tab is opened;
+  - the lab works once opened;
+  - the tab opened before listening;
+  - the phone layout.
+- **Timing figures in these runs.** The smoke runs' timing figures are not
+  readiness evidence. Other jobs loaded this PC, and a resource governor
+  paused processes.

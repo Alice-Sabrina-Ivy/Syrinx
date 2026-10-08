@@ -18,6 +18,7 @@
 
 import { createLabEngine } from "./lab-engine.js";
 import { concatIntoOutput } from "./onnx-patch.js";
+import { pointOrtAtAppRuntime } from "../ml/ort-runtime-files.js";
 
 const MODEL_ID = "Alice-Sabrina-Ivy/voice-gender-classifier-onnx-q8-v2";
 const POST_EVERY_MS = 200;
@@ -47,6 +48,10 @@ async function loadPnml() {
   status("pnml", "loading");
   try {
     const T = await import("@huggingface/transformers");
+    // This worker's own Transformers.js / ONNX Runtime copy: use the
+    // runtime files shipped with the app, not jsDelivr
+    // (measurements/self-hosted-ort-2026-10-07.md).
+    pointOrtAtAppRuntime(T.env.backends.onnx.wasm);
     Tensor = T.Tensor;
     T.env.allowLocalModels = false;
     T.env.allowRemoteModels = true;

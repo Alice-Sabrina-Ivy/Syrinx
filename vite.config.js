@@ -39,7 +39,10 @@ export default defineConfig(({ mode }) => ({
   // package lets Vite serve the original node_modules/onnxruntime-web/
   // directory directly in dev, where ORT's relative path resolution works.
   // optimizeDeps is dev-only — production (Rollup) builds correctly emit
-  // hashed .wasm assets in dist/assets/ regardless of this setting.
+  // hashed .wasm assets in dist/assets/ regardless of this setting. Since
+  // 2026-10-07 the app points ONNX Runtime at its own copies of those
+  // files (src/ml/ort-runtime-files.js, `?url` imports) instead of
+  // Transformers.js's jsDelivr default.
   // entries: scan only the app's own index.html — the default globs every
   // .html under the root, including copies inside build/.
   optimizeDeps: {
