@@ -1,5 +1,15 @@
 # Perceived Voice meter: no readings on whisper — pre-registration — 2026-10-07
 
+> **Status (2026-10-07 review, voice-direction 4ff52c3):** the requirement
+> is off, so this branch's always-on meter still shows a number on
+> unphonated whisper 44.4 % (women) / 72.4 % (men) of the time — decision
+> (A) is **not met** here, and men's whisper is read ~1.6× as often as
+> women's. Do not ship the meter to main on its own. The `cue-strip` branch
+> replaces the meter with the opt-in "Likely heard as" panel, which shows
+> no reading on unphonated whisper (its own rule: ≥ 3 s voiced pitch in its
+> 8 s pool; `heard-as-voiced-windows-2026-10-08.md` on that branch for the
+> mixed speech + whisper case). Results below are unchanged.
+
 **Status: pre-registration.** This section fixes the design space, the
 selection rule, the primary and the guards **before any candidate result is
 computed**. No candidate code exists at the time of this commit. Results are

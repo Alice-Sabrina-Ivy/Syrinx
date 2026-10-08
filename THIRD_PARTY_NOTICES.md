@@ -16,6 +16,17 @@ their own licences; the MIT License does not apply to them.
 Build-time tools (Vite, Tailwind CSS, ESLint and plugins) are MIT-licensed and
 are not shipped in the built app.
 
+The built site carries these notices with the code it ships (since
+2026-10-07, linked from Settings): `THIRD_PARTY_NOTICES.txt` (this file,
+Syrinx's LICENSE and the full licence text of every npm package bundled into
+the app or a worker, read from the build's module graph) and
+`licenses/onnxruntime-ThirdPartyNotices.txt` (ONNX Runtime's notices for the
+components inside its WebAssembly binaries). The `onnxruntime-web` npm package
+ships no licence file, so `licenses/onnxruntime-web/` holds the `LICENSE` and
+`ThirdPartyNotices.txt` of microsoft/onnxruntime at commit
+`b7804b056c30aa35c1748f8e4e239d0e2ff25d6d`, the one the shipped runtime was
+built from (`scripts/third-party-notices.mjs`).
+
 ## Models
 
 - **Voice classifier** (used by the opt-in "Likely heard as" panel and the resonance lab). A re-quantised ONNX export of

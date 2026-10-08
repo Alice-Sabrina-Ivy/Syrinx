@@ -2,13 +2,19 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import basicSsl from '@vitejs/plugin-basic-ssl'
+import { thirdPartyNotices } from './scripts/third-party-notices.mjs'
 
 // `npm run dev:mobile` invokes Vite with `--mode mobile`, which gates the
 // self-signed-cert plugin so the LAN URL works on phones (mic capture
 // requires HTTPS on non-localhost origins). Default `npm run dev` keeps
 // HTTP localhost behavior unchanged. See CLAUDE.md "Mobile testing" for
 // the firewall + cert-warning workflow.
-export default defineConfig(({ mode }) => ({
+// The licence notices of everything bundled (app + workers) ship with the
+// site as THIRD_PARTY_NOTICES.txt (+ ONNX Runtime's own notices), linked
+// from Settings: scripts/third-party-notices.mjs.
+export default defineConfig(({ mode }) => {
+  const notices = thirdPartyNotices()
+  return {
   base: '/Syrinx/',
   // Build output is untracked; .github/workflows/deploy.yml uploads it to
   // GitHub Pages. (Was outDir 'docs' committed to main until 2026-10-04.)
@@ -17,8 +23,11 @@ export default defineConfig(({ mode }) => ({
     react(),
     tailwindcss(),
     ...(mode === 'mobile' ? [basicSsl()] : []),
+    notices.collect(),
+    notices.emit,
+    notices.serve,
   ],
-  worker: { format: 'es' },
+  worker: { format: 'es', plugins: () => [notices.collect()] },
   // build/ is the gitignored scratch dir for measurement runs and can hold
   // hundreds of thousands of files (corpora, nested worktrees). Vite's
   // watcher doesn't read .gitignore, so without this the dev server spends
@@ -49,4 +58,5 @@ export default defineConfig(({ mode }) => ({
     entries: ['index.html'],
     exclude: ['@huggingface/transformers', 'onnxruntime-web'],
   },
-}))
+  }
+})
