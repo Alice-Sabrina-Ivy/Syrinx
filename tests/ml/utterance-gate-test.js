@@ -297,6 +297,53 @@ console.log("\nspeech-detector evidence (noteSpeech, 32 ms frames)");
   check("default: the detector decides (pitch voicing alone does not open)", dsS.every((d) => d.verdict !== "score"));
   check("speech defaults: Silero threshold 0.5, 32 ms frames", D.speechThreshold === 0.5 && D.speechHopMs === 32);
   check("speech mode: >= 40 % of a scored window follows the speech onset", D.speechMinPostOnsetFrac === 0.4);
+
+  // Voicing requirement (measurements/whisper-voicing-2026-10-07.md):
+  // with speech hints live, a window needs posted voiced pitch — a count
+  // (speechMinVoicedMs) or a run (speechMinVoicedRunMs) within the span.
+  console.log("\nvoicing requirement while the detector decides (whisper)");
+  {
+    const whisper = silent;                                   // speech, no pitch at all
+    // whisper with the tracker's isolated false-voiced frames (1 in 8)
+    const whisperBlips = (t) => (t % 200 === 0 ? { voiced: true, pitch: 350 } : silent());
+    const optsW = { speechMinVoicedMs: 25 };
+    const optsR = { speechMinVoicedRunMs: 50 };
+    const g = (o) => createUtteranceGate(o);
+    check("default: both requirements off (no user decision yet)", D.speechMinVoicedMs === 0 && D.speechMinVoicedRunMs === 0 && D.speechVoicedSpanMs === null);
+    check("default: whisper the detector calls speech is scored", runBoth(whisper, talking(0, 5000), 5000).some((d) => d.verdict === "score"));
+    for (const [name, o] of [["count 25 ms", optsW], ["run 50 ms", optsR]]) {
+      const ds = runBoth(whisper, talking(0, 5000), 5000, g(o));
+      check(`${name}: unvoiced whisper is never scored`, ds.every((d) => d.verdict !== "score"), ds.map((d) => d.verdict[0]).join(""));
+      check(`${name}: ...it is a pause, not silence (the utterance is open)`, ds.some((d) => d.verdict === "pause"));
+      const dsSp = runBoth(speech(120), talking(0, 5000), 5000, g(o));
+      check(`${name}: running speech still scores from ~0.5 s`, dsSp.filter((d) => d.t >= 600).every((d) => d.verdict === "score"),
+        dsSp.map((d) => d.verdict[0]).join(""));
+    }
+    const dsBW = runBoth(whisperBlips, talking(0, 5000), 5000, g(optsW));
+    check("count 25 ms: whisper with isolated false-voiced frames IS scored (why round 2 uses runs)", dsBW.some((d) => d.verdict === "score"));
+    const dsBR = runBoth(whisperBlips, talking(0, 5000), 5000, g(optsR));
+    check("run 50 ms: isolated false-voiced frames never score", dsBR.every((d) => d.verdict !== "score"));
+    // Speech, then whisper in the same utterance: scoring stops once no
+    // voiced run ends within the window.
+    const thenWhisper = (t) => (t <= 2000 ? speech(200)(t) : silent());
+    const dsT = runBoth(thenWhisper, talking(0, 6000), 6000, g(optsR));
+    const lastScore = [...dsT].reverse().find((d) => d.verdict === "score");
+    check("run 50 ms: whisper after speech stops scoring within the window", lastScore && lastScore.t <= 2000 + D.windowMs, lastScore && `${lastScore.t} ms`);
+    // The cost: speech the pitch tracker mostly loses (1 voiced frame in 4).
+    check("run 50 ms: speech whose pitch is lost to 1-frame islands is no longer scored (the noisy-voice cost)",
+      runBoth(lostPitch, talking(1000, 6000), 6000, g(optsR)).every((d) => d.verdict !== "score"));
+    // A hole in the hint stream breaks a run.
+    {
+      const gate = g({ speechMinVoicedRunMs: 75 });
+      for (let ts = 32; ts <= 1500; ts += 32) gate.noteSpeech({ ts, p: 0.95 });
+      // two voiced frames, a 200 ms hole, two more: never a 75 ms run
+      for (const t of [1000, 1025, 1250, 1275]) gate.notePitchHint({ ts: t, voiced: true, pitch: 150 });
+      check("a hole in the hint stream breaks a voiced run", gate.decide(1300).verdict !== "score");
+    }
+    // Without live speech hints the requirement does not apply (pitch-only path unchanged).
+    const po = run(speech(200), 4000, g({ speechMinVoicedRunMs: 1000, speechMinVoicedMs: 1000 }));
+    check("pitch-only path ignores the speech-mode voicing requirement", po.some((d) => d.verdict === "score"));
+  }
 }
 
 console.log("\nmeter state mapping");

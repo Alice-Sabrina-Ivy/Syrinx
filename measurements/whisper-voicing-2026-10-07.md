@@ -155,3 +155,120 @@ max(women, men) dev whisper, ties → smaller R, then R before Q; step 3 if
 none meets step 1), over the round-2 variants only. Primary, secondary
 and guards are unchanged. The round-2 selection is the candidate; if it
 fails, W25 and the round-2 selection are both reported as FAIL.
+
+## Results (2026-10-07)
+
+**Verdict: FAIL — no setting is ship-eligible.** Both pre-registered
+selections (round 1 W25, round 2 R50) fail the primary, and so does every
+other variant. The mechanism is in `utterance-gate.js` (options
+`speechMinVoicedMs`, `speechMinVoicedRunMs`, `speechVoicedSpanMs`) but
+**off by default**; the meter's behaviour is unchanged from 5db2663. The
+user decides (R5).
+
+**How it was measured.** Every variant was replayed with the frozen
+`replay_voice-detector-gate.mjs` (gate options passed as `--gate`) on the
+frozen evaluator's 10 sets and on the probe sets (`pwhis`, `pmix`,
+`palone`, `palone2`), with the recorded Silero hints and the deployed
+classifier's logits (0 missing logits). Parity: the candidate tree with the
+requirement off reproduces the 5db2663 (voice-detector-gate) replays with
+0 differing streams on all 14 sets, and the private session-meter replays
+byte for byte; the final committed code reproduces the W25, R50 and R150
+variant replays with 0 differing streams. The evaluator's sha256 check
+passed before every run.
+
+### Real whisper (primary) and the selections
+
+Pooled share of whispered time with a number (%). "Unphonated" = S1
+(Praat phonation < 20 %); the five phonated EARS women's recordings get a
+number 91.5–91.7 % of the time in every listed variant.
+
+| variant | women | men | test women / men | unphonated women / men | LPC whisper women / men (S2) |
+|---|---|---|---|---|---|
+| 5db2663 | 54.1 | 72.4 | 50.7 / 88.7 | 44.4 / 72.4 | 93.4 / 94.5 |
+| **W25** (round-1 selection) | 39.7 | 50.8 | 34.8 / 67.0 | 26.3 / 50.8 | 41.1 / 48.3 |
+| **R50** (round-2 selection) | 35.5 | 40.4 | 31.3 / 55.2 | 21.0 / 40.4 | 26.3 / 39.7 |
+| W200 (strongest count) | 22.1 | 2.7 | 22.6 / 3.2 | 4.7 / 2.7 | 1.0 / 4.2 |
+| R150 (strongest run) | 22.4 | 4.3 | 22.2 / 4.1 | 5.8 / 4.3 | 0.0 / 1.9 |
+
+- **Women's whisper cannot reach 5 %** with any voicing requirement:
+  five of the 12 EARS women phonate through much of their "whisper"
+  (Praat 33–46 % voiced at 117–201 Hz), and decision (A) asks for exactly
+  those stretches to be scored. They alone hold women's whisper at ≥ 21 %.
+- **Unphonated whisper reaches ≤ 5 % only at W200 or T150** (and R150 for
+  men); those settings fail the low-voice primaries (below).
+
+### Cost: the low-voice evaluator (vs the frozen 852b5cc baseline)
+
+| variant | P1 gap (≤ 4.97) | P2a (≥ 73.56) | P2b gap (≤ 5.02) | H1 (≤ 3.00) | H2 (≤ 3.00) | criteria failing that pass at 5db2663 |
+|---|---|---|---|---|---|---|
+| 5db2663 | −1.51 | 95.09 | −1.80 | −1.37 | −1.73 | — (only H3 fails, 93.70) |
+| W25 | 0.49 | 80.73 | 3.23 | 0.19 | −0.93 | none |
+| W50 | 1.60 | 73.76 | **5.57** | 0.51 | −0.81 | P2b |
+| W75 | 2.35 | **70.50** | **6.79** | 0.83 | −0.50 | P2a, P2b |
+| W100 | 3.59 | **65.89** | **8.52** | 1.09 | −0.74 | P2a, P2b |
+| W150 | **5.25** | **61.14** | **8.73** | 1.57 | −0.88 | P1, P2a, P2b, H3 women real 0 dB, G2 PVQD f / m |
+| W200 | **7.83** | **58.13** | **7.90** | **3.21** | 2.48 | P1, P2a, P2b, H1, 5 G1 / H3 cells, G2 PVQD f / m |
+| T25 | 1.45 | 75.62 | 5.00 | 0.00 | −1.17 | G2 PVQD f / m |
+| T50 | 2.54 | **68.83** | **7.07** | 0.60 | −0.19 | P2a, P2b, G2 PVQD f / m |
+| T75 | 3.46 | **66.12** | **8.08** | 1.29 | −0.59 | P2a, P2b, G2 PVQD f / m |
+| T100 | **5.01** | **59.91** | **9.59** | 2.15 | 0.42 | P1, P2a, P2b, G2 PVQD f / m |
+| T150 | **10.79** | **55.95** | **10.19** | 2.68 | 1.49 | P1, P2a, P2b, 9 G1 / H3 cells, G2 PVQD f / m |
+| R50 | 1.54 | 74.11 | **5.54** | 0.75 | 0.05 | P2b |
+| R75 | 2.34 | **71.40** | **6.56** | 1.56 | −0.17 | P2a, P2b |
+| R100 | 4.70 | **62.51** | **9.02** | 1.72 | −0.29 | P2a, P2b, G2 PVQD m |
+| R125 | **7.52** | **62.29** | **8.54** | 2.54 | −0.77 | P1, P2a, P2b, H3 women real 0 dB, G2 PVQD f / m |
+| R150 | **11.09** | **60.07** | **8.66** | **3.27** | 1.79 | P1, P2a, P2b, H1, 8 G1 / H3 cells, G2 PVQD f / m |
+| Q100 | 3.78 | **64.11** | **8.31** | 1.35 | −0.89 | P2a, P2b |
+| Q150 | **10.26** | **61.63** | **8.38** | **3.08** | 1.49 | P1, P2a, P2b, H1, 4 G1 / H3 cells, G2 PVQD f / m |
+
+P3 (men's settle in noise) passes everywhere (0.395–0.515 s ≤ 0.675).
+
+### Other guards
+
+- **E2 clean speech (≥ 5db2663 − 0.5 pp).** W25 and R50 fail one row:
+  PVQD speech portions, men, 89.99 → 89.23 (W25) / 88.72 % (R50). All
+  others pass for W25 and R50 (clean-ish 38-speaker women / men 93.63 /
+  95.03 and 93.63 / 94.99 vs 93.63 / 95.22; real regular speech women /
+  men 93.11 / 93.66 for both vs 93.15 / 93.66). Stronger variants fail
+  more rows (summary file).
+- **E3 held notes:** every variant passes (G4 numbers during holds equal
+  or lower, "needs running speech" and G5 unchanged).
+- **E4 music / noise-only:** every variant passes (time with a number can
+  only fall; e.g. evaluator noise-only 0.132 → 0.127 % for W25 / R50).
+- **Dev cost** (the selection criterion): men's coverage of speech under
+  0 dB music falls 94.00 → 93.24 (W25), 93.00 (R50), 88.71 (W200),
+  86.42 % (R150); women's 93.35 → 93.35, 93.23, 90.98, 91.36 %.
+- **Private.** On the private session recordings, the meter's display far
+  from any reference voicing is at or below the 5db2663 value for every
+  variant and speaker label (session-meter replay, parity proven). Results
+  on the private session recordings are kept outside this repository.
+- **E5:** lint, unit tests, build and the smoke runs pass with the
+  requirement off (the shipped state).
+
+### Why it does not work, and what would
+
+The pitch evidence the requirement needs is the evidence the speech
+detector was adopted to do without. In whisper the tracker posts isolated
+voiced frames (2–8 % of frames) that a count cannot reject; a run rule
+rejects them, but men's speech in loud noise (pink / real 0 dB, music
+0 dB) also comes through as short voiced fragments, so each ms of
+required run trades whisper coverage for noisy-men coverage about 1 : 1 —
+the same trade the 2026-10-07 diagnosis found for pitch-evidence levers.
+Options for the user:
+
+1. **Keep 5db2663** (whisper scored; this commit's default).
+2. **Accept a cost:** W25 removes about a quarter to a third of whispered
+   readings (women 54 → 40 %, men 72 → 51 %) and fails only the E2 PVQD
+   men row (−0.76 pp) — no evaluator criterion newly fails. R50 removes
+   more (36 / 40 %) and also fails P2b (5.54 vs 5.02).
+3. **A whisper detector instead of pitch:** a voiced-vs-unvoiced speech
+   classifier on the gender worker's 16 kHz stream (e.g. a periodicity or
+   spectral-tilt feature over the speech detector's frames, or the round-2
+   voice detector on the `voice-detector` branch), measured against this
+   same pre-registered primary.
+4. **Label instead of hide:** show whisper readings with a "whisper"
+   label (option c of the probes).
+
+Scratch (not committed): `queue-oct7/whisper/` (`run_wv.sh`,
+`wv_metrics.py`, `summarize.py`, `summary.txt`, the selection records,
+Praat phonation per stream, the session-meter copy under `private/`).

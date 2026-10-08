@@ -34,7 +34,16 @@
 //     or longer (the worker's held-phonation test), which the classifier
 //     reads near 50 — melodic singing is mostly still scored (see the
 //     measurement's limitations);
-//   - nothing while no voice is heard.
+//   - nothing while no voice is heard. (Whisper the speech detector
+//     hears is still scored; a voicing requirement exists in the gate
+//     but is off pending a user decision —
+//     measurements/whisper-voicing-2026-10-07.md.)
+//
+// A small info button next to the title opens a short explainer (also a
+// hover title). It says, in neutral words, that the meter can't tell the
+// user's voice from another voice in the room (a person, a TV, a
+// podcast): the follow-up probes in low-voice-noise-2026-10-07.md found
+// it scores a nearby voice as if it were the user's, whichever sex.
 //
 // The middle 30-70 score band is the uncertain region: classifier
 // confidence is by construction |score - 0.5| × 2, so "score in [30, 70]"
@@ -45,7 +54,7 @@
 // and worker state are read from refs every frame, NOT React state (the
 // shared ~5 fps setState throttle would drop most ML updates).
 
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useId, useState } from "react";
 import { COLORS } from "../utils/constants";
 import { perceivedVoiceView } from "./perceivedVoiceView";
 
@@ -65,6 +74,15 @@ const LERP_RATE = 0.3;
 const HISTORY_DOTS = 10;
 const HISTORY_AGE_MS = 6000;
 
+const EXPLAINER =
+  "How a listener would likely hear your voice right now, from an " +
+  "on-device voice model: 0 = masculine, 100 = feminine, 30-70 = " +
+  "uncertain. It reads running speech; held notes show \"needs " +
+  "running speech\". " +
+  "It works best when you're the only one talking: it can't tell your " +
+  "voice from someone else's nearby, or from a TV, radio or podcast, " +
+  "and it scores whichever voice it hears.";
+
 const STATUS_TEXT = {
   loading: "loading…",
   error: "unavailable",
@@ -83,6 +101,24 @@ export function ResonanceMeter({
 }) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
+  const wrapRef = useRef(null);
+  const [infoOpen, setInfoOpen] = useState(false);
+  const tipId = useId();
+
+  // Close the explainer on an outside tap or Escape.
+  useEffect(() => {
+    if (!infoOpen) return undefined;
+    const onDown = (e) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setInfoOpen(false);
+    };
+    const onKey = (e) => { if (e.key === "Escape") setInfoOpen(false); };
+    document.addEventListener("pointerdown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [infoOpen]);
 
   // Animation state — kept in refs so the rAF loop doesn't re-render React.
   const displayScoreRef = useRef(null);
@@ -375,10 +411,33 @@ export function ResonanceMeter({
   // React re-render.
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="text-[11px] sm:text-xs text-neutral-400 font-medium text-center mb-1.5">
+    <div ref={wrapRef} className="relative flex flex-col h-full">
+      <div className="text-[11px] sm:text-xs text-neutral-400 font-medium text-center mb-1.5 inline-flex items-center justify-center">
         Perceived voice
+        <button
+          type="button"
+          onClick={() => setInfoOpen((o) => !o)}
+          aria-expanded={infoOpen}
+          aria-controls={tipId}
+          aria-label="What does the perceived voice meter show?"
+          title={EXPLAINER}
+          className="ml-1 inline-flex items-center justify-center w-3.5 h-3.5 rounded-full border border-neutral-600 text-[9px] leading-none font-normal text-neutral-500 hover:text-neutral-300 hover:border-neutral-400 transition-colors cursor-pointer"
+        >
+          i
+        </button>
       </div>
+      {/* Explainer: drops down over the meter from its title, anchored to
+          the column's left edge so it stays on screen at phone width. */}
+      {infoOpen && (
+        <div
+          id={tipId}
+          role="note"
+          data-meter-info
+          className="absolute z-20 top-6 left-0 w-60 max-w-[calc(100vw-2rem)] rounded-lg border border-neutral-700 bg-neutral-900/95 px-3 py-2 text-left text-xs leading-relaxed text-neutral-300 shadow-lg normal-case tracking-normal"
+        >
+          {EXPLAINER}
+        </div>
+      )}
       <div
         ref={containerRef}
         className="relative flex-1 min-h-0 rounded-xl overflow-hidden border border-neutral-800"

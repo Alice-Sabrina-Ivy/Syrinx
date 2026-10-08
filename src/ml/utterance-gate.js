@@ -114,6 +114,23 @@ export const UTTERANCE_GATE_DEFAULTS = Object.freeze({
   // steady hum the pitch tracker calls a "held note" kept the meter shut
   // for the rest of the sentence.
   speechReopenAfterHold: true,
+  // Voicing requirement while speech hints decide (user decision
+  // 2026-10-07: only stretches with some voiced, pitched sound should be
+  // scored, so whisper gets no reading). A window scores only if the pitch
+  // hints within the trailing speechVoicedSpanMs (null = the ML window)
+  // hold >= speechMinVoicedMs of posted voiced pitch; otherwise "pause".
+  // 0 disables it. The pitch-only path already needs minVoicedShare.
+  // OFF BY DEFAULT, pending the user's decision: no setting passed the
+  // pre-registered rule (measurements/whisper-voicing-2026-10-07.md). The
+  // pitch tracker posts isolated voiced frames in whisper and loses men's
+  // voicing in loud noise, so every setting that removes most whisper
+  // also removes the noisy-men coverage the speech detector restored.
+  speechMinVoicedMs: 0,
+  // ... or a run of consecutive voiced hints >= speechMinVoicedRunMs must
+  // end within that span (counted in full; a hole in the hint stream
+  // breaks a run, as for the onset). 0 disables it.
+  speechMinVoicedRunMs: 0,
+  speechVoicedSpanMs: null,
 });
 
 // Linear-interpolated percentile of an ascending-sorted array.
@@ -146,10 +163,30 @@ function stats(hints, fromTs) {
   return { n, share: n > 0 ? v / n : 0, spread };
 }
 
+// Posted voiced pitch (ms) among the hints with ts > fromTs: each voiced
+// hint counts the audio it covers (one capture chunk, 25 ms).
+function voicedMs(hints, fromTs) {
+  let ms = 0;
+  for (let i = hints.length - 1; i >= 0 && hints[i].ts > fromTs; i--) {
+    if (hints[i].voiced) ms += hints[i].own;
+  }
+  return ms;
+}
+
+// Longest voiced run (ms, counted in full) that ends among the hints with
+// ts > fromTs.
+function longestRunMs(hints, fromTs) {
+  let best = 0;
+  for (let i = hints.length - 1; i >= 0 && hints[i].ts > fromTs; i--) {
+    if (hints[i].run > best) best = hints[i].run;
+  }
+  return best;
+}
+
 export function createUtteranceGate(options = {}) {
   const o = { ...UTTERANCE_GATE_DEFAULTS, ...options };
   const keepMs = Math.max(o.windowMs, o.sustainMs) + 4 * o.maxHopMs;
-  let hints = [];            // { ts, voiced, st } oldest first, trimmed to keepMs
+  let hints = [];            // { ts, voiced, own, run, st } oldest first, trimmed to keepMs
   let lastHintTs = null;
   let lastVoicedTs = null;
   let runStartTs = null;     // first hint of the current voiced run
@@ -211,13 +248,16 @@ export function createUtteranceGate(options = {}) {
       const hop = lastHintTs !== null ? Math.min(Math.max(ts - lastHintTs, 0), o.maxHopMs) : 25;
       closeIfGap(ts);
       const p = typeof hint.pitch === "number" && hint.pitch > 0 ? hint.pitch : null;
-      hints.push({ ts, voiced, st: voiced && p !== null ? 12 * Math.log2(p / 100) : null });
+      if (voiced && runStartTs === null) runStartTs = ts;
+      // The audio this hint covers, for the voicing requirement: its hop,
+      // or one nominal chunk after a hole (the hole itself is unknown).
+      const own = lastHintTs !== null && ts - lastHintTs <= o.maxHopMs ? hop : 25;
+      hints.push({ ts, voiced, own, run: voiced ? ts - runStartTs + own : 0, st: voiced && p !== null ? 12 * Math.log2(p / 100) : null });
       let drop = 0;
       while (drop < hints.length && hints[drop].ts < ts - keepMs) drop++;
       if (drop > 0) hints = hints.slice(drop);
       lastHintTs = ts;
       if (voiced) {
-        if (runStartTs === null) runStartTs = ts;
         lastVoicedTs = ts;
         // Opens on a long-enough run that began AFTER any held note: the
         // rest of a held note (or a note's tail) never opens one.
@@ -314,6 +354,15 @@ export function createUtteranceGate(options = {}) {
         share = stats(hints, nowTs - o.windowMs).share;
       }
       if (share < o.minVoicedShare) return out("pause");
+      // Speech without voicing (whisper): no score.
+      if (useSpeech && o.speechMinVoicedMs > 0
+        && voicedMs(hints, nowTs - (o.speechVoicedSpanMs ?? o.windowMs)) < o.speechMinVoicedMs) {
+        return out("pause");
+      }
+      if (useSpeech && o.speechMinVoicedRunMs > 0
+        && longestRunMs(hints, nowTs - (o.speechVoicedSpanMs ?? o.windowMs)) < o.speechMinVoicedRunMs) {
+        return out("pause");
+      }
       const resetEma = u.spanId !== lastScoredSpanId;
       lastScoredSpanId = u.spanId;
       return out("score", resetEma);

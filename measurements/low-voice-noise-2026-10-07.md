@@ -996,3 +996,9 @@ separate measured change, and the user decides whether to make it.
   integration.
 - **User decisions:** chatter / TV ("is it the user"), whisper (a / b / c),
   and preloading (with cue-strip).
+- **Update 2026-10-07:** whisper — the user chose (b), require voicing;
+  the pre-registered requirement failed (no setting reaches the primary
+  without failing P1 / P2a / P2b) and ships off:
+  [whisper-voicing-2026-10-07.md](whisper-voicing-2026-10-07.md). Chatter
+  / TV: disclosed in the meter's info text ("works best when you're the
+  only one talking").

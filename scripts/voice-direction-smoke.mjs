@@ -543,6 +543,23 @@ await launch(WAV.speech);
   await shotStats(page, "07c-gauge-feminine-info", (tip?.h ?? 0) + 16);
   await page.keyboard.press("Escape");
   await sleep(200);
+  // The Perceived Voice meter's explainer: opens on tap, discloses (in
+  // neutral words) that other voices / a TV are scored too, stays fully
+  // on screen, closes on Escape.
+  await page.evaluate(() => document.querySelector('button[aria-label="What does the perceived voice meter show?"]')?.click());
+  await sleep(300);
+  const mtip = await page.evaluate(() => {
+    const t = document.querySelector("[data-meter-info]");
+    if (!t) return null;
+    const r = t.getBoundingClientRect();
+    return { text: t.textContent, inView: r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight };
+  });
+  check("meter info: explainer opens on screen and says it works best with one talker (other voices, TV)",
+    !!mtip?.inView && /only one talking/.test(mtip.text) && /TV, radio or podcast/.test(mtip.text), JSON.stringify(mtip));
+  await shot(page, "07d-meter-info");
+  await page.keyboard.press("Escape");
+  await sleep(200);
+  check("meter info: Escape closes it", await page.evaluate(() => !document.querySelector("[data-meter-info]")));
 
   await page.evaluate(() => document.querySelector('button[title="Settings & Data"]').click());
   await sleep(500);
