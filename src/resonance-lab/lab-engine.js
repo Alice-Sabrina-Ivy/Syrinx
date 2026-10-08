@@ -31,13 +31,20 @@
 // evaluates its unchanged buffer — only possible with chunks of a few
 // input samples, never with the 5-50 ms chunks the capture paths emit.
 // Lab behaviour is unchanged (pitchSource defaults to "internal").
+//
+// CPU (2026-10-07, measurements/resonance-cue-cpu-2026-10-07.md): the 16 kHz
+// analysis stream is a lazy ring (sinc-resampler.js createLazySincRing) —
+// a sample is filtered only when a finalist reads it, bit-identical to
+// resampling every chunk, so unvoiced audio the vtln-only cue never reads is
+// never filtered; frames mode counts the pitch worker's 16 kHz samples
+// without generating them.
 
 import { createBoersmaAC, createPathTracker, createHarmonicVoicingGuard, BOERSMA_FRAME_LENGTH_16K } from "../dsp/boersma-ac.js";
 import { createNoiseNotch, isNearNotch } from "../dsp/noise-notch.js";
 import { PITCH_DISPLAY_RANGE } from "../utils/constants.js";
 import { createStreamingResampler } from "../ml/audio-utils.js";
 import { createSampleRing } from "./ring.js";
-import { createSincResampler } from "./sinc-resampler.js";
+import { createLazySincRing } from "./sinc-resampler.js";
 import { createLe } from "./le.js";
 import { createVtln } from "./vtln.js";
 import { createFv } from "./fv.js";
@@ -53,6 +60,36 @@ export const FINALISTS = ["vtln", "pnml", "le", "fv"];
 const AGG = { vtln: "median", pnml: "median", le: "mean", fv: "median" };
 
 /**
+ * Output count of createStreamingResampler (src/ml/audio-utils.js) per chunk,
+ * without computing the samples: the same read-position walk (same floating-
+ * point steps), so the count is exactly the length that call would return.
+ */
+export function createStreamingSampleCounter(srIn, srOut) {
+  if (srIn === srOut) return (chunk) => chunk.length;
+  const step = srIn / srOut;
+  let pos = 0;
+  let hasPrev = false;
+  return (chunk) => {
+    const n = chunk.length;
+    if (n === 0) return 0;
+    let m = 0;
+    while (pos <= n - 1) {
+      const i0 = Math.floor(pos);
+      if (i0 < 0) {
+        if (!hasPrev) { pos += step; continue; }
+      } else if (!(i0 + 1 <= n - 1)) {
+        break;
+      }
+      m++;
+      pos += step;
+    }
+    pos -= n;
+    hasPrev = true;
+    return m;
+  };
+}
+
+/**
  * opts:
  *   sampleRate      capture rate of pushChunk() audio
  *   models          { le, vtln, fv, pnmlHead } (any may be omitted to disable that finalist)
@@ -65,6 +102,13 @@ const AGG = { vtln: "median", pnml: "median", le: "mean", fv: "median" };
  *   onStamped       optional (name, te, voicedStampS, value) hook, called where a
  *                   bin is added to the engine's readout (same arguments), so a
  *                   caller can run its own gated readout
+ *   vtln            optional vtln analysis options (default {}: vtln.js's
+ *                   defaults, which the cue and the lab both run): { stride }
+ *                   scores voiced frames on every stride-th 10 ms grid index
+ *                   only; the rest go to createVtln (realFft, noDither, prune,
+ *                   trail, minFrames, coarse). stride / trail / minFrames /
+ *                   coarse are the measured-and-rejected reduced variants of
+ *                   measurements/resonance-cue-cpu-2026-10-07.md.
  */
 export function createLabEngine(opts) {
   const { sampleRate, models, reference, externalF0 = null, pnmlMaxPending = 2, horizonS = 5 } = opts;
@@ -72,12 +116,15 @@ export function createLabEngine(opts) {
   const onStampedHook = opts.onStamped ?? null;
   const framesMode = opts.pitchSource === "frames";
   if (framesMode && externalF0) throw new Error("pitchSource 'frames' and externalF0 are exclusive");
-  const ring16 = createSampleRing(1 << 15);
+  // 16 kHz analysis stream: a lazy ring — samples are filtered only when a
+  // finalist reads them (bit-identical to resampling every chunk).
+  const ring16 = createLazySincRing(sampleRate, SR16, 1 << 15);
   // capture-rate ring (fv only). Tests pass nativeFloat64 to keep a float64 bench upsample exact.
   const ringN = models.fv
     ? createSampleRing(1 << Math.ceil(Math.log2(sampleRate * 3)), opts.nativeFloat64 ? Float64Array : Float32Array)
     : null;
-  const analysisResample = createSincResampler(sampleRate, SR16);
+  const vtlnOpts = opts.vtln ?? {};
+  const vtlnStride = vtlnOpts.stride ?? 1;
 
   // ---- "frames" mode: contextTime -> 16 kHz sample count after that chunk ----
   const chunkN16 = new Map();
@@ -89,6 +136,7 @@ export function createLabEngine(opts) {
 
   // ---- production pitch path replica ----
   const pitchResample = createStreamingResampler(sampleRate, SR16);
+  const pitchCount = createStreamingSampleCounter(sampleRate, SR16);
   const det = createBoersmaAC(SR16, FRAME_LENGTH);
   const tracker = createPathTracker();
   const notch = createNoiseNotch(SR16);
@@ -127,7 +175,7 @@ export function createLabEngine(opts) {
     if (on && reference?.[name]) readouts[name] = createReadout({ agg: AGG[name], horizonS, ref: reference[name] });
   }
   const le = enabled.le ? createLe(models.le, binSink("le")) : null;
-  const vtln = enabled.vtln ? createVtln(models.vtln, binSink("vtln")) : null;
+  const vtln = enabled.vtln ? createVtln(models.vtln, binSink("vtln"), vtlnOpts) : null;
   const fv = enabled.fv ? createFv(models.fv, sampleRate, binSink("fv")) : null;
   const pnmlSink = enabled.pnml ? binSink("pnml") : null;
   const pnml = enabled.pnml ? createPnml(models.pnmlHead, (te, ema) => pnmlSink(te, ema)) : null;
@@ -207,7 +255,7 @@ export function createLabEngine(opts) {
       if (le) { le.advance(tj); if (voiced && c < ring16.end) le.frame(ring16, c); }
       if (vtln) {
         vtln.advance(tj);
-        if (voiced && vtln.eligible(tj, finished ? ring16.end : Infinity)) vtln.frame(ring16, tj, f0);
+        if (voiced && j % vtlnStride === 0 && vtln.eligible(tj, finished ? ring16.end : Infinity)) vtln.frame(ring16, tj, f0);
       }
     }
   }
@@ -292,10 +340,11 @@ export function createLabEngine(opts) {
      */
     pushChunk(native, x16 = null, contextTime = null) {
       if (ringN) ringN.push(native);
-      ring16.push(x16 ?? analysisResample(native));
+      if (x16) ring16.push(x16);
+      else ring16.pushNative(native);
       if (framesMode) {
         // Same resampler as the pitch worker, only to count its output.
-        n16pitch += pitchResample(native).length;
+        n16pitch += pitchCount(native);
         if (contextTime !== null) {
           chunkN16.set(contextTime, n16pitch);
           chunkOrder.push([contextTime, n16pitch]);

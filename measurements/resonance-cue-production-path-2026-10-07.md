@@ -86,6 +86,11 @@ jobs loading the machine to 50–75 % (median of 7; the spread is that load).
 | **Production: resonance worker, frames mode (gate + cue included)** | **32.6** (31.8–47.9) |
 | Lab engine, vtln with its internal pitch replica | 53.4 (50.3–70.3) |
 
+**Superseded by the CPU pass (2026-10-07,
+measurements/resonance-cue-cpu-2026-10-07.md):** the production path now
+costs 0.41–0.47 × these figures on Node and 0.44 × in desktop Chrome, with
+readouts within 2.6e-6 u of the values measured here.
+
 Budget ≤ 35 ms/s in Node: met. Reusing the pitch worker's decisions saves
 ~40 % of the lab path's cost for the same finalist. (The pitch worker's own
 cost is not counted: it runs anyway for the pitch trace.)

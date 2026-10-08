@@ -5,7 +5,8 @@
 //   npm run build && node scripts/cue-strip-smoke-wavs.mjs --r1=<jobs> &&
 //   node scripts/resonance/chrome-cpu.mjs [--wav=build/cue-strip-smoke/speech-woman.wav]
 //        [--seconds=60] [--panel=on|off] [--dist=dist] [--warmup=20] [--trace=30]
-//        [--out=<result.json>]
+//        [--out=<result.json>] [--profile=<resonance-worker.cpuprofile>]
+//        [--main-profile=<main-thread.cpuprofile>]
 //
 // The BUILT app (vite preview of --dist) in headless Chrome under ?diag=1, the
 // fake mic playing a public LibriSpeech WAV (looped by Chrome). --panel=on
@@ -51,7 +52,8 @@ const WARMUP = Number(arg("warmup", "20"));
 const TRACE = Number(arg("trace", "30"));
 const OUT = arg("out", "");
 const DIAG = arg("diag", "1") !== "0";       // --diag=0: production URL (no overlay / diag instrumentation; no resonancePerf, no inference count)
-const PROFILE = arg("profile", "");           // --profile=<file.cpuprofile>: main-thread JS profile of 15 s after the trace
+const MAIN_PROFILE = arg("main-profile", ""); // --main-profile=<file.cpuprofile>: main-thread JS profile of 15 s after the trace
+const PROFILE = arg("profile", "");           // --profile=<file.cpuprofile>: resonance-worker JS profile over the 10 s report loop (measurements/resonance-cue-cpu-2026-10-07.md)
 const CHROME = ["C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
   "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe"].find(existsSync);
 if (!CHROME || !existsSync(WAV)) { console.error("need Chrome and the WAV"); process.exit(2); }
@@ -212,7 +214,7 @@ async function runProfile() {
   await cdp.send("Profiler.start");
   await sleep(15000);
   const { profile } = await cdp.send("Profiler.stop");
-  writeFileSync(PROFILE, JSON.stringify(profile));
+  writeFileSync(MAIN_PROFILE, JSON.stringify(profile));
   const byId = new Map(profile.nodes.map((n) => [n.id, n]));
   const self = new Map();
   const dt = profile.timeDeltas;
@@ -225,15 +227,44 @@ async function runProfile() {
   const totalMs = (profile.endTime - profile.startTime) / 1000;
   profileTop = { totalMs, top: [...self.entries()].sort((a, b) => b[1] - a[1]).slice(0, 30) };
 }
-const tracing = (TRACE > 0 ? runTrace() : sleep(WARMUP * 1000)).then(() => (PROFILE ? runProfile() : null));
+const tracing = (TRACE > 0 ? runTrace() : sleep(WARMUP * 1000)).then(() => (MAIN_PROFILE ? runProfile() : null));
 
 const rows = [];
+let prof = null;
 for (let t = 10; t <= SECONDS; t += 10) {
   await sleep(Math.max(0, t * 1000 - (Date.now() - t0)));
+  if (PROFILE && !prof) {
+    const w = page.workers().find((x) => x.url().includes("resonance-worker"));
+    if (w) {
+      prof = w.client;
+      await prof.send("Profiler.enable");
+      await prof.send("Profiler.setSamplingInterval", { interval: 200 });
+      await prof.send("Profiler.start");
+    } else console.log("profile: resonance worker target not found yet");
+  }
   const s = await page.evaluate(() => window.__syrinxDiag?.snapshot());
   const p = s?.resonancePerf;
   rows.push(p);
   console.log(`t=${t}s (${elapsed().toFixed(0)})  trailing10s ${p?.msPerAudioS?.toFixed(1)} ms/s  mean ${p?.meanMsPerAudioS?.toFixed(1)} ms/s  audio ${p?.audioS?.toFixed(0)} s  bins ${p?.binsAdmitted}+${p?.binsDropped} dropped  forced ${p?.gridForcedUnvoiced}  status ${s?.resonanceStatus?.status}  ml worker ${s?.mlWorkerAlive}`);
+}
+if (prof) {
+  const { profile } = await prof.send("Profiler.stop");
+  writeFileSync(PROFILE, JSON.stringify(profile));
+  const byId = new Map(profile.nodes.map((n) => [n.id, n]));
+  const self_ = new Map();
+  let total = 0, idle = 0;
+  profile.samples.forEach((id, i) => {
+    const n = byId.get(id);
+    const name = n.callFrame.functionName || "(anonymous)";
+    const k = `${name} ${n.callFrame.url.split("/").pop()}:${n.callFrame.lineNumber + 1}`;
+    const d = profile.timeDeltas[i];
+    total += d;
+    if (name === "(idle)") { idle += d; return; }
+    self_.set(k, (self_.get(k) ?? 0) + d);
+  });
+  const busy = total - idle;
+  console.log(`worker profile: ${(busy / 1000).toFixed(0)} ms busy of ${(total / 1000).toFixed(0)} ms sampled -> ${PROFILE}`);
+  for (const [k, v] of [...self_].sort((a, b) => b[1] - a[1]).slice(0, 15)) console.log(`  ${(100 * v / busy).toFixed(1).padStart(5)} %  ${k}`);
 }
 await tracing;
 const last = rows[rows.length - 1];
