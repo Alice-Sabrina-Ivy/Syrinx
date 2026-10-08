@@ -275,6 +275,15 @@ export function useAudioPipeline() {
   // History buffers for canvas visualizations (read directly by rAF loops)
   const pitchTraceRef = useRef([]);
   const formantTrailRef = useRef([]);
+  // The pitch trace redraws when a point is appended, not on every display
+  // frame (main-thread pass 2026-10-08, measurements/main-thread-cpu-2026-10-08.md):
+  // PitchTrace subscribes; notifyTrace() runs after each append / reset.
+  const [traceListeners] = useState(() => new Set());
+  const subscribeTrace = useCallback((fn) => {
+    traceListeners.add(fn);
+    return () => { traceListeners.delete(fn); };
+  }, [traceListeners]);
+  const notifyTrace = () => { for (const fn of traceListeners) fn(); };
 
   // Optional callback for session recording — called with every analysis frame
   const frameCallbackRef = useRef(null);
@@ -929,6 +938,7 @@ export function useAudioPipeline() {
       hnr: null,
     };
     pitchTraceRef.current = [];
+    for (const fn of traceListeners) fn();
     formantTrailRef.current = [];
     genderStateRef.current = null;
     dspGateRef.current = { voiced: false, holding: false };
@@ -964,7 +974,7 @@ export function useAudioPipeline() {
       modelProgress: null,
       resonanceStatus: "idle",
     });
-  }, []);
+  }, [traceListeners]);
 
   // The "Likely heard as" panel switched on / off (Settings or the panel's
   // own switch; App owns the persisted setting). On: start the gender worker
@@ -1232,6 +1242,7 @@ export function useAudioPipeline() {
       // Add gap to pitch trace (null pitch = gap)
       pitchTraceRef.current.push({ time: now, pitch: null, voiced: false });
       trimHistory(pitchTraceRef.current, PITCH_TRACE_SECONDS * 1000, now);
+      notifyTrace();
 
       if (silenceDuration < SILENCE_HOLD_MS) {
         // Hold last voiced values (display goes to reduced opacity)
@@ -1428,6 +1439,7 @@ export function useAudioPipeline() {
         : { time: now, pitch: null, voiced: false },
     );
     trimHistory(pitchTraceRef.current, PITCH_TRACE_SECONDS * 1000, now);
+    notifyTrace();
     // The level the readouts' target colour judges (display only — the
     // painted values themselves are untouched).
     const pitchLevel = displayPitched ? pitchLevelAt(pitchTraceRef.current, now) : null;
@@ -1514,6 +1526,7 @@ export function useAudioPipeline() {
     start,
     stop,
     pitchTraceRef,
+    subscribeTrace,
     formantTrailRef,
     genderStateRef,
     resonanceRef,

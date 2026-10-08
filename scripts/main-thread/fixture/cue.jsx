@@ -3,6 +3,7 @@
 // window.__set(i): props + resonance snapshot of scripted step i.
 // window.__tick(): the strip's 250 ms tick. window.__dump(): every row's
 // state and geometry (transitions disabled by the page's CSS).
+/* eslint-disable react-refresh/only-export-components -- a test page, not app code */
 import "./clock.js";
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
@@ -54,7 +55,7 @@ function inputsAt(i) {
 let setStep = null;
 function Harness() {
   const [i, setI] = useState(0);
-  setStep = setI;
+  useEffect(() => { setStep = setI; }, []);
   const { props } = inputsAt(i);
   // Parent effects run after the strip's: the strip has seen step i.
   useEffect(() => { window.__committed = i; }, [i]);

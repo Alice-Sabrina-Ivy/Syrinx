@@ -21,8 +21,12 @@ import { pitchStatus, bandForDisplay } from "../utils/trainingDirection";
 import { pitchLevelAt } from "../utils/pitchLevel";
 import { DIAG_ENABLED, noteTraceDraw } from "../diag/diag";
 
+// Redraw at least this often while mounted, even without new data (ms).
+const FALLBACK_MS = 100;
+
 export function PitchTrace({
   pitchTraceRef,
+  subscribeTrace = null,
   voiced,
   holding,
   pitch,
@@ -38,7 +42,10 @@ export function PitchTrace({
   // repaints the band and colours on the next frame without tearing the
   // loop down. Synced post-render (refs must not be written during render).
   const targetRef = useRef(target);
-  useEffect(() => { targetRef.current = target; }, [target]);
+  // Redraw request of the drawing effect (a direction change repaints at
+  // once even if no data is arriving).
+  const redrawRef = useRef(null);
+  useEffect(() => { targetRef.current = target; redrawRef.current?.(); }, [target]);
 
   // Sizing + drawing in one effect (main-thread pass 2026-10-08,
   // measurements/main-thread-cpu-2026-10-08.md). The backing store follows
@@ -48,7 +55,12 @@ export function PitchTrace({
   // frame. What does not move with time (background, grid, labels, target
   // band) is drawn once into an offscreen canvas and copied each frame; the
   // plot geometry is computed once per size, not per point (canvas.width /
-  // devicePixelRatio are DOM reads).
+  // devicePixelRatio are DOM reads). With `subscribeTrace` (the hook's
+  // append notification) it draws only when a point arrives — the trace
+  // scrolls at the 25 ms data cadence (<= ~1.2 CSS px per step) instead of
+  // asking for every display frame (an idle rAF loop alone costs the main
+  // thread ~25 ms/s at 150 Hz); a 100 ms fallback keeps it scrolling if data
+  // stops while it is mounted. Without it (no notifier), a rAF loop.
   useEffect(() => {
     const canvas = canvasRef.current;
     const container = containerRef.current;
@@ -309,14 +321,32 @@ export function PitchTrace({
       if (DIAG_ENABLED) diagNote(now, data, (plotRight - plotLeft) / dpr);
     }
 
+    let pending = false;
+    let lastDrawAt = -Infinity;
+    function frame() {
+      pending = false;
+      draw();
+      lastDrawAt = performance.now();
+    }
+    // At most one frame per burst of requests.
+    function schedule() {
+      if (pending) return;
+      pending = true;
+      animId = requestAnimationFrame(frame);
+    }
     function loop() {
       draw();
       animId = requestAnimationFrame(loop);
     }
+    redrawRef.current = subscribeTrace ? schedule : null;
+    const unsubscribe = subscribeTrace ? subscribeTrace(schedule) : null;
+    const fallback = subscribeTrace
+      ? setInterval(() => { if (performance.now() - lastDrawAt >= FALLBACK_MS) schedule(); }, FALLBACK_MS)
+      : null;
 
     // Size (container) and DPR (monitor switch, zoom) changes: re-measure
     // on the next draw.
-    const invalidate = () => { geo = null; };
+    const invalidate = () => { geo = null; if (subscribeTrace) schedule(); };
     const observer = new ResizeObserver(invalidate);
     observer.observe(container);
     let mq = null;
@@ -328,13 +358,17 @@ export function PitchTrace({
     }
     watchDpr();
 
-    loop();
+    if (subscribeTrace) schedule();
+    else loop();
     return () => {
       cancelAnimationFrame(animId);
+      unsubscribe?.();
+      if (fallback !== null) clearInterval(fallback);
+      redrawRef.current = null;
       observer.disconnect();
       mq?.removeEventListener("change", onDpr);
     };
-  }, [pitchTraceRef]);
+  }, [pitchTraceRef, subscribeTrace]);
 
   // Readout: the number is this moment's pitch; its colour judges the
   // pitch level, like the trace (null target = neutral).

@@ -137,6 +137,7 @@ function App() {
     start,
     stop,
     pitchTraceRef,
+    subscribeTrace,
     genderStateRef,
     resonanceRef,
     heardAsRef,
@@ -406,6 +407,7 @@ function App() {
                 modelStatus={modelStatus}
                 modelProgress={modelProgress}
                 pitchTraceRef={pitchTraceRef}
+                subscribeTrace={subscribeTrace}
                 genderStateRef={genderStateRef}
                 resonanceRef={resonanceRef}
                 resonanceStatus={resonanceStatus}
@@ -425,6 +427,7 @@ function App() {
                   <div className="flex-1 min-h-[240px]">
                     <PitchTrace
                       pitchTraceRef={pitchTraceRef}
+                      subscribeTrace={subscribeTrace}
                       voiced={voiced}
                       holding={holding}
                       pitch={pitch}

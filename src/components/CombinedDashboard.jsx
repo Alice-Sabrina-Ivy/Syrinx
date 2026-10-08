@@ -66,6 +66,7 @@ export function CombinedDashboard({
   modelStatus,
   modelProgress,
   pitchTraceRef,
+  subscribeTrace = null,
   genderStateRef,
   resonanceRef,
   resonanceStatus,
@@ -516,6 +517,7 @@ export function CombinedDashboard({
         >
           <PitchTrace
             pitchTraceRef={pitchTraceRef}
+            subscribeTrace={subscribeTrace}
             voiced={voiced}
             holding={holding}
             pitch={pitch}
