@@ -22,7 +22,7 @@
 // and the weight reading moves with pitch (WEIGHT_PITCH_NOTE).
 // Review fixes: measurements/cue-strip-review-fixes-2026-10-07.md.
 
-import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { memo, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { SteadinessReadout } from "./SteadinessReadout";
 import {
   axisPos,
@@ -195,7 +195,14 @@ function Label({ x, y, anchor = "start", fs, children }) {
   );
 }
 
-function CueRow({ cue, title, titleWord, info, headerRight, headerClass, valueClip = true, state, value, beyond, trail, color, hollow, bands, dashed, highlight, startX, ends, progress, g, W, srText }) {
+// The axis end words (module constants: stable props for the memoised rows).
+const ENDS = { pitch: ["lower", "higher"], resonance: ["darker", "brighter"], weight: ["heavier", "lighter"] };
+
+// Memoised: every prop is a primitive or a stable object (CueStrip memoises
+// bands, highlights, the info and pitch header elements; a trail array is
+// replaced only when it changes), so a row re-renders only when its own
+// inputs change (main-thread pass 2026-10-08).
+const CueRow = memo(function CueRow({ cue, title, titleWord, info, headerRight, headerClass, valueClip = true, state, value, beyond, trail, color, hollow, bands, dashed, highlight, startX, ends, progress, g, W, srText }) {
   const titleId = useId();
   const endW = [textW(ends[0], g.fs), textW(ends[1], g.fs)];
   const axL = endW[0] + PAD, axR = Math.max(axL + 1, W - endW[1] - PAD);
@@ -234,6 +241,7 @@ function CueRow({ cue, title, titleWord, info, headerRight, headerClass, valueCl
       </div>
       <span className="sr-only" data-cue-sr="">{srText}</span>
       {W > 0 && (
+        <div className="relative" style={{ height: g.h }}>
         <svg width={W} height={g.h} className="block overflow-visible" aria-hidden="true">
           {highlight && (
             <rect
@@ -295,8 +303,6 @@ function CueRow({ cue, title, titleWord, info, headerRight, headerClass, valueCl
             const x = X(dotPos.x);
             return (
               <g data-cue-dot="">
-                <circle cx={0} cy={ax} r={hollow ? g.r - 0.75 : g.r} fill={hollow ? HALO : color} stroke={color} strokeWidth={hollow ? 1.5 : 0}
-                  opacity={showDot} style={{ transform: `translateX(${x}px)`, transition: "transform 200ms ease-out" }} />
                 {dotPos.beyond !== 0 && (
                   <path d={dotPos.beyond > 0 ? `M ${x + g.r + 2} ${ax - 4} l 4 4 l -4 4` : `M ${x - g.r - 2} ${ax - 4} l -4 4 l 4 4`}
                     fill="none" stroke={color} strokeWidth="1.5" opacity={showDot} />
@@ -305,10 +311,34 @@ function CueRow({ cue, title, titleWord, info, headerRight, headerClass, valueCl
             );
           })()}
         </svg>
+        {/* The dot: an HTML element over the SVG, same geometry as the SVG
+            circle it replaced (radius g.r; hollow = a 1.5 px ring), so its
+            200 ms transform transition runs on the compositor — an SVG
+            element's transition runs on the main thread at the display
+            rate (measurements/main-thread-cpu-2026-10-08.md). */}
+        {dotPos && (
+          <span
+            data-cue-dot-mark=""
+            aria-hidden="true"
+            className="absolute left-0 rounded-full box-border pointer-events-none"
+            style={{
+              top: ax - g.r,
+              width: 2 * g.r,
+              height: 2 * g.r,
+              background: hollow ? HALO : color,
+              border: hollow ? `1.5px solid ${color}` : "none",
+              opacity: showDot,
+              transform: `translateX(${X(dotPos.x) - g.r}px)`,
+              transition: "transform 200ms ease-out",
+              willChange: "transform",
+            }}
+          />
+        )}
+        </div>
       )}
     </div>
   );
-}
+});
 
 export function CueStrip({
   direction = null,
@@ -356,7 +386,7 @@ export function CueStrip({
     return () => { alive = false; };
   }, []);
 
-  const vtlnRef = assets?.reference?.vtln ? cueResonanceRef(assets.reference.vtln, assets.cueBands) : null;
+  const vtlnRef = useMemo(() => (assets?.reference?.vtln ? cueResonanceRef(assets.reference.vtln, assets.cueBands) : null), [assets]);
 
   // One 4 Hz tick: sample each row's value into its trail while live; the
   // screen-reader summaries every 4th tick (1 Hz).
@@ -411,6 +441,27 @@ export function CueStrip({
   const pitchWord = pState !== "idle" && pitchLevel != null ? pitchCueWord(pitchLevel, direction) : null;
   void pitch; // the moment-to-moment value lives in the trace above
 
+  // Stable row props (the rows are memoised): bands / highlights / info
+  // follow the direction and the reference assets only; the pitch header
+  // follows its own values.
+  const pitchBands = useMemo(() => bandsFor("pitch"), []);
+  const resonanceBands = useMemo(() => (vtlnRef ? bandsFor("resonance", vtlnRef) : null), [vtlnRef]);
+  const pitchHighlight = useMemo(() => highlightFor("pitch", direction), [direction]);
+  const resonanceHighlight = useMemo(() => (vtlnRef ? highlightFor("resonance", direction, vtlnRef) : null), [direction, vtlnRef]);
+  const weightHighlight = useMemo(() => highlightFor("weight", direction), [direction]);
+  const pitchInfo = useMemo(() => <><p>{PITCH_INFO}</p>{directionNote("pitch", direction) && <p>{directionNote("pitch", direction)}</p>}</>, [direction]);
+  const resonanceInfo = useMemo(() => <><p>{RESONANCE_INFO}</p>{directionNote("resonance", direction) && <p>{directionNote("resonance", direction)}</p>}</>, [direction]);
+  const weightInfo = useMemo(() => <><p>{WEIGHT_INFO}</p><p>{directionNote("weight", direction)}</p></>, [direction]);
+  const pitchHeader = useMemo(() => (
+    <span className="inline-flex items-baseline gap-2">
+      <span className={`text-sm lg:text-base leading-[18px] lg:leading-6 font-light ${pitchLevel != null ? statusTextClass(levelStatus) : "text-neutral-400"}`} data-cue-f0="">
+        {pitchLevel != null ? Math.round(pitchLevel) : "—"}
+        <span className="text-[10px] lg:text-xs text-neutral-400 ml-0.5">Hz</span>
+      </span>
+      <SteadinessReadout value={steadiness} held={steadinessHeld} variant="compact" />
+    </span>
+  ), [pitchLevel, levelStatus, steadiness, steadinessHeld]);
+
   return (
     <div
       ref={wrapRef}
@@ -421,16 +472,8 @@ export function CueStrip({
         cue="pitch"
         title="Pitch"
         titleWord={pitchWord}
-        info={<><p>{PITCH_INFO}</p>{directionNote("pitch", direction) && <p>{directionNote("pitch", direction)}</p>}</>}
-        headerRight={
-          <span className="inline-flex items-baseline gap-2">
-            <span className={`text-sm lg:text-base leading-[18px] lg:leading-6 font-light ${pitchLevel != null ? statusTextClass(levelStatus) : "text-neutral-400"}`} data-cue-f0="">
-              {pitchLevel != null ? Math.round(pitchLevel) : "—"}
-              <span className="text-[10px] lg:text-xs text-neutral-400 ml-0.5">Hz</span>
-            </span>
-            <SteadinessReadout value={steadiness} held={steadinessHeld} variant="compact" />
-          </span>
-        }
+        info={pitchInfo}
+        headerRight={pitchHeader}
         headerClass=""
         valueClip={false}
         state={pState}
@@ -439,9 +482,9 @@ export function CueStrip({
         trail={view.trails.pitch}
         color={dotColor("pitch", { pitchLevel, direction })}
         hollow={dotHollow("pitch", { pitchLevel, direction })}
-        bands={bandsFor("pitch")}
-        highlight={highlightFor("pitch", direction)}
-        ends={["lower", "higher"]}
+        bands={pitchBands}
+        highlight={pitchHighlight}
+        ends={ENDS.pitch}
         g={g}
         W={W}
         srText={view.sr.pitch}
@@ -449,7 +492,7 @@ export function CueStrip({
       <CueRow
         cue="resonance"
         title="Resonance · approx."
-        info={<><p>{RESONANCE_INFO}</p>{directionNote("resonance", direction) && <p>{directionNote("resonance", direction)}</p>}</>}
+        info={resonanceInfo}
         headerRight={resonanceHeader(rState, snap)}
         headerClass="text-neutral-300"
         state={rState}
@@ -457,11 +500,11 @@ export function CueStrip({
         beyond={rClamp}
         trail={view.trails.resonance}
         color={COLORS.neutralTrace}
-        bands={vtlnRef ? bandsFor("resonance", vtlnRef) : null}
+        bands={resonanceBands}
         dashed
-        highlight={vtlnRef ? highlightFor("resonance", direction, vtlnRef) : null}
+        highlight={resonanceHighlight}
         startX={snap?.startU != null ? axisPos("resonance", snap.startU)?.x : null}
-        ends={["darker", "brighter"]}
+        ends={ENDS.resonance}
         g={g}
         W={W}
         srText={view.sr.resonance}
@@ -469,7 +512,7 @@ export function CueStrip({
       <CueRow
         cue="weight"
         title="Vocal weight"
-        info={<><p>{WEIGHT_INFO}</p><p>{directionNote("weight", direction)}</p></>}
+        info={weightInfo}
         headerRight={weightHeader(wState, vocalWeight)}
         headerClass={wState === "calibrating" ? "text-amber-300" : "text-neutral-300"}
         state={wState}
@@ -478,9 +521,9 @@ export function CueStrip({
         trail={view.trails.weight}
         color={COLORS.neutralTrace}
         bands={null}
-        highlight={vocalWeight?.baselineReady ? highlightFor("weight", direction) : null}
+        highlight={vocalWeight?.baselineReady ? weightHighlight : null}
         progress={wState === "calibrating" ? (vocalWeight?.baselineProgress ?? 0) : null}
-        ends={["heavier", "lighter"]}
+        ends={ENDS.weight}
         g={g}
         W={W}
         srText={view.sr.weight}
