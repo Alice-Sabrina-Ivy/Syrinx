@@ -151,3 +151,91 @@ background / shadow transition and React updates keep frames coming); also
 no React state updates and no cue-strip tick → 28 / 24 ms/s, 0 frames/s.
 An own rAF loop alone (the earlier probe design) costs ~25 ms/s at 152 Hz —
 an idle rAF loop is not free.
+
+## 2. Results (after the pre-registration)
+
+**Verdict: TARGET met, every guard passes → adopted** (K1 + K2 + K5 + K6;
+K7 rejected by the rule; K3 / K4 not built, see §2.2). Branch head 4f900c9
+(the measured build is 7d16843; 4f900c9 only moves the hook's trace-listener
+set from a `useState` to a `useRef` — no browser-side difference — and adds
+tests / comments).
+
+### 2.1 TARGET (main-thread CPU, no diag, ms per audio second; median of interleaved runs)
+
+| | base | head | cut |
+|---|---|---|---|
+| **1280 × 800, panel off** (8 / 8 runs) | 237.3 | 88.4 | **−62.8 %** |
+| — woman / man | 238.7 / 235.8 | 89.8 / 86.8 | −62.4 / −63.2 % |
+| **1280 × 800, panel on** (8 / 8 runs) | 260.8 | 105.9 | **−59.4 %** |
+| — woman / man | 262.3 / 253.8 | 98.0 / 110.1 | −62.7 / −56.6 % |
+| 448 × 890 DSF 3, panel off (secondary, 4 / 4) | 244.1 | 90.6 | −62.9 % (woman −62.7, man −61.3) |
+| 448 × 890 DSF 3, panel on (secondary, 4 / 4) | 258.6 | 101.6 | −60.7 % (woman −62.8, man −58.1) |
+
+Per-run values (1280 × 800): panel off base woman 205.1 / 237.2 / 240.2 / 242.9,
+man 233.1 / 234.3 / 237.3 / 237.5; head woman 81.1 / 88.6 / 91.0 / 92.8, man
+80.5 / 85.3 / 88.2 / 90.3. Panel on base woman 246.5 / 260.4 / 264.1 / 271.4,
+man 236.2 / 246.4 / 261.1 / 268.4; head woman 96.4 / 97.9 / 98.0 / 108.9, man
+104.8 / 107.0 / 113.3 / 113.9. Main frames produced: 152–153 /s → 77–83 /s.
+
+### 2.2 Ladder (1280 × 800, panel off, 2 × {woman, man} interleaved per rung)
+
+| rung | median ms/s (runs) | increment (% of base) | kept |
+|---|---|---|---|
+| base | 199.2 (185.6, 212.7, 263.3, 178.3) | — | |
+| K1 cheap draw | 173.3 (199.2, 148.7, 197.8, 148.9) | −13 % | core |
+| K1 + K2 redraw on data | 105.1 (117.4, 109.2, 94.4, 100.9) | −34 % | core |
+| K2 again (2nd session) | 87.7 (96.5, 86.0, 81.5, 89.4) | | |
+| + K7 React | 95.6 (95.2, 99.5, 96.0, 87.4) | +4.0 % (no cut) | **no** — reverted (7f3d4f1) |
+| + K5 cue dot / memo rows (on K7) | 78.4 (71.3, 78.8, 77.9, 90.1) | −8.6 % | yes |
+| K1 + K2 + K5 (K7 reverted) | 78.5 (79.1, 78.0, 76.3, 89.7) | | |
+| + K6 status dot / heard-as ring | 58.5 (59.2, 57.8, 68.5, 57.0) | −10.0 % | yes |
+
+- **K3 incremental bitmap — not built.** Its upper bound is the whole trace
+  draw after K1 + K2 + K5 + K6: 4.3 ms/s inclusive (non-minified profile) =
+  2.2 % of the base median, below the 3 % bar, and it would need a
+  pixel-quantised clock (a visible change in sub-pixel motion).
+- **K4 OffscreenCanvas in a worker — not evaluated**: its condition (trace JS
+  ≥ 15 ms/s after K1 + K2) is not met (4.3 ms/s).
+- **Lower React state cadence — not measured, not adopted** (guard 5: it
+  changes which readout values are shown when).
+- What is left (head, desktop, panel off, one non-minified run, 60 ms/s):
+  frame lifecycle at ~79 frames/s (`UpdateLifecycle` 18.7, `BeginMainFrame`
+  9.3, commit 5.7 — composited animations and React updates still tick main
+  frames), worker messages ~6, the MSTP capture reader and microtask
+  checkpoints ~10, trace draw 4.3, React 2.8.
+
+### 2.3 Guards
+
+1. **Latency** (diag, 3 × {woman, man} interleaved): capture → painted median
+   of run medians base 6.8 ms (woman 6.7, man 6.9), head 6.5 ms (woman 7.3,
+   man 5.7): **−0.3 ms, pass** (≤ +5). Capture → state update 3.3 / 3.1 ms.
+2. **Trace pixels** (`visual-check.mjs`, 24 captures: 6 data steps × {no
+   target, feminine} × DPR {1, 3}): every capture **passes** — 28 pixels
+   differ by ≤ 5/255 (the anti-aliased ends of the 7 grid lines, now drawn in
+   the cached static layer), 0 pixels by > 8/255. Reported, not judged: 7 ms
+   after a data step the head still shows the frame drawn at that step
+   (0.8–1.5 % of pixels differ from base, which has scrolled 7 ms further).
+3. **Smoothness** — (a) main-thread tasks > 50 ms and long tasks over all
+   TARGET runs: 0 base / 0 head (> 16.7 ms: 2 / 1); (b) rAF probe intervals
+   > 50 ms: 0 / 0 (> 25 ms: 1 / 0); (c) head redraw cadence while listening:
+   40.0 draws/s, gap p99 ≤ 34.2 ms, max 41.3 ms; scroll step p99 ≤ 1.43 CSS
+   px, max 2.14 px (base: 142 draws/s, step p99 0.38 px). **Pass.** The trace
+   now moves in 25 ms data steps (≈ 1.2 CSS px at desktop width, ≈ 0.6 px on
+   the phone layout) instead of every display frame.
+4. **Cue strip** (3 directions / widths / viewports × 240 ticks: 482 live
+   row-ticks, 530 dots, 2 626 trail dots): **identical**, incl. dot centres,
+   opacities and the start ring.
+5. **Readouts**: no change to the hook's readout computation (the K7 state
+   bail-out was reverted); `display-hook-test` (23, incl. 3 new trace-
+   notification checks) and `steadiness-test` pass. **Pass.**
+6. **Tests**: lint, `npm run test:unit` (38 / 38), build pass; smoke: §2.4.
+7. **Workers**: no worker source changed (`git diff 5e26866 HEAD -- src`
+   touches App, the hook's trace notifier, CombinedDashboard, CueStrip,
+   HeardAsPanel, PitchTrace only); median worker CPU within −4.1 … +2.6 %
+   (desktop) and −3.8 … +0.2 % (phone; gender −3.5 %). **Pass.**
+
+Caveat: headless Chrome on this PC renders at ~152 Hz (no vsync cap). Base
+cost scaled with the display rate (every frame redrew), so on a 60 Hz display
+the base — and therefore the absolute saving — is smaller; on 120–165 Hz
+monitors it is similar. The phone figures are desktop Chrome emulating the
+phone viewport (DSF 3), not a phone; the phone check is the next step.

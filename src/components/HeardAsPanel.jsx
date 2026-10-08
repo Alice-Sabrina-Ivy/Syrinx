@@ -150,13 +150,18 @@ function HeardAsAxis({ axis }) {
           data-axis-range=""
         />
         {!axis.wide && (
-          // Moved by a transform on a full-width wrapper (a composited
-          // transition) instead of transitioning `left` (main thread).
-          <span className="absolute inset-0 transition-transform duration-300" style={{ transform: `translateX(${D}%)` }}>
-            <span
-              className="absolute left-0 top-1/2 w-2.5 h-2.5 -ml-[5px] -translate-y-1/2 rounded-full border-2 border-neutral-200"
-              data-axis-dot-mark=""
-            />
+          // Moved by a transform on an axis-wide wrapper (a composited
+          // transition) instead of transitioning `left` (main thread). The
+          // translated wrapper overhangs the axis, so it sits in a clip box
+          // reaching 6 px past each end (the ring's half-width fits): the
+          // overhang must not widen the panel's scrollable area.
+          <span className="absolute -inset-x-1.5 inset-y-0 overflow-hidden">
+            <span className="absolute inset-y-0 left-1.5 right-1.5 transition-transform duration-300" style={{ transform: `translateX(${D}%)` }}>
+              <span
+                className="absolute left-0 top-1/2 w-2.5 h-2.5 -ml-[5px] -translate-y-1/2 rounded-full border-2 border-neutral-200"
+                data-axis-dot-mark=""
+              />
+            </span>
           </span>
         )}
       </div>
