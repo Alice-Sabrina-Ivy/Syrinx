@@ -1,0 +1,12 @@
+{
+  "E": { "vtln": { "realFft": false, "noDither": false, "prune": false } },
+  "E+N1": { "vtln": { "realFft": true, "noDither": false, "prune": false } },
+  "E+N3": { "vtln": { "realFft": false, "noDither": false, "prune": true } },
+  "E+N1+N2": { "vtln": { "realFft": true, "noDither": true, "prune": false } },
+  "E+N1+N3": { "vtln": { "realFft": true, "noDither": false, "prune": true } },
+  "E+N2+N3": { "vtln": { "realFft": false, "noDither": true, "prune": true } },
+  "E+N1+N2+N3 (adopted = the defaults)": { "vtln": { "realFft": true, "noDither": true, "prune": true } },
+  "E+N1+N2+R2": { "vtln": { "realFft": true, "noDither": true, "prune": false, "coarse": true } },
+  "E+N1+N2+R1": { "vtln": { "realFft": true, "noDither": true, "prune": false, "stride": 2, "trail": 50, "minFrames": 2 } },
+  "E+N1+N2+R1+R2": { "vtln": { "realFft": true, "noDither": true, "prune": false, "coarse": true, "stride": 2, "trail": 50, "minFrames": 2 } }
+}
