@@ -59,9 +59,18 @@ def resample_stream(x, sr):
     return (x[i0] * (1 - fr) + x[i0 + 1] * fr).astype(np.float32)
 
 
+def sealed_guard(path):
+    """Round 3 (pre-registration §1.6): training, validation and selection never read the sealed
+    confirmatory set (build/vad-train/r3/conf); only the one look sets VAD_R3_LOOK=1."""
+    sealed = os.path.normcase(os.path.abspath(os.path.join(ROOT, "r3", "conf")))
+    if os.path.normcase(os.path.abspath(path)).startswith(sealed) and os.environ.get("VAD_R3_LOOK") != "1":
+        raise SystemExit(f"refused: {path} is in the sealed round-3 confirmatory set")
+    return path
+
+
 def read_wav(path):
     import soundfile as sf
-    x, sr = sf.read(path, dtype="float32", always_2d=True)
+    x, sr = sf.read(sealed_guard(path), dtype="float32", always_2d=True)
     return x[:, 0], sr
 
 

@@ -23,7 +23,15 @@ import numpy as np
 SETS = ["noise", "noiseho", "vin20", "vin0", "fda", "ptdb", "voc", "hil", "vocalset", "pvqd", "voiced"]
 
 
+def _sealed_guard(root):
+    """Round 3: the sealed confirmatory set (build/vad-train/r3/conf) is read only at the look (VAD_R3_LOOK=1)."""
+    r = os.path.normcase(os.path.abspath(root)).replace("\\", "/")
+    if r.rstrip("/").endswith("vad-train/r3/conf") and os.environ.get("VAD_R3_LOOK") != "1":
+        raise SystemExit(f"refused: {root} is the sealed round-3 confirmatory set")
+
+
 def list_streams(root, sets=None):
+    _sealed_guard(root)
     out = []
     for s in sets or SETS:
         for p in sorted(glob.glob(os.path.join(root, "dumps", s, "*.json"))):
@@ -74,6 +82,8 @@ def _read_wav(path):
 def load_audio(meta):
     """(samples float32, sr): the stream exactly as the app chain got it."""
     a = meta["audio"]
+    if "/vad-train/r3/conf/" in os.path.abspath(a["path"]).replace("\\", "/") and os.environ.get("VAD_R3_LOOK") != "1":
+        raise SystemExit(f"refused: {a['path']} is in the sealed round-3 confirmatory set")
     if a["fmt"] == "sig16be":
         x = np.fromfile(a["path"], dtype=">i2").astype(np.float32) / 32768
         sr = a["sr"]
