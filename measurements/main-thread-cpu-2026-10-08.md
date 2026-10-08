@@ -239,3 +239,17 @@ cost scaled with the display rate (every frame redrew), so on a 60 Hz display
 the base — and therefore the absolute saving — is smaller; on 120–165 Hz
 monitors it is similar. The phone figures are desktop Chrome emulating the
 phone viewport (DSF 3), not a phone; the phone check is the next step.
+
+### 2.4 Smoke and a post-measurement fix
+
+`scripts/cue-strip-smoke.mjs` on the measured build failed one check at every
+viewport: "man: axis, end words and range fit inside the panel" — K6's
+transform wrapper for the heard-as ring overhung the axis and widened the
+panel's scrollable area. Fixed in af52aa5 (the wrapper sits in a clip box
+reaching 6 px past each axis end; the ring and its composited transition are
+unchanged). After the fix the smoke passes at all five viewports (phone
+448 × 890: 68 / 68, p402 68 / 68, p360 68 / 68, landscape 890 × 360 68 / 68,
+desktop 1280 × 800 68 / 68), and a confirmation run of the final build
+against base (1280 × 800, panel on, 2 × {woman, man} interleaved) gives
+258.4 → 113.8 ms/s, **−55.9 %** (woman 284.7 → 99.4, −65.1 %; man 256.3 →
+127.1, −50.4 %; workers +0.6 … +4.3 %, within noise; no task > 50 ms).
