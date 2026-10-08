@@ -36,6 +36,32 @@
 #                  (training on states after histories of any length)
 # Labels are unchanged by all three.
 #
+# Round 3 (pre-registration 2026-10-07 §3.1; Addendum R3-B; default off):
+#   cfg "leak_tau": T  the GRU state decays, h <- exp(-12.5 ms / T) * h before
+#                  every frame (model.py), in training and in streaming (B-leak)
+#   --p_sess=P     a share P of every batch's audio time is ONE-ROOM TRAINING
+#                  SESSIONS (B-sess): --sess_len=64,128 s, built as the
+#                  pre-registration's §2 from TRAINING sources only - one voice
+#                  group (one speaker / participant / singer of a training
+#                  source, drawn with the --vsrc weights, then by voiced time),
+#                  its recordings in a random order read in episodes of
+#                  U(10, 30) s (0.5 s gaps inside an episode), pauses from
+#                  {1, 3, 8, 20, 60} s with p {.3, .3, .2, .15, .05}, a lead of
+#                  U(0, 30) s, voice fraction 35-65 % (up to 50 draws, else the
+#                  last); one negative bed (--neg weights) looped with 1 s
+#                  cross-fades; a session SNR from the round-2 mix distribution,
+#                  or clean with p --sess_clean (0.2); one augmentation draw
+#                  (room, EQ, level, voice quality, speed) for the whole
+#                  session. Each session sits in one of P * sec_per_batch /
+#                  --tbptt batch slots and is trained in consecutive --tbptt (8)
+#                  s chunks, the GRU state carried (detached) from chunk to
+#                  chunk, zero at the session start (truncated BPTT); the
+#                  convolutions get 4 frames of lead-in audio per chunk. Labels:
+#                  the mix rule inside voice placements (clean sessions: only
+#                  positives count there), negative in the pauses.
+#                  The rest of the batch: the round-2 crops (--p_state 0 = no
+#                  state bank for B-sess).
+#
 #   <venv>/python scripts/voice-detector/train/train.py --name=NAME [--steps=20000] [--cfg=JSON] [--wpos=3] ...
 import json
 import math
@@ -75,6 +101,12 @@ P_SPEED = float(A.get("p_speed", "0.3"))
 VTAG = A.get("vtag", "")
 P_ROUGH, P_BREATH = float(A.get("p_rough", "0")), float(A.get("p_breath", "0"))
 P_STATE, BANK_N = float(A.get("p_state", "0")), int(A.get("bank", "8192"))
+P_SESS = float(A.get("p_sess", "0"))
+SESS_LO, SESS_HI = (float(v) for v in A.get("sess_len", "64,128").split(","))
+TBPTT = float(A.get("tbptt", "8"))
+SESS_CLEAN = float(A.get("sess_clean", "0.2"))
+PAUSES = np.array([1.0, 3.0, 8.0, 20.0, 60.0])
+PPROB = np.array([0.30, 0.30, 0.20, 0.15, 0.05])
 DEV = "cuda"
 
 
@@ -159,6 +191,14 @@ class Sampler:
         self.nw = np.array([NEG_W[k] for k in self.nkeys])
         self.nw = np.cumsum(self.nw / self.nw.sum())
         self.stonal = self.S.ix["tonal"]
+        self.sec = SEC_PER_BATCH * (1 - P_SESS)      # crop audio per batch (the rest: session chunks)
+        # round 3: voice groups per source key (sessions draw one group, weighted by voiced time)
+        self.gpools = {}
+        for key, (ids, _, _) in self.vpools.items():
+            grp = v["group"][ids]
+            ug, inv = np.unique(grp, return_inverse=True)
+            w = np.bincount(inv, weights=pos[ids].astype(np.float64))
+            self.gpools[key] = ([ids[inv == k] for k in range(len(ug))], np.cumsum(w) / w.sum())
 
     def neg(self, n):
         r = self.rng
@@ -190,7 +230,7 @@ class Sampler:
     def batch(self, L):
         r = self.rng
         n = int(L * SR)
-        B = max(8, int(round(SEC_PER_BATCH / L)))
+        B = max(8, int(round(self.sec / L)))
         T = (n + M.OFF) // M.HOP
         cen = ((np.arange(T) + 1) * M.HOP - M.OFF - CFG.get("win", M.WIN) / 2)   # frame centres (samples, in crop)
         V = np.zeros((B, n), np.int16)
@@ -247,6 +287,105 @@ class Sampler:
         if WHARD != 1:
             W *= np.where((info[:, 4:5] > 0) & (Y == 0), WHARD, 1.0)
         return V, N1, N2, Y, W, info
+
+
+    def session(self):
+        """Round 3 (B-sess): one one-room training session (numpy). Returns V, N1 (int16 [n]), Y, W ([T]), info [6]."""
+        r = self.rng
+        Ls = float(r.uniform(SESS_LO, SESS_HI))
+        n = int(Ls * SR)
+        T = (n + M.OFF) // M.HOP
+        key = self.vkeys[min(int(np.searchsorted(self.vw, r.random())), len(self.vkeys) - 1)]
+        gl, gcdf = self.gpools[key]
+        files = gl[min(int(np.searchsorted(gcdf, r.random())), len(gl) - 1)].copy()
+        r.shuffle(files)
+        durs = [int(self.V.ix["len"][i]) / SR for i in files]
+        pl = None
+        for _ in range(50):
+            t = float(r.uniform(0.0, 30.0))
+            k, cur, pl = 0, 0.0, []
+            while t < Ls - 0.5:
+                target, el = float(r.uniform(10.0, 30.0)), 0.0
+                while True:
+                    df = durs[k % len(files)]
+                    d = min(df - cur, target - el, Ls - t)
+                    pl.append((k % len(files), cur, t, d))
+                    cur += d
+                    if cur >= df - 0.05:
+                        k, cur = k + 1, 0.0
+                    t += d
+                    el += d
+                    if el >= target - 1e-6 or t >= Ls - 0.5:
+                        break
+                    t += 0.5
+                    if t >= Ls - 0.5:
+                        break
+                t += float(r.choice(PAUSES, p=PPROB))
+            if 0.35 <= sum(q[3] for q in pl) / Ls <= 0.65:
+                break
+        cen = ((np.arange(T) + 1) * M.HOP - M.OFF - CFG.get("win", M.WIN) / 2)
+        V = np.zeros(n, np.float32)
+        code = np.zeros(T, np.int8)
+        inside = np.zeros(T, bool)
+        fade = int(0.01 * SR)
+        for fi, fr, at, d in pl:
+            i = int(files[fi])
+            a, f0 = int(round(at * SR)), int(round(fr * SR))
+            ln = int(self.V.ix["len"][i])
+            m = min(int(round(d * SR)), ln - f0, n - a)
+            if m <= 0:
+                continue
+            seg = np.asarray(self.V.crop(i, f0, m, False), np.float32)
+            m = len(seg)
+            e = np.minimum(np.minimum(1.0, (np.arange(m) + 1) / fade), (m - np.arange(m)) / fade).astype(np.float32)
+            V[a:a + m] += seg * e
+            lab = self.V.ix["lab"][self.V.ix["loff"][i]:self.V.ix["loff"][i] + self.V.ix["llen"][i]]
+            t0 = float(self.V.ix["t0"][i])
+            ins = (cen >= a) & (cen < a + m)
+            j = np.round(((f0 + cen - a) / SR - t0) / 0.01).astype(np.int64)
+            ok = ins & (j >= 0) & (j < len(lab))
+            code[ok] = lab[j[ok]]
+            inside |= ins
+        clean = r.random() < SESS_CLEAN
+        N1 = np.zeros(n, np.float32)
+        tonal = False
+        if not clean:
+            nk = self.nkeys[min(int(np.searchsorted(self.nw, r.random())), len(self.nkeys) - 1)]
+            if nk == "synth":
+                i = int(r.integers(self.S.n))
+                clip = np.asarray(self.S.crop(i, 0, int(self.S.ix["len"][i]), False), np.float32)
+                tonal = bool(self.stonal[i])
+            else:
+                ids = self.npools[nk]
+                i = int(ids[r.integers(len(ids))])
+                clip = np.asarray(self.N.crop(i, 0, int(self.N.ix["len"][i]), False), np.float32)
+            N1 = loop_bed(clip, n)
+        Y = (code == 1).astype(np.float32)
+        if clean:
+            W = np.where(inside, np.where(code == 1, WPOS, 0.0), 1.0).astype(np.float32)
+        else:
+            W = np.where(inside & (code == 2), 0.0, np.where(code == 1, WPOS, 1.0)).astype(np.float32)
+        W[:2] = 0
+        info = np.zeros(6, np.float32)
+        info[0] = 1 if clean else 0
+        u = r.random()
+        info[1] = r.uniform(SNR_LO, 12) if u < 0.5 else r.uniform(5, SNR_HI)
+        info[4] = tonal
+        return (np.clip(np.round(V), -32768, 32767).astype(np.int16), np.clip(np.round(N1), -32768, 32767).astype(np.int16), Y, W, info)
+
+
+def loop_bed(x, n, fade_s=1.0):
+    """A negative looped with linear cross-fades of fade_s to n samples (as r3/sessions.loop_bed)."""
+    x = np.asarray(x, np.float32)
+    if len(x) >= n:
+        return x[:n].copy()
+    nf = max(1, min(int(round(fade_s * SR)), len(x) // 2))
+    out = x.copy()
+    w = np.linspace(0, 1, nf, dtype=np.float32)
+    while len(out) < n:
+        out[-nf:] = out[-nf:] * (1 - w) + x[:nf] * w
+        out = np.concatenate([out, x[nf:]])
+    return out[:n]
 
 
 # ----------------------------------------------------------------------------- GPU augmentation
@@ -458,11 +597,39 @@ def main():
             k += NTH
             q.put(trs[i].batch(L))
     ths = [threading.Thread(target=producer, args=(i,), daemon=True) for i in range(NTH)]
+    # round 3 (B-sess): session slots, trained in TBPTT chunks with the GRU state carried
+    NS = int(round(SEC_PER_BATCH * P_SESS / TBPTT)) if P_SESS > 0 else 0
+    CH = int(round(TBPTT * SR)) // M.HOP
+    KLI = net.rf - 1
+    if NS:
+        sss = [Sampler("train", SEED * 1000 + 500 + i) for i in range(2)]
+        sq = queue.Queue(maxsize=24)
+
+        def sproducer(i):
+            while not stop.is_set():
+                sq.put(sss[i].session())
+        ths += [threading.Thread(target=sproducer, args=(i,), daemon=True) for i in range(len(sss))]
+        print(f"sessions: {NS} slots x {CH} frames (+{KLI} lead-in), crops {trs[0].sec:.0f} s per batch", flush=True)
     for t in ths:
         t.start()
     g = torch.Generator(device=DEV)
     g.manual_seed(SEED)
     bank = torch.zeros(net.cfg["gru_layers"], BANK_N, net.cfg["gru"], device=DEV) if P_STATE > 0 else None
+    slots = [None] * NS
+    hs = torch.zeros(net.cfg["gru_layers"], max(NS, 1), net.cfg["gru"], device=DEV)
+    XLEN = (CH + KLI - 1) * M.HOP + CFG.get("win", M.WIN)
+
+    def new_slot():
+        Vs, N1s, Ys_, Ws_, infs = sq.get()
+        t_ = [torch.from_numpy(a_).to(DEV)[None] for a_ in (Vs, N1s, np.zeros_like(N1s), Ys_, Ws_, infs)]
+        with torch.no_grad():
+            x_, Y_, W_ = augment(*t_, rir_tr, g)
+            if WHARD_AC != 1:
+                per_ = periodicity(x_, Y_.shape[1])
+                W_ = W_ * torch.where((Y_ < 0.5) & (per_ > AC_THR), WHARD_AC, 1.0)
+        z0 = torch.zeros(net.pad + KLI * M.HOP, device=DEV)
+        z1 = torch.zeros(CH * M.HOP, device=DEV)
+        return {"x": torch.cat([z0, x_[0], z1]), "Y": Y_[0], "W": W_[0], "n": Y_.shape[1], "pos": 0}
     bank_fill, bank_pos = 0, 0
     log = open(os.path.join(OUT, "log.jsonl"), "a", encoding="utf8")
     json.dump({"args": A, "cfg": net.cfg, "params": net.n_params()}, open(os.path.join(OUT, "config.json"), "w"), indent=1)
@@ -529,6 +696,23 @@ def main():
             if WHARD_AC != 1:
                 per = periodicity(x, Yb.shape[1])
                 Wb = Wb * torch.where((Yb < 0.5) & (per > AC_THR), WHARD_AC, 1.0)
+        if NS:
+            Xs = torch.empty(NS, XLEN, device=DEV)
+            Ys = torch.zeros(NS, CH, device=DEV)
+            Ws = torch.zeros(NS, CH, device=DEV)
+            with torch.no_grad():
+                for i_, sl in enumerate(slots):
+                    if sl is None or sl["pos"] >= sl["n"]:
+                        slots[i_] = sl = new_slot()
+                        hs[:, i_] = 0
+                    a_ = sl["pos"]
+                    Xs[i_] = sl["x"][a_ * M.HOP:a_ * M.HOP + XLEN]
+                    m_ = min(CH, sl["n"] - a_)
+                    Ys[i_, :m_] = sl["Y"][a_:a_ + m_]
+                    Ws[i_, :m_] = sl["W"][a_:a_ + m_]
+                    sl["pos"] += CH
+            logits_s, _, hT_s = net.body(net.front(Xs), None, hs, skip=KLI)
+            hs = hT_s.detach()
         if bank is not None:
             Bn = xp.shape[0]
             h0 = torch.zeros(net.cfg["gru_layers"], Bn, net.cfg["gru"], device=DEV)
@@ -544,7 +728,11 @@ def main():
                 bank_fill = min(BANK_N, bank_fill + Bn)
         else:
             logits = net(xp)
-        loss = (F.binary_cross_entropy_with_logits(logits, Yb, reduction="none") * Wb).sum() / Wb.sum().clamp(min=1)
+        if NS:
+            loss = ((F.binary_cross_entropy_with_logits(logits, Yb, reduction="none") * Wb).sum()
+                    + (F.binary_cross_entropy_with_logits(logits_s, Ys, reduction="none") * Ws).sum()) / (Wb.sum() + Ws.sum()).clamp(min=1)
+        else:
+            loss = (F.binary_cross_entropy_with_logits(logits, Yb, reduction="none") * Wb).sum() / Wb.sum().clamp(min=1)
         opt.zero_grad(set_to_none=True)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(net.parameters(), 1.0)

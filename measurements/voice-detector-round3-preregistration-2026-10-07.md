@@ -788,3 +788,141 @@ manifests contain none (A.1).
 - **The GTSinger match (A.1).** Following the rule removed a likely-spurious
   match together with a whole male singer. The set stays as sealed;
   reported for transparency.
+
+## Addendum R3-B — training and selection as implemented (2026-10-08, before any round-3 model is scored)
+
+Written while the first two training runs were in progress and **before any
+round-3 network or deployment rule was scored on validation data**. It fixes
+how §3 is implemented where §3 leaves a choice open. Nothing here reads the
+sealed set (the guards of R3-A stay in place), and the private session
+recordings are not read.
+
+### B.1 Training runs (§3.1)
+
+Four runs, 16,000 steps, EMA 0.999, checkpoints every 1,000 steps (the
+selection uses the EMA checkpoints at 8,000 / 10,000 / 12,000 / 14,000 /
+16,000). Every run keeps the round-2 recipe of r8a (89,257 parameters,
+`frame_ms` 82, `--vtag=r2`, the round-2 source weights, roughness 0.2,
+breathiness 0.15, `whard_ac` 3) except as stated
+(`scripts/voice-detector/train/run-r3-train.sh`):
+
+| run | family | seed | differs from r8a |
+|---|---|---|---|
+| `r9-leak` | B-leak | 31 | GRU state decay, τ = 3 s (λ = exp(−12.5 ms / 3 s) = 0.99584 before every frame). Keeps r8a's state bank (`p_state` 0.75, 8,192 states): §3.1 keeps the round-2 recipe unless it says otherwise, and it says "no state bank" only for B-sess |
+| `r9-sess-a` | B-sess | 32 | half of each batch's 768 s is one-room training sessions (B.2); the other half the round-2 crops; no state bank |
+| `r9-sess-b` | B-sess | 33 | as `r9-sess-a` |
+| `r9-sessleak` | B-sess-leak | 34 | as `r9-sess-a`, with the decay of `r9-leak` |
+
+**The decay in training** (`model.py`): the recurrence (`h ← λh`, then the
+unchanged `nn.GRU` update) runs as a hand-written forward and backward
+(`LeakGRUFn`), replayed as CUDA graphs in blocks of 128 frames
+(`LeakGRUGraphFn`). Autograd through a Python loop was 10–30× slower. Outputs
+and gradients equal autograd through the plain loop to float rounding (max
+relative gradient difference 6e-7).
+
+**The decay in streaming** (`export.py`): one ONNX GRU op per frame on λh.
+A leak model's ONNX file therefore takes a fixed chunk of 2 frames (400
+samples, one 25 ms capture chunk; metadata `fixed_frames`). Streaming ONNX
+vs the batch model: 5.4e-7 on a step-1,000 checkpoint. The plain (non-leak)
+export is unchanged: re-exporting round 2's frozen checkpoint gives a
+byte-identical file.
+
+### B.2 One-room training sessions (B-sess, B-sess-leak)
+
+§3.1 asks for 64–128 s sessions "built as §2 from training sources". §2's
+rules are written for 300 s. For the shorter training sessions
+(`train.py` `Sampler.session`):
+
+- **Voice**: one group of one training source (a speaker, participant or
+  singer). The source is drawn with the round-2 source weights and the group
+  by its voiced time. Its recordings are read in a seeded random order, in
+  episodes of U(10, 30) s with 0.5 s gaps inside an episode (§2). Pauses come
+  from {1, 3, 8, 20, 60} s with p {0.30, 0.30, 0.20, 0.15, 0.05} (§2).
+- **Departures from §2**:
+  - the lead is U(0, 30) s, not 30 s: a fixed 30 s lead would put every first
+    voice onset at the same time in a 64–128 s session;
+  - the "≥ 40 s noise-only stretch" rule is dropped: it cannot hold together
+    with the 35–65 % voice fraction in 64 s;
+  - the voice-fraction rule is kept, with up to 50 draws, else the last draw.
+- **Noise**: one negative from the round-2 negative pools (round-2 weights),
+  looped with 1 s cross-fades. The session SNR is drawn from the round-2 mix
+  distribution (half U(−6, 12), half U(5, 30) dB); with p 0.2 the session is
+  clean.
+- **One room**: one augmentation draw per session (reverberation, EQ, level,
+  noise floor, voice quality, speed), the round-2 augmentation code applied to
+  the whole session.
+- **Labels**: inside voice placements, the mix rule (positive = Praat-voiced
+  within 30 dB of the recording's 95th percentile; boundary margin masked;
+  other frames negative). In clean sessions only positives count inside
+  placements. Frames in pauses are negative.
+- **Truncated BPTT**:
+  - 48 slots × 8 s chunks (384 s of each 768 s batch);
+  - each slot holds one session, trained chunk by chunk with the GRU state
+    carried (detached), zero at the session start; a finished session is
+    replaced by a new one;
+  - each chunk gets 4 frames of lead-in audio, so the causal convolutions see
+    their real context; those outputs are dropped before the GRU;
+  - the loss is pooled over the crop and session frames.
+
+### B.3 Candidates
+
+- **A0**: r8a EMA 8,000 / 10,000 / 12,000 / 14,000 / 16,000 and r5-bighard
+  EMA 10,000, each as `plain`, `mean5`, `mean10`, `old5` and `old10`
+  (30 candidates).
+- **B**: the 20 EMA checkpoints of B.1, each as `plain` and `old10`
+  (40 candidates).
+- `meanT` / `oldT` as §3.1: copy a resets the GRU state at 2T, 4T, …, copy b
+  at T, 3T, … frames after the stream start (the session start for spliced
+  sessions). `oldT` takes the copy with the longer time since its reset;
+  before T both copies are the same run.
+
+### B.4 Selection files and scorer
+
+- **`infer_r3.py`**: GPU torch with TF32 off. Streams are batched (padding
+  only after a stream's end) and time-chunked through the streaming form, the
+  state carried. One pass writes every network's plain run and its copies.
+  Checked against round 2's files: plain within 6.8e-4 (round 2 ran with TF32
+  on), and max(c10a, c10b) equals round 2's staggered-reset files to the same
+  6.8e-4.
+- **`opselect_r3.py`**: the grid of §3.2 over three readings:
+  - fresh: the round-2 validation streams and the tuning 194;
+  - the one-room validation sessions (`r3/vsess`), with layer and stretch
+    membership by td = t − 40 ms − L·hop − 30 ms, as `seal.py counts`;
+  - round 2's spliced sessions (seed 20261007, ≥ 10 min), reported only.
+- **Scorer checks**:
+  - `--selftest`: 0 mismatches against score.py's functions;
+  - the fresh and spliced grids of a round-2 candidate reproduce round 2's
+    `opselect.py` JSON at all 1,152 points (max difference 3e-14);
+  - the session reading reproduces R3-A.6's 151,930 FALSE hops in ≥ 10 s
+    stretches.
+- **V4 in the rule**: WASM cost is measured per architecture (plain GRU,
+  leak) × copies (1, 2) with `wasm_bench.mjs` (Node, onnxruntime-web 1.30.0,
+  1 thread). Candidates of one architecture and copy count share one measured
+  cost (the same graph). The cost tie-break of §3.4 therefore separates only
+  different architectures or copy counts; otherwise the next tie-break
+  (val-negatives V2) applies.
+- **Deployable re-check** (as rounds 1–2): the chosen candidate's selection
+  files are re-made with its streaming ONNX file (onnxruntime CPU, 1 thread,
+  both copies if the rule has two), and §3.4 is re-run on them for that
+  candidate. The frozen point is that pick, and the go / no-go (§3.5) uses
+  those numbers.
+
+### B.5 After the freeze (only on "go")
+
+The freeze commit (`candidate-r3.json` with hashes, the selection table) is
+pushed first. Only after that, and only on "go" (§3.5), does the frozen
+runner write probability files, without scoring them:
+
+- the 4,305 harness streams, fresh, and the harness spliced run (seed
+  20261008, 20 min);
+- the confirmatory `cvoice`, `cneg`, `cmix20` and `cmix0` (fresh), `csess`
+  (one run per session, the state carried through it) and the confirmatory
+  spliced run (seed 20261011, 20 min).
+
+That runner is part of the look and is the only step that sets
+`VAD_R3_LOOK=1`. On "no-go" no harness or confirmatory stream is read.
+
+### B.6 Open
+
+- **Q2 (trills)** is still the user's decision. Training and selection do not
+  depend on it; the look's verdict does.

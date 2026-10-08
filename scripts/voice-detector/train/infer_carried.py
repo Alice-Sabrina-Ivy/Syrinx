@@ -100,7 +100,7 @@ def main():
     if "onnx" in A:
         if "stagger" in A:   # round 2, Addendum F: staggered state reset (stagger.py), T seconds
             from stagger import OnnxStagger
-            engs = [OnnxStagger(A["onnx"], float(A["stagger"]), int(A.get("chunk", "8")))]
+            engs = [OnnxStagger(A["onnx"], float(A["stagger"]), int(A.get("chunk", "8")), A.get("combine", "max"))]
         else:
             engs = [OnnxEngine(A["onnx"], int(A.get("chunk", "8")))]
     else:

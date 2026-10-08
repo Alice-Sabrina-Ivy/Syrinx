@@ -8,11 +8,17 @@
 # than 2T of history, inside the 4-32 s training crops for T <= 15 s.
 # A deployed gate runs the model twice per capture chunk (twice the WASM cost).
 #
+# Round 3 (pre-registration 2026-10-07 §3.1): `combine` = "max" (round 2),
+# "mean" (A-mean-T: p = (p_A + p_B) / 2) or "old" (A-old-T: p = the copy whose
+# time since its last reset is >= T, i.e. the older history; before T both
+# copies are the same run).
+#
 # Engines: Torch (training checkpoint, GPU, chunked through model.Streaming)
 # and ONNX (the exported streaming model, onnxruntime CPU, the deployable file).
 import numpy as np
 
 import model as M
+from infer import chunk_of
 from tcommon import HOP, OFF
 
 
@@ -26,11 +32,26 @@ class _Base:
     def run_copy(self, x16, resets):
         raise NotImplementedError
 
+    combine = "max"
+
     def __call__(self, x16):
         n = (len(x16) + OFF) // HOP
         pa = self.run_copy(x16, reset_frames(n, self.T, 0))
         pb = self.run_copy(x16, reset_frames(n, self.T, 1))
+        return combine(pa, pb, self.T, self.combine)
+
+
+def combine(pa, pb, T_frames, how):
+    if how == "max":
         return np.maximum(pa, pb)
+    if how == "mean":
+        return (0.5 * (pa.astype(np.float64) + pb)).astype(np.float32)
+    if how == "old":
+        i = np.arange(len(pa))
+        age_a = i % (2 * T_frames)
+        age_b = np.where(i < T_frames, i, (i - T_frames) % (2 * T_frames))
+        return np.where(age_a >= age_b, pa, pb)
+    raise ValueError(how)
 
 
 class TorchStagger(_Base):
@@ -69,7 +90,8 @@ class TorchStagger(_Base):
 
 
 class OnnxStagger(_Base):
-    def __init__(self, path, T_sec, chunk=8):
+    def __init__(self, path, T_sec, chunk=8, combine="max"):
+        self.combine = combine
         import onnxruntime as ort
         o = ort.SessionOptions()
         o.inter_op_num_threads = 1
@@ -81,6 +103,9 @@ class OnnxStagger(_Base):
         self.shapes = {i.name: i.shape for i in self.s.get_inputs()}
         self.T = int(round(T_sec * 1000 / 12.5))
         self.chunk = chunk
+        self.fixed = int(meta.get("fixed_frames", 0))
+        if self.fixed:
+            self.chunk = self.fixed
 
     def run_copy(self, x16, resets):
         n = (len(x16) + OFF) // HOP
@@ -98,9 +123,11 @@ class OnnxStagger(_Base):
             m = min(self.chunk, nxt - i)
             a = ctx0 + i * HOP
             feed = dict(st)
-            feed["chunk"] = xp[a:a + m * HOP][None]
+            if self.fixed and m < self.fixed:     # fixed chunk: resets fall on even frames, so only the stream end is short
+                assert nxt == n, "a reset inside a fixed chunk"
+            feed["chunk"] = chunk_of(xp, a, m, self.fixed)
             r = self.s.run(None, feed)
-            out[i:i + m] = r[0][0]
+            out[i:i + m] = r[0][0][:m]
             for k, nm in enumerate(names):
                 st[nm] = r[k + 1]
             i += m

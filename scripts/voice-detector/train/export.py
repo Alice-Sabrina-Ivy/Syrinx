@@ -10,6 +10,10 @@
 #          same order (ctx_out, s0_out, s1_out, s2_out, h_out).
 # Metadata: hop_ms, first_avail_ms, frame_ms, training run / step, sha256 of
 # the checkpoint's state dict.
+# Round 3: a model with a GRU state decay (cfg leak_tau, model.py) is exported
+# with the recurrence unrolled per frame (one ONNX GRU op per frame on lam * h),
+# so its chunk is FIXED at 2 frames (400 samples = one 25 ms capture chunk;
+# metadata fixed_frames = 2); the check runs it with chunk 2 only.
 #
 #   <venv>/python export.py --ckpt=PATH --out=FILE.onnx [--check=8]
 import hashlib
@@ -29,13 +33,15 @@ A = args()
 
 def export(ckpt, out):
     net, ck = M.load_ckpt(ckpt)
+    fixed = net.lam != 1.0
+    net.unrolled = fixed
     st = M.Streaming(net).eval()
     init = st.init_state()
     chunk = torch.zeros(1, 2 * M.HOP)
     names_in = ["chunk", "ctx", "s0", "s1", "s2", "h"]
     names_out = ["p", "ctx_out", "s0_out", "s1_out", "s2_out", "h_out"]
     torch.onnx.export(st, (chunk, *init), out, input_names=names_in, output_names=names_out, opset_version=17,
-                      dynamic_axes={"chunk": {1: "S"}, "p": {1: "N"}}, do_constant_folding=True, dynamo=False)
+                      dynamic_axes=None if fixed else {"chunk": {1: "S"}, "p": {1: "N"}}, do_constant_folding=True, dynamo=False)
     import onnx
     m = onnx.load(out)
     buf = io.BytesIO()
@@ -43,6 +49,9 @@ def export(ckpt, out):
     meta = {"hop_ms": str(HOP_MS), "first_avail_ms": str(FIRST_AVAIL_MS), "frame_ms": str(net.frame_ms), "cfg": json.dumps(net.cfg),
             "run": str(ck.get("args", {}).get("name")), "step": str(ck.get("step")), "state_sha256": hashlib.sha256(buf.getvalue()).hexdigest(),
             "licence": "MIT", "what": "Syrinx custom voice-vs-machine detector (scripts/voice-detector/train)"}
+    if fixed:
+        meta["fixed_frames"] = "2"
+        meta["leak_tau"] = str(net.cfg["leak_tau"])
     for k, v in meta.items():
         e = m.metadata_props.add()
         e.key, e.value = k, v
@@ -59,7 +68,8 @@ def check(net, onnx_path, n_streams=8):
     ms = list_streams(VAL, ["vvoice", "vneg"])
     pick = [ms[int(k * len(ms) / n_streams)] for k in range(n_streams)]
     worst = 0.0
-    for chunk in (1, 2, 8):
+    net.unrolled = False
+    for chunk in ((2,) if net.lam != 1.0 else (1, 2, 8)):
         eng = OnnxEngine(onnx_path, chunk)
         for m in pick:
             x, sr = load_audio(m)

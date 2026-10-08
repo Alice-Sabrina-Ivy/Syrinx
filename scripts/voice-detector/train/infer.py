@@ -56,6 +56,9 @@ class OnnxEngine:
         self.frame_ms = float(meta.get("frame_ms", "nan"))
         self.inputs = [i.name for i in self.s.get_inputs()]
         self.shapes = {i.name: i.shape for i in self.s.get_inputs()}
+        self.fixed = int(meta.get("fixed_frames", 0))
+        if self.fixed:                        # round 3: a leak model's ONNX file runs a fixed chunk
+            self.chunk = self.fixed
 
     def __call__(self, x16):
         n = (len(x16) + OFF) // HOP
@@ -72,13 +75,22 @@ class OnnxEngine:
             m = min(self.chunk, n - i)
             a = ctx0 + i * HOP
             feed = dict(st)
-            feed["chunk"] = xp[a:a + m * HOP][None]
+            feed["chunk"] = chunk_of(xp, a, m, self.fixed)
             r = self.s.run(None, feed)
-            out[i:i + m] = r[0][0]
+            out[i:i + m] = r[0][0][:m]
             for k, name in enumerate([nm for nm in self.inputs if nm != "chunk"]):
                 st[name] = r[k + 1]
             i += m
         return out
+
+
+def chunk_of(xp, a, m, fixed):
+    """The next m frames' samples [1, m * HOP]; a fixed-chunk model (round 3 leak export) gets a short chunk
+    zero-padded to its size (only the stream's last chunk: the padded frames are dropped, no later frame follows)."""
+    c = xp[a:a + m * HOP]
+    if fixed and m < fixed:
+        c = np.concatenate([c, np.zeros((fixed - m) * HOP, np.float32)])
+    return c[None]
 
 
 def cand_json(out_dir, name, frame_ms, threshold=0.5, hangover_ms=0.0, agg="last", v4=None, notes=""):
@@ -96,9 +108,9 @@ def main():
     outs = A["out"].split(",")
     sh, nsh = (int(v) for v in A.get("shard", "0/1").split("/"))
     if "onnx" in A:
-        if "stagger" in A:   # round 2, Addendum F: staggered state reset (stagger.py), T seconds
+        if "stagger" in A:   # round 2, Addendum F: staggered state reset (stagger.py), T seconds; round 3: --combine=max|mean|old
             from stagger import OnnxStagger
-            engs = [OnnxStagger(A["onnx"], float(A["stagger"]), int(A.get("chunk", "8")))]
+            engs = [OnnxStagger(A["onnx"], float(A["stagger"]), int(A.get("chunk", "8")), A.get("combine", "max"))]
         else:
             engs = [OnnxEngine(A["onnx"], int(A.get("chunk", "8")))]
     else:
