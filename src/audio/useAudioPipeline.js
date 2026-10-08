@@ -646,6 +646,10 @@ export function useAudioPipeline() {
             pushMlInference({
               tEpochMs: msg.ts,
               inferMs: msg.inferMs,
+              // speech detector's run time since the previous posted
+              // score (0 while the detector is not live; the first score
+              // and the first after a pause also carry unscored ticks)
+              vadMs: typeof msg.vadMs === "number" ? msg.vadMs : null,
               score: msg.score,
               confidence: msg.confidence,
             });
@@ -656,6 +660,15 @@ export function useAudioPipeline() {
           // voiced time and F0, not for the logit mean (heard-as.js).
           heardAsRef.current.addWindow({ audioMs: msg.audioMs, logit: null, mode: msg.mode, classified: false });
           if (typeof msg.audioMs === "number") audioClockRef.current = Math.max(audioClockRef.current ?? -Infinity, msg.audioMs);
+        } else if (msg.type === "speech-detector") {
+          // The utterance gate's speech detector (speech-detector.js):
+          // diag-only record of whether it loaded (setMlModel is a no-op
+          // without diag). On "error" the gate keeps running on pitch
+          // voicing, so there is nothing to show the user.
+          setMlModel({ speechDetector: msg.status, speechDetectorError: msg.message ?? null, speechDetectorSource: msg.source ?? null });
+          if (DIAG_ENABLED && msg.status === "error") {
+            pushError({ source: "mlWorker", where: "speech-detector", message: msg.message ?? "error", ts: Date.now() });
+          }
         } else if (msg.type === "inference-event") {
           // Diag-only: capture defensive-timeout events from the gender
           // worker into the errors ring so snapshots reveal hang frequency.

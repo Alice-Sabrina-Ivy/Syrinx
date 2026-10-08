@@ -11,7 +11,7 @@ their own licences; the MIT License does not apply to them.
 | React, React DOM | MIT | https://github.com/facebook/react |
 | Dexie.js | Apache-2.0 | https://github.com/dexie/Dexie.js |
 | Transformers.js (`@huggingface/transformers`) | Apache-2.0 | https://github.com/huggingface/transformers.js |
-| ONNX Runtime Web (bundled by Transformers.js) | MIT | https://github.com/microsoft/onnxruntime |
+| ONNX Runtime Web 1.26.0-dev.20260416-b7804b056c (`onnxruntime-web`): the JavaScript bundled with Transformers.js, plus its WebAssembly runtime files shipped with the app since 2026-10-07 (`ort-wasm-simd-threaded.asyncify.{mjs,wasm}`, and `ort-wasm-simd-threaded.{mjs,wasm}` for Safari, copied unmodified from the npm package into the build's `assets/`) | MIT — Copyright (c) Microsoft Corporation. The WebAssembly binaries also contain third-party components that ONNX Runtime lists in its [ThirdPartyNotices.txt](https://github.com/microsoft/onnxruntime/blob/main/ThirdPartyNotices.txt) | https://github.com/microsoft/onnxruntime |
 
 Build-time tools (Vite, Tailwind CSS, ESLint and plugins) are MIT-licensed and
 are not shipped in the built app.
@@ -22,6 +22,18 @@ are not shipped in the built app.
   [JaesungHuh/voice-gender-classifier](https://github.com/JaesungHuh/voice-gender-classifier)
   (MIT), fetched at runtime from Hugging Face
   (`Alice-Sabrina-Ivy/voice-gender-classifier-onnx-q8-v2`).
+- **Speech detector for the Perceived Voice meter.**
+  [Silero VAD](https://github.com/snakers4/silero-vad) v6.2.3
+  (`src/silero_vad/data/silero_vad.onnx` at tag v6.2.3, commit 5cd7945,
+  2,327,524 bytes, sha256
+  `1a153a22f4509e292a94e67d6f9b85e8deb25b4988682b7e174c65279d8788e3`) — MIT,
+  Copyright (c) 2020-present Silero Team. The unmodified file is fetched at
+  runtime from a byte-identical mirror on the project's Hugging Face
+  account (`Alice-Sabrina-Ivy/silero-vad-v6.2.3-onnx`, commit
+  `6c8942f41b1e6a85ef5b092537f0db565f099c49`, with Silero's LICENSE and a
+  model card that credits the upstream project), checked against that
+  sha256 before use, and kept in the browser's Cache Storage
+  (`src/ml/speech-detector.js`).
 - **Resonance lab models** (`public/resonance-lab/`: `vtln_warp.json`,
   `le_ens_h64.json`, `pnml_head.json`, `fv_model.json`) were trained or fitted
   on LibriSpeech dev-clean, and the reference bands in `reference.json` come

@@ -15,7 +15,11 @@ only. Every output goes to the gitignored `build/perceived-voice-gate/`
 | 4. gate replay | `replay.mjs --set=<set> [--variant=<name>] [--gate='{…}'] [--fresh=<ms>] [--clock=audio\|post]` | `replay/<set>.<variant>.jsonl`: verdicts, posted scores, the number / state on screen per 25 ms |
 | 5. metrics | `analyze.py <variant\|before> noise chan onset dyn held adv`, `analyze.py x sweep --variants=a,b,…` | tables on stdout, CSVs in `results/` |
 
-Sets: `chan` (LibriSpeech × 9 channel conditions), `noise` (100 public noise
+Sets: `chan` (LibriSpeech × 9 channel conditions; `jobs_chan.full.json` = all 38
+speakers × 12 conditions, the 38-speaker set of
+`measurements/low-voice-noise-2026-10-07.md`), `chandev` (the same builder over
+LibriSpeech dev-clean, its own seed, all 39 speakers × 12 conditions measured: that
+file's held-out set; needs the resonance lab's `r1_dev` manifest), `noise` (100 public noise
 clips), `voiced`, `vocalset`, `pvqd` (held phonation + PVQD speech), `dyn`
 (speaker changes), `ls` / `pv` (natural, F0-flattened and slowed speech), `vo`
 (vocadito singing). `ls`, `pv`, `vo` have no step 3: their replay is

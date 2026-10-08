@@ -31,6 +31,16 @@
 //   2 held    a held vowel: the meter must show "needs running speech",
 //             not a number, for most of the hold.
 //   3 noise   / 4 silence: the meter must show no number.
+// The meter's speech detector is checked too: on the first visit its
+// model is downloaded from SPEECH_DETECTOR.modelUrl (src/ml/speech-
+// detector.js; HF answers 302 and the CDN 200, so the check follows the
+// redirect chain); on the reload and in runs 2-4 (a new browser process
+// on the same profile) it is read from Cache Storage, with no download.
+// With --diag=1 the app is opened with ?diag=1: run 1 also reads the
+// diag snapshot (detector "ready", from the network, and it ran) and
+// prints inference + detector time per back-to-back hop (R3 of
+// measurements/low-voice-noise-2026-10-07.md); runs 2-4 check the
+// recorded source is "cache".
 // --viewport=landscape (890 x 360, a phone held sideways with its browser
 // bars): only the welcome and the question — both must scroll so their
 // buttons can be reached.
@@ -48,11 +58,13 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import puppeteer from "puppeteer-core";
+import { SPEECH_DETECTOR } from "../src/ml/speech-detector.js";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const arg = (k, d) => (process.argv.find((a) => a.startsWith(`--${k}=`)) ?? `=${d}`).split("=").slice(1).join("=");
 const WAV = { speech: arg("speech", ""), held: arg("held", ""), noise: arg("noise", ""), silence: arg("silence", "") };
 const VIEWPORT = arg("viewport", "desktop");
+const DIAG = arg("diag", "0") === "1";
 const OUT = path.join(arg("out", path.join(tmpdir(), "voice-direction-smoke")), VIEWPORT);
 const PORT = 4189;
 const CHROME = ["C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
@@ -119,12 +131,27 @@ async function open() {
   const errors = [];
   page.on("pageerror", (e) => errors.push(String(e)));
   page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
+  // Speech-detector model downloads (the gender worker's; Puppeteer
+  // reports dedicated-worker requests on the page). `start` = the URL that
+  // began the redirect chain (HF: modelUrl -> 302 -> CDN 200, and the CDN
+  // URL also names silero_vad.onnx in a query parameter).
+  const vadFetches = [];
+  page.on("response", (r) => {
+    const chain = r.request().redirectChain();
+    const start = chain.length ? chain[0].url() : r.url();
+    if (/silero_vad[^/]*\.onnx/.test(r.url()) || /silero_vad[^/]*\.onnx/.test(start)) vadFetches.push({ start, url: r.url(), status: r.status() });
+  });
   const cdp = await page.createCDPSession();
   await cdp.send("Emulation.setFocusEmulationEnabled", { enabled: true });
-  await page.goto(`http://localhost:${PORT}/Syrinx/`, { waitUntil: "domcontentloaded", timeout: 180000 });
+  await page.goto(`http://localhost:${PORT}/Syrinx/${DIAG ? "?diag=1" : ""}`, { waitUntil: "domcontentloaded", timeout: 180000 });
   await page.bringToFront();
-  return { page, errors };
+  return { page, errors, vadFetches };
 }
+// The detector model was downloaded from the pinned URL: every fetch
+// chain starts there, and one ends in HTTP 200.
+const vadFetchedOk = (f) => f.length > 0 && f.every((x) => x.start === SPEECH_DETECTOR.modelUrl) && f.some((x) => x.status === 200);
+const diagModel = (page) => page.evaluate(() => window.__syrinxDiag?.snapshot()?.mlModel ?? null);
+const pct = (a, q) => { const s = [...a].sort((x, y) => x - y); return s.length ? s[Math.min(s.length - 1, Math.floor(s.length * q))] : null; };
 
 const shot = (page, name) => page.screenshot({ path: path.join(OUT, `${name}.png`) });
 // The live-stats row (F0 | F2 + vocal weight | HNR + the weight note),
@@ -363,7 +390,7 @@ if (VIEWPORT === "landscape") {
 log("run 1: speech");
 await launch(WAV.speech);
 {
-  const { page, errors } = await open();
+  const { page, errors, vadFetches } = await open();
   await page.waitForFunction(() => document.body.innerText.includes("Welcome to Syrinx"), { timeout: 30000 });
   check("first visit: welcome shown first, question not yet", (await promptState(page)) === null);
   const w = await dialogInfo(page);
@@ -388,7 +415,8 @@ await launch(WAV.speech);
     tabbed.push(await page.evaluate(() => !!document.activeElement?.closest("[data-dialog=direction]")
       || document.activeElement === document.body));
   }
-  check("Tab never leaves the question for the page behind it", tabbed.every(Boolean), JSON.stringify(tabbed));
+  // (?diag=1 adds the focusable diag overlay outside the app, so skip there.)
+  if (!DIAG) check("Tab never leaves the question for the page behind it", tabbed.every(Boolean), JSON.stringify(tabbed));
   // What a user can do to the page behind: focus it (keyboard) or tap it.
   const behind = await page.evaluate(() => {
     const start = [...document.querySelectorAll("button")].find((x) => x.textContent.includes("Start Listening"));
@@ -433,6 +461,26 @@ await launch(WAV.speech);
     /text-green-400|text-neutral-200/.test(mcls ?? ""), mcls);
   const speechCounts = await sampleMeter(page, 10000);
   check("running speech: meter shows a number most of the time", share(speechCounts, "score") >= 0.6, JSON.stringify(speechCounts));
+  check("speech detector model downloaded from the pinned URL (first visit)", vadFetchedOk(vadFetches), JSON.stringify(vadFetches));
+  if (DIAG) {
+    const d = await page.evaluate(() => {
+      const s = window.__syrinxDiag?.snapshot();
+      return s ? { model: s.mlModel, inf: s.mlInferences.map((e) => [e.inferMs, e.vadMs, e.tEpochMs]).sort((a, b) => a[2] - b[2]) } : null;
+    });
+    // vadMs = detector time since the previous posted score (0 while the
+    // detector is not live; accumulates over unscored ticks), so keep
+    // back-to-back hops only: not the first score, previous < 220 ms
+    // earlier, vadMs > 0.
+    const inf = d?.inf ?? [];
+    const withVad = inf.filter(([, v, t], i) => i > 0 && t - inf[i - 1][2] < 220 && typeof v === "number" && v > 0);
+    check("diag: speech detector ready, from the network, and running (vadMs > 0 on back-to-back inferences)",
+      d?.model?.speechDetector === "ready" && d?.model?.speechDetectorSource === "network" && withVad.length > 0,
+      JSON.stringify({ status: d?.model?.speechDetector, source: d?.model?.speechDetectorSource, error: d?.model?.speechDetectorError, inferences: inf.length, withVad: withVad.length }));
+    const hop = withVad.map(([i, v]) => i + v);
+    console.log(`        diag: infer p50 ${pct(withVad.map(([i]) => i), 0.5)?.toFixed(1)} / p95 ${pct(withVad.map(([i]) => i), 0.95)?.toFixed(1)} ms; `
+      + `detector per hop p50 ${pct(withVad.map(([, v]) => v), 0.5)?.toFixed(1)} / p95 ${pct(withVad.map(([, v]) => v), 0.95)?.toFixed(1)} ms; `
+      + `infer + detector p95 ${pct(hop, 0.95)?.toFixed(1)} ms (n=${hop.length}; R3 budget 150 ms)`);
+  }
   check("F2 readout neutral (no resonance target)", /text-neutral-200/.test((await readoutClass(page, "F2")) ?? "text-neutral-200"));
   await shot(page, "04-masculine-speech");
   // Vocal weight under "More masculine": heavier-side zone once calibrated,
@@ -498,6 +546,23 @@ await launch(WAV.speech);
   await shotStats(page, "07c-gauge-feminine-info", (tip?.h ?? 0) + 16);
   await page.keyboard.press("Escape");
   await sleep(200);
+  // The Perceived Voice meter's explainer: opens on tap, discloses (in
+  // neutral words) that other voices / a TV are scored too, stays fully
+  // on screen, closes on Escape.
+  await page.evaluate(() => document.querySelector('button[aria-label="What does the perceived voice meter show?"]')?.click());
+  await sleep(300);
+  const mtip = await page.evaluate(() => {
+    const t = document.querySelector("[data-meter-info]");
+    if (!t) return null;
+    const r = t.getBoundingClientRect();
+    return { text: t.textContent, inView: r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight };
+  });
+  check("meter info: explainer opens on screen and says it works best with one talker (other voices, TV)",
+    !!mtip?.inView && /only one talking/.test(mtip.text) && /TV, radio or podcast/.test(mtip.text), JSON.stringify(mtip));
+  await shot(page, "07d-meter-info");
+  await page.keyboard.press("Escape");
+  await sleep(200);
+  check("meter info: Escape closes it", await page.evaluate(() => !document.querySelector("[data-meter-info]")));
 
   await page.evaluate(() => document.querySelector('button[title="Settings & Data"]').click());
   await sleep(500);
@@ -547,6 +612,9 @@ await launch(WAV.speech);
   const started = await again.page.waitForFunction(() => document.body.innerText.includes("Stop Listening"), { timeout: 30000 })
     .then(() => true, () => false);
   check("reload: Continue confirms AND starts listening (one tap per load)", started && (await promptState(again.page)) === null);
+  await waitModel(again.page);
+  await sleep(3000);
+  check("reload: speech detector model read from Cache Storage (no download)", again.vadFetches.length === 0, JSON.stringify(again.vadFetches));
   await shot(again.page, "11-reload-continue-listening");
   await again.page.close();
 
@@ -564,7 +632,7 @@ await launch(WAV.speech);
 for (const [run, wav, name] of [[2, WAV.held, "held"], [3, WAV.noise, "noise"], [4, WAV.silence, "silence"]]) {
   log(`run ${run}: ${name}`);
   await launch(wav);
-  const { page, errors } = await open();
+  const { page, errors, vadFetches } = await open();
   await page.waitForFunction(() => document.body.innerText.includes("What are you trying to sound like?"), { timeout: 30000 });
   await pickDirection(page, "feminine");
   await clickButton(page, ["Continue"]);
@@ -600,6 +668,12 @@ for (const [run, wav, name] of [[2, WAV.held, "held"], [3, WAV.noise, "noise"], 
     counts = await sampleMeter(page, 16000);
     await shot(page, "14-silence");
     check("silence: meter shows no number", share(counts, "score") === 0, JSON.stringify(counts));
+  }
+  check(`${name}: speech detector model read from Cache Storage in a new browser process (no download)`,
+    vadFetches.length === 0, JSON.stringify(vadFetches));
+  if (DIAG) {
+    const m = await diagModel(page);
+    check(`${name}: diag: speech detector ready, source "cache"`, m?.speechDetector === "ready" && m?.speechDetectorSource === "cache", JSON.stringify(m));
   }
   check(`no page errors (${name})`, errors.length === 0, errors.slice(0, 3).join(" | "));
   await page.close();

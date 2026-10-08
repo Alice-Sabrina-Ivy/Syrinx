@@ -42,6 +42,11 @@
 //                                                | "updating" | "scoring" |
 //                                                "pause" | "sustained"
 //                  { type: "inference-event", event: "timeout", durationMs, ts }
+//                  { type: "speech-detector", status: "ready"|"error", message? }
+//                                                the utterance gate's speech
+//                                                detector (speech-detector.js);
+//                                                on "error" the gate keeps
+//                                                running on pitch voicing
 //
 // (The main thread tears workers down via Worker.terminate(); there is
 // no graceful "stop" message — calls were never wired up.) Since the cue
@@ -52,9 +57,18 @@
 // (no VAD gate, no EMA, no postMessage). Always populated when the
 // caller passes diag:true, included in the snapshot via diag.js's
 // mlInferences ring; mobile-diag-capture surfaces median/p95/p99
-// for the 150 ms hop-budget check.
+// for the 150 ms hop-budget check. With diag on, score messages also
+// carry `vadMs`: the speech detector's run time since the previous
+// posted score (the added work that shares the 150 ms hop). It is 0 while
+// the detector is not live, and it accumulates over ticks that post no
+// score, so the first score and the first after a pause carry more than
+// one hop's worth; per-hop summaries keep back-to-back scores only.
 
 import { pipeline, env } from "@huggingface/transformers";
+// The same onnxruntime-web module instance Transformers.js runs on (it
+// imports "onnxruntime-web/webgpu"), so the speech detector shares its
+// WASM runtime and env (wasmPaths) instead of loading a second one.
+import * as ort from "onnxruntime-web/webgpu";
 import {
   createStreamingResampler,
   RingWindow,
@@ -69,10 +83,18 @@ import {
   classifyDue,
 } from "./audio-utils.js";
 import { createUtteranceGate, decideMlWindow } from "./utterance-gate.js";
+import { SPEECH_DETECTOR, createSpeechFramer, createSileroRunner, loadVerifiedModel } from "./speech-detector.js";
+import { pointOrtAtAppRuntime } from "./ort-runtime-files.js";
 
 // We don't ship the model in the bundle — fetch from the Hub at runtime.
 env.allowRemoteModels = true;
 env.allowLocalModels = false;
+// The ONNX Runtime WebAssembly runtime ships with the app (2026-10-07);
+// Transformers.js points it at jsDelivr on import, so re-point it here,
+// before either session is created. One env for both the voice model and
+// the speech detector (same onnxruntime-web instance, see above).
+// measurements/self-hosted-ort-2026-10-07.md
+pointOrtAtAppRuntime(env.backends.onnx.wasm);
 
 // 0.75-sec window at ~6.7 Hz design cadence. ECAPA-TDNN q8 inference
 // at this window length runs ~52 ms median on desktop browser WASM
@@ -177,6 +199,20 @@ const silenceTracker = new SilenceTracker();
 // meter blank). No audio time yet = "stale" (amplitude fallback).
 const gate = createUtteranceGate({ windowMs: WINDOW_SECONDS * 1000 });
 let audioNowMs = null;                  // contextTime (ms) of the newest chunk
+// Speech detector (speech-detector.js, low-voice-noise candidate
+// "voice-detector-gate", measurements/low-voice-noise-2026-10-07.md):
+// Silero VAD on the same 16 kHz stream, one probability per 32 ms frame,
+// fed to the gate as noteSpeech hints on the audio clock. While it is
+// live the gate asks IT whether someone is speaking; pitch voicing then
+// only shapes the held-note test. Until it is loaded (or if it fails)
+// the gate runs on pitch voicing alone, as before.
+let speechRunner = null;
+const speechFramer = createSpeechFramer();
+let vadMsSinceInfer = 0;                // diag: detector time since the last inference
+// Capture chunks are processed strictly in order (the detector is
+// async): resample, window, detector frames -> gate, then maybeInfer, so
+// every decision sees the detector frames of all audio up to "now".
+let chunkChain = Promise.resolve();
 let lastVoiceState = null;
 let lastGateMode = null;                // "gated" | "fallback"
 
@@ -299,8 +335,9 @@ async function maybeInfer() {
       audioMs: windowAudioMs,
       spanId: d.spanId,
       mode: d.mode,
-      ...(_diag ? { inferMs } : {}),
+      ...(_diag ? { inferMs, vadMs: vadMsSinceInfer } : {}),
     });
+    vadMsSinceInfer = 0;
   } catch (err) {
     if (err instanceof InferenceTimeoutError) {
       // Classifier hung past INFERENCE_TIMEOUT_MS. Don't trip modelStatus —
@@ -360,14 +397,48 @@ async function loadModel(modelId) {
   }
 }
 
+async function loadSpeechDetector() {
+  try {
+    // Cache Storage first (HF's resolve redirect is no-store and this
+    // worker is recreated on every start), sha256-checked either way.
+    const { bytes, source } = await loadVerifiedModel({ url: SPEECH_DETECTOR.modelUrl, sha256: SPEECH_DETECTOR.modelSha256 });
+    const session = await ort.InferenceSession.create(new Uint8Array(bytes), { executionProviders: ["wasm"] });
+    speechFramer.reset();
+    speechRunner = createSileroRunner(ort, session);
+    self.postMessage({ type: "speech-detector", status: "ready", source });
+  } catch (err) {
+    speechRunner = null;
+    self.postMessage({ type: "speech-detector", status: "error", message: String(err?.message || err) });
+  }
+}
+
+async function handleChunk(buffer, contextTime) {
+  const hasTime = typeof contextTime === "number" && Number.isFinite(contextTime);
+  if (hasTime) audioNowMs = contextTime * 1000;
+  const x16 = resample(new Float32Array(buffer));
+  ring.append(x16);
+  if (speechRunner && hasTime) {
+    try {
+      const t0 = _diag ? performance.now() : 0;
+      for (const f of speechFramer.push(x16, contextTime * 1000)) {
+        gate.noteSpeech({ ts: f.ts, p: await speechRunner.run(f.input) });
+      }
+      if (_diag) vadMsSinceInfer += performance.now() - t0;
+    } catch (err) {
+      // Detector broken: stop feeding it; the gate returns to pitch
+      // voicing once its speech hints are stale.
+      speechRunner = null;
+      self.postMessage({ type: "speech-detector", status: "error", message: String(err?.message || err) });
+    }
+  }
+  maybeInfer();
+}
+
 function attachAudioPort(port) {
   port.onmessage = (e) => {
     const { buffer, contextTime } = e.data;
     if (!buffer || !resample) return;
-    if (typeof contextTime === "number" && Number.isFinite(contextTime)) audioNowMs = contextTime * 1000;
-    const incoming = new Float32Array(buffer);
-    ring.append(resample(incoming));
-    maybeInfer();
+    chunkChain = chunkChain.then(() => handleChunk(buffer, contextTime)).catch(() => {});
   };
 }
 
@@ -380,6 +451,7 @@ self.onmessage = (e) => {
       _diag = msg.diag === true;
       resample = createStreamingResampler(inputSampleRate, TARGET_SAMPLE_RATE);
       loadModel(msg.modelId || DEFAULT_MODEL_ID);
+      loadSpeechDetector();
       break;
     case "audioPort":
       attachAudioPort(msg.port);

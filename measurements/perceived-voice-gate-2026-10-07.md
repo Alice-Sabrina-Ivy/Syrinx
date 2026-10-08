@@ -173,7 +173,7 @@ speaker's own utterance takes over.
 | speaking-time coverage | women before | women after | men before | men after |
 |---|---|---|---|---|
 | clean-ish (clean, −20 dB, phone, laptop, reverb) | 98.2 % | 92.0 % | 97.9 % | 89.9 % |
-| noisy (pink 0 dB, real 10 / 0 dB) | 98.6 % | 89.4 % | 98.8 % | **76.8 %** |
+| noisy (pink 0 dB, real 10 / 0 dB) | 98.6 % | 89.4 % | 98.8 % | **76.8 %** (superseded: see the speech-detector update below) |
 | PVQD speech portions (time with a number) | 99.0 % | 92.6 % | 99.0 % | 88.1 % |
 
 "Before" was near 100 % because stale values were held through every
@@ -216,6 +216,29 @@ retired gate showed a number regardless (stale values), so this is a new
 asymmetry in what is *shown*; CLAUDE.md requires gender-symmetric ship
 metrics, so it is the user's call before a PR. A dedicated voice detector
 would help both this and the noise figures.
+
+**Update 2026-10-07: resolved by the speech-detector gate (adopted).**
+The meter's utterance gate now asks a speech detector (Silero VAD v6.2.3,
+`src/ml/speech-detector.js`) whether someone is speaking. Pitch voicing
+still drives the held-note test. This was measured on the wider 38-speaker
+set (37 talkers scored: 19 women, 18 men; ls672 excluded as in the rule;
+same noisy conditions) and on a held-out set
+([low-voice-noise-2026-10-07.md](low-voice-noise-2026-10-07.md)).
+
+| 38-speaker set, noisy | pitch gate (above) | speech-detector gate |
+|---|---|---|
+| women's coverage | 89.9 % | 93.3 % |
+| men's coverage | 80.0 % | 94.8 % |
+| the 94 / 100 Hz voices | 58.6 % | 95.1 % |
+| noise-only time with a number | 22.3 % | 0.13 % |
+
+- Clean-ish coverage rises for both sexes.
+- The held-out set agrees.
+- That rule's recorded verdict is FAIL on one guard: held-out women at
+  real noise 10 dB, −0.59 pp against a −0.5 pp tolerance. The user
+  overrode it.
+
+The per-speaker table above is the pitch gate's.
 
 ### Onset: what the first number says
 
@@ -356,10 +379,17 @@ running speech" through each hold, never a number; running speech (a man,
 - **Later first number** (~0.5 s after onset instead of ~0.15 s) — the
   price of not scoring pre-onset audio.
 - **Men lose more coverage than women in heavy noise** (77 % vs 89 % at
-  0–10 dB SNR; the two lowest voices 56–61 %) — open, see above.
+  0–10 dB SNR; the two lowest voices 56–61 %). **Superseded 2026-10-07:**
+  the speech-detector gate brings men to 94.8 % and women to 93.3 % on the
+  38-speaker set (see above).
 - **Noise false voicing**: 22 % of noise-only time still shows a number
   (25 % any non-blank state), where the pitch trace also shows a voice.
-- **Other people's speech is scored** (babble lead 58 %).
+  **Superseded 2026-10-07:** 0.13 % with the speech-detector gate.
+- **Other people's speech is scored** (babble lead 58 %). This still holds
+  with the speech-detector gate for chatter and TV voices at normal
+  levels. Quiet chatter improves: at −30 dB, 97 → 0 % of chatter-only
+  time shows a number. See the Decision section of
+  [low-voice-noise-2026-10-07.md](low-voice-noise-2026-10-07.md).
 - **Short phrases** under ~0.5 s (single words) get "updating…" but no
   score — the meter is a running-speech readout.
 - **Melodic singing** mostly scored; **flat-intonation speech** can show

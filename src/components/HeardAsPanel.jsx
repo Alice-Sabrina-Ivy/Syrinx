@@ -55,6 +55,15 @@ export const HEARD_AS_CAVEAT =
   "resonance and it shows a bigger change than listeners would hear — sometimes by more than half of " +
   "them — in either direction. Listener groups disagree a lot. Adults' speaking voice only.";
 
+// User decision B (2026-10-07): disclose, in neutral words, that it can't
+// tell the user's voice from another voice nearby. The speech detector and
+// the classifier score whichever voice they hear — the follow-up probes in
+// measurements/low-voice-noise-2026-10-07.md found a nearby voice (a person,
+// a TV, a podcast) scored as if it were the user's, whichever sex.
+export const ONE_TALKER_TEXT =
+  "It works best when you're the only one talking: it can't tell your voice from someone else's nearby, " +
+  "or from a TV, radio or podcast, and it guesses for whichever voice it hears.";
+
 const REASONS = {
   loading: (p) => `Loading voice model… ${p} %`,
   error: () => "Unavailable — the voice model didn't load",
@@ -252,6 +261,7 @@ export function HeardAsPanel({
       </p>
       {more && (
         <ul className="mt-1 text-[11px] leading-snug text-neutral-400 list-disc pl-4 space-y-0.5" data-heard-as-more="">
+          <li data-heard-as-one-talker="">{ONE_TALKER_TEXT}</li>
           <li>Typical voices are shown further from the ends than listeners put them: clearly feminine and clearly masculine voices look less clear-cut here than they are.</li>
           <li>Within clearly feminine or clearly masculine voices it does not track small changes — use the cue strip for those.</li>
           <li>It uses only your pitch and a voice classifier; it ignores intonation, vocal weight and articulation.</li>
