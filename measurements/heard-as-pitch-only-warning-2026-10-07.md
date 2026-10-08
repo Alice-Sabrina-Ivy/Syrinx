@@ -6,6 +6,10 @@
 > expressive reader can see it on up to 17.5 % of updates depending on where
 > the session starts. "Passes" below applies to the round-1/2 data only. The
 > panel's "More" list says it does not catch every case.
+>
+> **Update 2026-10-08 (§8.3):** the post-hoc steadier start reference D2-0.1
+> failed its pre-registered confirmation on 66 fresh LibriSpeech
+> train-other-500 readers (2 of 10 checks), so the shipped rule S0 is kept.
 
 The experimental, opt-in "Likely heard as" panel follows pitch more than
 listeners do. When a voice changes pitch without changing resonance, the panel
@@ -529,6 +533,105 @@ Adopting D2-0.1 would need a fresh confirmation set and a measurement note
 before any code change (hard rule 3). The tests it would need are listed in
 the study's result record.
 
+### 8.3 D2-0.1 on fresh speakers — pre-registered confirmation FAILED; S0 kept (2026-10-08)
+
+User decision 3 (2026-10-08): confirm D2-0.1 on recordings no Syrinx study
+has used, and ship it only if it passes. The pre-registration is reproduced
+verbatim in Appendix B (sha256
+`73850d11694d78c93bd3bc8c89639114ffda6f71d0328ae7aa4e5704ef83fa45`,
+recorded in scratch at 2026-10-08T03:38:15-05:00, before any chain output on
+this data and before either rule was evaluated on it). The bar is fixed
+there: 10 checks (2 sexes × 5), all required.
+
+**Data.** LibriSpeech train-other-500 (CC BY 4.0), Hugging Face parquet copy
+`openslr/librispeech_asr`, shards 0000–0005 (108 speakers). 42 speakers
+whose id appears anywhere in earlier Syrinx study material were excluded
+(deliberately over-inclusive). Mechanical selection: ≥ 330 s of audio, first
+33 per sex by speaker id — **33 women, 33 men**, 856 sessions (66 `nat`,
+64 `off`, 528 `hcs`, 198 `picka`). Chain: `cue-strip` @ adf19c3 (speech
+detector in the gender worker, V200 voiced-window rule, 450 ms classifier
+hop), driven by the steady study's harness plus the Silero detector fed as
+the gender worker feeds it; `evaluate.py` byte-identical to the steady
+study's. A JS version of D2-0.1 in `pitch-only-warning.js` (scratch only,
+not committed) matches the Python rule on all 50,150 ticks for both rules,
+so the result is the rule's, not the implementation's.
+
+**Verdict: FAIL — 2 of 10 checks fail.**
+
+| Check (per sex) | Bar | Women: S0 → D2-0.1 | Men: S0 → D2-0.1 |
+|---|---|---|---|
+| 1. Worst start, every expressive reader | ≤ 15 % | 2.6 → 1.3 % ✓ | 74.7 → **30.3 %** ✗ (reader 6652) |
+| 2. Natural false alarms (reader-balanced) | ≤ 2 % | 0.46 → 0.22 % ✓ | 4.06 → 1.79 % ✓ |
+| 3. Hits ≤ 10 s, Meyer reference (female base / male base) | ≥ S0 − 0.05 | 0.862 → **0.800** ✗ (bar 0.8115; n = 65) | 0.833 → 0.806 ✓ (bar 0.783; n = 36) |
+| 4a. Together false alarms | ≤ S0 + 2 pp | 2.32 → 2.15 % ✓ | 1.18 → 1.18 % ✓ |
+| 4b. Resonance-only false alarms | ≤ S0 + 2 pp | 0 → 0 % ✓ | 0 → 0 % ✓ |
+
+Row 3 is by base voice (female base = pitch lowered, male base = pitch
+raised); the other rows are by reader sex. S0 against the same bar, as a
+description: it fails check 1 for men (74.7 %) and check 2 for men (4.06 %).
+
+Full table, S0 → D2-0.1 (male base / female base, or women / men):
+
+| | S0 | D2-0.1 |
+|---|---|---|
+| Hits ≤ 10 s, Meyer (primary) | 0.833 / 0.862 | 0.806 / 0.800 |
+| Hits ≤ 10 s, Jebens (n 36 / 52) | 0.833 / 0.885 | 0.806 / 0.827 |
+| Hits ≤ 10 s, Nagels (n 36 / 75) | 0.833 / 0.867 | 0.806 / 0.813 |
+| Hits ≤ 14 s | 0.861 / 0.954 | 0.861 / 0.923 |
+| Median time to first warning | 6.4 / 8.0 s | 6.6 / 8.4 s |
+| Persistence | 0.937 / 0.944 | 0.937 / 0.902 |
+| Natural FA, women / men | 0.46 / 4.06 % | 0.22 / 1.79 % |
+| Per-reader max natural FA, women / men | 7.9 % (3479) / 54.0 % (6652) | 3.6 % (3179) / 30.3 % (6652) |
+| Worst start, expressive readers, max W / M | 2.6 / 74.7 % | 1.3 / 30.3 % |
+| Worst start, expressive readers, mean W / M | 0.63 / 15.9 % | 0.16 / 6.0 % |
+| Together W / M | 2.32 / 1.18 % | 2.15 / 1.18 % |
+| Resonance only W / M | 0 / 0 % | 0 / 0 % |
+| Vocoder control W / M | 0.62 / 3.08 % | 0.07 / 1.57 % |
+| Flash after a together shift W / M | 15.9 / 31.8 % | 12.9 / 25.8 % |
+| FA in the baseline phase of shift sessions W / M | 0.41 / 0.87 % | 0.41 / 0.50 % |
+
+Expressive readers (chosen from posted pitch only, before either rule ran),
+false-alarm share at starts k = 0, 1, 2, 3, 5:
+
+| Reader | S0 | D2-0.1 |
+|---|---|---|
+| M 6652 | 53.9, 39.0, 14.3, 61.7, 74.7 | 30.3, 19.5, 11.7, 8.6, 10.8 |
+| M 6482 | 20.0, 24.7, 24.0, 19.2, 5.2 | 9.3, 11.0, 9.3, 3.8, 5.2 |
+| M 7009 | 7.3, 6.4, 3.7, 2.4, 14.0 | 1.2, 2.6, 1.2, 1.2, 1.2 |
+| M 3238 | 3.7, 4.2, 4.2, 12.0, 4.1 | 3.7, 4.2, 2.8, 2.7, 4.1 |
+| M 4172 | 1.8, 0, 0, 0, 0 | 0, 0, 0, 0, 0 |
+| M 8413, 5152, 8033 | 0 at every start | 0 at every start |
+| W 7514 | 1.2, 0, 0, 2.5, 0 | 1.2, 1.2, 1.3, 1.2, 0 |
+| W 4959 | 2.6, 0, 0, 1.2, 1.2 | 0, 0, 0, 0, 0 |
+| W 6853, 6943, 7387, 7255, 7250, 5233 | 0 at every start | 0 at every start |
+
+**Post hoc, descriptive only (not part of the bar):**
+- *Why female-base hits drop.* When the pitch moves gradually through the
+  first 4 st after the shift, the tracking reference follows it for a tick or
+  two, delaying the first warning by about 2 s — past the 10 s hit window.
+  Three of the lost sessions are PICKA (−6, 0); in one H&C PO session the
+  reference had drifted −1.9 st before the shift and the warning came about
+  10 s later.
+- *Why reader 6652 still fails.* About 20 % of his posted frames lie more than
+  6 st above his median, and his start reference lands anywhere from −4.3 to
+  +5.4 st from his session median depending on the start. Tracking at 0.1
+  roughly halves his false alarms but does not bring them under 15 %.
+- *S0's hits here (0.83 / 0.86)* are well above the test-other replication's
+  0.59 / 0.65 (§8.2). This run does not separate whether the chain (speech
+  detector, V200) or the data explains the difference; the panel text
+  ("on new voices it missed about 4 in 10") stays, as the conservative
+  figure.
+- *S0 on this data* would itself fail the men's natural-false-alarm bar
+  (4.06 %, driven by readers 6652 and 6482): a very expressive man can see the
+  warning on most updates (6652: 14–75 % depending on the start). This
+  extends §7's limit; it is not addressed here.
+
+**Decision.** D2-0.1 is not shipped. `src/ml/pitch-only-warning.js`,
+`PITCH_ONLY_WARNING` and the golden replay fixture are unchanged; nothing
+was re-tuned on this data. Every artefact (pre-registration, speaker lists,
+session outputs, `verdict.json`, `tables.md`, the JS draft and its parity
+check) stays in the study's scratch folder; only this summary is committed.
+
 ## Reproduce
 
 The study scripts are in `scripts/heard-as/pitch-only/`. Run them in an
@@ -701,4 +804,139 @@ baseline phase of shift sessions.
 Per sex everywhere; the Jebens / Nagels hit sensitivity; the start reference vs the reader's
 session median (st); flash after together shifts; time to first warning. Public data only;
 no private recordings.
+````
+
+## Appendix B. D2-0.1 confirmation pre-registration (verbatim)
+
+sha256 `73850d11694d78c93bd3bc8c89639114ffda6f71d0328ae7aa4e5704ef83fa45` (of the file below, as hashed in scratch
+at 2026-10-08T03:38:15-05:00, before any chain output on its data). Paths in it refer to the study's scratch folder.
+
+````markdown
+# Pre-registration: confirming D2-0.1 for the pitch-only warning on new speakers
+
+Written 2026-10-08, **before any chain output on the data below and before either rule (S0, D2-0.1) has been
+evaluated on it.** The only chain output so far in this directory is `smoke.jsonl`: 8 s of LibriSpeech test-other reader
+6938, already used in the steady study. It was used only to check that the harness runs and matches
+`scripts/heard-as/chain.mjs` (`parity.mjs`: same posted pitch, same 16 classified window times). No rule was computed on it.
+
+**Question (user decision 3, 2026-10-08).** The 2026-10-07 steady-start study found no pre-registered winner. Post hoc,
+**D2-0.1** removed the start-offset false alarms for expressive readers (worst start 17.5 % → 0 % on test-other) and kept
+the shipped rule's hits. Does D2-0.1 hold up on speakers that no Syrinx study has used? Ship it only if it passes.
+
+## 1. Code under test and harness
+
+- Chain: branch `cue-strip` @ **adf19c3** (`git archive` → `snap/`; aggregate sha256 of the snapshot's file hashes
+  38008ec5…a521b0). Compared with the steady study's chain, this one adds the Silero speech detector in the gender
+  worker's utterance gate (voice-direction 25ad5e5) and the V200 voiced-window rule in `heard-as.js`
+  (`HEARD_AS_CALIBRATION.logitMinVoicedMs` 200; the harness checks this value and `ML_CLASSIFY_HOP_MS` 450 at startup).
+  It also has the resonance-perf engine (fft.js / sinc-resampler.js).
+- Harness `session.mjs` = the steady study's `session.mjs` with three changes. (1) It imports from the adf19c3 snapshot.
+  (2) It feeds the speech detector exactly as `gender-worker.js` handleChunk and `scripts/heard-as/chain.mjs` do: after
+  the relayed pitch hints, the chunk's 16 kHz resampler output goes through `createSpeechFramer`, and each 32 ms frame's
+  Silero probability goes to `gate.noteSpeech` before the 150 ms decision. The Silero file is checked against
+  `SPEECH_DETECTOR.modelSha256`; onnxruntime-web runs as WASM with 1 thread; each session gets a fresh framer and LSTM state.
+  (3) It loads the classifier and ORT from the cue-strip worktree's node_modules.
+  Everything else is unchanged: the real pitch worker, the gender worker's window schedule, the real utterance gate,
+  the 450 ms classifier hop, the deployed q8-v2 classifier, heard-as `estimate()`, the resonance worker path
+  (lab engine "frames" + `resonanceCue.js`), and a tick every 2 s of audio.
+- Rules are evaluated tick by tick in Python. `evaluate.py` is copied byte for byte from the steady study
+  (sha256 652dc467…3893); `features.py` is likewise unchanged. `evaluate_confirm.py` only applies the bar in §5.
+- File hashes at registration: session.mjs 8ccbfa83…5d9, build_jobs.py f4914280…f535, features.py 02f5786b…d4af635,
+  evaluate_confirm.py c19c2458…bac632, select_extract.py 9374b96c…c5e8, used_speakers.py 400bbfa0…532b,
+  used_speakers.json c10563f9…6a21, speakers.json fb3f6a0a…127d.
+
+## 2. Data: public speakers no Syrinx study has used
+
+**LibriSpeech train-other-500** (CC BY 4.0), from the Hugging Face parquet copy `openslr/librispeech_asr`,
+`all/train.other.500` shards 0000–0005 (108 speakers). No Syrinx study has used train-other-500 as a subset.
+
+**Exclusion** (`used_speakers.py` → `used_speakers.json`). A candidate is excluded if its id matches
+`<spk>[-_/]<2–6 digits>[-_/]`, `ls<spk>` or `/<spk>/` anywhere in:
+- every file and directory name under the scratchpad (all prior studies);
+- the voice-detector branch's `build/`, whose training and validation manifests list its LibriSpeech, VCTK and other
+  speakers;
+- cue-strip's measurements/, scripts/ and tests/;
+- the contents of every text file under 8 MB in those places, except the gap-bridge and vocal-weight per-frame dumps,
+  where only names are checked.
+
+The test is over-inclusive on purpose. It excludes 42 of the 108, including the LibriTTS-P study's readers
+(2237, 2407, 2491, 2748, 6627, 7138). Most other hits are coincidental numbers, for example in the Saarbrücken
+manifest; they are excluded anyway. VCTK is not used because the voice-detector training set contains almost all of
+its speakers. Common Voice is not used.
+
+**Selection** (`select_extract.py`, mechanical). Keep speakers that are not excluded and have ≥ 330 s of audio in the
+shards. Per sex, sort by speaker id and take n = min(#F, #M) = **33 women, 33 men**:
+- F: 3179 3290 3479 3564 3598 3647 4211 4225 4234 4280 4513 4959 4991 5233 5890 6087 6138 6227 6254 6549 6610 6853
+  6943 6967 6978 7012 7250 7255 7360 7387 7514 8148 8296
+- M: 3238 3665 3894 3912 4172 4480 4741 5118 5152 5245 5328 5791 6065 6184 6311 6356 6482 6652 6752 7009 7107 7307
+  7389 7502 7585 7823 8033 8273 8291 8367 8413 8587 9000
+
+Sex comes from `SPEAKERS.TXT`. Utterances are taken in corpus order (numeric sort of the file name) over the
+utterances present in the six shards. All 66 speakers form one set, `confirm`. There is no dev/test split: this is a
+single confirmatory evaluation of one fixed rule.
+
+**Sets** (`build_jobs.py`, the steady study's construction unchanged):
+
+| Set | Construction |
+|---|---|
+| `nat` | Every reader at offset 0: the first ≥ 180 s of utterances, with 0.25 s gaps. |
+| `off` | The expressive readers (§4) replayed from start offsets: skip the first k ∈ {1, 2, 3, 5} utterances, then ≥ 180 s. With offset 0 = `nat`, that is 5 starts per reader. |
+| `hcs` | The H&C sentence-proxy shift on every reader. Base = ≥ 50 s of natural speech (7.2 kHz low-pass). Shift = the next ≥ 40 s through WORLD (dio + stonemask) in four conditions: US (vocoder control), PO (pitch only), PE (pitch + envelope), EO (envelope only). Men's voices go up, women's go down (F0 × 1.7041, envelope × 1.168). Rep A starts at utterance 0. Rep B starts after the `nat` span, when ≥ 90 s remain. |
+| `picka` | PICKA cells on every woman, rep A, cells (ΔF0, ΔVTL st): pitch only (−6,0) and (−12,0); together (−6,+1.8) and (−12,+3.6); resonance only (0,+1.8) and (0,+3.6). |
+
+## 3. Inputs and the two rules
+
+Inputs, eligibility and display are the steady study's §3, unchanged:
+- Tick = 2 s. P8 = the panel's ln F0. ΔP_st = 12·(P8 − P0)/ln 2. Δu = u − startU.
+- An eligible tick is visible, has startU and u, fill ≥ 1, verdict ≠ "sustained", sinceResumeS ≥ 2, and a known
+  shipped P0 (≥ 20 voiced frames in [t_fill, t_start]).
+- The condition is |ΔP_st| ≥ 4 st AND |Δu| ≤ 0.6 u.
+- The warning shows when the condition holds on K = 2 consecutive shown eligible ticks. Hidden ticks are neutral; the
+  run is dropped after more than 5 hidden ticks in a row; a shown tick that is ineligible or fails the condition
+  drops the run.
+
+The two rules:
+- **S0 (shipped)**: P0 = ln median of the posted voiced frames in [t_fill, t_start], frozen.
+- **D2-0.1**: starts at S0's P0. After each shown eligible tick, and after that tick's decision: if |ΔP_st| < 4 st,
+  then P0 ← P0 + 0.1·(P8 − P0). Everything else is as in S0. This is `evaluate.py` configuration `D2-0.1`
+  (fam D, kind D2, a 0.1).
+
+## 4. Outcomes (steady study §4 definitions)
+
+- **Failure set.** Pitch-only sessions (`hcs` PO reps A and B; `picka` (−6,0) and (−12,0)) whose shown panel estimate
+  differs from the listener two-way share by ≥ 20 points. The shown estimate is the median share over visible ticks
+  with t ≥ t_shift + 10 s; sessions with fewer than 3 such ticks are excluded. Listener references: H&C MPO 65.7,
+  WPO 19.1; PICKA Meyer 2023 6.3 / 54.8 (primary); Jebens and Nagels as sensitivity checks. Male base = pitch
+  raised; female base = pitch lowered.
+- **Hit.** The warning is on at ≥ 1 tick in (t_shift, t_shift + 10 s], and it was off at the last eligible tick
+  at or before t_shift.
+- **Natural false alarms.** Per reader, the share of eligible ticks with the warning on in `nat` (offset 0).
+  Reported as the reader-balanced mean per sex.
+- **Expressive readers.** Per sex, the **8** `nat` readers with the widest spread of posted voiced F0 (q90 − q10 in st
+  over the whole offset-0 stream). They are chosen from posted pitch frames only (`evaluate_confirm.py expressive`),
+  before any rule is evaluated. Each reader's **worst-start share** is the maximum over its evaluable starts
+  (k = 0, 1, 2, 3, 5; a start with no eligible tick is skipped) of its natural false-alarm share.
+- **Together / resonance-only.** Together = `hcs` PE and `picka` (−6,+1.8), (−12,+3.6). Resonance only = `hcs` EO and
+  `picka` (0,+1.8), (0,+3.6). The outcome is the mean over sessions of the share of eligible ticks with
+  t ≥ t_shift + 10 s on which the warning is on. Reported per sex of the base voice.
+
+## 5. Pre-registered bar (all required, per sex; applied to D2-0.1 with S0 on the same sessions as reference)
+
+1. **Start-offset robustness**: every expressive reader's worst-start share ≤ 15 %. Women and men separately.
+2. **Natural false alarms** ≤ 2 % (reader-balanced mean). Women and men separately.
+3. **Hits non-inferior to S0**: D2-0.1 hits ≥ S0 hits − 0.05. Primary listener reference (Meyer), male base and
+   female base separately. The bar applies whatever the failure-set size; n is reported.
+4. **Together** false alarms ≤ S0 + 2 pp and **resonance-only** false alarms ≤ S0 + 2 pp. Women and men separately.
+
+Boundaries are inclusive (tolerance 1e-12). **PASS** means all 10 checks hold (2 sexes × 5). Otherwise **FAIL**, and
+D2-0.1 is not shipped. Nothing is re-tuned on this data: no other α, threshold or rule is evaluated for selection.
+Any further number is descriptive.
+
+## 6. Reported
+
+- Full tables for both rules: hits (Meyer, Jebens, Nagels), hit within 14 s, time to first warning, persistence,
+  natural false alarms (mean, maximum and argmax reader), offset detail per expressive reader, together, resonance-only
+  and vocoder-control shares, flash after together shifts, and the baseline phase of shift sessions.
+- S0 against the same bar, as a description only.
+- Public data only; no private recordings.
 ````
