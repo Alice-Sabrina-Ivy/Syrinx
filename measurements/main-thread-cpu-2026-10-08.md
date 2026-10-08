@@ -253,3 +253,41 @@ desktop 1280 × 800 68 / 68), and a confirmation run of the final build
 against base (1280 × 800, panel on, 2 × {woman, man} interleaved) gives
 258.4 → 113.8 ms/s, **−55.9 %** (woman 284.7 → 99.4, −65.1 %; man 256.3 →
 127.1, −50.4 %; workers +0.6 … +4.3 %, within noise; no task > 50 ms).
+
+### 2.5 Integration re-measure on `cue-strip` (2026-10-08, after the merge)
+
+`main-thread-perf` (201a1b4) was fast-forwarded into `cue-strip`; the D2-0.1
+confirmation failed, so no other code changed (fc2a207 is docs only). Desktop
+CPU per thread, re-measured with `scripts/resonance/chrome-cpu.mjs --diag=0`
+(the production URL, no overlay; 30 s Chrome trace after a 20 s warm-up;
+headless Chrome 154, 1280 × 800, ~150 Hz frames), base = `cue-strip` adf19c3,
+head = the integrated `cue-strip` build, interleaved base / head per run,
+2 runs × {LibriSpeech woman, man} per panel state (16 runs). Median ms of
+thread CPU per audio second:
+
+| | Main | App (main + 4 workers) | Pitch worker | DSP worker | Resonance worker | Gender worker | Compositor | Renderer threads total | GPU process |
+|---|---|---|---|---|---|---|---|---|---|
+| Panel off, base | 183.7 | 260.8 | 29.8 | 26.2 | 21.2 | — | 73.1 | 354.1 | 386.4 |
+| Panel off, head | **66.7** | **144.1** | 29.4 | 26.0 | 21.9 | — | 47.1 | 204.7 | 160.6 |
+| — cut | −63.7 % | −44.7 % | | | | | | | |
+| Panel on, base | 198.5 | 412.6 | 30.4 | 27.1 | 22.3 | 134.5 | 78.5 | 517.9 | 401.2 |
+| Panel on, head | **77.1** | **282.5** | 29.5 | 26.1 | 22.2 | 129.1 | 50.7 | 355.0 | 165.8 |
+| — cut | −61.2 % | −31.5 % | | | | | | | |
+
+Women / men separately (main thread, base → head): panel off 182.9 → 68.9
+(−62.3 %) / 184.6 → 66.7 (−63.9 %); panel on 198.5 → 74.7 (−62.4 %) /
+200.3 → 78.0 (−61.1 %). App total: panel off −43.6 / −45.1 %, panel on
+−31.1 / −31.4 %. Worker threads move by ≤ ±1.3 ms/s (noise; no worker code
+changed). Outside the renderer, the GPU process falls from ~390 to ~160 ms/s
+and the compositor thread from ~75 to ~48 — fewer frames to raster and
+composite. With the panel on, the gender worker (classifier + speech
+detector, ~130 ms/s) is now the largest single consumer, ahead of the main
+thread. The same caveat as §2.1 applies: headless Chrome draws ~150 frames
+per second, so on a 60 Hz display the base, and the absolute saving, is
+smaller. Run files: scratch only (`mainthread-warning/integrate/cpu/`).
+
+Checks on the integrated build: `npm run lint`, `npm run test:unit` (38 / 38),
+`npm run test:resonance-lab` (89 passed, 0 failed) and `npm run build` pass;
+`scripts/cue-strip-smoke.mjs --pitch-only=man,woman` passes 90 / 90 at every
+viewport (phone 448 × 890, p402 402 × 750, p360 360 × 690, landscape
+890 × 360, desktop 1280 × 800).
