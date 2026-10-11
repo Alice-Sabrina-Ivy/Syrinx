@@ -724,7 +724,7 @@ Process limits:
    (round 3 §7 Q1) is unchanged and not used. Registration-gated clinical
    corpora (round 3 §7 Q3) are not used.
 
-## Addendum R4-A — data step A, the sealed side (2026-10-11; in progress)
+## Addendum R4-A — data step A, the sealed side (2026-10-11)
 
 Written during data step A, **before any round-4 model exists**. No model of
 any round has run on a confirmatory stream; nobody listened to, plotted or
@@ -818,3 +818,97 @@ above — so the screen does not separate trills from straight tones.) Output:
 9. **Duplicates.** Against `r3/fp` (all earlier audio), the sealed set (A.2)
    and this step's kept clips; a match drops the clip and bans its group from
    this step.
+
+### A.5 §2.2 — the trill sources, in order, with the stop rule (part 2)
+
+Part 1 (A.1–A.4) was committed and pushed as 35848c9 before the first trill
+search. Each source was finished before the row was counted (`trills.py
+count`: `build_conf.py base`, the current-app dumps of the new `cvoice`
+streams with round 3's chain, src dd92037, ≤ 2 processes, then the row's
+CORRECT hops; aggregate only).
+
+| source | read | candidates / checked | kept | trills row after it (CORRECT hops) |
+|---|---|---|---|---|
+| (round 3) | — | — | 10 Commons IPA clips | 321 |
+| `c_tr4_fs` Freesound | 72 pages (24 queries × pages 1–3), 100 results, 0 page errors | 94 results removed by the cheap rules (59 id used before, 34 uploader used before, 1 title keyword); 5 candidates checked | **1** (bilabial trill, CC0, 2.1 s) | **351** |
+| `c_tr4_wc` Wikimedia Commons | 10 full-text searches + the one matching category, "Alveolar trill (IPA r)", at depth 1: 175 audio / video files | 9 round-3 IPA files and 3 files of earlier contributors skipped; 152 failed the metadata rules (no trill pattern, voiceless, keyword); 1 licence (BSD); 5 under 0.5 s Praat-voiced; 1 YAMNet screen | **4** (see below) | **835** |
+
+**Stop rule: the row reached ≥ 800 after `c_tr4_wc`, so the search
+stopped there.** The open research datasets (`c_tr4_ds`) and the Internet
+Archive (`c_tr4_ia`) were **not searched**. No clip matched only the
+other-SOVT pattern: that reported row is empty.
+
+The 5 new clips (all gender unknown; groups = 5 distinct new contributors):
+
+| id | label (metadata match) | licence | length |
+|---|---|---|---|
+| `c_tr4_fs__640420` | "bilabial trill" | CC0 1.0 | 2.1 s |
+| `c_tr4_wc__590259a2` | "alveolar trill" | CC BY-SA 3.0 (evaluation only) | 2.2 s |
+| `c_tr4_wc__8cf98655` | "alveolar trill" | CC BY 4.0 | 3.0 s |
+| `c_tr4_wc__c972f182` | "bilabial trill" | CC BY-SA 4.0 (evaluation only) | 0.9 s |
+| `c_tr4_wc__a488f3b5` | "Trilled R" | public domain | 37.2 s |
+
+**Flag for the user (before any look).** `c_tr4_wc__a488f3b5` is a Volta
+Laboratory glass-plate recording of 1885. Its file description says that its
+most recognisable content is "Mary Had a Little Lamb" and that "trilled R's"
+were frequent Volta Laboratory test phrases. Rule 1 matched that sentence,
+and rules 2–4 passed it (YAMNet human-vocal in 37 % of patches; 16.5 s
+Praat-voiced). It entered by the pre-registered rules, and the trill-modulation
+screen that might have stopped it was dropped by its own rule (A.3). Nobody
+listened to it. It is by far the longest new clip (the other four total
+8.3 s), so it very likely carries most of the 484 hops the Commons source
+added, and the stop rule very likely fired because of it. The four short IPA
+samples can add at most about 330 hops (8.3 s at 40 hops per second), so
+without it the row would be roughly 351–680 and the search would have gone on
+to the datasets and the Internet Archive. This file applies the rules as
+written: the clip stays and the row gates (835 CORRECT hops, gender unknown,
+pooled, ≥ 400). **The user decides before the look** whether to accept that,
+or to drop the clip as mislabelled by its metadata and resume §2.2 at source 3
+(`c_tr4_ds`, then `c_tr4_ia`, same rules and stop rule). The second option
+would mean a new blind re-seal (Addendum R4-A′) before any round-4 model is
+scored on validation data. Per-clip or per-source hop counts are not read
+before the look (§2.2 reports the per-source split at the look).
+
+### A.6 Re-seal (§2.3)
+
+- **Audit re-run** after the trill step (`audit_exclusions.py`): A — 1
+  violation, `c_fsv__716881`, now **dropped**; 0 kept violations; the ≤ 2 per
+  uploader cap holds. B — 7 rounds 1–2 records touch the sealed set, 0 kept
+  (the QuartzGate FSD50K clips, dropped for their licence). C and D as in
+  §1.2. Self-test PASS.
+- **New seal**: `scripts/voice-detector/r3/seal-confirmatory-r4.sha256`
+  (60,011 lines, 15.2 GB; sha256 `cee3e56b…bf1dd`), `seal-r4.json` (round 3
+  §1.6 counts, sources, licences; code commit ed38eb8), the updated
+  `conf-manifest.jsonl` (sha256 `6e57c59c…14e1`; `c_fsv__716881` dropped with
+  its reason; the 5 new records with licences and their metadata match).
+  Kept records 7,939 (round 3: 7,935; −1 dropped, +5 trills).
+- **Changes against round 3's seal**: `seal-r4-changes.json` — **6 removed**
+  (the dropped clip's two audio files, reference, Praat track and dump), **40
+  added** (the 5 new clips' audio, references and dumps; the trill search and
+  selection records; the backups of round 3's Freesound files and the §2.1
+  reports), **4 changed** (`dl/fs/candidates.json`, `dl/fs/selection.json`,
+  `manifest.jsonl`, `streams/cvoice.json`). No mix, session, noise stream or
+  other stream changed.
+- **Checks**: `seal.py verify --tag=r4` re-hashed every listed file, 0
+  mismatches. `seal.py verify-r3` re-hashed round 3's seal minus the listed
+  changes: 47,738 paths, 0 mismatches. (Both seal files list some paths twice
+  under two spellings of the same absolute path; round 3's has 47,748 unique
+  paths, round 4's 47,782. Every unique path was checked.)
+- **Set sizes** (current app, the §1.6 aggregate form): `cvoice` 5,941
+  streams / 13.68 h; `cneg` 191 / 3.52 h; `cmix20` and `cmix0` 764 each
+  (unchanged); `csess` 160 (unchanged). Trills row 835 CORRECT hops (unknown
+  gender, pooled).
+- **Licences of the kept set (7,939)**: CC BY 4.0 6,524; CC BY-NC-SA 4.0
+  1,086 and MTG-QBH 118 (evaluation only); CC0 141; CC BY-NC 3.0 / 4.0 46,
+  CC BY-SA 3.0 / 4.0 11 (evaluation only); CC BY 3.0 12; public domain 1.
+- **Training side**: `train_side.py build` rebuilt `r3/train_exclude.json`
+  from the new set (it now also takes every Freesound candidate of the trill
+  search): 522 groups, 581 Freesound ids, 431 uploaders, 48 LibriSpeech
+  speakers, 5 SingBAP participants (sha256 `9dea5dcf…e670`). `train_side.py
+  check`: none of the 88,460 rounds 1–2 records that is kept touches it (the
+  7 touching records are the dropped QuartzGate clips).
+
+**Status after data step A.** No model of any round has run on a
+confirmatory stream. The trills row gates under the rules as written, with
+the A.5 flag for the user. Data step B (the training side, Addendum R4-B)
+starts only after this addendum is pushed.

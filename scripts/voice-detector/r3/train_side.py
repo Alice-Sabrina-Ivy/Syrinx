@@ -45,11 +45,12 @@ def build():
             ex["librispeech_speakers"].add(r["speaker"])
         if r["source"] == "c_sbi" and r.get("participant"):
             ex["singbap_participants"].add(r["participant"])
-    sel = os.path.join(CONF, "dl", "fs", "candidates.json")
-    if os.path.exists(sel):                       # every Freesound result the confirmatory search read (kept or not)
-        c = json.load(open(sel, encoding="utf8"))
-        ex["freesound_ids"] |= {int(v["id"]) for v in c["cands"].values()}
-        ex["freesound_uploaders"] |= {v["user"] for v in c["cands"].values()}
+    for sub in ("fs", "tr4_fs"):                  # every Freesound candidate the confirmatory searches read (kept or not; round 4: the trill search too)
+        sel = os.path.join(CONF, "dl", sub, "candidates.json")
+        if os.path.exists(sel):
+            c = json.load(open(sel, encoding="utf8"))
+            ex["freesound_ids"] |= {int(v["id"]) for v in c["cands"].values()}
+            ex["freesound_uploaders"] |= {v["user"] for v in c["cands"].values()}
     out = {k: (sorted(v) if isinstance(v, set) else v) for k, v in ex.items()}
     write_json(P, out, indent=1)
     log("train_exclude.json:", {k: len(v) if isinstance(v, list) else v for k, v in out.items()})
