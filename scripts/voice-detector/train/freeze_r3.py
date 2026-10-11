@@ -51,7 +51,9 @@ def main():
         "name": MY["name"], "hop_ms": 12.5, "first_avail_ms": 12.375, "frame_ms": net.frame_ms, "lookahead_ms": 0,
         "threshold": best["thr"], "hangover_ms": best["hang"], "agg": best["agg"], "p_before_first": 0.0,
         "v4": {
-            "license": "MIT", "runtime": "onnxruntime-web-wasm", "model_bytes": os.path.getsize(MY["onnx"]),
+            "license": "MIT", "license_file": rel(os.path.join(os.path.dirname(MY["onnx"]), "LICENSE")),
+            "attribution_file": rel(os.path.join(os.path.dirname(MY["onnx"]), "ATTRIBUTION.md")),
+            "runtime": "onnxruntime-web-wasm", "model_bytes": os.path.getsize(MY["onnx"]),
             "wasm_ms_per_25ms": max(w["ms_per_25ms"] for w in wasm),
             "wasm_measured_on": "; ".join(f"{w['mode']}: {w['ms_per_25ms']:.3f} ms per 25 ms (wall {w['ms_per_25ms_wall']:.3f}), {w['copies']} run(s) per 25 ms, {w['runtime']}, {w['cpu']}" for w in wasm),
         },

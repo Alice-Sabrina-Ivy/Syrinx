@@ -1,0 +1,128 @@
+{
+ "name": "custom-vd-r3",
+ "hop_ms": 12.5,
+ "first_avail_ms": 12.375,
+ "frame_ms": 82.0,
+ "lookahead_ms": 0,
+ "threshold": 0.3,
+ "hangover_ms": 600,
+ "agg": "mean",
+ "p_before_first": 0.0,
+ "v4": {
+  "license": "MIT",
+  "license_file": "build/vad-train/model-r3/LICENSE",
+  "attribution_file": "build/vad-train/model-r3/ATTRIBUTION.md",
+  "runtime": "onnxruntime-web-wasm",
+  "model_bytes": 1485032,
+  "wasm_ms_per_25ms": 0.8465486725564427,
+  "wasm_measured_on": "node: 0.728 ms per 25 ms (wall 0.735), 1 run(s) per 25 ms, node v24.14.1, onnxruntime-web 1.30.0 (ort.node.min.mjs, wasm EP, 1 thread), 11th Gen Intel(R) Core(TM) i9-11900K @ 3.50GHz; chrome: 0.847 ms per 25 ms (wall 0.863), 1 run(s) per 25 ms, Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36; onnxruntime-web 1.30.0 (ort.wasm.min.mjs, wasm EP, 1 thread), 11th Gen Intel(R) Core(TM) i9-11900K @ 3.50GHz"
+ },
+ "deployment_rule": {
+  "rule": "plain",
+  "text": "one model, GRU state carried from the stream start, never reset",
+  "T_s": null,
+  "code": "scripts/voice-detector/train/stagger.py (combine), infer.py --onnx [--stagger=T --combine=mean|old]"
+ },
+ "model": {
+  "onnx": "build/vad-train/model-r3/custom-vd-r3.onnx",
+  "onnx_sha256": "1af5a357ff6072bf6d91321a3f4916301191787d9477a0779761f78dff00979b",
+  "checkpoint": "build/vad-train/train/runs/r9-sess-b/ckpt_ema_008000.pt",
+  "checkpoint_sha256": "2e88643931370017fce3f169c47f8e50241c74db8bb64eb81b94ef3ce61ebb3c",
+  "state_sha256": "e0a5a9dad3f556c586e11c063dc242078acb8e1ef5e5488c82b74c03fed6e9c9",
+  "params": 89257,
+  "run": "r9-sess-b",
+  "step": 8000,
+  "weights": "EMA (decay 0.999)",
+  "cfg": {
+   "n_mels": 64,
+   "convs": [
+    [
+     24,
+     3
+    ],
+    [
+     48,
+     3
+    ],
+    [
+     48,
+     1
+    ]
+   ],
+   "gru": 96,
+   "gru_layers": 1,
+   "fc": 64,
+   "fmin": 50.0,
+   "fmax": 7800.0,
+   "win": 512
+  }
+ },
+ "selection_deployable": {
+  "O": 51.92810168764122,
+  "agg": "mean",
+  "thr": 0.3,
+  "hang": 600,
+  "fresh": {
+   "clean speech": 0.22194119506797344,
+   "clean vowels": 0.28069635094743767,
+   "clean singing": 0.0,
+   "clean clinical": 0.26406302008210364,
+   "clean exercises": 0.07263870788557267,
+   "clean children": 0.47153923880094306,
+   "mix vmix20 +10": 0.2501188945449421,
+   "mix vmix20 +0": 0.9167950693374423,
+   "mix vmix0 +10": 0.38123947158436033,
+   "mix vmix0 +0": 1.0940687170521073,
+   "tune_v2": 51.92810168764122,
+   "vneg_v2": 74.95243626459455,
+   "worst_clean": 0.47153923880094306,
+   "worst_mix": 1.0940687170521073,
+   "onset_median_worst": 0.0
+  },
+  "vsess": {
+   "vs clean speech": 0.0,
+   "vs clean vowels": 0.0,
+   "vs clean singing": 0.0,
+   "vs clean clinical": 0.0,
+   "vs clean exercises": 0.012912746725696367,
+   "vs clean children": 0.03898635477582846,
+   "vs mix +10": 0.1332306347190707,
+   "vs mix +0": 1.2589677023141557,
+   "vs_v2": 75.02928980451524,
+   "vs_short": 25.697088445067873,
+   "vs_v2 fsd50k": 43.08367071524966,
+   "vs_v2 fstrain": 75.57410378046374,
+   "vs_v2 synthetic": 75.99172660760041,
+   "worst_clean": 0.03898635477582846,
+   "worst_mix": 1.2589677023141557,
+   "onset_median_worst": 0.0
+  },
+  "spl": {
+   "clean speech": 0.33449257034460955,
+   "clean vowels": 0.461993994078077,
+   "clean singing": 0.0,
+   "clean clinical": 0.0011095084877399313,
+   "clean exercises": 1.701312481751305,
+   "clean children": 1.0123930877989178,
+   "mix vmix20 +10": 0.11570354181397442,
+   "mix vmix20 +0": 0.14637904468412943,
+   "mix vmix0 +10": 0.1063924106747052,
+   "mix vmix0 +0": 0.30729290842141516,
+   "tune_v2": 35.68281938325991,
+   "vneg_v2": 41.153145214587546,
+   "worst_clean": 1.701312481751305,
+   "worst_mix": 0.30729290842141516,
+   "onset_median_worst": 0.0
+  }
+ },
+ "selection_torch": {
+  "r9-sess-b-e8000:plain": {
+   "agg": "mean",
+   "thr": 0.3,
+   "hang": 600,
+   "O": 51.92810168764122
+  }
+ },
+ "go": false,
+ "notes": "Round 3 custom voice-vs-machine detector (pre-registration 2026-10-07 \u00a73, Addenda R3-A/R3-B). Frozen before any harness or confirmatory stream was read by it; operating point = the pre-registered rule's pick on the validation data with the deployable streaming ONNX files. Go / no-go: feasible and O >= 60 % (\u00a73.5)."
+}

@@ -989,3 +989,25 @@ before any B candidate is scored.
   1.65. All are within V4's 2 ms.
 - The rule then runs once over all 70 candidates of B.3 (the five A0
   candidates of r5-bighard-e10000 are re-scored in the same run).
+
+## Addendum R3-D — selection, freeze and go / no-go (2026-10-11)
+
+Results: [voice-detector-round3-selection-2026-10-11.md](voice-detector-round3-selection-2026-10-11.md).
+
+- The rule (§3.3–3.4) on validation data chose **r9-sess-b-e8000, plain**
+  (single model, state carried, never reset) at agg `mean`, p ≥ 0.30,
+  hangover 600 ms.
+- The deployable re-check (streaming ONNX, onnxruntime CPU, 1 thread) gives
+  the same pick. It is frozen in
+  `scripts/voice-detector/train/frozen/candidate-r3.json`, committed and
+  pushed with this addendum.
+- The frozen point is feasible: worst clean 0.47 % fresh / 0.04 % carried;
+  worst mix 1.09 % / 1.26 %; 82 ms; WASM 0.73 (Node) / 0.85 (Chrome) ms per
+  25 ms.
+- **O = 51.93 %** (tuning-194; val negatives 74.95 %, one-room sessions
+  75.03 %).
+- **Go / no-go (§3.5): no-go.** O is below 60 %, so there is no look.
+  - The seal stays unbroken.
+  - No harness or confirmatory probability file was written.
+  - V5 is not run.
+  - The user decides what follows (§7).

@@ -68,7 +68,7 @@ BIG = 1.0e6
 # ---------------------------------------------------------------- the deployment rules
 def rule_parse(rule):
     if rule in ("plain", "file"):
-        return ("plain", None)
+        return (rule, None)
     for k in ("mean", "old"):
         if rule.startswith(k):
             return (k, int(rule[len(k):]))
