@@ -938,7 +938,7 @@ def prepare():
 def count():
     env = dict(os.environ, ROOT=os.path.relpath(CONF, REPO).replace("\\", "/"), MAXJ="2")
     subprocess.run([sys.executable, os.path.join(HERE, "..", "r3", "build_conf.py"), "base"], cwd=REPO, check=True)
-    subprocess.run(["bash", "scripts/voice-detector/r3/run-dumps.sh", "cvoice:2"], cwd=REPO, env=env, check=True)
+    subprocess.run([os.environ.get("BASH_EXE", "C:/Program Files/Git/bin/bash.exe"), "scripts/voice-detector/r3/run-dumps.sh", "cvoice:2"], cwd=REPO, env=env, check=True)
     specs = json.load(open(os.path.join(CONF, "streams", "cvoice.json"), encoding="utf8"))
     row = collections.Counter()
     for it in specs:
