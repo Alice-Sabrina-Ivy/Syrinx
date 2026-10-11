@@ -19,7 +19,8 @@
 // trace DPR: the device pixel ratio alone changes (1 -> 2 -> 3 -> 1, same CSS
 //   size; under emulation only window "resize" fires, not the resolution
 //   media query, and the ResizeObserver sees no size change). Pass: after
-//   each change and one frame, canvas.width / height = round(CSS size x DPR),
+//   each change and one frame, canvas.width / height = round(container CSS
+//   size x DPR) (the size rule both trees use),
 //   in both trees (review of 3297f9f, §3 F2).
 // cue: the real CueStrip, a scripted 60 s of props / resonance snapshots,
 //   the 250 ms tick stepped by hand, transitions off; after every tick each
@@ -169,7 +170,8 @@ async function dprRun(which) {
     await sleep(300); // resize / media-query events on the real event loop
     await page.evaluate(() => window.__idle(25));
     out.push(await page.evaluate(() => {
-      const c = document.querySelector("canvas"), r = c.getBoundingClientRect(), d = window.devicePixelRatio;
+      // The trace sizes its backing store from its container (border included).
+      const c = document.querySelector("canvas"), r = c.parentElement.getBoundingClientRect(), d = window.devicePixelRatio;
       return { dpr: d, w: c.width, h: c.height, wantW: Math.round(r.width * d), wantH: Math.round(r.height * d) };
     }));
   }

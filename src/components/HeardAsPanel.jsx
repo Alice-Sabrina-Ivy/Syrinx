@@ -144,8 +144,11 @@ function HeardAsAxis({ axis }) {
           <span key={i} className={`absolute top-1/2 w-px -translate-y-1/2 bg-neutral-500 ${i === 5 ? "h-3.5" : "h-2"}`}
             style={{ left: `${i * 10}%` }} />
         ))}
+        {/* The range jumps between tenths, no transition: a left / width
+            transition re-ran style + layout every frame on the main thread
+            (−8.9 ms/s pooled with the panel on; main-thread-cpu-2026-10-08.md §3 F6). */}
         <span
-          className={`absolute top-1/2 h-3 -translate-y-1/2 rounded-sm border border-neutral-400 transition-[left,width] duration-300 ${axis.wide ? "border-dashed bg-neutral-400/15" : "bg-neutral-400/30"}`}
+          className={`absolute top-1/2 h-3 -translate-y-1/2 rounded-sm border border-neutral-400 ${axis.wide ? "border-dashed bg-neutral-400/15" : "bg-neutral-400/30"}`}
           style={{ left: `${L}%`, width: `${Math.max(0, R - L)}%` }}
           data-axis-range=""
         />
