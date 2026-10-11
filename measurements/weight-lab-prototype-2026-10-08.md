@@ -1,0 +1,266 @@
+# Weight × clarity lab prototype (Resonance lab tab only) — 2026-10-08
+
+Written 2026-10-11, before any prototype code (hard rule 3). The plan and the acceptance checks in §1–§6
+are fixed here first; the results are added in §7 after the code exists. The date in the filename
+is the date of the user decision this note implements (2026-10-08, decision 2).
+
+## 0. What this is, and what it is not
+
+- **What it is:** an *experimental* research view inside the Resonance lab tab. It shows a 2-D dot:
+  - x = how "light ↔ heavy" the voice's harmonic balance sounds **compared with the user's own usual
+    voice at the same pitch and loudness**;
+  - y = how "breathy ↔ clear" it is, compared the same way.
+- **What it is not:** a measurement of vocal-fold weight, thickness or contact. Every detector the
+  sceptic checks examined reads mainly loudness (effort). None tracks EGG contact at fixed pitch and
+  loudness in both sexes (§2). The view says this in its header and info panel.
+- **Where it runs:**
+  - only in the Resonance lab tab, never on the Dashboard or the cue strip, and never in coaching,
+    zones, targets or session stats;
+  - it starts only when the user opens the lab tab **and** then switches to the "Weight × clarity"
+    view. Users who never open the tab fetch and run nothing. Lab users who never open the view do not
+    fetch its model and do not run its analysis.
+- **Colours and direction:** neutral colours, no zones and no targets for any training direction.
+  The axes are symmetric: "lighter" and "heavier" carry no value judgement.
+
+## 1. Decision trail
+
+- **2026-10-08, user decision 2:** build an experimental weight × clarity view in the Resonance lab
+  tab only. Use the best candidates, after the remaining sceptic checks: loudness at fixed contact,
+  vowels, resonance direction, women's voices, phone microphones.
+- **2026-10-11, sceptic checks** (scratch research under a sha256-pinned pre-registration). Data: AVID
+  (CC BY 4.0, 50 speakers, speech + EGG at four loudness levels; sex-balanced 12 F + 12 M test
+  split), Hillenbrand vowels, formant-shifted public speech, and the VVD/DSFD teacher demos
+  (evaluation only).
+  - **Pre-registered rule pick:** NAQ+ClQ with voice-map cells (C1a) and the resonance gate (C3b).
+    It passes 2 of 6 criteria. The tie-break among four 2-of-6 detectors is within noise, and it
+    depends on how one criterion (P6) is read.
+  - **Sceptic's recommendation (judgement):** learned v5 with C1a cells and the C3b gate, on a device
+    with gain control confirmed off. Reasons:
+    - NAQ+ClQ breaks under a 120 Hz roll-off in men (+5.4 steps per octave; clean-vs-phone r 0.56);
+    - two NAQ+ClQ constants were fitted on PTDB-TUG (ODbL);
+    - v5 is licence-clean and has the only contact signal whose CI excludes zero (women only);
+    - v5's device leak is 6× smaller and v5 brings its own clarity head.
+- **This prototype follows the recommendation (v5).** The rule's pick would need its PTDB-fitted
+  constants refitted before it could ship in any form.
+
+## 2. Sceptic numbers, per sex (AVID test speakers; women / men)
+
+Unit: one *weight step* = the detector's median change on the teachers' weight-only pairs (VVD+DSFD).
+
+**(i) Loudness at fixed contact (AVID clean)**
+
+| detector | partial r(W, CQ given F0, level) | steps per +10 dB at fixed CQ, F0 | 1-s needle noise (steps) |
+|---|---|---|---|
+| **v5** | **+0.13 [+0.07, +0.19]** / −0.04 [−0.14, +0.06] | +1.83 / +1.72 | 1.05 / 0.94 |
+| NAQ | −0.07 / −0.13 [−0.20, −0.04] | +1.05 / +1.57 | 0.74 / 0.73 |
+| NAQ+ClQ | +0.07 / +0.02 | +1.43 / +1.70 | 0.82 / 0.86 |
+| H1\*−H2\* | −0.04 / −0.02 | +1.07 / +2.56 | 1.56 / 1.29 |
+| voice map | −0.05 / −0.05 | +2.20 / +3.23 | 1.46 / 1.28 |
+| plain level meter | +0.11 / +0.04 | +3.94 / +3.88 | 1.73 / 1.90 |
+
+- Truth: contact itself rises with loudness, by +0.046 / +0.033 CQ per 10 dB.
+- Pitch + loudness explain 62 % / 40 % of the contact variance. What is left is small (SD ≈ 0.03).
+
+**(ii) Vowels (Hillenbrand, median within-speaker range across 12 vowels, steps)**
+
+| v5 | NAQ | H1\*−H2\* | voice map |
+|---|---|---|---|
+| 7.97 / 7.34 | 5.34 / 6.69 | 19.13 / 5.20 | 11.85 / 4.31 |
+
+- Every detector fails the pre-registered bound (≤ 2 steps).
+- In running speech, the vowel mix becomes part of the 1-s needle noise.
+
+**(iii) Resonance direction**
+
+- **LPC formant shift** (steps per +10 % formant scale): v5 +0.00 / −0.18; NAQ +0.27 / +0.11;
+  H1\*−H2\* −0.19 / +0.06; voice map +0.22 / +0.18.
+- **WORLD resynthesis disagrees** for H1\*−H2\* and the voice map (+0.5 to +0.7).
+- **Teachers' resonance-only pairs read heavier** (ideal 50 %): v5 75 %, H1\*−H2\* 55 %, others
+  74–79 %.
+- **The C3b gate** (no reading when the lab's VTLN reading moves > 0.05 ln from the user's median)
+  blanks 74–98 % of shifted utterances. It also keeps only 33 of 157 teacher weight pairs.
+
+**(iv) Women vs men**
+
+- The only CI-positive contact signal at fixed loudness is v5 in women. Men show none for any
+  detector.
+- The loudness slope is larger in men for every spectral detector.
+- The read-speech bench said the opposite (men carried the signal). Neither data set gives a
+  both-sex contact signal at fixed loudness.
+
+**(v) Phone-style low-frequency loss** (device-induced pitch leak, steps per octave)
+
+| detector | 120 Hz high-pass | phone (hp120 + presence + AGC + noise) | 200 Hz high-pass |
+|---|---|---|---|
+| v5 | −0.18 / −0.85 | +0.07 / −0.79 | −0.95 / −2.01 |
+| NAQ | +0.86 / +1.67 | +0.95 / +1.78 | +1.30 / +1.17 |
+| NAQ+ClQ | +1.87 / +5.41 | +2.05 / +5.42 | +3.55 / +3.05 |
+| H1\*−H2\* | −0.45 / −1.89 | −0.46 / −1.73 | −2.20 / −5.16 |
+
+**Compensations**
+
+- **C1a voice-map cells** (2 st × 4 dB, per user) cut the clean-audio loudness slope by 75–100 %.
+  v5: +1.75 / +1.85 → +0.38 / +0.43 steps per 10 dB. They create no contact signal.
+- **Under automatic gain control the cells remove nothing:** 1–3 steps per 10 dB remain, because
+  the level axis is the compressed level.
+- **Blind device correction failed.** It fired on 7 of 12 clean women and on 0 of 12 men under a
+  120 Hz high-pass.
+- **Removing pitch and loudness** with population slopes drops the teachers' weight-pair accuracy
+  from 81–95 % to 50–68 % (v5 0.55).
+
+**Can claim** (public data only):
+
+- within one session, on one microphone with gain control off, and only between moments at the same
+  pitch (2-st band) and loudness (4-dB band), the reading shows whether the voice's harmonic balance
+  is above or below the user's usual there;
+- v5 is nearly neutral to LPC formant shifts;
+- v5's weight head is close to breathiness-neutral (PVQD ρ −0.08).
+
+**Cannot claim:**
+
+- contact or "weight" as such;
+- absolute or population-referenced positions;
+- anything across devices or sessions;
+- anything on devices with automatic gain control;
+- readings on held vowels or single words;
+- independence from resonance;
+- gender symmetry (the contact signal is women-only);
+- children, singing, falsetto.
+
+## 3. Licences of every shipped constant
+
+**The v5 model** (`public/resonance-lab/weight_v5.json`: 753 weights in a 45-input tanh MLP with
+16 hidden units, plus a 6-weight linear clarity head on 5 inputs, plus per-input standardisation):
+
+- **Training data, train split only, `use_ptdb = False`:**
+  - synthetic LF-source stimuli generated in the research bench (674);
+  - CMU ARCTIC bdl + slt speech + EGG: "free for use for any purpose (commercial or otherwise)".
+    The CMU notice is kept in the model file and in §8;
+  - VocalSet, CC BY 4.0, 11 training singers;
+  - PVQD, CC BY 4.0, 70 training recordings (clarity head and the pairwise task).
+  - The bench manifest marks every one of these `ship_train_ok`.
+- **Never trained on:** PTDB-TUG (ODbL; excluded by `use_ptdb = False`), CSTR FDA, VVD, DSFD,
+  Traser, AVID. Variant selection used 3-fold speaker-grouped CV on the train split.
+  - The weight head's per-input standardisation (median / IQR) was computed on the same training
+    frames.
+  - The clarity head was fitted on synthetic aspiration plus PVQD-train breathiness ratings.
+- **The mel filterbank** (16 Slaney-mel bands, 80–7000 Hz) is computed from its formula, not
+  fitted.
+
+**Constants the spec names that are NOT shipped:**
+
+- **0.268 (v5's teacher weight step)** is the median change on the VVD/DSFD teacher demos, which have
+  no licence. A display scale estimated from them is a fitted constant, so the prototype does not
+  ship it. Instead, both axes are shown in units of **the user's own 1-s variation**: the pooled
+  within-cell SD of the calibration bins. This needs no data at all.
+  - The sceptic's 1-s needle noise for v5 was 1.05 / 0.94 teacher steps, so one own-SD unit is about
+    one teacher step for a typical voice.
+  - Expected display noise after the 3-bin median: ≈ 0.6 units.
+  - The ±1 band therefore means what the spec intends: "changes smaller than this are noise".
+- **No constant is fitted on AVID.** The voice map is per user. AVID results are cited in §2 under
+  CC BY 4.0: M. Kodali, P. Alku, S. R. Kadiri, *AVID: Aalto Vocal Intensity Database*, Zenodo,
+  doi:10.5281/zenodo.10524873, licensed CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/).
+
+## 4. The prototype as specified (and where it deviates)
+
+**Inputs**
+
+- The lab engine's 16 kHz analysis stream: the anti-aliased sinc ring the four finalists read.
+- The posted production pitch frames: the lab's internal pitch replica, bit-identical to the pitch
+  worker's posted decisions (25 ms; voiced frames only).
+- Per voiced frame:
+  - a 50 ms Hann frame centred on the frame time;
+  - the v5 features: an exact port of the research `feats.py` frame path, with a 4096-point FFT,
+    order-16 Burg LPC poles and the Iseli–Alwan correction, CPP and the harmonic-to-interharmonic
+    ratios, and 16 log-mel bands;
+  - weight w and clarity c from the frozen model;
+  - frame level L = 10·log10(mean square) in dBFS.
+- The lab's VTLN reading (ln α, 150 ms bins).
+- `track.getSettings()`: `autoGainControl` and `deviceId`.
+
+**Aggregation**
+
+- 1-s bins (absolute, on the frame time) of posted frames.
+- A bin is valid with ≥ 3 voiced frames that gave features and a voiced fraction ≥ 0.3.
+- Per bin: mean w, mean c, mean log2 F0, power-mean level, median VTLN.
+- A bin is closed 1.5 s after its end, so the VTLN bins for it have arrived.
+
+**Voice map** (C1a, per page visit and per microphone)
+
+- Cells are 2 st × 4 dB: `(floor(12·F/2), floor(Lb/4))`.
+- A guided "map your voice" step has five prompts: usual voice, softer, louder, a little higher, a
+  little lower. Each prompt runs until 30 valid running-speech bins (≈ 35–40 s of speaking), or until
+  the user taps Next. That is about 3 minutes in all.
+- A cell is ready at ≥ 5 bins. After the last prompt the map is **frozen** (no sliding window).
+- The frozen map is kept in the page for the rest of the visit, with the deviceId it was made on, so
+  stopping and restarting listening on the same microphone does not need a new map.
+
+**Reading**
+
+- Per bin: `Rw = (w − cell mean w) / sdW` and `Rc = (c − cell mean c) / sdC`. sdW and sdC are the
+  pooled within-cell SDs of the ready cells (deviation from 0.268, §3).
+- The display shows the median of the last 3 readable bins inside the last 5 s.
+- **No reading** ("—" plus a reason) when:
+  1. the cell is not ready;
+  2. the bin's VTLN is more than 0.05 ln from the cell's median, or is missing ("resonance changed:
+     comparison paused");
+  3. `autoGainControl` is true or unknown. Mapping is also blocked then;
+  4. the deviceId differs from the map's;
+  5. fewer than 3 of the last 5 bins are running speech.
+
+**"Running speech" (operationalised; the spec gives no rule):**
+
+- A running-speech bin is a valid bin with voicing breaks: voiced fraction ≤ 0.95, i.e. at least 2
+  unvoiced 25 ms frames in the second.
+- Sentences have many breaks. A held vowel has none, so a held vowel reads "speak in sentences".
+- Calibration bins must also pass the 3-of-5 rule.
+
+**Display**
+
+- A square with the dot, a 10-s fading trail and a neutral ±1 band ("changes smaller than this are
+  noise").
+- Beside it:
+  - the current cell (≈ Hz, dBFS) and its readiness;
+  - a live loudness number;
+  - the map's cell grid (pitch × loudness, ready cells marked).
+- Header: "Experimental — not a measurement of vocal-fold weight or contact".
+- The caveats (loudness, pitch, one microphone and one session, vowels, resonance, agreement with
+  teachers, women vs men, the clarity head's unmeasured leaks) are listed visibly under the dot.
+
+## 5. Acceptance checks (fixed before the code)
+
+1. **Port parity.** The JS frame path is compared with the Python reference (`feats.py`
+   `frame_feats` + the frozen-model forward pass, committed as
+   `scripts/resonance-lab/weight/v5_ref.py`). Material: the three committed LibriSpeech fixtures
+   (CC BY 4.0) at the reference's Praat AC frames.
+   - Bounds: |Δw| and |Δc| ≤ 1e-3 head units on ≥ 99 % of frames, and ≤ 0.01 on all. For scale, the
+     weight step is 0.268.
+   - Every non-formant feature within 1e-6 dB.
+2. **Map and gate logic.** Unit tests on synthetic bin streams:
+   - cell indices, ≥ 5-bin readiness, freeze, pooled SDs, the 3-bin median;
+   - each of the five no-reading reasons, map restore by deviceId, and calibration prompts.
+3. **Engine glue.**
+   - With the weight analysis off, the engine's outputs are bit-identical to before
+     (`test:resonance-lab` unchanged).
+   - With it on, bins appear at 1-s spacing from the internal pitch path.
+4. **Isolation** (`scripts/resonance-lab/lab-smoke.mjs`, extended):
+   - the existing four runs still pass;
+   - a new run opens the weight view, maps (prompts skipped with Next) and checks that the view
+     renders without page errors and that `weight_v5.json` is fetched only then;
+   - in the tab-opened run (weight view never opened), `weight_v5.json` is never requested.
+5. **CPU** (desktop; mobile not measured):
+   - lab ms per s of audio with the weight view off and on, in Node (the engine over a fixed 48 kHz
+     speech file) and in the built app (the lab's own cost line, no `?diag=1`);
+   - budget: the weight analysis adds ≤ 15 ms CPU per s of audio.
+6. **Layout.** At 448×890, 402×750, 360×690, 890×360 and 1280×800 the weight view shows no
+   horizontal page overflow. The resonance view's phone fit (402×750) is unchanged.
+7. **Repo gates:** `npm run lint`, `npm run test:unit`, `npm run test:resonance-lab`,
+   `npm run build`.
+
+## 6. Before any wider use (not done here)
+
+- Mobile CPU.
+- The C3b gate's false-pause rate on ordinary running speech.
+- The clarity head against the clarity study's B1–B7 bar. The 2026-10-11 clarity study failed every
+  candidate on vowel range and phone rank; the v5 clarity head was not among those candidates.
+- Listener labels of same-pitch, same-loudness light/heavy pairs by the user and a second listener.
