@@ -18,8 +18,14 @@
 #           (counts + the code commit), conf-manifest.jsonl (per-file manifest
 #           with licences; no audio)
 #   verify  re-hashes everything listed in the seal; prints mismatches
+#   --tag=r4 (round-4 pre-registration §2.3, Addendum R4-A): the re-seal after the
+#           blind round-4 changes -> seal-confirmatory-r4.sha256, seal-r4.json,
+#           the updated conf-manifest.jsonl and seal-r4-changes.json (paths
+#           removed / added / changed against round 3's seal); `verify --tag=r4`
+#           checks the round-4 seal, `verify-r3` re-hashes round 3's seal minus
+#           the listed changes (nothing else may have moved)
 #
-#   python scripts/voice-detector/r3/seal.py counts|seal|verify
+#   python scripts/voice-detector/r3/seal.py counts|seal|verify|verify-r3 [--tag=r4]
 import collections
 import glob
 import hashlib
@@ -30,12 +36,16 @@ import sys
 
 import numpy as np
 
-from c3 import CONF, R3, CManifest, REPO, anon, log, write_json
+from c3 import CONF, R3, CManifest, REPO, anon, args, log, write_json
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-SEAL = os.path.join(HERE, "seal-confirmatory.sha256")
-SEALJ = os.path.join(HERE, "seal.json")
+TAG = args().get("tag", "")
+SFX = f"-{TAG}" if TAG else ""
+SEAL = os.path.join(HERE, f"seal-confirmatory{SFX}.sha256")
+SEAL_R3 = os.path.join(HERE, "seal-confirmatory.sha256")
+SEALJ = os.path.join(HERE, f"seal{SFX}.json")
 CMAN = os.path.join(HERE, "conf-manifest.jsonl")
+CHANGES = os.path.join(HERE, "seal-r4-changes.json")
 SETS = ["cvoice", "cneg", "cmix20", "cmix0", "csess"]
 BANDS = [(75, 130, "75-130"), (130, 300, "130-300"), (300, 400, "300-400")]
 
@@ -99,7 +109,7 @@ def counts():
         C["sets"][s] = {"streams": n, "hours": round(sec / 3600, 3)}
     out = {k: (dict(sorted(v.items())) if isinstance(v, collections.Counter) else v) for k, v in C.items()}
     out["cneg_false"] = {k: v for k, v in out["cneg_false"].items() if not k.startswith("shared:")}
-    write_json(os.path.join(R3, "counts.json"), out, indent=1)
+    write_json(os.path.join(R3, f"counts{SFX}.json"), out, indent=1)
     print(json.dumps(out, indent=1))
     return out
 
@@ -158,8 +168,8 @@ def seal():
     open(SEAL, "w", encoding="utf8", newline="\n").write("\n".join(lines) + "\n")
     man = CManifest()
     keep = ("id", "kind", "source", "subset", "group", "session_group", "gender", "ngroup", "cls", "machine", "member", "licence",
-            "freesound_id", "query", "page", "origin", "dur", "sr", "orig_sr", "fresh", "drop")
-    per_file = ("c_fsv", "na", "c_fry", "c_ipa")         # sources whose licence / creator is per file (else: seal.json "sources")
+            "freesound_id", "query", "page", "origin", "dur", "sr", "orig_sr", "fresh", "drop", "label_why")
+    per_file = ("c_fsv", "na", "c_fry", "c_ipa", "c_tr4_fs", "c_tr4_wc", "c_tr4_ds", "c_tr4_ia")   # licence / creator per file (else: seal.json "sources")
     src_info = {}
     with open(CMAN, "w", encoding="utf8", newline="\n") as f:
         for r in sorted(man.have.values(), key=lambda r: r["id"]):
@@ -174,12 +184,16 @@ def seal():
                     o[k] = anon(o[k])
             if r["source"] in per_file:
                 o.update({k: r[k] for k in ("url", "licence_where", "attribution") if r.get(k)})
-            if r["source"] == "c_ipa":
+            if r["source"] in ("c_ipa", "c_tr4_wc"):
                 o["attribution"] = "Wikimedia Commons file page (url); contributor as credited there"
+            if r["source"] == "c_tr4_ia":
+                o["attribution"] = "Internet Archive item page (url); creator as credited there"
             f.write(json.dumps(o, ensure_ascii=False) + "\n")
     commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO, capture_output=True, text=True).stdout.strip()
     kept = man.kept()
-    J = {"what": "round-3 confirmatory set seal (pre-registration §1.6)", "code_commit": commit, "files": len(fs), "bytes": n_bytes[0],
+    J = {"what": "round-3 confirmatory set seal (pre-registration §1.6)" if not TAG else
+         f"round-4 re-seal of the confirmatory set (round-4 pre-registration §2.3, Addendum R4-A); round 3's seal: seal-confirmatory.sha256",
+         "code_commit": commit, "files": len(fs), "bytes": n_bytes[0],
          "seal_sha256": sha(SEAL), "conf_manifest_sha256": sha(CMAN), "exclude_sha256": sha(os.path.join(R3, "exclude.json")),
          "records": {"kept": len(kept), "dropped": len(man.have) - len(kept)},
          "kept_by_source": dict(collections.Counter(r["source"] for r in kept)),
@@ -188,8 +202,45 @@ def seal():
          "spliced_sessions": {"construction": "infer_carried.py over every confirmatory fresh stream (cvoice, cneg, cmix20, cmix0) in a seeded random order",
                               "seed": 20261011, "minutes": 20},
          "counts": cnt}
+    if TAG:
+        J["changes_vs_round3"] = changes()
     write_json(SEALJ, J, indent=1)
     log(f"sealed {len(fs)} files; seal sha256 {J['seal_sha256']}")
+
+
+def read_seal(p):
+    out = {}
+    for line in open(p, encoding="utf8"):
+        h, rel = line.rstrip("\n").split("  ", 1)
+        out[rel] = h
+    return out
+
+
+def changes():
+    """Paths removed / added / changed in the round-4 seal against round 3's (written to seal-r4-changes.json)."""
+    a, b = read_seal(SEAL_R3), read_seal(SEAL)
+    C = {"what": "paths of the round-4 seal removed / added / changed against round 3's seal (seal-confirmatory.sha256)",
+         "removed": sorted(set(a) - set(b)), "added": sorted(set(b) - set(a)), "changed": sorted(k for k in set(a) & set(b) if a[k] != b[k])}
+    write_json(CHANGES, C, indent=1)
+    log(f"changes vs round 3: removed {len(C['removed'])}, added {len(C['added'])}, changed {len(C['changed'])}")
+    return {k: len(v) for k, v in C.items() if k != "what"}
+
+
+def verify_r3():
+    """Round 3's seal minus the listed round-4 changes: every other path must hash as round 3 sealed it."""
+    C = json.load(open(CHANGES, encoding="utf8"))
+    skip = set(C["removed"]) | set(C["changed"])
+    bad = n = 0
+    for rel, h in read_seal(SEAL_R3).items():
+        if rel in skip:
+            continue
+        n += 1
+        p = os.path.join(R3, rel)
+        if not os.path.exists(p) or sha(p) != h:
+            bad += 1
+            print("MISMATCH", rel)
+    print(f"verify-r3: {n} round-3 paths outside the listed changes, {bad} mismatches")
+    return bad
 
 
 def verify():
@@ -205,4 +256,4 @@ def verify():
 
 
 if __name__ == "__main__":
-    {"counts": counts, "seal": seal, "verify": verify}[sys.argv[1]]()
+    {"counts": counts, "seal": seal, "verify": verify, "verify-r3": verify_r3}[sys.argv[1]]()

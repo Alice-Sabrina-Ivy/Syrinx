@@ -723,3 +723,98 @@ Process limits:
 3. **Carried over from round 3.** The V3 reading for convolutional context
    (round 3 §7 Q1) is unchanged and not used. Registration-gated clinical
    corpora (round 3 §7 Q3) are not used.
+
+## Addendum R4-A — data step A, the sealed side (2026-10-11; in progress)
+
+Written during data step A, **before any round-4 model exists**. No model of
+any round has run on a confirmatory stream; nobody listened to, plotted or
+scored a confirmatory clip. Part 1 below is committed and pushed **before the
+first trill search** (§2.2: "θ, the pass rates and that decision go into
+Addendum R4-A before the first trill search"). The re-seal (§2.3) follows in
+part 2.
+
+Code: [scripts/voice-detector/r4/](../scripts/voice-detector/r4/README.md)
+(`repair_conf.py`, `sealfp.py`, `trills.py`), `r3/seal.py --tag=r4`.
+
+### A.1 §2.1 — the violating clip (done)
+
+- `repair_conf.py search`: round 3's `fs_conf.py search` re-run with the
+  corrected comparisons over the **cached** round-3 pages only (463 pages incl.
+  the trill fallback; a page that is not cached would have been an error, never
+  a fetch; 0 errors). Result against round 3's candidate list: **exactly one
+  candidate removed**, 716881 (*QuartzGate*, "reading aloud", now "uploader
+  used before"); none added, none changed. Round 3's files are kept as
+  `dl/fs/r3/candidates.json` and `selection.json`.
+- `repair_conf.py drop`: the case-insensitive audit flags exactly one kept
+  record, `c_fsv__716881`; it is dropped (manifest record and selection record
+  carry the reason). `fs_conf.py select` then ran as in round 3: **0 newly
+  checked candidates**. Query "reading aloud" had only 5 candidates in round 3,
+  all checked and kept, so **no eligible candidate replaces the clip** (§2.1
+  item 2: the speech row does not need one).
+- Derived streams (`repair_conf.py affected`, construction metadata only): the
+  clip is in **no mix** (`cmix20`, `cmix0`) and **no one-room session**
+  (`csess`); it is only a fresh clean stream (`cvoice`), which the rebuilt
+  `cvoice.json` drops. No slot-preserving patch was needed and no mix or
+  session changed.
+
+### A.2 Fingerprints of the sealed set
+
+`sealfp.py build`: 7,934 kept confirmatory records (23.0 h of prepared 16 kHz
+audio), fingerprinted with round 3's matcher and stored inside the sealed root
+(`r3/conf/fp-r4/`). Only a matcher's keep / drop leaves it. Used for the trill
+duplicates check (§2.2) and for D3 (§3.2).
+
+### A.3 θ of the trill-modulation screen (§2.2 rule 5), before any search
+
+VocalSet (`VocalSet11.zip`, zenodo 1442513, CC BY 4.0): all 202 `lip_trill`
+files and all 361 `straight` files (arpeggios, scales, long tones, excerpts),
+first 120 s, the §1.6 reference. No model involved.
+
+| | value |
+|---|---|
+| lip-trill files (each with ≥ 1 eligible window) | 202 |
+| per-file max prominence, lip trills: min / P10 / median / max | 23.2 / **26.5** / 32.0 / 44.7 dB |
+| θ = P10 clipped to [6, 15] dB | **15.0 dB** |
+| per-file max prominence, straight: min / P10 / median / max | 16.1 / 21.3 / 27.5 / 39.8 dB |
+| clip pass rate at θ (≥ 1.0 s of trilled windows): lip trills / **straight** | 100 % / **99.45 %** |
+
+**Decision (pre-registered rule): more than 20 % of the straight files pass,
+so the screen is DROPPED; rules 1–4 decide alone.** (The prominence of an
+envelope's 15–45 Hz peak over its 2–100 Hz median is large for any voiced
+envelope — syllable and vibrato energy sit below 15 Hz and the spectrum falls
+above — so the screen does not separate trills from straight tones.) Output:
+`build/vad-train/r4/trill-theta.json`.
+
+### A.4 Readings fixed before the first trill search
+
+1. **Praat-voiced** (rule 4) uses the §1.6 reference *with* its 30 dB level
+   gate (round 3's Freesound screen used the ungated track); ≥ 1.0 s, ≥ 0.5 s
+   for Commons files.
+2. **Window arithmetic of rule 5** (moot after A.3): 0.5 s windows on the 10 ms
+   reference grid, FFT of 1,000 points (1 Hz bins), trilled seconds = the union
+   of the trilled windows' spans.
+3. **Freesound queries.** Three of the listed queries — "lip buzz", "lip
+   bubble", "tongue trill" — are verbatim round-2 `fsvoice` queries (round 2
+   read their pages 1–2), contrary to the table's "never used in rounds 1–3".
+   They are run as listed: every result by an earlier uploader or id is
+   removed by the exclusion rules, so they can only add new people.
+4. **Other-SOVT clips** pass rules 2–4 (rule 5 is trill-specific) and count
+   toward the query caps; a clip matching both patterns is a trill.
+5. **Gender** from metadata: "female / woman / women / girl / soprano / alto
+   / mezzo" vs "male / man / men / boy / tenor / baritone / bass", whole
+   words; both or neither → unknown.
+6. **Commons.** Contributor = the file's credited artist, else its uploader;
+   a file with neither is skipped. "Depth 1" = the category's files plus the
+   files of its direct subcategories. Accepted licences: CC0, public domain,
+   CC BY, CC BY-SA, CC BY-NC, CC BY-NC-SA (any version); anything else (e.g.
+   GFDL only) is skipped. Video files: their first audio track (ffmpeg).
+7. **New-people check.** A name is excluded if its `fold_user` key equals any
+   `exclude.json` / `train_exclude.json` uploader, any group key, any group's
+   person part, or a round-3 Commons IPA contributor.
+8. **Ids.** Commons, Internet Archive and dataset clips get hashed ids
+   (`c_tr4_wc__<fnv>`, …); Commons / IA groups are hashed (`c3.anon` form). An
+   Internet Archive uploader (an e-mail address) is never written anywhere
+   outside the gitignored download folder.
+9. **Duplicates.** Against `r3/fp` (all earlier audio), the sealed set (A.2)
+   and this step's kept clips; a match drops the clip and bans its group from
+   this step.
