@@ -17,8 +17,9 @@
 //   rectangle. Also reported, not judged: a capture 7 ms after a data step
 //   (between data frames).
 // trace DPR: the device pixel ratio alone changes (1 -> 2 -> 3 -> 1, same CSS
-//   size; under emulation only window "resize" fires, not the resolution
-//   media query, and the ResizeObserver sees no size change). Pass: after
+//   size; in this headless emulation no event fires at all — no window
+//   "resize", resolution media query or device-pixel-box ResizeObserver
+//   callback — so only a per-draw DPR comparison catches it). Pass: after
 //   each change and one frame, canvas.width / height = round(container CSS
 //   size x DPR) (the size rule both trees use),
 //   in both trees (review of 3297f9f, §3 F2).

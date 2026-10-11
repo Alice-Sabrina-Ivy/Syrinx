@@ -47,14 +47,15 @@ export function PitchTrace({
 
   // Sizing + drawing in one effect (main-thread pass 2026-10-08,
   // measurements/main-thread-cpu-2026-10-08.md). The backing store follows
-  // the container (ResizeObserver) and the device pixel ratio (a matchMedia
-  // resolution query plus window "resize": dragging the window between
-  // monitors changes devicePixelRatio WITHOUT firing ResizeObserver, and
-  // under Chrome's emulation only "resize" fires) — no layout read per
-  // frame. What does not move with time (background, grid, labels, target
-  // band) is drawn once into an offscreen canvas and copied each frame; the
-  // plot geometry is computed once per size, not per point (canvas.width /
-  // devicePixelRatio are DOM reads). With `subscribeTrace` (the hook's
+  // the container (ResizeObserver) and the device pixel ratio, compared with
+  // the measured one on every draw (a property read, no layout): dragging the
+  // window between monitors can change devicePixelRatio WITHOUT firing
+  // ResizeObserver, and a DPR-only change under Chrome's emulation fires no
+  // event at all (no resize, resolution media query or device-pixel-box
+  // observation; review of 3297f9f, §3 F2) — no layout read per frame. What
+  // does not move with time (background, grid, labels, target band) is drawn
+  // once into an offscreen canvas and copied each frame; the plot geometry is
+  // computed once per size, not per point (canvas.width is a DOM read). With `subscribeTrace` (the hook's
   // append notification) it draws only when a point arrives — the trace
   // scrolls at the 25 ms data cadence (<= ~1.2 CSS px per step) instead of
   // asking for every display frame (an idle rAF loop alone costs the main
@@ -201,7 +202,7 @@ export function PitchTrace({
     }
 
     function draw() {
-      if (!geo) measure();
+      if (!geo || geo.dpr !== (window.devicePixelRatio || 1)) measure();
       const { dpr, w, h, plotLeft, plotRight, plotTop, plotBottom } = geo;
       const now = Math.round(performance.timeOrigin + performance.now());
 
@@ -329,20 +330,11 @@ export function PitchTrace({
     redrawRef.current = scheduler ? scheduler.request : null;
     const unsubscribe = scheduler ? subscribeTrace(scheduler.notify) : null;
 
-    // Size (container) and DPR (monitor switch, zoom) changes: re-measure
-    // on the next draw.
+    // Container size changes: re-measure on the next draw (a DPR change is
+    // caught by draw() itself).
     const invalidate = () => { geo = null; scheduler?.request(); };
     const observer = new ResizeObserver(invalidate);
     observer.observe(container);
-    window.addEventListener("resize", invalidate);
-    let mq = null;
-    function onDpr() { invalidate(); watchDpr(); }
-    function watchDpr() {
-      mq?.removeEventListener("change", onDpr);
-      mq = window.matchMedia ? window.matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`) : null;
-      mq?.addEventListener("change", onDpr);
-    }
-    watchDpr();
 
     if (scheduler) scheduler.request();
     else loop();
@@ -352,8 +344,6 @@ export function PitchTrace({
       unsubscribe?.();
       redrawRef.current = null;
       observer.disconnect();
-      window.removeEventListener("resize", invalidate);
-      mq?.removeEventListener("change", onDpr);
     };
   }, [pitchTraceRef, subscribeTrace]);
 
