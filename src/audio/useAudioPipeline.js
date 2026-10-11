@@ -596,7 +596,10 @@ export function useAudioPipeline() {
         import("../resonance-lab/labPipeline.js")
           .then((lab) => {
             if (!genAlive() || captureSrcRef.current !== captureSrc || labRef.current) return;
-            labRef.current = lab.startLab(captureSrc);
+            // The weight x clarity lab view needs the granted capture settings
+            // (gain control, microphone id) to know whether loudness can be matched.
+            const track = streamRef.current?.getAudioTracks?.()[0];
+            labRef.current = lab.startLab(captureSrc, { trackSettings: track?.getSettings?.() ?? null });
           })
           .catch((err) => console.error("resonance lab failed to start", err))
           .finally(() => { labStarting = false; });

@@ -159,6 +159,11 @@ export function createLabEngine(opts) {
   // ---- finalists + readouts ----
   const readouts = {};
   const pending = {}; // name -> [{te, s}] awaiting a voiced-time stamp
+  // Optional frame tap (the weight x clarity view, weight-lab.js): every posted
+  // pitch frame (t, f0) once the 16 kHz samples around it exist, and every vtln
+  // bin. null until setFrameTap(); with no tap nothing below runs.
+  let tap = null;
+  const tapQueue = []; // [t, f0, t, f0, ...]
   const latest = {};  // name -> last raw bin value (diagnostic)
   const enabled = {};
   function binSink(name) {
@@ -167,6 +172,7 @@ export function createLabEngine(opts) {
       pending[name].push({ te, s });
       latest[name] = s;
       if (onBinHook) onBinHook(name, te, s);
+      if (tap && name === "vtln") tap.vtln(te, s);
     };
   }
   for (const name of FINALISTS) {
@@ -210,6 +216,20 @@ export function createLabEngine(opts) {
     if (v > PITCH_DISPLAY_RANGE.high) v = null;
     if (v > 0 && !guard.check(delayLine[0], v, SR16)) v = null;
     decoded.push({ t, f0: v > 0 ? v : 0 });
+    if (tap) tapQueue.push(t, v > 0 ? v : 0);
+  }
+
+  // Frames whose 50 ms window (t +- 25 ms) is in the 16 kHz ring go to the tap.
+  function drainTap() {
+    if (!tap) return;
+    let i = 0;
+    while (i < tapQueue.length) {
+      const t = tapQueue[i], f0 = tapQueue[i + 1];
+      if (f0 > 0 && !finished && ring16.end < Math.round(t * SR16) + 400) break;
+      tap.frame(t, f0, ring16);
+      i += 2;
+    }
+    if (i) tapQueue.splice(0, i);
   }
 
   function gridF0At(j) {
@@ -324,6 +344,7 @@ export function createLabEngine(opts) {
   }
 
   function step() {
+    drainTap();
     resolveGrid();
     processFv();
     schedulePnml(Infinity);
@@ -369,6 +390,7 @@ export function createLabEngine(opts) {
       if (n === undefined) { framesDropped++; return false; }
       const f0 = f0OrNull > 0 ? f0OrNull : 0;
       decoded.push({ t: n / SR16 - 0.04, f0 });
+      if (tap) tapQueue.push(n / SR16 - 0.04, f0);
       step();
       return true;
     },
@@ -402,6 +424,7 @@ export function createLabEngine(opts) {
       finished = true;
       ring16.finish();
       if (ringN) ringN.finish();
+      drainTap();
       resolveGrid();
       processFv();
       const durS = ring16.end / SR16;
@@ -431,6 +454,12 @@ export function createLabEngine(opts) {
       };
     },
     resetReadouts() { for (const r of Object.values(readouts)) r.reset(); },
+    /**
+     * Attach (or with null detach) a frame tap: { frame(t, f0, ring16), vtln(te, s) }.
+     * Frames posted from now on are passed in order (internal and "frames" pitch
+     * sources; not with externalF0). Off by default: outputs are unchanged.
+     */
+    setFrameTap(t) { tap = t ?? null; tapQueue.length = 0; },
     /** Test hook: the resolved 10 ms grid F0 so far. */
     gridTrack() {
       const n = nextGrid;
