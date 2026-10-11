@@ -128,7 +128,7 @@ export default function WeightClarityView({ s, phone = false }) {
   const cur = snap?.current;
   const cost = s.perf?.weightMsPerAudioS;
   return (
-    <div className="space-y-2.5" data-weight-view="">
+    <div className="space-y-2.5" data-weight-view="" data-weight-counts={snap ? JSON.stringify(snap.counts) : undefined}>
       <div>
         <h3 className="text-sm text-neutral-200">Weight × clarity <span className="text-neutral-500 text-xs">experimental</span></h3>
         <p className="text-xs text-neutral-300 font-medium">Experimental — not a measurement of vocal-fold weight or contact</p>

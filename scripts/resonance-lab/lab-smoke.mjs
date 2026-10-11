@@ -126,6 +126,14 @@ async function run(url, { lab, tabFirst = false, viewport = null, wait = SECONDS
   await sleep(1500);
   let weightOut = null;
   if (weight) {
+    // The first-run training-direction dialog (if shown) would cover the screenshots:
+    // pick the neutral "Just exploring" option and continue.
+    const picked = await page.evaluate(() => {
+      const l = [...document.querySelectorAll('[role="dialog"] label')].find((x) => x.textContent.includes("Just exploring"));
+      if (l) l.click();
+      return !!l;
+    });
+    if (picked) { await sleep(300); log("direction dialog dismissed:", await clickText(["Continue"])); await sleep(1500); }
     log("lab tab clicked:", await clickText(["Resonance lab"]));
     await sleep(3000);
     const before = requests.filter(isWeightAsset).length;
@@ -143,6 +151,7 @@ async function run(url, { lab, tabFirst = false, viewport = null, wait = SECONDS
     }
     await sleep(WREAD_S * 1000);
     const wtext = await page.evaluate(() => document.querySelector("[data-weight-view]")?.innerText ?? "");
+    const counts = await page.evaluate(() => document.querySelector("[data-weight-view]")?.dataset.weightCounts ?? null);
     // lab cost with the weight analysis on: the resonance view's cost line
     await page.evaluate(() => document.querySelector('[data-lab-view="resonance"]')?.click());
     await sleep(800);
@@ -162,7 +171,7 @@ async function run(url, { lab, tabFirst = false, viewport = null, wait = SECONDS
       layouts.push({ vp: `${w}x${h}`, ...m, ok: m.scrollW <= m.innerW && !!m.plot && m.plot.r <= m.innerW + 0.5 && m.plot.l >= -0.5 });
       if (SHOT) await page.screenshot({ path: SHOT.replace(/(\.png)?$/i, `-weight-${w}x${h}.png`) });
     }
-    weightOut = { before, after: requests.filter(isWeightAsset).length, wtext, costOn, layouts, gain };
+    weightOut = { before, after: requests.filter(isWeightAsset).length, wtext, costOn, layouts, gain, counts };
   } else if (lab) {
     if (!tabFirst) log("lab tab clicked:", await clickText(["Resonance lab"]));
     await sleep((tabFirst ? Math.min(wait, 20) : wait) * 1000);
@@ -189,7 +198,11 @@ browser = await puppeteer.launch({
 
 const base = `http://localhost:${PORT}/Syrinx/`;
 const off = await run(base, { lab: false });
-const labHits = off.requests.filter((u) => /LabView|labPipeline|lab-worker|resonance-lab/.test(u));
+// The Dashboard's resonance cue (production since 2026-10-07) loads three of the lab's
+// assets itself; everything else under resonance-lab/ and every lab chunk is lab-only.
+const CUE_ASSETS = /resonance-lab\/(reference|cue-bands|vtln_warp)\.json/;
+const isLabRequest = (u) => /LabView|labPipeline|lab-worker|resonance-lab/.test(u) && !CUE_ASSETS.test(u);
+const labHits = off.requests.filter(isLabRequest);
 const offWorkers = off.workers.map((u) => u.split("/").pop());
 console.log("TAB NOT OPENED: workers", offWorkers);
 console.log("TAB NOT OPENED: lab requests", labHits.length ? labHits : "none");
@@ -231,6 +244,7 @@ console.log("WEIGHT VIEW: page errors", wv.errors.length ? wv.errors : "none");
 console.log(`WEIGHT VIEW: model requests before opening ${W.before}, after ${W.after}; ${W.gain}`);
 console.log("WEIGHT VIEW: text:\n" + W.wtext.slice(0, 1800));
 console.log("WEIGHT VIEW (weight analysis on): " + (W.costOn ?? "(no cost line)"));
+console.log("WEIGHT VIEW: bin counts (bins / valid / readable / paused by reason)", W.counts);
 for (const l of W.layouts) console.log(`WEIGHT VIEW ${l.vp}: ${l.ok ? "ok" : "OVERFLOW"} ${JSON.stringify(l)}`);
 const weightOk = wv.errors.length === 0 && W.before === 0 && W.after >= 1 && weightNotFetched
   && /Experimental — not a measurement of vocal-fold weight or contact/.test(W.wtext)

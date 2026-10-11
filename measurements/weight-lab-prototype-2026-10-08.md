@@ -264,3 +264,128 @@ Unit: one *weight step* = the detector's median change on the teachers' weight-o
 - The clarity head against the clarity study's B1–B7 bar. The 2026-10-11 clarity study failed every
   candidate on vowel range and phone rank; the v5 clarity head was not among those candidates.
 - Listener labels of same-pitch, same-loudness light/heavy pairs by the user and a second listener.
+
+## 7. Results (2026-10-11, after the code)
+
+All checks ran on `weight-lab` (branched from `origin/cue-strip` 53704cc), desktop Windows, Node 24 and
+headless Chrome. The machine was shared with other jobs throughout, so CPU figures are noisy.
+
+**1. Port parity: pass.** `tests/resonance-lab/weight-test.js` compared 104 reference frames across the
+three LibriSpeech fixtures.
+
+| quantity | bound | max difference |
+|---|---|---|
+| weight w | ≤ 1e-3 on 99 %, ≤ 0.01 on all | 3.2e-13 |
+| clarity c | ≤ 1e-3 on 99 %, ≤ 0.01 on all | 1.7e-13 |
+| non-formant features | ≤ 1e-6 dB | 6.7e-12 dB |
+| formant poles | ≤ 1e-4 Hz | 6.4e-11 Hz |
+
+The port is exact to rounding: the same Burg recursion, polynomial roots via Aberth–Ehrlich plus Newton
+polishing, float32 mel weights and half-to-even rounding.
+
+**2. Map and gate logic: pass.** The unit tests cover:
+
+- cell indices, the ≥ 5-bin readiness rule, prompt auto-advance, freezing, and the pooled-SD units;
+- the 3-bin median and the 10-s trail;
+- each no-reading reason: gain control, microphone, not mapped, held vowel, unmapped cell, resonance
+  gate;
+- restoring a map, and refusing a map when there is too little speech.
+
+**3. Engine glue: pass.**
+
+- With a tap attached, the engine's vtln readout is bit-identical to running without one.
+- `test:resonance-lab` (89 checks, including the production vtln parity test) is unchanged.
+- The tap produces 1-s bins from the internal pitch path: 15 bins over 15 s of fixture audio.
+
+**4. Isolation: pass.** `scripts/resonance-lab/lab-smoke.mjs` passes all five runs on the built app.
+
+- **Fix to run 1:** the isolation check failed on `origin/cue-strip` before this branch. Since
+  2026-10-07, the Dashboard's resonance cue loads three of the lab's assets (`reference.json`,
+  `cue-bands.json`, `vtln_warp.json`). The check now ignores exactly those three; every other lab chunk
+  and asset still counts.
+- **Weight model on demand:** `weight_v5.json` was requested 0 times in runs 1–4 (including the lab
+  opened while listening and before listening) and only after the weight view was opened in run 5.
+- **Run 5, the weight view:**
+  - gain control was reported off, so mapping was allowed;
+  - mapping used five prompts of 20 s each on a looped LibriSpeech speech file (woman + man, CC BY 4.0)
+    and produced a map of 5–7 cells;
+  - over the ~145 one-second bins of the run, 124–126 were valid. After mapping, the readings and pauses
+    were:
+
+    | outcome | bins |
+    |---|---|
+    | readable | 5–13 |
+    | unmapped cell | 21–28 |
+    | waiting for voiced speech | 6–7 |
+    | held vowel / single words | 2–4 |
+    | resonance gate | 1–4 |
+
+  - With a 100-s mapping on a clip whose pitch and level vary, most bins fall into cells the map never
+    filled. A real user maps for ~3 minutes with deliberate softer / louder / higher / lower prompts. The
+    resonance gate paused 1–4 bins of ordinary read speech here. That is not a measured false-pause rate
+    (§6).
+  - No page errors.
+
+**5. CPU** (desktop; mobile not measured).
+
+**Node** (`scripts/resonance-lab/weight/cpu.mjs`, 74.7 s of 48 kHz speech, le + vtln + fv finalists,
+5 interleaved repetitions, medians):
+
+| | lab DSP, ms CPU per s of audio |
+|---|---|
+| weight view never opened | 74.1 |
+| weight analysis on (mapping) | 86.5 |
+| difference | **+12.4** |
+
+- The analysis's own counter reads 16.7–18.3 ms per s across runs. That breaks down as ≈ 11 ms of
+  features (24 voiced frames per s × ≈ 0.45 ms) plus 3–5 ms of 48 → 16 kHz sinc filtering for samples
+  only the weight frames read, plus timer overhead.
+- Against the pre-stated budget (≤ 15 ms CPU per s added), the lab-total difference passes. The
+  analysis's own counter is 2–3 ms over.
+- Isolated per-frame cost (no engine, fixture frames): 0.31–0.35 ms.
+
+**Built app** (lab "DSP" cost line, no `?diag=1`, headless Chrome, same file):
+
+| smoke run | weight view never opened | weight on | model inference |
+|---|---|---|---|
+| a | 50 | 54 | 46 ms in both |
+| b | 85 | 90 | 94 / 90 ms (machine loaded) |
+| c | 50 | 75 | 45 / 88 ms (load doubled the inference time as well) |
+
+The runs where inference time was steady put the added cost at ≈ 4–5 ms per s. The browser comparison
+is too noisy to support more than "of the order of the Node figure or below".
+
+**6. Layout: pass.**
+
+- At 448×890, 402×750, 360×690, 890×360 and 1280×800 the weight view has no horizontal page overflow,
+  and the plot lies inside the viewport.
+- Phones and short screens scroll the view (the caveats sit below the plot); 1280×800 shows the plot
+  and readouts side by side.
+- The resonance view's phone fit is unchanged: all four cards sit above Stop Listening at 402×750, with
+  no scrolling.
+
+**7. Repo gates.** `npm run lint`, `npm run test:unit` (40/40 scripts, including the new
+`weight-test.js`), `npm run test:resonance-lab` (89 passed) and `npm run build` all pass.
+
+### Deviations from the sceptic's spec (all in §3–§4)
+
+1. **Units:** the user's own pooled within-cell 1-s SD, not the 0.268 VVD step. The VVD step comes from
+   unlicensed teacher demos and would be a shipped fitted constant.
+2. **"Running speech" rule:** a bin is running speech when it is valid with voicing breaks (voiced
+   fraction ≤ 0.95). The gate needs ≥ 3 such bins in the last 5 s, and the same rule applies to mapping
+   bins.
+3. **A bin with no VTLN value pauses** like a moved one (the conservative reading of C3b).
+4. **The map is kept for the page visit**, with its deviceId, across stop / start of listening.
+5. **Mapping prompts** advance at 30 running-speech bins, or when the user taps Next / Done.
+6. **The analysis starts when the view is first opened**, not when the lab starts. Lab users who stay
+   in the resonance view pay nothing for it.
+
+### Still open (unchanged from §6)
+
+- mobile CPU;
+- the resonance gate's false-pause rate on ordinary speech;
+- the clarity head against the clarity study's B1–B7 bar;
+- listener labels of same-pitch, same-loudness light/heavy pairs.
+
+AVID results in §2: M. Kodali, P. Alku, S. R. Kadiri, *AVID: Aalto Vocal Intensity Database*, Zenodo,
+doi:10.5281/zenodo.10524873, CC BY 4.0.
