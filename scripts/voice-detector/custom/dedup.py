@@ -28,7 +28,7 @@ from concurrent.futures import ProcessPoolExecutor
 
 import numpy as np
 
-from common import DATA, META, REPO, Manifest, args, benchmark_noise_manifests
+from common import DATA, META, REPO, Manifest, args, benchmark_noise_manifests, fold_user, fold_users
 
 A = args()
 JOBS = int(A.get("jobs", "3"))
@@ -221,9 +221,9 @@ def main():
             man.add(dict(r, drop=f"speech screen: {v['speech_chunks']} Silero chunks (32 ms) at p >= {SPEECH_P}"))
     # an uploader with a clip that matched benchmark audio is treated like a benchmark uploader
     # (splits.json rule 2's reason: the same people, devices, rooms and machines; addendum A)
-    matched_up = {man.have[c].get("uploader") for c, v in done.items() if v["match"] and c in man.have} - {None}
+    matched_up = fold_users(man.have[c].get("uploader") for c, v in done.items() if v["match"] and c in man.have)   # case-insensitive
     for r in list(man.have.values()):
-        if r["kind"] == "nonvoice" and "drop" not in r and r.get("uploader") in matched_up:
+        if r["kind"] == "nonvoice" and "drop" not in r and r.get("uploader") and fold_user(r["uploader"]) in matched_up:
             man.add(dict(r, drop=f"uploader of a clip that fingerprint-matched benchmark audio ({r['uploader']})"))
     cls = collections.Counter()
     for cid in done:

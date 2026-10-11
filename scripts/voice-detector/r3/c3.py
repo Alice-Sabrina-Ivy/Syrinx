@@ -22,7 +22,7 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "custom"))
-from common import DATA, DL, META, REPO, ROOT, SPLITS, KEYWORDS, args, fnv1a, load_manifest, norm_cc  # noqa: E402,F401
+from common import DATA, DL, META, REPO, ROOT, SPLITS, KEYWORDS, args, fnv1a, fold_user, fold_users, load_manifest, norm_cc  # noqa: E402,F401
 
 R3 = os.path.join(ROOT, "r3")
 CONF = os.path.join(R3, "conf")

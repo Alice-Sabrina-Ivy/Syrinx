@@ -28,7 +28,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import requests
 
-from common import DL, SPLITS, args, benchmark_freesound, fnv1a, norm_cc
+from common import DL, SPLITS, args, benchmark_freesound, fnv1a, fold_user, fold_users, norm_cc
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../notch-adversarial/realdata")))
 from remotezip import RemoteZip  # noqa: E402
@@ -245,7 +245,8 @@ def fsvoice():
     s = requests.Session()
     s.headers.update(UA)
     _, bench_ups, _ = benchmark_freesound()
-    ex_ids, ex_ups = set(FV["excluded_ids"]), set(FV["excluded_uploaders"])
+    bench_ups = fold_users(bench_ups)        # uploaders compared case-insensitively (common.fold_user)
+    ex_ids, ex_ups = set(FV["excluded_ids"]), fold_users(FV["excluded_uploaders"])
     idx_path = os.path.join(out, "index.json")
     index = json.load(open(idx_path, encoding="utf8")) if os.path.exists(idx_path) else {"kept": [], "skipped": []}
     kept_ids = {r["id"] for r in index["kept"]}
@@ -276,9 +277,9 @@ def fsvoice():
                 why = None
                 if r["id"] in kept_ids:
                     continue
-                if r["id"] in ex_ids or r["user"] in ex_ups:
+                if r["id"] in ex_ids or fold_user(r["user"]) in ex_ups:
                     why = "round-1 review probe clip / uploader"
-                elif r["user"] in bench_ups:
+                elif fold_user(r["user"]) in bench_ups:
                     why = "benchmark uploader"
                 elif not r["ogg"]:
                     why = "no preview"

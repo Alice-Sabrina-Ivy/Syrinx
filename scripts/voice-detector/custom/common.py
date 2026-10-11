@@ -34,6 +34,23 @@ def fnv1a(s):
     return h
 
 
+def fold_user(u):
+    """Comparison key of a Freesound uploader name. The same account appears with
+    different letter case in different places (FSD50K metadata 'quartzgate' vs the
+    sound page 'QuartzGate'), so EVERY uploader exclusion, ban, cap or split lookup
+    compares fold_user() keys, never raw names (round-3 review, 2026-10-11; round-4
+    pre-registration §1). Names that differ only by case count as one uploader,
+    which can only exclude more, never less. Hashes that define a split
+    (fnv1a(uploader)) keep the raw name, as the rule was written."""
+    import unicodedata
+    return unicodedata.normalize("NFKC", u or "").casefold().strip()
+
+
+def fold_users(names):
+    """set of fold_user() keys of an iterable of uploader names (None / '' skipped)."""
+    return {fold_user(u) for u in names if u}
+
+
 # Voice / music words in a Freesound title, description or tags: the clip may
 # hold a voice its labels do not name (splits.json keyword_rule).
 KEYWORDS = re.compile(

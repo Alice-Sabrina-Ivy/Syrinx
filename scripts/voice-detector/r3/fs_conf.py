@@ -34,7 +34,7 @@ import time
 import numpy as np
 import requests
 
-from c3 import CDL, KEYWORDS, SPLITS, UA, args, fnv1a, load_exclude, log, norm_cc, write_json
+from c3 import CDL, KEYWORDS, SPLITS, UA, args, fnv1a, fold_user, fold_users, load_exclude, log, norm_cc, write_json
 
 A = args()
 OUT = os.path.join(CDL, "fs")
@@ -132,7 +132,7 @@ LIC_OK = {"CC0 1.0", "CC BY 3.0", "CC BY 4.0", "CC BY-NC 3.0", "CC BY-NC 4.0"}
 def search():
     fallback = A.get("fallback", "")
     ex = load_exclude()
-    ex_ids, ex_ups = set(ex["freesound_ids"]), set(ex["freesound_uploaders"])
+    ex_ids, ex_ups = set(ex["freesound_ids"]), fold_users(ex["freesound_uploaders"])   # uploaders compared case-insensitively (fold_user)
     s = requests.Session()
     s.headers.update(UA)
     cp = os.path.join(OUT, "candidates.json")
@@ -163,7 +163,7 @@ def search():
                 continue                                  # an id found by several queries belongs to the first one
             if r["id"] in ex_ids:
                 why = "id used before (exclude.json)"
-            elif r["user"] in ex_ups:
+            elif fold_user(r["user"]) in ex_ups:
                 why = "uploader used before (exclude.json)"
             elif not r["ogg"]:
                 why = "no preview"
@@ -270,12 +270,12 @@ def select_pass(cands, chk, S, sp, scr, s):
     for r in cands:
         sid = str(r["id"])
         kept = [v for v in chk.values() if not v.get("drop")]
-        banned = {v["user"] for v in chk.values() if v.get("ban_uploader")}
+        banned = fold_users(v["user"] for v in chk.values() if v.get("ban_uploader"))
         n_q = sum(1 for v in kept if v["query"] == r["query"] and v["set"] == r["set"])
-        n_u = sum(1 for v in kept if v["user"] == r["user"])
+        n_u = sum(1 for v in kept if fold_user(v["user"]) == fold_user(r["user"]))
         if sid in chk:
             continue
-        if r["user"] in banned:
+        if fold_user(r["user"]) in banned:
             continue                                   # not checked: uploader banned by a fingerprint match
         if n_q >= r["cap"] or n_u >= 2:
             continue                                   # not checked (cap); may be checked later if a slot reopens
@@ -349,7 +349,7 @@ def select_pass(cands, chk, S, sp, scr, s):
                 rec["drop"] = f"fingerprint match with earlier clip {mt[0]} (BER {mt[2]:.3f})"
                 rec["ban_uploader"] = True
                 for v in chk.values():
-                    if v["user"] == r["user"] and not v.get("drop"):
+                    if fold_user(v["user"]) == fold_user(r["user"]) and not v.get("drop"):
                         v["drop"] = f"uploader banned: another clip of theirs matched earlier audio ({sid})"
         chk[sid] = rec
         write_json(sp, S)

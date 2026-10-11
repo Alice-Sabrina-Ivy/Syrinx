@@ -8,7 +8,13 @@
 #   check   proves the rounds 1-2 training + validation manifests share none of
 #           them (by group, Freesound id and uploader, and by LibriSpeech /
 #           SingBAP speaker id), and that no training / validation file lies
-#           under the confirmatory root; exits non-zero otherwise
+#           under the confirmatory root; lists every record that touches the
+#           set, kept or dropped, and exits non-zero if a KEPT one does (a
+#           dropped record is never packed for training or validation)
+#
+# Uploaders and group keys are compared case-insensitively (common.fold_user;
+# round-4 pre-registration §1: FSD50K writes "quartzgate", the sound page
+# "QuartzGate"). The stored lists keep the names as found.
 #
 # Round-3 training, validation and selection code calls filter_records() on
 # every record list it reads and guard_not_conf() (c3.py) on every path.
@@ -18,7 +24,7 @@ import json
 import os
 import sys
 
-from c3 import CONF, DATA, R3, CManifest, guard_not_conf, load_manifest, log, write_json
+from c3 import CONF, DATA, R3, CManifest, fold_user, fold_users, guard_not_conf, load_manifest, log, write_json
 
 P = os.path.join(R3, "train_exclude.json")
 
@@ -49,15 +55,40 @@ def build():
     log("train_exclude.json:", {k: len(v) if isinstance(v, list) else v for k, v in out.items()})
 
 
+def record_uploader(r):
+    """A record's Freesound uploader: its `uploader` field, else the `freesound:<uploader>` group key."""
+    if r.get("uploader"):
+        return r["uploader"]
+    g = r.get("group") or ""
+    return g.split(":", 1)[1] if g.startswith("freesound:") else None
+
+
+def touches(r, ex):
+    """Why record r touches the excluded set ex (train_exclude.json form), or None. Case-insensitive on uploaders and groups."""
+    if "_fold" not in ex:
+        ex["_fold"] = dict(g=fold_users(ex["groups"]), ids=set(int(i) for i in ex["freesound_ids"]), ups=fold_users(ex["freesound_uploaders"]),
+                           ls=fold_users(map(str, ex["librispeech_speakers"])), sb=fold_users(map(str, ex["singbap_participants"])))
+    F = ex["_fold"]
+    u = record_uploader(r)
+    if r.get("group") and fold_user(r["group"]) in F["g"]:
+        return f"group {r['group']}"
+    if r.get("freesound_id") is not None and int(r["freesound_id"]) in F["ids"]:
+        return f"Freesound id {r['freesound_id']}"
+    if u and fold_user(u) in F["ups"]:
+        return f"uploader {u}"
+    if r.get("source") == "librispeech" and r.get("speaker") is not None and fold_user(str(r["speaker"])) in F["ls"]:
+        return f"LibriSpeech speaker {r['speaker']}"
+    if r.get("source") == "singbap" and r.get("participant") is not None and fold_user(str(r["participant"])) in F["sb"]:
+        return f"SingBAP participant {r['participant']}"
+    return None
+
+
 def filter_records(recs, ex=None):
-    """Round-3 training / validation: drop any record that touches the confirmatory set."""
+    """Round-3/4 training / validation: drop any record that touches the confirmatory set."""
     ex = ex or json.load(open(P, encoding="utf8"))
-    g, ids, ups = set(ex["groups"]), set(ex["freesound_ids"]), set(ex["freesound_uploaders"])
-    ls, sb = set(ex["librispeech_speakers"]), set(ex["singbap_participants"])
     out = []
     for r in recs:
-        if (r.get("group") in g or (r.get("freesound_id") is not None and int(r["freesound_id"]) in ids) or r.get("uploader") in ups
-                or (r.get("source") == "librispeech" and r.get("speaker") in ls) or (r.get("source") == "singbap" and r.get("participant") in sb)):
+        if touches(r, ex):
             continue
         if r.get("path"):
             guard_not_conf(os.path.join(DATA, r["path"]))
@@ -68,13 +99,14 @@ def filter_records(recs, ex=None):
 def check():
     man = load_manifest()
     recs = list(man.values())
-    kept = filter_records(recs)
-    keep_ids = {r["id"] for r in kept}
-    bad = [r["id"] for r in recs if r["id"] not in keep_ids]
-    log(f"rounds 1-2 manifests: {len(recs)} records, {len(bad)} touch the confirmatory set")
-    for b in bad[:20]:
-        print("  OVERLAP", b)
-    sys.exit(1 if bad else 0)
+    ex = json.load(open(P, encoding="utf8"))
+    bad = [(r, touches(r, ex)) for r in recs]
+    bad = [(r, w) for r, w in bad if w]
+    used = [(r, w) for r, w in bad if not r.get("drop")]
+    log(f"rounds 1-2 manifests: {len(recs)} records, {len(bad)} touch the confirmatory set ({len(used)} kept, {len(bad) - len(used)} dropped)")
+    for r, w in bad:
+        print(f"  OVERLAP {r['id']} ({r.get('split')}; {'KEPT' if not r.get('drop') else 'dropped: ' + r['drop']}): {w}")
+    sys.exit(1 if used else 0)
 
 
 if __name__ == "__main__":

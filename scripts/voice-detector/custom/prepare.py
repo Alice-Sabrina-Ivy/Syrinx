@@ -25,7 +25,7 @@ from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 
 import numpy as np
 
-from common import DATA, DL, META, SPLITS, SR, KEYWORDS, Manifest, args, benchmark_freesound, fnv1a, norm_cc, to16k_mono, write_wav16
+from common import DATA, DL, META, SPLITS, SR, KEYWORDS, Manifest, args, benchmark_freesound, fnv1a, fold_user, fold_users, norm_cc, to16k_mono, write_wav16
 
 A = args()
 JOBS = int(A.get("jobs", "3"))
@@ -424,6 +424,7 @@ MACHINE = set(SPLITS["negatives"]["fsd50k"]["machine_room_classes"])
 def src_fsd50k(P):
     d = os.path.join(DL, "fsd50k")
     ids, ups, esc = benchmark_freesound()
+    ups = fold_users(ups)          # uploaders compared case-insensitively (common.fold_user)
     ex = os.path.join(d, "extract")
     for split, last in (("dev", "FSD50K.dev_audio.zip"), ("eval", "FSD50K.eval_audio.zip")):
         parts = [f"{last[:-4]}.z{i:02d}" for i in range(1, {"dev": 6, "eval": 2}[split])] + [last]
@@ -456,7 +457,7 @@ def src_fsd50k(P):
                 why = "benchmark Freesound id"
             elif int(fid) in esc:
                 why = "ESC-50 source id"
-            elif v["uploader"] in ups:
+            elif fold_user(v["uploader"]) in ups:
                 why = "benchmark Freesound uploader"
             elif KEYWORDS.search(" ".join([v.get("title", ""), v.get("description", ""), " ".join(v.get("tags", []))])):
                 why = "voice / music keyword in title, description or tags"

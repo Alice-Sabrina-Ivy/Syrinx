@@ -22,7 +22,7 @@ import time
 
 import requests
 
-from common import DL, META, SPLITS, KEYWORDS, args, benchmark_freesound, fnv1a, norm_cc
+from common import DL, META, SPLITS, KEYWORDS, args, benchmark_freesound, fnv1a, fold_user, fold_users, norm_cc
 
 A = args()
 PER = int(A.get("per", "20"))
@@ -81,13 +81,14 @@ def sound_page(r):
 
 def main():
     ids, ups, esc = benchmark_freesound()
+    ups = fold_users(ups)          # uploaders compared case-insensitively (common.fold_user)
     fsd = set()
     for s in ("dev", "eval"):
         fsd |= {int(k) for k in json.load(open(os.path.join(DL, "fsd50k", "FSD50K.metadata", f"{s}_clips_info_FSD50K.json"), encoding="utf8"))}
     fsd_up = {}
     for s in ("dev", "eval"):
         for k, v in json.load(open(os.path.join(DL, "fsd50k", "FSD50K.metadata", f"{s}_clips_info_FSD50K.json"), encoding="utf8")).items():
-            fsd_up.setdefault(v["uploader"], set()).add(s)
+            fsd_up.setdefault(fold_user(v["uploader"]), set()).add(s)
     idx_path = os.path.join(OUT, "index.json")
     index = json.load(open(idx_path, encoding="utf8")) if os.path.exists(idx_path) else {"kept": [], "skipped": []}
     kept_ids = {r["id"] for r in index["kept"]}
@@ -120,7 +121,7 @@ def main():
                     why = "ESC-50 source id"
                 elif r["id"] in fsd:
                     why = "in FSD50K"
-                elif r["user"] in ups:
+                elif fold_user(r["user"]) in ups:
                     why = "benchmark uploader"
                 elif not r["ogg"]:
                     why = "no preview"
@@ -148,7 +149,8 @@ def main():
                 dest = os.path.join(OUT, "audio", os.path.basename(hq))
                 pending.append(pool.submit(get, hq, dest, 1000, 0.0))
                 up = r["user"]
-                split = "val" if "eval" in fsd_up.get(up, ()) else "train" if "dev" in fsd_up.get(up, ()) else ("val" if fnv1a(up) % 10 == 0 else "train")
+                fu = fold_user(up)      # FSD50K side looked up case-insensitively; the FNV rule hashes the raw name, as written
+                split = "val" if "eval" in fsd_up.get(fu, ()) else "train" if "dev" in fsd_up.get(fu, ()) else ("val" if fnv1a(up) % 10 == 0 else "train")
                 index["kept"].append(dict(id=r["id"], user=up, query=q, title=r["title"], dur=r["dur"], licence=L[0],
                                           licence_url="https://" + lic[0] + "/", tags=tags, description=desc[:2000],
                                           url=f"https://freesound.org/people/{up}/sounds/{r['id']}/", preview=hq,
