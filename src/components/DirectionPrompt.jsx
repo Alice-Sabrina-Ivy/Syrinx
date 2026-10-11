@@ -5,8 +5,9 @@
 // listening, so a return visit is still a single tap. Changeable any time
 // in the settings panel, which renders the same DirectionOptions. Every
 // option looks the same — only the targets behind them differ (a pitch
-// band for the first three; a vocal-weight side for more feminine /
-// more masculine).
+// band for the first three, plus the resonance cue's outline; the
+// vocal-weight sides were removed 2026-10-11 — the row measures clarity
+// and has no target, measurements/clarity-cue-2026-10-08.md).
 //
 // A real modal: App makes everything behind it inert while it is open
 // (no focus, no clicks — the microphone can't be started and Settings
@@ -18,15 +19,13 @@ import { useState, useRef, useEffect } from "react";
 import {
   TRAINING_DIRECTIONS,
   pitchTargetFor,
-  weightTargetFor,
   formatTarget,
 } from "../utils/trainingDirection";
 
 function optionHint(id) {
   const pitch = formatTarget(pitchTargetFor(id));
   if (!pitch) return "No targets, just the readings";
-  const weight = weightTargetFor(id)?.side;
-  return weight ? `Pitch target ${pitch} · ${weight} vocal weight` : `Pitch target ${pitch}`;
+  return `Pitch target ${pitch}`;
 }
 
 // Radio group of the four directions. `compact` = the settings-panel size.

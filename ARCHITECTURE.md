@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**Syrinx** is a free, open-source voice training toolkit that runs entirely in the browser. No downloads, no accounts, no servers — just open the URL and start training. It provides real-time visual feedback on pitch, resonance, vocal weight, and intonation using your device's microphone, with long-term progress tracking stored locally on your device.
+**Syrinx** is a free, open-source voice training toolkit that runs entirely in the browser. No downloads, no accounts, no servers — just open the URL and start training. It provides real-time visual feedback on pitch, resonance, voice clarity (clear ↔ breathy), and intonation using your device's microphone, with long-term progress tracking stored locally on your device.
 
 The name comes from the vocal organ of songbirds (the most resonant voices in nature) and a Greek myth about transformation.
 
@@ -584,14 +584,19 @@ The default practice mode — everything at a glance. **As built (Design A
 
 - **Pitch trace** (15 s) on top.
 - **Cue strip** directly under it: three graded readouts — **Pitch** (log
-  Hz), **Resonance · approx.** (spectral warp) and **Vocal weight** (relative
-  to the session's own start) — each on one neutral axis with the
-  typically-men end on the left, bands for typical adult men and women
-  (none for weight; resonance bands are where single readings of typical
-  speakers fall), a dot for the current value and a trail (~2 s; ~30 s for
-  resonance, whose header says how far you have moved from where you
-  started; the weight dot is a ~5 s level). The training direction appears as
-  the same soft highlight on every cue; only pitch is judged on / off target
+  Hz), **Resonance · approx.** (spectral warp) and **Clarity · approx.** (CPP,
+  breathier ↔ clearer, relative to the session's own start; the "Vocal
+  weight" row until 2026-10-11 — CPP measures periodicity, not weight, and a
+  pre-registered test of pitch- and loudness-corrected clarity measures
+  failed, so the row is raw CPP with a caveat that louder or higher speech
+  reads clearer; `measurements/clarity-cue-2026-10-08.md`) — each on one neutral axis (pitch and
+  resonance with the typically-men end on the left), bands for typical adult
+  men and women (none for clarity; resonance bands are where single readings
+  of typical speakers fall), a dot for the current value and a trail (~2 s;
+  ~30 s for resonance, whose header says how far you have moved from where you
+  started; the clarity dot is a ~5 s level). The training direction appears as
+  the same soft highlight on pitch and resonance (clarity has no target in any
+  direction); only pitch is judged on / off target
   (colour, a hollow dot and "↑ higher" / "↓ lower" — never colour alone). The
   pitch level and steadiness sit in the pitch row, HNR in the strip's caption.
 - **"Likely heard as · Experimental"** — opt-in, off by default: listener
@@ -994,21 +999,23 @@ Population ranges, for orientation — not targets in themselves. The app's
 targets come from the user's training direction
 (`src/utils/trainingDirection.js`, sources in
 `measurements/training-direction-targets-2026-10-07.md`): today a pitch
-band per direction, and a lighter (more feminine) / heavier (more
-masculine) vocal-weight zone shown with a note that the correlate also
-moves with pitch; no resonance target until that readout can carry one
-without misleading (per-frame F2 mostly tracks the vowel).
+band per direction (plus the resonance cue's outline); no resonance target
+until that readout can carry one without misleading (per-frame F2 mostly
+tracks the vowel). **Historical (superseded 2026-10-11):** a lighter (more
+feminine) / heavier (more masculine) vocal-weight zone on the CPP reading —
+removed with the rename to Clarity (`measurements/clarity-cue-2026-10-08.md`).
 
 | Metric | Typical adult male | Typical adult female | Moving toward feminine | Moving toward masculine | Notes |
 |--------|-------------------|---------------------|------------------------|-------------------------|-------|
 | **F2 (resonance)** | Varies by vowel | **~10-20% higher, same vowel** | Raise (vocal tract shaping) | Lower | Strongest single cue listeners use |
 | F1 | Varies by vowel | ~10-20% higher | Raise | Lower | |
 | F0 (pitch) | ~85–155 Hz | ~165–255 Hz | Raise habitual pitch | Lower habitual pitch | Necessary but not sufficient; ~145–175 Hz is ambiguous, resonance decides |
-| Vocal weight (CPP-based correlate) | Lower CPP (heavier) | Higher CPP (lighter) | Lighten | Heavier | Per-user-baseline correlate of phonatory density (Aaen et al. 2025); reads a raised voice lighter (pitch confound) |
+| Vocal weight | — | — | Lighten | Heavier | **No validated acoustic measure in Syrinx** (research only, 2026-10-08). CPP is **not** a weight correlate: it measures clarity (clear ↔ breathy) and read weight mostly backwards. **Historical (superseded 2026-10-11):** "Lower CPP (heavier) / Higher CPP (lighter), correlate of phonatory density (Aaen et al. 2025)" — a misread: Aaen et al. 2025 report *lower* CPP for the lighter, reduced-density conditions (`measurements/clarity-cue-2026-10-08.md`) |
+| Clarity (CPP) | — | — | — | — | Clear ↔ breathy (periodicity); shown self-relative with no target in any direction; also rises with loudness and pitch and varies with vowel |
 | HNR | Higher (cleaner) | Similar or slightly lower | — | — | Mainly diagnostic |
 | Pitch variability (σ) | Lower (flatter) | Higher (more expressive) | More intonation range | Flatter | |
 
-**Key insight**: Pitch gets all the attention, but resonance and vocal weight are what listeners primarily use to gender a voice. Syrinx treats changing how a voice is perceived — in any direction — as the multi-dimensional problem it actually is.
+**Key insight**: Pitch gets all the attention, but resonance and — per voice pedagogy — vocal weight (not measured by Syrinx yet) are what listeners primarily use to gender a voice. Syrinx treats changing how a voice is perceived — in any direction — as the multi-dimensional problem it actually is.
 
 ---
 

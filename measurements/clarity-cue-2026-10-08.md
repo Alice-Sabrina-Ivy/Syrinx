@@ -674,3 +674,15 @@ Coverage under the phone chain was 1.00 for every candidate (P1 and P3).
 | c gHVR | M | 1.07 | 1.00 | +0.95 | +0.84 | +0.76 |
 | d CPP (ref) | W | 1.52 | 1.00 | +0.91 | +0.86 | +0.55 |
 | d CPP (ref) | M | 2.82 | 1.00 | +0.95 | +0.88 | +0.70 |
+
+## 9. Checks on the `clarity-cue` branch (2026-10-11)
+
+- `npm run lint`: clean. `npm run test:unit`: 39 / 39 scripts pass (incl. `tests/audio/cue-strip-model-test.js`
+  73 checks — clarity axis, no highlight in any direction, headers never say lighter / heavier /
+  weight — and `tests/data/training-direction-test.js` — no weight-zone helpers exported).
+  `npm run test:resonance-lab`: 89 passed, 0 failed. `npm run build`: ok.
+- `scripts/cue-strip-smoke.mjs` on the built app: 80 / 80 at each of 448×890, 402×750, 360×690,
+  890×360 and 1280×800 — the third row is "Clarity · approx." with ends breathier / clearer, no strip
+  text and no direction option says weight / lighter / heavier, the caveat line shows with the
+  caption in all four directions, clarity has no highlight in any direction, calibrating → live
+  ≤ 45 s, layout (trace + strip in the first screen, no clipped header, popovers readable) unchanged.

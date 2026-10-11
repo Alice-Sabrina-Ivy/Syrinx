@@ -1,9 +1,12 @@
-// vocal-weight-level.js — the cue strip's vocal-weight LEVEL: the median of
+// vocal-weight-level.js — the cue strip's clarity LEVEL (historical module
+// name: CPP measures clear <-> breathy, not weight —
+// measurements/clarity-cue-2026-10-08.md): the median of
 // the last WEIGHT_LEVEL_EMITS voiced CPP-aggregate emits (one per 250 ms of
 // voiced content, so 20 = the last ~5 s of voiced speech, the same horizon
 // as the resonance cue's readout). The level is read against the session's
 // frozen baseline (vocal-weight-baseline.js), so it is in the same σ units
-// as the per-emit sigmaDelta and the direction zones keep their meaning;
+// as the per-emit sigmaDelta (the direction zones it once served were
+// removed 2026-10-11);
 // sigmaDelta is linear in CPP, so sigmaDelta(median CPP) = median sigmaDelta.
 //
 // Why (2026-10-07 cue-strip review): a single emit is one 1-s aggregate and

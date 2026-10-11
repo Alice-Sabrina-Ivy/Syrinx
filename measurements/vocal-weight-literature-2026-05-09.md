@@ -1,5 +1,7 @@
 # Vocal weight — published acoustic correlates literature review
 
+> **Correction (2026-10-11):** this note's reading of Aaen et al. 2025 is wrong. The abstract reports "negative correlations for SPL, shimmer, and CPP measures for RD [reduced-density] conditions", i.e. the *lighter* conditions have *lower* CPP, not higher. "Higher CPP = lighter" is superseded; CPP measures clarity (clear <-> breathy) and read weight mostly backwards. See [clarity-cue-2026-10-08.md](clarity-cue-2026-10-08.md).
+
 **Date:** 2026-05-09
 **Companion to:** `measurements/vocal-weight-audit-2026-05-09.md`
 **Scope:** Research-only literature review. Identifies which published acoustic measure(s) best correlate with perceived vocal weight in trans voice training. No code changes; no implementation proposals.

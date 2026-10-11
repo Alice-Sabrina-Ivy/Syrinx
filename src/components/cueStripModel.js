@@ -3,7 +3,7 @@
 // the row states, the header words and the screen-reader summaries are
 // unit-testable in Node (tests/audio/cue-strip-model-test.js).
 //
-// Three rows, one orientation: the typically-men end on the LEFT.
+// Three rows; pitch and resonance put the typically-men end on the LEFT.
 //   pitch      log Hz 75–320; bands = typical adult men 85–155 / women
 //              165–255 Hz (the training-direction targets, which are those
 //              ranges — trainingDirection.js PITCH_TARGETS); the dot AND the
@@ -19,13 +19,21 @@
 //              judged. The header says how far the dot is from where you
 //              started (the validated use); a slow trail (one sample every
 //              2 s, ~30 s) shows the drift.
-//   weight     σ from the session's own first-30 s baseline, −3 (heavier)
-//              … +3 (lighter); the dot is the ~5 s median level
-//              (vocal-weight-level.js); no population bands.
+//   clarity    CPP (clear <-> breathy, periodicity) in σ from the session's
+//              own first-30 s baseline, −3 (breathier) … +3 (clearer); the
+//              dot is the ~5 s median level (vocal-weight-level.js — the
+//              module keeps its historical name); no population bands and
+//              no direction highlight in any direction. Louder or higher
+//              speech also reads clearer and vowels differ (the pre-
+//              registered corrected measures failed —
+//              measurements/clarity-cue-2026-10-08.md). Was "Vocal weight"
+//              (σ −3 heavier … +3 lighter, with direction zones) until
+//              2026-10-11 — **historical**: CPP does not measure weight.
 // Direction highlight: the same element and style for every direction,
-// only { low, high } changes; none for "Just exploring" / unanswered. Only
-// the pitch dot is coloured on / off target (statusColor(pitchStatus(...)),
-// the F0 readout's rule); resonance and weight dots are always neutral.
+// only { low, high } changes; none for "Just exploring" / unanswered, and
+// never on clarity. Only the pitch dot is coloured on / off target
+// (statusColor(pitchStatus(...)), the F0 readout's rule); resonance and
+// clarity dots are always neutral.
 // measurements/cue-strip-review-fixes-2026-10-07.md
 
 import { COLORS, CUE_AXES, statusColor } from "../utils/constants.js";
@@ -35,11 +43,10 @@ import {
   pitchStatus,
   resonanceTargetFor,
   resonanceU,
-  weightRangeFor,
 } from "../utils/trainingDirection.js";
 import { VTLN_CLAMP_EDGE } from "../resonance/resonanceCue.js";
 
-export const CUES = ["pitch", "resonance", "weight"];
+export const CUES = ["pitch", "resonance", "clarity"];
 export const TRAIL_LEN = 8;
 export const TRAIL_EVERY_MS = 250;
 // Resonance changes over seconds (5 s readout): a slower, longer trail.
@@ -82,7 +89,7 @@ export function cueResonanceRef(vtlnRef, cueBands = null) {
   if (!cueBands?.men || !cueBands?.women) return vtlnRef;
   return { ...vtlnRef, men: cueBands.men, women: cueBands.women, speakerBands: { men: vtlnRef.men, women: vtlnRef.women } };
 }
-/** -> { men: { x0, x1, xm }, women: { x0, x1, xm } } | null (weight has none). */
+/** -> { men: { x0, x1, xm }, women: { x0, x1, xm } } | null (clarity has none). */
 export function bandsFor(cue, vtlnRef = null) {
   if (cue === "pitch") {
     const geo = (t) => { const r = rangeOnAxis("pitch", t); return { ...r, xm: frac("pitch", Math.sqrt(t.low * t.high)) }; };
@@ -98,11 +105,11 @@ export function bandsFor(cue, vtlnRef = null) {
 
 // ---- direction highlight (one style for every direction)
 export const HIGHLIGHT_STYLE = Object.freeze({ fill: COLORS.targetBand, stroke: COLORS.targetBandBorder, strokeWidth: 1, rx: 4 });
-/** The highlighted range in the cue's own units, or null (no highlight). */
+/** The highlighted range in the cue's own units, or null (no highlight;
+ *  always null for clarity — it has no target in any direction). */
 export function targetRangeFor(cue, direction, vtlnRef = null) {
   if (cue === "pitch") { const t = pitchTargetFor(direction); return t ? { low: t.low, high: t.high } : null; }
   if (cue === "resonance") return resonanceTargetFor(direction, vtlnRef);
-  if (cue === "weight") return weightRangeFor(direction, CUE_AXES.weight.max);
   return null;
 }
 /** -> { low, high, x0, x1, style } | null */
@@ -137,7 +144,7 @@ export function pitchCueWord(pitchLevel, direction) {
 // ---- row states (CueStrip data-state)
 // pitch:     idle | holding | live
 // resonance: starting | unavailable | paused | idle | sustained | warming | settling | holding | live
-// weight:    calibrating | idle | holding | live
+// clarity:   calibrating | idle | holding | live
 export function pitchRowState({ voiced, holding, pitchLevel }) {
   if (voiced && pitchLevel != null) return "live";
   if (voiced || holding) return "holding";
@@ -158,7 +165,9 @@ export function resonanceRowState({ workerStatus, snap, voiced, holding }) {
   if (!voiced) return "holding";
   return "live";
 }
-export function weightRowState({ vocalWeight, voiced, holding }) {
+// `vocalWeight` is the pipeline's CPP state slice (historical name; it
+// measures clarity).
+export function clarityRowState({ vocalWeight, voiced, holding }) {
   if (!vocalWeight?.baselineReady) return "calibrating";
   if (!voiced && !holding) return "idle";
   if (!voiced || vocalWeight.sigmaLevel == null) return "holding";
@@ -242,10 +251,10 @@ export function resonanceHeader(state, snap) {
     }
   }
 }
-// Weight: deadband 0.3 σ (the 5 s level's own same-voice wobble is
-// ~0.67 σ q10–q90).
-export const WEIGHT_DEADBAND = 0.3;
-export function weightHeader(state, vocalWeight) {
+// Clarity: deadband 0.3 σ (the 5 s level's own same-voice wobble is
+// ~0.67 σ q10–q90). Positive σ = higher CPP = clearer.
+export const CLARITY_DEADBAND = 0.3;
+export function clarityHeader(state, vocalWeight) {
   if (state === "calibrating") {
     const p = vocalWeight?.baselineProgress ?? 0;
     return vocalWeight?.cpp == null && p === 0 ? "Calibrating…" : `Calibrating ${Math.round(p * 100)} %`;
@@ -253,8 +262,8 @@ export function weightHeader(state, vocalWeight) {
   const s = vocalWeight?.sigmaLevel;
   if (state === "idle" || s == null) return "—";
   const a = Math.abs(s);
-  if (a < WEIGHT_DEADBAND) return "about where you started";
-  return `${a.toFixed(1)} σ ${s > 0 ? "lighter" : "heavier"} than your start`;
+  if (a < CLARITY_DEADBAND) return "about where you started";
+  return `${a.toFixed(1)} σ ${s > 0 ? "clearer" : "breathier"} than your start`;
 }
 
 // ---- screen-reader summaries (one per row; CueStrip refreshes them at 1 Hz)
@@ -290,5 +299,5 @@ export function cueSummary(cue, { state, direction = null, pitchLevel = null, sn
     const w = bandWords(snap?.u, vtlnRef);
     return sentence(`Resonance (approximate)${w ? `: ${w}` : ""}, ${resonanceHeader(state, snap)}`);
   }
-  return sentence(`Vocal weight: ${weightHeader(state, vocalWeight)}`);
+  return sentence(`Clarity (approximate): ${clarityHeader(state, vocalWeight)}`);
 }
