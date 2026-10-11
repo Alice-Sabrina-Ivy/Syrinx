@@ -373,3 +373,92 @@ exception in CLAUDE.md's main-thread budget.
   3a / 3b counts (tasks > 50 ms, rAF probe > 50 ms) in the TARGET runs ≤
   base + 1; lint, `npm run test:unit`, `npm run build`, smoke at the five
   viewports.
+
+### 3.1 Results (2026-10-11, after the pre-registration)
+
+Desktop, headless Chrome 154, 1280 × 800, `mt-cpu.mjs`, public LibriSpeech
+woman / man WAVs as in §2. Fix commits: 4b5ff4e (F1, F2 as pre-registered,
+F6) and 96a5a08 (F2 revised, below). Run files: scratch only
+(`mainthread-warning/fix3297/`).
+
+**F6 — range-box transition (attribution, decided before F1 / F2 were
+measured).** 3297f9f vs 3297f9f without the `left` / `width` transition,
+panel on, no diag, 3 × {woman, man}; order fixed per voice (women base
+first, men candidate first — not alternated within a voice). Main thread:
+
+| | 3297f9f | no transition | median diff | range changes / s |
+|---|---|---|---|---|
+| Woman | 95.7, 94.1, 110.6 (median 95.7) | 92.2, 97.2, 104.1 (97.2) | +1.5 | 0.04–0.22 |
+| Man | 107.3, 116.4, 115.7 (115.7) | 95.1, 102.8, 105.8 (102.8) | −12.9 | 0.28–0.43 |
+| Pooled | 108.9 | 100.0 | **−8.9** | |
+
+−8.9 ms/s ≥ the 6 ms/s bar: **the transition is removed** (4b5ff4e). The
+saving comes from the man's runs, where the range moves 3–4 times as often;
+on the woman's runs the range barely moves and the difference is noise.
+
+**Guard 1 — latency (F3 statistic).** 4b5ff4e vs 5e26866, diag, panel off,
+3 × {woman, man}, each voice run in both orders. Draw − readout update,
+median of run medians: base 3.85 ms, head 3.45 ms, **−0.40 ms, pass**
+(≤ +5) — women 3.90 → 3.40, men 3.80 → 3.50. Reported, not judged:
+capture → painted 6.40 → 6.10 ms, capture → readout update 2.80 → 2.70 ms.
+
+**Guard 3c — redraw cadence.** 4b5ff4e, diag, panel off, 5 × {woman, man}:
+every run 40.0 draws/s, gap p99 33.7–33.8 ms, max 34.5–50.0 ms, step p99
+1.43 CSS px — **all 10 pass**. For reference, base 5e26866 (rAF loop,
+~96 draws/s with diag) had a max gap of 10.6–21.2 ms in five of six runs and
+**247.1 ms** in one: stalls of that size come from the machine and hit the
+old loop too; the new fallback bounds how long the trace stays still after
+one.
+
+**TARGET.** adf19c3 vs 4b5ff4e, no diag, 2 × {woman, man} per panel state,
+each (panel, voice) in both orders. Median ms of thread CPU per audio second:
+
+| | Main, base → head | Women | Men | Pitch | DSP | Resonance | Gender |
+|---|---|---|---|---|---|---|---|
+| Panel off | 235.6 → **89.8 (−61.9 %)** | 232.6 → 89.1 (−61.7 %) | 240.8 → 89.8 (−62.7 %) | +0.7 % | +1.3 % | +4.5 % | — |
+| Panel on | 246.0 → **94.7 (−61.5 %)** | 264.3 → 94.2 (−64.4 %) | 235.1 → 95.2 (−59.5 %) | +0.9 % | −0.9 % | +5.1 % | +4.0 % |
+
+**Pass** (≥ 35 % in both panel states, both voices). No worker source
+changed; the worker moves (≤ 1.3 ms/s for resonance, 6.7 ms/s for the
+gender worker) are within the run-to-run spread. Guards 3a / 3b over these
+runs: main-thread tasks > 50 ms base 1 / head 1, rAF intervals > 50 ms
+base 1 / head 0 — **pass** (≤ base + 1). The absolute figures differ from
+§2.5 (`chrome-cpu.mjs`, a quieter machine) — compare within a table only.
+
+**F2 — the pre-registered change failed its check; revised.** With the
+`resize` listener (4b5ff4e) `visual-check.mjs` failed the DPR-only step for
+the head: the canvas stayed 640 × 240 at DPR 2 and 3 (31 / 33). A probe in the
+same headless emulation showed that a DPR-only change fires **no event at
+all** — no window `resize`, no `(resolution: Ndppx)` media-query change, no
+`device-pixel-content-box` ResizeObserver callback (the review's alternative
+fix) — while `window.devicePixelRatio` does report the new value. Revised
+(96a5a08): `draw()` re-measures when `window.devicePixelRatio` differs from
+the measured value — a property read, no layout, once per draw (≤ 40/s);
+the media-query and `resize` listeners are removed; the ResizeObserver
+still handles container size. `visual-check.mjs` vs 5e26866: **33 / 33**
+(trace pixels: 28 pixels differ by ≤ 5/255 at every data step, as in §2.3;
+DPR-only 1 → 2 → 3 → 1 resizes the canvas in both trees; cue strip
+identical). Because this build differs from the measured one, a
+confirmation (4b5ff4e vs 96a5a08, no diag, alternated): panel off
+1 × {woman, man} 92.7 → 93.9 ms/s (+1.2), panel on 3 × {woman, man}
+87.4 → 92.7 (+5.3; women +6.2, men +4.3) — inside the ±10 ms/s spread of
+single runs of one build, and one property read per draw cannot cost
+milliseconds per second; read as noise. The TARGET cut is unaffected
+(~−62 %). Diag on 96a5a08, 1 × {woman, man}: 40.0 draws/s, gap p99
+33.7 / 33.9 ms, max 39.6 / 52.1 ms, step p99 1.43 px (guard 3c pass),
+draw − readout 3.4 / 3.4 ms.
+
+**Not adopted:** the review's display-rate rAF loop capped at 60 Hz (F1,
+reason in §3). It is prepared as a phone-check variant, so the phone session
+can price its smoothness against its main-thread cost if the data-driven
+cadence fails there.
+
+**Checks on 96a5a08:** `npm run lint`, `npm run test:unit` (39 / 39, incl.
+the new `tests/audio/trace-redraw-test.js`, 15 checks), `npm run build`, and
+`scripts/cue-strip-smoke.mjs --pitch-only=man,woman` at the five viewports
+(90 / 90 at each: phone 448 × 890, p402 402 × 750, p360 360 × 690, landscape 890 × 360, desktop 1280 × 800).
+
+**Phone.** Not measured here. The phone check covers main-thread CPU (base
+adf19c3 vs head, production page), guard 3c on the phone's 40 ms audio
+buffers (and the by-eye judder check), the resonance worker, and the gender
+worker + speech detector at the 450 ms hop, in one session.
