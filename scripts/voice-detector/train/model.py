@@ -240,6 +240,16 @@ class _LeakGraph:
             g()
 
 
+def leak_graphs_reset():
+    """Free every captured leak graph and their memory pool (inference with many batch sizes)."""
+    global _LEAK_POOL
+    _LEAK_GRAPHS.clear()
+    _LEAK_POOL = None
+    import gc
+    gc.collect()
+    torch.cuda.empty_cache()
+
+
 def _leak_graph(B, S, H, w, b, lam):
     k = (B, S, H, w.data_ptr(), b.data_ptr(), lam)
     if k not in _LEAK_GRAPHS:

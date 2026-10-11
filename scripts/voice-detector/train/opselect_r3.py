@@ -32,6 +32,7 @@
 # feasible point with the largest O; within 0.5 pp the shorter hangover.
 #
 #   python opselect_r3.py --cands=NET:rule[,NET:rule..] [--root=build/vad-train/r3/cand] [--json=OUT] [--no-spl]
+#   python opselect_r3.py --cands=DIR:file --copies=N    (deployable re-check: files with the rule applied, DIR and DIR-carried)
 #   python opselect_r3.py --selftest=DIR      (compare with score.py's functions on a candidate dir of fresh files)
 import json
 import os
@@ -66,7 +67,7 @@ BIG = 1.0e6
 
 # ---------------------------------------------------------------- the deployment rules
 def rule_parse(rule):
-    if rule == "plain":
+    if rule in ("plain", "file"):
         return ("plain", None)
     for k in ("mean", "old"):
         if rule.startswith(k):
@@ -77,6 +78,8 @@ def rule_parse(rule):
 def combine(net_dir, sub, rel, rule):
     """Frame probabilities of one stream for a deployment rule (sub = '' fresh / vsess, '-spl' spliced)."""
     kind, T = rule_parse(rule)
+    if kind == "file":       # a runner's files with the rule already applied (infer.py --onnx [--stagger --combine]): DIR/<set>/<id>.f32
+        return np.fromfile(os.path.join(net_dir, rel + ".f32"), dtype="<f4").astype(np.float64)
     rd = lambda v: np.fromfile(os.path.join(net_dir, v + sub, rel + ".f32"), dtype="<f4").astype(np.float64)  # noqa: E731
     if kind == "plain":
         return rd("plain")
@@ -101,6 +104,8 @@ def _age_b(n, T):
 def combine_spl(net_dir, rel, rule, offset):
     """Spliced files: the copies' reset schedule runs from the SESSION start (frame offset of the stream in its session)."""
     kind, T = rule_parse(rule)
+    if kind == "file":       # infer_carried.py's files (rule applied over each session): DIR-carried/<set>/<id>.f32
+        return np.fromfile(os.path.join(net_dir.rstrip("/\\") + "-carried", rel + ".f32"), dtype="<f4").astype(np.float64)
     rd = lambda v: np.fromfile(os.path.join(net_dir, v + "-spl", rel + ".f32"), dtype="<f4").astype(np.float64)  # noqa: E731
     if kind == "plain":
         return rd("plain")
@@ -372,19 +377,33 @@ def probs(block, net_dir, rule, sub, spl_off=None):
     return out
 
 
+def _has(net_dir, rule, rel, sub=""):
+    if rule == "file":
+        d = net_dir.rstrip("/\\") + ("-carried" if sub else "")
+        return os.path.exists(os.path.join(d, rel + ".f32"))
+    return os.path.exists(os.path.join(net_dir, "plain" + sub, rel + ".f32"))
+
+
 def score_candidate(blocks, net, rule, spl_off, do_spl=True):
-    net_dir = os.path.join(CROOT, net)
+    """2026-10-08: the benchmark's tuning-194 audio was deleted with the worktree that held it. A candidate whose
+    tuning-194 files were never written is scored without them: feasibility is unaffected (no clean / mix row or
+    onset uses them), tune_v2 is NaN and O is reported as its upper bound min(vneg V2, vsess V2) (O_upper)."""
+    net_dir = net if rule == "file" else os.path.join(CROOT, net)
     frame_ms = json.load(open(os.path.join(net_dir, "net.json")))["frame_ms"] if os.path.exists(os.path.join(net_dir, "net.json")) else 82.0
-    rf = summarise(blocks["fresh"], blocks["fresh"].evaluate(probs(blocks["fresh"], net_dir, rule, "")), "fresh")
+    tune_rel = next(it["rel"] for it in blocks["fresh"].items if it["meta"]["set"] == "noise")
+    has_tune = _has(net_dir, rule, tune_rel)
+    fb = blocks["fresh"] if has_tune else blocks.setdefault("fresh_nt", Block([dict(it, masks=list(it["masks"])) for it in blocks["fresh"].items if it["meta"]["set"] != "noise"]))
+    do_spl = do_spl and _has(net_dir, rule, tune_rel, "-spl")
+    rf = summarise(fb, fb.evaluate(probs(fb, net_dir, rule, "")), "fresh")
     rv = summarise(blocks["vsess"], blocks["vsess"].evaluate(probs(blocks["vsess"], net_dir, rule, "")), "vsess")
     rs = summarise(blocks["fresh"], blocks["fresh"].evaluate(probs(blocks["fresh"], net_dir, rule, "-spl", spl_off)), "spl") if do_spl else None
     grid = []
     for k in rf:
         f, v = rf[k], rv[k]
-        O = min(f["tune_v2"], f["vneg_v2"], v["vs_v2"])
+        O = min(f["tune_v2"], f["vneg_v2"], v["vs_v2"]) if has_tune else min(f["vneg_v2"], v["vs_v2"])
         feas = bool(f["worst_clean"] <= CLEAN_LIM and f["worst_mix"] <= MIX_LIM and f["onset_median_worst"] <= ONSET_LIM
                     and v["worst_clean"] <= CLEAN_LIM and v["worst_mix"] <= MIX_LIM and v["onset_median_worst"] <= ONSET_LIM and frame_ms <= 100)
-        pt = {"agg": k[0], "thr": k[1], "hang": k[2], "O": O, "feasible": feas, "fresh": f, "vsess": v}
+        pt = {"agg": k[0], "thr": k[1], "hang": k[2], "O": O, "O_upper": not has_tune, "feasible": feas, "fresh": f, "vsess": v}
         if rs is not None:
             pt["spl"] = rs[k]
         grid.append(pt)
@@ -448,7 +467,7 @@ def selftest(cdir):
 def main():
     if "selftest" in MY:
         return selftest(MY["selftest"])
-    cands = [c.split(":") for c in MY["cands"].split(",")]
+    cands = [c.rsplit(":", 1) for c in MY["cands"].split(",")]
     do_spl = "no-spl" not in MY
     blocks, spl_off = build_blocks(do_spl)
     out = {}
@@ -462,7 +481,7 @@ def main():
         grid, frame_ms = score_candidate(blocks, net, rule, spl_off, do_spl)
         best = pick(grid)
         fb = None if best else min(grid, key=ratio)
-        out[name] = {"net": net, "rule": rule, "copies": 1 if rule == "plain" else 2, "frame_ms": frame_ms, "best": best, "fallback": fb,
+        out[name] = {"net": net, "rule": rule, "copies": int(MY.get("copies", "1")) if rule == "file" else (1 if rule == "plain" else 2), "frame_ms": frame_ms, "best": best, "fallback": fb,
                      "grid": [{k: v for k, v in g.items()} for g in grid]}
         r = best or fb
         print(f"{name}: {'PICK' if best else 'NO feasible point; fallback'} {r['agg']} p>={r['thr']} {r['hang']} ms -> O {r['O']:.2f} "

@@ -37,7 +37,7 @@ import model as M
 from tcommon import HOP, OFF, ROOT, args, resample_stream
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
-from streams import list_streams, load_audio  # noqa: E402
+from streams import _restored, list_streams, load_audio  # noqa: E402
 
 A = args()
 REPO = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../.."))
@@ -97,7 +97,22 @@ class Net:
             out[:, i:i + m] = r[0].float().cpu().numpy()
             state = list(r[1:])
             i += m
+        if self.net.lam != 1.0:          # leak nets: one CUDA graph per batch size; free them between runs (bounded GPU memory)
+            M.leak_graphs_reset()
         return [out[b, :ns[b]] for b in range(B)]
+
+
+def run_variants(todo, xs):
+    """Run each (net, variant); a copy with no reset inside the batch's longest sequence equals the plain run (reused)."""
+    N = max((len(x) + OFF) // HOP for x in xs)
+    plain = {}
+    for net, v in sorted(todo, key=lambda nv: nv[1] != "plain"):
+        if not resets(N, v):
+            if net.name not in plain:
+                plain[net.name] = net.run(xs, "plain")
+            yield net, v, plain[net.name]
+        else:
+            yield net, v, net.run(xs, v)
 
 
 def write(path, p):
@@ -122,6 +137,11 @@ def batches(items, lens, max_b=512, max_audio_s=7200.0):
 
 def fresh_metas(group):
     ms = _fresh_metas(group)
+    if "skip-missing" in A:          # 2026-10-08: the benchmark's tuning-194 audio was deleted with its worktree
+        has = lambda m: os.path.exists(m["audio"]["path"]) or bool(_restored(m["audio"]["path"]))  # noqa: E731  (2026-10-11 restored copies)
+        miss = [m for _, m in ms if not has(m)]
+        ms = [(r, m) for r, m in ms if has(m)]
+        print(f"{group}: skipping {len(miss)} streams whose audio is missing ({sorted({m['set'] for m in miss})})", flush=True)
     if "limit" in A:                 # a test subset (every k-th stream)
         k = max(1, len(ms) // int(A["limit"]))
         ms = ms[::k]
@@ -152,8 +172,7 @@ def run_fresh(nets, variants, group):
         for _, m in bt:
             x, sr = load_audio(m)
             xs.append(resample_stream(x, sr))
-        for net, v in todo:
-            ps = net.run(xs, v)
+        for net, v, ps in run_variants(todo, xs):
             for (_, m), p in zip(bt, ps):
                 write(os.path.join(OUT, net.name, v, m["set"], m["id"] + ".f32"), p)
         done += len(bt)
@@ -188,8 +207,7 @@ def run_spl(nets, variants):
                 pos += len(parts[-1])
             xs.append(np.concatenate(parts).astype(np.float32))
             cuts.append(cs)
-        for net, v in todo:
-            ps = net.run(xs, v)
+        for net, v, ps in run_variants(todo, xs):
             for p, cs in zip(ps, cuts):
                 for s, o, n in cs:
                     seg = p[o:o + n]

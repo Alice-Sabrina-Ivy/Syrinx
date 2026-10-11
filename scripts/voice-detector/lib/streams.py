@@ -79,11 +79,32 @@ def _read_wav(path):
     return x.reshape(-1, ch)[:, 0].astype(np.float32), sr
 
 
+_RESTORED = None
+
+
+def _restored(path):
+    """2026-10-11: the notch worktree that held the harness corpora was removed; restored copies
+    (r3/restore_bench.py) are used only for streams whose re-run dump is byte-identical
+    (r3/restore_check.py -> build/vad-train/r3/restore/<set>*.json)."""
+    global _RESTORED
+    if _RESTORED is None:
+        _RESTORED = {}
+        d = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "build", "vad-train", "r3", "restore")
+        for p in sorted(glob.glob(os.path.join(d, "*.json"))):
+            with open(p, encoding="utf8") as f:
+                for r in json.load(f).values():
+                    if r.get("ok"):
+                        _RESTORED[os.path.normcase(r["old"])] = r["new"]
+    return _RESTORED.get(os.path.normcase(path))
+
+
 def load_audio(meta):
     """(samples float32, sr): the stream exactly as the app chain got it."""
     a = meta["audio"]
     if "/vad-train/r3/conf/" in os.path.abspath(a["path"]).replace("\\", "/") and os.environ.get("VAD_R3_LOOK") != "1":
         raise SystemExit(f"refused: {a['path']} is in the sealed round-3 confirmatory set")
+    if not os.path.exists(a["path"]) and _restored(a["path"]):
+        a = dict(a, path=_restored(a["path"]))
     if a["fmt"] == "sig16be":
         x = np.fromfile(a["path"], dtype=">i2").astype(np.float32) / 32768
         sr = a["sr"]

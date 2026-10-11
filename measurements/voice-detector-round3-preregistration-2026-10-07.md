@@ -926,3 +926,66 @@ That runner is part of the look and is the only step that sets
 
 - **Q2 (trills)** is still the user's decision. Training and selection do not
   depend on it; the look's verdict does.
+
+## Addendum R3-C — resumed after a pause (2026-10-11, before any round-3 network is scored)
+
+Work stopped on 2026-10-08 (usage limit) and resumed on 2026-10-11. At the
+stop, the four training runs of B.1 had finished and the A0 selection files
+were written. The rule (`opselect_r3.py`) had scored only the five A0
+candidates of r5-bighard-e10000, on validation data. **No round-3 network (B)
+had been scored by the rule**, no candidate had been frozen, and nothing of
+the sealed set, the harness probability files or the private recordings had
+been read. This addendum records what the resumed step checked and changed,
+before any B candidate is scored.
+
+### C.1 The training runs are reused
+
+- Each run's `config.json` holds exactly the arguments of
+  `run-r3-train.sh` (B.1): seeds 31–34, 16,000 steps, EMA 0.999, the round-2
+  recipe, the decay τ = 3 s for `r9-leak` / `r9-sessleak`, `p_sess` 0.5 for
+  the session runs, the state bank for `r9-leak` only.
+- `train.py` was last changed at 02:08 on 2026-10-08, before the first two
+  runs started (02:22), and equals 20d5196. `r9-sess-b` and `r9-sessleak`
+  started after 20d5196 was committed.
+- For the two runs that started 15 minutes before 20d5196, the committed
+  `model.py` reproduces each run's logged fixed-validation EMA metrics at
+  steps 8,000 and 16,000 (AUC within 6e-10, TNR at 99 % TPR exactly). The
+  only later change to `model.py` frees the leak models' CUDA graphs between
+  inference batches (memory only).
+
+### C.2 The tuning-194 audio was restored, not dropped
+
+- The harness streams read their audio in place from the notch work's
+  corpora in another worktree. That worktree was removed on 2026-10-08, so
+  2,869 of the 4,305 harness streams, among them the 194-clip tuning split
+  of O (§3.4), had no audio. The B selection files therefore lacked the
+  tuning split. The interrupted attempt's workaround (O without the tuning
+  split, as an upper bound) is **not used**.
+- `scripts/voice-detector/r3/restore_bench.py` re-downloaded and
+  re-prepared all 279 clips of the harness `noise` set with the notch
+  scripts' own functions (`fetch_noise.py`, run without its main loop;
+  Freesound previews fetched by sound id, not by re-running the searches).
+- `scripts/voice-detector/r3/restore_check.py` re-ran the production chain
+  (`dump.mjs`, src dd92037, as the dumps) over the restored audio: **all 279
+  dumps are byte-identical** to the originals.
+- The A0 tuning-split files (written on 2026-10-08 from the original audio)
+  are reproduced from the restored audio within 2.4e-7 (r8a-e8000, `plain`
+  and `c10a`, all 194 streams).
+- `lib/streams.py` maps an old corpus path to its restored copy only for
+  streams that passed this check.
+- The other harness sets (`noiseho`, `vocalset`, `pvqd`, `voiced` and the
+  mixes) are needed only after the freeze (B.5). They are restored and
+  checked the same way before their probability files are written; a stream
+  that cannot be restored identically is listed and left out.
+
+### C.3 Selection files and costs
+
+- The B selection files are re-written in full with `infer_r3.py`
+  (fresh incl. the tuning split, one-room validation sessions, round 2's
+  spliced sessions). The A0 files are those of 2026-10-08.
+- WASM cost per architecture and copy count (B.4; Node, onnxruntime-web
+  1.30.0, 1 thread, validation streams, shared machine under load), in ms
+  per 25 ms: plain GRU 0.71 (1 copy) / 1.67 (2 copies); leak GRU 0.84 /
+  1.65. All are within V4's 2 ms.
+- The rule then runs once over all 70 candidates of B.3 (the five A0
+  candidates of r5-bighard-e10000 are re-scored in the same run).
