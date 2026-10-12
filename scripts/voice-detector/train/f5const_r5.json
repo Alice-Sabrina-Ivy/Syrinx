@@ -1,0 +1,18 @@
+{
+ "what": "round-5 F5 constants (Addendum R5-B part 2): cpp_thr from generated white noise, dq0 / de0 from training voice (D7a)",
+ "f5": {
+  "cpp_thr": 0.8114,
+  "dq0": 0.05492,
+  "de0": 0.078276
+ },
+ "detail": {
+  "noise_frames": 31680,
+  "noise_cpp_median": 0.5502402782440186,
+  "voice_series": 300,
+  "voice_records": 571,
+  "dq_pairs": 528917,
+  "de_frames": 446367,
+  "dq_median": 0.0020966529846191406,
+  "de_median": 0.037049293518066406
+ }
+}

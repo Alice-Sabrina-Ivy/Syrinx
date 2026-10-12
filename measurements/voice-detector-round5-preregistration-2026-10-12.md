@@ -1091,10 +1091,10 @@ last 10 s:
 
 ## Addendum R5-B part 2 (data) — data step B, the training additions (2026-10-12)
 
-**Not written yet:** the feature, loss and sampler code — F1m, F5, Bound,
-the §3.4 loss terms, D7's draw shares in the sampler, the parity checks and
-the WASM cost. It comes as part 2 (code), before the validity check (§2.7).
-No model is trained before then.
+The feature, loss and sampler code — F1m, F5, Bound, the §3.4 loss terms,
+D7's draw shares in the sampler, the parity checks and the WASM cost — is in
+**part 2 (code)** below, written before the validity check (§2.7). No model
+is trained before then.
 
 ### D1
 
@@ -1157,3 +1157,159 @@ person.
 - VocalSet (an old-harness set, §2.1).
 - SingBAP (its participants are on the sealed side, `c_sbi`).
 - Any new download for training. Round 5 adds no training person.
+
+## Addendum R5-B part 2 (code) — features, sampler, loss, parity and cost (2026-10-12, before the validity check)
+
+Written **before any round-5 model is trained and before any model has
+scored an H row**. Nothing here reads the sealed set, a validation score or
+the private session recordings. The only networks run: random-weight networks
+for the parity checks and the cost; two code smoke tests of `train_r5.py`
+(12 and 6 steps, deleted, never scored); and the three reference networks of
+§2.7, whose H probability files were written (`infer_r3.py --groups=hval`)
+but **not scored** before this addendum was pushed.
+
+Code: `train/model.py` (cfg `f1m`, `f5`, `bound`; every round-3 / round-4
+path unchanged: re-exporting the round-3 and round-4 freezes gives
+byte-identical ONNX files, sha256 `1af5a357…979b` and `c10b28f3…84a5`),
+`train/train_r5.py` (`train_r4.py` + D7 + §3.4; `train_r4.py` unchanged),
+`train/arch_r5.py`, `train/run-r5-train.sh`, `train/calib_r5.py` →
+`train/f5const_r5.json`, `train/parity_r5.py`, `train/samplercheck_r5.py`,
+`train/opselect_r5.py`, `train/infer_r3.py` (group `hval`), `train/export.py`
+(round-5 state names), `r5/selftest_r5.py`.
+
+### B2.1 F1m as implemented (§3.5)
+
+- Per band of the log-mel x_t (natural log, before normalisation):
+  - μ₁, v₁: F1's τ = 1 s mean and variance (unchanged);
+  - the floor m_t = min(x_t, m_{t−1} + ρ), **ρ = 0.05 dB/s = 1.4391e-4 nat
+    per 12.5 ms frame**, m₀ = x₀;
+  - w = the τ = 1 s EMA of (x − m)².
+- Channels to the first convolution: x, x − μ₁, log(v₁ + ε), x − m,
+  log(w + ε); **ε = 1e-3**, **v₀ = w₀ = 1.0** nat² (F1's "not yet known to be
+  steady" value).
+- **F1's flux EMAs (τ 1 s and 6 s, start 1.0) stay** at the GRU input: §3.5
+  replaces F1's τ = 6 s *per-band* statistics, and F5 is fed "next to F1's
+  flux EMAs". This reading is fixed here.
+- Computation: the floor is first-order recursive with a min, computed as
+  m_t = min(m_prev + (t + 1)ρ, min_{s≤t} x_s + (t − s)ρ) — a cumulative min in
+  float64 for training / batch inference, a lower-triangular min inside the
+  streaming / ONNX graph (ONNX has no CumMin). Input-only, no gradient,
+  computed once per training session as F1 (B.8).
+- State (ONNX inputs after h): `mv` [1, 4, 64] (μ₁, v₁, m, w), `xprev`
+  [1, 64], `fl` [1, 2], `init` [1, 1]; all zero = stream start.
+
+### B2.2 F5 as implemented (§3.5)
+
+- **Spectrum:** the 1,024-point (64 ms) periodic-Hann window ending where the
+  mel frame ends (audio context 824 samples; the mel path reads the last 512).
+  Computed exactly by a radix-4 polyphase DFT (4 sample phases × one
+  256-point DFT convolution, twiddles, Hann applied in frequency); against
+  numpy's rfft of the windowed frames: relative error 5.4e-7. (A first
+  radix-2 form with dilated convolutions was replaced before any training for
+  cost: same spectrum, half the multiply-adds.)
+- **Cepstrum:** of L = 10·log₁₀(P + 1e-10) (dB), quefrencies 40–213 samples
+  (2.5–13.3 ms). A regression line is fitted over the same range; **CPP** =
+  the largest residual above it; its quefrency q is refined parabolically
+  (not at the range ends). Inputs: CPP (dB) and ln(q / 16 kHz).
+- **Periodic frame:** CPP ≥ **cpp_thr = 0.8114 dB** = the 99th percentile of
+  CPP over 400 s of generated Gaussian white noise (`calib_r5.py`; noise
+  median 0.55 dB; synthetic harmonic tones at 80–350 Hz read 4.8–6.1 dB with
+  their pitch to 0.1 Hz).
+- **Micro-variation:** dq_t = |ln q_t − ln q_{t−1}| when frames t and t−1 are
+  both periodic, else 0; dE_t = |E_t − E_{t−1}|, E = ln of the power in bins
+  4–64 (62.5–1,000 Hz). EMAs τ 0.25 s and 1 s of each, started at **dq0 =
+  0.05492** and **de0 = 0.07828** = their means over training voice (300 D7a
+  series, 571 records: dq over periodic frame pairs, dE over Praat-positive
+  frames; `calib_r5.py`). Inputs: ln(EMA + 1e-4) for dq, ln(EMA + 1e-3) for dE.
+- **Envelope:** orthonormal DCT-II coefficients 1–12 of the 64 log-mel bands.
+- **Onset history:** the positive flux mean_b max(0, x_t − x_{t−1}); its
+  decaying maxima for τ 3 s and 30 s, started at 0; inputs ln(o + 1e-3).
+  Float64 log-domain cumulative max in batch, lower-triangular max in ONNX.
+- **20 F5 inputs** join the flux EMAs at the GRU input (one BatchNorm over
+  the 22). State `f5s` [1, 9] (ln q, periodic, E, 2 + 2 EMAs, 2 maxima).
+- Window 64 ms ≤ 82 ms: `frame_ms` stays 82.
+
+### B2.3 Bound as implemented (§3.5; used only if §3.6's rule picks it)
+
+- Local head: Linear(fc 64 + the 20 normalised F5 inputs → 32), ReLU,
+  Linear(32 → 1) = l_loc; final logit l = max(l_gru, l_loc − 4); auxiliary
+  BCE on l_loc with the same frame weights, weight 0.5.
+
+### B2.4 Sizes, parity, cost
+
+| architecture | parameters | ONNX bytes | WASM ms per 25 ms (Node, ORT-web 1.30.0, 1 thread; loaded machine) |
+|---|---|---|---|
+| F1 (round 4's network) | 91,213 | 1,516,974 | 1.88 / 1.81 |
+| F1m | 91,213 | 1,516,940 | 1.89 |
+| F1m + F5 | 97,013 | 2,228,796 | 3.90 / 3.71 |
+| F1m + F5 + Bound | 99,766 | 2,241,261 | 3.95 |
+
+- **Parity** (`parity_r5.py`, random-weight networks, a generated 40 s
+  stream): the floor and onset recursions, both forms, vs a naive per-frame
+  loop ≤ 4.8e-7; the round-5 raw inputs, chunks of 1 / 2 / 37 / 700 frames
+  with the state carried vs the whole stream ≤ 4.4e-4 (log of small
+  variances); probabilities, torch streaming (chunks 1, 2, 8, 700) vs batch
+  ≤ 1.8e-7; exported streaming ONNX (dynamic chunk 1, 2, 8) vs batch ≤ 7.2e-7.
+- **Cost.** All four measured in one session, but the shared machine was at
+  100 % CPU from other work: round 4's F1 network measured 0.56 ms there in
+  round 4 and 1.8–1.9 ms now. The **order** is what the tie-break of §4 uses:
+  F1 ≈ F1m < F1m + F5 ≈ F1m + F5 + Bound (F5 about 2.0–2.1×). V4 (≤ 2 ms) is
+  measured again on the frozen point; if the load is still high, the
+  measurement conditions are stated with it.
+
+### B2.5 D7 and the loss in the sampler (§3.3, §3.4)
+
+- **Hold sessions:** with p 0.35 a one-room training session is a hold
+  session. Episodes are whole D7 items, each D7a or D7b with p 0.5, truncated
+  at the session end; D7a series are drawn by duration (equal hours per sex),
+  their records joined with breath gaps U(0.5, 3) s; D7b holds uniformly.
+  Lead U(0, 30) s, pauses from round 4's set, 35–65 % voice (≤ 50 draws), 64–
+  256 s. Bed: the steady pools (`stat`, `synth_r4` = D4, `fsr4`) with
+  relative D5 weights 0.28 : 0.18 : 0.10 with p 0.8, else the D5 draw (D6
+  marks as round 4). SNR U(−3, +25) dB; clean with p 0.2.
+- **D7 crops:** with p 0.15 a voice crop (mix or clean) comes from a D7 item
+  (D7a / D7b p 0.5, any offset). Everything else is drawn as round 4.
+- **Labels:** D7a from the records' Praat labels; D7b positive where its
+  truth is voiced, with tcommon's 2-frame boundary margins masked.
+- **Tail weight:** positive frames at t ≥ 10 s in episodes ≥ 10 s get weight
+  max(w, 3). Positive frames already have weight 3 (`--wpos`), so **this
+  term changes no weight**. It is implemented as written; the decay penalty
+  is the active term.
+- **Decay penalty:** p̄₀ = mean p over the episode's *positive* frames in
+  [0.5, 5) s (detached, sums carried across the 8 s TBPTT chunks per
+  session slot); L_dec = mean over all positive frames at t ≥ 5 s of the
+  step's hold-session episodes ≥ 10 s of relu(p̄₀ − p_t); loss + 1.0 · L_dec.
+  Times follow the speed perturbation's frame warp (onset = the episode's
+  first frame after the warp).
+- **Sampler check** (`samplercheck_r5.py`, 60 hold sessions, training data):
+  length 65–253 s, voice fraction 0.37–0.65, 2.85 episodes per session, 88 %
+  of them ≥ 10 s; D7 items 106 D7a / 94 D7b; in all 169 items with both label
+  kinds, positive frames are louder than negative ones; D7 share of voice
+  crops 13.7 % (3,000 draws; nominal 15 %).
+- **Refusals:** `train_r5.py` refuses `r5/hval` and `r3/conf` on every bank
+  and list it opens; `selftest_r5.py` checks that and still finds no training
+  or packing script importing the validation generators (the selection-side
+  scripts `infer_r3.py` and `opselect_r5.py` read the H rows by design and
+  are listed as such).
+
+### B2.6 Runs and selection as implemented (§3.6, §4)
+
+- `run-r5-train.sh NAME`: round 4's recipe and arguments (D1–D6, sessions
+  64–256 s, EMA 0.999, 16,000 steps, checkpoints every 1,000) plus
+  `--p_hold=0.35 --p_d7crop=0.15 --lam_dec=1.0`. Runs `r11-data` (F1, seed
+  51), `r11-floor` (F1m, 52), `r11-harm` (F1m + F5, 53); run 4 (seed 54) by
+  §3.6's rule, recorded in an addendum before it starts.
+- **Selection files:** `infer_r3.py --groups=fresh,vsess,spl,hval
+  --variants=plain` (GPU, TF32 off, state carried).
+- **The rule:** `opselect_r5.py` = `opselect_r3.py`'s readings, feasibility,
+  O and within-candidate pick, plus:
+  - H1: per sex × condition × voice kind, CORRECT hops in the sex's band;
+  - H2: per sex × condition × {synthetic, real}, every 10-s bin (as
+    `hval.py counts`: bins 0, 1, … and the hold's last 10 s); a bin under 400
+    current-app CORRECT hops joins the bin before it (fixed from the dumps,
+    no model); last ≤ first + 1 pp;
+  - a self-test of the H readings against score.py's `hop_probs` /
+    `voice_flags` at four grid points.
+- **Reference rows:** `custom-vd-r3` and `custom-vd-r4` from their rounds'
+  selection files plus new H files written next to them; `r10-data-e16000`
+  (diagnostic, §2.7) the same way.

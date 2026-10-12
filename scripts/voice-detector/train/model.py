@@ -359,9 +359,120 @@ def ema_scan(u, y0, beta: float, block: int = 256):
 
 F1_DEFAULT = {"taus": [1.0, 6.0], "eps": 1e-3, "v0": 1.0, "fl0": 1.0}
 
+# ---------------------------------------------------------------------------- round 5 (pre-registration 2026-10-12 §3.5)
+# F1m: F1's tau = 6 s per-band statistics are replaced by a FLOOR m_t = min(x_t, m_{t-1} + rho) (rho = 0.05 dB/s in log-mel nat,
+# m_0 = x_0) and w = the tau = 1 s EMA of (x - m)^2; the tau = 1 s mean / variance and F1's flux EMAs (tau 1 s, 6 s) stay.
+# Constants fixed in Addendum R5-B part 2 before any round-5 model was scored.
+F1M_DEFAULT = {"tau": 1.0, "rho_db_s": 0.05, "eps": 1e-3, "v0": 1.0, "w0": 1.0, "fl_taus": [1.0, 6.0], "fl0": 1.0}
+# F5: harmonic structure of a 64 ms (1,024-point) periodic-Hann window per hop (cepstral peak prominence over quefrencies
+# qlo..qhi samples = 2.5-13.3 ms, its quefrency), micro-variation EMAs (|d ln q| on periodic frames, |d ln E| in 50-1,000 Hz),
+# DCT 1..12 of the log-mel, onset history (decaying maxima of the positive flux). cpp_thr / dq0 / de0: Addendum R5-B part 2.
+F5_DEFAULT = {"win": 1024, "qlo": 40, "qhi": 213, "cpp_thr": None, "dq0": None, "de0": None, "taus_mv": [0.25, 1.0], "taus_on": [3.0, 30.0],
+              "eps_dq": 1e-4, "eps_de": 1e-3, "eps_on": 1e-3, "n_dct": 12, "ebins": [4, 64], "p_floor": 1e-10}
+BOUND_DEFAULT = {"B": 4.0, "hidden": 32, "aux_w": 0.5}
+BIGF = 1.0e4      # "no floor yet" (the first frame's floor is x_0)
+
+
+class Spec1024(nn.Module):
+    """Power spectrum |DFT(w * frame)|^2, k = 0..N/2, of a periodic-Hann N-point window (N = 1024) per hop, frames ending where
+    the mel frames end. Computed exactly, radix-4 polyphase: the stream is split into its 4 sample phases (frame starts are
+    multiples of HOP = 200, so of 4), each phase gets the same un-windowed N/4-point DFT (one strided convolution, stride HOP / 4),
+    the twiddle combination X[k] = sum_r W^(rk) D_r[k mod N/4], then the Hann window in frequency (0.5 X[k] - 0.25 X[k-1] -
+    0.25 X[k+1]). Input xpad [B, S] with N - HOP + OFF zeros (or the carried context) in front; S = T * HOP + N - HOP."""
+
+    R = 4
+
+    def __init__(self, N=1024):
+        super().__init__()
+        R = self.R
+        H = N // R
+        n = np.arange(H)
+        k = np.arange(H // 2 + 1)[:, None]
+        ang = 2 * np.pi * k * n[None, :] / H
+        basis = np.concatenate([np.cos(ang), -np.sin(ang)], 0).astype(np.float32)[:, None, :]      # [H + 2, 1, H]
+        self.register_buffer("basis", torch.from_numpy(basis))
+        ks = np.arange(-1, N // 2 + 2)                  # k = -1 .. N/2 + 1 (the window's neighbours of 0 .. N/2)
+        km = ks % H
+        src = np.where(km <= H // 2, km, H - km)
+        sgn = np.where(km <= H // 2, 1.0, -1.0)         # conjugate symmetry of the N/R-point DFTs
+        self.register_buffer("src", torch.from_numpy(src.astype(np.int64)))
+        self.register_buffer("sgn", torch.from_numpy(sgn.astype(np.float32))[None, None, :, None])
+        tw = np.exp(-2j * np.pi * np.arange(R)[:, None] * ks[None, :] / N)                          # [R, K]
+        self.register_buffer("twr", torch.from_numpy(tw.real.astype(np.float32))[None, :, :, None])
+        self.register_buffer("twi", torch.from_numpy(tw.imag.astype(np.float32))[None, :, :, None])
+        self.N, self.H, self.nb = N, H, H // 2 + 1
+
+    def forward(self, xpad):
+        R, nb = self.R, self.nb
+        B = xpad.shape[0]
+        ph = xpad.reshape(B, -1, R).transpose(1, 2).reshape(B * R, 1, -1)                 # [B R, 1, S / R]
+        D = F.conv1d(ph, self.basis, stride=HOP // R)                                     # [B R, H + 2, T]
+        D = D.reshape(B, R, 2 * nb, -1)
+        Dr = D[:, :, :nb].index_select(2, self.src)                                       # [B, R, K, T]
+        Di = D[:, :, nb:].index_select(2, self.src) * self.sgn
+        Xr = (self.twr * Dr - self.twi * Di).sum(1)                                       # [B, K, T], k = -1 .. N/2 + 1
+        Xi = (self.twr * Di + self.twi * Dr).sum(1)
+        Wr = 0.5 * Xr[:, 1:-1] - 0.25 * Xr[:, :-2] - 0.25 * Xr[:, 2:]
+        Wi = 0.5 * Xi[:, 1:-1] - 0.25 * Xi[:, :-2] - 0.25 * Xi[:, 2:]
+        return Wr * Wr + Wi * Wi                                                         # [B, N/2 + 1, T]
+
+
+def cep_matrix(N, qlo, qhi):
+    """Real cepstrum of a dB power spectrum (k = 0..N/2) at quefrencies qlo..qhi (samples): c[q] = sum_k a_k L[k] cos(2 pi k q / N) / N."""
+    k = np.arange(N // 2 + 1)[:, None]
+    q = np.arange(qlo, qhi + 1)[None, :]
+    a = np.where((k == 0) | (k == N // 2), 1.0, 2.0)
+    return (a * np.cos(2 * np.pi * k * q / N) / N).astype(np.float32)                 # [N/2 + 1, Q]
+
+
+def dct_matrix(M, n):
+    """Orthonormal DCT-II coefficients 1..n of M bands: [M, n]."""
+    b = np.arange(M)[:, None]
+    j = np.arange(1, n + 1)[None, :]
+    return (np.sqrt(2.0 / M) * np.cos(np.pi * j * (b + 0.5) / M)).astype(np.float32)
+
+
+def floor_track(x, m_prev, rho):
+    """m_t = min(x_t, m_{t-1} + rho) over the last axis of x [..., T] from m_prev [...] (closed form: m_t = min(m_prev + (t + 1) rho,
+    min_{s <= t} x_s + (t - s) rho)). Tracing / short chunks: a lower-triangular min (ONNX has no CumMin); else cummin in float64."""
+    T = x.shape[-1]
+    if torch.jit.is_tracing() or T <= 64:
+        idx = torch.arange(T, device=x.device).to(x.dtype)
+        d = idx[:, None] - idx[None, :]                                        # t - s
+        D = torch.where(d >= 0, d * rho, torch.full_like(d, BIGF))
+        m = (x[..., None, :] + D).amin(-1)
+        return torch.minimum(m, m_prev[..., None] + (idx + 1.0) * rho)
+    s = torch.arange(T, device=x.device, dtype=torch.float64)
+    cm = torch.cummin(x.double() - s * rho, -1).values + s * rho
+    return torch.minimum(cm, m_prev.double()[..., None] + (s + 1.0) * rho).to(x.dtype)
+
+
+def decay_max(u, o_prev, beta):
+    """o_t = max(u_t, beta * o_{t-1}) over the last axis (u >= 0) from o_prev: o_t = max(o_prev beta^(t+1), max_{s<=t} u_s beta^(t-s)).
+    Tracing / short chunks: a lower-triangular max; else a log-domain cummax in float64."""
+    T = u.shape[-1]
+    lb = math.log(beta)
+    if torch.jit.is_tracing() or T <= 64:
+        idx = torch.arange(T, device=u.device).to(u.dtype)
+        d = idx[:, None] - idx[None, :]
+        D = torch.where(d >= 0, torch.exp(torch.clamp(d, min=0.0) * lb), torch.zeros_like(d))
+        o = (u[..., None, :] * D).amax(-1)
+        return torch.maximum(o, o_prev[..., None] * torch.exp((idx + 1.0) * lb))
+    s = torch.arange(T, device=u.device, dtype=torch.float64)
+    lu = torch.log(u.double().clamp(min=0.0) + 1e-300)
+    lo = torch.cummax(lu - s * lb, -1).values + s * lb
+    o = torch.exp(lo)
+    return torch.maximum(o, o_prev.double()[..., None] * torch.exp((s + 1.0) * lb)).to(u.dtype)
+
+
+def ema_any(u, y0, beta):
+    """ema_block (tracing / short) or ema_scan (float64 blocks)."""
+    return ema_block(u, y0, beta) if (torch.jit.is_tracing() or u.shape[-1] <= 64) else ema_scan(u, y0, beta)
+
 
 class VoiceNet(nn.Module):
-    def __init__(self, n_mels=64, convs=((16, 3), (32, 3), (32, 1)), gru=64, gru_layers=1, fc=64, fmin=50.0, fmax=7800.0, win=WIN, leak_tau=0.0, f1=None):
+    def __init__(self, n_mels=64, convs=((16, 3), (32, 3), (32, 1)), gru=64, gru_layers=1, fc=64, fmin=50.0, fmax=7800.0, win=WIN, leak_tau=0.0, f1=None,
+                 f1m=None, f5=None, bound=None):
         super().__init__()
         self.cfg = dict(n_mels=n_mels, convs=[list(c) for c in convs], gru=gru, gru_layers=gru_layers, fc=fc, fmin=fmin, fmax=fmax, win=win)
         if leak_tau:
@@ -374,26 +485,68 @@ class VoiceNet(nn.Module):
             self.cfg["f1"] = f1
             self.f1c = f1
             self.betas = [math.exp(-HOP / SR / float(t)) for t in f1["taus"]]
+        # round 5 (pre-registration 2026-10-12 §3.5; Addendum R5-B part 2): F1m (floor reference) replaces F1, F5 (voice-likeness
+        # features to the GRU), Bound (local head caps the memory's veto). Without "f1m" in cfg every path below is round 3's / 4's.
+        on = lambda v: v is not None and v is not False  # noqa: E731  ({} = the defaults)
+        self.r5 = on(f1m)
+        self.has_f5 = on(f5)
+        self.has_bound = on(bound)
+        assert not (self.has_f5 or self.has_bound) or self.r5, "F5 / Bound need F1m"
+        assert not self.has_bound or self.has_f5, "Bound reads F5"
+        win5 = win
+        if self.r5:
+            assert not leak_tau and not f1
+            self.f1mc = dict(F1M_DEFAULT, **(f1m if isinstance(f1m, dict) else {}))
+            self.cfg["f1m"] = self.f1mc
+            self.beta_mu = math.exp(-HOP / SR / float(self.f1mc["tau"]))
+            self.fl_betas = [math.exp(-HOP / SR / float(t)) for t in self.f1mc["fl_taus"]]
+            self.rho = float(self.f1mc["rho_db_s"]) * math.log(10.0) / 10.0 * HOP / SR   # nat (log-mel units) per frame
+            self.n_aux = len(self.fl_betas)
+            if self.has_f5:
+                self.f5c = dict(F5_DEFAULT, **(f5 if isinstance(f5, dict) else {}))
+                self.cfg["f5"] = self.f5c
+                win5 = int(self.f5c["win"])
+                self.spec = Spec1024(win5)
+                self.register_buffer("cepm", torch.from_numpy(cep_matrix(win5, int(self.f5c["qlo"]), int(self.f5c["qhi"]))))
+                self.register_buffer("dctm", torch.from_numpy(dct_matrix(n_mels, int(self.f5c["n_dct"]))))
+                nq = int(self.f5c["qhi"]) - int(self.f5c["qlo"]) + 1
+                self.register_buffer("qc", torch.from_numpy((np.arange(nq) - (nq - 1) / 2.0).astype(np.float32))[None, :, None])
+                self.mv_betas = [math.exp(-HOP / SR / float(t)) for t in self.f5c["taus_mv"]]
+                self.on_betas = [math.exp(-HOP / SR / float(t)) for t in self.f5c["taus_on"]]
+                self.n_f5 = 2 + 2 * len(self.mv_betas) + int(self.f5c["n_dct"]) + len(self.on_betas)
+                self.n_aux += self.n_f5
+            if self.has_bound:
+                self.bc = dict(BOUND_DEFAULT, **(bound if isinstance(bound, dict) else {}))
+                self.cfg["bound"] = self.bc
         self.lam = math.exp(-HOP / SR / float(leak_tau)) if leak_tau else 1.0
         self.unrolled = False    # True: run the leak recurrence frame by frame through nn.GRU (export / streaming)
         self.win = win
-        self.pad = win - HOP + OFF       # zeros in front of the stream
-        self.ctx = win - HOP             # streaming audio context
+        self.win5 = win5                 # round 5 F5: the 64 ms window (frames end where the mel frames end)
+        self.mel_off = win5 - win        # the mel frame's start inside the longer window
+        self.pad = win5 - HOP + OFF      # zeros in front of the stream
+        self.ctx = win5 - HOP            # streaming audio context
         self.front = Frontend(n_mels, fmin, fmax, win)
-        if self.has_f1:
+        if self.has_f1 or self.r5:
             self.inorm5 = nn.BatchNorm1d(5 * n_mels)
+        if self.has_f1:
             self.flnorm = nn.BatchNorm1d(2)
+        elif self.r5:
+            self.auxnorm = nn.BatchNorm1d(self.n_aux)
         else:
             self.inorm = nn.BatchNorm1d(n_mels)
-        layers, cin, f = [], (5 if self.has_f1 else 1), n_mels
+        layers, cin, f = [], (5 if (self.has_f1 or self.r5) else 1), n_mels
         for c, kt in convs:
             layers.append(CausalConv(cin, c, kt))
             cin, f = c, (f + 1) // 2
         self.convs = nn.ModuleList(layers)
         self.flat = cin * f
         self.fc = nn.Linear(self.flat, fc)
-        self.gru = nn.GRU(fc + (2 if self.has_f1 else 0), gru, num_layers=gru_layers, batch_first=True)
+        n_extra = 2 if self.has_f1 else (self.n_aux if self.r5 else 0)
+        self.gru = nn.GRU(fc + n_extra, gru, num_layers=gru_layers, batch_first=True)
         self.head = nn.Linear(gru, 1)
+        if self.has_bound:
+            self.loc1 = nn.Linear(fc + self.n_f5, int(self.bc["hidden"]))
+            self.loc2 = nn.Linear(int(self.bc["hidden"]), 1)
 
     @property
     def rf(self):
@@ -401,7 +554,7 @@ class VoiceNet(nn.Module):
 
     @property
     def frame_ms(self):
-        return self.win / 16.0 + (self.rf - 1) * HOP / 16.0
+        return max(self.win / 16.0 + (self.rf - 1) * HOP / 16.0, self.win5 / 16.0)
 
     def recur(self, z, h=None):
         """GRU over z [B, T, fc] from state h [1, B, H] (None = zeros) -> outputs [B, T, H], last state [1, B, H]."""
@@ -476,6 +629,136 @@ class VoiceNet(nn.Module):
         o, h = self.recur(torch.cat([z, fl], 2), h)
         return self.head(o)[..., 0], news, h
 
+    # ------------------------------------------------------------------------- round 5
+    def prep5(self, xpad, st=None):
+        """Round 5 inputs. xpad [B, S]: the stream with self.pad zeros (or the carried ctx) in front; st None (stream start) or
+        (mv [B, 4, M] = mu_1, v_1, floor m, w; xprev [B, M]; fl [B, n_fl]; init [B, 1]; [f5s [B, 9]]) - all zero = stream start.
+        Returns X [B, 5, M, T] (x, x - mu_1, log(v_1 + eps), x - m, log(w + eps)), AUX [B, n_aux, T] (flux EMAs, then F5) raw
+        (before normalisation), and the new state."""
+        c = self.f1mc
+        feats = self.front(xpad[:, self.mel_off:])                       # [B, T, M]
+        B, T, M = feats.shape
+        xt = feats.transpose(1, 2)                                       # [B, M, T]
+        x0 = xt[:, :, 0]
+        dev, dt = feats.device, feats.dtype
+        if st is None:
+            g = torch.zeros(B, 1, device=dev, dtype=dt)
+            mv_s = torch.zeros(B, 4, M, device=dev, dtype=dt)
+            xp_s = torch.zeros(B, M, device=dev, dtype=dt)
+            fl_s = torch.zeros(B, len(self.fl_betas), device=dev, dtype=dt)
+            f5_s = torch.zeros(B, 9, device=dev, dtype=dt) if self.has_f5 else None
+        else:
+            mv_s, xp_s, fl_s, g = st[:4]
+            f5_s = st[4] if self.has_f5 else None
+        mu_p = g * mv_s[:, 0] + (1.0 - g) * x0
+        v_p = g * mv_s[:, 1] + (1.0 - g) * float(c["v0"])
+        m_p = g * mv_s[:, 2] + (1.0 - g) * BIGF
+        w_p = g * mv_s[:, 3] + (1.0 - g) * float(c["w0"])
+        xp_p = g * xp_s + (1.0 - g) * x0
+        fl_p = g * fl_s + (1.0 - g) * float(c["fl0"])
+        mu = ema_any(xt, mu_p, self.beta_mu)
+        v = ema_any((xt - mu) ** 2, v_p, self.beta_mu)
+        m = floor_track(xt, m_p, self.rho)
+        w = ema_any((xt - m) ** 2, w_p, self.beta_mu)
+        eps = float(c["eps"])
+        X = torch.stack([xt, xt - mu, torch.log(v + eps), xt - m, torch.log(w + eps)], 1)          # [B, 5, M, T]
+        prev = torch.cat([xp_p[:, :, None], xt[:, :, :-1]], 2)
+        d = xt - prev
+        flux = d.abs().mean(1)                                                                  # [B, T]
+        FL = torch.stack([ema_any(flux, fl_p[:, k], b) for k, b in enumerate(self.fl_betas)], 1)   # [B, n_fl, T]
+        aux = [FL]
+        new = [torch.stack([mu[:, :, -1], v[:, :, -1], m[:, :, -1], w[:, :, -1]], 1), xt[:, :, -1], FL[:, :, -1],
+               torch.ones(B, 1, device=dev, dtype=dt)]
+        if self.has_f5:
+            F5, f5n = self.f5_feats(xpad, xt, d, f5_s, g)
+            aux.append(F5)
+            new.append(f5n)
+        return X, torch.cat(aux, 1), tuple(new)
+
+    def f5_raw(self, xpad):
+        """Per frame: cepstral peak prominence (dB) over qlo..qhi, ln of the peak quefrency (s, parabolic), ln energy in 50-1,000 Hz."""
+        c = self.f5c
+        P = self.spec(xpad)                                                  # [B, 513, T]
+        B, _, T = P.shape
+        L = 10.0 * torch.log10(P + float(c["p_floor"]))
+        cep = torch.matmul(L.transpose(1, 2), self.cepm).transpose(1, 2)   # [B, Q, T]
+        Q = int(c["qhi"]) - int(c["qlo"]) + 1                                # static (export)
+        qc_np = np.arange(Q, dtype=np.float64) - (Q - 1) / 2.0
+        qc = self.qc
+        slope = (cep * qc).sum(1, keepdim=True) * float(1.0 / (qc_np ** 2).sum())
+        r = cep - (cep.mean(1, keepdim=True) + slope * qc)                   # above the regression line over the range
+        i = torch.argmax(r, 1, keepdim=True)                                 # [B, 1, T]
+        r0 = torch.gather(r, 1, i)
+        rm = torch.gather(r, 1, torch.clamp(i - 1, min=0))
+        rp = torch.gather(r, 1, torch.clamp(i + 1, max=Q - 1))
+        den = rm - 2.0 * r0 + rp
+        ok = (i > 0) & (i < Q - 1) & (den < -1e-9)
+        dl = torch.where(ok, 0.5 * (rm - rp) / torch.where(ok, den, -torch.ones_like(den)), torch.zeros_like(den))
+        dl = torch.clamp(dl, -0.5, 0.5)
+        cpp = r0[:, 0]                                                       # [B, T] dB
+        lnq = torch.log((float(c["qlo"]) + i[:, 0].to(P.dtype) + dl[:, 0]) / float(SR))
+        e0, e1 = c["ebins"]
+        E = torch.log(P[:, e0:e1 + 1].sum(1) + 1e-9)                         # [B, T]
+        return cpp, lnq, E
+
+    def f5_feats(self, xpad, xt, d, f5_s, g):
+        """F5 raw features [B, n_f5, T] and the new F5 state [B, 9] = (ln q, periodic, E, dq EMAs (2), dE EMAs (2), onset maxima (2))."""
+        c = self.f5c
+        cpp, lnq, E = self.f5_raw(xpad)
+        B, T = cpp.shape
+        P = cpp
+        per = (cpp >= float(c["cpp_thr"])).to(P.dtype)
+        if f5_s is None:
+            f5_s = torch.zeros(B, 9, device=P.device, dtype=P.dtype)
+        g1 = g[:, 0]
+        lq_p = g1 * f5_s[:, 0] + (1.0 - g1) * lnq[:, 0]
+        pe_p = g1 * f5_s[:, 1]
+        E_p = g1 * f5_s[:, 2] + (1.0 - g1) * E[:, 0]
+        lq_prev = torch.cat([lq_p[:, None], lnq[:, :-1]], 1)
+        pe_prev = torch.cat([pe_p[:, None], per[:, :-1]], 1)
+        E_prev = torch.cat([E_p[:, None], E[:, :-1]], 1)
+        dq = (lnq - lq_prev).abs() * per * pe_prev
+        dE = (E - E_prev).abs()
+        outs, st_out = [cpp, lnq], [lnq[:, -1], per[:, -1], E[:, -1]]
+        dqe, dee = [], []
+        for k, b in enumerate(self.mv_betas):
+            dqe.append(ema_any(dq, g1 * f5_s[:, 3 + k] + (1.0 - g1) * float(c["dq0"]), b))
+        for k, b in enumerate(self.mv_betas):
+            dee.append(ema_any(dE, g1 * f5_s[:, 5 + k] + (1.0 - g1) * float(c["de0"]), b))
+        outs += [torch.log(z + float(c["eps_dq"])) for z in dqe] + [torch.log(z + float(c["eps_de"])) for z in dee]
+        st_out += [z[:, -1] for z in dqe] + [z[:, -1] for z in dee]
+        dct = torch.matmul(xt.transpose(1, 2), self.dctm).transpose(1, 2)   # [B, n_dct, T]
+        fp = torch.relu(d).mean(1)                                           # positive spectral flux [B, T]
+        ons = []
+        for k, b in enumerate(self.on_betas):
+            o = decay_max(fp, g1 * f5_s[:, 7 + k], b)
+            ons.append(o)
+            st_out.append(o[:, -1])
+        F5 = torch.cat([torch.stack(outs, 1), dct, torch.stack([torch.log(o + float(c["eps_on"])) for o in ons], 1)], 1)
+        return F5, torch.stack(st_out, 1)
+
+    def body5(self, X, AUX, conv_states=None, h=None, skip=0):
+        """Round 5: raw X [B, 5, M, T], AUX [B, n_aux, T] -> logits [B, T - skip], new conv states, new h, local logits (Bound) or None."""
+        B, C5, M, T = X.shape
+        x = self.inorm5(X.reshape(B, C5 * M, T)).reshape(B, C5, M, T).transpose(2, 3)   # [B, 5, T, M]
+        au = self.auxnorm(AUX).transpose(1, 2)                           # [B, T, n_aux]
+        news = []
+        for i, cv in enumerate(self.convs):
+            x, s = cv(x, None if conv_states is None else conv_states[i])
+            news.append(s)
+        if skip:
+            x = x[:, :, skip:]
+            au = au[:, skip:]
+        B, C, T, Fq = x.shape
+        z = F.relu(self.fc(x.permute(0, 2, 1, 3).reshape(B, T, C * Fq)))
+        o, h = self.recur(torch.cat([z, au], 2), h)
+        lg = self.head(o)[..., 0]
+        lloc = None
+        if self.has_bound:
+            lloc = self.loc2(F.relu(self.loc1(torch.cat([z, au[..., self.n_aux - self.n_f5:]], 2))))[..., 0]
+            lg = torch.maximum(lg, lloc - float(self.bc["B"]))
+        return lg, news, h, lloc
+
     def body(self, feats, conv_states=None, h=None, skip=0, f1_state=None):
         """feats [B, T, M] log-mel -> logits [B, T - skip], new conv states, new h (F1 nets: + the new F1 state)."""
         if self.has_f1:
@@ -495,6 +778,9 @@ class VoiceNet(nn.Module):
         return self.head(o)[..., 0], news, h
 
     def forward(self, xpad):
+        if self.r5:
+            X, AUX, _ = self.prep5(xpad)
+            return self.body5(X, AUX)[0]
         return self.body(self.front(xpad))[0]
 
     def n_params(self, trainable=True):
@@ -511,13 +797,19 @@ class Streaming(nn.Module):
         self.fixed_n = 2 if net.lam != 1.0 else None   # leak models export a fixed chunk of 2 frames (one 25 ms capture chunk)
 
     def forward(self, chunk, ctx, s0, s1, s2, h, *f1):
-        """F1 nets (round 4) take and return 5 more states after h: mu, v, xprev, fl, init."""
+        """F1 nets (round 4) take and return 5 more states after h: mu, v, xprev, fl, init.
+        Round 5 nets: mv, xprev, fl, init (+ f5s with F5)."""
         x = torch.cat([ctx, chunk], 1)
-        feats = self.net.front(x)
         states = []
         it = iter([s0, s1, s2])
         for k in self.ks:
             states.append(next(it) if k > 1 else None)
+        if self.net.r5:
+            X, AUX, f1n = self.net.prep5(x, tuple(f1))
+            logits, news, h2, _ = self.net.body5(X, AUX, states, h)
+            outs = [n if n is not None else s for n, s in zip(news, [s0, s1, s2])]
+            return (torch.sigmoid(logits), x[:, -self.net.ctx:], outs[0], outs[1], outs[2], h2) + tuple(f1n)
+        feats = self.net.front(x)
         if self.net.has_f1:
             logits, news, h2, f1n = self.net.body(feats, states, h, f1_state=tuple(f1))
         else:
@@ -530,7 +822,7 @@ class Streaming(nn.Module):
         net = self.net
         st = []
         f = net.cfg["n_mels"]
-        cin = 5 if net.has_f1 else 1
+        cin = 5 if (net.has_f1 or net.r5) else 1
         for (c, kt) in net.cfg["convs"]:
             st.append(torch.zeros(B, cin, max(kt - 1, 1), f))
             cin, f = c, (f + 1) // 2
@@ -540,7 +832,19 @@ class Streaming(nn.Module):
         if net.has_f1:      # round 4: mu, v, xprev, fl, init (all zero = stream start)
             M_ = net.cfg["n_mels"]
             out += [torch.zeros(B, 2, M_), torch.zeros(B, 2, M_), torch.zeros(B, M_), torch.zeros(B, 2), torch.zeros(B, 1)]
+        if net.r5:          # round 5: mv (mu_1, v_1, floor, w), xprev, fl, init (+ f5s) (all zero = stream start)
+            M_ = net.cfg["n_mels"]
+            out += [torch.zeros(B, 4, M_), torch.zeros(B, M_), torch.zeros(B, len(net.fl_betas)), torch.zeros(B, 1)]
+            if net.has_f5:
+                out.append(torch.zeros(B, 9))
         return out
+
+    def extra_names(self):
+        if self.net.has_f1:
+            return ["mu", "v", "xprev", "fl", "init"]
+        if self.net.r5:
+            return ["mv", "xprev", "fl", "init"] + (["f5s"] if self.net.has_f5 else [])
+        return []
 
 
 def build(cfg):

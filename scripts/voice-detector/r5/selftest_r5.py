@@ -38,13 +38,17 @@ BAN = re.compile(r"""^\s*(from|import)\s+.*\b(vsynth_val|vbeds)\b|["'][^"']*\bhv
 
 
 def code_lines(f):
-    """The file's lines without comment lines (comments may name the validation generators to say they are not used)."""
-    return [ln for ln in open(f, encoding="utf8").read().splitlines() if not ln.lstrip().startswith("#")]
+    """The file's lines without comment lines (comments may name the validation generators to say they are not used) and
+    without the refusal guards (lines marked "# guard: refuses ...", which name the H folder in order to refuse it)."""
+    return [ln for ln in open(f, encoding="utf8").read().splitlines() if not ln.lstrip().startswith("#") and "# guard: refuses" not in ln]
 
 
-files = [os.path.join(TRAIN, f) for f in sorted(os.listdir(TRAIN)) if f.endswith(".py")] + [os.path.join(HERE, "d7.py")]
+SELECTION_SIDE = {"infer_r3.py", "opselect_r5.py"}     # selection / inference scripts: they read the H rows by design (§4), never train
+files = [os.path.join(TRAIN, f) for f in sorted(os.listdir(TRAIN)) if f.endswith(".py") and f not in SELECTION_SIDE] + [os.path.join(HERE, "d7.py")]
 bad = [os.path.basename(f) for f in files if any(BAN.search(ln) for ln in code_lines(f))]
 check(not bad, f"no training / packing script imports the validation generators or names r5/hval ({len(files)} files; offenders {bad})")
+tr5 = open(os.path.join(TRAIN, "train_r5.py"), encoding="utf8").read()
+check("refuse(os.path.join(TRAIN" in tr5 and tr5.count("# guard: refuses") == 2, "train_r5.py refuses the H folder and the sealed set on every bank it opens")
 
 import vbeds  # noqa: E402
 import vsynth_val  # noqa: E402

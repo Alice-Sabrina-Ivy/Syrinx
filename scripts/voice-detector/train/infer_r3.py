@@ -11,6 +11,8 @@
 #           the benchmark's 194-clip tuning split (noise, split == tune)
 #   vsess   the round-3 one-room validation sessions (build/vad-train/r3/vsess),
 #           each a 300 s stream: the state is carried through the session
+#   hval    round 5: the H1 / H2 validation streams (build/vad-train/r5/hval; each a
+#           plain stream, state from its start)
 #   spl     the round-2 spliced carried sessions (the selection streams
 #           concatenated in the seeded order of round 2's sessions.json, seed
 #           20261007, >= 10 min; infer_carried.py's construction), cut back
@@ -155,6 +157,9 @@ def _fresh_metas(group):
         return ms
     if group == "vsess":
         return [(VSESS, m) for m in list_streams(VSESS, ["vsess"])]
+    if group == "hval":           # round 5 (pre-registration 2026-10-12 §2): the H1 / H2 validation streams (r5/hval)
+        hv = os.path.join(ROOT, "r5", "hval")
+        return [(hv, m) for m in list_streams(hv, ["h1", "h2"])]
     raise ValueError(group)
 
 

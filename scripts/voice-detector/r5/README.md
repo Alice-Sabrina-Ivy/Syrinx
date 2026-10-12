@@ -16,6 +16,8 @@ are not read by any script here.
 | `hval.py` | §2.2–2.5: `beds` (real val beds: machine topic + round 4's D2 steadiness), `voices` (Coswara / SVD val voices, gated Praat reference, H1 lists, H2 series), `build` (H1 / H2 streams, specs for `train/valdump.mjs`), `counts [--grow]` (CORRECT hops per cell / bin and sex from the current-app dumps; synthetic growth), `hash` (`r5/sel/inputs.sha256`) |
 | `d7.py` | §3.3 D7a: real held-phonation series for training (training-split Coswara / SVD / DCS / ESMUC records, sex-balanced) |
 | `../train/vsynth_r5.py` | §3.3 D7b: the TRAINING synthesizer (Rosenberg-type source, drawn tracts; not the validation one); `pack` -> `vsynth_r5_train.i16` / `.npz` |
+| `../train/train_r5.py` (+ `run-r5-train.sh`, `arch_r5.py`, `calib_r5.py`, `parity_r5.py`, `samplercheck_r5.py`) | §3 / Addendum R5-B part 2: training with D7 and the decay loss; F1m / F5 / Bound (`model.py`) |
+| `../train/opselect_r5.py` | §4: the selection rule with the H1 / H2 rows (`infer_r3.py --groups=hval` for the files) |
 | `selftest_r5.py` | no training script imports the validation generators or names `r5/hval`; the ported generators match the review files' digests; the training synthesizer refuses validation seeds; the topic rule's word boundaries |
 | `../r3/seal.py --tag=r5` | §1.3: the re-seal (`seal-confirmatory-r5.sha256`, `seal-r5.json`, `seal-r5-changes.json` against round 4), `verify --tag=r5`, `verify-r4 --tag=r5`, `verify-r3 --tag=r5` |
 
@@ -29,7 +31,7 @@ python scripts/voice-detector/r3/seal.py seal --tag=r5 && python scripts/voice-d
 (cd scripts/voice-detector/r3 && python train_side.py build && python train_side.py check)
 # data step V (the validation side; Addendum R5-B part 1)
 python scripts/voice-detector/r5/hval.py beds && python scripts/voice-detector/r5/hval.py voices && python scripts/voice-detector/r5/hval.py build
-ROOT=build/vad-train/r5/hval bash scripts/voice-detector/r3/run-dumps.sh h1:2 h2:2
+ROOT=build/vad-train/r5/hval bash scripts/voice-detector/r3/run-dumps.sh h1:2 h2:1
 python scripts/voice-detector/r5/hval.py counts --grow    # repeat build + dumps + counts until no synthetic cell is under 400
 python scripts/voice-detector/r5/hval.py hash
 # data step B (the training side; Addendum R5-B part 2)
