@@ -79,24 +79,27 @@ export const ONE_TALKER_TEXT =
 export const WHISPER_TEXT =
   "Whispering gets no reading: it only uses stretches with voiced (pitched) sound, so whispered parts between your voiced speech don't count either.";
 
-// The pitch-only warning misses many cases on new voices
-// (measurements/heard-as-pitch-only-warning-2026-10-07.md §8.2: 0.59 / 0.65
-// of pitch-only shifts caught within 10 s on fresh speakers).
+// How often the pitch-only warning catches a pitch-only change — the adopted
+// rule's own held-out test (A40+KP8-3+DS10, user override 2026-10-12;
+// measurements/heard-as-pitch-only-warning-2026-10-07.md §8.6): 96 fresh
+// readers' sessions with the pitch moved, failure set, phase-averaged —
+// within 10 s 0.863 (male base) / 0.843 (female base), within 15 s 0.919 /
+// 0.906; some readers lose most of their hits (one man 7 of the 8 male-base
+// hits lost against the old rule) — hence "about 85 in 100", "about 90 in
+// 100", "fewer for some voices". (Until 2026-10-12: "missed about 4 in 10",
+// §8.2's S0 figure on 39 LibriSpeech test-other sessions.)
 export const PITCH_ONLY_MISSES_TEXT =
-  "The note about pitch-only changes doesn't catch every case — on new voices it missed about 4 in 10 — so no note doesn't mean the guess is right.";
+  "The note about pitch-only changes doesn't catch every change: in tests on 96 people it caught about 85 in 100 pitch-only changes within 10 seconds and about 90 in 100 within 15 seconds, and fewer for some voices — so no note doesn't mean the guess is right.";
 
-// The pitch-only warning's false alarms (shipped rule S0, at the app's 0.2 s
-// resonance cadence; measurements/heard-as-pitch-only-warning-2026-10-07.md
-// §8.5), natural reading, share of updates where the panel showed an
-// estimate, 96 readers per sex: men 1.50 % update-weighted / 2.27 %
-// reader-balanced (test alone 1.82 / 3.39 %), women 0.34 % either way —
-// hence "about 1 to 2 in 100". Concentrated in readers whose pitch varies a
-// lot: worst man 85 % = about 7 of his 8 eligible updates (the panel showed
-// an estimate on ~7 % of his session), next two men ~40 % of ~80; worst
-// woman 6.9 %. The pre-registered fixes failed their held-out tests
-// (§8.3–8.5), so the rule is unchanged and this is disclosed instead.
+// The pitch-only warning's false alarms (adopted rule, at the app's 0.2 s
+// resonance cadence; §8.6): natural reading, share of the updates where the
+// panel showed an estimate, 96 readers per sex (dev + test, pooled,
+// update-weighted): men 79 of 28,366 = 0.28 % (test 0.26 %, reader-balanced
+// 0.27 %), women 14 of 29,907 = 0.05 % (test 0) — hence "about 3 in 1,000"
+// and "almost never". Per-reader maximum men 6.6 % (test), women 3.4 % (dev)
+// — "up to about 1 in 15". (The old rule S0: men 1.50 %, worst man 85 %.)
 export const PITCH_ONLY_FALSE_ALARM_TEXT =
-  "The note about pitch-only changes can also appear when you haven't deliberately changed your voice, if your pitch varies a lot as you talk. In tests on 192 people reading aloud that happened more often for men's voices (about 1 to 2 in 100 updates) than for women's (fewer than 1 in 100), and for a few voices far more often — up to most of the updates where the panel showed an estimate.";
+  "The note about pitch-only changes can also appear when you haven't deliberately changed your voice, if your pitch varies a lot as you talk. In tests on 192 people reading aloud that happened on about 3 in 1,000 updates for men's voices and almost never for women's, and more often for a few voices — up to about 1 in 15 updates where the panel showed an estimate.";
 
 // Replaces "In background noise, low voices are recognised as speech less
 // often …" (that described the old pitch-voicing gate). With the speech
@@ -214,8 +217,12 @@ export function HeardAsPanel({
     // hidden-panel update (lnF0 null) shows nothing but keeps its run through
     // a brief hide (src/ml/pitch-only-warning.js). (The hook's warning object
     // lives for the whole page; captured for the cleanup.)
+    // Each update also carries the share the panel draws (the warning's
+    // "the estimate moved too" gate; null when hidden) and the audio clock.
     const warning = pitchOnlyRef?.current ?? null;
-    const warn = (lnF0) => warning?.update({ lnF0, resonance: resonanceRef?.current ?? null }) === true;
+    const warn = (lnF0, share = null) => warning?.update({
+      lnF0, resonance: resonanceRef?.current ?? null, share, audioMs: audioClockRef?.current ?? null,
+    }) === true;
     const hide = (why) => { warn(null); show({ hidden: why, live: warning?.held() === true }); };
     const compute = () => {
       const st = statusRef.current;
@@ -226,7 +233,7 @@ export function HeardAsPanel({
       const e = now == null ? { hidden: "listening" } : heardAsRef.current.estimate(now, voiceState);
       if (e.hidden) { hide(shortReason(e, HEARD_AS_CALIBRATION.minWindows)); return; }
       const shares = heardAsShares(e.meterLogit, e.lnF0);
-      const pitchOnly = warn(e.lnF0);
+      const pitchOnly = warn(e.lnF0, shares.s);
       show({
         axis: heardAsAxis(shares),
         ageMs: e.ageMs,

@@ -1,5 +1,8 @@
 """Golden replay fixture for tests/ml/pitch-only-warning-test.js (public data only).
 
+Historical (superseded 2026-10-12): this wrote the S0-era fixture at the 2 s tick. The adopted
+rule (A40+KP8-3+DS10) needs the drawn share and the app-cadence events: make_fixture_app.mjs.
+
 Run in the study's output directory (features.pkl from features.py, the session
 outputs out/*.jsonl from session.mjs):
 
