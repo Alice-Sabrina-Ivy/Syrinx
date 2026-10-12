@@ -57,6 +57,12 @@
 //
 // Panel-moved gate (DS10). The share the panel draws must also have moved
 // >= 10 points from its median over the shown updates in [t_fill, t_start].
+// Limit (§8.6 addendum): with NO shown update in that window — the panel
+// off, still loading or hidden throughout it (it closes ~30-36 s into a
+// session at the median, up to ~50 s at p95) — the start share stays empty
+// and the warning cannot appear until reset() or a cue restart. S0 had no
+// such limit; the study never ran this path. Not changed without a measured
+// fallback (Hard rule 3).
 //
 // Eligible update: the panel shows an estimate (lnF0 known), startU, u and
 // the reference known, fill ≥ 1, verdict ≠ "sustained", sinceResumeS ≥ 2.
