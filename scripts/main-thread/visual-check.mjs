@@ -27,6 +27,9 @@
 //   the 250 ms tick stepped by hand, transitions off; after every tick each
 //   row's data attributes, header / screen-reader text, the dot, start ring,
 //   trail centres and opacities. Pass: identical (positions to 0.01 px).
+//   Both trees must be on the same side of 364e0e1 (clarity row hidden, the
+//   strip went from three rows to two): across it the strip differs by a
+//   whole row by design, and the comparison says nothing.
 //
 // Process hygiene (CLAUDE.md hard rule 2): puppeteer with a temporary
 // --user-data-dir, browser.close() then taskkill of ITS pid only; the

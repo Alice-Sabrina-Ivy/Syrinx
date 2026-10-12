@@ -266,7 +266,12 @@ export function cueSummary(cue, { state, direction = null, pitchLevel = null, sn
     if (st === "beyond") return `${hz}, past your target ${range} in your direction.`;
     return `${hz}, ${pitchLevel < t.low ? "below" : "above"} your target ${range}.`;
   }
-  if (state !== "live" && state !== "holding") return `Resonance (approximate): ${resonanceHeader(state, snap)}`;
-  const w = bandWords(snap?.u, vtlnRef);
-  return sentence(`Resonance (approximate)${w ? `: ${w}` : ""}, ${resonanceHeader(state, snap)}`);
+  if (cue === "resonance") {
+    if (state !== "live" && state !== "holding") return `Resonance (approximate): ${resonanceHeader(state, snap)}`;
+    const w = bandWords(snap?.u, vtlnRef);
+    return sentence(`Resonance (approximate)${w ? `: ${w}` : ""}, ${resonanceHeader(state, snap)}`);
+  }
+  // Any other cue (the hidden clarity row, an unknown name): no sentence,
+  // matching rowValue — a future row must add its own branch.
+  return null;
 }

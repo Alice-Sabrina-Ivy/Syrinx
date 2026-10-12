@@ -1,5 +1,8 @@
 // cue.jsx — fixed-input run of the real CueStrip
 // (scripts/main-thread/visual-check.mjs). ?direction=exploring|feminine|masculine.
+// Since 364e0e1 the strip has two rows (pitch, resonance; the clarity row is
+// hidden) and takes no vocalWeight prop, so a visual-check comparison needs
+// both trees on the same side of 364e0e1.
 // window.__set(i): props + resonance snapshot of scripted step i.
 // window.__tick(): the strip's 250 ms tick. window.__dump(): every row's
 // state and geometry (transitions disabled by the page's CSS).
@@ -15,22 +18,13 @@ const direction = params.get("direction") ?? "exploring";
 const resonanceRef = { current: null };
 
 // Scripted inputs: 3 s silent, then talk in 4 s phrases with 1 s pauses;
-// weight calibrates over the first ~10 s of steps; resonance warms, settles,
+// resonance warms, settles,
 // goes live, has a held-note ("sustained") stretch and a clamp.
 function inputsAt(i) {
   const t = i * 0.25;
   const talking = t >= 3 && (t - 3) % 5 < 4;
   const justStopped = !talking && t >= 3 && (t - 3) % 5 < 4.5;
   const pitchLevel = talking ? 150 + 60 * Math.sin(i / 6) + (i % 40 > 30 ? 90 : 0) : null;
-  const calibrated = t > 13;
-  const vocalWeight = {
-    cpp: talking ? 10 + Math.sin(i / 4) : null,
-    position: null,
-    sigmaDelta: talking ? Math.sin(i / 5) : null,
-    sigmaLevel: calibrated && talking ? 1.4 * Math.sin(i / 9) : null,
-    baselineProgress: Math.min(1, Math.max(0, (t - 3) / 10)),
-    baselineReady: calibrated,
-  };
   const voicedS = Math.max(0, t - 3) * 0.8;
   const snap = t < 2 ? null : {
     u: voicedS > 2 ? 0.8 * Math.sin(i / 17) + (t > 40 && t < 44 ? 3 : 0) : null,
@@ -45,7 +39,7 @@ function inputsAt(i) {
     props: {
       voiced: talking, holding: justStopped, pitch: pitchLevel, pitchLevel,
       steadiness: talking ? 0.2 + 0.1 * Math.abs(Math.sin(i)) : null, steadinessHeld: false,
-      hnr: talking ? 12 + 3 * Math.sin(i / 7) : null, vocalWeight,
+      hnr: talking ? 12 + 3 * Math.sin(i / 7) : null,
       resonanceStatus: t < 1 ? "loading" : "ready",
     },
     snap,
@@ -85,7 +79,6 @@ window.__dump = () => {
       start: (() => { const s = row.querySelector("[data-cue-start]"); return s ? centre(s) : null; })(),
       change: (() => { const c = row.querySelector("[data-cue-change]"); return c ? [c.getAttribute("x1"), c.getAttribute("x2")].map(Number).map(r2) : null; })(),
       chevron: row.querySelector("[data-cue-dot] path")?.getAttribute("d") ?? null,
-      progress: (() => { const p = row.querySelector("[data-cue-progress]"); return p ? [p.getAttribute("x"), p.getAttribute("width")].map(Number).map(r2) : null; })(),
       trail,
     };
   });

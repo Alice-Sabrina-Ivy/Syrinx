@@ -209,6 +209,10 @@ console.log("\nrow states");
   check("row values: pitch level / resonance u; nothing for an unknown cue (no clarity row)",
     rowValue("pitch", { pitchLevel: 180 }) === 180 && rowValue("resonance", { snap: { u: 0.4 } }) === 0.4
     && rowValue("clarity", { vocalWeight: { sigmaLevel: 0.9 } }) === null);
+  check("screen-reader: no sentence for an unknown cue (no clarity row; matches rowValue)",
+    cueSummary("clarity", { state: "live" }) === null
+    && cueSummary("clarity", { state: "warming", snap: snap({}), vtlnRef: REF }) === null
+    && cueSummary("weight", { state: "live", snap: snap({ u: 0.52, startU: 0.1 }), vtlnRef: REF }) === null);
   check("screen-reader: no '….' after a header that ends in an ellipsis",
     cueSummary("resonance", { state: "live", snap: snap({ u: 0.52, startU: null }), vtlnRef: REF }) === "Resonance (approximate): between the typical men's and women's bands, finding your start…");
 }
