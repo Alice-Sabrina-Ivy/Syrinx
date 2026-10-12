@@ -130,7 +130,10 @@ def job(it):
             os.environ["NOTCHVD_ROOT"] = os.path.join(R4, "census-scratch")     # census.py creates <root>/data/census at import; keep it in r4/
             sys.path.insert(0, os.path.join(HERE, "..", "..", "notch-adversarial", "realdata"))
             sys.argv = sys.argv[:1]
+            saved = sys.modules.pop("common", None)            # census.py imports realdata/common.py, not custom/common.py
             import census
+            if saved is not None:
+                sys.modules["common"] = saved
             _CEN = census
         r = _CEN.analyse({"id": rid, "source": "train", "path": os.path.abspath(path)})
         out.update(census=r["label"], census_flags=r["flags"])

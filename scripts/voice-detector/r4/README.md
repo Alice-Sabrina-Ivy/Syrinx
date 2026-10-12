@@ -15,6 +15,7 @@ recordings are not read by any script here.
 | `trills.py` | §2.2 real trills: `calibrate` (θ on VocalSet; the screen is dropped if > 20 % of straight files pass), the sources in order `fs`, `wc`, `ds-scan` / `ds`, `ia`, then `prepare --source=…` and `count` (current-app CORRECT hops of the trills / other-SOVT rows, aggregate only) after each source (stop rule ≥ 800) |
 | `fetch_fsr4.py` | D3: new CC0 / CC BY Freesound steady-noise negatives (`search`, `select`, `manifest`) -> `build/vad-train/r4/data/` (the rounds 1-3 manifests are not touched) |
 | `train_side_r4.py` | D1 (`d1`: the corrected training lists, the 203 shared-uploader training records removed) and D2 (`d2`: S_stat, census labels, the steady pool `stat`) |
+| `d6.py` | D6: `specs` (the `stat` pool + fsr4 training clips, FNV order, <= 40 h) for the current app's dumps (`ROOT=build/vad-train/r4/d6 run-dumps.sh tneg4:2`), `masks` (model frames the app paints falsely, td rule) |
 | `../train/synth_r4.py` | D4: the steady synthetic interferer families, training seeds [2e9, 3e9); `pack` writes `synth_r4_train.*` |
 | `../r3/seal.py --tag=r4` | §2.3: the re-seal (`seal-confirmatory-r4.sha256`, `seal-r4.json`, `conf-manifest.jsonl`, `seal-r4-changes.json`); `verify --tag=r4`, `verify-r3` |
 
@@ -32,4 +33,5 @@ python scripts/voice-detector/r3/seal.py seal --tag=r4 && python scripts/voice-d
 python scripts/voice-detector/r4/fetch_fsr4.py search && python scripts/voice-detector/r4/fetch_fsr4.py select
 python scripts/voice-detector/r4/train_side_r4.py d1 && python scripts/voice-detector/r4/train_side_r4.py d2 --jobs=2
 python scripts/voice-detector/train/synth_r4.py pack --n=2000
+python scripts/voice-detector/r4/d6.py specs && ROOT=build/vad-train/r4/d6 bash scripts/voice-detector/r3/run-dumps.sh tneg4:2 && python scripts/voice-detector/r4/d6.py masks
 ```
