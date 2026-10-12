@@ -10,6 +10,13 @@
 > **Update 2026-10-08 (§8.3):** the post-hoc steadier start reference D2-0.1
 > failed its pre-registered confirmation on 66 fresh LibriSpeech
 > train-other-500 readers (2 of 10 checks), so the shipped rule S0 is kept.
+>
+> **Update 2026-10-11 (§8.4):** a pre-registered fix for men's false alarms
+> (A40+KP8-3+DS10: a start reference that grows for 40 s, a reader-variability
+> threshold and a panel-moved gate), chosen on a dev split where it passed all
+> 15 checks, failed its single held-out test evaluation (11 of 15; men's
+> reader max 23.8 %, worst start 33.3 %, one early-shift hit lost, gap
+> 1.73 pp), so S0 is kept.
 
 The experimental, opt-in "Likely heard as" panel follows pitch more than
 listeners do. When a voice changes pitch without changing resonance, the panel
@@ -632,6 +639,195 @@ was re-tuned on this data. Every artefact (pre-registration, speaker lists,
 session outputs, `verdict.json`, `tables.md`, the JS draft and its parity
 check) stays in the study's scratch folder; only this summary is committed.
 
+### 8.4 Men's false alarms — diagnosis, pre-registered selection, confirmation FAILED; S0 kept (2026-10-11)
+
+User decision (2026-10-11): study why S0 gives men far more natural false
+alarms than women (§8.3: 4.06 % vs 0.46 %, one reader 54 %, expressive
+readers' worst start 74.7 % vs ≤ 2.6 %) and look for a fix that keeps hits
+for both base sexes. Public data only (LibriSpeech, Multilingual LibriSpeech
+German, both CC BY 4.0); no private recordings.
+
+**Diagnosis — exploratory, post hoc, on already-seen data** (the §8.3
+confirmation and the §8.2 steady-start sessions, 324 natural-reading
+sessions, 476 S0 false-alarm ticks; candidates and parameters were picked
+after seeing it, so its candidate numbers are optimistic and are not
+evidence for any rule):
+- Octave errors in the posted pitch are not the cause. Replacing posted
+  frames that are ≥ 6 st off a Praat CC / AC / pYIN consensus removes 1.2 %
+  of men's false-alarm time (women 6 %); men's posted octave-up rate is
+  0.95 % vs women's 0.85 %.
+- About 72 % of men's false-alarm time is the start reference (the ~20 s
+  start span sits away from the reader's typical pitch while the trailing
+  8 s is typical), another 16 % is start and a real excursion together, and
+  11–27 % is genuine wide intonation (the 8 s median really is ≥ 4 st from
+  the reader's typical pitch, confirmed by pYIN — the warning's literal
+  claim is then true).
+- It is male-skewed because men's passage-level pitch wanders more in
+  semitones (SD of 20 s block medians 0.70 vs 0.56 st, Mann–Whitney
+  p = 0.004), mostly upward, so men's start spans are atypical more often
+  (≥ 2 st from the session median: 9.3 % vs 0.6 % of starts). The false
+  alarms are concentrated: one reader (6652) is 45 % of men's false-alarm
+  time, the top five 81 %. The resonance gate does not explain the skew.
+- No frozen reference brings 6652 under 15 % (hindsight-best frozen P0:
+  15.8 %); only a reader-variability threshold (KP8-3) did, at a cost in
+  borderline hits. The diagnosis flagged that a growing reference (A40) was
+  untested against a shift in its first ~50 s; the study below added an
+  early-shift set for that.
+
+**Pre-registration.** Reproduced verbatim in Appendix C (sha256
+`6f86c692adc8888c711ca1f5e9b815a78845fc41cd934e3c3af9a8c26c683e8f`), written
+before any chain output on its speakers and before any candidate was
+evaluated on them; `study.py` refuses to run unless the 15 file hashes it
+lists match. Chain: `cue-strip` @ 53704cc (no chain change since the §8.3
+run's adf19c3), the §8.3 harness (header and one error message differ),
+`evaluate.py` and `features.py` byte-identical to §8.3's. Candidates: 17
+rules = {S0, A40, CUMg} references × {—, KP8-2.5, KP8-3} thresholds ×
+{—, DS10} panel gate, minus S0 alone, where
+
+| Part | Rule |
+|---|---|
+| A40 | P0 = ln median of posted voiced frames over [t_fill, max(t_start, min(t, t_fill + 40 s))] — grows, then frozen |
+| CUMg | P0 = median of a pool that starts as S0's start frames and adds the frames of later shown, eligible ticks with \|ΔP\| < 4 st (never fed during an excursion) |
+| KP8-k | X = max(4 st, k × RMS of the earlier quiet shown ticks' ΔP) once ≥ 5 such ticks exist, else 4 st |
+| DS10 | also require the panel's shown share to have moved ≥ 10 points from its start-span median |
+
+The bar: 15 checks, per sex against S0 on the same sessions — natural FA
+≤ 2 % each sex and |men − women| ≤ 1.5 pp; per-reader maximum ≤ 15 %; every
+expressive reader's worst start (k = 0, 1, 2, 3, 5 utterances skipped)
+≤ 15 %; hits within 10 s (Meyer) ≥ S0 − 0.03 per base sex; early-shift hits
+(new `ehcs` set: the shift lands at ~36 s, while A40 is still growing)
+≥ S0 − 0.03 per base sex; together and resonance-only FA ≤ S0 + 2 pp.
+Selection on a dev split, then **one** test evaluation; FAIL keeps S0.
+
+**Data.** 100 speakers no earlier Syrinx study used (82 of 208 downloaded
+candidates excluded by an over-inclusive id scan), selected mechanically
+from metadata: LibriSpeech train-other-500 shards 0006–0009 and
+train-clean-360 shards 0000–0003 (alternating dev / test by speaker id) and
+MLS German (its own dev / test partitions). Dev 26 F / 26 M (784 sessions),
+test 24 F / 24 M (720 sessions).
+
+**Dev selection** (`CHOICE.md`, reproduced verbatim in Appendix D, sha256
+`aedd7c46af52008d9cf4212576b9a9767b8bf8ef1e1d4666a2343742b9b2855a`, written
+2026-10-11 19:08 −05:00, before any test-split audio existed — the earliest
+test audio file is from 19:08:53). 15 of the 17 candidates passed all 15
+dev checks (A40 and A40+KP8-2.5 failed the women's reader-max and
+worst-start checks); by the §6 order **A40+KP8-3+DS10** was chosen (dev:
+men's worst start 53.0 → 8.4 %, women's 41.8 → 7.3 %, natural FA
+0.6 → 0.2 % each sex, hits and early hits unchanged). S0 itself passed 13
+of 15 on dev: dev men's natural FA was only 0.6 % and the per-reader
+maximum 6.0 %, so the male problem the study targets appeared on dev mainly
+as one expressive reader's late start (mls5595 at k = 5, 53 %), which every
+A40 / KP8 / DS candidate removed.
+
+**Test verdict: FAIL — 11 of 15 checks** (run once, 2026-10-11 19:26–20:25
+−05:00, all 720 sessions, no errors). Chosen rule vs S0 on the same
+sessions:
+
+| Check | Bar | Women: chosen | Women: S0 | Men: chosen | Men: S0 |
+|---|---|---|---|---|---|
+| Natural FA (reader-balanced) | ≤ 2 % | 0.05 % ✓ | 0.48 % | 1.79 % ✓ | 2.50 % |
+| Gap \|men − women\| | ≤ 1.5 pp | | | **1.73 pp ✗** | 2.02 pp |
+| Per-reader natural-FA max | ≤ 15 % | 1.3 % (ls8300) ✓ | 9.0 % (ls5740) | **23.8 % (ls5304) ✗** | 27.4 % (ls5304) |
+| Expressive readers' worst start | ≤ 15 % | 1.3 % (ls8300) ✓ | 3.5 % (ls3675) | **33.3 % (ls6368) ✗** | 37.3 % (ls6368) |
+| Hits ≤ 10 s, Meyer (by base sex) | ≥ S0 − 0.03 | 0.745 (41/55) ✓ | 0.764 (42/55) | 0.852 (23/27) ✓ | 0.852 |
+| Early-shift hits (by base sex) | ≥ S0 − 0.03 | 0.941 (16/17) ✓ | 0.941 | **0.833 (10/12) ✗** | 0.917 (11/12) |
+| Together FA | ≤ S0 + 2 pp | 5.1 % ✓ | 5.3 % | 0.6 % ✓ | 0.6 % |
+| Resonance-only FA | ≤ S0 + 2 pp | 0.0 % ✓ | 0.1 % | 0.0 % ✓ | 0.0 % |
+
+Hit rows are by base voice (female base = pitch lowered, male base = pitch
+raised); the other rows by reader sex. With 12 male-base early-shift
+sessions, one lost hit is −0.083, so check 5 forbids any net loss. S0
+against the same absolute bars (descriptive) also passes 11 of 15: it fails
+men's natural FA (2.50 %), the gap, and men's reader max and worst start.
+
+Full table, test split (male base / female base for hit rows, men / women
+otherwise):
+
+| | S0 | A40+KP8-3+DS10 |
+|---|---|---|
+| Hits ≤ 10 s, Meyer (n 27 / 55) | 0.852 / 0.764 | 0.852 / 0.745 |
+| Hits ≤ 10 s, Jebens | 0.852 / 0.822 | 0.852 / 0.800 |
+| Hits ≤ 10 s, Nagels | 0.852 / 0.746 | 0.852 / 0.729 |
+| Hits ≤ 14 s | 0.926 / 0.909 | 0.926 / 0.909 |
+| Early-shift hits (n 12 / 17) | 0.917 / 0.941 | 0.833 / 0.941 |
+| Median time to first warning | 6.97 / 8.03 s | 6.61 / 8.07 s |
+| Persistence | 0.949 / 0.920 | 0.932 / 0.908 |
+| Natural FA, men / women | 2.50 / 0.48 % | 1.79 / 0.05 % |
+| Per-reader max, men / women | 27.4 % (ls5304) / 9.0 % (ls5740) | 23.8 % (ls5304) / 1.3 % (ls8300) |
+| Worst start, max, men / women | 37.3 / 3.5 % | 33.3 / 1.3 % |
+| Worst start, mean, men / women | 9.0 / 1.2 % | 7.6 / 0.2 % |
+| Together, men / women | 0.6 / 5.3 % | 0.6 / 5.1 % |
+| Resonance only, men / women | 0.0 / 0.1 % | 0.0 / 0.0 % |
+| Vocoder control, men / women | 1.4 / 0.4 % | 0.8 / 0.0 % |
+| Early-shift together, men / women | 1.6 / 4.4 % | 1.6 / 4.4 % |
+| Flash after a together shift, men / women | 22.9 / 16.7 % | 20.8 / 16.7 % |
+| FA in the baseline phase of shift sessions | 0 / 0 % | 0 / 0 % |
+
+Expressive readers (test: chosen from the real pitch worker's posted pitch
+alone, after the choice), false-alarm share at starts k = 0, 1, 2, 3, 5:
+
+| Reader | S0 | Chosen |
+|---|---|---|
+| M ls6368 | 9.2, 17.1, 18.7, 31.6, 37.3 | 9.2, 17.1, 18.7, 29.1, 33.3 |
+| M ls4420 | 9.9, 12.0, 11.0, 8.4, 10.4 | 9.9, 12.0, 9.8, 7.2, 10.4 |
+| M mls3052 | 0, 2.3, 4.5, 4.1, 0 | 0 at every start |
+| M ls5767, ls6506, ls5183 | 0 at every start | 0 at every start |
+| W ls8300 | 2.5, 0, 0, 0, 0 | 1.3, 0, 0, 0, 0 |
+| W ls4443 | 0, 0, 1.2, 0, 0 | 0 at every start |
+| W ls3675 | 0, 0, 0, 0, 3.5 | 0 at every start |
+| W ls8414, ls5588, ls3513 | 0 at every start | 0 at every start |
+
+Natural FA by corpus (S0 → chosen): men train-clean-360 3.04 → 2.65 %,
+train-other-500 2.39 → 2.39 %, MLS German 1.93 → 0.00 %; women
+1.28 → 0.14 %, 0 → 0 %, 0 → 0 %. Readers above 2 % under either rule:
+men ls5304 27.4 → 23.8 % (not an expressive reader), ls4420 9.9 → 9.9 %,
+ls6368 9.2 → 9.2 %, mls4911 13.5 → 0 %; women ls5740 9.0 → 0 %, ls8300
+2.5 → 1.3 %.
+
+**Why it failed (descriptive, after the verdict; nothing was re-tuned):**
+- *The dev split did not exercise the male false alarms.* On dev S0 already
+  met men's natural-FA and reader-max bars (0.6 %, 6.0 %); the only dev
+  male failure was one late start, which a growing or variability-aware
+  reference fixes. On test, men's false alarms came back at the §8.3 level
+  of disparity (S0 2.50 vs 0.48 %), mostly from three LibriSpeech readers
+  whose false alarms the chosen rule leaves nearly unchanged.
+- *Those readers do not look like a start-reference problem.* ls4420 sees
+  the warning on 7–12 % of updates from every start, and ls6368 already on
+  9.2 % from the first start — closer to the diagnosis' "genuine wide
+  intonation" share than to its dominant start-offset share, which A40
+  targets. ls6368's false alarms rise with later starts under both rules
+  (k = 5: 37.3 / 33.3 %). The rule removed most women's false alarms
+  (0.48 → 0.05 %) and MLS German men's (1.93 → 0 %), so the gap between the
+  sexes barely narrowed (2.02 → 1.73 pp).
+- *Early-shift hit lost* (ehcs_ls6368_PO, male base, shift at 38.0 s): S0
+  warns from 46 s; A40 alone and KP8-3 alone each still warn, but together
+  never — the growing reference absorbs part of the shift while the
+  expressive reader's history raises the threshold. This is the risk the
+  diagnosis flagged for A40 and the reason the `ehcs` set was added.
+- *Female-base hit lost* (hcs_ls5740B_PO, shift at 58.3 s): A40 delays the
+  first warning to 11.7 s after the shift, just outside the 10 s window
+  (S0: at 9.7 s). Within the −0.03 tolerance.
+
+**Implementation check (scratch only, not committed).** A JS version of the
+chosen rule in a copy of `src/ml/pitch-only-warning.js` matches the study's
+Python rule tick for tick on all 1,504 dev + test sessions (85,648 ticks, 0
+mismatches; S0 likewise) with frames replayed by audio time, the study's
+information set. With frames delayed 50 ms as they arrive live, 1 tick in 1
+non-failure-set session differs (the Python A40 used frames ≤ 50 ms not yet
+posted at the tick), changing no outcome. An independent recomputation of
+every bar outcome from the JS module's output reproduces the numbers above.
+The verdict is therefore the rule's, not the implementation's.
+
+**Decision.** A40+KP8-3+DS10 is not shipped, and the DS10 product question
+does not arise. `src/ml/pitch-only-warning.js`, `PITCH_ONLY_WARNING`, its
+tests, the golden replay fixture and the panel text are unchanged; S0 stays.
+The male false-alarm disparity on expressive male readers (§7, §8.3) remains
+a known limit: on this test split S0's natural false alarms are 2.50 % for
+men vs 0.48 % for women, one man 27.4 %. Every artefact (speaker pool, session
+outputs, dev table, diagnosis, verdict, the JS draft and its parity check)
+stays in the study's scratch folder; only this summary and the two verbatim
+files in Appendices C and D are committed.
+
 ## Reproduce
 
 The study scripts are in `scripts/heard-as/pitch-only/`. Run them in an
@@ -961,3 +1157,310 @@ as they are in the study's scratch folder:
 | used_speakers.py | `400bbfa0ec6a8509d1707f7638fa110048c8e6ae2f0247910de3a33ae26a532b` |
 | used_speakers.json | `c10563f968bee5bd94e876bbdff24b2288e53d9ffc18c780a101acc79cce6a21` |
 | speakers.json | `fb3f6a0aa4d52adcc571ffc9493998fca31ca8b49f57ac829a6abf901be2127d` |
+
+## Appendix C. Men's false-alarm study pre-registration (verbatim)
+
+sha256 `6f86c692adc8888c711ca1f5e9b815a78845fc41cd934e3c3af9a8c26c683e8f` (of the file below, as hashed in scratch
+before any chain output on its speakers and before any candidate was evaluated on them). Relative paths in it refer to
+the study's scratch folder. The scratch file has CRLF line endings; the block below, with its lines ended CRLF
+(including the last), hashes to this value.
+
+````markdown
+# Pre-registration: a pitch-only-warning rule that removes the male false alarms and keeps hits for both sexes
+
+Written 2026-10-11, **before any chain output on the speakers below and before any candidate has been evaluated on
+them.** Hard rule 3: `src/ml/pitch-only-warning.js` is a tuned cue-strip module, so the rule is selected on a dev split
+and tested once on a held-out test split, both from public speakers no earlier study has used.
+
+**State at registration.** The dev split's session audio and job files (`nat`, `hcs`, `ehcs`, `picka`) are built
+(`build_jobs.py`; WORLD / PICKA transforms only). No session has been run through the chain on any speaker of this
+pool, no posted pitch has been computed, and no rule has been evaluated. No test-split audio or job exists.
+
+**Question (user decision, 2026-10-11).** The shipped rule S0 gives men far more natural false alarms (FA) than women
+(confirmation: 4.06 % vs 0.46 %, one reader 54 %, expressive readers' worst start 74.7 % vs ≤ 2.6 %). The post-hoc
+diagnosis (`../diagnose/DIAGNOSIS.md`) attributes about 72 % of men's FA time to an unrepresentative ~20 s start
+reference and about 11–27 % to genuine wide intonation; octave errors are not the cause. Which fix, if any, brings men's
+FA down to women's level without costing hits for either base sex?
+
+Everything the diagnosis reported was computed on the confirmation and steady-start data, with candidates and
+parameters chosen after seeing it. None of that data is used here.
+
+## 1. Code under test and harness
+
+- Chain: branch `cue-strip` @ **53704cc** (`git archive 53704cc src public/resonance-lab scripts/resonance-lab/candidates/formant-vtl scripts/heard-as package.json`
+  → `snap/`). No chain file changed since the confirmation's adf19c3 (`git diff --stat adf19c3 53704cc -- src/ml src/dsp
+  src/resonance src/resonance-lab public/resonance-lab scripts/resonance-lab/candidates/formant-vtl` is empty); the
+  commits in between touch only UI files (trace drawing, panel rendering).
+- `session.mjs` = the confirmation's harness byte for byte except a header comment and one error message (4 added
+  comment lines, 1 changed message string; `diff ../../mainthread-warning/confirm/session.mjs session.mjs`). It runs the real pitch worker, the gender
+  worker's window schedule with the real utterance gate and the Silero speech detector, the 450 ms classifier hop, the
+  deployed q8-v2 classifier, heard-as `estimate()`, the resonance worker path (lab engine "frames" + `resonanceCue.js`),
+  and a tick every 2 s of audio.
+- `evaluate.py` and `features.py` are the confirmation's files, byte-identical (sha256 652dc467…3893 and 02f5786b…aee5).
+  `rules.py` implements the candidates (§3) and `study.py` applies the outcomes (§4), the bar (§5) and the selection (§6).
+- `rules.py` was checked before registration against `evaluate.py` and the diagnosis' `cand.py` on the ALREADY-SEEN
+  confirmation / steady data only (`tools/check_rules.py`): S0 tick-identical to `evaluate.py` (0 mismatches in all
+  three splits); A40, CUM-g, DS10, KP8-2.5, KP8-3, A40+KP8-2.5 and A40+KP8-2.5+DS10 reproduce the diagnosis' numbers.
+  One deliberate difference: KP8 is applied uniformly with the history back-filled against S0's P0 for ticks before
+  t_start (the diagnosis' CUM-g+KP8 used no pre-start history), so CUMg+KP8-2.5 differs from the diagnosis' row.
+
+File hashes at registration (`study.py` refuses to run if any changed):
+- hash session.mjs a307f583b55e3539313c2c44cc0c55b425f62e1a5dc5a007de2ba73035f07d5f
+- hash pitch_only.mjs e34a6701a511ba4ede5e05b629d6817fc8ce035aaa3c6b856dd58447f6b4590c
+- hash build_jobs.py bfa8b21a652f8e8f1a71cfac163594511929786a0989cad51e7f2ff728009f10
+- hash rules.py 480b17ca42f30db06ee75e6de0fef0a625ba6304c1b8e7a4c88bf68c07a13902
+- hash study.py 38e0e031d884526db4aca3e9c9e754965b7297c034a550a79f3123f2b40f266a
+- hash evaluate.py 652dc467314d46a0a201392e77db6b4b8002183f6813334fc337222dde223893
+- hash features.py 02f5786b1be1688a432595291cebeef08e35fa5fcad1d9eabb212c3ab894aee5
+- hash pool.json 8e6b4eee015d9e8d058850612e3886c3b675eb28fb85553cb4cddc003e7d03ca
+- hash inventory.json 6a097a441281a862035e7934ee710b5802f976522d625aadc5c0f7fe0760a585
+- hash used_speakers.json abe515fb47ef129572eb43c560bc85edf4af1fc404530628a446985082dbece6
+- hash tools/inventory.py 684116d0aa337bc116a6529709ed7ba170583645617b252205fdd0b51de425f0
+- hash tools/used_speakers.py e5b7a7b9fa7893ba11055c344fd10798ec2a7f33a1fb344c6fe923466ac3225b
+- hash tools/pool.py 0d8d245c757576b7ef820d8a82afeb33647bb2a2a91415ddb9c41300e5380b9c
+- hash tools/check_rules.py 2315a9a1905b7127f41a46dc97de034c46fc211150895ec8b2d3c70c22c6d871
+- hash snap.sha256list fd540a53123ae547f58168f375a9f8cf441e063427f0f620349b825cffa6a849
+
+## 2. Data: public speakers no earlier study has used
+
+| Source | Licence | Partition used | Why |
+|---|---|---|---|
+| LibriSpeech train-other-500 shards 0006–0009 and train-clean-360 shards 0000–0003 (Hugging Face `openslr/librispeech_asr`, parquet) | CC BY 4.0 | train | the confirmation used train-other-500 shards 0000–0005 only; train-clean-360 was never used |
+| Multilingual LibriSpeech, German (`facebook/multilingual_librispeech`, parquet; sex from MLS `metainfo.txt`) | CC BY 4.0 | MLS dev → our dev, MLS test → our test | a second open corpus, another language and another reader population; never used in any Syrinx study |
+
+VCTK is not used: the voice-detector training manifests contain all 110 of its speakers. Common Voice is not used:
+its download is gated and few speakers have ≥ 330 s. VoxPopuli was checked and dropped: its test/validation speakers
+have < 330 s each, and its train shards shuffle each speaker's segments across 30 × 3.2 GB files, so a per-speaker
+session would splice segments from different years.
+
+**Exclusion** (`tools/used_speakers.py`, the confirmation's scan with this folder skipped and the Syrinx main repo's
+measurements/, scripts/ and tests/ added). A candidate is excluded if its id matches `<id>[-_/]<2–6 digits>[-_/]`,
+`ls<id>` or `/<id>/` in any file or directory name under the scratchpad (every earlier study, incl. the diagnosis),
+the voice-detector branch's `build/` (its training and validation manifests), cue-strip's and main's measurements/,
+scripts/ and tests/, or in the contents of their text files under 8 MB; and any of the confirmation's 66 readers is
+excluded explicitly. The earlier studies' LibriSpeech subsets (test-clean, dev-clean, dev-other, test-other) are disjoint
+from train-* by LibriSpeech construction. Over-inclusive on purpose; 82 of the 208 downloaded candidates are excluded: ls1052, ls1112, ls1160, ls1222, ls1289, ls1291, ls1316, ls1341, ls1347, ls1382, ls1425, ls1446, ls1456, ls1487, ls1569, ls1572, ls159, ls1595, ls1603, ls1653, ls1664, ls167, ls1699, ls1731, ls177, ls1825, ls1859, ls1974, ls203, ls2050, ls2127, ls2229, ls2246, ls2299, ls2364, ls252, ls2638, ls2971, ls30, ls3307, ls339, ls36, ls432, ls510, ls511, ls56, ls6111, ls6673, ls6914, ls720, ls766, ls782, ls7839, ls8195, ls846, ls8664, ls876, ls899, ls923, ls969, mls1054, mls1163, mls11695, mls1262, mls135, mls137, mls138, mls140, mls141, mls144, mls145, mls1593, mls1660, mls1757, mls1844, mls1874, mls1946, mls2252, mls278, mls4730, mls5295, mls91..
+
+**Selection** (`tools/pool.py`, mechanical, from metadata only: sex labels and durations; no audio analysis).
+Eligible = not excluded, sex f/m, ≥ 330 s of audio in the downloaded files.
+- LibriSpeech: per sex, sort by numeric speaker id; n_LS = min(#F, #M, 34), rounded down to even; take the first n_LS
+  per sex; alternate dev / test in that order (positions 0, 2, … dev; 1, 3, … test).
+- MLS German: every eligible speaker; MLS's own dev partition → dev, test partition → test.
+- Utterance order: LibriSpeech = numeric sort of the file name (the confirmation's rule); MLS = chapter id, source file,
+  begin time (reading order within a chapter).
+
+| Split | Sex | LibriSpeech train-other-500 | LibriSpeech train-clean-360 | MLS German | Total | Speakers |
+|---|---|---|---|---|---|---|
+| dev | f | 11 | 6 | 9 | 26 | ls3025 ls3411 ls3551 ls3698 ls4156 ls4936 ls5045 ls5296 ls5487 ls5725 ls5831 ls6544 ls6676 ls7515 ls7945 ls8012 ls8329 mls2974 mls3277 mls3862 mls5934 mls7320 mls8325 mls8769 mls9514 mls10349 |
+| dev | m | 9 | 8 | 9 | 26 | ls296 ls3132 ls3691 ls3989 ls4243 ls4428 ls4836 ls5147 ls5181 ls5242 ls5460 ls5746 ls5781 ls5935 ls6115 ls6199 ls6436 mls4001 mls5595 mls7002 mls7272 mls8743 mls9948 mls10870 mls13255 mls13494 |
+| test | f | 8 | 9 | 7 | 24 | ls3380 ls3513 ls3675 ls3905 ls4443 ls5007 ls5082 ls5471 ls5588 ls5740 ls6106 ls6568 ls7245 ls7644 ls7994 ls8300 ls8414 mls3588 mls4739 mls6067 mls7120 mls7261 mls7456 mls7624 |
+| test | m | 8 | 9 | 7 | 24 | ls2774 ls3289 ls3845 ls4054 ls4420 ls4590 ls4931 ls5157 ls5183 ls5304 ls5637 ls5767 ls5840 ls6075 ls6177 ls6368 ls6506 mls3040 mls3052 mls3363 mls4705 mls4748 mls4911 mls7406 |
+
+`pool.json` (sha256 in the hash list) holds the exact speakers, splits and ordered file lists.
+
+**Expressive readers** (the start-offset outcome). Per split and sex, the top quartile (ceil(n/4)) of readers by the
+spread q90 − q10 (st) of their **posted voiced pitch in the first 60 s** of the offset-0 (`nat`) session; ties by
+speaker key. Dev: from the dev `nat` session outputs, before any rule is evaluated (`study.py expressive dev`). Test:
+from `pitch_only.mjs`, the real pitch worker alone over the same audio (no ML, resonance, panel or warning), after the
+choice is written. Each expressive reader is replayed from 5 starts (k = 0, 1, 2, 3, 5 utterances skipped).
+
+**Sets** (`build_jobs.py`; the confirmation's construction, plus `ehcs`):
+
+| Set | Construction |
+|---|---|
+| `nat` | Every reader at offset 0: the first ≥ 180 s of utterances, 0.25 s gaps. |
+| `off` | Expressive readers from start offsets k ∈ {1, 2, 3, 5}, then ≥ 180 s. With `nat`, 5 starts per reader. |
+| `hcs` | H&C sentence-proxy shift on every reader. Base = ≥ 50 s natural speech (7.2 kHz low-pass); shift = the next ≥ 40 s through WORLD (dio + stonemask) in US (vocoder control), PO (pitch only), PE (pitch + envelope), EO (envelope only); men up, women down (F0 × 1.7041, envelope × 1.168). Rep A from utterance 0; rep B after the `nat` span when ≥ 90 s remain. |
+| `picka` | PICKA cells on every woman, rep A: pitch only (−6,0) (−12,0); together (−6,+1.8) (−12,+3.6); resonance only (0,+1.8) (0,+3.6). |
+| `ehcs` | **Early shift (new).** Base = ≥ 36 s natural speech from utterance 0 (7.2 kHz low-pass); shift = the next ≥ 40 s in PO and PE (the hcs WORLD transform, same files where the utterances coincide). The shift lands while A40's reference is still growing (t_fill + 40 s ≈ 50 s) and, for some sessions, before t_start. |
+
+## 3. Inputs and rules
+
+Inputs, eligibility and display are the confirmation's §3, unchanged: tick = 2 s; P8 = the panel's ln F0 (heard-as
+`estimate().lnF0`, median of posted pitch over the trailing 8 s); ΔP = 12·(P8 − P0)/ln 2; Δu = u − startU; an eligible
+tick is visible with startU and u known, fill ≥ 1, verdict ≠ "sustained", sinceResumeS ≥ 2 and S0's P0 known (≥ 20
+voiced frames in [t_fill, t_start]); condition |ΔP| ≥ X AND |Δu| ≤ 0.6 u; shown after K = 2 consecutive shown
+eligible ticks meeting it; hidden ticks neutral, the run dropped after more than 5 hidden ticks in a row; a shown tick
+that is ineligible or fails the condition drops the run.
+
+**Reference S0 (shipped).** P0 = ln median of the posted voiced frames in [t_fill, t_start], frozen; X = 4 st.
+
+**Candidates** (`rules.py`; each = a reference × an optional pitch-threshold rule × an optional panel gate):
+
+| Part | Definition |
+|---|---|
+| ref S0 | as above |
+| ref A40 | P0(t) = ln median of the posted voiced frames in [t_fill, max(t_start, min(t, t_fill + 40 s))]: grows until t_fill + 40 s, then frozen |
+| ref CUMg | a pool starts as the posted voiced frames in [t_fill, t_start]; at each tick at or after t_start, P0 = ln median of the pool (before this tick's frames); after the decision, if the tick is shown, eligible and \|ΔP\| < 4 st, the posted voiced frames since the previous tick join the pool (frames of every other tick never do) |
+| KP8-k | X(t) = max(4 st, k × RMS of the history) once the history holds ≥ 5 values, else 4 st. History = ΔP of the earlier shown ticks (P8 known) whose \|ΔP\| was below that tick's X, in tick order; ticks before t_start count with ΔP against S0's P0 (the panel stores their P8 and back-fills them when P0 becomes known). k ∈ {2.5, 3} |
+| DS10 | also require \|s − s0\| ≥ 10 points, s = the panel's shown share, s0 = median s over the shown ticks in [t_fill, t_start] |
+
+The 17 candidates = {S0, A40, CUMg} × {—, KP8-2.5, KP8-3} × {—, DS10} minus S0 alone:
+- `DS10`: {"ref": "S0", "kp8": null, "ds": 10}
+- `KP8-2.5`: {"ref": "S0", "kp8": 2.5, "ds": null}
+- `KP8-2.5+DS10`: {"ref": "S0", "kp8": 2.5, "ds": 10}
+- `KP8-3`: {"ref": "S0", "kp8": 3.0, "ds": null}
+- `KP8-3+DS10`: {"ref": "S0", "kp8": 3.0, "ds": 10}
+- `A40`: {"ref": "A40", "kp8": null, "ds": null}
+- `A40+DS10`: {"ref": "A40", "kp8": null, "ds": 10}
+- `A40+KP8-2.5`: {"ref": "A40", "kp8": 2.5, "ds": null}
+- `A40+KP8-2.5+DS10`: {"ref": "A40", "kp8": 2.5, "ds": 10}
+- `A40+KP8-3`: {"ref": "A40", "kp8": 3.0, "ds": null}
+- `A40+KP8-3+DS10`: {"ref": "A40", "kp8": 3.0, "ds": 10}
+- `CUMg`: {"ref": "CUMg", "kp8": null, "ds": null}
+- `CUMg+DS10`: {"ref": "CUMg", "kp8": null, "ds": 10}
+- `CUMg+KP8-2.5`: {"ref": "CUMg", "kp8": 2.5, "ds": null}
+- `CUMg+KP8-2.5+DS10`: {"ref": "CUMg", "kp8": 2.5, "ds": 10}
+- `CUMg+KP8-3`: {"ref": "CUMg", "kp8": 3.0, "ds": null}
+- `CUMg+KP8-3+DS10`: {"ref": "CUMg", "kp8": 3.0, "ds": 10}
+
+DS10 depends on the ML meter's shown share; adopting a DS10 candidate also needs a product decision (warn only when the
+panel itself moved). **D2-0.1** (the slowly tracking start, `evaluate.py` fam D, kind D2, a 0.1) is reported for
+comparison only and cannot be chosen.
+
+## 4. Outcomes (the confirmation's §4 definitions, computed by its `evaluate.py`)
+
+- **Failure set / hit.** Pitch-only sessions (`hcs` PO reps A and B; `picka` (−6,0), (−12,0)) whose shown panel
+  estimate (median share over visible ticks at t ≥ t_shift + 10 s, ≥ 3 ticks) differs from the listener two-way share
+  by ≥ 20 points (H&C MPO 65.7 / WPO 19.1; PICKA Meyer 2023 6.3 / 54.8 primary; Jebens and Nagels reported). Hit = the
+  warning is on at ≥ 1 tick in (t_shift, t_shift + 10 s] and was off at the last eligible tick at or before t_shift.
+  Male base = pitch raised; female base = pitch lowered.
+- **Early-shift hit** (new): the same failure-set rule and hit definition on `ehcs` PO (H&C references).
+- **Natural FA**: per reader, the share of eligible ticks with the warning on in `nat` (offset 0); reader-balanced mean
+  per sex; **per-reader max** per sex.
+- **Worst start**: per expressive reader, the maximum over its evaluable starts (k = 0, 1, 2, 3, 5) of the natural-FA
+  share; per sex, the maximum over its expressive readers.
+- **Together / resonance-only**: mean over sessions of the share of eligible ticks with t ≥ t_shift + 10 s with the
+  warning on (together = `hcs` PE + `picka` (−6,+1.8), (−12,+3.6); resonance only = `hcs` EO + `picka` (0,+1.8),
+  (0,+3.6)), per sex of the base voice.
+- Reported too (descriptive): hits with the Jebens and Nagels references, hit within 14 s, time to first warning,
+  persistence, vocoder control, flash after together shifts, baseline-phase FA, early-shift together, and (after the
+  choice, descriptive) the per-corpus breakdown.
+
+## 5. The bar (all checks, per sex; the candidate against S0 on the SAME sessions)
+
+1. Natural FA ≤ 2 % for women and for men, **and** |men − women| ≤ 1.5 pp.
+2. Per-reader natural-FA maximum ≤ 15 % for each sex.
+3. Every expressive reader's worst start ≤ 15 %, each sex.
+4. Hits within 10 s (Meyer primary) ≥ S0's hits − 0.03, for each base sex (non-inferior).
+5. Early-shift hits ≥ S0's early-shift hits − 0.03, for each base sex.
+6. Together FA ≤ S0 + 2 pp and resonance-only FA ≤ S0 + 2 pp, each sex.
+
+That is 15 checks: natFA F, natFA M, the gap, reader max F/M, worst start F/M, hits F/M, early hits F/M, together F/M,
+resonance-only F/M. Boundaries inclusive (tolerance 1e-12). A hit check whose failure set is empty (for the candidate or
+S0) passes vacuously and is reported with n = 0. **PASS** = all 15 hold.
+
+## 6. Selection on dev (`study.py dev`), then one test evaluation
+
+1. Run every session of the dev split; compute the expressive readers from the dev `nat` outputs; run their `off`
+   sessions; build features; evaluate S0, the 17 candidates and D2-0.1 on dev.
+2. **Choice.** Among the candidates that pass all 15 checks on dev (S0 on dev as the reference), order by: (a) the
+   larger of the two sexes' worst-start maxima, lower first; (b) the larger of the two sexes' natural FA, lower first;
+   (c) the smaller of the two sexes' hit change vs S0, higher first; (d) fewer parts; (e) the listing order in §3.
+   Take the first. **If none passes**, take the candidate with the most checks passed, ties by the same order (a)–(e),
+   and say so in CHOICE.md; it still goes to the single test evaluation, where only the bar decides.
+3. CHOICE.md (with the dev table's sha256 and this file's sha256) and CHOICE.sha256 are written **before** any
+   test-split audio, job or chain output exists.
+4. Then the test split is prepared: audio, `nat` / `hcs` / `picka` / `ehcs` jobs, the expressive readers by
+   `pitch_only.mjs` (posted pitch only) and their `off` jobs. **The test sessions are not run in this step.**
+5. The test evaluation is run once (`study.py test`) on the chosen rule with S0 on the same sessions. PASS → the rule is
+   proposed for cue-strip (with the DS10 product decision if it contains DS10); FAIL → S0 stays. Nothing is re-tuned on
+   test data; any other number on test is descriptive.
+
+## 7. Notes
+
+- The diagnosis found that no frozen reference can bring its worst reader (6652) under 15 % and that only KP8-3 did so on
+  that data, at a cost of borderline female hits. Bar check 3 may be unreachable on fresh data as well; the study
+  reports that if so.
+- Hit checks have 1/n resolution: with fewer than 34 failure-set sessions for a base sex, one session is more than
+  0.03, so checks 4 and 5 forbid a net loss of even one hit for that base sex.
+- Public data only (LibriSpeech, MLS); no private recordings, no names.
+````
+
+## Appendix D. Men's false-alarm study choice (verbatim)
+
+sha256 `aedd7c46af52008d9cf4212576b9a9767b8bf8ef1e1d4666a2343742b9b2855a` (of the file below, written by `study.py dev`
+at 2026-10-11T19:08:34-05:00, before any test-split audio, job or chain output existed). Same CRLF convention as Appendix C.
+
+````markdown
+# Choice (male-FA selection study, dev split)
+
+Written by `study.py dev` before any test-split session audio, job or chain output exists.
+
+- PREREG.md sha256: `6f86c692adc8888c711ca1f5e9b815a78845fc41cd934e3c3af9a8c26c683e8f`
+- dev_table.csv sha256: `cad2a5478323b0e1619b643bb6fa080db48f62d1c620e007cf30a762f0f3a32a`
+- **Chosen: `A40+KP8-3+DS10`** = {"ref": "A40", "kp8": 3.0, "ds": 10}
+- How: passes every dev check; first by the PREREG §6 order among the passing candidates.
+- Candidates passing every dev check: ['DS10', 'KP8-2.5', 'KP8-2.5+DS10', 'KP8-3', 'KP8-3+DS10', 'A40+DS10', 'A40+KP8-2.5+DS10', 'A40+KP8-3', 'A40+KP8-3+DS10', 'CUMg', 'CUMg+DS10', 'CUMg+KP8-2.5', 'CUMg+KP8-2.5+DS10', 'CUMg+KP8-3', 'CUMg+KP8-3+DS10']
+
+Dev checks of the chosen rule (S0 on the same dev sessions as reference):
+
+```
+{
+ "natfa_f": true,
+ "readermax_f": true,
+ "worststart_f": true,
+ "hits_female": true,
+ "ehits_female": true,
+ "together_f": true,
+ "resonance_f": true,
+ "natfa_m": true,
+ "readermax_m": true,
+ "worststart_m": true,
+ "hits_male": true,
+ "ehits_male": true,
+ "together_m": true,
+ "resonance_m": true,
+ "natfa_gap": true,
+ "n_pass": 15,
+ "all": true
+}
+```
+
+Dev outcomes of the chosen rule and S0:
+
+| field | S0 | chosen |
+|---|---|---|
+| hit_male | 0.917 | 0.917 |
+| hit_female | 0.920 | 0.920 |
+| n_male | 36 | 36 |
+| n_female | 50 | 50 |
+| ehit_male | 0.875 | 0.875 |
+| ehit_female | 0.929 | 0.929 |
+| en_male | 16 | 16 |
+| en_female | 14 | 14 |
+| fa_m | 0.006 | 0.002 |
+| fa_f | 0.006 | 0.002 |
+| fa_max_m | 0.060 | 0.060 |
+| fa_argmax_m | mls5595 | mls5595 |
+| fa_max_f | 0.110 | 0.049 |
+| fa_argmax_f | ls4936 | ls4936 |
+| off_worst_max_m | 0.530 | 0.084 |
+| off_worst_max_f | 0.418 | 0.073 |
+| off_worst_mean_m | 0.081 | 0.014 |
+| off_worst_mean_f | 0.078 | 0.010 |
+| together_m | 0.002 | 0.002 |
+| together_f | 0.027 | 0.025 |
+| resonance_m | 0.000 | 0.000 |
+| resonance_f | 0.002 | 0.000 |
+| control_m | 0.011 | 0.011 |
+| control_f | 0.005 | 0.000 |
+| etogether_m | 0.000 | 0.000 |
+| etogether_f | 0.008 | 0.008 |
+| pers_male | 0.947 | 0.947 |
+| pers_female | 0.930 | 0.921 |
+| first_med_male | 7.160 | 7.160 |
+| first_med_female | 7.820 | 7.940 |
+| hit14_male | 0.944 | 0.944 |
+| hit14_female | 0.960 | 0.960 |
+| hit_male_jebens | 0.917 | 0.917 |
+| hit_female_jebens | 0.950 | 0.950 |
+| hit_male_nagels | 0.917 | 0.917 |
+| hit_female_nagels | 0.922 | 0.922 |
+| flash_m | 0.173 | 0.154 |
+| flash_f | 0.183 | 0.173 |
+| basefa_m | 0.000 | 0.000 |
+| basefa_f | 0.002 | 0.000 |
+
+Full dev table: `dev_table.md` / `dev_table.csv`.
+````
