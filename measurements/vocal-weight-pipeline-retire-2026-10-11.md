@@ -101,8 +101,28 @@ session-oracle loader `scripts/session-oracle/lib/register.mjs` with `SO_TAP=0`)
 Built worker chunks, base vs head: `pitch-worker`, `resonance-worker`, `gender-worker` and
 `lab-worker` are **byte-identical** (same hashed file names, `cmp` equal); only `dsp-worker` changed
 (11 530 → 11 571 B: the flag check; `cpp.js` is still bundled for the
-opt-in path). The cue-strip smoke (resonance row, panel) and the lab smoke results are in the commit
-that ran them (CLAUDE.md "Current state").
+opt-in path). Browser smoke on the head build (`dist/` of `e67ab7a`):
+
+- `scripts/cue-strip-smoke.mjs --pitch-only=man,woman` at all five viewports: **94 / 94 checks pass**
+  at 448×890, 402×750, 360×690, 890×360 and 1280×800 (two rows only, resonance warming → settling →
+  live, heard-as panel on / off / reload, the pitch-only warning, noise / silence). First-screen
+  layout, panel off → on (px): 448×890 trace 114–345, strip 353–495, session row 543–581 → panel
+  503–729, session row 737–775 (everything on the first screen either way); 402×750 strip 317–459,
+  panel on to 724; 360×690 strip 317–473, panel on 481–754 (its lower part and the session row
+  below the fold, as before — the rule is trace + strip); 890×360 strip beside the trace, 114–238;
+  1280×800 strip 114–336 in the right column.
+- `scripts/resonance-lab/lab-smoke.mjs`: **all five runs pass** (isolation until the tab is opened;
+  lab live after opening; tab opened before listening; four cards fit at 402×750; weight × clarity
+  model on demand, mapping, ≥ 1 readable bin — 10 of 25 — and the plot in the first screen at all
+  five viewports). Two harness notes: `--wav` must be an **absolute** path (Chrome resolves
+  `--use-file-for-fake-audio-capture` against its own working directory; a relative path gives a
+  silent mic and runs 2–4 fail with "Voiced so far 0 s"), and run 5 needs a clip whose "softer" and
+  "louder" mapping phases really differ in level: plain looped LibriSpeech clips came out 0.2, −0.1
+  and 2.6 dB apart (the view's compression check, < 4 dB, turns readings off — and with that warning
+  shown the plot's bottom axis sits 5 px under the Stop bar at 360×690, identical on the unmodified
+  `weight-lab` tip `05e4685`). The passing run used `speech-woman.wav` looped twice with a level
+  profile following the prompts (−4 dB, then −10 dB for 27–47 s and 0 dB for 47–67 s after capture
+  start; `--weight-map-seconds=100`): loudness check 12.4 dB.
 
 ### 5.3 CPU (acceptance 3): PASS
 
