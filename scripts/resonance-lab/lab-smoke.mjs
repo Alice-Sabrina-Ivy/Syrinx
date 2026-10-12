@@ -15,7 +15,8 @@
 // opens it, maps the voice (prompts advanced with Next / Done), waits for readings, checks
 // that its model is fetched only then (runs 1-4 must never request weight_v5.json), prints
 // the lab's cost with the weight analysis on, and checks the view at five viewports (no
-// horizontal page overflow; screenshots with --shot).
+// horizontal page overflow, the plot fully in the first screen; at least one readable bin
+// after mapping, readable share reported; screenshots with --shot).
 //
 //   [--weight-map-seconds=75] [--weight-read-seconds=25]   run 5 timing
 //
@@ -140,7 +141,7 @@ async function run(url, { lab, tabFirst = false, viewport = null, wait = SECONDS
     log("weight view clicked:", await page.evaluate(() => { const b = document.querySelector('[data-lab-view="weight"]'); if (b) b.click(); return !!b; }));
     await page.waitForFunction(() => { const b = document.querySelector("[data-weight-map-start]"); return !!b && !b.disabled; }, { timeout: 20000 })
       .catch(() => log("map button not enabled (gain control?)"));
-    const gain = await page.evaluate(() => (document.body.innerText.match(/Gain control: \w+/) ?? ["?"])[0]);
+    const gain = await page.evaluate(() => (document.body.innerText.match(/Browser gain control: \w+/) ?? ["?"])[0]);
     log(gain);
     log("map clicked:", await page.evaluate(() => { const b = document.querySelector("[data-weight-map-start]"); if (b && !b.disabled) { b.click(); return true; } return false; }));
     for (let i = 0; i < 5; i++) {
@@ -164,11 +165,24 @@ async function run(url, { lab, tabFirst = false, viewport = null, wait = SECONDS
       await page.setViewport({ width: w, height: h, deviceScaleFactor: mobile ? 2 : 1 });
       await sleep(1200);
       const m = await page.evaluate(() => {
+        // First screen: page and the lab's own scroll area at the top.
+        window.scrollTo(0, 0);
+        for (const el of document.querySelectorAll("[data-lab-phone]")) el.scrollTop = 0;
         const de = document.documentElement;
         const plot = document.querySelector("[data-weight-plot]")?.getBoundingClientRect();
-        return { scrollW: de.scrollWidth, innerW: innerWidth, plot: plot ? { l: +plot.left.toFixed(0), r: +plot.right.toFixed(0), w: +plot.width.toFixed(0) } : null };
+        const axis = document.querySelector("[data-weight-axis-bottom]")?.getBoundingClientRect();
+        const stop = [...document.querySelectorAll("button")].find((b) => b.textContent.includes("Stop Listening"))?.getBoundingClientRect();
+        const layout = document.querySelector("[data-weight-view]")?.dataset.weightLayout ?? null;
+        return { scrollW: de.scrollWidth, innerW: innerWidth, innerH: innerHeight, layout, stopTop: stop ? +stop.top.toFixed(0) : null,
+          axisB: axis ? +axis.bottom.toFixed(0) : null,
+          plot: plot ? { l: +plot.left.toFixed(0), r: +plot.right.toFixed(0), t: +plot.top.toFixed(0), b: +plot.bottom.toFixed(0), w: +plot.width.toFixed(0) } : null };
       });
-      layouts.push({ vp: `${w}x${h}`, ...m, ok: m.scrollW <= m.innerW && !!m.plot && m.plot.r <= m.innerW + 0.5 && m.plot.l >= -0.5 });
+      // Horizontally inside, and (2026-10-11 review) the whole plot visible in the
+      // first screen (with its bottom axis word): below the top edge and above the
+      // Stop Listening row.
+      const floor = Math.min(m.innerH, m.stopTop ?? m.innerH);
+      m.vertical = !!m.plot && m.plot.t >= -0.5 && Math.max(m.plot.b, m.axisB ?? 0) <= floor + 0.5;
+      layouts.push({ vp: `${w}x${h}`, ...m, ok: m.scrollW <= m.innerW && !!m.plot && m.plot.r <= m.innerW + 0.5 && m.plot.l >= -0.5 && m.vertical });
       if (SHOT) await page.screenshot({ path: SHOT.replace(/(\.png)?$/i, `-weight-${w}x${h}.png`) });
     }
     weightOut = { before, after: requests.filter(isWeightAsset).length, wtext, costOn, layouts, gain, counts };
@@ -244,9 +258,16 @@ console.log("WEIGHT VIEW: page errors", wv.errors.length ? wv.errors : "none");
 console.log(`WEIGHT VIEW: model requests before opening ${W.before}, after ${W.after}; ${W.gain}`);
 console.log("WEIGHT VIEW: text:\n" + W.wtext.slice(0, 1800));
 console.log("WEIGHT VIEW (weight analysis on): " + (W.costOn ?? "(no cost line)"));
+console.log("WEIGHT VIEW: " + ((W.wtext.match(/Loudness check:[^\n]*/) ?? ["(no loudness check line)"])[0]));
 console.log("WEIGHT VIEW: bin counts (bins / valid / readable / paused by reason)", W.counts);
-for (const l of W.layouts) console.log(`WEIGHT VIEW ${l.vp}: ${l.ok ? "ok" : "OVERFLOW"} ${JSON.stringify(l)}`);
+for (const l of W.layouts) console.log(`WEIGHT VIEW ${l.vp}: ${l.ok ? "ok" : (l.vertical === false ? "PLOT NOT IN FIRST SCREEN" : "OVERFLOW")} ${JSON.stringify(l)}`);
+// Readable share after mapping: readable / (readable + pauses other than "not mapped yet").
+const wc = (() => { try { return JSON.parse(W.counts); } catch { return null; } })();
+const pausedAfter = wc ? Object.entries(wc.paused).filter(([k]) => !/^Not mapped yet/.test(k)).reduce((a, [, v]) => a + v, 0) : 0;
+const readable = wc?.readable ?? 0;
+console.log(`WEIGHT VIEW: readable bins after mapping ${readable} of ${readable + pausedAfter} (${readable + pausedAfter ? ((100 * readable) / (readable + pausedAfter)).toFixed(0) : "—"} %)`);
 const weightOk = wv.errors.length === 0 && W.before === 0 && W.after >= 1 && weightNotFetched
+  && readable >= 1
   && /Experimental — not a measurement of vocal-fold weight or contact/.test(W.wtext)
   && /Your map: [1-9]/.test(W.wtext)
   && /What this can and can't tell you/.test(W.wtext)

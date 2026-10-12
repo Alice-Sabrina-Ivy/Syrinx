@@ -20,9 +20,14 @@
 //   * Reading per bin: Rw = (w - cell mean w) / sdW, Rc = (c - cell mean c) / sdC;
 //     displayed = median of the last 3 readable bins within the last 5 s.
 //   * No reading (with a reason) when: gain control on / unknown; microphone
-//     differs from the map's; not mapped; < 3 of the last 5 bins are running
-//     speech; this bin not valid; its cell not ready; its VTLN missing or more
-//     than 0.05 ln from the cell's median (resonance changed).
+//     differs from the map's (or can't be confirmed); the map's softer / louder
+//     prompts differed by < 4 dB (compression suspected); not mapped; < 3 of
+//     the last 5 bins are running speech; this bin not valid; its cell not
+//     ready; its VTLN missing or more than 0.05 ln from the cell's median
+//     (resonance changed).
+//   * Review fixes 2026-10-11 (measurements/weight-lab-prototype-2026-10-08.md
+//     §8): measured gain-control check, microphone identity by label, no stale
+//     reading while re-mapping, trail points expire after TRAIL_S.
 
 export const BIN_S = 1;
 export const CLOSE_LAG_S = 1.5;
@@ -38,6 +43,15 @@ export const RUNNING_WINDOW = 5;
 export const RUNNING_MIN = 3;
 export const DISPLAY_BINS = 3;
 export const TRAIL_S = 10;
+// Measured gain-control check: median level of the "louder" prompt minus the
+// "softer" prompt, each with >= LOUDNESS_CHECK_BINS mapped bins. Below
+// LOUDNESS_MIN_DB something (system, driver, headset) is likely compressing
+// loudness. Heuristic threshold, not fitted (§8 B3).
+export const LOUDNESS_CHECK_BINS = 5;
+export const LOUDNESS_MIN_DB = 4;
+// The noise box half-width in own units: ~3 % of displayed readings land
+// outside it by chance on AVID (±1: ~37 %) — §8 A.
+export const NOISE_BOX = 2;
 
 export const PROMPTS = [
   { key: "usual", label: "Talk in your usual voice" },
@@ -50,6 +64,8 @@ export const PROMPTS = [
 export const REASONS = {
   agc: "Gain control is on or unknown: loudness can't be matched",
   device: "New microphone: map your voice again",
+  deviceUnknown: "Can't confirm this is the microphone you mapped with: map your voice again",
+  compressed: "Loudness looks compressed: map again, clearly softer and louder",
   unmapped: "Not mapped yet",
   speech: "Speak in sentences: held vowels and single words mislead",
   voiced: "Waiting for voiced speech",
@@ -59,6 +75,34 @@ export const REASONS = {
 
 export const cellOf = (F, Lb) => [Math.floor((12 * F) / CELL_ST), Math.floor(Lb / CELL_DB)];
 const key = (pi, li) => `${pi},${li}`;
+
+// Microphone identity. Chrome reports the virtual ids "default" /
+// "communications" for the system default device, which stay the same when the
+// user switches the default microphone, so those (and an empty id) say nothing;
+// the track label (Chrome's default label names the physical device) must match.
+// Without a label, two equal real device ids still count as the same device.
+const VIRTUAL_IDS = new Set(["", "default", "communications"]);
+const realId = (id) => (typeof id === "string" && !VIRTUAL_IDS.has(id) ? id : null);
+export function micOf(c) {
+  return {
+    deviceId: realId(c?.deviceId),
+    groupId: typeof c?.groupId === "string" && c.groupId ? c.groupId : null,
+    label: typeof c?.label === "string" && c.label ? c.label : null,
+  };
+}
+/** true = same microphone, false = a different one, null = can't tell. */
+export function sameMic(a, cap) {
+  const b = micOf(cap);
+  if (!a?.label || !b.label) {
+    // No label on one side: only two real (non-virtual) device ids can decide.
+    if (a?.deviceId && b.deviceId) return a.deviceId === b.deviceId;
+    return null;
+  }
+  if (a.label !== b.label) return false;
+  if (a.deviceId && b.deviceId && a.deviceId !== b.deviceId) return false;
+  if (a.groupId && b.groupId && a.groupId !== b.groupId) return false;
+  return true;
+}
 
 function median(a) {
   if (!a.length) return null;
@@ -77,13 +121,14 @@ export function createWeightMap() {
   const closed = [];      // recent closed bin summaries (last ~20)
   let lastT = -Infinity;
   let lastLevel = null;
-  let capture = { autoGainControl: undefined, deviceId: undefined };
+  let capture = { autoGainControl: undefined, deviceId: undefined, groupId: undefined, label: undefined };
 
   let phase = "unmapped"; // unmapped | mapping | mapped
   let prompt = 0;
   let promptHave = 0;
   let cal = new Map();    // key -> {pi, li, w: [], c: [], v: []}
-  let map = null;         // frozen: {deviceId, cells: {key: {pi, li, n, w, c, v}}, sdW, sdC, nReady}
+  let promptLb = {};      // prompt key -> [bin level dBFS] of the mapped bins
+  let map = null;         // frozen: {device: micOf(), cells: {key: {pi, li, n, w, c, v}}, sdW, sdC, nReady, loudness}
   let note = null;
   let readings = [];      // [{b, rw, rc}]
   let display = null;     // {rw, rc}
@@ -103,7 +148,8 @@ export function createWeightMap() {
   }
 
   function capturedOk() { return capture.autoGainControl === false; }
-  function deviceOk() { return !map || map.deviceId === capture.deviceId; }
+  function deviceOk() { return !map || sameMic(map.device, capture) === true; }
+  function deviceReason() { return sameMic(map.device, capture) === false ? REASONS.device : REASONS.deviceUnknown; }
 
   function freeze() {
     const cells = {};
@@ -125,7 +171,7 @@ export function createWeightMap() {
       note = "No part of your voice had 5 seconds of running speech at one pitch and loudness — try mapping again.";
       return;
     }
-    map = { deviceId: capture.deviceId, cells, sdW, sdC, nReady, madeAt: Date.now() };
+    map = { device: micOf(capture), cells, sdW, sdC, nReady, loudness: loudnessCheck(), madeAt: Date.now() };
     phase = "mapped";
     note = null;
     readings = []; trail = []; display = null;
@@ -155,6 +201,7 @@ export function createWeightMap() {
     };
     closed.push(s);
     lastB = s.b;
+    trail = trail.filter((x) => x.b > s.b - TRAIL_S);
     if (closed.length > 20) closed.shift();
     counts.bins++;
     if (valid) counts.valid++;
@@ -174,6 +221,8 @@ export function createWeightMap() {
         let c = cal.get(k);
         if (!c) { c = { pi: cell.pi, li: cell.li, w: [], c: [], v: [] }; cal.set(k, c); }
         c.w.push(s.w); c.c.push(s.c); c.v.push(s.vtln);
+        const pk = PROMPTS[prompt]?.key;
+        if (pk) (promptLb[pk] ??= []).push(s.Lb);
         promptHave++;
         if (current) current.n = c.w.length;
         if (promptHave >= PROMPT_BINS) advance();
@@ -185,8 +234,9 @@ export function createWeightMap() {
     let r = null;
     let cellRef = null;
     if (!capturedOk()) r = REASONS.agc;
-    else if (map && !deviceOk()) r = REASONS.device;
+    else if (map && !deviceOk()) r = deviceReason();
     else if (phase !== "mapped") r = REASONS.unmapped;
+    else if (map.loudness?.compressed) r = REASONS.compressed;
     else if (!run) r = REASONS.speech;
     else if (!valid) r = REASONS.voiced;
     else {
@@ -208,7 +258,15 @@ export function createWeightMap() {
     readings = readings.filter((x) => x.b > s.b - RUNNING_WINDOW).slice(-DISPLAY_BINS);
     display = { rw: median(readings.map((x) => x.rw)), rc: median(readings.map((x) => x.rc)), n: readings.length };
     trail.push({ b: s.b, rw: display.rw, rc: display.rc });
-    trail = trail.filter((x) => x.b > s.b - TRAIL_S);
+  }
+
+  function loudnessCheck() {
+    const soft = promptLb.softer ?? [], loud = promptLb.louder ?? [];
+    if (soft.length < LOUDNESS_CHECK_BINS || loud.length < LOUDNESS_CHECK_BINS) {
+      return { done: false, softBins: soft.length, loudBins: loud.length, diffDb: null, compressed: false };
+    }
+    const diffDb = median(loud) - median(soft);
+    return { done: true, softBins: soft.length, loudBins: loud.length, diffDb, compressed: diffDb < LOUDNESS_MIN_DB };
   }
 
   function advance() {
@@ -228,7 +286,7 @@ export function createWeightMap() {
   }
 
   return {
-    setCapture(c) { capture = { autoGainControl: c?.autoGainControl, deviceId: c?.deviceId }; },
+    setCapture(c) { capture = { autoGainControl: c?.autoGainControl, deviceId: c?.deviceId, groupId: c?.groupId, label: c?.label }; },
     /**
      * One posted pitch frame, in time order. f0 > 0 = voiced; res = the frame's
      * { w, c, level } (null when voiced but no features, or unvoiced).
@@ -256,15 +314,16 @@ export function createWeightMap() {
     },
     startMapping() {
       if (!capturedOk()) return false;
-      phase = "mapping"; prompt = 0; promptHave = 0; cal = new Map(); note = null;
+      phase = "mapping"; prompt = 0; promptHave = 0; cal = new Map(); promptLb = {}; note = null;
+      readings = []; trail = []; display = null; reason = null;
       return true;
     },
     nextPrompt() { if (phase === "mapping") advance(); },
     finishMapping() { if (phase === "mapping") freeze(); },
-    cancelMapping() { if (phase === "mapping") { phase = map ? "mapped" : "unmapped"; cal = new Map(); } },
+    cancelMapping() { if (phase === "mapping") { phase = map ? "mapped" : "unmapped"; cal = new Map(); promptLb = {}; reason = map ? null : REASONS.unmapped; } },
     /** Restore a frozen map made earlier in this page visit (exportMap()). */
     restore(saved) {
-      if (!saved?.cells || !(saved.sdW > 0) || !(saved.sdC > 0)) return false;
+      if (!saved?.cells || !(saved.sdW > 0) || !(saved.sdC > 0) || !saved.device) return false;
       map = { ...saved };
       phase = "mapped";
       readings = []; trail = []; display = null;
@@ -285,16 +344,18 @@ export function createWeightMap() {
         phase,
         prompt: phase === "mapping" ? { index: prompt, of: PROMPTS.length, label: PROMPTS[prompt]?.label, have: promptHave, need: PROMPT_BINS } : null,
         note,
-        capture: { autoGainControl: capture.autoGainControl ?? null, deviceKnown: !!capture.deviceId },
+        capture: { autoGainControl: capture.autoGainControl ?? null, deviceKnown: !!micOf(capture).label },
         captureOk: capturedOk(),
         deviceOk: deviceOk(),
-        map: map ? { nReady: map.nReady, sdW: map.sdW, sdC: map.sdC, madeAt: map.madeAt } : null,
+        map: map ? { nReady: map.nReady, sdW: map.sdW, sdC: map.sdC, madeAt: map.madeAt, loudness: map.loudness ? { ...map.loudness } : null } : null,
         cells,
         current,
         liveDbfs: live,
-        reading: display,
+        reading: phase === "mapped" ? display : null,
         reason: phase === "mapping" ? null : reason,
-        trail: trail.map((x) => ({ age: (lastB ?? x.b) - x.b, rw: x.rw, rc: x.rc })),
+        trail: phase === "mapped"
+          ? trail.map((x) => ({ age: (lastB ?? x.b) - x.b, rw: x.rw, rc: x.rc })).filter((x) => x.age < TRAIL_S)
+          : [],
         counts: { ...counts, paused: { ...counts.paused } },
       };
     },

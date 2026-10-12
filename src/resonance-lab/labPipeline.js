@@ -48,7 +48,7 @@ export const getState = () => state;
 
 let worker = null;
 
-/** captureSrc: the running capture source; opts.trackSettings: the mic track's getSettings(). */
+/** captureSrc: the running capture source; opts.trackSettings: the mic track's getSettings(); opts.trackLabel: its label. */
 export function startLab(captureSrc, opts = {}) {
   stopLab();
   set({ ...initialState(), running: true, dsp: "loading", startedAt: Date.now() });
@@ -72,7 +72,12 @@ export function startLab(captureSrc, opts = {}) {
   };
   worker.onerror = (e) => set({ dsp: "error", error: e.message || "lab worker failed" });
   const ts = opts.trackSettings ?? null;
-  const capture = { autoGainControl: typeof ts?.autoGainControl === "boolean" ? ts.autoGainControl : undefined, deviceId: ts?.deviceId || undefined };
+  const capture = {
+    autoGainControl: typeof ts?.autoGainControl === "boolean" ? ts.autoGainControl : undefined,
+    deviceId: ts?.deviceId || undefined,
+    groupId: ts?.groupId || undefined,
+    label: opts.trackLabel || undefined,
+  };
   worker.postMessage({ type: "init", sampleRate: captureSrc.sampleRate, assetBase: import.meta.env.BASE_URL, capture });
   const port = captureSrc.connectConsumer();
   worker.postMessage({ type: "audioPort", port }, [port]);

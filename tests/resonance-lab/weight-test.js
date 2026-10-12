@@ -5,7 +5,10 @@
 //     (scripts/resonance-lab/weight/v5_ref.py) on the committed LibriSpeech
 //     fixtures (CC BY 4.0) at the reference's Praat AC frames
 //     (tests/resonance-lab/fixtures/weight_v5.expected.json, make_fixture.py).
-//  2. Voice map / reading / gates (weight-map.js) on synthetic bin streams.
+//  2. Voice map / reading / gates (weight-map.js) on synthetic bin streams,
+//     incl. the 2026-10-11 review fixes (§8): measured loudness check,
+//     microphone identity by label, no stale reading while re-mapping, trail
+//     expiry.
 //  3. Engine glue: a frame tap does not change the engine's own outputs, and
 //     the weight analysis produces 1-s bins from the internal pitch path.
 //
@@ -15,7 +18,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createWeightFeatures, FEATURE_NAMES } from "../../src/resonance-lab/weight-features.js";
-import { createWeightMap, cellOf, REASONS, PROMPTS, PROMPT_BINS } from "../../src/resonance-lab/weight-map.js";
+import { createWeightMap, cellOf, sameMic, micOf, REASONS, PROMPTS, PROMPT_BINS, TRAIL_S, NOISE_BOX } from "../../src/resonance-lab/weight-map.js";
 import { createWeightLab } from "../../src/resonance-lab/weight-lab.js";
 import { createLabEngine } from "../../src/resonance-lab/lab-engine.js";
 
@@ -136,7 +139,7 @@ function feed(m, t0, secs, { f0 = 200, w = 0, c = 0, level = -30, vtln = 0, held
   // usual voice -> reading near 0; heavier by 3 own-SD -> ~ +3 after the 3-bin median
   t = feed(m, t, 6);
   const r0 = m.snapshot().reading;
-  check("usual voice reads near the centre (noise ~0.6 units)", r0 && Math.abs(r0.rw) < 2 && Math.abs(r0.rc) < 2, JSON.stringify(r0));
+  check("usual voice reads near the centre (display noise ~0.8 units)", r0 && Math.abs(r0.rw) < 2 && Math.abs(r0.rc) < 2, JSON.stringify(r0));
   t = feed(m, t, 6, { w: 3 * sdW, c: -2 * fm.map.sdC });
   const r1 = m.snapshot().reading;
   check("heavier / breathier change reads as +3 / -2 own units", r1 && Math.abs(r1.rw - 3) < 0.8 && Math.abs(r1.rc + 2) < 0.8, JSON.stringify(r1));
@@ -173,6 +176,71 @@ function feed(m, t0, secs, { f0 = 200, w = 0, c = 0, level = -30, vtln = 0, held
   feed(m3, 0, 3);
   m3.finishMapping();
   check("too little speech: map not made, note shown", m3.snapshot().phase === "unmapped" && !!m3.snapshot().note);
+}
+
+// ------------------------------------------- 2b. review fixes (2026-10-11, §8)
+{
+  check("noise box is ±2 units (measured chance-exit ~3 %)", NOISE_BOX === 2);
+  // Microphone identity.
+  const A = { autoGainControl: false, deviceId: "default", groupId: "g1", label: "Default - Microphone (USB A)" };
+  check("virtual ids say nothing", micOf({ deviceId: "default" }).deviceId === null && micOf({ deviceId: "communications" }).deviceId === null && micOf({ deviceId: "" }).deviceId === null);
+  check("same 'default' id, same label -> same mic", sameMic(micOf(A), A) === true);
+  check("same 'default' id, other label -> different mic", sameMic(micOf(A), { ...A, label: "Default - Headset (BT B)" }) === false);
+  check("same 'default' id, other groupId -> different mic", sameMic(micOf(A), { ...A, groupId: "g2" }) === false);
+  check("'default' id, no labels -> can't tell", sameMic(micOf({ deviceId: "default" }), { deviceId: "default" }) === null);
+  check("undefined ids, no labels -> can't tell", sameMic(micOf({}), {}) === null);
+  check("equal real ids without labels -> same mic", sameMic(micOf({ deviceId: "abc" }), { deviceId: "abc" }) === true);
+
+  // A full map with a deliberate softer / louder difference, then the
+  // default microphone switched behind the same "default" id.
+  const mapWith = (cap, softDb, loudDb) => {
+    const m = createWeightMap();
+    m.setCapture(cap);
+    m.startMapping();
+    let t = feed(m, 0, PROMPT_BINS + 4);                    // usual
+    t = feed(m, t, PROMPT_BINS + 4, { level: softDb });     // softer
+    t = feed(m, t, PROMPT_BINS + 4, { level: loudDb });     // louder
+    m.nextPrompt(); m.nextPrompt();
+    t = feed(m, t, 3);
+    return { m, t };
+  };
+  {
+    const { m, t } = mapWith(A, -38, -22);
+    const sn = m.snapshot();
+    check("loudness check done: softer -> louder 16 dB, not compressed", sn.map?.loudness?.done && !sn.map.loudness.compressed && Math.abs(sn.map.loudness.diffDb - 16) < 0.01, JSON.stringify(sn.map?.loudness));
+    let t2 = feed(m, t, 6);
+    check("readings with the same default microphone", m.snapshot().reading !== null);
+    m.setCapture({ ...A, label: "Default - Headset (BT B)", groupId: "g2" });
+    t2 = feed(m, t2, 4);
+    check("default microphone switched behind 'default' -> map again", m.snapshot().reason === REASONS.device && m.snapshot().reading === null);
+    m.setCapture({ autoGainControl: false, deviceId: "default" });
+    feed(m, t2, 4);
+    check("microphone unknown (no label, virtual id) -> can't confirm", m.snapshot().reason === REASONS.deviceUnknown);
+  }
+  {
+    const { m, t } = mapWith(A, -31, -29);
+    const sn = m.snapshot();
+    check("softer -> louder only 2 dB: compression suspected", sn.map?.loudness?.done && sn.map.loudness.compressed, JSON.stringify(sn.map?.loudness));
+    feed(m, t, 6);
+    check("compression suspected -> readings stay off", m.snapshot().reading === null && m.snapshot().reason === REASONS.compressed);
+  }
+  {
+    // Re-mapping clears the old reading; old trail points expire.
+    const { m, t } = mapWith(A, -38, -22);
+    let t2 = feed(m, t, 6);
+    check("reading before re-mapping", m.snapshot().reading !== null && m.snapshot().trail.length > 0);
+    m.startMapping();
+    t2 = feed(m, t2, 20);
+    check("re-mapping: no reading and no trail shown", m.snapshot().reading === null && m.snapshot().trail.length === 0 && m.snapshot().phase === "mapping");
+    m.cancelMapping();
+    t2 = feed(m, t2, 6);
+    check("after cancel the kept map reads again", m.snapshot().reading !== null);
+    // 60 s of silence: every trail point older than TRAIL_S is gone.
+    for (let k = 0; k < 60 * 40; k++) m.frame(t2 + k * 0.025, 0, null);
+    const tr = m.snapshot().trail;
+    check(`trail points expire after ${TRAIL_S} s (60 s of silence)`, tr.length === 0, `${tr.length} left`);
+    check("no reading shown after 60 s of silence", m.snapshot().reading === null);
+  }
 }
 
 // ---------------------------------------------------------------- 3. engine glue
