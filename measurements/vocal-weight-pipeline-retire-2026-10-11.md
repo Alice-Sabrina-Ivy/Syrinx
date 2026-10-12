@@ -158,3 +158,44 @@ head-2, base-3, head-3), same method as §3:
   vocal-weight value; Dexie v2's `vocalWeightCalibration: null` drop is unchanged.
 - The Resonance lab's "Weight × clarity" view computes its own features in the lab worker and is
   unaffected (lab worker chunk byte-identical).
+
+## 6. Review round (2026-10-11): plan, written before the fixes
+
+A review of `0332f3c` found no blocking code problem. It raised these points about how the results
+were measured and reported, plus two small robustness gaps. Planned fixes and their checks:
+
+1. **Weight × clarity lab smoke covered only a woman's voice** (§5.2). The passing run (lab-smoke
+   run 7) used `speech-woman.wav`. The run with a woman-then-man clip (run 6) read **0 of 25** bins
+   (20 "Not mapped at this pitch / loudness"). That was a harness-design failure: it mapped the
+   woman's voice and then read the man's (~102 Hz) against her map. No run has yet shown a readable
+   bin for a man's voice read against his own map. Fix: build `man-prompted.wav`, which is
+   `speech-man.wav` (public LibriSpeech) looped twice with the same level profile as the woman's clip
+   (−4 dB; −10 dB for 27–47 s; 0 dB for 47–67 s; dB-linear 0.5 s ramps at each step). The woman's
+   clip, rebuilt with this recipe, matches the original to ±1 LSB. Then run `lab-smoke.mjs
+   --weight-map-seconds=100` on the head build once per voice, and report readable bins for women
+   and men separately. Pass = ≥ 1 readable bin after mapping for each voice, plus the other lab-smoke
+   checks.
+2. **CPU, other threads** (§5.3). "Other threads within run-to-run noise" leaned on base-3, which ran
+   under outside load. Fix: four more interleaved base/head pairs with the §3 method: two with
+   `speech-woman.wav` and two with `speech-man.wav`, alternating which build runs first. Report
+   medians without base-3, separately per voice. Make no claim about a thread whose head runs all sit
+   above its base runs unless the gap is larger than the spread between runs.
+3. **`cueSummary()`** (`src/components/cueStripModel.js`, a cue-strip module) returns the resonance
+   sentence for any cue other than `"pitch"`, so `cueSummary("clarity", …)` returns a resonance
+   sentence while `rowValue("clarity", …)` returns `null`. Fix: return the resonance sentence only
+   for `"resonance"` and `null` otherwise. Check: a unit test that `cueSummary("clarity", { state:
+   "live" }) === null` and that every existing summary string is unchanged. This is a robustness
+   fix, not tuning, and no user-visible output changes, because only `"pitch"` and `"resonance"` are
+   rendered.
+4. **Main-thread CPU fixture** (`scripts/main-thread/fixture/cue.jsx`) still passes a `vocalWeight`
+   prop to `CueStrip`, which now ignores it, and its `__dump` still reads `[data-cue-progress]`. Fix:
+   remove both and update the header comment. Document that `visual-check.mjs --only=cue` compares
+   two trees only when both are on the same side of `364e0e1` (the row hide). Across `364e0e1` the
+   strip differs by a whole row by design.
+5. **Docs**: in the CLAUDE.md Current-state Clarity row, three decision-data links sat in a fifth
+   table cell, so they did not render. The cue-strip checklist line still listed
+   `vocal-weight-level-test.js`, and the Resonance lab paragraph still listed CPP among the production
+   workers.
+6. **Phone plan** (scratch, not in the repo): today's phone session built H from `origin/cue-strip`.
+   That ref now includes this retirement, so H vs B would mix three changes. H and V are now pinned
+   to `53704cc`. An optional run builds `0332f3c`, and that run is compared only with H.
