@@ -26,6 +26,14 @@
 > 2 of 15 checks (male-base hits −0.036, female-base early-shift hits
 > −0.050), so S0 is kept. The panel's "More" list now says the note can
 > appear for voices whose pitch varies a lot, more often men's.
+>
+> **Update 2026-10-12 (§8.6): adopted by user override.** The user adopted
+> A40+KP8-3+DS10 despite §8.5's two narrow hit misses (male-base hits
+> 0.863 vs 0.898, −0.036 against −0.03; female-base early-shift hits 0.863
+> vs 0.913, −0.050): it brings men's natural false alarms from 3.39 to
+> 0.27 % (women 0.33 → 0 %) at the cost of some warnings arriving a few
+> seconds later. The recorded verdict stays FAIL; the panel's "More" list
+> gives the adopted rule's test figures.
 
 The experimental, opt-in "Likely heard as" panel follows pitch more than
 listeners do. When a voice changes pitch without changing resonance, the panel
@@ -1265,6 +1273,128 @@ retroactively).**
    maximum, and report update-weighted natural FA beside reader-balanced.
 5. *Exclusion scan with overlapping matches* (lookahead patterns, e.g.
    `(?<![\d.])(?=(IDS)[-_/]\d{2,6}[-_/])` and `(?=/(IDS)/)`).
+
+### 8.6 Adopted by user override (2026-10-12)
+
+**Decision.** On 2026-10-12 the user adopted **A40+KP8-3+DS10** for the
+app, overriding the two narrow misses of §8.5's held-out test. The
+recorded verdict stays **FAIL (13 of 15 checks)**; this section does not
+re-read the test. The precedent is the speech-detector override in
+`low-voice-noise-2026-10-07.md` ("Decision (2026-10-07): adopted,
+overriding the H3 miss"): the verdict is kept as recorded, and the facts
+behind it stay attached to the adoption.
+
+**The two failed checks** (§8.5, test split, chosen rule vs S0 on the same
+sessions, phase-averaged over the four panel phases; the full per-sex test
+table is §8.5's "Full test table", with the per-phase hit counts and
+per-reader figures beside it):
+
+| Check | Bar | S0 | Adopted | Change | Per phase (S0 → adopted) |
+|---|---|---|---|---|---|
+| Hits ≤ 10 s (Meyer), **male base** | ≥ S0 − 0.03 | 0.898 | 0.863 | **−0.036** | 44 → 42 of 49, 45 → 43 of 50, 45 → 43 of 49, 43 → 42 of 49 |
+| Early-shift hits, **female base** | ≥ S0 − 0.03 | 0.913 | 0.863 | **−0.050** | 31 → 27 of 35, 32 → 31 of 35, 32 → 31 of 34, 31 → 30 of 34 |
+
+- The male-base miss exceeds the tolerance by 0.006. One reader, mlspo5090,
+  accounts for 7 of the 8 male-base hits lost across phases (first warning
+  10.2–14.2 s after the shift). The rule had failed the same check on dev
+  (0.825 vs 0.882), so this miss was foreseeable when it was picked by the
+  PREREG §7 fallback.
+- The female-base early-shift miss is phase-sensitive: phase 0 loses 4 of
+  31, the other phases 1 each. On dev this check passed (−0.023).
+- The other two hit checks pass: female-base hits 0.867 → 0.843 (−0.024),
+  male-base early-shift hits 0.903 → 0.874 (−0.029).
+
+**Why the user overrode them: false-alarm fairness against warnings a few
+seconds later.**
+
+- *False alarms, per sex* (natural reading, share of eligible updates;
+  test unless marked):
+
+  | | Men: S0 | Men: adopted | Women: S0 | Women: adopted |
+  |---|---|---|---|---|
+  | Reader-balanced (the bar's statistic) | 3.39 % | 0.27 % | 0.33 % | 0.00 % |
+  | Update-weighted | 1.82 % | 0.26 % | 0.33 % | 0.00 % |
+  | Update-weighted, dev (in-sample) | 1.19 % | 0.29 % | 0.35 % | 0.09 % |
+  | Per-reader maximum | 85.0 % | 6.6 % (ls3783) | 6.2 % | 0.0 % |
+  | Per-reader maximum, dev (in-sample) | 39.9 % | 6.1 % | 6.9 % | 3.4 % |
+  | Expressive readers' worst start | 95.2 % | 5.6 % | 16.6 % | 0.6 % |
+  | Readers with any (test) | 10 / 48 | 3 / 48 | 5 / 48 | 0 / 48 |
+
+  The gap between the sexes falls from 3.06 to 0.27 pp. Under S0 the false
+  alarms fell mostly on men (and a few readers saw it on most of their
+  eligible updates); the adopted rule brings both sexes near zero. §8.4's
+  first round (48 fresh speakers, 2 s replay cadence) moved the same way
+  (men 2.50 → 1.79 %), though less.
+- *Hits, per base sex* (test; Meyer failure set, phase-averaged; the
+  15 s column is computed from `confirm/detail_test.json`'s first-warning
+  times after the verdict — descriptive):
+
+  | | Male base: S0 | Male base: adopted | Female base: S0 | Female base: adopted |
+  |---|---|---|---|---|
+  | Hits ≤ 10 s | 0.898 | 0.863 | 0.867 | 0.843 |
+  | Hits ≤ 14 s | 0.919 | 0.909 | 0.932 | 0.902 |
+  | Hits ≤ 15 s | 0.919 | 0.919 | 0.939 | 0.906 |
+  | Early-shift hits ≤ 10 s | 0.903 | 0.874 | 0.913 | 0.863 |
+  | Early-shift hits ≤ 15 s | 0.903 | 0.903 | 0.950 | 0.921 |
+  | Median time to first warning | 7.27 s | 7.29 s | 7.70 s | 7.80 s |
+  | Persistence | 0.879 | 0.846 | 0.929 | 0.889 |
+
+  Most lost hits arrive 0.1–5 s after the 10 s window (mostly
+  10.1–12.5 s). A few shifts never warn under the adopted rule
+  (mlspo4067's early shift at three phases; the −6 st PICKA cell for
+  ls6300 and the −12 st cell for mlspo12114).
+- The cost falls on both base sexes, and so does the benefit; neither sex
+  is traded for the other.
+
+**What changes in the app.** `src/ml/pitch-only-warning.js` gets the
+adopted rule exactly as the confirmation's scratch module (round 1's
+`confirm/impl/pitch-only-warning.js`, sha256 `a53b13da…3a79`), which
+matched the harness tick for tick on all 1,492 test sessions × 4 phases
+(§8.5):
+
+- **A40:** the pitch reference P0 is the ln median of the posted voiced
+  frames from t_fill to min(t, t_fill + 40 s) (never shorter than S0's
+  start window), then frozen. It exists, as S0's does, only from t_start on
+  and only when S0's start window holds ≥ 20 voiced frames.
+- **KP8-3:** the pitch threshold is max(4 st, 3 × RMS of this reader's
+  quiet ΔP so far) once ≥ 5 quiet values exist, else 4 st. A quiet value is
+  the ΔP of a shown update whose |ΔP| was below that update's threshold;
+  shown updates before t_start are back-filled against S0's P0 once it is
+  known.
+- **DS10:** the panel's shown share (heard-as `heardAsShares(…).s`, the
+  value the panel draws) must also have moved ≥ 10 points from its median
+  over the shown updates in [t_fill, t_start].
+- Unchanged: K = 2, the hold through ≤ 5 hidden updates, eligibility, the
+  0.6 u resonance bound, the resets.
+
+`update()` gains two inputs, `share` and `audioMs`; `HeardAsPanel` passes
+the share it draws and the hook's audio clock at every update (hidden ones
+included), as the harness did. The port must reproduce the confirmed
+scratch module on the recorded app-cadence event streams (round 2's dev and
+test sessions at all four panel phases, round 1's 1,504 sessions at the
+phases they were run at) and live inside `session_app.mjs` on ≥ 200 test
+sessions; the results are added below.
+
+**What users are told** (the panel's "More" list; replacing "on new voices
+it missed about 4 in 10" and the S0 false-alarm line):
+
+- Misses: "The note about pitch-only changes doesn't catch every change: in
+  tests on 96 people it caught about 85 in 100 pitch-only changes within
+  10 seconds and about 90 in 100 within 15 seconds, and fewer for some
+  voices — so no note doesn't mean the guess is right." (Test, adopted
+  rule: ≤ 10 s 0.863 / 0.843 male / female base, ≤ 15 s 0.919 / 0.906;
+  some readers lose most of their hits, e.g. mlspo5090.)
+- False alarms: "The note about pitch-only changes can also appear when you
+  haven't deliberately changed your voice, if your pitch varies a lot as you
+  talk. In tests on 192 people reading aloud that happened on about 3 in
+  1,000 updates for men's voices and almost never for women's, and more
+  often for a few voices — up to about 1 in 15 updates where the panel
+  showed an estimate." (Update-weighted, dev + test pooled: men 79 of
+  28,366 = 0.28 %, women 14 of 29,907 = 0.05 %; per-reader maximum men
+  6.6 % test, women 3.4 % dev.)
+
+The words name a sex only in the measured comparison and are otherwise the
+same in every direction.
 
 ## Reproduce
 
