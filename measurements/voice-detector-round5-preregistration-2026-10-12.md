@@ -1313,3 +1313,111 @@ byte-identical ONNX files, sha256 `1af5a357…979b` and `c10b28f3…84a5`),
 - **Reference rows:** `custom-vd-r3` and `custom-vd-r4` from their rounds'
   selection files plus new H files written next to them; `r10-data-e16000`
   (diagnostic, §2.7) the same way.
+
+## Addendum R5-B part 3 — the validity check (§2.7), before training (2026-10-12)
+
+Written after part 2 (code) was pushed (68d0729) and **before any round-5
+training run starts**. Scored: the three reference networks at their points
+on H1–H3 (validation data only; `opselect_r5.py --point`, probability files
+from `infer_r3.py --groups=hval`, GPU torch, TF32 off, state carried from
+each stream's start):
+
+- `custom-vd-r4` (r10-notch step 8,000; mean, p ≥ 0.10, 300 ms);
+- `custom-vd-r3` (r9-sess-b step 8,000; mean, p ≥ 0.30, 600 ms);
+- `r10-data-e16000` (round 4's best log-mel network, no F1; its round-4 pick:
+  max, p ≥ 0.30, 2,000 ms) — diagnostic.
+
+Checks first:
+
+- The H readings agree with score.py's `hop_probs` / `voice_flags` at four
+  grid points (`opselect_r5.py --selftest`: 0 mismatches).
+- On the unchanged round-4 rows the three points reproduce their round-3 /
+  round-4 entries: feasible, O = 69.30 / 51.93 / 62.72 %.
+- H2 bin merging (§2.5, from the current-app dumps): only the real-series
+  tail bins merge (men from 130 s, women from 80–90 s), as part 1 said.
+
+**H1** (veto % of in-band CORRECT hops; limit 0.5 clean / 1.5 bed; ✗ = over the limit)
+
+| cell | custom-vd-r4 | custom-vd-r3 | r10-data-e16000 |
+|---|---|---|---|
+| men real clean | 0.00 | 0.00 | 0.00 |
+| men real snr+20 | 0.15 | 0.82 | 0.00 |
+| men real snr+10 | 0.19 | 0.45 | 0.01 |
+| men real snr+0 | 1.96 ✗ | 0.07 | 0.11 |
+| men syn_vowel clean | 0.00 | 0.00 | 0.00 |
+| men syn_vowel snr+20 | 5.19 ✗ | 0.00 | 0.91 |
+| men syn_vowel snr+10 | 7.28 ✗ | 7.12 ✗ | 12.02 ✗ |
+| men syn_vowel snr+0 | 25.28 ✗ | 30.14 ✗ | 40.23 ✗ |
+| men syn_hum clean | 9.08 ✗ | 0.00 | 0.44 |
+| men syn_hum snr+20 | 18.37 ✗ | 0.73 | 2.40 ✗ |
+| men syn_hum snr+10 | 27.79 ✗ | 8.54 ✗ | 9.05 ✗ |
+| men syn_hum snr+0 | 21.64 ✗ | 12.36 ✗ | 15.93 ✗ |
+| women real clean | 0.00 | 0.00 | 0.02 |
+| women real snr+20 | 0.04 | 0.01 | 0.01 |
+| women real snr+10 | 0.01 | 0.01 | 0.02 |
+| women real snr+0 | 0.29 | 0.63 | 0.55 |
+| women syn_vowel clean | 0.00 | 0.00 | 0.00 |
+| women syn_vowel snr+20 | 0.00 | 0.00 | 0.00 |
+| women syn_vowel snr+10 | 0.00 | 0.00 | 0.88 |
+| women syn_vowel snr+0 | 0.82 | 1.38 | 5.51 ✗ |
+| women syn_hum clean | 0.00 | 0.00 | 0.00 |
+| women syn_hum snr+20 | 0.00 | 0.00 | 0.00 |
+| women syn_hum snr+10 | 0.00 | 0.02 | 0.00 |
+| women syn_hum snr+0 | 2.31 ✗ | 4.46 ✗ | 4.94 ✗ |
+
+**H2** (every CORRECT hop; worst 10-s bin / first 10 s / last 10 s, veto %; ✗ = a bin over the limit or last > first + 1 pp)
+
+| cell | custom-vd-r4 | custom-vd-r3 | r10-data-e16000 |
+|---|---|---|---|
+| men syn clean | 64.05 / 0.70 / 36.68 ✗ | 0.00 / 0.00 / 0.00 | 64.05 / 0.00 / 18.99 ✗ |
+| men syn snr+20 | 65.53 / 3.46 / 54.96 ✗ | 0.01 / 0.01 / 0.00 | 29.48 / 2.20 / 19.61 ✗ |
+| men syn snr+10 | 76.98 / 20.35 / 70.22 ✗ | 27.24 / 6.07 / 17.33 ✗ | 33.52 / 3.39 / 32.67 ✗ |
+| men syn snr+0 | 95.11 / 24.12 / 83.49 ✗ | 36.82 / 8.39 / 29.87 ✗ | 86.32 / 8.01 / 71.14 ✗ |
+| men real clean | 0.78 / 0.01 / 0.47 ✗ | 0.03 / 0.00 / 0.00 | 1.08 / 0.01 / 0.08 ✗ |
+| men real snr+10 | 0.42 / 0.02 / 0.00 | 2.39 / 0.85 / 0.84 ✗ | 2.35 / 0.00 / 0.70 ✗ |
+| men real snr+0 | 4.95 / 2.69 / 2.66 ✗ | 5.27 / 3.60 / 4.16 ✗ | 8.38 / 1.93 / 8.38 ✗ |
+| women syn clean | 2.51 / 0.56 / 0.32 ✗ | 0.00 / 0.00 / 0.00 | 0.00 / 0.00 / 0.00 |
+| women syn snr+20 | 23.03 / 0.00 / 20.35 ✗ | 0.00 / 0.00 / 0.00 | 11.50 / 0.00 / 11.50 ✗ |
+| women syn snr+10 | 55.82 / 0.00 / 31.30 ✗ | 2.56 / 0.02 / 0.45 ✗ | 29.97 / 0.77 / 29.06 ✗ |
+| women syn snr+0 | 49.33 / 6.08 / 49.33 ✗ | 6.73 / 6.73 / 5.76 ✗ | 78.32 / 5.87 / 78.32 ✗ |
+| women real clean | 0.07 / 0.00 / 0.01 | 0.00 / 0.00 / 0.00 | 0.11 / 0.00 / 0.00 |
+| women real snr+10 | 0.11 / 0.00 / 0.00 | 0.10 / 0.00 / 0.00 | 1.20 / 0.00 / 1.20 ✗ |
+| women real snr+0 | 0.67 / 0.00 / 0.07 | 0.78 / 0.29 / 0.78 | 0.76 / 0.29 / 0.00 |
+
+**H3** (reported; one-room validation sessions, speech rows, veto %)
+
+| row | custom-vd-r4 | custom-vd-r3 | r10-data-e16000 |
+|---|---|---|---|
+| speech, men, clean | 0.00 | 0.00 | 0.00 |
+| speech, men, +10 dB | 0.02 | 0.02 | 0.00 |
+| speech, men, +0 dB | 0.02 | 0.01 | 0.03 |
+| speech, women, clean | 0.00 | 0.00 | 0.00 |
+| speech, women, +10 dB | 0.01 | 0.02 | 0.00 |
+| speech, women, +0 dB | 0.09 | 0.06 | 0.04 |
+
+custom-vd-r4: H feasible False, fails 64, round-4 rows feasible True, O 69.30 · custom-vd-r3: H feasible False, fails 29, round-4 rows feasible True, O 51.93 · r10-data-e16000: H feasible False, fails 63, round-4 rows feasible True, O 62.72
+
+**Result.**
+
+- **`custom-vd-r4` fails the new rows, as expected** (64 failing readings):
+  male H1 machine cells (synthetic hums 18–28 % vetoed at +20 / +10 dB, 9 %
+  even clean; synthetic vowels 5–25 %; real vowels at 0 dB 2 %), and H2 in
+  both sexes (male synthetic holds: last 10 s 37 % vetoed clean, 55–83 % with
+  a bed, against 0.7–24 % in the first 10 s). The rows reproduce the review's
+  two HIGH failures; §2.7's stop condition does not apply, and round 5
+  proceeds to training.
+- **The decay is not F1's alone.** `r10-data-e16000` (round 4's data, no F1)
+  shows the same growth over a hold (male synthetic holds, clean: 0.0 % in
+  the first 10 s, 19 % in the last; women at +20 dB 0 → 11.5 %). The round-4
+  training data are enough to produce it.
+- **`custom-vd-r3` fails the new bar too** (29 readings), but only at +10 and
+  0 dB: synthetic male vowels and hums 7–30 %, women's synthetic hums at 0 dB
+  4.5 %, H2 male synthetic holds at +10 / 0 dB with growth (6 → 17 %, 8 →
+  30 %), and real male series at 0 dB (3.6–5.3 %). Clean and +20 dB pass.
+  So the new rows ask for more than any earlier round delivered: **the 0 dB
+  and +10 dB synthetic cells may be out of reach for every round-5 candidate.**
+  The bar is not changed (§2.7: "the rows are not changed"); if no candidate
+  is feasible, §4 applies (no freeze, no look, the table goes to the user).
+- **H3 (reported):** the round-4 medium finding (female speech 15.5 % vetoed
+  at 0 dB in VocalSet sessions) does not appear in the validation one-room
+  sessions: speech rows ≤ 0.09 % for all three networks, both sexes.
