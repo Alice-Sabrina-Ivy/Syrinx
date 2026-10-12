@@ -4,28 +4,42 @@
 // main-thread-cpu-2026-10-08.md §3 F1).
 //
 // A virtual clock with a display (animation frames on vsync ticks, none while
-// "hidden"; 60 Hz unless stated) and timers drives the scheduler:
-//   1. a steady 25 ms feed draws on every 60 Hz display frame;
+// "hidden"; 60 Hz unless stated) and timers drives the scheduler. Cases 1–8
+// use a jitter-free clock (now() inside a frame callback = the vsync time);
+// case 9 adds callback-timing jitter, as on real devices:
+//   1. a steady 25 ms feed draws on every 60 Hz display frame (jitter-free);
 //   2. a feed that stalls keeps drawing every frame: no gap > MIN_DRAW_MS +
-//      1 frame, inside the review fix's FALLBACK_MS + 1 frame and guard 3c;
+//      1 frame, inside the 2026-10-08 review fix's STALL_BOUND_MS + 1 frame
+//      and guard 3c;
 //   3. after the feed stops for IDLE_AFTER_MS the loop ends and the cadence is
 //      ~IDLE_FALLBACK_MS (few frames requested); before that, every frame;
-//   4. a phone-like feed (40 ms buffers, 1-2 points each) draws every frame;
+//   4. a phone-like feed (40 ms buffers, 1-2 points each) draws every frame
+//      (jitter-free);
 //   5. on a 120 Hz display the loop draws at most every MIN_DRAW_MS (~60/s),
 //      on a 144 Hz one every third frame, never a gap > MIN_DRAW_MS + 1 frame;
 //   6. a burst of notifications draws once;
 //   7. while hidden, requests do not pile up; one draw when shown;
-//   8. stop() cancels the pending frame and the timer.
+//   8. stop() cancels the pending frame and the timer;
+//   9. jittered callbacks (now() = vsync + U[0, J]): the 16 ms gate skips some
+//      frames, so the loop draws on MOST, not every, 60 Hz frame (the phone's
+//      ~53/s, §3.1); the bounds that hold are asserted: no two draws closer
+//      than MIN_DRAW_MS - J, no gap > MIN_DRAW_MS + J + 1 frame (60 Hz: two
+//      frames), inside STALL_BOUND_MS + 1 frame; a 90 Hz display draws every
+//      other frame (45/s).
 //
 // Run: node tests/audio/trace-redraw-test.js
 
 import {
   createTraceRedrawScheduler,
-  FALLBACK_MS,
   IDLE_FALLBACK_MS,
   IDLE_AFTER_MS,
   MIN_DRAW_MS,
 } from "../../src/components/traceRedrawScheduler.js";
+
+// The 2026-10-08 review fix's stall bound (main-thread-cpu-2026-10-08.md §3
+// F1): no freeze while listening may exceed this plus one display frame. A
+// test-only guard — the scheduler no longer schedules a 50 ms timeout.
+const STALL_BOUND_MS = 50;
 
 let passed = 0, failed = 0;
 function check(name, ok, detail = "") {
@@ -35,15 +49,18 @@ function check(name, ok, detail = "") {
 
 const VSYNC = 1000 / 60;
 
-function makeSim(vsync = VSYNC) {
-  const sim = { t: 0, hidden: false, timers: new Map(), frames: new Map(), nextId: 1, draws: [], events: [], frameRequests: [] };
+function makeSim(vsync = VSYNC, jitterMs = 0) {
+  const sim = { t: 0, j: 0, hidden: false, timers: new Map(), frames: new Map(), nextId: 1, draws: [], events: [], frameRequests: [] };
+  // Deterministic LCG for the callback jitter.
+  let seed = 12345;
+  const rnd = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
   sim.sched = createTraceRedrawScheduler({
     draw: () => sim.draws.push(sim.t),
     requestFrame: (cb) => { const id = sim.nextId++; sim.frames.set(id, cb); sim.frameRequests.push(sim.t); return id; },
     cancelFrame: (id) => { sim.frames.delete(id); },
     setTimer: (fn, ms) => { const id = sim.nextId++; sim.timers.set(id, { at: sim.t + ms, fn }); return id; },
     clearTimer: (id) => { sim.timers.delete(id); },
-    now: () => sim.t,
+    now: () => sim.t + sim.j,
   });
   // Scheduled external events (data notifications), sorted by time.
   sim.at = (t, fn) => sim.events.push({ t, fn });
@@ -63,7 +80,11 @@ function makeSim(vsync = VSYNC) {
       if (sim.hidden) continue;
       const q = [...sim.frames.values()];
       sim.frames.clear();
+      // Draws are recorded at the vsync time (when the frame is presented);
+      // now() inside the callback reads vsync + jitter.
+      sim.j = jitterMs ? rnd() * jitterMs : 0;
       for (const cb of q) cb(sim.t);
+      sim.j = 0;
     }
   };
   return sim;
@@ -74,7 +95,7 @@ const min = (a) => a.reduce((m, x) => Math.min(m, x), Infinity);
 const EPS = 1e-9;
 const feed25 = (sim, from, to) => { for (let t = from; t < to; t += 25) sim.at(t, () => sim.sched.notify()); };
 
-// 1. Steady 25 ms feed for 10 s at 60 Hz: a draw on every display frame.
+// 1. Steady 25 ms feed for 10 s at 60 Hz, jitter-free: a draw on every display frame.
 {
   const sim = makeSim();
   feed25(sim, 0, 10000);
@@ -98,7 +119,7 @@ const feed25 = (sim, from, to) => { for (let t = from; t < to; t += 25) sim.at(t
   const mg = max(gaps(sim.draws));
   check(`stalled feed: longest gap between draws <= MIN_DRAW_MS (${MIN_DRAW_MS}) + 1 frame`, mg <= MIN_DRAW_MS + VSYNC + EPS,
     `max ${mg.toFixed(1)} ms`);
-  check(`stalled feed: inside the review fix's bound, FALLBACK_MS (${FALLBACK_MS}) + 1 frame`, mg <= FALLBACK_MS + VSYNC + EPS,
+  check(`stalled feed: inside the review fix's bound, STALL_BOUND_MS (${STALL_BOUND_MS}) + 1 frame`, mg <= STALL_BOUND_MS + VSYNC + EPS,
     `max ${mg.toFixed(1)} ms`);
   check("stalled feed: longest gap <= 100 ms (guard 3c)", mg <= 100, `max ${mg.toFixed(1)} ms`);
 }
@@ -195,6 +216,41 @@ for (const hz of [120, 144]) {
   sim.sched.notify();
   sim.sched.request();
   check("stop(): later requests ignored", sim.frames.size === 0);
+}
+
+// 9. Jittered frame callbacks. The 16 ms gate reads now() inside the callback,
+// so a late callback makes the next frame measure < 16 ms and skip.
+{
+  // Jitter-free draw rate for comparison (case 1's setup).
+  const ref = makeSim();
+  feed25(ref, 0, 10000);
+  ref.runUntil(10000);
+  const refRate = ref.draws.length / ((ref.draws.at(-1) - ref.draws[0]) / 1000);
+  for (const [hz, J] of [[60, 1], [60, 2], [60, 4], [120, 2], [90, 0], [90, 2]]) {
+    const vs = 1000 / hz;
+    const sim = makeSim(vs, J);
+    feed25(sim, 0, 10000);
+    sim.runUntil(10000);
+    const g = gaps(sim.draws);
+    const rate = sim.draws.length / ((sim.draws.at(-1) - sim.draws[0]) / 1000);
+    // Worst case: the gate needs MIN_DRAW_MS + J of vsync time.
+    const maxFrames = Math.ceil((MIN_DRAW_MS + J) / vs - EPS);
+    const label = `${hz} Hz, jitter ${J} ms`;
+    check(`${label}: no two draws closer than MIN_DRAW_MS - J`, min(g) >= MIN_DRAW_MS - J - EPS, `min gap ${min(g).toFixed(2)} ms`);
+    check(`${label}: no gap > ${maxFrames} frames (<= MIN_DRAW_MS + J + 1 frame)`,
+      max(g) <= maxFrames * vs + EPS && max(g) <= MIN_DRAW_MS + J + vs + EPS,
+      `max gap ${max(g).toFixed(2)} ms, ${rate.toFixed(1)} draws/s`);
+    check(`${label}: inside STALL_BOUND_MS + 1 frame`, max(g) <= STALL_BOUND_MS + vs + EPS, `max gap ${max(g).toFixed(2)} ms`);
+    if (hz === 60) {
+      const doubled = g.filter((x) => x > 1.5 * vs).length / g.length;
+      check(`${label}: draws on most but not every frame (below the jitter-free ${refRate.toFixed(1)}/s)`,
+        rate < refRate - 1 && rate >= 1000 / (2 * vs) - 0.5,
+        `${rate.toFixed(1)} draws/s, ${(100 * doubled).toFixed(1)} % of gaps doubled`);
+    }
+    if (hz === 90) {
+      check(`${label}: every other frame (~45 draws/s)`, rate > 44.5 && rate < 45.5, `${rate.toFixed(1)} draws/s`);
+    }
+  }
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

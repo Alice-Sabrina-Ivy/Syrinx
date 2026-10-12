@@ -317,10 +317,12 @@ module (`src/components/traceRedrawScheduler.js`) with a Node unit test
 (`tests/audio/trace-redraw-test.js`): a 25 ms feed draws once per point with
 no fallback draws; a stalled feed draws every ≤ 50 ms + 1 frame; idle draws
 every ~100 ms; a pending frame in a hidden page is not duplicated; stop()
-cancels everything. A display-rate rAF loop capped at 60 Hz (the review's
-other option) is **not** adopted: it would bring back per-frame main-thread
-work, which is the cost this pass removed; the phone session judges the
-data-driven cadence on a real 40 ms-buffer device (phone plan).
+cancels everything. **Historical (superseded 2026-10-12, §4):** a
+display-rate rAF loop capped at 60 Hz (the review's other option) is **not**
+adopted: it would bring back per-frame main-thread work, which is the cost
+this pass removed; the phone session judges the data-driven cadence on a real
+40 ms-buffer device (phone plan). (The phone check led the user to adopt that
+loop on 2026-10-12 — §4.)
 
 **F2 — device-pixel-ratio change.** Under Chrome's emulation a DPR-only
 change (same CSS size) fires `window` `resize` but not the
@@ -448,7 +450,8 @@ milliseconds per second; read as noise. The TARGET cut is unaffected
 33.7 / 33.9 ms, max 39.6 / 52.1 ms, step p99 1.43 px (guard 3c pass),
 draw − readout 3.4 / 3.4 ms.
 
-**Not adopted** (superseded 2026-10-12, §4: adopted after the phone check): the review's display-rate rAF loop capped at 60 Hz (F1,
+**Historical (superseded 2026-10-12, §4: adopted after the phone check):**
+**not adopted:** the review's display-rate rAF loop capped at 60 Hz (F1,
 reason in §3). It is prepared as a phone-check variant, so the phone session
 can price its smoothness against its main-thread cost if the data-driven
 cadence fails there.
@@ -475,11 +478,19 @@ the desktop-set 50 ms bar). The rAF loop capped at ~60 Hz (F1's rejected
 option) drew ~53 /s, passed 3c and was also SMOOTH, at +27 / +30 % main
 thread vs the head on the phone. **User decision 2026-10-12: adopted** — the
 F1 decision above ("not adopted") is superseded; `traceRedrawScheduler.js` is
-now that loop (branch `trace-raf60`). Desktop cost of the change (headless
-Chrome 154 at ~180 frames/s, `mt-cpu.mjs`, 1280 × 800, no diag): main thread
-108 → 172 ms/s panel off (+58 %), 114 → 174 panel on (+53 %); women +51 /
-+44 %, men +82 / +55 % (off / on); a new point reaches the screen ~6–7 ms
-later on the desktop (~1 ms on the phone); trace pixels at data steps and the
-cue strip unchanged. The desktop was not re-measured against adf19c3 (the
+now that loop (branch `trace-raf60`). It draws on most, not every, 60 Hz
+frame: its 16 ms gate reads the clock inside the frame callback, so callback
+jitter skips some frames (on the phone ~12 % of draw gaps were doubled, ~53
+draws/s, gap p99 34 ms; a 90 Hz display draws 45/s). Desktop cost of the
+change (headless Chrome 154 at ~180 frames/s, `mt-cpu.mjs`, 1280 × 800, no
+diag): main thread **+52 to +58 %** — the result that reproduces. In ms/s it
+depends on machine load: 108 → 172 panel off, 114 → 174 panel on (+60 to +63
+ms/s) in the builder's session on a loaded machine (workers ~2× a quiet run),
+54.5 → 85.3 / 52.8 → 80.5 / 57.9 → 88.3 (women off / men off / women on,
++28 to +31 ms/s, +52 to +57 %) in a quieter-machine review repeat. The
+women / men split (+51 / +82 % vs +57 / +52 % panel off) is within run spread,
+not a voice difference. A new point reaches the screen ~6–9 ms later on the
+desktop (draw − readout; ~1 ms on the phone); trace pixels at data steps and
+the cue strip unchanged. The desktop was not re-measured against adf19c3 (the
 §3.1 TARGET figures come from another session; compare within one table
 only). On the phone the adopted build stays 11 % / 14 % below adf19c3.
