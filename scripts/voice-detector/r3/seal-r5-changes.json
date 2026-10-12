@@ -1,0 +1,23 @@
+{
+ "what": "paths of the r5 seal removed / added / changed against the previous seal (seal-confirmatory-r4.sha256)",
+ "removed": [
+  "conf/audio/voice/c_tr4_wc/c_tr4_wc__a488f3b5.wav",
+  "conf/audio/voice16/c_tr4_wc/c_tr4_wc__a488f3b5.wav",
+  "conf/dumps/cvoice/c_tr4_wc__a488f3b5.f32",
+  "conf/dumps/cvoice/c_tr4_wc__a488f3b5.json",
+  "conf/refs/c_tr4_wc__a488f3b5.f32",
+  "conf/refs/c_tr4_wc__a488f3b5.praat.npz"
+ ],
+ "added": [
+  "conf/dl/tr4_ds/ds-cands.json",
+  "conf/dl/tr4_ds/ds-scan.json",
+  "conf/dl/tr4_ds/ds-scan.zenodo-size-bug.json",
+  "conf/dl/tr4_ia/candidates.json",
+  "conf/dl/tr4_ia/selection.json"
+ ],
+ "changed": [
+  "conf/dl/tr4_wc/selection.json",
+  "conf/manifest.jsonl",
+  "conf/streams/cvoice.json"
+ ]
+}

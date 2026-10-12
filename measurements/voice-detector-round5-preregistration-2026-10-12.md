@@ -810,3 +810,117 @@ Process limits:
 5. **Carried over:** the V3 reading for convolutional context (round 3 §7 Q1)
    is unchanged and not used. Registration-gated clinical corpora (round 3
    §7 Q3) are not used.
+
+## Addendum R5-A (= R4-A′) — data step A′, the sealed side (2026-10-12)
+
+Written during data step A′, **before any round-5 data is downloaded on the
+training or validation side and before any round-5 model exists**. No model
+of any round has run on a confirmatory stream; nobody listened to, plotted
+or scored a confirmatory clip. The only figures read are the current app's
+aggregate trills-row counts (`trills.py count`) and the `seal.py counts`
+form.
+
+Code: [scripts/voice-detector/r5/trills_r5.py](../scripts/voice-detector/r5/trills_r5.py)
+(wraps round 4's `r4/trills.py`), `r3/seal.py --tag=r5` (commit 0b65b67).
+
+### R5-A.1 The drop (§1.1)
+
+- `trills_r5.py drop`: `c_tr4_wc__a488f3b5` gets a manifest drop record with
+  the reason "dropped by the user's ruling 2026-10-12: Volta Laboratory
+  recording, trill label from a description of test phrases, not a trill
+  exercise". Its `tr4_wc` selection record carries the same drop, and its
+  contributor group (`c_tr4_wc:aecac46ea`) is on the selection file's ban
+  list.
+- It was in no mix and no session (fresh clean stream `cvoice` only), so
+  only `cvoice.json` changed. Its audio, reference, Praat track and dump
+  left the seal (R5-A.4).
+- **Recount (current app, aggregate):** trills row **444** CORRECT hops
+  (gender unknown, pooled), down from 835. As §1.1 says, the difference
+  (391 hops) is the dropped clip's own current-app count. It decides only
+  the stop rule.
+
+### R5-A.2 The extended new-people list (§1.2)
+
+`trills_r5.py people` -> `build/vad-train/r5/people-exclude.json` (fold_user
+keys, gitignored): 26,193 keys in all — `exclude.json` 24,355,
+`train_exclude.json` (round 4) 1,255, round-3 Commons IPA contributors 7,
+every round-4 trill source (all Freesound candidates and rejections of
+`c_tr4_fs`, every checked Commons item's artist / uploader and group,
+incl. the dropped clip's) 295, every round-4 training person (every
+uploader, speaker, participant and group of `r4/d1.json` `train_ids`, plus
+all `fsr4` uploaders) 13,874. `trills.Ctx` takes these keys for `ds` and
+`ia`.
+
+### R5-A.3 The search, source 3 then source 4 (§1.2)
+
+**A bug found and fixed before any candidate was checked.** Round 4's
+`ds-scan` asked Zenodo for 100 records per page. Zenodo now caps anonymous
+pages at 25 and answers a larger page with HTTP 400 and no hits; the code
+read that as "no records" for every query. Fixed in `r4/trills.py` (pages
+of 25, up to 4 pages = the intended 100, any non-200 answer is an error).
+The first scan's output is kept as `ds-scan.zenodo-size-bug.json` (sealed);
+the scan was re-run.
+
+| source | read | candidates / checked | kept | trills row after it (CORRECT hops) |
+|---|---|---|---|---|
+| (after the drop) | — | — | 10 Commons IPA + 1 `c_tr4_fs` + 3 `c_tr4_wc` | **444** |
+| `c_tr4_ds` research datasets | 8 queries × Zenodo (type dataset, open access: 0 records for every query), Figshare (8 dataset records), OSF (1 node), Harvard Dataverse (0) | 9 records, **none with an audio file or archive** (PDF / XLS supplements and a pre-registration) | **0** | **444** |
+| `c_tr4_ia` Internet Archive | 4 queries: 7 items ("lip trill" 1, "lip trills" 2, "tongue trill" 0, "vocal warm up" 4) | 10 files checked: 4 keyword rule (dogs, party, street, dog), 2 licence CC BY-NC-ND 3.0, 4 no trill / SOVT pattern | **0** | **444** |
+
+- No `c_tr4_ds` record had audio, so **no participant list was needed**
+  and no audio of any record was decoded (`ds-cands.json`: 0 records).
+- No clip matched only the other-SOVT pattern: that reported row stays
+  empty.
+- **No further source is pre-registered** (round 4 §2.2 lists four; the
+  first two were searched in round 4). The search is finished.
+
+**Result under the stop rule (§1.2):** the row ends at **444 CORRECT hops**,
+between 400 and 800. It **gates** under round 3 §1.3's size rules: every
+clip's gender is unknown, so the row is read pooled (444 ≥ 400). It is not
+"cannot be evaluated", so §8 Q2 does not arise. The margin is small: any
+later drop of more than 44 hops' worth of trill clips would push the row
+under 400.
+
+### R5-A.4 Re-seal (§1.3)
+
+- **Audit re-run** (`r4/audit_exclusions.py`, self-test PASS; output copied
+  to `build/vad-train/r5/audit-exclusions.json`): A — 1 violation,
+  `c_fsv__716881`, already dropped; **0 kept violations**; the ≤ 2 per
+  uploader cap holds. B — 7 rounds 1–2 records touch the sealed set, 0 kept
+  (the QuartzGate FSD50K clips, dropped for their licence). C, D as in
+  round 4. No new drop.
+- **New seal**: `scripts/voice-detector/r3/seal-confirmatory-r5.sha256`
+  (60,008 lines, 47,781 unique paths, 15.2 GB; sha256 `6dcbbe5f…2f44`),
+  `seal-r5.json` (round 3 §1.6 counts, sources, licences; code commit
+  0b65b67), the updated `conf-manifest.jsonl` (sha256 `663e381b…2438`; the
+  drop record with its reason). Kept records **7,938** (round 4: 7,939).
+- **Changes against round 4's seal** (`seal-r5-changes.json`): **6 removed**
+  (the dropped clip's two audio files, dump (2), Praat track and
+  reference), **5 added** (`tr4_ds/ds-scan.json`, `ds-scan.zenodo-size-bug.json`,
+  `ds-cands.json`; `tr4_ia/candidates.json`, `selection.json`), **3
+  changed** (`dl/tr4_wc/selection.json`, `manifest.jsonl`,
+  `streams/cvoice.json`). No mix, session, noise stream or other stream
+  changed.
+- **Checks**: `seal.py verify --tag=r5` 0 mismatches; `verify-r4 --tag=r5`
+  (round 4's seal minus the round-5 changes) 47,773 paths, 0 mismatches;
+  `verify-r3 --tag=r5` (round 3's seal minus the round-4 and round-5
+  changes) 47,738 paths, 0 mismatches.
+- **Set sizes** (current app, §1.6 form): `cvoice` 5,940 streams / 13.67 h;
+  `cneg` 191 / 3.52 h; `cmix20`, `cmix0` 764 each; `csess` 160 (all
+  unchanged except `cvoice`). Trills row 444 CORRECT hops (unknown gender,
+  pooled).
+- **Licences of the kept set (7,938)**: CC BY 4.0 6,524; CC BY-NC-SA 4.0
+  1,086 and MTG-QBH 118 (evaluation only); CC0 141; CC BY-NC 3.0 / 4.0 46,
+  CC BY-SA 3.0 / 4.0 11 (evaluation only); CC BY 3.0 12. (The one public
+  domain record was the dropped clip.)
+- **Training side**: `train_side.py build` rebuilt `r3/train_exclude.json`;
+  it is **byte-identical** to round 4's (sha256 `9dea5dcf…e670`: the
+  dropped clip's record stays in it, since dropped records are excluded too,
+  and the new searches added no Freesound candidate). `train_side.py check`:
+  0 kept rounds 1–2 records touch it (the 7 touching records are the
+  dropped QuartzGate clips). `r4/d1.json` was built against the same file,
+  so D1 needs no re-filter.
+
+**Status after data step A′.** The sealed set is re-sealed; no model of
+any round has run on it. Data step V (the validation rows, Addendum R5-B
+part 1) starts only after this addendum is pushed.
