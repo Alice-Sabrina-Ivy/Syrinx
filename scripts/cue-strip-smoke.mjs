@@ -22,8 +22,10 @@
 //                   CLARITY (2026-10-11, measurements/clarity-cue-2026-10-08.md):
 //                   the third row is "Clarity · approx." with ends breathier /
 //                   clearer, no strip text and no direction option says
-//                   weight / lighter / heavier, and the caveat line is shown
-//                   (with the caption) in every direction. Settings:
+//                   weight / lighter / heavier, and the caveat is shown in every
+//                   direction at every viewport (a line under the strip; in
+//                   short landscape, where the caption lines are dropped, a
+//                   short form in the clarity row's title line). Settings:
 //                   masculine / feminine / androgynous / exploring — each
 //                   cue's highlight range per the spec table (clarity: none in
 //                   any direction), the same fill / stroke in every direction,
@@ -222,7 +224,7 @@ const layout = (page) => page.evaluate(() => {
   window.scrollTo(0, 0);
   const r = (sel) => { const e = document.querySelector(sel); if (!e) return null; const b = e.getBoundingClientRect(); return { top: Math.round(b.top), bottom: Math.round(b.bottom), left: Math.round(b.left), right: Math.round(b.right) }; };
   const trace = r("[data-pitch-trace-box]"), strip = r("[data-cue-strip]");
-  const clipped = [...document.querySelectorAll("[data-cue-strip] [data-cue-title], [data-cue-strip] [data-cue-value]")]
+  const clipped = [...document.querySelectorAll("[data-cue-strip] [data-cue-title], [data-cue-strip] [data-cue-value], [data-cue-strip] [data-clarity-note]")]
     // vertically only where the box clips vertically (overflow-x: clip leaves y visible)
     // only boxes that clip can cut text off: overflow-x: clip (titles, text
     // values) horizontally, and vertically only where overflow-y clips too
@@ -397,8 +399,8 @@ await sleep(600);
   check("clarity row: title 'Clarity · approx.', ends breathier / clearer", !!c && c.title === "Clarity · approx."
     && /breathier/.test(s.stripText) && /clearer/.test(s.stripText) && !s.rows.weight, `${c?.title}`);
   check("cue strip: no weight / lighter / heavier text", !WEIGHT_WORDS.test(s.stripText), (s.stripText.match(WEIGHT_WORDS) ?? [""])[0]);
-  check("clarity caveat line shown with the caption, never the old weight note",
-    !s.weightNote && (s.caption ? /louder or higher/.test(s.clarityNote ?? "") : s.clarityNote === null), `${s.clarityNote}`);
+  check("clarity caveat shown (line under the strip; in the clarity title line in short landscape), never the old weight note",
+    !s.weightNote && /louder or higher/.test(s.clarityNote ?? ""), `${s.clarityNote}`);
 }
 for (const label of ["About the pitch cue", "About the resonance cue", "About the clarity cue", "What does steadiness measure?"]) {
   const r = await probePopover(page, label);
@@ -466,7 +468,7 @@ for (const label of ["About the pitch cue", "About the resonance cue", "About th
     await sleep(600);
     const s = await state(page);
     check(`${dir}: clarity caveat line shown (same in every direction), no weight note`,
-      !s.weightNote && (s.caption ? /louder or higher/.test(s.clarityNote ?? "") : s.clarityNote === null), `${s.clarityNote}`);
+      !s.weightNote && /louder or higher/.test(s.clarityNote ?? ""), `${s.clarityNote}`);
     check(`${dir}: no weight / lighter / heavier text in the strip`, !WEIGHT_WORDS.test(s.stripText));
     for (const cue of ["pitch", "resonance", "clarity"]) {
       const r = s.rows[cue];

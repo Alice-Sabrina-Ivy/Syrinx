@@ -122,6 +122,9 @@ const CLARITY_INFO =
 const CLARITY_DIRECTION_NOTE = "No target for clarity — it reads the same for every goal.";
 // Shown under the strip in every direction (replaces the weight pitch note).
 const CLARITY_NOTE = "Clarity: louder or higher speech also reads clearer — compare at a similar loudness and pitch.";
+// Short landscape (phone held sideways) drops the caption lines for height, so
+// the caveat moves into the clarity row's title line instead (no extra height).
+const CLARITY_NOTE_SHORT = "louder or higher reads clearer";
 
 function directionNote(cue, direction) {
   if (!direction || direction === "exploring") return null;
@@ -216,7 +219,7 @@ const ENDS = { pitch: ["lower", "higher"], resonance: ["darker", "brighter"], cl
 // bands, highlights, the info and pitch header elements; a trail array is
 // replaced only when it changes), so a row re-renders only when its own
 // inputs change (main-thread pass 2026-10-08).
-const CueRow = memo(function CueRow({ cue, title, titleWord, info, headerRight, headerClass, valueClip = true, state, value, beyond, trail, color, hollow, bands, dashed, highlight, startX, ends, progress, g, W, srText }) {
+const CueRow = memo(function CueRow({ cue, title, titleWord, titleNote, info, headerRight, headerClass, valueClip = true, state, value, beyond, trail, color, hollow, bands, dashed, highlight, startX, ends, progress, g, W, srText }) {
   const titleId = useId();
   const endW = [textW(ends[0], g.fs), textW(ends[1], g.fs)];
   const axL = endW[0] + PAD, axR = Math.max(axL + 1, W - endW[1] - PAD);
@@ -248,6 +251,7 @@ const CueRow = memo(function CueRow({ cue, title, titleWord, info, headerRight, 
           <span className="min-w-0 overflow-x-clip text-ellipsis" id={titleId} data-cue-title="">{title}</span>
           <InfoToggle label={`About the ${cue} cue`}>{info}</InfoToggle>
           {titleWord && <span className="ml-1.5 font-normal text-neutral-300" data-cue-word="">· {titleWord}</span>}
+          {titleNote && <span className="ml-1.5 min-w-0 overflow-x-clip text-ellipsis font-normal text-neutral-400" data-clarity-note="">· {titleNote}</span>}
         </span>
         {/* Text values ellipsize; the pitch value (number + steadiness + its "i",
             whose enlarged hit area overhangs) is short and never clipped. */}
@@ -524,6 +528,7 @@ export function CueStrip({
       <CueRow
         cue="clarity"
         title="Clarity · approx."
+        titleNote={shortLandscape ? CLARITY_NOTE_SHORT : null}
         info={clarityInfo}
         headerRight={clarityHeader(cState, vocalWeight)}
         headerClass={cState === "calibrating" ? "text-amber-300" : "text-neutral-300"}

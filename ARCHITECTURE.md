@@ -55,7 +55,7 @@ masculine, androgynous / in between, or just exploring;
 
 7. **Progress charts**: Plot key metrics over weeks/months — pitch median, F2 average, % time in target, spectral tilt trend
 8. **Baseline capture**: A guided "record your starting point" flow. Progress is measured relative to where *you* started, not population averages.
-9. **Goal configuration**: Personal target ranges for all metrics, with presets for common goals ("more feminine," "androgynous / in between," "more masculine") — the training-direction question (2026-10-07) is the first step: it sets the pitch target and, for more feminine / more masculine, a lighter / heavier vocal-weight zone (shown with a note that the reading moves with pitch); a resonance target waits for a readout that can carry one
+9. **Goal configuration**: Personal target ranges for all metrics, with presets for common goals ("more feminine," "androgynous / in between," "more masculine") — the training-direction question (2026-10-07) is the first step: it sets the pitch target (and the resonance cue's outline); there is no clarity or weight target — the CPP row measures clarity, not weight (`measurements/clarity-cue-2026-10-08.md`); a resonance target waits for a readout that can carry one. **Historical (superseded 2026-10-11):** it also set a lighter / heavier vocal-weight zone for more feminine / more masculine (shown with a note that the reading moves with pitch)
 10. **Data export/import**: Export all data as JSON for backup or migration between devices. Import to restore.
 
 ### v0.3 — Training Modules

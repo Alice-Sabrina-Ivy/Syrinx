@@ -3,6 +3,13 @@
 // **Historical (superseded 2026-10-07):** its Dashboard checks (Perceived
 // Voice meter, vocal-weight gauge, F2 / stats row) target the dashboard the
 // cue strip replaced; scripts/cue-strip-smoke.mjs checks the current one.
+// STALE since 2026-10-07 / 2026-10-11 — do not use as a pass/fail gate: the
+// VocalWeightGauge is gone and the lighter / heavier weight zones were removed
+// on purpose (measurements/clarity-cue-2026-10-08.md: the CPP row measures
+// clarity, not weight). Its `[data-weight-zone]` / "weight zone" checks now
+// fail by design — never "fix" them by restoring a zone. Use
+// scripts/cue-strip-smoke.mjs (it covers the direction question, every
+// direction's highlights and the clarity row). Not in the unit-test runner.
 // (dist/, served by `vite preview`), with Chrome's fake mic playing a WAV.
 //
 //   npm run build && node scripts/voice-direction-smoke.mjs --speech=<wav> --held=<wav> \
