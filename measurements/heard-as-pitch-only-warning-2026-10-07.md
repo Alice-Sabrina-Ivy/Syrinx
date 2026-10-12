@@ -707,9 +707,11 @@ MLS German (its own dev / test partitions). Dev 26 F / 26 M (784 sessions),
 test 24 F / 24 M (720 sessions).
 
 **Dev selection** (`CHOICE.md`, reproduced verbatim in Appendix D, sha256
-`aedd7c46af52008d9cf4212576b9a9767b8bf8ef1e1d4666a2343742b9b2855a`, written
-2026-10-11 19:08 −05:00, before any test-split audio existed — the earliest
-test audio file is from 19:08:53). 15 of the 17 candidates passed all 15
+`aedd7c46af52008d9cf4212576b9a9767b8bf8ef1e1d4666a2343742b9b2855a`, created
+and hashed 2026-10-11 19:08:22 −05:00, before any test-split session audio,
+job or chain output existed — the earliest test session audio file is from
+19:08:53; the test speakers' source files had been extracted at 17:38, see
+"Corrections after review" below). 15 of the 17 candidates passed all 15
 dev checks (A40 and A40+KP8-2.5 failed the women's reader-max and
 worst-start checks); by the §6 order **A40+KP8-3+DS10** was chosen (dev:
 men's worst start 53.0 → 8.4 %, women's 41.8 → 7.3 %, natural FA
@@ -812,7 +814,8 @@ ls6368 9.2 → 9.2 %, mls4911 13.5 → 0 %; women ls5740 9.0 → 0 %, ls8300
 chosen rule in a copy of `src/ml/pitch-only-warning.js` matches the study's
 Python rule tick for tick on all 1,504 dev + test sessions (85,648 ticks, 0
 mismatches; S0 likewise) with frames replayed by audio time, the study's
-information set. With frames delayed 50 ms as they arrive live, 1 tick in 1
+information set, and with the resonance state fed at the study's 2 s panel
+updates (production feeds it every 0.2 s — see "Corrections after review"). With frames delayed 50 ms as they arrive live, 1 tick in 1
 non-failure-set session differs (the Python A40 used frames ≤ 50 ms not yet
 posted at the tick), changing no outcome. An independent recomputation of
 every bar outcome from the JS module's output reproduces the numbers above.
@@ -827,6 +830,71 @@ men vs 0.48 % for women, one man 27.4 %. Every artefact (speaker pool, session
 outputs, dev table, diagnosis, verdict, the JS draft and its parity check)
 stays in the study's scratch folder; only this summary and the two verbatim
 files in Appendices C and D are committed.
+
+**Corrections after review (2026-10-11, after the verdict; the verdict is
+unchanged).** An independent review re-checked the hashes, the file times,
+the speaker pools and every bar number (all reproduced), and found:
+- *Update cadence of the replay.* The harness (`session.mjs`) reads the
+  resonance state only at the 2 s panel updates, and every replay (the study's
+  Python rules, `evaluate.py`, the JS parity check) passes it to
+  `noteResonance` only then. In production the resonance worker posts every
+  0.2 s of audio and `useAudioPipeline` calls `noteResonance` on each post,
+  so the start-collection span (t_fill, t_start) can end up to ~2 s earlier
+  live; the panel's extra `HIDE_CHECK_MS` updates are not emulated either.
+  On 24 test sessions picked by the reviewer (mostly the expressive readers,
+  the readers above 2 % and the shift sessions behind the lost hits) re-run through the full chain with the shipped module
+  fed at the live 0.2 s cadence, the chain output was identical and 5 of
+  1,944 ticks differed, in 3 sessions: natural FA ls5304 27.4 → 29.8 %,
+  mls4911 13.5 → 16.2 %, ls6368 (k = 3) 31.6 → 29.1 %; every shift hit was
+  unchanged. So the per-reader false-alarm numbers in §8.2–8.4 are those of
+  the 2 s replay and can move by about 2–3 pp per reader live, and "tick for
+  tick" above holds for the replay, not for the live cadence. S0 is kept
+  either way (live it is, if anything, slightly worse for men).
+- *Dev could not test the fix.* On dev, S0 already met men's natural-FA and
+  reader-max bars, so 15 of 17 candidates passed and the choice came down to
+  the tie-break order. With ~25 readers per sex the reader-max and
+  worst-start checks hang on one or two readers, so whether a split happens
+  to contain an atypical man decides the outcome. The pre-registration had
+  no rule for this.
+- *Test source audio existed at registration.* The pre-registration
+  (Appendix C) says "No test-split audio or job exists", but the test
+  speakers' source files had been extracted from the downloaded shards at
+  17:38, 15 minutes before it was hashed (17:53:04). No test session audio,
+  job, posted pitch or analysis existed before the choice: the pool
+  inventory used durations only, the dev expressive readers came from dev
+  outputs only, and the first test chain output is from 19:23, after
+  `CHOICE.md` (19:08:22). An inaccurate statement, not a leak.
+- *Hashes anchored only in scratch.* `PREREG.sha256` and `CHOICE.sha256`
+  sit next to the files they hash; the first record outside the scratch
+  folder is commit 317243f, after the test run. File times agree with the
+  stated order, but nothing external proves it. The harness also loaded
+  packages from the worktree's `node_modules`, which the hash list did not
+  cover: `@huggingface/transformers` 4.2.0, `onnxruntime-web`
+  1.26.0-dev.20260416-b7804b056c (`onnxruntime-common` 1.24.3), voice model
+  `onnx/model_quantized.onnx` sha256
+  `fdc2dbdcf99b9217977f7472f7d677dd48219c4759ca3f38d0626b600d86c252`; every
+  one of these files was last written 2026-10-07, before the study, so the
+  other workflows' commits to `cue-strip` during the test run (19:34–19:56)
+  did not touch them, and the chain itself came from the hashed `snap/`
+  archive. (The Silero model is sha256-checked by the harness against
+  `SPEECH_DETECTOR.modelSha256`.)
+
+**Rules for any next round of this study** (from the review; not yet used):
+1. Replay at the live cadence: record the resonance snapshot and the audio
+   clock at every 0.2 s post in `session.mjs`, feed `noteResonance` at that
+   cadence in every replay, and emulate the panel's `HIDE_CHECK_MS` updates.
+2. Pre-register a stop condition: if S0 does not fail men's natural-FA or
+   reader-max check on dev, stop before the test run and report that dev
+   cannot measure the problem.
+3. Make dev contain the readers the fix is for: stratify the dev / test
+   split by how much each reader's pitch drifts across the reading
+   (computed from posted pitch, on dev candidates only, before any rule is
+   evaluated), or use larger pools.
+4. Anchor the order outside the scratch folder: commit (and push) the
+   pre-registration or its sha256 before any chain output, and the choice
+   before any test session audio is built; list extracted source audio
+   separately from session audio; add the package versions and the model
+   sha256 to the hash list.
 
 ## Reproduce
 
@@ -1163,7 +1231,10 @@ as they are in the study's scratch folder:
 sha256 `6f86c692adc8888c711ca1f5e9b815a78845fc41cd934e3c3af9a8c26c683e8f` (of the file below, as hashed in scratch
 before any chain output on its speakers and before any candidate was evaluated on them). Relative paths in it refer to
 the study's scratch folder. The scratch file has CRLF line endings; the block below, with its lines ended CRLF
-(including the last), hashes to this value.
+(including the last), hashes to this value. **Correction (review, 2026-10-11):** its "State at registration" line
+"No test-split audio or job exists" is inaccurate — the test speakers' source files (LibriSpeech FLACs, MLS audio) had
+already been extracted from the downloaded shards at 17:38, 15 minutes before it was hashed. No test *session* audio,
+job, posted pitch or analysis existed; see §8.4 "Corrections after review".
 
 ````markdown
 # Pre-registration: a pitch-only-warning rule that removes the male false alarms and keeps hits for both sexes
@@ -1379,8 +1450,9 @@ S0) passes vacuously and is reported with n = 0. **PASS** = all 15 hold.
 
 ## Appendix D. Men's false-alarm study choice (verbatim)
 
-sha256 `aedd7c46af52008d9cf4212576b9a9767b8bf8ef1e1d4666a2343742b9b2855a` (of the file below, written by `study.py dev`
-at 2026-10-11T19:08:34-05:00, before any test-split audio, job or chain output existed). Same CRLF convention as Appendix C.
+sha256 `aedd7c46af52008d9cf4212576b9a9767b8bf8ef1e1d4666a2343742b9b2855a` (of the file below, written by `study.py dev`;
+the file was created and hashed at 2026-10-11 19:08:22 −05:00 — its `CHOICE.written_at` stamp, 19:08:34, was written
+12 s later — before any test-split session audio, job or chain output existed). Same CRLF convention as Appendix C.
 
 ````markdown
 # Choice (male-FA selection study, dev split)
