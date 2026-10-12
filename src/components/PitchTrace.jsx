@@ -72,7 +72,10 @@ export function PitchTrace({
     let lastTargetAttr = null;
     // Diag only: paint latency + redraw cadence (noteTraceDraw).
     let diagLastNow = null, diagLastPointTime = -Infinity;
-    const diagNote = (now, data, plotCssW) => {
+    // frameTs / skipped: the frame timestamp the redraw scheduler's gate
+    // compared and the frame callbacks since the previous draw that drew
+    // nothing (undefined without the scheduler).
+    const diagNote = (now, data, plotCssW, frameTs, skipped) => {
       let newest = null;
       for (let i = data.length - 1; i >= 0; i--) {
         if (data[i].voiced && data[i].pitch !== null) { newest = data[i].time; break; }
@@ -81,7 +84,8 @@ export function PitchTrace({
       if (fresh !== null) diagLastPointTime = fresh;
       const step = diagLastNow === null ? null : ((now - diagLastNow) * plotCssW) / (PITCH_TRACE_SECONDS * 1000);
       diagLastNow = now;
-      noteTraceDraw(performance.timeOrigin + performance.now(), fresh, step);
+      const frameEpoch = typeof frameTs === "number" ? performance.timeOrigin + frameTs : null;
+      noteTraceDraw(performance.timeOrigin + performance.now(), fresh, step, frameEpoch, typeof skipped === "number" ? skipped : null);
     };
     // Pitch level per trace point, computed once — when the point is first
     // drawn, from the points before it — so a point's colour never changes
@@ -202,7 +206,7 @@ export function PitchTrace({
       }
     }
 
-    function draw() {
+    function draw(frameTs, skipped) {
       if (!geo || geo.dpr !== (window.devicePixelRatio || 1)) measure();
       const { dpr, w, h, plotLeft, plotRight, plotTop, plotBottom } = geo;
       const now = Math.round(performance.timeOrigin + performance.now());
@@ -232,7 +236,7 @@ export function PitchTrace({
       // Pitch trace line
       const data = pitchTraceRef.current;
       if (data.length < 2) {
-        if (DIAG_ENABLED) diagNote(now, data, (plotRight - plotLeft) / dpr);
+        if (DIAG_ENABLED) diagNote(now, data, (plotRight - plotLeft) / dpr, frameTs, skipped);
         return;
       }
 
@@ -320,7 +324,7 @@ export function PitchTrace({
       }
 
       ctx.restore(); // end plot-rect clip
-      if (DIAG_ENABLED) diagNote(now, data, (plotRight - plotLeft) / dpr);
+      if (DIAG_ENABLED) diagNote(now, data, (plotRight - plotLeft) / dpr, frameTs, skipped);
     }
 
     function loop() {

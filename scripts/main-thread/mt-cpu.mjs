@@ -25,6 +25,12 @@
 //      handler latency (capture -> display-state update), and per frame
 //      their difference, draw - readout update (the judged latency figure:
 //      the capture epoch, which carries a run-to-run clock offset, cancels).
+//      The trace redraw cadence: draws/s, draw-end gaps (guard 3c) and,
+//      from builds whose diag records it, gaps between the frame timestamps
+//      the redraw gate compared (no callback jitter or draw-time spread),
+//      the loop's frames per draw and the frame-timestamp gaps > 25 ms split
+//      into gate skips vs frames the browser never ran
+//      (measurements/phone-cpu-2026-10-12.md §7.3 amendment).
 //   (--panel=on) changes per second of the heard-as axis range and ring
 //      (data-axis-lo / -hi, data-axis-dot) during the CPU window.
 //   4. (--profile) a 15 s main-thread JS sampling profile after the trace.
@@ -284,6 +290,27 @@ if (DIAG && s1) {
   const t0d = s0?.capturedAtEpochMs ?? 0;
   const draws = (s1.traceDraws ?? []).filter((d) => d.t > t0d);
   const gaps = draws.slice(1).map((d, i) => d.t - draws[i].t).sort((a, b) => a - b);
+  // Frame-timestamp gaps (the timestamp the redraw scheduler's gate compared,
+  // phone-cpu-2026-10-12.md §7.3 amendment): no callback jitter or draw-time
+  // spread, unlike the draw-end gaps above. Only between consecutive draws
+  // that both carry one (builds before trace-vsync's fix round record none).
+  const ftGaps = draws.slice(1).map((d, i) => (typeof d.ft === "number" && typeof draws[i].ft === "number" ? d.ft - draws[i].ft : null))
+    .filter((x) => x !== null).sort((a, b) => a - b);
+  const skips = draws.map((d) => d.sk).filter((x) => typeof x === "number");
+  // Frame-timestamp gaps > 25 ms (1.5 frames at 60 Hz), split by whether the
+  // loop skipped more callbacks before that draw than it usually does (the
+  // gate's own cadence, e.g. 0 at 60 Hz, 2 at 180 Hz) — a gate skip — or not
+  // — frames the browser never ran.
+  const skCount = new Map();
+  for (const k of skips) skCount.set(k, (skCount.get(k) ?? 0) + 1);
+  const skMode = [...skCount.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+  let longFrameGaps = 0, longWithExtraSkips = 0;
+  for (let i = 1; i < draws.length; i++) {
+    const d = draws[i], p = draws[i - 1];
+    if (typeof d.ft !== "number" || typeof p.ft !== "number" || d.ft - p.ft <= 25) continue;
+    longFrameGaps++;
+    if (typeof d.sk === "number" && skMode !== null && d.sk > skMode) longWithExtraSkips++;
+  }
   const steps = draws.map((d) => d.step).filter((x) => typeof x === "number").sort((a, b) => a - b);
   const q = (a, f) => (a.length ? a[Math.min(a.length - 1, Math.floor(a.length * f))] : null);
   // Per frame: draw - readout update = paint latency - handler latency (same
@@ -297,6 +324,11 @@ if (DIAG && s1) {
     paintedMedianMs: med(pl.map((x) => x.ms)), paintedN: pl.length, handlerMedianMs: med(tot), handlerN: tot.length,
     drawMinusHandlerMedianMs: med(drawMinusHandler), drawMinusHandlerN: drawMinusHandler.length,
     drawsPerS: draws.length / ((s1.capturedAtEpochMs - t0d) / 1000), drawGapP99Ms: q(gaps, 0.99), drawGapMaxMs: gaps[gaps.length - 1] ?? null,
+    frameGapN: ftGaps.length, frameGapMedianMs: q(ftGaps, 0.5), frameGapP99Ms: q(ftGaps, 0.99), frameGapMaxMs: ftGaps[ftGaps.length - 1] ?? null,
+    // Loop frames per draw (1 + skipped callbacks): the loop's frame rate is
+    // draws/s times this while it runs.
+    loopFramesPerDraw: skips.length ? 1 + skips.reduce((a, b) => a + b, 0) / skips.length : null,
+    skippedMode: skMode, longFrameGaps, longFrameGapsWithExtraSkips: longWithExtraSkips,
     stepP99CssPx: q(steps, 0.99), stepMaxCssPx: steps[steps.length - 1] ?? null,
   };
 }
@@ -332,7 +364,8 @@ console.log(`${ua} ${DIST} ${VIEWPORT} panel ${PANEL ? "on" : "off"} diag ${DIAG
   Object.entries(perAudioS).filter(([k]) => !k.startsWith("other")).map(([k, v]) => `${k} ${v}`).join(", "));
 console.log(`  CPU window: main frames ${frameStats.beginMainFramesPerS.toFixed(1)}/s, main tasks >16.7 ms ${mainTaskOver16}, >50 ms ${mainTaskOver50}, long tasks ${frameStats.longTasks} (${frameStats.longTaskMs.toFixed(0)} ms); rAF probe ${SMOOTH} s: ${frames} frames (${frameStats.fps.toFixed(1)} fps, median ${frameStats.medianMs?.toFixed(1)} ms), >25 ms ${frameStats.over25}, >50 ms ${frameStats.over50}`);
 if (axisChanges) console.log(`  heard-as axis attribute changes: range lo/hi ${axisChanges.rangePerS}/s, ring ${axisChanges.dotPerS}/s`);
-if (latency) console.log(`  latency: draw - readout update median ${latency.drawMinusHandlerMedianMs?.toFixed(2)} ms (n ${latency.drawMinusHandlerN}); painted median ${latency.paintedMedianMs?.toFixed(1)} ms (n ${latency.paintedN}), handler median ${latency.handlerMedianMs?.toFixed(1)} ms; trace draws ${latency.drawsPerS.toFixed(1)}/s, gap p99 ${latency.drawGapP99Ms?.toFixed(1)} max ${latency.drawGapMaxMs?.toFixed(1)} ms, step p99 ${latency.stepP99CssPx?.toFixed(2)} max ${latency.stepMaxCssPx?.toFixed(2)} CSS px`);
+if (latency) console.log(`  latency: draw - readout update median ${latency.drawMinusHandlerMedianMs?.toFixed(2)} ms (n ${latency.drawMinusHandlerN}); painted median ${latency.paintedMedianMs?.toFixed(1)} ms (n ${latency.paintedN}), handler median ${latency.handlerMedianMs?.toFixed(1)} ms; trace draws ${latency.drawsPerS.toFixed(1)}/s, gap p99 ${latency.drawGapP99Ms?.toFixed(1)} max ${latency.drawGapMaxMs?.toFixed(1)} ms, step p99 ${latency.stepP99CssPx?.toFixed(2)} max ${latency.stepMaxCssPx?.toFixed(2)} CSS px` +
+  (latency.frameGapN ? `; frame-timestamp gap median ${latency.frameGapMedianMs.toFixed(1)} p99 ${latency.frameGapP99Ms.toFixed(1)} max ${latency.frameGapMaxMs.toFixed(1)} ms (n ${latency.frameGapN}), loop frames per draw ${latency.loopFramesPerDraw?.toFixed(2)}, gaps > 25 ms ${latency.longFrameGaps} (with extra gate skips ${latency.longFrameGapsWithExtraSkips})` : ""));
 if (process.env.MT_VERBOSE) {
   console.log("  by first child of top-level task (ms/s):"); for (const [k, v] of result.mainByFirstChild) console.log(`    ${String(v).padStart(7)}  ${k}`);
   console.log("  by exclusive event (ms/s):"); for (const [k, v] of result.mainByExclusive.slice(0, 25)) console.log(`    ${String(v).padStart(7)}  ${k}`);

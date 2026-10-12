@@ -17,7 +17,16 @@
 // freeze exceeds 15 ms + one frame, inside the 2026-10-08 review fix's 50 ms
 // + one frame and guard 3c (gap <= 100 ms). After the feed has stopped for
 // IDLE_AFTER_MS the loop ends and an idle trace redraws every
-// IDLE_FALLBACK_MS. If a caller passes no timestamp, now() is used.
+// IDLE_FALLBACK_MS. If a caller passes no timestamp, now() is used. A frame
+// timestamp below the last draw's (a clock that went backwards: a polyfill or
+// an injected requestFrame on another time base; conforming browsers pass
+// monotonic timestamps) draws and resyncs, so the trace never waits for the
+// clock to catch up (§7.5).
+//
+// draw(frameTs, skipped) receives the timestamp the gate compared and the
+// number of frame callbacks since the previous draw that drew nothing; the
+// diag records both (diag.noteTraceDraw: frame-timestamp gaps and the loop's
+// frame rate, §7.3 amendment). PitchTrace's draw ignores them otherwise.
 //
 // Pure scheduling logic with injected timers so tests/audio/trace-redraw-test.js
 // can drive it in Node (that test also holds the 50 ms stall bound as its
@@ -42,6 +51,7 @@ export function createTraceRedrawScheduler({
   let timer = null;
   let lastNotifyAt = -Infinity;
   let lastDrawTs = -Infinity;
+  let skipped = 0;
   let stopped = false;
   const gateMs = MIN_DRAW_MS - DRAW_TOLERANCE_MS;
 
@@ -51,9 +61,13 @@ export function createTraceRedrawScheduler({
     const t = now();
     const ts = typeof frameTs === "number" && Number.isFinite(frameTs) ? frameTs : t;
     const listening = t - lastNotifyAt < idleAfterMs;
-    if (!listening || ts - lastDrawTs >= gateMs) {
-      draw();
+    const dt = ts - lastDrawTs;
+    if (!listening || dt >= gateMs || dt < 0) {
+      draw(ts, skipped);
       lastDrawTs = ts;
+      skipped = 0;
+    } else {
+      skipped++;
     }
     if (timer !== null) clearTimer(timer);
     timer = null;
