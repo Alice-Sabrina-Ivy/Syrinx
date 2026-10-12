@@ -1017,3 +1017,154 @@ touched. Code: `r4/fetch_fsr4.py`, `r4/train_side_r4.py`, `r4/d6.py`,
 - The trills flag of Addendum R4-A A.5 awaits the user's decision; if the
   clip is dropped and §2.2 resumed, the re-seal (R4-A′) and a re-run of D1
   (and of D3's exclusion check against any new sources) come before training.
+
+## Addendum R4-B part 2 — training as implemented (2026-10-11, before training starts)
+
+Written after part 1 was pushed (0ab3cd9) and **before any round-4 training
+run starts and before any round-4 model is scored on validation data**. It
+fixes what §3.5 and B.6 leave open. Nothing here reads the sealed set, a
+validation score or the private session recordings. The only networks run so
+far are two code smoke tests of `train_r4.py` (≤ 40 steps each, a random
+initialisation, deleted afterwards, never scored by the rule) and one
+random-weight F1 network for the parity checks below.
+
+Code: `train/model.py` (F1), `train/train_r4.py` (round 3's `train.py` with
+D1, D5, D6, the longer sessions and F1; `train.py` itself is unchanged),
+`train/pack_r4.py`, `train/run-r4-train.sh`; `export.py`, `infer_r3.py` and
+`wasm_bench.mjs` take F1's extra state.
+
+### B.7 F3: not used
+
+The user has not accepted reading `notchedFreqs` (§8 Q1), and the Python port
+of the notch was not built. Under §3.3's default, **run `r10-notch` is an F1
+run with seed 44**. This is recorded here, before run 4 starts.
+
+### B.8 F1 as implemented (`model.py`, cfg `"f1"`)
+
+- On the log-mel x_t (natural log of the mel power + 1e-9, the model's own
+  front end, before batch normalisation), per band and τ ∈ {1 s, 6 s},
+  α = 1 − exp(−12.5 ms / τ): μ ← μ + α (x − μ), then v ← v + α ((x − μ)² − v),
+  with the updated μ.
+- **Constants (fixed now, not tuned):** ε = 1e-3 (nat²), the floor inside
+  log(v + ε); initial v = **v0 = 1.0** nat² (about the variance of one
+  noise bin's log power, π²/6 ≈ 1.6, rounded down: "not yet known to be
+  steady" at the stream start); the flux EMAs start at **fl0 = 1.0** nat.
+- **Stream start:** a state flag `init` (0 at the start). With init = 0:
+  μ = x₀, v = v0, x₋₁ = x₀ (so the first flux value is 0), flux EMAs = fl0.
+  An all-zero state is the stream start, so the runner needs no change.
+- **Inputs:** the first convolution reads 5 channels (x, x − μ₁, x − μ₆,
+  log(v₁ + ε), log(v₆ + ε)), each band of each channel with its own batch
+  normalisation (320 features). The flux f_t = mean over bands of
+  |x_t − x_{t−1}|; its EMAs (τ 1 s and 6 s, batch-normalised) are appended to
+  the GRU input (fc 64 + 2).
+- **Size:** 91,213 parameters (round 3's network: 89,257). `frame_ms` stays
+  82 ms (no feed-forward window is added).
+- **Computation:** the recursions are first-order linear filters. Training and
+  batch inference run them in float64 blocks of 256 frames (exact recursion,
+  state passed block to block); the streaming / ONNX form runs one
+  lower-triangular block per chunk in float32. Checks on a random-weight F1
+  network: F1 inputs vs a naive per-frame loop ≤ 8e-7; chunked (37 frames)
+  vs whole ≤ 7e-6; probabilities, torch streaming (chunks 1, 2, 8, 700
+  frames) and the exported ONNX (dynamic chunk, 1, 2, 8 frames) vs the batch
+  model ≤ 6e-8.
+- **ONNX:** 5 more state inputs after `h` — `mu` [1, 2, 64], `v` [1, 2, 64],
+  `xprev` [1, 64], `fl` [1, 2], `init` [1, 1] — and the matching `*_out`
+  outputs; metadata `f1`.
+- **Round 3 unchanged:** without `"f1"` every code path is round 3's.
+  Re-exporting the round-3 freeze gives a byte-identical ONNX file
+  (sha256 `1af5a357…0979b`).
+- **Training:** crops start fresh (the batch form). A one-room session's F1
+  inputs are computed once, when it enters its slot (no trainable parameter,
+  no gradient), with the stream start at the session's first real frame. Each
+  8 s TBPTT chunk reads its frames from them, lead-in frames included, so F1's
+  state is carried exactly through the session. The 4 zero-audio lead-in
+  frames before a session's first frame get the start state's outputs
+  (μ = x₀, v = v0) without an update.
+
+### B.9 D1, D5, D6 in the training code (`train_r4.py`)
+
+- **D1.** Every voice and negative pool keeps only the records in
+  `r4/d1.json` `train_ids`. Checked: none of the 203 removed ids is in any
+  pool. The fsr4 training clips are packed by `pack_r4.py`:
+  `nonvoice_fsr4_train.*`, 162 clips, 3.10 h, 151 uploaders.
+- **D5.** Pools are defined by source, as in round 3: `fsd_machine` 7,085,
+  `fsd_other` 5,649, `fstrain` 508, `fsr4` 162 clips. `stat` (3,173 clips) is
+  an **additional** pool; its clips also stay in their source pools. The
+  synthetic share is split into round 1's bank (`synth_train`, 0.10) and the
+  D4 bank (`synth_r4_train`, 0.18). A pool draws a clip uniformly, as in
+  round 3. Crops and session beds use the same weights. Draw shares over
+  20,000 draws: stat 0.278, synth 0.101, synth_r4 0.177, fsd_machine 0.119,
+  fstrain 0.122, fsr4 0.100, fsd_other 0.102.
+- **D6.**
+  - A falsely painted model frame (`r4/d6/masks.npz`) gets loss weight
+    **max(w, 3)**. It is not multiplied with the `whard_ac` weight.
+  - It applies only where the clip appears unmixed:
+    - noise-only crops with a single negative (no second negative layered
+      in);
+    - the frames of a noisy session outside every voice placement, taken
+      after the speed perturbation's frame warp, so placements match the
+      audio.
+  - Crop and bed frames map to clip frames through the clip sample at the
+    frame's end: the crop's start offset plus looping, or `loop_bed`'s
+    cross-faded period for a session bed. Clip frame = round((pos + 4) /
+    200) − 1.
+  - Of the 1,981 clips with marks, 22 % of their model frames are marked.
+- **Sessions:** 64–256 s. Every other session rule is round 3 R3-B.2's.
+- **Validation batches** logged during training (the fixed batches; not
+  selection data) are drawn exactly as in round 3: round-1/2 val pools with
+  round 3's weights.
+
+### B.10 Runs, selection and costs as implemented
+
+- Four runs, two at a time (`run-r4-train.sh`, 16,000 steps, EMA 0.999,
+  checkpoints every 1,000 steps):
+
+  | run | seed | cfg |
+  |---|---|---|
+  | `r10-data` | 41 | round 3's network |
+  | `r10-stat-a` | 42 | + F1 |
+  | `r10-stat-b` | 43 | + F1 |
+  | `r10-notch` | 44 | + F1 (F3 not used, B.7) |
+
+- **Candidates.** The EMA checkpoints at 4,000 / 6,000 / … / 16,000 of each
+  run (28), each `plain`. Also `custom-vd-r3` (round 3's
+  `r9-sess-b-e8000:plain`, scored from its round-3 selection files) as the
+  reference row.
+- **Selection files.** `infer_r3.py --variants=plain --groups=fresh,vsess,spl
+  --out=build/vad-train/r4/cand` (GPU, TF32 off, state carried; F1 through
+  `model.Streaming`). The rule is `opselect_r3.py --root=build/vad-train/r4/cand`.
+- **Reference-row check.** The reference row is re-scored in the same rule
+  run, and it must reproduce round 3's entry (O 51.93 %, mean / 0.30 /
+  600 ms). A sha256 list of every selection input (stream specs, dumps,
+  audio) is written to `build/vad-train/r4/sel/inputs.sha256`. Its files'
+  modification times are checked to predate round 3's rule output.
+- **WASM cost per architecture** (§4: log-mel only vs F1). Both are measured
+  with `wasm_bench.mjs` (Node, onnxruntime-web 1.30.0, 1 thread) on one
+  exported checkpoint of each architecture, in the same session. It feeds the
+  between-candidate tie-break only.
+- **Reported rows (not in the rule)**, for the chosen candidate and the
+  reference row:
+  - tuning-194 V2 per census label (the streams' `label`);
+  - validation-negatives V2 split by D2's threshold (S_stat ≤ 2.051 dB);
+  - V2 on the 14 fsr4 val clips. Their current-app dumps come from
+    `valdump.mjs` (src dd92037, ≤ 2 processes), and the model files are made
+    fresh.
+- **Deployable re-check, freeze, go / no-go:** as §4–§5. The ONNX files are
+  made with `infer.py --onnx` (fresh, tuning 194, one-room sessions) and
+  `infer_carried.py --onnx` (spliced, seed 20261007). The freeze goes to
+  `frozen/candidate-r4.json`, committed and pushed before its runner touches
+  any harness or confirmatory stream.
+
+### B.11 The trills flag (R4-A A.5) and training
+
+- The user has not yet ruled on `c_tr4_wc__a488f3b5`.
+- Training starts under the rules as written: the clip stays and the row
+  gates.
+- B.6 asked for any re-seal before training **if** the clip is dropped. It
+  has not been dropped. So the ruling is now needed **before the look**
+  (A.5), not before training.
+- If the user drops it, a resumed §2.2 also excludes every round-4 training
+  person (the `fsr4` uploaders and every uploader / speaker / participant in
+  `r4/d1.json`), case-insensitively, as well as the lists §2.2 names. That
+  rule can only exclude more, so the models trained now stay valid. R4-A′ (the
+  re-seal) then comes before the look.

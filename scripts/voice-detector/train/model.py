@@ -28,6 +28,21 @@
 # `skip` (body): convolution outputs of the first `skip` frames are dropped
 # before the GRU (training with carried state: a chunk's lead-in frames only
 # rebuild the convolutions' context).
+#
+# Round 4 (pre-registration 2026-10-11 §3.3 F1; Addendum R4-B part 2): cfg
+# "f1" adds RECURSIVE STATIONARITY STATISTICS of the log-mel x_t (natural log,
+# before batch normalisation): per band and tau in {1 s, 6 s}, alpha = 1 -
+# exp(-12.5 ms / tau), mu <- mu + alpha (x - mu), then v <- v + alpha ((x -
+# mu)^2 - v) (mu updated first); the first convolution reads 5 channels x, x -
+# mu_1, x - mu_6, log(v_1 + eps), log(v_6 + eps) (one BatchNorm per channel x
+# band); the recursive spectral flux f_t = mean over bands |x_t - x_{t-1}| and
+# its two EMAs (tau 1 s, 6 s) join the GRU input (BatchNorm over the 2). At the
+# stream start (state flag init = 0): mu = x_0, v = v0, x_{-1} = x_0, flux EMAs
+# = fl0 (constants in cfg, fixed before training). The state (mu, v, x_prev,
+# flux EMAs, init) is carried like the GRU state (streaming: extra ONNX state
+# inputs / outputs; zeros = stream start). First-order recursive state only, no
+# feed-forward window: frame_ms is unchanged. Without "f1" in cfg every code
+# path below is the round-3 one.
 import math
 from typing import Tuple
 
@@ -311,28 +326,73 @@ class LeakGRUGraphFn(torch.autograd.Function):
         return DGI.transpose(0, 1), dh, dw, db, None
 
 
+def ema_block(u, y0, beta: float):
+    """y_t = beta y_{t-1} + (1 - beta) u_t along the last axis, y_{-1} = y0 (u [..., N], y0 [...]):
+    one lower-triangular block of any N (streaming / ONNX export; float32)."""
+    N = u.shape[-1]
+    idx = torch.arange(N, device=u.device).to(u.dtype)
+    d = idx[:, None] - idx[None, :]
+    lb = math.log(beta)
+    L = torch.where(d >= 0, (1.0 - beta) * torch.exp(torch.clamp(d, min=0.0) * lb), torch.zeros_like(d))
+    return torch.matmul(u, L.t()) + y0[..., None] * torch.exp((idx + 1.0) * lb)
+
+
+def ema_scan(u, y0, beta: float, block: int = 256):
+    """ema_block's recursion over long T in float64 blocks of `block` frames (training / batch inference)."""
+    T = u.shape[-1]
+    K = max(1, min(block, T))
+    idx = torch.arange(K, device=u.device, dtype=torch.float64)
+    d = idx[:, None] - idx[None, :]
+    lb = math.log(beta)
+    L = torch.where(d >= 0, (1.0 - beta) * torch.exp(torch.clamp(d, min=0.0) * lb), torch.zeros_like(d))
+    pw = torch.exp((idx + 1.0) * lb)
+    u64, y = u.double(), y0.double()
+    outs = []
+    for a in range(0, T, K):
+        ub = u64[..., a:a + K]
+        k = ub.shape[-1]
+        yb = torch.matmul(ub, L[:k, :k].t()) + y[..., None] * pw[:k]
+        outs.append(yb)
+        y = yb[..., -1]
+    return torch.cat(outs, -1).to(u.dtype)
+
+
+F1_DEFAULT = {"taus": [1.0, 6.0], "eps": 1e-3, "v0": 1.0, "fl0": 1.0}
+
+
 class VoiceNet(nn.Module):
-    def __init__(self, n_mels=64, convs=((16, 3), (32, 3), (32, 1)), gru=64, gru_layers=1, fc=64, fmin=50.0, fmax=7800.0, win=WIN, leak_tau=0.0):
+    def __init__(self, n_mels=64, convs=((16, 3), (32, 3), (32, 1)), gru=64, gru_layers=1, fc=64, fmin=50.0, fmax=7800.0, win=WIN, leak_tau=0.0, f1=None):
         super().__init__()
         self.cfg = dict(n_mels=n_mels, convs=[list(c) for c in convs], gru=gru, gru_layers=gru_layers, fc=fc, fmin=fmin, fmax=fmax, win=win)
         if leak_tau:
             assert gru_layers == 1
             self.cfg["leak_tau"] = float(leak_tau)
+        self.has_f1 = bool(f1)
+        if self.has_f1:                  # round 4 F1 (constants fixed in cfg)
+            f1 = dict(F1_DEFAULT, **(f1 if isinstance(f1, dict) else {}))
+            assert not leak_tau
+            self.cfg["f1"] = f1
+            self.f1c = f1
+            self.betas = [math.exp(-HOP / SR / float(t)) for t in f1["taus"]]
         self.lam = math.exp(-HOP / SR / float(leak_tau)) if leak_tau else 1.0
         self.unrolled = False    # True: run the leak recurrence frame by frame through nn.GRU (export / streaming)
         self.win = win
         self.pad = win - HOP + OFF       # zeros in front of the stream
         self.ctx = win - HOP             # streaming audio context
         self.front = Frontend(n_mels, fmin, fmax, win)
-        self.inorm = nn.BatchNorm1d(n_mels)
-        layers, cin, f = [], 1, n_mels
+        if self.has_f1:
+            self.inorm5 = nn.BatchNorm1d(5 * n_mels)
+            self.flnorm = nn.BatchNorm1d(2)
+        else:
+            self.inorm = nn.BatchNorm1d(n_mels)
+        layers, cin, f = [], (5 if self.has_f1 else 1), n_mels
         for c, kt in convs:
             layers.append(CausalConv(cin, c, kt))
             cin, f = c, (f + 1) // 2
         self.convs = nn.ModuleList(layers)
         self.flat = cin * f
         self.fc = nn.Linear(self.flat, fc)
-        self.gru = nn.GRU(fc, gru, num_layers=gru_layers, batch_first=True)
+        self.gru = nn.GRU(fc + (2 if self.has_f1 else 0), gru, num_layers=gru_layers, batch_first=True)
         self.head = nn.Linear(gru, 1)
 
     @property
@@ -362,8 +422,66 @@ class VoiceNet(nn.Module):
             o, hl = gru_leak_loop(gi, h[0], self.gru.weight_hh_l0, self.gru.bias_hh_l0, self.lam)
         return o, hl[None]
 
-    def body(self, feats, conv_states=None, h=None, skip=0):
-        """feats [B, T, M] log-mel -> logits [B, T - skip], new conv states, new h."""
+    def f1_prep(self, feats, st=None):
+        """Round 4 F1. feats [B, T, M] log-mel; st None (stream start) or (mu [B, 2, M], v [B, 2, M],
+        xprev [B, M], fl [B, 2], init [B, 1]; init 0 = stream start, so all-zero state = stream start).
+        Returns raw (pre-normalisation) inputs X [B, 5, M, T], flux EMAs FL [B, 2, T] and the new state."""
+        B, T, M = feats.shape
+        c = self.f1c
+        xt = feats.transpose(1, 2)                                       # [B, M, T]
+        x0 = xt[:, :, 0]                                                 # [B, M]
+        if st is None:
+            mu_p = x0[:, None, :].expand(B, 2, M)
+            v_p = torch.full((B, 2, M), float(c["v0"]), device=feats.device, dtype=feats.dtype)
+            xp_p = x0
+            fl_p = torch.full((B, 2), float(c["fl0"]), device=feats.device, dtype=feats.dtype)
+        else:
+            mu_s, v_s, xp_s, fl_s, g = st
+            g3 = g[:, :, None]
+            mu_p = g3 * mu_s + (1.0 - g3) * x0[:, None, :]
+            v_p = g3 * v_s + (1.0 - g3) * float(c["v0"])
+            xp_p = g * xp_s + (1.0 - g) * x0
+            fl_p = g * fl_s + (1.0 - g) * float(c["fl0"])
+        scan = ema_block if (torch.jit.is_tracing() or T <= 64) else ema_scan
+        mus, vs, fls = [], [], []
+        prev = torch.cat([xp_p[:, :, None], xt[:, :, :-1]], 2)
+        flux = (xt - prev).abs().mean(1)                                 # [B, T]
+        for k, beta in enumerate(self.betas):
+            mu = scan(xt, mu_p[:, k], beta)
+            v = scan((xt - mu) ** 2, v_p[:, k], beta)
+            mus.append(mu)
+            vs.append(v)
+            fls.append(scan(flux, fl_p[:, k], beta))
+        eps = float(c["eps"])
+        X = torch.stack([xt, xt - mus[0], xt - mus[1], torch.log(vs[0] + eps), torch.log(vs[1] + eps)], 1)   # [B, 5, M, T]
+        FL = torch.stack(fls, 1)                                         # [B, 2, T]
+        new = (torch.stack([m[:, :, -1] for m in mus], 1), torch.stack([v[:, :, -1] for v in vs], 1), xt[:, :, -1],
+               FL[:, :, -1], torch.ones(B, 1, device=feats.device, dtype=feats.dtype))
+        return X, FL, new
+
+    def body_x(self, X, FL, conv_states=None, h=None, skip=0):
+        """Round 4 F1: raw inputs X [B, 5, M, T], FL [B, 2, T] -> logits [B, T - skip], new conv states, new h."""
+        B, C5, M, T = X.shape
+        x = self.inorm5(X.reshape(B, C5 * M, T)).reshape(B, C5, M, T).transpose(2, 3)   # [B, 5, T, M]
+        fl = self.flnorm(FL).transpose(1, 2)                             # [B, T, 2]
+        news = []
+        for i, c in enumerate(self.convs):
+            x, s = c(x, None if conv_states is None else conv_states[i])
+            news.append(s)
+        if skip:
+            x = x[:, :, skip:]
+            fl = fl[:, skip:]
+        B, C, T, Fq = x.shape
+        z = F.relu(self.fc(x.permute(0, 2, 1, 3).reshape(B, T, C * Fq)))
+        o, h = self.recur(torch.cat([z, fl], 2), h)
+        return self.head(o)[..., 0], news, h
+
+    def body(self, feats, conv_states=None, h=None, skip=0, f1_state=None):
+        """feats [B, T, M] log-mel -> logits [B, T - skip], new conv states, new h (F1 nets: + the new F1 state)."""
+        if self.has_f1:
+            X, FL, st = self.f1_prep(feats, f1_state)
+            lg, news, h = self.body_x(X, FL, conv_states, h, skip)
+            return lg, news, h, st
         x = self.inorm(feats.transpose(1, 2)).transpose(1, 2)[:, None]   # [B, 1, T, M]
         news = []
         for i, c in enumerate(self.convs):
@@ -377,8 +495,7 @@ class VoiceNet(nn.Module):
         return self.head(o)[..., 0], news, h
 
     def forward(self, xpad):
-        logits, _, _ = self.body(self.front(xpad))
-        return logits
+        return self.body(self.front(xpad))[0]
 
     def n_params(self, trainable=True):
         return sum(p.numel() for p in self.parameters() if p.requires_grad or not trainable)
@@ -393,28 +510,37 @@ class Streaming(nn.Module):
         self.ks = [c.kt for c in net.convs]
         self.fixed_n = 2 if net.lam != 1.0 else None   # leak models export a fixed chunk of 2 frames (one 25 ms capture chunk)
 
-    def forward(self, chunk, ctx, s0, s1, s2, h):
+    def forward(self, chunk, ctx, s0, s1, s2, h, *f1):
+        """F1 nets (round 4) take and return 5 more states after h: mu, v, xprev, fl, init."""
         x = torch.cat([ctx, chunk], 1)
         feats = self.net.front(x)
         states = []
         it = iter([s0, s1, s2])
         for k in self.ks:
             states.append(next(it) if k > 1 else None)
-        logits, news, h2 = self.net.body(feats, states, h)
+        if self.net.has_f1:
+            logits, news, h2, f1n = self.net.body(feats, states, h, f1_state=tuple(f1))
+        else:
+            logits, news, h2 = self.net.body(feats, states, h)
+            f1n = ()
         outs = [n if n is not None else s for n, s in zip(news, [s0, s1, s2])]
-        return torch.sigmoid(logits), x[:, -self.net.ctx:], outs[0], outs[1], outs[2], h2
+        return (torch.sigmoid(logits), x[:, -self.net.ctx:], outs[0], outs[1], outs[2], h2) + tuple(f1n)
 
     def init_state(self, B=1):
         net = self.net
         st = []
         f = net.cfg["n_mels"]
-        cin = 1
+        cin = 5 if net.has_f1 else 1
         for (c, kt) in net.cfg["convs"]:
             st.append(torch.zeros(B, cin, max(kt - 1, 1), f))
             cin, f = c, (f + 1) // 2
         while len(st) < 3:
             st.append(torch.zeros(B, 1, 1, 1))
-        return [torch.zeros(B, net.ctx)] + st + [torch.zeros(net.cfg["gru_layers"], B, net.cfg["gru"])]
+        out = [torch.zeros(B, net.ctx)] + st + [torch.zeros(net.cfg["gru_layers"], B, net.cfg["gru"])]
+        if net.has_f1:      # round 4: mu, v, xprev, fl, init (all zero = stream start)
+            M_ = net.cfg["n_mels"]
+            out += [torch.zeros(B, 2, M_), torch.zeros(B, 2, M_), torch.zeros(B, M_), torch.zeros(B, 2), torch.zeros(B, 1)]
+        return out
 
 
 def build(cfg):

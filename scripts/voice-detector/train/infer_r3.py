@@ -85,7 +85,7 @@ class Net:
         i = 0
         while i < N:
             if i in rs:
-                state[-1] = torch.zeros_like(state[-1])
+                state[4] = torch.zeros_like(state[4])          # the GRU state (round 4 F1 nets carry more state after it)
             nxt = min([r for r in rs if r > i] + [N])
             m = min(m_max, nxt - i)
             a = self.ctx0 + i * HOP

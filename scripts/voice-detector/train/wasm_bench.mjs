@@ -66,7 +66,7 @@ async function vdStream(ort, sess, x, shapes) {
       const chunk = new ort.Tensor("float32", xs.slice(i * HOP, (i + PER) * HOP), [1, PER * HOP]);
       const out = await sess.run({ chunk, ...st });
       if (c === 0) probs.set(out.p.data, i);
-      st.ctx = out.ctx_out; st.s0 = out.s0_out; st.s1 = out.s1_out; st.s2 = out.s2_out; st.h = out.h_out;
+      for (const k of Object.keys(st)) st[k] = out[k + "_out"];   // every state input <- its *_out (round 4 F1 adds mu, v, xprev, fl, init)
     }
     times.push(performance.now() - t0);
   }

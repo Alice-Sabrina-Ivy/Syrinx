@@ -10,6 +10,9 @@
 #          same order (ctx_out, s0_out, s1_out, s2_out, h_out).
 # Metadata: hop_ms, first_avail_ms, frame_ms, training run / step, sha256 of
 # the checkpoint's state dict.
+# Round 4: an F1 model (cfg "f1", model.py) has 5 more state inputs after h —
+# mu [1, 2, 64], v [1, 2, 64], xprev [1, 64], fl [1, 2], init [1, 1] (zeros =
+# stream start) — and the matching *_out outputs, in that order.
 # Round 3: a model with a GRU state decay (cfg leak_tau, model.py) is exported
 # with the recurrence unrolled per frame (one ONNX GRU op per frame on lam * h),
 # so its chunk is FIXED at 2 frames (400 samples = one 25 ms capture chunk;
@@ -40,6 +43,9 @@ def export(ckpt, out):
     chunk = torch.zeros(1, 2 * M.HOP)
     names_in = ["chunk", "ctx", "s0", "s1", "s2", "h"]
     names_out = ["p", "ctx_out", "s0_out", "s1_out", "s2_out", "h_out"]
+    if net.has_f1:      # round 4 F1: the recursive stationarity state (model.py; zeros = stream start)
+        names_in += ["mu", "v", "xprev", "fl", "init"]
+        names_out += ["mu_out", "v_out", "xprev_out", "fl_out", "init_out"]
     torch.onnx.export(st, (chunk, *init), out, input_names=names_in, output_names=names_out, opset_version=17,
                       dynamic_axes=None if fixed else {"chunk": {1: "S"}, "p": {1: "N"}}, do_constant_folding=True, dynamo=False)
     import onnx
@@ -52,6 +58,8 @@ def export(ckpt, out):
     if fixed:
         meta["fixed_frames"] = "2"
         meta["leak_tau"] = str(net.cfg["leak_tau"])
+    if net.has_f1:
+        meta["f1"] = json.dumps(net.cfg["f1"])
     for k, v in meta.items():
         e = m.metadata_props.add()
         e.key, e.value = k, v
