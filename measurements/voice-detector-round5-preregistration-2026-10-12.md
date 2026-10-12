@@ -924,3 +924,236 @@ under 400.
 **Status after data step A′.** The sealed set is re-sealed; no model of
 any round has run on it. Data step V (the validation rows, Addendum R5-B
 part 1) starts only after this addendum is pushed.
+
+## Addendum R5-B part 1 — data step V, the validation rows (2026-10-12)
+
+Written after Addendum R5-A was pushed (d83873a) and **before any model has
+scored an H row**. No model of any round has run on these streams. The only
+figures read are the current app's aggregate CORRECT-hop counts per cell,
+used for the size rules (§2.5). Code:
+[scripts/voice-detector/r5/](../scripts/voice-detector/r5/README.md)
+(`vsynth_val.py`, `vbeds.py`, `hval.py`, `selftest_r5.py`; commit 6f9f42a).
+
+### R5-B.1 The validation generators (§2.1)
+
+- `r5/vsynth_val.py` and `r5/vbeds.py` are the review files ported unchanged
+  (only the headers and the in-module import differ).
+  - They are bit-exact against the review modules: `vsynth2.synth` on two
+    settings, `beds4.bed` on all ten kinds.
+  - `selftest_r5.py` pins digests taken from the review files.
+- `selftest_r5.py` also checks that no script under `train/` (28 files) and
+  no round-5 training-side script imports either module or names `r5/hval`:
+  PASS.
+
+### R5-B.2 Real beds (§2.1)
+
+`hval.py beds` -> `build/vad-train/r5/hval/beds.json`.
+
+- **A correction made before any stream was built.**
+  - The pre-registered topic pattern has no word boundaries, so "hum"
+    matched inside FSD50K's label `Thump_and_thud` (waves, scissors, a
+    bathtub, trains).
+  - The rule now reads FSD50K's `_` as a space and puts a word-start
+    boundary on every term (`\b(fan|air.?cond|ac\b|…|engine)`). Terms still
+    match as prefixes ("fans", "motorcycle").
+  - This removed 12 candidates, every one a `Thump and thud` clip (listed in
+    `beds.json`): 187 → **175** candidates, 112 → **109** kept.
+- **Steady clips.** Of the 175 val machine-topic clips of ≥ 20 s (FSD50K
+  eval, `fstrain` val, `fsr4` val), **109 are steady** by round 4's D2 rule
+  (S_stat ≤ 2.051 dB or census stationary-tonal): `fstrain` 57, FSD50K
+  eval 41, `fsr4` val 11.
+- **Classes:** air 50, motor 33, mains 15, fridge 11. Every class has at
+  least 3 real clips, so none is filled with synthetic beds only.
+- **Licences** (validation use only): CC0 1.0 62, CC BY 3.0 24, CC BY 4.0 23,
+  all from the rounds 1–2 / `fsr4` manifests.
+
+### R5-B.3 Real voices (§2.3, §2.4)
+
+`hval.py voices` -> `voices.json`:
+
+- Reference: Praat AC 60–1100 Hz, 10 ms, 30 dB level gate (round 3 §1.6),
+  on the 16 kHz files.
+- Records: 1,028 val records with a stated sex (Coswara `vowel-a/e/o`, SVD
+  `iau` files).
+- Licence: CC BY 4.0 (Coswara, SVD).
+
+| row | men | women |
+|---|---|---|
+| H1 real held vowels: median F0 in band, ≤ 2 per person, ≤ 100 | **100** | **100** |
+| — by source | Coswara 80, SVD 20 | Coswara 59, SVD 41 |
+| — median F0 range | 86–130 Hz (13 under 100 Hz) | 162–293 Hz (54 under 230 Hz) |
+| H2 real series: ≥ 30 s Praat-voiced, ≤ 60 | **60** | **36** |
+| — by source | Coswara 47, SVD 13 | SVD 22, Coswara 14 |
+| — series length | 39–177 s, median 55 s | 39–158 s, median 59 s |
+
+Only 36 women have a series with ≥ 30 s of voice, so the cap of 60 is not
+reached. This affects only the size of the real cells, and §2.5 is still met
+(R5-B.6).
+
+### R5-B.4 Construction details fixed here (§2.2–2.4)
+
+All fixed in `hval.py` before any stream was rendered.
+
+- **Lead.**
+  - 60 s when FNV-1a(`"r5lead:" + stream id`) mod 3 = 2, else 20 s. This is
+    a seeded order that adding streams cannot reshuffle.
+  - Result: 474 of 1,440 H1 streams and 202 of 608 H2 streams have the 60 s
+    lead.
+- **Level.** One draw per stream, from seed (20261012, FNV-1a of the id).
+  The clean floor (−70 dBFS white) uses the same seed.
+- **Bed rotation.**
+  - Per family, in construction order: real voices (men, then women), then
+    the synthetic holds interleaved by index (men k, then women k).
+  - Classes follow the seeded order of seed 20261013.
+  - Within a class, real comes first, then synthetic, alternating.
+  - Real clips: FNV order, cycling, resampled to the stream rate
+    (`resample_poly`).
+  - Synthetic kinds cycle per class (air: fan, hvac, aircon, pcfan; fridge:
+    fridge, dehum; mains: mains, xfmr50; motor: vmotor). Seeds are
+    6·10⁹ + i (H2: + 500,000).
+  - Result: every class gets the same number of real and synthetic beds (H1
+    135 each, H2 54 each), and all 109 real clips are used.
+- **Synthetic holds.** Seed = 5·10⁹ + offset + k. Offsets: H1 men 0, women
+  100,000; H2 men 200,000, women 300,000.
+  - Kind cycles hum, /a/, hum, /o/. Quality cycles modal, soft, breathy.
+  - Vibrato when k mod 8 ∈ {1, 6}: a quarter of the holds, hums and vowels
+    alike.
+  - Rate cycles 48 / 44.1 / 16 kHz. Every second synthetic stream gets the
+    phone EQ.
+  - Onset and offset: the synthesizer's default 0.25 s.
+  - **H1:** f0 log-uniform in the band; wander U(6, 40) cents; hold
+    U(10, 20) s.
+  - **H2:**
+    - length 30 / 45 / 60 s in rotation;
+    - f0 log-uniform in the core band (75–130 / 160–300 Hz) for even k, in
+      the wide band (75–160 / 160–400 Hz) for odd k;
+    - wander U(3, 12) cents.
+- **H2 time.**
+  - t = td − series onset. For a real series, the onset is the first
+    vowel's start, and the 2 s gaps stay inside the series.
+  - Bins are 0–10, 10–20, … s; "last" is the series' last 10 s.
+
+### R5-B.5 Streams and the current-app dumps
+
+The streams were built with `hval.py build`. The dumps were then made with
+`ROOT=build/vad-train/r5/hval run-dumps.sh h1:2 h2:1`, using
+`train/valdump.mjs`, src dd92037 (unchanged) and at most 2 processes. A
+governor paused them at times.
+
+| family | streams | hours | streams per sex, by voice kind and condition |
+|---|---|---|---|
+| H1 | 1,440 | 21.6 | real 100, synthetic vowels 40, synthetic hums 40; each × clean, 0, +10, +20 dB |
+| H2 | 608 | 15.7 | real series (men 60, women 36) × clean, +10, 0 dB; synthetic 40 (20 vowels, 20 hums) × clean, +20, +10, 0 dB |
+
+- Sample rates, H1: 48 kHz 988 streams, 44.1 kHz 236, 16 kHz 216.
+- Sample rates, H2: 48 kHz 379, 44.1 kHz 125, 16 kHz 104.
+- Audio: 11 GB, gitignored.
+
+### R5-B.6 Size rules (§2.5): CORRECT hops (current app, aggregate)
+
+**H1** (band-filtered: men 75–130 Hz, women 160–300 Hz):
+
+| cell | men: real | men: syn vowel | men: syn hum | women: real | women: syn vowel | women: syn hum |
+|---|---|---|---|---|---|---|
+| clean | 30,292 | 23,483 | 23,988 | 31,663 | 21,372 | 22,853 |
+| +20 dB | 27,531 | 23,305 | 23,267 | 28,977 | 20,206 | 20,416 |
+| +10 dB | 24,492 | 17,283 | 22,554 | 25,433 | 20,284 | 19,334 |
+| 0 dB | 20,527 | 9,792 | 9,699 | 15,831 | 19,652 | 8,588 |
+
+**H2** (every CORRECT hop, no band filter). Each cell shows first 10 s /
+last 10 s:
+
+| cell | men: syn | men: real | women: syn | women: real |
+|---|---|---|---|---|
+| clean | 15,916 / 4,182 | 18,481 / 15,517 | 15,812 / 6,031 | 9,361 / 8,992 |
+| +20 dB | 15,738 / 9,946 | — | 14,131 / 6,924 | — |
+| +10 dB | 12,686 / 8,059 | 15,942 / 11,819 | 14,038 / 7,709 | 7,374 / 6,482 |
+| 0 dB | 9,404 / 7,787 | 12,876 / 9,014 | 8,971 / 6,078 | 5,129 / 4,593 |
+
+- **Every gating cell has ≥ 400 CORRECT hops for each sex.**
+- **No synthetic cell needed growth.** `counts --grow` found none under 400,
+  so the plan stays at 80 (H1) and 40 (H2) holds per sex.
+- **Synthetic H2 bins** run to 40–50 s, plus "last"; each has ≥ 1,046 hops.
+- **Real series bins.**
+  - Beyond about 70–120 s, the bins fall under 400. By §2.5 each such bin
+    merges with the bin before it.
+  - The merged tail bins are 80–150 s (women) and 130–170 s (men), each with
+    ≥ 478 hops.
+- Sexes are never pooled.
+
+### R5-B.7 Hashes
+
+- `hval.py hash` -> `build/vad-train/r5/sel/inputs.sha256`; the list's
+  sha256 is `a5121c50…7157`.
+- It covers 8,198 files: the two specs; each stream's audio, reference and
+  dump; and `beds.json`, `voices.json`, `plan.json`, `counts.json`.
+- H3 needs no new streams: it uses the existing `r3/vsess` sessions (§2.6).
+
+## Addendum R5-B part 2 (data) — data step B, the training additions (2026-10-12)
+
+**Not written yet:** the feature, loss and sampler code — F1m, F5, Bound,
+the §3.4 loss terms, D7's draw shares in the sampler, the parity checks and
+the WASM cost. It comes as part 2 (code), before the validity check (§2.7).
+No model is trained before then.
+
+### D1
+
+- No re-filter is needed. `train_exclude.json` after the round-5 re-seal is
+  byte-identical to round 4's (R5-A.4), and `r4/d1.json` was built against
+  it.
+- `d7.py` still runs `train_side.filter_records` on every D7a record.
+
+### D7a
+
+`r5/d7.py lists` -> `build/vad-train/r5/d7a.json` (sha256
+`45a07a97…c9712`). Training-split records only, all CC BY 4.0, no new
+person.
+
+- **Before the cap:** women 1,912 series / 20.10 h; men 2,432 / 24.37 h.
+- **After the cap:** the men are capped at 20.10 h. **Men 2,038 series /
+  20.10 h, women 1,912 / 20.10 h**, 7,495 records.
+- **Hours by source:**
+
+  | | Coswara | SVD | DCS | ESMUC |
+  |---|---|---|---|---|
+  | women | 4.70 | 9.49 | 2.65 | 3.25 |
+  | men | 9.26 | 5.53 | 3.28 | 2.04 |
+
+- **Share of Praat-voiced frames in band:**
+  - men in 75–130 Hz: **37.9 %**;
+  - women in 160–300 Hz: **59.6 %**;
+  - women in 75–130 Hz: 6.7 %;
+  - men in 160–300 Hz: 29.1 % (choir parts and SVD's high-pitch takes).
+
+### D7b
+
+`train/vsynth_r5.py pack --n=2000` ->
+`build/vad-train/train/vsynth_r5_train.i16` (2.0 GB) + `.npz` (sha256
+`c6d95b4c…d4c`).
+
+- **Bank:** 2,000 holds, 17.75 h, training seeds 4·10⁹ + i.
+  - Tracts: men 978, women 1,022.
+  - Kinds: hums 811, vowels 1,189.
+  - f0 bands: 75–130 Hz 797, 160–300 Hz 822, 130–160 Hz 212, 300–420 Hz 169.
+  - Vibrato on 629.
+- **The model** is the one in §3.3's table, with these details fixed in the
+  file header:
+  - glottal source: Rosenberg opening and closing, with an exponential return
+    phase;
+  - F0 wander: Ornstein–Uhlenbeck, plus a slow sinusoid;
+  - vowels: drawn vowel tracts;
+  - hums: a drawn nasal pole and zero, upper formants and a lip low-pass;
+  - breath noise: high-passed aspiration, gated by the open phase;
+  - truth: voiced where the envelope is ≥ −30 dB.
+- **Spot check against Praat AC on 8 holds:**
+  - voiced coverage 1.00;
+  - median |error| 1–11 cents on 7 of them;
+  - on the eighth (a female /a/ at 369 Hz), Praat reads half the truth F0.
+    The spectrum has no subharmonic energy (−56 dB at f0/2), so the error is
+    Praat's.
+
+### Not used, as pre-registered
+
+- VocalSet (an old-harness set, §2.1).
+- SingBAP (its participants are on the sealed side, `c_sbi`).
+- Any new download for training. Round 5 adds no training person.
