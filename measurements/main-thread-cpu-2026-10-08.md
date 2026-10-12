@@ -494,3 +494,8 @@ desktop (draw − readout; ~1 ms on the phone); trace pixels at data steps and
 the cue strip unchanged. The desktop was not re-measured against adf19c3 (the
 §3.1 TARGET figures come from another session; compare within one table
 only). On the phone the adopted build stays 11 % / 14 % below adf19c3.
+**2026-10-12, branch `trace-vsync`** ([phone-cpu-2026-10-12.md](phone-cpu-2026-10-12.md)
+§7, merge pending a phone check): the loop's gate compares the frame
+timestamp (15 ms) instead of `performance.now()`, so it draws on every 60 Hz
+frame (~60 /s on the phone instead of ~53); on the desktop at ~180 Hz draws,
+main-thread CPU and latency are unchanged within run spread.
