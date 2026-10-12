@@ -214,7 +214,7 @@ def reports(net_dir, rule, agg, thr, hang, groups):
             mid = {"m": 100.0, "f": 230.0}[sx]
             vk = m["voice_kind"]
             for name, sel in (("bedclass " + bcls, mk), ("bedtype " + btyp, mk), ("lead %d" % int(m["lead"]), mk),
-                              ("f0 low" if True else "", mk & (c["refd"] < mid)), ("f0 high", mk & (c["refd"] >= mid))):
+                              ("f0 low", mk & (c["refd"] < mid)), ("f0 high", mk & (c["refd"] >= mid))):
                 a = R[f"h1|{sx}|{cond}|{vk}|{name}"]
                 a[0] += int(sel.sum())
                 a[1] += int((sel & vet).sum())
@@ -331,9 +331,12 @@ def main():
             hp = hpts[(g["agg"], g["thr"], g["hang"])]
             g["feasible_r4"] = g["feasible"]
             g["feasible"] = bool(g["feasible"] and hp["feasible"])
-            g["h"] = compact(hp)
+            g["h"] = {"feasible": hp["feasible"], "worst_ratio": hp["worst_ratio"], "nfail": len(hp["fail"]), "fail": hp["fail"][:8]}
         best = pick5(grid)
         fb = None if best else min(grid, key=ratio5)
+        for r_ in (best, fb):
+            if r_ is not None:
+                r_["h"] = compact(hpts[(r_["agg"], r_["thr"], r_["hang"])])     # every H cell at the pick / fallback
         b4 = O3.pick([dict(g, feasible=g["feasible_r4"]) for g in grid])
         out[name] = {"net": net, "rule": rule, "frame_ms": frame_ms, "best": best, "fallback": fb, "best_r4_rows_only": b4,
                      "n_feasible": sum(g["feasible"] for g in grid), "n_feasible_r4": sum(g["feasible_r4"] for g in grid),

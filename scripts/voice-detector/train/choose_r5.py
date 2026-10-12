@@ -1,0 +1,81 @@
+# choose_r5.py — custom voice detector, round 5 (pre-registration 2026-10-12
+# §4; Addendum R5-B part 2): choose_r4.py with round 5's architectures and the
+# H rows (opselect_r5.py's JSON: a candidate's pick is feasible under the
+# extended bar, H1 / H2 included).
+#
+# Every candidate is a single model (plain). Between candidates: the largest O;
+# within 1 pp the lower measured WASM cost per architecture (log-mel only =
+# "plain", "F1", "F1m", "F1m+F5", "F1m+F5+Bound"; --costs), then the larger
+# val-negatives V2. A candidate without a feasible point is not eligible. V4: a
+# candidate whose architecture costs more than 2 ms per 25 ms (desktop WASM,
+# Node, 1 thread) is not feasible. The architecture is read from net.json.
+#
+#   python choose_r5.py --sel=SEL.json[,SEL2.json] --costs='{"F1":0.6,..}' [--roots=DIR,DIR] [--md=OUT.md] [--json=OUT]
+import json
+import os
+import sys
+
+MY = dict((a[2:].split("=", 1) + ["1"])[:2] for a in sys.argv[1:] if a.startswith("--"))
+
+
+def main():
+    sel = {}
+    for f in MY["sel"].split(","):
+        sel.update(json.load(open(f, encoding="utf8")))
+    costs = json.loads(MY.get("costs", "{}"))
+    roots = MY.get("roots", "").split(",")
+    rows = []
+    for name, c in sel.items():
+        b = c["best"]
+        cfg = None
+        for r_ in roots:
+            pj = os.path.join(r_, c["net"], "net.json")
+            if r_ and os.path.exists(pj):
+                cfg = json.load(open(pj, encoding="utf8"))["cfg"]
+                break
+        assert cfg is not None, f"no net.json for {c['net']}"
+        assert c["rule"] in ("plain", "file") and "leak_tau" not in cfg
+        lk = "F1" if cfg.get("f1") else ("F1m+F5+Bound" if cfg.get("bound") else ("F1m+F5" if cfg.get("f5") else ("F1m" if cfg.get("f1m") else "plain")))
+        cost = costs.get(lk)
+        r = {"name": name, "net": c["net"], "rule": c["rule"], "copies": 1, "arch": lk, "cost": cost, "best": b, "fallback": c["fallback"],
+             "n_feasible": c.get("n_feasible"), "n_feasible_r4": c.get("n_feasible_r4"), "best_r4_rows_only": c.get("best_r4_rows_only")}
+        if b and cost is not None and cost > 2.0:
+            r["v4_fail"] = True
+        rows.append(r)
+    elig = [r for r in rows if r["best"] and not r.get("v4_fail")]
+    choice = None
+    if elig:
+        top = max(r["best"]["O"] for r in elig)
+        near = [r for r in elig if r["best"]["O"] >= top - 1.0]
+        pool = near
+        cmin = min((r["cost"] if r["cost"] is not None else float("inf")) for r in pool)
+        pool = [r for r in pool if (r["cost"] if r["cost"] is not None else float("inf")) <= cmin + 1e-12]
+        choice = max(pool, key=lambda r: (r["best"]["fresh"]["vneg_v2"], r["best"]["O"]))
+    out = {"choice": choice and {k: v for k, v in choice.items()}, "rows": [{k: v for k, v in r.items()} for r in rows]}
+    if MY.get("json"):
+        json.dump(out, open(MY["json"], "w", encoding="utf8"), indent=1)
+    lines = ["| candidate | arch | pick (agg / p / hangover) | O % | tune-194 V2 % | vneg V2 % | vsess V2 % | fresh worst clean / mix % | vsess worst clean / mix % | H readings failing at the point | feasible points (round-4 rows only) |",
+             "|---|---|---|---|---|---|---|---|---|---|---|"]
+    for r in sorted(rows, key=lambda r: (0 if r["best"] else 1, -(r["best"] or r["fallback"])["O"])):
+        p = r["best"] or r["fallback"]
+        f, v, s = p["fresh"], p["vsess"], p.get("spl")
+        tag = "PICK" if r["best"] else "fallback (no feasible point)"
+        del s
+        mark = "**" if choice and r["name"] == choice["name"] else ""
+        nf = len(p["h"]["fail"])
+        lines.append(f"| {mark}{r['name']}{mark} | {r['arch']} | {tag}: {p['agg']} / {p['thr']} / {p['hang']:.0f} ms | {p['O']:.2f} | {f['tune_v2']:.2f} | {f['vneg_v2']:.2f} | {v['vs_v2']:.2f} | "
+                     f"{f['worst_clean']:.2f} / {f['worst_mix']:.2f} | {v['worst_clean']:.2f} / {v['worst_mix']:.2f} | {nf} | {r['n_feasible']} ({r['n_feasible_r4']}) |")
+    txt = "\n".join(lines)
+    if MY.get("md"):
+        open(MY["md"], "w", encoding="utf8").write(txt + "\n")
+    print(txt)
+    if choice:
+        b = choice["best"]
+        print(f"\nCHOICE: {choice['name']} ({choice['copies']} copies, cost {choice['cost']}) at {b['agg']} p>={b['thr']} {b['hang']} ms: O {b['O']:.2f} %"
+              f" (tune {b['fresh']['tune_v2']:.2f}, vneg {b['fresh']['vneg_v2']:.2f}, vsess {b['vsess']['vs_v2']:.2f})")
+    else:
+        print("\nNO candidate has a feasible point: no freeze, no look (§4).")
+
+
+if __name__ == "__main__":
+    main()
