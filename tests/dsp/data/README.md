@@ -9,7 +9,7 @@ suite uses them complementarily, not redundantly.
 | Corpus | Files | Format | F0 ground truth | Pitch coverage | License | In-repo? |
 |---|---|---|---|---|---|---|
 | **Hillenbrand** | `vowdata.dat` + `men/` + `women/` | 16 kHz WAV; `vowdata.dat` truth file at steady-state | Single F0 per file (steady-state) | 90–330 Hz, **zero below 90 Hz** | Public domain | Yes (~19 MB) |
-| **PTDB-TUG** | `ptdb-tug/` | 48 kHz WAV; `.f0` reference at 10 ms hop | Laryngograph-derived (gold standard) at 10 ms hop | Connected speech, 80–450 Hz across normal adults | ODC-BY (Open Database License + Database Contents License) | **Audio gitignored — fetch on demand** |
+| **PTDB-TUG** | `ptdb-tug/` | 48 kHz WAV; `.f0` reference at 10 ms hop | Laryngograph-derived (gold standard) at 10 ms hop | Connected speech, 80–450 Hz across normal adults | ODbL 1.0 + DbCL 1.0 (Open Database License + Database Contents License; not ODC-BY) — evaluation only, never fit shipped constants on it | **Audio gitignored — fetch on demand** |
 | **vocadito** | `vocadito/` | 44.1 kHz WAV; F0 CSV at 5.8 ms hop | Expert-labeled (trained musicians, two-annotator consensus) at 5.8 ms hop | 69–474 Hz, 14 tracks with frames < 90 Hz, 11 tracks with p95 > 348 Hz | CC-BY 4.0 | Yes (~73 MB) |
 | **CSTR FDA** | `fda/` | 20 kHz raw .sig (16-bit BE); .fx XMG-format pitchmark contour | Laryngograph-derived (gold standard) | RL (M): min 60 Hz, p1 68, p5 88, median 121, max 220. SB (F): min 120, median 253, p99 339, max 400. Connected English speech, 50 sentences each. | License unstated; freely distributed by CSTR for pitch-detector evaluation since 1994 | **Audio gitignored — fetch on demand** |
 

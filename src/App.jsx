@@ -68,7 +68,7 @@ function WelcomeOverlay({ onDismiss }) {
         <h2 id="welcome-title" className="text-xl font-light text-white mb-3">Welcome to Syrinx</h2>
         <p className="text-sm text-neutral-300 leading-relaxed mb-5">
           Syrinx gives you real-time visual feedback on your voice pitch, resonance, and
-          vocal weight — it needs microphone access to work.{" "}
+          clarity — it needs microphone access to work.{" "}
           Next, choose what you&apos;re aiming for — that sets the targets highlighted on the pitch trace and the cue strip.
         </p>
         <button

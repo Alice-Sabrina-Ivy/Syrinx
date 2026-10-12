@@ -21,15 +21,17 @@ export const PITCH_TRACE_SECONDS = 15;
 export const RESONANCE_TRACE_SECONDS = 15;
 export const SILENCE_HOLD_MS = 5000;
 
-// Dashboard cue strip axes (components/cueStripModel.js). Every axis puts
-// the typically-men end on the LEFT. Pitch: log Hz; resonance: the spectral
-// warp cue's u units (0 = typical LibriSpeech man, 1 = typical woman; the
-// resonance lab's U_MIN / U_MAX); weight: σ from the session's own baseline
-// (negative = heavier, on the left; BASELINE_SIGMA = 3).
+// Dashboard cue strip axes (components/cueStripModel.js). Pitch and
+// resonance put the typically-men end on the LEFT. Pitch: log Hz;
+// resonance: the spectral warp cue's u units (0 = typical LibriSpeech man,
+// 1 = typical woman; the resonance lab's U_MIN / U_MAX); clarity: CPP in σ
+// from the session's own baseline (negative = lower CPP = breathier, on
+// the left; BASELINE_SIGMA = 3) — no gendered end, no population bands
+// (measurements/clarity-cue-2026-10-08.md).
 export const CUE_AXES = Object.freeze({
   pitch: Object.freeze({ min: 75, max: 320, log: true, ticks: Object.freeze([100, 150, 200, 250, 300]) }),
   resonance: Object.freeze({ min: -1.0, max: 2.2 }),
-  weight: Object.freeze({ min: -3, max: 3, ticks: Object.freeze([0]) }),
+  clarity: Object.freeze({ min: -3, max: 3, ticks: Object.freeze([0]) }),
 });
 
 // HNR display range (dB) — higher = cleaner voice

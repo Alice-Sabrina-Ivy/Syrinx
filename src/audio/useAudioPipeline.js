@@ -106,13 +106,18 @@ export function useAudioPipeline() {
     formants: { f1: null, f2: null, f3: null },
     spectralTilt: null,
     hnr: null,
-    // Vocal-weight metric (CPP-aggregate, per-user-baseline-normalized).
+    // Clarity metric (CPP-aggregate, per-user-baseline-normalized): the
+    // cue strip's "Clarity · approx." row. The slice keeps its historical
+    // name `vocalWeight`; CPP measures clear <-> breathy, not weight
+    // (measurements/clarity-cue-2026-10-08.md).
     // - vocalWeight.cpp: latest 1-s aggregate CPP value in dB (raw).
     // - vocalWeight.position: gauge position in [0, 1]; null while
     //   warming up (insufficient voiced material) or while baseline
     //   is still calibrating.
     // - vocalWeight.sigmaDelta: σ-distance from baseline mean
-    //   (positive = lighter, negative = heavier).
+    //   (positive = higher CPP = clearer, negative = breathier;
+    //   **historical (superseded 2026-10-11):** "positive = lighter" —
+    //   a misread of Aaen et al. 2025).
     // - vocalWeight.sigmaLevel: the same σ-distance of the median of the
     //   last ~5 s of voiced emits (vocal-weight-level.js) — the cue
     //   strip's dot; null until the baseline is ready.

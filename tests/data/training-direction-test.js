@@ -1,6 +1,6 @@
 // training-direction-test.js — the training-direction setting and the
-// targets computed from it (src/utils/trainingDirection.js: pitch bands,
-// vocal-weight zones), the pitch
+// targets computed from it (src/utils/trainingDirection.js: pitch bands;
+// no clarity / weight zone since 2026-10-11), the pitch
 // level they are judged on (src/utils/pitchLevel.js), and direction-aware
 // session stats (src/utils/sessionStats.js).
 //
@@ -17,12 +17,6 @@ import {
   bandForDisplay,
   formatTarget,
   formatOnTarget,
-  WEIGHT_TARGETS,
-  WEIGHT_TARGET_SIGMA,
-  WEIGHT_PITCH_NOTE,
-  weightTargetFor,
-  weightStatus,
-  weightZoneForDisplay,
   directionAt,
   appendDirection,
   directionSequence,
@@ -33,7 +27,6 @@ import * as TD from "../../src/utils/trainingDirection.js";
 import { createPitchLevel, pitchLevels, pitchLevelAt, PITCH_LEVEL_WINDOW_MS } from "../../src/utils/pitchLevel.js";
 import { computeSummaryStats } from "../../src/utils/sessionStats.js";
 import { PITCH_DISPLAY_RANGE } from "../../src/utils/constants.js";
-import { VocalWeightBaseline, BASELINE_SIGMA } from "../../src/audio/vocal-weight-baseline.js";
 
 let failures = 0;
 function check(name, ok, detail = "") {
@@ -88,52 +81,16 @@ function check(name, ok, detail = "") {
   check("no F2 target helpers exported", !("f2TargetFor" in TD) && !("F2_TARGETS" in TD));
 }
 
-// 3b. Vocal-weight zones (restored 2026-10-07 by user decision, with the
-//     pitch-confound note): feminine = lighter side (σ >= +0.5), masculine =
-//     heavier side (σ <= -0.5), androgynous / exploring / none = no zone.
+// 3b. No vocal-weight / clarity zone in any direction (2026-10-11: the CPP
+//     row measures clarity, clear <-> breathy, not weight, and has no
+//     target — measurements/clarity-cue-2026-10-08.md). The 2026-10-07
+//     weight zones (feminine lighter >= +0.5 σ, masculine heavier <= -0.5 σ)
+//     and their pitch note are gone.
 {
-  const f = weightTargetFor("feminine"), m = weightTargetFor("masculine");
-  check("weight: feminine -> lighter side from +0.5 σ", f.side === "lighter" && f.sigma === 0.5);
-  check("weight: masculine -> heavier side from -0.5 σ", m.side === "heavier" && m.sigma === 0.5);
-  check("weight: the two sides mirror each other", f.sigma === m.sigma && f.sigma === WEIGHT_TARGET_SIGMA
-    && Object.keys(WEIGHT_TARGETS).join() === "feminine,masculine");
-  check("weight: androgynous / exploring / not chosen -> no zone",
-    weightTargetFor("androgynous") === null && weightTargetFor("exploring") === null && weightTargetFor(null) === null);
-  check("weightStatus: feminine in at >= +0.5 σ only",
-    weightStatus(0.5, f) === "in" && weightStatus(2.4, f) === "in" && weightStatus(0.49, f) === "out"
-      && weightStatus(-1, f) === "out");
-  check("weightStatus: masculine in at <= -0.5 σ only (mirror)",
-    weightStatus(-0.5, m) === "in" && weightStatus(-2.4, m) === "in" && weightStatus(-0.49, m) === "out"
-      && weightStatus(1, m) === "out");
-  check("weightStatus: past the gauge end (clamped marker) still in", weightStatus(4, f) === "in" && weightStatus(-4, m) === "in");
-  check("weightStatus: no target or no reading -> null (neutral)",
-    weightStatus(1, null) === null && weightStatus(null, f) === null && weightStatus(NaN, m) === null);
-  const zf = weightZoneForDisplay(f), zm = weightZoneForDisplay(m);
-  check("zone: feminine from the left (Lighter) end", zf.left === 0 && Math.abs(zf.width - 250 / 6) < 1e-9,
-    JSON.stringify(zf));
-  check("zone: masculine to the right (Heavier) end, same width",
-    Math.abs(zm.left + zm.width - 100) < 1e-9 && Math.abs(zm.width - zf.width) < 1e-9, JSON.stringify(zm));
-  check("zone: none without a target", weightZoneForDisplay(null) === null);
-  // The zone edges must sit where the gauge draws σ = ±0.5: the gauge's
-  // visual position is (1 - baseline.gaugePosition(cpp)) * 100.
-  const bl = new VocalWeightBaseline();
-  for (let i = 0; i < 120; i++) bl.accumulate({ time: i * 250, cpp: 10 + ((i % 7) - 3) * 0.4 });
-  const mu = bl.mu(), sd = bl.sigma();
-  const visual = (sig) => (1 - bl.gaugePosition(mu + sig * sd)) * 100;
-  check("zone edges = the gauge's own σ = ±0.5 positions (shared BASELINE_SIGMA)",
-    bl.ready() && Math.abs(zf.left + zf.width - visual(0.5)) < 1e-9 && Math.abs(zm.left - visual(-0.5)) < 1e-9
-      && Math.abs(zf.left - visual(BASELINE_SIGMA)) < 1e-9,
-    `${(zf.left + zf.width).toFixed(3)} vs ${visual(0.5).toFixed(3)}, ${zm.left.toFixed(3)} vs ${visual(-0.5).toFixed(3)}`);
-  check("zone marker colour agrees with the band: inside the band <=> in",
-    [-3, -1, -0.6, -0.5, -0.4, 0, 0.4, 0.5, 0.6, 1, 3].every((sig) => {
-      const x = visual(sig);
-      return ((x >= zf.left - 1e-9 && x <= zf.left + zf.width + 1e-9) === (weightStatus(sig, f) === "in"))
-        && ((x >= zm.left - 1e-9 && x <= zm.left + zm.width + 1e-9) === (weightStatus(sig, m) === "in"));
-    }));
-  check("pitch-confound note: symmetric, names both directions of pitch",
-    /raising your pitch/i.test(WEIGHT_PITCH_NOTE) && /lighter/.test(WEIGHT_PITCH_NOTE)
-      && /lowering it/i.test(WEIGHT_PITCH_NOTE) && /heavier/.test(WEIGHT_PITCH_NOTE) && WEIGHT_PITCH_NOTE.length <= 90,
-    `${WEIGHT_PITCH_NOTE.length} chars`);
+  const gone = ["WEIGHT_TARGETS", "WEIGHT_TARGET_SIGMA", "WEIGHT_PITCH_NOTE", "weightTargetFor", "weightStatus",
+    "weightZoneForDisplay", "weightRangeFor"].filter((k) => k in TD);
+  check("no weight-zone helpers exported", gone.length === 0, gone.join(", "));
+  check("no clarity target helpers either", !Object.keys(TD).some((k) => /clarity/i.test(k)));
 }
 
 // 4. Pitch level: running median of the last 1.5 s of voiced pitch.

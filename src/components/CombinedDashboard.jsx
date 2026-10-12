@@ -1,7 +1,8 @@
 // CombinedDashboard.jsx — Default practice view (Design A "cue strip",
 // 2026-10-07): the 15 s pitch trace with the cue strip directly under it —
-// Pitch, Resonance · approx. and Vocal weight, each on a neutral axis with
-// typical-speaker bands, a dot and a ~2 s trail (CueStrip.jsx) — then the
+// Pitch, Resonance · approx. and Clarity · approx., each on a neutral axis
+// (typical-speaker bands on pitch and resonance), a dot and a trail
+// (CueStrip.jsx; `vocalWeight` is the CPP slice's historical name) — then the
 // opt-in "Likely heard as · Experimental" panel (HeardAsPanel.jsx) and one
 // session row. Replaced the Perceived-voice bar, the F2 readout and the
 // stats row (F0 + steadiness live in the pitch row, HNR in the strip

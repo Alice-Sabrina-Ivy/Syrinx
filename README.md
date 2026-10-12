@@ -1,6 +1,6 @@
 # Syrinx
 
-Voice training toolkit with real-time resonance, pitch, and vocal weight analysis.
+Voice training toolkit with real-time resonance, pitch, and voice clarity (clear ↔ breathy) analysis.
 
 **[Live Demo](https://alice-sabrina-ivy.github.io/Syrinx/)**
 

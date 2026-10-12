@@ -1,5 +1,10 @@
 // vocal-weight-baseline.js — Per-user CPPS adaptive σ window.
 //
+// Feeds the cue strip's "Clarity · approx." row (clear <-> breathy). The
+// module keeps its historical "vocal weight" name; CPP does not measure
+// weight (measurements/clarity-cue-2026-10-08.md). Below, "lighter" /
+// "heavier" in the 2026-06-10 notes read as "higher" / "lower CPP".
+//
 // CPP values vary by speaker, microphone, room, and algorithm
 // configuration. There is no public reference for "consumer-mic
 // running-speech CPP" that would let Syrinx ship a fixed gauge
@@ -165,9 +170,14 @@ export class VocalWeightBaseline {
   // ±gaugeSigma σ are clamped. Returns null if not ready or if cpp
   // isn't a valid number.
   //
-  // Direction: per Aaen 2025 + literature review, higher CPP =
-  // lighter voice. The gauge UI maps position 1.0 to the "Lighter"
-  // end and position 0.0 to the "Heavier" end.
+  // Direction: higher CPP = clearer (more periodic, less breathy). The
+  // cue strip's clarity row maps position 1.0 / σ +3 to the "clearer"
+  // end and 0.0 / σ −3 to the "breathier" end.
+  // **Historical (superseded 2026-10-11):** "per Aaen 2025 + literature
+  // review, higher CPP = lighter voice" — a misread of the abstract
+  // (Aaen et al. 2025 report LOWER CPP for the lighter, reduced-density
+  // conditions), and CPP measures periodicity, not weight
+  // (measurements/clarity-cue-2026-10-08.md).
   gaugePosition(cpp) {
     if (!this.ready()) return null;
     if (typeof cpp !== "number" || !isFinite(cpp)) return null;

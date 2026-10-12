@@ -17,11 +17,19 @@
 //                   popover whose text wraps inside it (scrollWidth <=
 //                   clientWidth) and that is on top at its centre and inside
 //                   the viewport. Pitch live <= 3 s; resonance warming ->
-//                   settling -> live (live <= 12 s); weight calibrating -> live
-//                   (<= 45 s); pitch and weight trails reach 8 dots, resonance's 3 (one per 2 s). Settings:
+//                   settling -> live (live <= 12 s); clarity calibrating -> live
+//                   (<= 45 s); pitch and clarity trails reach 8 dots, resonance's 3 (one per 2 s).
+//                   CLARITY (2026-10-11, measurements/clarity-cue-2026-10-08.md):
+//                   the third row is "Clarity · approx." with ends breathier /
+//                   clearer, no strip text and no direction option says
+//                   weight / lighter / heavier, and the caveat is shown in every
+//                   direction at every viewport (a line under the strip; in
+//                   short landscape, where the caption lines are dropped, a
+//                   short form in the clarity row's title line). Settings:
 //                   masculine / feminine / androgynous / exploring — each
-//                   cue's highlight range per the spec table, the same fill /
-//                   stroke in every direction, none for exploring. Heard-as:
+//                   cue's highlight range per the spec table (clarity: none in
+//                   any direction), the same fill / stroke in every direction,
+//                   none for exploring. Heard-as:
 //                   off at first visit (no gender worker); turned on in the
 //                   panel -> the worker starts, Settings' switch agrees, three
 //                   ranges appear with no "%" in the panel; reload -> still on;
@@ -172,6 +180,7 @@ const state = (page) => page.evaluate(() => {
       header: el.querySelector("[data-cue-value]")?.textContent ?? "",
       hollow: el.dataset.hollow === "1",
       word: el.querySelector("[data-cue-word]")?.textContent ?? null,
+      title: el.querySelector("[data-cue-title]")?.textContent ?? "",
       sr: el.querySelector("[data-cue-sr]")?.textContent ?? "",
     };
   }
@@ -201,6 +210,10 @@ const state = (page) => page.evaluate(() => {
       live: (() => { const l = p.querySelector("[data-heard-as-live]"); return l ? { role: l.getAttribute("role"), text: l.textContent.trim() } : null; })(),
       wide: p.querySelector("[data-heard-as-axis]")?.dataset.axisWide === "1" } : null,
     listening: document.body.innerText.includes("Stop Listening"),
+    stripText: document.querySelector("[data-cue-strip]")?.textContent ?? "",
+    clarityNote: document.querySelector("[data-clarity-note]")?.textContent ?? null,
+    caption: !!document.querySelector("[data-cue-caption]"),
+    weightNote: !!document.querySelector("[data-weight-note]"),
   };
 });
 
@@ -211,7 +224,7 @@ const layout = (page) => page.evaluate(() => {
   window.scrollTo(0, 0);
   const r = (sel) => { const e = document.querySelector(sel); if (!e) return null; const b = e.getBoundingClientRect(); return { top: Math.round(b.top), bottom: Math.round(b.bottom), left: Math.round(b.left), right: Math.round(b.right) }; };
   const trace = r("[data-pitch-trace-box]"), strip = r("[data-cue-strip]");
-  const clipped = [...document.querySelectorAll("[data-cue-strip] [data-cue-title], [data-cue-strip] [data-cue-value]")]
+  const clipped = [...document.querySelectorAll("[data-cue-strip] [data-cue-title], [data-cue-strip] [data-cue-value], [data-cue-strip] [data-clarity-note]")]
     // vertically only where the box clips vertically (overflow-x: clip leaves y visible)
     // only boxes that clip can cut text off: overflow-x: clip (titles, text
     // values) horizontally, and vertically only where overflow-y clips too
@@ -245,10 +258,12 @@ const probePopover = (page, label) => page.evaluate(async (label) => {
   return out;
 }, label);
 
+let directionDialogText = "";
 async function startFirstVisit(page, direction) {
   await page.waitForFunction(() => document.body.innerText.includes("Welcome to Syrinx"), { timeout: 60000 });
   await clickButton(page, ["Get Started"]);
   await page.waitForFunction(() => document.body.innerText.includes("What are you trying to sound like?"), { timeout: 30000 });
+  directionDialogText = await page.evaluate(() => document.querySelector("[role=dialog]")?.innerText ?? "");
   await pickDirection(page, direction);
   await clickButton(page, ["Continue"], "[role=dialog]");
   return waitListening(page);
@@ -352,8 +367,10 @@ const SPEC_HL = {
   // feminine / masculine: the cue's readout bands (cue-bands.json);
   // androgynous: between the per-speaker bands (reference.json).
   resonance: { feminine: [0.574, 1.39], masculine: [-0.582, 0.48], androgynous: [0.288, 0.654] },
-  weight: { feminine: [0.5, 3], masculine: [-3, -0.5], androgynous: null },
+  // clarity: no target in any direction (measurements/clarity-cue-2026-10-08.md)
+  clarity: { feminine: null, masculine: null, androgynous: null },
 };
+const WEIGHT_WORDS = /weight|lighter|heavier/i;
 
 log("preview server");
 await startServer();
@@ -363,6 +380,8 @@ log("speech-woman: first visit");
 await launch(WAV["speech-woman"]);
 let { page, errors } = await open();
 check("listening starts from the direction question (masculine)", await startFirstVisit(page, "masculine"));
+check("direction options: pitch targets only, no vocal-weight side", /Pitch target/.test(directionDialogText) && !WEIGHT_WORDS.test(directionDialogText),
+  directionDialogText.replace(/\s+/g, " ").slice(0, 200));
 await sleep(600);
 {
   const L = await layout(page);
@@ -374,7 +393,16 @@ await sleep(600);
   log(`  trace ${L.trace?.top}-${L.trace?.bottom}, strip ${L.strip?.top}-${L.strip?.bottom}, panel ${L.panel?.top}-${L.panel?.bottom}, session ${L.session?.top}-${L.session?.bottom}, vh ${L.vh}`);
 }
 // Info popovers (the honest caveats live there): readable and visible.
-for (const label of ["About the pitch cue", "About the resonance cue", "About the weight cue", "What does steadiness measure?"]) {
+{
+  const s = await state(page);
+  const c = s.rows.clarity;
+  check("clarity row: title 'Clarity · approx.', ends breathier / clearer", !!c && c.title === "Clarity · approx."
+    && /breathier/.test(s.stripText) && /clearer/.test(s.stripText) && !s.rows.weight, `${c?.title}`);
+  check("cue strip: no weight / lighter / heavier text", !WEIGHT_WORDS.test(s.stripText), (s.stripText.match(WEIGHT_WORDS) ?? [""])[0]);
+  check("clarity caveat shown (line under the strip; in the clarity title line in short landscape), never the old weight note",
+    !s.weightNote && /louder or higher/.test(s.clarityNote ?? ""), `${s.clarityNote}`);
+}
+for (const label of ["About the pitch cue", "About the resonance cue", "About the clarity cue", "What does steadiness measure?"]) {
   const r = await probePopover(page, label);
   check(`info popover '${label}': opens, text wraps inside it, on top, inside the viewport`,
     r.found && r.open && r.wraps && r.onTop && r.inViewport, JSON.stringify(r));
@@ -393,15 +421,17 @@ for (const label of ["About the pitch cue", "About the resonance cue", "About th
 }
 // speech: states over time
 {
-  const seen = { pitch: new Set(), resonance: [], weight: new Set() };
+  const seen = { pitch: new Set(), resonance: [], clarity: new Set() };
   const tLive = {};
-  const maxTrail = { pitch: 0, resonance: 0, weight: 0 };
-  let weightLiveAt = null;
+  const maxTrail = { pitch: 0, resonance: 0, clarity: 0 };
+  let clarityLiveAt = null;
+  let weightWordsLive = 0;
   let hollowBad = 0, hollowSeen = 0;
   await sample(page, 75000, (s, t) => {
     const pr = s.rows.pitch;
     if (pr?.dot) { if (pr.hollow) hollowSeen++; if (pr.hollow !== /higher|lower/.test(pr.word ?? "")) hollowBad++; }
-    for (const cue of ["pitch", "resonance", "weight"]) {
+    if (WEIGHT_WORDS.test(s.stripText)) weightWordsLive++;
+    for (const cue of ["pitch", "resonance", "clarity"]) {
       const r = s.rows[cue];
       if (!r) continue;
       if (r.state === "live" && tLive[cue] === undefined) tLive[cue] = t;
@@ -409,16 +439,22 @@ for (const label of ["About the pitch cue", "About the resonance cue", "About th
       if (cue === "resonance") { if (seen.resonance[seen.resonance.length - 1] !== r.state) seen.resonance.push(r.state); }
       else seen[cue].add(r.state);
     }
-    if (s.rows.weight?.state === "live" && weightLiveAt === null) weightLiveAt = t;
-    return tLive.pitch !== undefined && tLive.resonance !== undefined && weightLiveAt !== null
-      && maxTrail.pitch >= 8 && maxTrail.resonance >= 3 && maxTrail.weight >= 8;
+    if (s.rows.clarity?.state === "live" && clarityLiveAt === null) clarityLiveAt = t;
+    return tLive.pitch !== undefined && tLive.resonance !== undefined && clarityLiveAt !== null
+      && maxTrail.pitch >= 8 && maxTrail.resonance >= 3 && maxTrail.clarity >= 8;
   });
   check("pitch dot live within 3 s", tLive.pitch !== undefined && tLive.pitch <= 3, `${tLive.pitch?.toFixed(1)} s`);
   const rs = seen.resonance.join(">");
   check("resonance warming -> settling -> live", /warming.*settling.*live/.test(rs), rs);
   check("resonance live within 12 s", tLive.resonance !== undefined && tLive.resonance <= 12, `${tLive.resonance?.toFixed(1)} s`);
-  check("weight calibrating, then live within 45 s", seen.weight.has("calibrating") && weightLiveAt !== null && weightLiveAt <= 45, `${weightLiveAt?.toFixed(1)} s`);
-  check("trail reaches 8 dots on pitch and weight, 3 on resonance (one per 2 s of live speech)", maxTrail.pitch >= 8 && maxTrail.resonance >= 3 && maxTrail.weight >= 8, JSON.stringify(maxTrail));
+  check("clarity calibrating, then live within 45 s", seen.clarity.has("calibrating") && clarityLiveAt !== null && clarityLiveAt <= 45, `${clarityLiveAt?.toFixed(1)} s`);
+  check("trail reaches 8 dots on pitch and clarity, 3 on resonance (one per 2 s of live speech)", maxTrail.pitch >= 8 && maxTrail.resonance >= 3 && maxTrail.clarity >= 8, JSON.stringify(maxTrail));
+  {
+    const s = await state(page);
+    check("clarity header (live): 'about where you started' or 'N σ clearer / breathier than your start'",
+      /^(about where you started|\d+\.\d σ (clearer|breathier) than your start|—)$/.test(s.rows.clarity?.header ?? "") && weightWordsLive === 0,
+      `${s.rows.clarity?.header}; weight words seen ${weightWordsLive}×`);
+  }
   check("pitch off target: hollow dot exactly when the row says higher / lower (not colour alone)", hollowBad === 0, `${hollowBad} mismatches, ${hollowSeen} hollow samples`);
   await shot(page, "02-woman-live-masculine");
 }
@@ -431,7 +467,10 @@ for (const label of ["About the pitch cue", "About the resonance cue", "About th
     await closeSettings(page);
     await sleep(600);
     const s = await state(page);
-    for (const cue of ["pitch", "resonance", "weight"]) {
+    check(`${dir}: clarity caveat line shown (same in every direction), no weight note`,
+      !s.weightNote && /louder or higher/.test(s.clarityNote ?? ""), `${s.clarityNote}`);
+    check(`${dir}: no weight / lighter / heavier text in the strip`, !WEIGHT_WORDS.test(s.stripText));
+    for (const cue of ["pitch", "resonance", "clarity"]) {
       const r = s.rows[cue];
       const want = dir === "exploring" ? null : SPEC_HL[cue][dir];
       if (want === null) {
@@ -443,7 +482,7 @@ for (const label of ["About the pitch cue", "About the resonance cue", "About th
     }
     await shot(page, `03-direction-${dir}`);
   }
-  for (const cue of ["pitch", "resonance", "weight"]) {
+  for (const cue of ["pitch", "resonance"]) {
     const u = new Set(styles[cue] ?? []);
     check(`${cue}: the highlight's computed fill / stroke are identical in every direction`, u.size === 1, [...u].join(" ≠ "));
   }
@@ -620,7 +659,7 @@ for (const kind of ["noise", "silence"]) {
   let dots = 0, shownEver = false, n = 0;
   await sample(page, 8000, (s) => {
     n++;
-    for (const cue of ["pitch", "resonance", "weight"]) if (s.rows[cue]?.dot) dots++;
+    for (const cue of ["pitch", "resonance", "clarity"]) if (s.rows[cue]?.dot) dots++;
     if (s.heardAs?.mode === "shown") shownEver = true;
   });
   check(`${kind}: no dot on any row after the 5 s hold`, dots === 0, `${dots} dot-samples / ${n}`);
