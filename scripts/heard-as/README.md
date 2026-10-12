@@ -37,10 +37,20 @@ the golden file.
 section lists the order): `build_jobs.py` (session audio), `session.mjs` (the
 production chain, ticks every 2 s), `features.py`, `rules.py` (every
 pre-registered configuration), `select_report.py`, `details.py`, `posthoc.py`
-(the K = 1 / 2 / 3 flash check) and `make_fixture.py` (the golden replay
-fixture `tests/ml/fixtures/pitch-only-golden.json`). Run in a directory under
+(the K = 1 / 2 / 3 flash check) and `make_fixture.py` (the S0-era golden
+replay fixture at the 2 s tick, superseded 2026-10-12). Run in a directory under
 `build/`; needs `SYRINX_LIBRISPEECH` and, for the hcc / picka / rb sets,
 `SYRINX_HEARD_AS_DATA`.
+
+`make_fixture_app.mjs --rep-dir=<dir> <app.jsonl>...` writes the current golden
+fixture `tests/ml/fixtures/pitch-only-golden.json` for the adopted rule
+(A40+KP8-3+DS10, §8.6 of the measurement note): 14 public test-split
+session-phases of the men's-false-alarm study at the app cadence (every posted
+pitch frame, resonance post and panel update with its drawn share and audio
+clock), with the study's own scored strings as the expected timelines. Its
+inputs are that study's harness outputs (`session_app.mjs` records and
+`replay2.mjs` strings), kept outside the repo; it refuses to write unless the
+repo module reproduces them on the stored (pruned, rounded) stream.
 
 ## Calibration (Python)
 

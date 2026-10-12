@@ -141,7 +141,8 @@ export function useAudioPipeline() {
   // The panel's pitch-only-change warning (src/ml/pitch-only-warning.js):
   // fed every posted pitch frame and every resonance state message whether
   // or not the panel is on (its start reference is the session's start);
-  // the panel calls update() on its 2 s cadence.
+  // the panel calls update() on its 2 s cadence with the share it draws and
+  // this hook's audio clock (rule A40+KP8-3+DS10 since 2026-10-12, §8.6).
   // measurements/heard-as-pitch-only-warning-2026-10-07.md
   const pitchOnlyRef = useRef(null);
   if (pitchOnlyRef.current === null) pitchOnlyRef.current = createPitchOnlyWarning();
