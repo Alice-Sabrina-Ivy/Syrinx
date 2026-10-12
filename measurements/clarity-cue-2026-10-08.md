@@ -17,8 +17,10 @@ change on `clarity-cue` (CLAUDE.md Hard rule 3).
   (synthetic aspiration rho 0.997–1.000, PVQD breathiness rho −0.46 to −0.62, VocalSet straight >
   breathy 0.83–0.96, both sexes), so the axis is real. They fail on leaks:
   - **vowels** (all candidates, both sexes): the within-speaker range over 12 vowels is 1.0–1.5× the
-    straight → breathy step for women and 2.1–3.9× for men (men's breathy step is about half of
-    women's in every measure);
+    straight → breathy step for women and 2.1–3.9× for men (on the 4 W / 5 M VocalSet test singers
+    men's breathy step is about half of women's in every measure; on the held-out VocalSet train
+    singers the steps are nearly equal — raw CPP 0.32 W / 0.31 M — so the men's vowel-leak ratio
+    rests on a small step estimate and the sex gap in vowel leak is probably overstated; §10);
   - **loudness and pitch** (b, c, d): within-speaker r with level 0.54–0.69 and with pitch 0.32–0.56
     on running speech;
   - **phone chain** (a): the pitch + level correction fixes pitch (r −0.07 / +0.14) and most of
@@ -588,6 +590,15 @@ Leaks are in units of |E|, the mean aspiration effect (none -> -11 dB) of the sa
 
 Steps are in each candidate's own units (CPP units for a/d, dB for b/c).
 
+Caveat (independent review, 2026-10-11): the steps above are from the 4 W / 5 M **test** singers. On
+the held-out VocalSet **train** singers (4 W / 6 M, scales, file medians per singer and vowel, real
+workers) the straight → breathy steps are nearly equal between the sexes: raw CPP 0.322 W / 0.312 M,
+CPPc 0.316 / 0.291, HVR6 7.63 / 6.28. The test-split men's step (0.192 for raw CPP) is therefore a
+small estimate, and the M6 ratios that divide by it (men 2.15–3.91) probably overstate the sex gap
+in vowel leak. The FAIL verdict does not depend on it: women fail B6 on their own (1.03–1.52), and
+the loudness / pitch leaks fail for both sexes. A future pre-registration should take the step from
+train + test singers or bootstrap it.
+
 ### M4 / M5 real-speech leaks: within-speaker r over 1-s bins (Fisher-z mean)
 
 LibriSpeech test-clean (binding), 20 W / 20 M speakers, 4992 common bins.
@@ -615,6 +626,9 @@ AVID subset level slope (reported): clarity change across each speaker's 5-95 % 
 | d CPP (ref) | +1.58 over 23 dB, +1.77 over 19 dB | +2.65 over 23 dB, +3.35 over 25 dB |
 
 ### M6 vowel leak (Hillenbrand, 48 W / 45 M, 12 vowels)
+
+Step = the M3 test-singer step (4 W / 5 M); see the caveat under M3 — the men's ratios rest on a
+small step estimate.
 
 | Candidate | Sex | median within-speaker range | step | range / step | median SD / step | lowest vowel (dev/step) | highest vowel (dev/step) |
 |---|---|---|---|---|---|---|---|
@@ -683,6 +697,37 @@ Coverage under the phone chain was 1.00 for every candidate (P1 and P3).
   `npm run test:resonance-lab`: 89 passed, 0 failed. `npm run build`: ok.
 - `scripts/cue-strip-smoke.mjs` on the built app: 80 / 80 at each of 448×890, 402×750, 360×690,
   890×360 and 1280×800 — the third row is "Clarity · approx." with ends breathier / clearer, no strip
-  text and no direction option says weight / lighter / heavier, the caveat line shows with the
-  caption in all four directions, clarity has no highlight in any direction, calibrating → live
+  text and no direction option says weight / lighter / heavier, the caveat shows in all four directions
+  (at b98a0e0 only with the caption, i.e. not at 890×360 — the smoke check passed there because it
+  accepted "caption and caveat both hidden"; fixed in the review round, see §10), clarity has no highlight in any direction, calibrating → live
   ≤ 45 s, layout (trace + strip in the first screen, no clipped header, popovers readable) unchanged.
+
+## 10. Independent review and fixes (2026-10-11)
+
+- **Pre-registration order confirmed** by an independent review: the fenced block in §6 hashes to
+  586f2a3908cd…2bc (= PREREG.sha256, recorded before any candidate result); the only post-hash
+  scoring change (median |shift| in the display rule) cannot change the decision.
+- **Held-out reproduction** (real pitch + DSP workers at b98a0e0, data the binding tests did not use:
+  AVID SENT sentences 4 W / 4 M clean and phone-like at 48 and 16 kHz, VocalSet train singers
+  4 W / 6 M, PVQD train split 41 W / 29 M). Raw CPP (what ships), women / men: PVQD breathiness rho
+  −0.47 / −0.65; straight > breathy 0.85 / 0.83; very loud − soft +2.04 / +1.53 steps (very loud
+  reads clearer for 8 of 8 speakers); within-speaker r with level 0.85 / 0.78 and with pitch
+  0.55 / 0.61; phone-like rank r 0.95–0.98, and under the phone-like AGC (level spread ~19 → 4.7 dB)
+  CPP still correlates 0.78–0.84 with true loudness, so "louder reads clearer" holds on phones too.
+  CPPc's phone collapse reproduces (rank r 0.50 W / −0.14 M; for men very loud reads breathier,
+  −0.65 step, 0 of 4 speakers clearer); HVR6's leaks reproduce (level r 0.89 / 0.71, pitch r
+  0.64 / 0.61). On sung VocalSet scales raw CPP's vowel range / step was 1.06 W / 0.70 M (see the
+  M3 caveat on the step).
+- **Fixes in this round:** (1) the caveat is now visible in short landscape (phone held sideways,
+  `(max-height: 480px) and (min-width: 640px)`, e.g. 890×360): the caption lines stay hidden there
+  for height, and a short form "· louder or higher reads clearer" (`data-clarity-note`) sits in the
+  clarity row's title line; the smoke test now requires the caveat at every viewport and includes
+  it in the clipped-header check. (2) ARCHITECTURE.md roadmap item 9 no longer describes the removed
+  weight zone as current. (3) The "men's step is about half" sentence is qualified (§1, M3, M6).
+  (4) `scripts/voice-direction-smoke.mjs` is marked stale (it still asserts the removed weight zone;
+  not in the unit-test runner; superseded by `scripts/cue-strip-smoke.mjs`).
+- **Checks after the fixes:** `npm run lint` clean; `npm run test:unit` 39 / 39; `npm run build` ok;
+  `scripts/cue-strip-smoke.mjs` 80 / 80 at each of 448×890, 402×750, 360×690, 890×360 and 1280×800,
+  with the caveat now required at every viewport (at 890×360 it reads "· louder or higher reads
+  clearer" in the clarity title line, not clipped) and the prereg block still hashing to
+  586f2a39…2bc.
