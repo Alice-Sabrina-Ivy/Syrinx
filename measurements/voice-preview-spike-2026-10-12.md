@@ -518,8 +518,159 @@ repo), with an `index.md`:
 
 ## Results
 
-Not yet run.
+**Status (2026-10-12, Build step):** the WebAssembly build and every parity check are done.
+Front-end selection (§P4), the desktop timing matrix (§P5), hum and noise (§P7), the listening
+set (§P9) and the phone session are not yet run. The verdict comes after the phone session.
+
+### Parity (§P3)
+
+**WebAssembly WORLD computes what pyworld 0.3.5 computes. Every Level 1, 2 and 3 criterion
+passes; the differences are float rounding (about 1e-12 or smaller).** So the prototype's
+WORLD findings carry over to the WebAssembly build.
+
+**Level 1, each stage on identical inputs.** 16 cases: the 8 prototype clips at 16 kHz and the
+4 timing clips at 5 s, at 22.05 and 24 kHz. CheapTrick's FFT size is 1024 at all three rates.
+
+| Stage | Pass if | Result | |
+|---|---|---|---|
+| DIO | ≥ 99.5 % of frames agree | 100 % of 18 096 frames; no disagreement; largest difference 7e-12 st | pass |
+| Harvest | ≥ 99.5 % of frames agree | 100 % of 18 096 frames; no disagreement; largest 1.3e-13 st | pass |
+| StoneMask | voicing identical; ≤ 0.001 st on ≥ 99.9 % | voicing identical on all frames; largest 1.2e-14 st | pass |
+| CheapTrick | ≤ 0.01 dB on ≥ 99.9 % | 100 % of 9 283 248 elements; largest 4.4e-9 dB | pass |
+| D4C | ≤ 1e-4 on ≥ 99.9 % | 100 %; largest 8.4e-12 | pass |
+| Warp | ≤ 1e-9 everywhere | 56 warps: largest \|Δ ln S′\| 2.2e-16, \|ΔA′\| 0 | pass |
+| Synthesis | SNR ≥ 60 dB per render | 232 renders: lowest 281.7 dB, median 303.8 dB; same lengths | pass |
+
+**Level 2, end to end at 16 kHz** (stored F0 grid → StoneMask → CheapTrick → D4C → warp →
+synthesis, before `finish`): 208 renders, SNR lowest 222.6 dB, median 283.0 dB. Pass (≥ 40 dB).
+
+**Level 3, Syrinx's meters on this branch** (208 finished renders per engine):
+
+| Meter | Pass if | Result | |
+|---|---|---|---|
+| Real pitch chain | clip median within 0.05 st; voicing agreement ≥ 98 % | medians identical on every render (largest difference 0.000 st); voicing agreement 100 % on every render | pass |
+| Lab VTLN meter | reading within 0.01 ln | largest difference 2.1e-8 ln; no missing readings | pass |
+| Prototype's 4 VTLN checks | same verdicts; each statistic within ±0.02 | both sets: slope 1.173, sign 0.938, monotonic 0.825, leak 0.154 G/oct, all four pass; largest difference 7e-8 | pass |
+
+The finished float32 renders are bit-identical on 87 of 208 renders. The rest differ by at most
+6e-8 (one float32 step), from the RMS match in `finish` (numpy vs JavaScript summation).
+
+**SIMD vs non-SIMD:** all 1 152 parity outputs (every Level 1 and 2 array and finished render)
+have identical sha256. So the non-SIMD build meets every criterion as well.
+
+**Browsers vs Node:** the output PCM of the identity cases (M01 at 16 kHz with F-L, F01 at 24 kHz
+with F-H, both WORLD; M01 PSOLA with F-L; 3 cells each; both builds) is bit-identical to Node's:
+18 of 18 in headless Chrome for Testing 154.0.8037.57 and 18 of 18 in headless Firefox 156.0.1.
+The phone is still to come.
+
+**PSOLA arm:** `lib/psola.js` reproduces all 208 of the prototype's stored PSOLA renders bit for
+bit (same clips, same stored grids, same cells).
+
+### Build (§P2a)
+
+- **WORLD:** mmorise/World `8d79b88b7dd92e8a132996cf74080b2d6f881b98`; `LICENSE.txt` sha256
+  `cb19c28611fcee6ce200c075a0e5bc91f0dcb0637985797b830990d2fe2fcffe`.
+- **emsdk:** 6.0.10, commit `a2b92777574c2feda07994cd4f1079a3dfc151f8`. emcc 6.0.10
+  (`d6c521a7f05449857c76bd99e396895583cf2083`), clang 24.0.0git (`a06d9165905c`), binaryen
+  version_132. The three archives it downloaded on Windows x64 (sha256):
+  - `666337b525e673e769121856d175f6f52b8ead64-wasm-binaries.zip` `6de0bf6bad8214a89dedafb5db3cdcfbdf8c395e421ba257e83cb21b77030931`
+  - `node-v24.19.0-win-x64.zip` `57f71ab3652e797d84acddc79c81cc9ff1c6ddb2a1974cdb83f00fee9bff4c73`
+  - `python-3.13.3-0-win-amd64.zip` `6fe7a540c6b8b185780467cf7495e884ee62316ec4abb19e1c735b8a77c62465`
+
+Command line (SIMD; the non-SIMD build drops `-msimd128`):
+
+```
+em++ -O3 -msimd128 -fno-exceptions -I<world>/src -ffile-prefix-map=<world>=world
+  -ffile-prefix-map=<repo>/scripts/voice-preview=vp -sMODULARIZE=1 -sEXPORT_ES6=1
+  -sEXPORT_NAME=createVpWorld -sENVIRONMENT=web,worker,node -sFILESYSTEM=0
+  -sALLOW_MEMORY_GROWTH=1 -sEXPORTED_FUNCTIONS=_malloc,_free,_vp_version,_vp_dio_frames,
+  _vp_harvest_frames,_vp_dio,_vp_harvest,_vp_stonemask,_vp_cheaptrick_fft_size,_vp_cheaptrick,
+  _vp_d4c,_vp_warp,_vp_synthesis_length,_vp_synthesize -sEXPORTED_RUNTIME_METHODS=HEAPF64
+  scripts/voice-preview/wasm/vp_world.cpp <world>/src/{cheaptrick,common,d4c,dio,fft,harvest,
+  matlabfunctions,stonemask,synthesis}.cpp -o vp_world.mjs
+```
+
+| File | sha256 | raw | gzip −9 | brotli q11 |
+|---|---|---|---|---|
+| SIMD `.wasm` | `fa3a29cf0ef75145ebe7fa6ab2b5dfa526ce9d1e5eb1a6409f291e863a7d3a25` | 115 874 B | 53 415 B | 46 038 B |
+| non-SIMD `.wasm` | `09cf5e8ae0bb2d4ae1fb11eb2e11a32fddd3a94f767365bad47c84b40e33598d` | 111 276 B | 51 502 B | 43 736 B |
+| glue `.mjs` (same for both) | `5e7a7a209e4a88ceb765a8d5c64cf2af33ad5abe8700cd38071d2ed117d988c5` | 7 747 B | 2 675 B | 2 405 B |
+
+- **Reproducible:** a second build from clean output folders, with a fresh Emscripten
+  system-library cache, gave byte-identical `.wasm` and glue for both builds.
+- **WebAssembly features** (binaryen; the smallest set each module validates with):
+  SIMD build: bulk memory (`memory.copy` / `memory.fill`), non-trapping float-to-int, SIMD128.
+  Non-SIMD build: bulk memory, non-trapping float-to-int. Neither uses threads, exception
+  handling, GC, memory64, relaxed SIMD, tail calls, multi-value or reference types.
+- **Linked runtime:** Emscripten's libc (musl-based), dlmalloc, compiler-rt builtins and the
+  no-exceptions libc++ / libc++abi (for `new` / `delete`).
+- **Memory:** 23 MB after analysing 5 s at 16 kHz, 28 MB at 24 kHz, 40–46 MB after 8 s at 24 kHz
+  (Node; F-H and F-L).
+- **What is committed:** code only. The `.wasm` is not committed (§P10); `build.mjs` rebuilds it
+  byte for byte. `scripts/voice-preview/README.md` lists the notices a later phase must add if it
+  commits or ships the module.
+
+**Browsers for the timing runs** (under `VP_CACHE/browsers`):
+
+- Chrome for Testing **154.0.8037.57**. Archive `chrome-win64.zip` sha256
+  `676f51fb82608330db5510ffba53d9e2762d3d7a99464afce54f9e9e25ad6bf7`; the installed
+  `chrome.exe` is the archive's (sha256 `6b5da320179b656aefdb74ff10bc0bd33ba8d5ea869347e04e0a6b2bdd815e96`).
+  Chrome for Testing builds are not code-signed.
+- Firefox **156.0.1**. Installer sha256
+  `e69ff3fb4c585f88c947a673dedcfa6c346a5092881a6e6b618005821030bc67`, equal to Mozilla's
+  `SHA256SUMS`; Authenticode signature valid (Mozilla Corporation).
+
+### Timing page smoke run (not the pre-registered matrix)
+
+The page, Worker and driver work end to end in both desktop browsers: 28 runs in headless Chrome
+(one run per cell; 5 s; M01 and F01; 16 and 24 kHz; every block) and 6 in headless Firefox,
+with no errors. A fresh browser context per run (`--per-run-context`) also works. The numbers
+below are single runs on a shared machine and are **not** results:
+
+| Headless Chrome, 5 s, 16 kHz | C0 | cold G1 | G2 (median of 40) |
+|---|---|---|---|
+| WORLD SIMD, F-L | 0.06 s | 0.69 s | 0.13 s |
+| WORLD SIMD, F-S | 0.03 s | 0.39 s | 0.14 s |
+| WORLD SIMD, F-D | 0.04 s | 0.47 s | 0.14 s |
+| WORLD SIMD, F-H | 0.04 s | 2.18 s | 0.14 s |
+| PSOLA, F-L | 0.07 s | 0.57 s | 0.19 s |
+
+### Note for the next steps: the timing clips are mostly silence
+
+PTDB-TUG sentence files carry about 2.5 s of silence before and after the speech. With §P1's rule
+(files joined with their own silence kept, then cut from the start), the 3 s cuts are almost all
+silence: 0, 7, 0 and 2 voiced 25 ms hops for M01, M02, F01 and F02 (posted by the real pitch
+worker). The 5 s cuts hold 57–72 voiced hops (about 1.4–1.8 s) and the 8 s cuts 71–76. WORLD's
+cost barely depends on content, but the 3 s numbers for F-S and F-L, and the 5 s listening clips,
+are not typical of a real recording, which starts near the speech. The rule is unchanged here;
+the next step should decide whether to keep it.
 
 ## Deviations from the plan
 
-None yet.
+All dated 2026-10-12 (Build step).
+
+1. **WORLD source folder:** `VP_CACHE/world-src/` instead of `…/world/`, as the Build task asked.
+   No effect on the build.
+2. **Firefox install:** `@puppeteer/browsers` 2.13.0 reported Firefox 156.0.1 as installed but left
+   an empty folder. Its unpack step runs the installer through a shell without quoting the
+   extract path, and the cache path contains a space. The same Mozilla-signed installer was
+   extracted the same way (`/ExtractDir=`) by hand, after checking its sha256 against Mozilla's
+   list and its signature. Chrome for Testing was installed by `@puppeteer/browsers` as planned.
+3. **Browser version rule, as applied:** Chrome for Testing 154.0.8037.57 was first served on the
+   Windows stable channel on 2026-09-22 (a 10–25 % rollout); 154.0.8037.92 first appeared on
+   2026-09-29, 13 days before the run. On 2026-09-28 most users were still on Chrome 153.
+   Firefox 156.0.1 was released on 2026-09-22; 157.0 (2026-09-29) is too new.
+4. **Fresh context for C0:** within one page load, each run gets a fresh Worker, a unique query
+   string on the Worker, glue and `.wasm`, and `no-store` responses. A fresh browser context per
+   run is available on desktop Chrome (`--per-run-context`). Android Chrome may not allow extra
+   browser contexts over CDP; if not, the phone uses the in-page form.
+5. **PSOLA's front end (§P2b, clarified):** PSOLA uses the front end without StoneMask (WORLD's
+   refinement step), on its 10 ms grid: F-L is the replica's own grid (exactly the prototype's
+   PSOLA input); F-S is mapped to the grid times by the F-S rule; F-H and F-D take WORLD frame
+   2j + 1.
+6. **Level 1 at 22.05 / 24 kHz, StoneMask's initial F0 (not specified in the plan):** the lab
+   replica's grid on the 48 kHz clip (this branch), mapped to 5 ms frames by the prototype's
+   rule.
+7. **F-S mapping, a note:** with nearest-hop rounding the nearest hop is always within 12.5 ms,
+   so the 18.75 ms limit never binds. The rule is implemented as written (numpy's
+   round-half-even included).
