@@ -39,6 +39,9 @@ is the date of the user decision this note implements (2026-10-08, decision 2).
     - NAQ+ClQ breaks under a 120 Hz roll-off in men (+5.4 steps per octave; clean-vs-phone r 0.56);
     - two NAQ+ClQ constants were fitted on PTDB-TUG (ODbL);
     - v5 is licence-clean and has the only contact signal whose CI excludes zero (women only);
+      **Correction (2026-10-11 review, §8):** not the only one — the plain level meter's CI also
+      excludes zero in women (+0.11 [+0.08, +0.15]; its best package +0.12 [+0.08, +0.16]), so v5's
+      women contact signal (+0.13 [+0.07, +0.19]) cannot be told apart from loudness;
     - v5's device leak is 6× smaller and v5 brings its own clarity head.
 - **This prototype follows the recommendation (v5).** The rule's pick would need its PTDB-fitted
   constants refitted before it could ship in any form.
@@ -84,6 +87,9 @@ Unit: one *weight step* = the detector's median change on the teachers' weight-o
 
 - The only CI-positive contact signal at fixed loudness is v5 in women. Men show none for any
   detector.
+- **Correction (2026-10-11 review, §8):** the plain level meter is CI-positive in women too
+  (+0.11 [+0.08, +0.15] vs v5 +0.13 [+0.07, +0.19]); v5 does not follow contact better than a
+  loudness meter. Men: v5 −0.04, level meter +0.04.
 - The loudness slope is larger in men for every spectral detector.
 - The read-speech bench said the opposite (men carried the signal). Neither data set gives a
   both-sex contact signal at fixed loudness.
@@ -157,6 +163,9 @@ Unit: one *weight step* = the detector's median change on the teachers' weight-o
     one teacher step for a typical voice.
   - Expected display noise after the 3-bin median: ≈ 0.6 units.
   - The ±1 band therefore means what the spec intends: "changes smaller than this are noise".
+  - **Correction (2026-10-11 review, §8):** measured, the 3-bin display noise is ≈ 0.77 units per
+    axis on AVID, and the ±1 box is left by chance by ~37 % of displayed readings (either axis). The
+    box is widened to ±2 units (§8).
 - **No constant is fitted on AVID.** The voice map is per user. AVID results are cited in §2 under
   CC BY 4.0: M. Kodali, P. Alku, S. R. Kadiri, *AVID: Aalto Vocal Intensity Database*, Zenodo,
   doi:10.5281/zenodo.10524873, licensed CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/).
@@ -389,3 +398,80 @@ is too noisy to support more than "of the order of the Node figure or below".
 
 AVID results in §2: M. Kodali, P. Alku, S. R. Kadiri, *AVID: Aalto Vocal Intensity Database*, Zenodo,
 doi:10.5281/zenodo.10524873, CC BY 4.0.
+
+## 8. Review fixes (2026-10-11) — plan, written before the code changes
+
+An independent review of `weight-lab` at 6b56b9a reproduced the port and the AVID numbers exactly and
+confirmed isolation and licences. It found the caveat text and the noise box wrong in places, and a
+few logic gaps. Numbers below are from the sceptic's existing AVID outputs (12 W + 12 M test speakers,
+clean, medians over speakers), recomputed for this note.
+
+**A. Measurements behind the text and display changes**
+
+| quantity (AVID test, clean; women / men) | value | source |
+|---|---|---|
+| v5 partial r(W, contact given F0, level) | +0.13 [+0.07, +0.19] / −0.04 [−0.14, +0.06] | sceptic report |
+| plain level meter, same | +0.11 [+0.08, +0.15] / +0.04 [−0.01, +0.09] | sceptic report |
+| v5 clarity head: partial r with level at fixed contact, pitch | +0.33 / +0.32 | per-speaker medians |
+| v5 clarity head: r with level | +0.58 / +0.60 | per-speaker medians |
+| v5 clarity head: change per +10 dB (head units; between-bin SD 0.45 / 0.38) | +0.38 / +0.34 | per-speaker medians |
+| v5 weight: change per octave at fixed contact, level (teacher steps) | −1.54 / −1.34 | per-speaker medians |
+| v5 vowel range across 12 Hillenbrand hVd words (teacher steps) | 7.97 / 7.34 | §2 (ii) |
+| one own-SD unit in teacher steps (weight) | 0.87 / 0.74 | display simulation below |
+
+**Display simulation** (the shipped scheme on each AVID test speaker: 2 st × 4 dB cells from the first
+half of the recording, ≥ 5 bins per cell, pooled within-cell SD as the unit, median of 3 bins scored on
+the second half; cells already match pitch and loudness, so any departure is chance):
+
+| | women | men |
+|---|---|---|
+| 1-bin reading SD (units; weight / clarity) | 1.09 / 1.05 | 1.09 / 1.05 |
+| 3-bin display SD (units; weight / clarity) | 0.76 / 0.78 | 0.77 / 0.76 |
+| displayed readings outside the box by chance, box ±1 (either axis) | 36.5 % | 36.9 % |
+| box ±1.5 | 13.5 % | 11.4 % |
+| **box ±2** | **3.0 %** | **2.5 %** |
+
+So the box becomes ±2 units, labelled as typical chance spread ("about 1 reading in 30 lands outside
+it with no real change, in tests"). This is clean studio audio of read text; a real room and a
+different text will be noisier.
+
+**B. Changes (code follows this note)**
+
+1. **Caveats** (view text), replaced with measured statements:
+   - women / men: "In tests it did not follow vocal-fold contact any better than a plain loudness
+     meter (women +0.13 vs +0.11; men −0.04)";
+   - clarity: louder reads clearer (AVID partial r +0.33 / +0.32 at fixed contact); every similar
+     clarity measure in the clarity study also moved with the vowel by about a clear → breathy step
+     (men 2–4×); the clarity head has not passed the clarity study's bar;
+   - vowels: about 8 units between vowels in tests (words, not only held vowels); compare with the
+     same sentences you mapped with;
+   - pitch: higher pitch reads lighter (in tests ~1.3–1.5 light/heavy demonstration steps per octave),
+     which is why it compares only within 2-semitone bands;
+   - gain control: the browser can report only its own gain control; the system or a headset may
+     still compress loudness.
+2. **Noise box** ±1 → ±2 units, relabelled (A).
+3. **Measured gain-control check.** At the end of mapping, if the "a little softer" and "a little
+   louder" prompts each gave ≥ 5 mapped bins and their median levels differ by < 4 dB, the map is
+   marked "compression suspected" and readings stay off (reason shown, with the measured dB). If either
+   prompt has < 5 bins the check is "not done" and shown as such. The 4 dB threshold is a heuristic,
+   not measured: AVID's phone-like AGC squeezed a ~19 dB soft-to-very-loud spread to ~4.7 dB, so a
+   "little" softer-to-louder change under compression should fall well below 4 dB, while an
+   uncompressed deliberate change should exceed it.
+4. **Microphone identity.** The map stores the track's label and groupId as well as its deviceId.
+   A map is reused only when the labels match (and, when both deviceIds are real ids, they match);
+   `default`, `communications` or an empty deviceId is treated as unknown. Chrome's default-device
+   label names the physical microphone, so switching the system default is caught.
+5. **Stale display.** Starting a new mapping clears the reading, the readings and the trail; the
+   snapshot shows a reading only in the mapped phase; trail points older than 10 s are dropped on
+   every closed bin and in the snapshot.
+6. **Readout wording:** "Light↔heavy sound −0.3 · Breathy↔clear +2.0 (your units)"; the name
+   "Weight × clarity" stays only with the experimental tag.
+7. **Short landscape** (height < 30rem and width ≥ 40rem, e.g. 890×360): the plot sits beside the
+   header and readouts at a smaller size so it is in the first screen.
+8. **lab-smoke run 5:** requires ≥ 1 readable bin after mapping and reports the readable share; the
+   viewport check also requires the plot to be fully visible vertically (above the Stop Listening row)
+   at scroll position 0.
+
+**Not changed (rejected or deferred):** none of the review's findings is rejected. The process hazard
+it reports (a failed junction removal followed by `git worktree remove` deleting the shared
+`node_modules`) is a workflow issue, not a code issue; it is reported to the user.
