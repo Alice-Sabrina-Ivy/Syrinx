@@ -34,9 +34,10 @@
 //   (spectral warp) shows the direction as an outline only — never judged,
 //   since its absolute position shifts with the microphone and room
 //   (resonanceTargetFor below).
-//   No vocal-weight target (2026-10-11): the third cue-strip row measures
-//   clarity (CPP: clear <-> breathy), not weight, and has no zone in any
-//   direction (measurements/clarity-cue-2026-10-08.md).
+//   No vocal-weight target (2026-10-11): CPP measures clarity (clear <->
+//   breathy), not weight; the clarity row had no zone in any direction and
+//   is hidden from the cue strip since 2026-10-11 (user decision, the
+//   clarity study failed — measurements/clarity-cue-2026-10-08.md).
 //   **Historical (superseded 2026-10-11):** feminine = the lighter side
 //   (σ ≥ +0.5), masculine = the heavier side (σ ≤ −0.5) of the CPP
 //   baseline, with a pitch-confound note — based on a misread of Aaen et

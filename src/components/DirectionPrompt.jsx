@@ -6,8 +6,9 @@
 // in the settings panel, which renders the same DirectionOptions. Every
 // option looks the same — only the targets behind them differ (a pitch
 // band for the first three, plus the resonance cue's outline; the
-// vocal-weight sides were removed 2026-10-11 — the row measures clarity
-// and has no target, measurements/clarity-cue-2026-10-08.md).
+// vocal-weight sides were removed 2026-10-11 — CPP measures clarity, not
+// weight, and the clarity row itself is hidden since 2026-10-11,
+// measurements/clarity-cue-2026-10-08.md).
 //
 // A real modal: App makes everything behind it inert while it is open
 // (no focus, no clicks — the microphone can't be started and Settings

@@ -17,19 +17,18 @@
 //                   popover whose text wraps inside it (scrollWidth <=
 //                   clientWidth) and that is on top at its centre and inside
 //                   the viewport. Pitch live <= 3 s; resonance warming ->
-//                   settling -> live (live <= 12 s); clarity calibrating -> live
-//                   (<= 45 s); pitch and clarity trails reach 8 dots, resonance's 3 (one per 2 s).
-//                   CLARITY (2026-10-11, measurements/clarity-cue-2026-10-08.md):
-//                   the third row is "Clarity · approx." with ends breathier /
-//                   clearer, no strip text and no direction option says
-//                   weight / lighter / heavier, and the caveat is shown in every
-//                   direction at every viewport (a line under the strip; in
-//                   short landscape, where the caption lines are dropped, a
-//                   short form in the clarity row's title line). Settings:
-//                   masculine / feminine / androgynous / exploring — each
-//                   cue's highlight range per the spec table (clarity: none in
-//                   any direction), the same fill / stroke in every direction,
-//                   none for exploring. Heard-as:
+//                   settling -> live (live <= 12 s); the pitch trail reaches 8
+//                   dots, resonance's 3 (one per 2 s).
+//                   TWO ROWS (2026-10-11 user decision, the clarity study
+//                   failed — measurements/clarity-cue-2026-10-08.md): exactly
+//                   the pitch and resonance rows, no clarity / weight row, no
+//                   clarity caveat line, no strip text and no direction option
+//                   says weight / lighter / heavier / clarity / breathier.
+//                   Settings: masculine / feminine / androgynous / exploring —
+//                   each cue's highlight range per the spec table, the same
+//                   fill / stroke in every direction, none for exploring.
+//                   The first-screen layout is re-checked with the panel on.
+//                   Heard-as:
 //                   off at first visit (no gender worker); turned on in the
 //                   panel -> the worker starts, Settings' switch agrees, three
 //                   ranges appear with no "%" in the panel; reload -> still on;
@@ -212,6 +211,7 @@ const state = (page) => page.evaluate(() => {
     listening: document.body.innerText.includes("Stop Listening"),
     stripText: document.querySelector("[data-cue-strip]")?.textContent ?? "",
     clarityNote: document.querySelector("[data-clarity-note]")?.textContent ?? null,
+    cues: [...document.querySelectorAll("[data-cue]")].map((e) => e.dataset.cue),
     caption: !!document.querySelector("[data-cue-caption]"),
     weightNote: !!document.querySelector("[data-weight-note]"),
   };
@@ -224,7 +224,7 @@ const layout = (page) => page.evaluate(() => {
   window.scrollTo(0, 0);
   const r = (sel) => { const e = document.querySelector(sel); if (!e) return null; const b = e.getBoundingClientRect(); return { top: Math.round(b.top), bottom: Math.round(b.bottom), left: Math.round(b.left), right: Math.round(b.right) }; };
   const trace = r("[data-pitch-trace-box]"), strip = r("[data-cue-strip]");
-  const clipped = [...document.querySelectorAll("[data-cue-strip] [data-cue-title], [data-cue-strip] [data-cue-value], [data-cue-strip] [data-clarity-note]")]
+  const clipped = [...document.querySelectorAll("[data-cue-strip] [data-cue-title], [data-cue-strip] [data-cue-value]")]
     // vertically only where the box clips vertically (overflow-x: clip leaves y visible)
     // only boxes that clip can cut text off: overflow-x: clip (titles, text
     // values) horizontally, and vertically only where overflow-y clips too
@@ -232,6 +232,7 @@ const layout = (page) => page.evaluate(() => {
       return (cs.overflowX !== "visible" && e.scrollWidth > e.clientWidth + 1) || (cs.overflowY !== "visible" && e.scrollHeight > e.clientHeight + 1); })
     .map((e) => e.textContent);
   return { vh: innerHeight, vw: innerWidth, trace, strip, scrollW: document.documentElement.scrollWidth, clipped,
+    scrollH: Math.max(document.documentElement.scrollHeight, ...[...document.querySelectorAll("main, [data-dashboard]")].map((e) => e.scrollHeight)),
     panel: r("[data-heard-as]"), session: r("[data-session-row]") };
 });
 const inView = (b, L) => b && b.top >= 0 && b.bottom <= L.vh && b.left >= 0 && b.right <= L.vw;
@@ -367,10 +368,10 @@ const SPEC_HL = {
   // feminine / masculine: the cue's readout bands (cue-bands.json);
   // androgynous: between the per-speaker bands (reference.json).
   resonance: { feminine: [0.574, 1.39], masculine: [-0.582, 0.48], androgynous: [0.288, 0.654] },
-  // clarity: no target in any direction (measurements/clarity-cue-2026-10-08.md)
-  clarity: { feminine: null, masculine: null, androgynous: null },
 };
 const WEIGHT_WORDS = /weight|lighter|heavier/i;
+// The hidden clarity row's words (2026-10-11): none may reach the strip.
+const CLARITY_WORDS = /clarity|breathier|clearer/i;
 
 log("preview server");
 await startServer();
@@ -390,19 +391,18 @@ await sleep(600);
   check("layout: whole cue strip in the first screen", inView(L.strip, L), `${JSON.stringify(L.strip)} vh ${L.vh}`);
   check("layout: no horizontal page scroll", L.scrollW <= L.vw, `${L.scrollW} vs ${L.vw}`);
   check("layout: no clipped strip header text", L.clipped.length === 0, L.clipped.join(" | "));
-  log(`  trace ${L.trace?.top}-${L.trace?.bottom}, strip ${L.strip?.top}-${L.strip?.bottom}, panel ${L.panel?.top}-${L.panel?.bottom}, session ${L.session?.top}-${L.session?.bottom}, vh ${L.vh}`);
+  log(`  panel off: trace ${L.trace?.top}-${L.trace?.bottom}, strip ${L.strip?.top}-${L.strip?.bottom}, panel ${L.panel?.top}-${L.panel?.bottom}, session ${L.session?.top}-${L.session?.bottom}, vh ${L.vh}, scrollH ${L.scrollH}`);
 }
 // Info popovers (the honest caveats live there): readable and visible.
 {
   const s = await state(page);
-  const c = s.rows.clarity;
-  check("clarity row: title 'Clarity · approx.', ends breathier / clearer", !!c && c.title === "Clarity · approx."
-    && /breathier/.test(s.stripText) && /clearer/.test(s.stripText) && !s.rows.weight, `${c?.title}`);
+  check("cue strip: exactly two rows, pitch and resonance (clarity hidden 2026-10-11)", s.cues.join() === "pitch,resonance", s.cues.join());
   check("cue strip: no weight / lighter / heavier text", !WEIGHT_WORDS.test(s.stripText), (s.stripText.match(WEIGHT_WORDS) ?? [""])[0]);
-  check("clarity caveat shown (line under the strip; in the clarity title line in short landscape), never the old weight note",
-    !s.weightNote && /louder or higher/.test(s.clarityNote ?? ""), `${s.clarityNote}`);
+  check("cue strip: no clarity text, no clarity caveat line, no weight note", !CLARITY_WORDS.test(s.stripText) && s.clarityNote === null && !s.weightNote,
+    (s.stripText.match(CLARITY_WORDS) ?? [""])[0]);
+  check("no 'About the clarity cue' toggle", !(await page.evaluate(() => [...document.querySelectorAll("[data-cue-strip] button")].some((b) => b.getAttribute("aria-label") === "About the clarity cue"))));
 }
-for (const label of ["About the pitch cue", "About the resonance cue", "About the clarity cue", "What does steadiness measure?"]) {
+for (const label of ["About the pitch cue", "About the resonance cue", "What does steadiness measure?"]) {
   const r = await probePopover(page, label);
   check(`info popover '${label}': opens, text wraps inside it, on top, inside the viewport`,
     r.found && r.open && r.wraps && r.onTop && r.inViewport, JSON.stringify(r));
@@ -421,17 +421,18 @@ for (const label of ["About the pitch cue", "About the resonance cue", "About th
 }
 // speech: states over time
 {
-  const seen = { pitch: new Set(), resonance: [], clarity: new Set() };
+  const seen = { pitch: new Set(), resonance: [] };
   const tLive = {};
-  const maxTrail = { pitch: 0, resonance: 0, clarity: 0 };
-  let clarityLiveAt = null;
-  let weightWordsLive = 0;
+  const maxTrail = { pitch: 0, resonance: 0 };
+  let weightWordsLive = 0, clarityWordsLive = 0, extraRows = 0;
   let hollowBad = 0, hollowSeen = 0;
   await sample(page, 75000, (s, t) => {
     const pr = s.rows.pitch;
     if (pr?.dot) { if (pr.hollow) hollowSeen++; if (pr.hollow !== /higher|lower/.test(pr.word ?? "")) hollowBad++; }
     if (WEIGHT_WORDS.test(s.stripText)) weightWordsLive++;
-    for (const cue of ["pitch", "resonance", "clarity"]) {
+    if (CLARITY_WORDS.test(s.stripText)) clarityWordsLive++;
+    if (s.cues.join() !== "pitch,resonance") extraRows++;
+    for (const cue of ["pitch", "resonance"]) {
       const r = s.rows[cue];
       if (!r) continue;
       if (r.state === "live" && tLive[cue] === undefined) tLive[cue] = t;
@@ -439,22 +440,16 @@ for (const label of ["About the pitch cue", "About the resonance cue", "About th
       if (cue === "resonance") { if (seen.resonance[seen.resonance.length - 1] !== r.state) seen.resonance.push(r.state); }
       else seen[cue].add(r.state);
     }
-    if (s.rows.clarity?.state === "live" && clarityLiveAt === null) clarityLiveAt = t;
-    return tLive.pitch !== undefined && tLive.resonance !== undefined && clarityLiveAt !== null
-      && maxTrail.pitch >= 8 && maxTrail.resonance >= 3 && maxTrail.clarity >= 8;
+    return tLive.pitch !== undefined && tLive.resonance !== undefined
+      && maxTrail.pitch >= 8 && maxTrail.resonance >= 3;
   });
   check("pitch dot live within 3 s", tLive.pitch !== undefined && tLive.pitch <= 3, `${tLive.pitch?.toFixed(1)} s`);
   const rs = seen.resonance.join(">");
   check("resonance warming -> settling -> live", /warming.*settling.*live/.test(rs), rs);
   check("resonance live within 12 s", tLive.resonance !== undefined && tLive.resonance <= 12, `${tLive.resonance?.toFixed(1)} s`);
-  check("clarity calibrating, then live within 45 s", seen.clarity.has("calibrating") && clarityLiveAt !== null && clarityLiveAt <= 45, `${clarityLiveAt?.toFixed(1)} s`);
-  check("trail reaches 8 dots on pitch and clarity, 3 on resonance (one per 2 s of live speech)", maxTrail.pitch >= 8 && maxTrail.resonance >= 3 && maxTrail.clarity >= 8, JSON.stringify(maxTrail));
-  {
-    const s = await state(page);
-    check("clarity header (live): 'about where you started' or 'N σ clearer / breathier than your start'",
-      /^(about where you started|\d+\.\d σ (clearer|breathier) than your start|—)$/.test(s.rows.clarity?.header ?? "") && weightWordsLive === 0,
-      `${s.rows.clarity?.header}; weight words seen ${weightWordsLive}×`);
-  }
+  check("trail reaches 8 dots on pitch, 3 on resonance (one per 2 s of live speech)", maxTrail.pitch >= 8 && maxTrail.resonance >= 3, JSON.stringify(maxTrail));
+  check("while live: two rows only, never clarity / weight words in the strip", extraRows === 0 && clarityWordsLive === 0 && weightWordsLive === 0,
+    `extra rows ${extraRows}x, clarity words ${clarityWordsLive}x, weight words ${weightWordsLive}x`);
   check("pitch off target: hollow dot exactly when the row says higher / lower (not colour alone)", hollowBad === 0, `${hollowBad} mismatches, ${hollowSeen} hollow samples`);
   await shot(page, "02-woman-live-masculine");
 }
@@ -467,10 +462,10 @@ for (const label of ["About the pitch cue", "About the resonance cue", "About th
     await closeSettings(page);
     await sleep(600);
     const s = await state(page);
-    check(`${dir}: clarity caveat line shown (same in every direction), no weight note`,
-      !s.weightNote && /louder or higher/.test(s.clarityNote ?? ""), `${s.clarityNote}`);
-    check(`${dir}: no weight / lighter / heavier text in the strip`, !WEIGHT_WORDS.test(s.stripText));
-    for (const cue of ["pitch", "resonance", "clarity"]) {
+    check(`${dir}: two rows, no clarity caveat / weight note, no weight or clarity words in the strip`,
+      s.cues.join() === "pitch,resonance" && s.clarityNote === null && !s.weightNote && !WEIGHT_WORDS.test(s.stripText) && !CLARITY_WORDS.test(s.stripText),
+      `${s.cues.join()} / ${s.clarityNote}`);
+    for (const cue of ["pitch", "resonance"]) {
       const r = s.rows[cue];
       const want = dir === "exploring" ? null : SPEC_HL[cue][dir];
       if (want === null) {
@@ -508,6 +503,12 @@ for (const label of ["About the pitch cue", "About the resonance cue", "About th
   check("heard-as: no verdict word", shown && !/likely (a )?(man|woman)|likely heard as a/i.test(s.heardAs.text.replace("Likely heard as", "")));
   await shot(page, "04-heard-as-woman");
   log(`  axis: ${JSON.stringify(s.heardAs?.axis)}`);
+  // First-screen layout with the panel ON (the two-row strip must still fit).
+  const L = await layout(page);
+  check("layout (panel on): pitch trace and whole cue strip in the first screen, no horizontal scroll, no clipped header",
+    inView(L.trace, L) && inView(L.strip, L) && L.scrollW <= L.vw && L.clipped.length === 0,
+    `trace ${JSON.stringify(L.trace)} strip ${JSON.stringify(L.strip)} vh ${L.vh} scrollW ${L.scrollW} clipped ${L.clipped.join(" | ")}`);
+  log(`  panel on: trace ${L.trace?.top}-${L.trace?.bottom}, strip ${L.strip?.top}-${L.strip?.bottom}, panel ${L.panel?.top}-${L.panel?.bottom}, session ${L.session?.top}-${L.session?.bottom}, vh ${L.vh}, scrollH ${L.scrollH}`);
 }
 // reload: persists
 {
@@ -659,7 +660,7 @@ for (const kind of ["noise", "silence"]) {
   let dots = 0, shownEver = false, n = 0;
   await sample(page, 8000, (s) => {
     n++;
-    for (const cue of ["pitch", "resonance", "clarity"]) if (s.rows[cue]?.dot) dots++;
+    for (const cue of ["pitch", "resonance"]) if (s.rows[cue]?.dot) dots++;
     if (s.heardAs?.mode === "shown") shownEver = true;
   });
   check(`${kind}: no dot on any row after the 5 s hold`, dots === 0, `${dots} dot-samples / ${n}`);

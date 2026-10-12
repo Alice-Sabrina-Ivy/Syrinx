@@ -1,11 +1,12 @@
-// CueStrip.jsx — the Dashboard's three graded cues (Design A "cue strip",
-// 2026-10-07): Pitch, Resonance · approx. and Clarity · approx. (CPP,
-// clear <-> breathy; the "Vocal weight" row until 2026-10-11 —
-// measurements/clarity-cue-2026-10-08.md), each on one neutral axis
-// (pitch and resonance: typically-men end on the left, with bands for
-// typical adult speakers; clarity: breathier <-> clearer against your own
-// start, no bands), a dot for the current value and a trail so movement is
-// visible. Answers "how do I come across" and "what to change" at a glance;
+// CueStrip.jsx — the Dashboard's graded cues (Design A "cue strip",
+// 2026-10-07): Pitch and Resonance · approx., each on one neutral axis
+// (typically-men end on the left, with bands for typical adult speakers),
+// a dot for the current value and a trail so movement is visible. The third
+// row (Clarity · approx., CPP; "Vocal weight" until 2026-10-11) is HIDDEN
+// since 2026-10-11 (user decision): the clarity study failed
+// (measurements/clarity-cue-2026-10-08.md), so the strip shows no clarity or
+// weight row until a measure passes its test, and the CPP pipeline behind it
+// is retired (measurements/vocal-weight-pipeline-retire-2026-10-11.md). Answers "how do I come across" and "what to change" at a glance;
 // replaces the Perceived-voice bar, the F2 readout and the stats row.
 //
 // Geometry, the direction highlight, colours, the trails, the row states,
@@ -24,9 +25,7 @@
 // and off target it is also hollow and the row says "↑ higher" / "↓ lower"
 // (not colour alone); resonance shows the direction as an outline only —
 // its absolute position is approximate across microphones and rooms
-// (measurements/resonance-cue-production-path-2026-10-07.md §8); clarity
-// has no direction highlight at all (no target in any direction) and a
-// visible caveat (CLARITY_NOTE): loudness and pitch move it too.
+// (measurements/resonance-cue-production-path-2026-10-07.md §8).
 // Review fixes: measurements/cue-strip-review-fixes-2026-10-07.md.
 
 import { memo, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -49,8 +48,6 @@ import {
   rowValue,
   ticks,
   trailOpacity,
-  clarityHeader,
-  clarityRowState,
   RESONANCE_TRAIL,
   TRAIL_EVERY_MS,
 } from "./cueStripModel";
@@ -108,24 +105,6 @@ const RESONANCE_INFO =
   "microphones fell, so even typical speakers' dots land outside their band about 1 time in 5. Your microphone, " +
   "room and distance shift the whole scale, so trust how the dot moves more than where it sits. What you say moves it too, so judge a change over " +
   "tens of seconds, not sentence by sentence. The trail shows the last ~30 s.";
-// Clarity (2026-10-11): raw CPP renamed to what it measures. A pre-registered
-// test of pitch- and loudness-corrected measures failed, so the caveats are
-// the reading's measured leaks (measurements/clarity-cue-2026-10-08.md).
-const CLARITY_INFO =
-  "How clear or breathy your voice sounds: how steady and periodic it is, from its cepstral peak prominence (CPP) " +
-  "over about your last 5 s of voiced speech. Clearer = less breathy or noisy. It is not vocal weight (this row used " +
-  "to be labelled that way; testing showed CPP doesn't measure weight). It is relative to your own voice: the first " +
-  "30 s of speaking in each session set your start, and σ says how far you are from it — a breathy or quiet start " +
-  "makes later speech read clearer. It is approximate: speaking louder or higher also reads clearer, and some vowels " +
-  "read clearer than others, so compare readings at a similar loudness and pitch on similar material. It has no " +
-  "target: no reading is better or worse for any goal. It wobbles by about ±0.3 σ even when your voice doesn't change.";
-const CLARITY_DIRECTION_NOTE = "No target for clarity — it reads the same for every goal.";
-// Shown under the strip in every direction (replaces the weight pitch note).
-const CLARITY_NOTE = "Clarity: louder or higher speech also reads clearer — compare at a similar loudness and pitch.";
-// Short landscape (phone held sideways) drops the caption lines for height, so
-// the caveat moves into the clarity row's title line instead (no extra height).
-const CLARITY_NOTE_SHORT = "louder or higher reads clearer";
-
 function directionNote(cue, direction) {
   if (!direction || direction === "exploring") return null;
   if (cue === "pitch") {
@@ -213,13 +192,13 @@ function Label({ x, y, anchor = "start", fs, children }) {
 }
 
 // The axis end words (module constants: stable props for the memoised rows).
-const ENDS = { pitch: ["lower", "higher"], resonance: ["darker", "brighter"], clarity: ["breathier", "clearer"] };
+const ENDS = { pitch: ["lower", "higher"], resonance: ["darker", "brighter"] };
 
 // Memoised: every prop is a primitive or a stable object (CueStrip memoises
 // bands, highlights, the info and pitch header elements; a trail array is
 // replaced only when it changes), so a row re-renders only when its own
 // inputs change (main-thread pass 2026-10-08).
-const CueRow = memo(function CueRow({ cue, title, titleWord, titleNote, info, headerRight, headerClass, valueClip = true, state, value, beyond, trail, color, hollow, bands, dashed, highlight, startX, ends, progress, g, W, srText }) {
+const CueRow = memo(function CueRow({ cue, title, titleWord, info, headerRight, headerClass, valueClip = true, state, value, beyond, trail, color, hollow, bands, dashed, highlight, startX, ends, g, W, srText }) {
   const titleId = useId();
   const endW = [textW(ends[0], g.fs), textW(ends[1], g.fs)];
   const axL = endW[0] + PAD, axR = Math.max(axL + 1, W - endW[1] - PAD);
@@ -251,7 +230,6 @@ const CueRow = memo(function CueRow({ cue, title, titleWord, titleNote, info, he
           <span className="min-w-0 overflow-x-clip text-ellipsis" id={titleId} data-cue-title="">{title}</span>
           <InfoToggle label={`About the ${cue} cue`}>{info}</InfoToggle>
           {titleWord && <span className="ml-1.5 font-normal text-neutral-300" data-cue-word="">· {titleWord}</span>}
-          {titleNote && <span className="ml-1.5 min-w-0 overflow-x-clip text-ellipsis font-normal text-neutral-400" data-clarity-note="">· {titleNote}</span>}
         </span>
         {/* Text values ellipsize; the pitch value (number + steadiness + its "i",
             whose enlarged hit area overhangs) is short and never clipped. */}
@@ -290,15 +268,6 @@ const CueRow = memo(function CueRow({ cue, title, titleWord, titleNote, info, he
           {ticks(cue).map((t) => (
             <line key={t.v} x1={X(t.x)} x2={X(t.x)} y1={ax - 2} y2={ax + 2} className="stroke-neutral-500" strokeWidth="1" />
           ))}
-          {progress !== null && progress !== undefined && (
-            // Calibration progress grows symmetrically out of "your start" (the
-            // same in every direction; never reads as a clearer or breathier value).
-            <rect x={X(0.5 - progress / 2)} y={ax - 2} width={Math.max(0, (X(1) - X(0)) * progress)} height={4} rx="2"
-              className="fill-amber-500/45" data-cue-progress="" />
-          )}
-          {cue === "clarity" && (
-            <Label x={X(0.5)} y={ax - 6} anchor="middle" fs={g.fs}>your start</Label>
-          )}
           <Label x={0} y={ax + g.fs * 0.35} anchor="start" fs={g.fs}>{ends[0]}</Label>
           <Label x={W} y={ax + g.fs * 0.35} anchor="end" fs={g.fs}>{ends[1]}</Label>
           {startX !== null && startX !== undefined && (
@@ -367,7 +336,6 @@ export function CueStrip({
   steadiness,
   steadinessHeld,
   hnr,
-  vocalWeight,
   resonanceRef,
   resonanceStatus,
   shortLandscape = false,
@@ -380,9 +348,9 @@ export function CueStrip({
   // What the 4 Hz tick saw: the resonance worker's latest state, each row's
   // trail and (once a second) the screen-reader summaries. Render reads only
   // this, never the refs.
-  const [view, setView] = useState({ snap: null, trails: { pitch: [], resonance: [], clarity: [] }, everVoiced: false, sr: {} });
+  const [view, setView] = useState({ snap: null, trails: { pitch: [], resonance: [] }, everVoiced: false, sr: {} });
   const latest = useRef(null);
-  useEffect(() => { latest.current = { voiced, holding, pitchLevel, vocalWeight, resonanceStatus, direction }; });
+  useEffect(() => { latest.current = { voiced, holding, pitchLevel, resonanceStatus, direction }; });
 
   useLayoutEffect(() => {
     const el = wrapRef.current;
@@ -409,7 +377,7 @@ export function CueStrip({
   // One 4 Hz tick: sample each row's value into its trail while live; the
   // screen-reader summaries every 4th tick (1 Hz).
   useEffect(() => {
-    const t = { pitch: createTrail(), resonance: createTrail(RESONANCE_TRAIL.n, RESONANCE_TRAIL.everyTicks), clarity: createTrail() };
+    const t = { pitch: createTrail(), resonance: createTrail(RESONANCE_TRAIL.n, RESONANCE_TRAIL.everyTicks) };
     let ever = false;
     let n = 0;
     let sr = {};
@@ -423,13 +391,11 @@ export function CueStrip({
       const states = {
         pitch: pitchRowState(inputs),
         resonance: ref ? resonanceRowState(inputs) : "starting",
-        clarity: clarityRowState(inputs),
       };
       if (n++ % 4 === 0) {
         sr = {
           pitch: cueSummary("pitch", { state: states.pitch, direction: p.direction, pitchLevel: p.pitchLevel }),
           resonance: cueSummary("resonance", { state: states.resonance, snap, vtlnRef: ref }),
-          clarity: cueSummary("clarity", { state: states.clarity, vocalWeight: p.vocalWeight }),
         };
       }
       setView({
@@ -439,7 +405,6 @@ export function CueStrip({
         trails: {
           pitch: t.pitch.tick(states.pitch, rowValue("pitch", inputs)),
           resonance: t.resonance.tick(states.resonance, rowValue("resonance", inputs)),
-          clarity: t.clarity.tick(states.clarity, rowValue("clarity", inputs)),
         },
       });
     }, TRAIL_EVERY_MS);
@@ -447,10 +412,9 @@ export function CueStrip({
   }, [resonanceRef, assets]);
 
   const snap = view.snap;
-  const inputs = { voiced, holding, pitchLevel, vocalWeight, snap, workerStatus: resonanceStatus };
+  const inputs = { voiced, holding, pitchLevel, snap, workerStatus: resonanceStatus };
   const pState = pitchRowState(inputs);
   const rState = vtlnRef ? resonanceRowState(inputs) : "starting";
-  const cState = clarityRowState(inputs);
   // The header number IS the dot: the 1.5 s level the target judges.
   const levelStatus = pitchLevel != null ? pitchStatus(pitchLevel, pitchTargetFor(direction)) : null;
   const rClamp = resonanceClamp(snap);
@@ -467,7 +431,6 @@ export function CueStrip({
   const resonanceHighlight = useMemo(() => (vtlnRef ? highlightFor("resonance", direction, vtlnRef) : null), [direction, vtlnRef]);
   const pitchInfo = useMemo(() => <><p>{PITCH_INFO}</p>{directionNote("pitch", direction) && <p>{directionNote("pitch", direction)}</p>}</>, [direction]);
   const resonanceInfo = useMemo(() => <><p>{RESONANCE_INFO}</p>{directionNote("resonance", direction) && <p>{directionNote("resonance", direction)}</p>}</>, [direction]);
-  const clarityInfo = useMemo(() => <><p>{CLARITY_INFO}</p><p>{CLARITY_DIRECTION_NOTE}</p></>, []);
   const pitchHeader = useMemo(() => (
     <span className="inline-flex items-baseline gap-2">
       <span className={`text-sm lg:text-base leading-[18px] lg:leading-6 font-light ${pitchLevel != null ? statusTextClass(levelStatus) : "text-neutral-400"}`} data-cue-f0="">
@@ -525,26 +488,6 @@ export function CueStrip({
         W={W}
         srText={view.sr.resonance}
       />
-      <CueRow
-        cue="clarity"
-        title="Clarity · approx."
-        titleNote={shortLandscape ? CLARITY_NOTE_SHORT : null}
-        info={clarityInfo}
-        headerRight={clarityHeader(cState, vocalWeight)}
-        headerClass={cState === "calibrating" ? "text-amber-300" : "text-neutral-300"}
-        state={cState}
-        value={rowValue("clarity", inputs)}
-        beyond={0}
-        trail={view.trails.clarity}
-        color={COLORS.neutralTrace}
-        bands={null}
-        highlight={null}
-        progress={cState === "calibrating" ? (vocalWeight?.baselineProgress ?? 0) : null}
-        ends={ENDS.clarity}
-        g={g}
-        W={W}
-        srText={view.sr.clarity}
-      />
       {!shortLandscape && (
         <div className="flex items-start justify-between gap-2 text-[10px] lg:text-xs leading-[14px] lg:leading-4 text-neutral-400" data-cue-caption="">
           <span className="min-w-0">
@@ -552,9 +495,6 @@ export function CueStrip({
           </span>
           <span className="tabular-nums shrink-0" data-cue-hnr="">HNR {hnr !== null && hnr !== undefined ? `${Math.round(hnr)} dB` : "—"}</span>
         </div>
-      )}
-      {!shortLandscape && (
-        <p data-clarity-note="" className="text-[10px] lg:text-xs leading-snug text-neutral-400">{CLARITY_NOTE}</p>
       )}
     </div>
   );

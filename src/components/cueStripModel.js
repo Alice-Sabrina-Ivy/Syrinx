@@ -3,7 +3,7 @@
 // the row states, the header words and the screen-reader summaries are
 // unit-testable in Node (tests/audio/cue-strip-model-test.js).
 //
-// Three rows; pitch and resonance put the typically-men end on the LEFT.
+// Two rows (2026-10-11); both put the typically-men end on the LEFT.
 //   pitch      log Hz 75–320; bands = typical adult men 85–155 / women
 //              165–255 Hz (the training-direction targets, which are those
 //              ranges — trainingDirection.js PITCH_TARGETS); the dot AND the
@@ -19,21 +19,19 @@
 //              judged. The header says how far the dot is from where you
 //              started (the validated use); a slow trail (one sample every
 //              2 s, ~30 s) shows the drift.
-//   clarity    CPP (clear <-> breathy, periodicity) in σ from the session's
-//              own first-30 s baseline, −3 (breathier) … +3 (clearer); the
-//              dot is the ~5 s median level (vocal-weight-level.js — the
-//              module keeps its historical name); no population bands and
-//              no direction highlight in any direction. Louder or higher
-//              speech also reads clearer and vowels differ (the pre-
-//              registered corrected measures failed —
-//              measurements/clarity-cue-2026-10-08.md). Was "Vocal weight"
-//              (σ −3 heavier … +3 lighter, with direction zones) until
-//              2026-10-11 — **historical**: CPP does not measure weight.
+//   (clarity)  HIDDEN since 2026-10-11 (user decision): the third row,
+//              "Clarity · approx." (raw CPP in σ from the session's own
+//              start; "Vocal weight" until 2026-10-11), is gone from the
+//              strip until a measure passes its test — the pre-registered
+//              clarity study failed (measurements/clarity-cue-2026-10-08.md)
+//              and the CPP pipeline behind it is retired
+//              (measurements/vocal-weight-pipeline-retire-2026-10-11.md).
+//              Its model code (clarityRowState / clarityHeader) is in git
+//              history (cue-strip 31ffe58).
 // Direction highlight: the same element and style for every direction,
-// only { low, high } changes; none for "Just exploring" / unanswered, and
-// never on clarity. Only the pitch dot is coloured on / off target
-// (statusColor(pitchStatus(...)), the F0 readout's rule); resonance and
-// clarity dots are always neutral.
+// only { low, high } changes; none for "Just exploring" / unanswered.
+// Only the pitch dot is coloured on / off target (statusColor(pitchStatus(...)),
+// the F0 readout's rule); the resonance dot is always neutral.
 // measurements/cue-strip-review-fixes-2026-10-07.md
 
 import { COLORS, CUE_AXES, statusColor } from "../utils/constants.js";
@@ -46,7 +44,7 @@ import {
 } from "../utils/trainingDirection.js";
 import { VTLN_CLAMP_EDGE } from "../resonance/resonanceCue.js";
 
-export const CUES = ["pitch", "resonance", "clarity"];
+export const CUES = ["pitch", "resonance"];
 export const TRAIL_LEN = 8;
 export const TRAIL_EVERY_MS = 250;
 // Resonance changes over seconds (5 s readout): a slower, longer trail.
@@ -89,7 +87,7 @@ export function cueResonanceRef(vtlnRef, cueBands = null) {
   if (!cueBands?.men || !cueBands?.women) return vtlnRef;
   return { ...vtlnRef, men: cueBands.men, women: cueBands.women, speakerBands: { men: vtlnRef.men, women: vtlnRef.women } };
 }
-/** -> { men: { x0, x1, xm }, women: { x0, x1, xm } } | null (clarity has none). */
+/** -> { men: { x0, x1, xm }, women: { x0, x1, xm } } | null. */
 export function bandsFor(cue, vtlnRef = null) {
   if (cue === "pitch") {
     const geo = (t) => { const r = rangeOnAxis("pitch", t); return { ...r, xm: frac("pitch", Math.sqrt(t.low * t.high)) }; };
@@ -105,8 +103,7 @@ export function bandsFor(cue, vtlnRef = null) {
 
 // ---- direction highlight (one style for every direction)
 export const HIGHLIGHT_STYLE = Object.freeze({ fill: COLORS.targetBand, stroke: COLORS.targetBandBorder, strokeWidth: 1, rx: 4 });
-/** The highlighted range in the cue's own units, or null (no highlight;
- *  always null for clarity — it has no target in any direction). */
+/** The highlighted range in the cue's own units, or null (no highlight). */
 export function targetRangeFor(cue, direction, vtlnRef = null) {
   if (cue === "pitch") { const t = pitchTargetFor(direction); return t ? { low: t.low, high: t.high } : null; }
   if (cue === "resonance") return resonanceTargetFor(direction, vtlnRef);
@@ -144,7 +141,6 @@ export function pitchCueWord(pitchLevel, direction) {
 // ---- row states (CueStrip data-state)
 // pitch:     idle | holding | live
 // resonance: starting | unavailable | paused | idle | sustained | warming | settling | holding | live
-// clarity:   calibrating | idle | holding | live
 export function pitchRowState({ voiced, holding, pitchLevel }) {
   if (voiced && pitchLevel != null) return "live";
   if (voiced || holding) return "holding";
@@ -165,20 +161,11 @@ export function resonanceRowState({ workerStatus, snap, voiced, holding }) {
   if (!voiced) return "holding";
   return "live";
 }
-// `vocalWeight` is the pipeline's CPP state slice (historical name; it
-// measures clarity).
-export function clarityRowState({ vocalWeight, voiced, holding }) {
-  if (!vocalWeight?.baselineReady) return "calibrating";
-  if (!voiced && !holding) return "idle";
-  if (!voiced || vocalWeight.sigmaLevel == null) return "holding";
-  return "live";
-}
-
 /** The value a row's dot shows, in the cue's units (null = none). */
 export function rowValue(cue, inputs) {
   if (cue === "pitch") return inputs.pitchLevel ?? null;
   if (cue === "resonance") return inputs.snap?.u ?? null;
-  return inputs.vocalWeight?.sigmaLevel ?? null;
+  return null;
 }
 /** Resonance at the vtln clamp: -1 / 0 / +1 (pinned with a chevron). */
 export const resonanceClamp = (snap) =>
@@ -251,21 +238,6 @@ export function resonanceHeader(state, snap) {
     }
   }
 }
-// Clarity: deadband 0.3 σ (the 5 s level's own same-voice wobble is
-// ~0.67 σ q10–q90). Positive σ = higher CPP = clearer.
-export const CLARITY_DEADBAND = 0.3;
-export function clarityHeader(state, vocalWeight) {
-  if (state === "calibrating") {
-    const p = vocalWeight?.baselineProgress ?? 0;
-    return vocalWeight?.cpp == null && p === 0 ? "Calibrating…" : `Calibrating ${Math.round(p * 100)} %`;
-  }
-  const s = vocalWeight?.sigmaLevel;
-  if (state === "idle" || s == null) return "—";
-  const a = Math.abs(s);
-  if (a < CLARITY_DEADBAND) return "about where you started";
-  return `${a.toFixed(1)} σ ${s > 0 ? "clearer" : "breathier"} than your start`;
-}
-
 // ---- screen-reader summaries (one per row; CueStrip refreshes them at 1 Hz)
 function bandWords(u, ref) {
   if (!ref || u == null) return null;
@@ -282,7 +254,7 @@ function bandWords(u, ref) {
 // A header that already ends a sentence ("finding your start…") gets no
 // extra period (2026-10-07 UX review: "…." read aloud).
 const sentence = (t) => (/[.…!?]$/.test(t) ? t : `${t}.`);
-export function cueSummary(cue, { state, direction = null, pitchLevel = null, snap = null, vtlnRef = null, vocalWeight = null } = {}) {
+export function cueSummary(cue, { state, direction = null, pitchLevel = null, snap = null, vtlnRef = null } = {}) {
   if (cue === "pitch") {
     if (state === "idle" || pitchLevel == null) return "Pitch: no voice right now.";
     const t = pitchTargetFor(direction);
@@ -294,10 +266,7 @@ export function cueSummary(cue, { state, direction = null, pitchLevel = null, sn
     if (st === "beyond") return `${hz}, past your target ${range} in your direction.`;
     return `${hz}, ${pitchLevel < t.low ? "below" : "above"} your target ${range}.`;
   }
-  if (cue === "resonance") {
-    if (state !== "live" && state !== "holding") return `Resonance (approximate): ${resonanceHeader(state, snap)}`;
-    const w = bandWords(snap?.u, vtlnRef);
-    return sentence(`Resonance (approximate)${w ? `: ${w}` : ""}, ${resonanceHeader(state, snap)}`);
-  }
-  return sentence(`Clarity (approximate): ${clarityHeader(state, vocalWeight)}`);
+  if (state !== "live" && state !== "holding") return `Resonance (approximate): ${resonanceHeader(state, snap)}`;
+  const w = bandWords(snap?.u, vtlnRef);
+  return sentence(`Resonance (approximate)${w ? `: ${w}` : ""}, ${resonanceHeader(state, snap)}`);
 }

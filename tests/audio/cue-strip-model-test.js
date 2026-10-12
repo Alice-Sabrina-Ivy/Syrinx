@@ -23,8 +23,7 @@ import {
   resonanceHeader,
   resonanceRowState,
   targetRangeFor,
-  clarityHeader,
-  clarityRowState,
+  rowValue,
   trailOpacity,
   HIGHLIGHT_STYLE,
   TRAIL_LEN,
@@ -59,9 +58,10 @@ check("resonance axis: u −1.0…2.2 (the lab's U_MIN / U_MAX)", CUE_AXES.reson
 check("resonance: u 0 (typical man) left of u 1 (typical woman)", axisPos("resonance", 0).x < axisPos("resonance", 1).x);
 check("resonance: a vtln clamp pins the dot even inside the axis", axisPos("resonance", 1.0, { clamp: 1 }).x === 1 && axisPos("resonance", 1.0, { clamp: 1 }).beyond === 1);
 check("resonance clamp flag at ±0.2395", resonanceClamp({ raw: 0.24 }) === 1 && resonanceClamp({ raw: -0.2396 }) === -1 && resonanceClamp({ raw: 0.2 }) === 0 && resonanceClamp(null) === 0);
-check("clarity axis: −3 (breathier, left) … +3 (clearer, right)", near(axisPos("clarity", -3).x, 0) && near(axisPos("clarity", 3).x, 1) && near(axisPos("clarity", 0).x, 0.5));
-check("clarity: clearer (σ > 0, higher CPP) is right of your start", axisPos("clarity", 1.2).x > 0.5);
-check("the third cue is clarity (the 'weight' cue is gone)", CUES.join() === "pitch,resonance,clarity" && CUE_AXES.weight === undefined);
+// The clarity row is hidden since 2026-10-11 (user decision; the clarity
+// study failed, measurements/clarity-cue-2026-10-08.md): two cues, no
+// clarity / weight axis.
+check("two cues: pitch, resonance (no clarity / weight row)", CUES.join() === "pitch,resonance" && CUE_AXES.clarity === undefined && CUE_AXES.weight === undefined);
 check("null values -> no position", axisPos("pitch", null) === null && axisPos("resonance", NaN) === null);
 
 console.log("\nbands");
@@ -85,7 +85,6 @@ console.log("\nbands");
   check("resonance bands are wider than the per-speaker-median bands on both sides (they describe single readings)",
     resonanceU(REF, REF.men.q90) - resonanceU(REF, REF.men.q10) > resonanceU(SPK, SPK.men.q90) - resonanceU(SPK, SPK.men.q10)
     && resonanceU(REF, REF.women.q90) - resonanceU(REF, REF.women.q10) > 0.8);
-  check("clarity has no population bands", bandsFor("clarity") === null);
 }
 
 console.log("\ndirection highlight");
@@ -98,8 +97,6 @@ console.log("\ndirection highlight");
       // the gap between typical men's and women's readings (per-speaker bands)
       androgynous: [resonanceU(SPK, SPK.men.q90), resonanceU(SPK, SPK.women.q10)],
     },
-    // clarity: no target in any direction (measurements/clarity-cue-2026-10-08.md)
-    clarity: { feminine: null, masculine: null, androgynous: null },
   };
   for (const cue of CUES) {
     for (const dir of ["feminine", "masculine", "androgynous"]) {
@@ -111,7 +108,6 @@ console.log("\ndirection highlight");
     check(`${cue}: no highlight for exploring / unanswered`, highlightFor(cue, "exploring", REF) === null && highlightFor(cue, null, REF) === null);
     // Symmetry: the highlight is one element + one style for every direction.
     const hs = ["feminine", "masculine", "androgynous"].map((d) => highlightFor(cue, d, REF)).filter(Boolean);
-    if (cue === "clarity") { check("clarity: no highlight in any direction", hs.length === 0 && targetRangeFor("clarity", "feminine") === null); continue; }
     const strip = ({ low, high, x0, x1, ...rest }) => { void low; void high; void x0; void x1; return JSON.stringify(rest); };
     check(`${cue}: identical highlight style in every direction (deep-equal minus the range)`,
       hs.length >= 2 && hs.every((h) => strip(h) === strip(hs[0])) && hs.every((h) => h.style === HIGHLIGHT_STYLE));
@@ -128,10 +124,9 @@ console.log("\ndot colours: only pitch judges");
     for (const lvl of [null, 70, 100, 150, 160, 200, 300]) {
       if (dotColor("pitch", { pitchLevel: lvl, direction: dir }) !== statusColor(pitchStatus(lvl, pitchTargetFor(dir)))) ok = false;
       if (dotColor("resonance", { pitchLevel: lvl, direction: dir }) !== COLORS.neutralTrace) ok = false;
-      if (dotColor("clarity", { pitchLevel: lvl, direction: dir }) !== COLORS.neutralTrace) ok = false;
     }
   }
-  check("pitch = statusColor(pitchStatus(level, target)); resonance & clarity always neutral", ok);
+  check("pitch = statusColor(pitchStatus(level, target)); resonance always neutral", ok);
   check("off target is also HOLLOW (not colour alone); in / beyond / no target are filled",
     dotHollow("pitch", { pitchLevel: 120, direction: "feminine" }) && dotHollow("pitch", { pitchLevel: 200, direction: "masculine" })
     && dotHollow("pitch", { pitchLevel: 200, direction: "androgynous" })
@@ -192,14 +187,8 @@ console.log("\nrow states");
   check("resonance: settling 2–5 s", R({ snap: snap({ voicedS: 3, fill: 0.6 }) }) === "settling");
   check("resonance: holding after voice", R({ voiced: false, holding: true }) === "holding");
   check("resonance: live", R({}) === "live");
-  const W = (vw, o = {}) => clarityRowState({ vocalWeight: vw, voiced: true, holding: false, ...o });
-  check("clarity: calibrating until the baseline locks", W({ baselineReady: false, baselineProgress: 0.4 }) === "calibrating");
-  check("clarity: live / holding / idle (on the ~5 s level, sigmaLevel)",
-    W({ baselineReady: true, sigmaLevel: 0.7 }) === "live" && W({ baselineReady: true, sigmaLevel: 0.7 }, { voiced: false, holding: true }) === "holding"
-    && W({ baselineReady: true, sigmaLevel: 0.7 }, { voiced: false, holding: false }) === "idle"
-    && W({ baselineReady: true, sigmaDelta: 0.7, sigmaLevel: null }) === "holding");
   check("dot opacity per state", dotOpacity("live") === 1 && dotOpacity("holding") === 0.5 && dotOpacity("settling") === 0.45
-    && dotOpacity("idle") === null && dotOpacity("warming") === null && dotOpacity("calibrating") === null && dotOpacity("starting") === null);
+    && dotOpacity("idle") === null && dotOpacity("warming") === null && dotOpacity("starting") === null);
   check("resonance header words", resonanceHeader("sustained") === "needs running speech" && resonanceHeader("warming") === "keep talking…"
     && resonanceHeader("unavailable") === "unavailable on this device" && resonanceHeader("paused") === "paused — device busy"
     && resonanceHeader("live", snap({})) === "finding your start…"
@@ -209,16 +198,6 @@ console.log("\nrow states");
     && resonanceHeader("live", snap({ u: 1.1, startU: 0.7 })) === "brighter than your start"
     && resonanceHeader("live", snap({ u: 0.3, startU: 0.7 })) === "darker than your start"
     && resonanceHeader("holding", snap({ u: 0.3, startU: 0.7 })) === "darker than your start");
-  check("clarity header words (higher CPP = clearer)", clarityHeader("calibrating", { baselineProgress: 0.4, cpp: 12 }) === "Calibrating 40 %"
-    && clarityHeader("live", { sigmaLevel: 1.24 }) === "1.2 σ clearer than your start"
-    && clarityHeader("live", { sigmaLevel: -0.8 }) === "0.8 σ breathier than your start"
-    && clarityHeader("live", { sigmaLevel: 0.2, sigmaDelta: 2 }) === "about where you started"
-    && clarityHeader("idle", { sigmaLevel: 0.5 }) === "—");
-  {
-    let noWeightWords = true;
-    for (const s of [-2.5, -1, -0.31, 0, 0.31, 1, 2.5]) if (/light|heav|weight/i.test(clarityHeader("live", { sigmaLevel: s }))) noWeightWords = false;
-    check("clarity header never says lighter / heavier / weight", noWeightWords);
-  }
   check("screen-reader summaries name the value and the target",
     cueSummary("pitch", { state: "live", direction: "feminine", pitchLevel: 168 }) === "Pitch level 168 Hz, inside your target 165 to 255 Hz."
     && cueSummary("pitch", { state: "live", direction: "masculine", pitchLevel: 180 }) === "Pitch level 180 Hz, above your target 85 to 155 Hz."
@@ -227,10 +206,11 @@ console.log("\nrow states");
   check("screen-reader: resonance position against the bands + change",
     cueSummary("resonance", { state: "live", snap: snap({ u: 0.52, startU: 0.1 }), vtlnRef: REF }) === "Resonance (approximate): between the typical men's and women's bands, brighter than your start."
     && cueSummary("resonance", { state: "warming", snap: snap({}) , vtlnRef: REF }) === "Resonance (approximate): keep talking…");
-  check("screen-reader: clarity", cueSummary("clarity", { state: "live", vocalWeight: { sigmaLevel: 0.9 } }) === "Clarity (approximate): 0.9 σ clearer than your start.");
+  check("row values: pitch level / resonance u; nothing for an unknown cue (no clarity row)",
+    rowValue("pitch", { pitchLevel: 180 }) === 180 && rowValue("resonance", { snap: { u: 0.4 } }) === 0.4
+    && rowValue("clarity", { vocalWeight: { sigmaLevel: 0.9 } }) === null);
   check("screen-reader: no '….' after a header that ends in an ellipsis",
-    cueSummary("resonance", { state: "live", snap: snap({ u: 0.52, startU: null }), vtlnRef: REF }) === "Resonance (approximate): between the typical men's and women's bands, finding your start…"
-    && cueSummary("clarity", { state: "calibrating", vocalWeight: { baselineProgress: 0, cpp: null } }) === "Clarity (approximate): Calibrating…");
+    cueSummary("resonance", { state: "live", snap: snap({ u: 0.52, startU: null }), vtlnRef: REF }) === "Resonance (approximate): between the typical men's and women's bands, finding your start…");
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

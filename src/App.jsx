@@ -67,8 +67,8 @@ function WelcomeOverlay({ onDismiss }) {
       <div className="bg-neutral-900 border border-neutral-700 rounded-2xl p-6 max-w-sm w-full text-center shadow-xl max-h-full overflow-y-auto">
         <h2 id="welcome-title" className="text-xl font-light text-white mb-3">Welcome to Syrinx</h2>
         <p className="text-sm text-neutral-300 leading-relaxed mb-5">
-          Syrinx gives you real-time visual feedback on your voice pitch, resonance, and
-          clarity — it needs microphone access to work.{" "}
+          Syrinx gives you real-time visual feedback on your voice pitch and
+          resonance — it needs microphone access to work.{" "}
           Next, choose what you&apos;re aiming for — that sets the targets highlighted on the pitch trace and the cue strip.
         </p>
         <button
@@ -130,7 +130,6 @@ function App() {
     steadiness,
     steadinessHeld,
     hnr,
-    vocalWeight,
     modelStatus,
     modelProgress,
     resonanceStatus,
@@ -403,7 +402,6 @@ function App() {
                 steadiness={steadiness}
                 steadinessHeld={steadinessHeld}
                 hnr={hnr}
-                vocalWeight={vocalWeight}
                 modelStatus={modelStatus}
                 modelProgress={modelProgress}
                 pitchTraceRef={pitchTraceRef}

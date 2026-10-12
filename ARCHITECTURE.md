@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**Syrinx** is a free, open-source voice training toolkit that runs entirely in the browser. No downloads, no accounts, no servers — just open the URL and start training. It provides real-time visual feedback on pitch, resonance, voice clarity (clear ↔ breathy), and intonation using your device's microphone, with long-term progress tracking stored locally on your device.
+**Syrinx** is a free, open-source voice training toolkit that runs entirely in the browser. No downloads, no accounts, no servers — just open the URL and start training. It provides real-time visual feedback on pitch, resonance and intonation using your device's microphone, with long-term progress tracking stored locally on your device.
 
 The name comes from the vocal organ of songbirds (the most resonant voices in nature) and a Greek myth about transformation.
 
@@ -55,7 +55,7 @@ masculine, androgynous / in between, or just exploring;
 
 7. **Progress charts**: Plot key metrics over weeks/months — pitch median, F2 average, % time in target, spectral tilt trend
 8. **Baseline capture**: A guided "record your starting point" flow. Progress is measured relative to where *you* started, not population averages.
-9. **Goal configuration**: Personal target ranges for all metrics, with presets for common goals ("more feminine," "androgynous / in between," "more masculine") — the training-direction question (2026-10-07) is the first step: it sets the pitch target (and the resonance cue's outline); there is no clarity or weight target — the CPP row measures clarity, not weight (`measurements/clarity-cue-2026-10-08.md`); a resonance target waits for a readout that can carry one. **Historical (superseded 2026-10-11):** it also set a lighter / heavier vocal-weight zone for more feminine / more masculine (shown with a note that the reading moves with pitch)
+9. **Goal configuration**: Personal target ranges for all metrics, with presets for common goals ("more feminine," "androgynous / in between," "more masculine") — the training-direction question (2026-10-07) is the first step: it sets the pitch target (and the resonance cue's outline); there is no clarity or weight target — CPP measures clarity, not weight, and the clarity row is hidden since 2026-10-11 (`measurements/clarity-cue-2026-10-08.md`); a resonance target waits for a readout that can carry one. **Historical (superseded 2026-10-11):** it also set a lighter / heavier vocal-weight zone for more feminine / more masculine (shown with a note that the reading moves with pitch)
 10. **Data export/import**: Export all data as JSON for backup or migration between devices. Import to restore.
 
 ### v0.3 — Training Modules
@@ -583,20 +583,19 @@ The default practice mode — everything at a glance. **As built (Design A
 "cue strip", 2026-10-07):**
 
 - **Pitch trace** (15 s) on top.
-- **Cue strip** directly under it: three graded readouts — **Pitch** (log
-  Hz), **Resonance · approx.** (spectral warp) and **Clarity · approx.** (CPP,
-  breathier ↔ clearer, relative to the session's own start; the "Vocal
-  weight" row until 2026-10-11 — CPP measures periodicity, not weight, and a
-  pre-registered test of pitch- and loudness-corrected clarity measures
-  failed, so the row is raw CPP with a caveat that louder or higher speech
-  reads clearer; `measurements/clarity-cue-2026-10-08.md`) — each on one neutral axis (pitch and
-  resonance with the typically-men end on the left), bands for typical adult
-  men and women (none for clarity; resonance bands are where single readings
-  of typical speakers fall), a dot for the current value and a trail (~2 s;
-  ~30 s for resonance, whose header says how far you have moved from where you
-  started; the clarity dot is a ~5 s level). The training direction appears as
-  the same soft highlight on pitch and resonance (clarity has no target in any
-  direction); only pitch is judged on / off target
+- **Cue strip** directly under it: two graded readouts — **Pitch** (log
+  Hz) and **Resonance · approx.** (spectral warp) — each on one neutral axis
+  with the typically-men end on the left, bands for typical adult men and
+  women (resonance bands are where single readings of typical speakers
+  fall), a dot for the current value and a trail (~2 s; ~30 s for resonance,
+  whose header says how far you have moved from where you started). **No
+  clarity or weight row (user decision 2026-10-11)** until a measure passes
+  its test: the third row — "Vocal weight", renamed "Clarity · approx." on
+  2026-10-11 because CPP measures periodicity (clear ↔ breathy), not weight —
+  is hidden, since the pre-registered test of pitch- and loudness-corrected
+  clarity measures failed (`measurements/clarity-cue-2026-10-08.md`). The
+  training direction appears as the same soft highlight on pitch and
+  resonance; only pitch is judged on / off target
   (colour, a hollow dot and "↑ higher" / "↓ lower" — never colour alone). The
   pitch level and steadiness sit in the pitch row, HNR in the strip's caption.
 - **"Likely heard as · Experimental"** — opt-in, off by default: listener
@@ -1011,7 +1010,7 @@ removed with the rename to Clarity (`measurements/clarity-cue-2026-10-08.md`).
 | F1 | Varies by vowel | ~10-20% higher | Raise | Lower | |
 | F0 (pitch) | ~85–155 Hz | ~165–255 Hz | Raise habitual pitch | Lower habitual pitch | Necessary but not sufficient; ~145–175 Hz is ambiguous, resonance decides |
 | Vocal weight | — | — | Lighten | Heavier | **No validated acoustic measure in Syrinx** (research only, 2026-10-08). CPP is **not** a weight correlate: it measures clarity (clear ↔ breathy) and read weight mostly backwards. **Historical (superseded 2026-10-11):** "Lower CPP (heavier) / Higher CPP (lighter), correlate of phonatory density (Aaen et al. 2025)" — a misread: Aaen et al. 2025 report *lower* CPP for the lighter, reduced-density conditions (`measurements/clarity-cue-2026-10-08.md`) |
-| Clarity (CPP) | — | — | — | — | Clear ↔ breathy (periodicity); shown self-relative with no target in any direction; also rises with loudness and pitch and varies with vowel |
+| Clarity (CPP) | — | — | — | — | Clear ↔ breathy (periodicity); also rises with loudness and pitch and varies with vowel. **Not shown** since 2026-10-11 (user decision; the clarity study failed). **Historical (superseded 2026-10-11):** shown self-relative with no target in any direction |
 | HNR | Higher (cleaner) | Similar or slightly lower | — | — | Mainly diagnostic |
 | Pitch variability (σ) | Lower (flatter) | Higher (more expressive) | More intonation range | Flatter | |
 
