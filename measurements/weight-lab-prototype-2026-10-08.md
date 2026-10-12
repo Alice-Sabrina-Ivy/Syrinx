@@ -475,3 +475,29 @@ different text will be noisier.
 **Not changed (rejected or deferred):** none of the review's findings is rejected. The process hazard
 it reports (a failed junction removal followed by `git worktree remove` deleting the shared
 `node_modules`) is a workflow issue, not a code issue; it is reported to the user.
+
+### §8 results (after the code, 2026-10-11)
+
+- **All of B1–B8 are implemented** as planned (commit "fix(resonance-lab): weight x clarity review
+  fixes"). The short-landscape plot is 116 px so that it and its bottom axis word fit above Stop
+  Listening at 890×360.
+- **Unit tests** (`tests/resonance-lab/weight-test.js`, all pass) add: the ±2 box; virtual ids
+  (`default`, `communications`, empty) treated as unknown; same `default` id with another label or
+  groupId → "new microphone"; no label and a virtual id → "can't confirm"; equal real ids without
+  labels → same microphone; loudness check done at 16 dB (no block) and at 2 dB (compression
+  suspected, readings off); re-mapping shows no reading and no trail; cancel restores readings from
+  the kept map; after 60 s of silence no trail point and no reading remain.
+- **lab-smoke** (built app, looped LibriSpeech woman + man clip, 100-s mapping): all five runs pass.
+  `weight_v5.json` is never requested before the view opens. Run 5 now requires ≥ 1 readable bin:
+  4–8 of 25 post-mapping bins were readable (16–32 %; most pauses are "not mapped at this pitch /
+  loudness", as before). At 448×890, 402×750, 360×690, 890×360 (side-by-side layout) and 1280×800
+  the plot and its bottom axis word are fully in the first screen, with no horizontal overflow.
+- **The loudness check is weak in one direction.** On the looped clip, where nobody changed loudness
+  on purpose, the "softer" and "louder" prompts came out 4.6–4.8 dB apart by chance — just above the
+  4 dB threshold, so the check passed. It catches strong compression (a deliberate change squeezed to
+  ~1–2 dB) but cannot confirm that loudness is uncompressed. The threshold is a heuristic and has not
+  been measured on real compressed microphones; the view's caveat says the system or a headset may
+  still compress loudness.
+- **Gates:** `npm run lint` clean; `npm run test:unit` 40 / 40; `npm run test:resonance-lab` 89 passed;
+  `npm run build` ok. Lab cost with the weight analysis on (built app, shared machine): 46–52 ms CPU
+  per s of audio (DSP).
