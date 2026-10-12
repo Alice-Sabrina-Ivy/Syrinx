@@ -912,3 +912,108 @@ before the look (§2.2 reports the per-source split at the look).
 confirmatory stream. The trills row gates under the rules as written, with
 the A.5 flag for the user. Data step B (the training side, Addendum R4-B)
 starts only after this addendum is pushed.
+
+## Addendum R4-B — data step B, the training side (2026-10-11; part 1, data)
+
+Written after Addendum R4-A was pushed (e36fdd4) and **before any round-4
+model is trained or scored**. Everything here reads training-side data only:
+no path under `r3/conf/` (except the matcher keep / drop of the sealed-set
+fingerprints, §3.2 D3), no validation score, and not the private session
+recordings. Validation data are not changed: the round-1–2 validation
+streams and the 240 one-room validation sessions (`r3/vsess`) were not
+touched. Code: `r4/fetch_fsr4.py`, `r4/train_side_r4.py`, `r4/d6.py`,
+`train/synth_r4.py`. Outputs: `build/vad-train/r4/` and
+`build/vad-train/train/synth_r4_train.*` (gitignored; no audio committed).
+
+### B.1 D1 — corrected training lists (`train_side_r4.py d1` -> `r4/d1.json`)
+
+- Every rounds 1–2 and `fsr4` record through the case-insensitive
+  `filter_records()` against the round-4 `train_exclude.json` (sha256
+  `9dea5dcf…e670`): **0 kept records touch the round-4 seal**.
+- Freesound uploaders with kept records on both the train and the val side:
+  **11** (as audited, §1.2 C); their **203 training records are removed from
+  training**. Validation keeps its records.
+- Training records after D1: **36,898** (voice and non-voice; FSD50K
+  12,734, `fstrain` 508, `fsr4` 162, the voice sources as in round 3 minus
+  the removed records).
+
+### B.2 D3 — new Freesound steady negatives `fsr4` (`fetch_fsr4.py`)
+
+- Search: **325 pages** (40 `fstrain` queries × pages 4–8, 25 new queries ×
+  pages 1–5), 0 page errors. Cheap rules removed 1,511 results: 867 uploader
+  used before, 594 id used before, 37 CC BY-NC, 5 Sampling+, 8 title keyword.
+  256 candidates.
+- Selection in FNV order of the id (≤ 20 per query, ≤ 3 per uploader): 254
+  checked, **176 kept (3.32 h)**, 163 uploaders. Drops: 73 keyword rule on
+  description / tags, 2 Silero speech screen, 3 fingerprint matches with
+  earlier audio (2 benchmark clips, 1 `fstrain` clip; each banned its
+  uploader). **0 matches with the sealed set.**
+- **Licences (per file in `r4/data/manifest.fsr4.jsonl`)**: CC0 1.0 136,
+  CC BY 4.0 29, CC BY 3.0 11. No NC, ND, SA or Sampling+.
+- **Split**: train **162 clips (3.10 h)**, val **14 clips (0.23 h; reported
+  only, a diagnostic V2 row)**. Every kept uploader is new (none appears in
+  `exclude.json`, `train_exclude.json`, the round-4 trill search or any
+  rounds 1–2 record), so the "uploader has FSD50K-eval clips" branch of the
+  split rule never applies and the FNV rule decides every clip.
+- **Exclusions proven** (re-checked after selection): 0 kept ids and 0 kept
+  uploaders in the excluded lists; 0 uploaders shared with any rounds 1–2
+  record, kept or dropped.
+- Topics kept (top): air conditioner 14, computer fan 12, generator hum 11,
+  bathroom fan 11, ac unit 10, idling engine 10, fan noise 10, transformer
+  noise 9, fridge buzz 9, ventilation system 9.
+
+### B.3 D2 — stationarity label (`train_side_r4.py d2` -> `r4/stat.json`)
+
+- Training negatives after D1: 13,404 (FSD50K train, `fstrain` train,
+  `fsr4` train). S_stat on clips ≥ 3 s; census on clips ≥ 10 s (4,474 clips:
+  stationary-tonal 690, mixed 1,545, broadband 2,041, intermittent-tonal 198).
+- Lowest-third threshold: **S_stat ≤ 2.051 dB**.
+- **Steady pool `stat`: 3,173 clips, 17.63 h** (FSD50K 2,628, `fstrain`
+  423, `fsr4` 122); by reason: S_stat only 2,483, census only 282, both 408.
+  Licences of the pool: CC0 1.0 1,869, CC BY 3.0 1,183, CC BY 4.0 121.
+- Reported only: of the 150 validation negative streams, 84 fall under the
+  training threshold; census labels stationary-tonal 58, mixed 47, broadband
+  35, intermittent-tonal 10.
+- Reading: `census.py` is imported unchanged (its `analyse()` on the clip's
+  absolute path, first 120 s).
+
+### B.4 D4 — synthetic steady interferers (`train/synth_r4.py pack`)
+
+- Families and parameter ranges as fixed in the file's header before any
+  round-4 training (steady hum, steady mains, broadband fan, fridge, HVAC,
+  steady combo). Training seeds 2,000,000,000 + i; generated in code, so no
+  licence applies.
+- Bank: **2,000 clips of U(15, 45) s, 16.69 h** (steady hum 416, broadband
+  fan 414, fridge 301, HVAC 293, steady mains 292, steady combo 284), written
+  as `build/vad-train/train/synth_r4_train.i16` + `.npz` (int16 at 0.1 RMS,
+  `pack.py`'s convention). `synth.py` and every validation stream it made are
+  untouched.
+
+### B.5 D6 — paint-aware hard negatives (`d6.py`)
+
+- Clips: the `stat` pool ∪ `fsr4` train, FNV order of the id, cap 40 h:
+  **3,213 clips, 18.50 h** (cap not reached).
+- The current app's dumps: `train/valdump.mjs`, src dd92037, ≤ 2 processes
+  (`ROOT=build/vad-train/r4/d6 run-dumps.sh tneg4:2`).
+- **Alignment (fixed here)**: dump hop k is attributed to
+  td_k = (k + 1)·hop − 40 ms − L·hop − 30 ms (`opselect_r3.py`'s rule); a
+  hop that is painted and labelled FALSE marks every model frame i whose end
+  time (i + 1)·12.5 ms lies in [td_k, td_k + hop). The round-4 training code
+  gives marked frames loss weight 3 wherever the clip appears unmixed
+  (noise-only crops, noise-only stretches of sessions); mixed frames keep
+  round 3's weights.
+- Result: 2,662,271 hops, **433,569 falsely painted (16.3 %)**, in 1,981 of
+  the 3,213 clips; 867,138 model frames marked (`r4/d6/masks.npz`).
+
+### B.6 Still open before training (part 2 of this addendum)
+
+- **F3**: the user has not accepted reading `notchedFreqs` (§8 Q1) and the
+  Python port of the notch was not built. Under §3.3's default, **F3 is not
+  used and run `r10-notch` is F1 with seed 44**, unless the user says yes
+  before training starts.
+- F1's ε and initial v, and D5's sampler code, are fixed in part 2 together
+  with the training code, before any round-4 model is scored on validation
+  data.
+- The trills flag of Addendum R4-A A.5 awaits the user's decision; if the
+  clip is dropped and §2.2 resumed, the re-seal (R4-A′) and a re-run of D1
+  (and of D3's exclusion check against any new sources) come before training.

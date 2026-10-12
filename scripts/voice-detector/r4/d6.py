@@ -44,7 +44,7 @@ def specs():
     man = load_manifest()
     f4 = {}
     p4 = os.path.join(R4, "data", "manifest.fsr4.jsonl")
-    for line in open(p4, encoding="utf8"):
+    for line in (open(p4, encoding="utf8") if os.path.exists(p4) else []):
         if line.strip():
             r = json.loads(line)
             f4[r["id"]] = r
