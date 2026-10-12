@@ -51,6 +51,46 @@ built from (`scripts/third-party-notices.mjs`).
   from LibriSpeech test-clean. LibriSpeech: V. Panayotov, G. Chen, D. Povey,
   S. Khudanpur, "LibriSpeech: an ASR corpus based on public domain audio
   books", ICASSP 2015 — CC BY 4.0, https://www.openslr.org/12.
+- **Resonance lab, experimental "Weight × clarity" view**
+  (`public/resonance-lab/weight_v5.json`, fetched only when that view is
+  opened; `measurements/weight-lab-prototype-2026-10-08.md`). A small learned
+  model; only fitted numbers ship (no audio). It was trained on:
+  - synthetic voices generated for the research (no third-party data);
+  - CMU ARCTIC `bdl` and `slt` speech + EGG (http://festvox.org/cmu_arctic/).
+    Modified: the model's weights were fitted on features of these
+    recordings; no recording is redistributed. Notice, as the licence requires:
+
+    ```
+    Carnegie Mellon University
+    Copyright (c) 2003
+    All Rights Reserved.
+
+    Permission to use, copy, modify,  and licence this software and its
+    documentation for any purpose, is hereby granted without fee,
+    subject to the following conditions:
+     1. The code must retain the above copyright notice, this list of
+        conditions and the following disclaimer.
+     2. Any modifications must be clearly marked as such.
+     3. Original authors' names are not deleted.
+
+    THE AUTHORS OF THIS WORK DISCLAIM ALL WARRANTIES WITH REGARD TO
+    THIS SOFTWARE, INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
+    AND FITNESS, IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY
+    SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+    WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN
+    AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION,
+    ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
+    THIS SOFTWARE.
+    ```
+  - VocalSet — J. Wilkins, P. Seetharaman, A. Wahl, B. Pardo, "VocalSet: A
+    Singing Voice Dataset", ISMIR 2018, https://zenodo.org/records/1442513 —
+    CC BY 4.0; numbers derived from it (modified).
+  - Perceptual Voice Qualities Database — P. R. Walden, PVQD, Mendeley Data v4,
+    doi:10.17632/9dz247gnyb.4 — CC BY 4.0; numbers derived from it (modified).
+
+  The view's sceptic checks used AVID (M. Kodali, P. Alku, S. R. Kadiri,
+  *AVID: Aalto Vocal Intensity Database*, Zenodo, doi:10.5281/zenodo.10524873,
+  CC BY 4.0) for evaluation only; no shipped constant depends on it.
 - **Resonance cue** (Dashboard): the same `vtln_warp.json` and
   `reference.json` as the resonance lab, plus `cue-bands.json` (bands of
   single 5 s readings of the same LibriSpeech test-clean readers) —

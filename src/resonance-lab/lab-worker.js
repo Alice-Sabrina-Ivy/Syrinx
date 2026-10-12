@@ -10,13 +10,19 @@
 // resonance head reads. The DSP finalists keep working if the model fails.
 //
 // Protocol:
-//   main -> worker: { type: "init", sampleRate, assetBase }
+//   main -> worker: { type: "init", sampleRate, assetBase, capture? }
 //                   { type: "audioPort", port }
 //                   { type: "reset" }                     clear the readouts
-//   worker -> main: { type: "status", part: "dsp"|"pnml", status, message?, progress? }
-//                   { type: "state", snapshot, perf }     ~5 Hz
+//                   { type: "weight", cmd: "enable", map? } start the weight x clarity
+//                       analysis (loads weight_v5.json; only once the user opens that view;
+//                       `map` = a frozen voice map from earlier in this page visit)
+//                   { type: "weight", cmd: "start"|"next"|"finish"|"cancel" } mapping step
+//   worker -> main: { type: "status", part: "dsp"|"pnml"|"weight", status, message?, progress? }
+//                   { type: "state", snapshot, perf, weight? }  ~5 Hz
+//                   { type: "weightMap", map }            a newly frozen voice map
 
 import { createLabEngine } from "./lab-engine.js";
+import { createWeightLab } from "./weight-lab.js";
 import { concatIntoOutput } from "./onnx-patch.js";
 import { pointOrtAtAppRuntime } from "../ml/ort-runtime-files.js";
 
@@ -32,6 +38,13 @@ let lastPost = 0;
 const inferMs = [];
 let chunkMsTotal = 0;
 let audioSTotal = 0;
+let assetBase = "/";
+let capture = null;
+let weightLab = null;      // weight x clarity analysis, created on the first "enable"
+let weightLoading = false;
+let weightAudioS = 0;      // audio seconds since it was enabled
+let weightPostedMap = null;
+let weightPending = undefined; // "enable" that arrived before init finished: the map (or null)
 
 function status(part, s, extra = {}) {
   self.postMessage({ type: "status", part, status: s, ...extra });
@@ -114,6 +127,37 @@ async function servePnml() {
   }
 }
 
+async function enableWeight(savedMap) {
+  if (weightLab || weightLoading || !engine) return;
+  weightLoading = true;
+  status("weight", "loading");
+  try {
+    const model = await loadJson(assetBase, "weight_v5.json");
+    weightLab = createWeightLab(model);
+    weightLab.map.setCapture(capture);
+    if (savedMap) {
+      weightLab.map.restore(savedMap);
+      weightPostedMap = savedMap.madeAt ?? null;
+    }
+    weightAudioS = 0;
+    engine.setFrameTap(weightLab);
+    status("weight", "ready");
+  } catch (err) {
+    status("weight", "error", { message: String(err?.message || err) });
+  } finally {
+    weightLoading = false;
+  }
+}
+
+function weightCommand(cmd) {
+  const m = weightLab?.map;
+  if (!m) return;
+  if (cmd === "start") m.startMapping();
+  else if (cmd === "next") m.nextPrompt();
+  else if (cmd === "finish") m.finishMapping();
+  else if (cmd === "cancel") m.cancelMapping();
+}
+
 function median(a) {
   if (!a.length) return null;
   const s = [...a].sort((x, y) => x - y);
@@ -127,15 +171,23 @@ function onChunk(msg) {
   engine.pushChunk(x);
   chunkMsTotal += performance.now() - t0;
   audioSTotal += x.length / engine.sampleRate;
+  if (weightLab) weightAudioS += x.length / engine.sampleRate;
   servePnml();
   const now = performance.now();
   if (now - lastPost >= POST_EVERY_MS) {
     lastPost = now;
+    const weight = weightLab ? weightLab.map.snapshot() : null;
+    if (weight?.map && weight.map.madeAt !== weightPostedMap) {
+      weightPostedMap = weight.map.madeAt;
+      self.postMessage({ type: "weightMap", map: weightLab.map.exportMap() });
+    }
     self.postMessage({
       type: "state",
       snapshot: engine.snapshot(),
+      weight,
       perf: {
         dspMsPerAudioS: audioSTotal > 0 ? chunkMsTotal / audioSTotal : null,
+        weightMsPerAudioS: weightLab && weightAudioS > 0 ? weightLab.cpuMs / weightAudioS : null,
         pnmlInferMsMedian: median(inferMs),
         pnmlState,
       },
@@ -149,11 +201,14 @@ self.onmessage = async (e) => {
   if (msg.type === "init") {
     try {
       const base = msg.assetBase ?? "/";
+      assetBase = base;
+      capture = msg.capture ?? null;
       const [le, vtln, fv, pnmlHead, reference] = await Promise.all(
         ["le_ens_h64.json", "vtln_warp.json", "fv_model.json", "pnml_head.json", "reference.json"].map((n) => loadJson(base, n)),
       );
       engine = createLabEngine({ sampleRate: msg.sampleRate, models: { le, vtln, fv, pnmlHead }, reference, pnmlMaxPending: 2 });
       status("dsp", "ready", { reference });
+      if (weightPending !== undefined) { enableWeight(weightPending); weightPending = undefined; }
       loadPnml();
     } catch (err) {
       status("dsp", "error", { message: String(err?.message || err) });
@@ -164,5 +219,11 @@ self.onmessage = async (e) => {
     };
   } else if (msg.type === "reset") {
     engine?.resetReadouts();
+  } else if (msg.type === "weight") {
+    if (msg.cmd === "enable") {
+      if (engine) enableWeight(msg.map ?? null);
+      else weightPending = msg.map ?? null;
+    }
+    else weightCommand(msg.cmd);
   }
 };

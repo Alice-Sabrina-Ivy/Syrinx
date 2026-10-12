@@ -13,10 +13,14 @@
 // and the axis and 3-minute trace are sized from the height actually
 // available (see usePhoneFit); short screens drop the traces first. Wider,
 // taller screens keep the full layout.
+//
+// A second view, "Weight × clarity" (WeightClarityView.jsx, experimental), is
+// one tap away in the header; its analysis starts only when it is first opened.
 
 import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { subscribe, resetReadings, downloadReadings } from "./labPipeline.js";
 import { requestResonanceLab } from "./labRequest.js";
+import WeightClarityView from "./WeightClarityView.jsx";
 
 const U_MIN = -1.0;
 const U_MAX = 2.2;
@@ -209,17 +213,41 @@ const subscribePhone = (cb) => {
 };
 const isPhone = () => window.matchMedia(PHONE_QUERY).matches;
 
+// Which lab view is showing; kept for the page visit so a tab switch returns to it.
+let viewChoice = "resonance";
+
+function ViewSwitch({ view, setView, small = false }) {
+  const opt = (k, label) => (
+    <button
+      type="button"
+      onClick={() => { viewChoice = k; setView(k); }}
+      aria-pressed={view === k}
+      data-lab-view={k}
+      className={`px-2 ${small ? "py-0 text-[11px] leading-4" : "py-0.5"} rounded cursor-pointer ${view === k ? "bg-neutral-700 text-neutral-100" : "bg-neutral-900 text-neutral-400 hover:text-neutral-200"}`}
+    >
+      {label}
+    </button>
+  );
+  return (
+    <span className="inline-flex gap-0.5 rounded border border-neutral-800 p-0.5">
+      {opt("resonance", "Resonance")}
+      {opt("weight", "Weight × clarity")}
+    </span>
+  );
+}
+
 export default function LabView() {
   const [s, setS] = useState(null);
+  const [view, setView] = useState(viewChoice);
   const phone = useSyncExternalStore(subscribePhone, isPhone, () => false);
   useEffect(() => subscribe(setS), []);
   // First open of the tab starts the lab (now if listening, else at the next start).
   useEffect(() => { requestResonanceLab(); }, []);
   if (!s) return null;
-  return phone ? <PhoneLab s={s} /> : <FullLab s={s} />;
+  return phone ? <PhoneLab s={s} view={view} setView={setView} /> : <FullLab s={s} view={view} setView={setView} />;
 }
 
-function FullLab({ s }) {
+function FullLab({ s, view, setView }) {
   const ref = s.reference;
   const snap = s.snapshot;
   return (
@@ -235,10 +263,12 @@ function FullLab({ s }) {
           {s.dsp !== "ready" && <span>{s.dsp === "error" ? `Lab error: ${s.error}` : "Loading lab…"}</span>}
           <button onClick={resetReadings} className="px-2 py-0.5 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-300 cursor-pointer">Reset readings</button>
           <button onClick={downloadReadings} className="px-2 py-0.5 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-300 cursor-pointer">Save readings (JSON)</button>
+          <ViewSwitch view={view} setView={setView} />
         </div>
       </div>
-      {!s.running && <p className="text-sm text-neutral-500">Start listening to see the readouts.</p>}
-      {ref && FINALISTS.map((f) => {
+      {view === "weight" && <WeightClarityView s={s} />}
+      {view === "resonance" && !s.running && <p className="text-sm text-neutral-500">Start listening to see the readouts.</p>}
+      {view === "resonance" && ref && FINALISTS.map((f) => {
         const fs = snap?.finalists?.[f.key];
         const extra = f.key === "pnml" ? pnmlStatus(s) : null;
         return (
@@ -258,9 +288,11 @@ function FullLab({ s }) {
           </section>
         );
       })}
-      <p className="text-[11px] text-neutral-600 leading-relaxed mt-2">
-        <ReadingNote s={s} />
-      </p>
+      {view === "resonance" && (
+        <p className="text-[11px] text-neutral-600 leading-relaxed mt-2">
+          <ReadingNote s={s} />
+        </p>
+      )}
     </div>
   );
 }
@@ -369,7 +401,7 @@ function usePhoneFit(rootRef, contentRef) {
   return fit;
 }
 
-function PhoneLab({ s }) {
+function PhoneLab({ s, view, setView }) {
   const ref = s.reference;
   const snap = s.snapshot;
   const rootRef = useRef(null);
@@ -390,14 +422,16 @@ function PhoneLab({ s }) {
               <button onClick={downloadReadings} aria-label="Save readings (JSON)" title="Save readings (JSON)" className="px-2 py-0.5 rounded bg-neutral-800 hover:bg-neutral-700 text-[11px] leading-4 text-neutral-300 cursor-pointer">Save</button>
             </div>
           </div>
-          <div className="flex flex-wrap gap-x-3 text-[11px] leading-4 text-neutral-400">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] leading-4 text-neutral-400">
             <PitchStat snap={snap} />
             <span>Voiced so far {snap ? `${snap.voicedS.toFixed(0)} s` : "—"}</span>
             {s.dsp !== "ready" && <span>{s.dsp === "error" ? `Lab error: ${s.error}` : "Loading lab…"}</span>}
+            <span className="ml-auto"><ViewSwitch view={view} setView={setView} small /></span>
           </div>
         </div>
-        {!s.running && <p className="text-sm text-neutral-500 mb-1.5">Start listening to see the readouts.</p>}
-        {ref && (
+        {view === "weight" && <WeightClarityView s={s} phone />}
+        {view === "resonance" && !s.running && <p className="text-sm text-neutral-500 mb-1.5">Start listening to see the readouts.</p>}
+        {view === "resonance" && ref && (
           <div className="flex flex-col gap-1">
             {FINALISTS.map((f) => {
               const fs = snap?.finalists?.[f.key];
