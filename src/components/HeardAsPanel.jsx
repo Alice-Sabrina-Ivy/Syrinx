@@ -87,13 +87,16 @@ export const PITCH_ONLY_MISSES_TEXT =
 
 // The pitch-only warning's false alarms (shipped rule S0, at the app's 0.2 s
 // resonance cadence; measurements/heard-as-pitch-only-warning-2026-10-07.md
-// §8.5): natural reading, reader-balanced, 96 readers per sex — men 2.27 %
-// (1.15 % dev / 3.39 % test), women 0.34 % (0.35 / 0.33 %); concentrated in
-// readers whose pitch varies a lot (worst man 85 %, worst woman 6.9 %). The
-// pre-registered fixes failed their held-out tests (§8.3–8.5), so the rule
-// is unchanged and this is disclosed instead.
+// §8.5), natural reading, share of updates where the panel showed an
+// estimate, 96 readers per sex: men 1.50 % update-weighted / 2.27 %
+// reader-balanced (test alone 1.82 / 3.39 %), women 0.34 % either way —
+// hence "about 1 to 2 in 100". Concentrated in readers whose pitch varies a
+// lot: worst man 85 % = about 7 of his 8 eligible updates (the panel showed
+// an estimate on ~7 % of his session), next two men ~40 % of ~80; worst
+// woman 6.9 %. The pre-registered fixes failed their held-out tests
+// (§8.3–8.5), so the rule is unchanged and this is disclosed instead.
 export const PITCH_ONLY_FALSE_ALARM_TEXT =
-  "The note about pitch-only changes can also appear when you haven't deliberately changed your voice, if your pitch varies a lot as you talk. In tests on 192 people reading aloud that happened more often for men's voices (about 2 in 100 updates) than for women's (fewer than 1 in 100), and for a few voices much of the time.";
+  "The note about pitch-only changes can also appear when you haven't deliberately changed your voice, if your pitch varies a lot as you talk. In tests on 192 people reading aloud that happened more often for men's voices (about 1 to 2 in 100 updates) than for women's (fewer than 1 in 100), and for a few voices far more often — up to most of the updates where the panel showed an estimate.";
 
 // Replaces "In background noise, low voices are recognised as speech less
 // often …" (that described the old pitch-voicing gate). With the speech
