@@ -1,4 +1,7 @@
 // vocal-weight-baseline.js — Per-user CPPS adaptive σ window.
+// DORMANT since 2026-10-11: not on the production path (the Clarity row is
+// hidden; measurements/vocal-weight-pipeline-retire-2026-10-11.md) — kept,
+// with its unit test, as library code for a future measure.
 //
 // Feeds the cue strip's "Clarity · approx." row (clear <-> breathy). The
 // module keeps its historical "vocal weight" name; CPP does not measure

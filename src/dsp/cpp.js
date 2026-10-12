@@ -1,6 +1,10 @@
 // cpp.js — Cepstral Peak Prominence with sample-rate-invariant
 // internal processing.
 //
+// Not called on the production path since 2026-10-11 (dsp-worker.js runs it
+// only when its init message sets `cpp: true`;
+// measurements/vocal-weight-pipeline-retire-2026-10-11.md).
+//
 // Real cepstrum c[n] = (1/N) · IFFT(log|FFT(x)|). For real-valued
 // input the log-magnitude spectrum is real and even in frequency,
 // so the IFFT result is real and even in quefrency — and the IFFT

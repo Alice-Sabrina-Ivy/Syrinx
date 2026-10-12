@@ -1,4 +1,7 @@
-// vocal-weight-level.js — the cue strip's clarity LEVEL (historical module
+// vocal-weight-level.js — DORMANT since 2026-10-11: not on the production path (the Clarity row is
+// hidden; measurements/vocal-weight-pipeline-retire-2026-10-11.md) — kept,
+// with its unit test, as library code for a future measure.
+// Was: the cue strip's clarity LEVEL (historical module
 // name: CPP measures clear <-> breathy, not weight —
 // measurements/clarity-cue-2026-10-08.md): the median of
 // the last WEIGHT_LEVEL_EMITS voiced CPP-aggregate emits (one per 250 ms of
