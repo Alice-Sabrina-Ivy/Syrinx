@@ -40,7 +40,9 @@
 //                   screen-reader label present.
 //   2 speech-man    (heard-as back on) pitch / resonance live, resonance reads
 //                   lower than the woman's; the axis is shown and the man's
-//                   best guess sits left of the woman's (orientation).
+//                   best guess sits left of the woman's (orientation). The
+//                   panel's "More" list opens and carries the pitch-only
+//                   false-alarm line, wrapped inside the panel.
 //   3 held          resonance "sustained" for >= 60 % of the voiced hold after
 //                   its first second; the panel says "sustained", never ranges.
 //   4 noise / 5 silence  no dot on any row after the 5 s hold; the panel never
@@ -562,6 +564,30 @@ check("man: listening", await continueAfterReload(page));
   await page.evaluate(() => document.querySelector("[data-heard-as]")?.scrollIntoView({ block: "center" }));
   await sleep(200);
   await shot(page, "05b-heard-as-panel");
+  // "More" list: opens, carries the pitch-only false-alarm disclosure
+  // (measurements/heard-as-pitch-only-warning-2026-10-07.md §8.5) and wraps
+  // inside the panel.
+  {
+    await page.evaluate(() => [...document.querySelectorAll("[data-heard-as] button")].find((b) => b.textContent.trim() === "More")?.click());
+    await sleep(300);
+    const m = await page.evaluate(() => {
+      const panel = document.querySelector("[data-heard-as]"), list = document.querySelector("[data-heard-as-more]");
+      const li = document.querySelector("[data-heard-as-more] [data-heard-as-pitch-only-false-alarms]");
+      if (!panel || !list || !li) return { found: !!list, li: !!li };
+      const p = panel.getBoundingClientRect(), r = li.getBoundingClientRect();
+      return { found: true, li: true, text: li.textContent, items: list.querySelectorAll("li").length,
+        inside: r.left >= p.left - 0.5 && r.right <= p.right + 0.5, noOverflow: li.scrollWidth <= li.clientWidth + 1,
+        pageScrollW: document.documentElement.scrollWidth, vw: window.innerWidth };
+    });
+    check("heard-as 'More': opens with the pitch-only false-alarm line, wrapped inside the panel, no horizontal page scroll",
+      m.found && m.li && /pitch varies a lot/.test(m.text) && /men's voices/.test(m.text) && m.inside && m.noOverflow && m.pageScrollW <= m.vw,
+      JSON.stringify({ ...m, text: m.text?.slice(0, 60) }));
+    await page.evaluate(() => document.querySelector("[data-heard-as-pitch-only-false-alarms]")?.scrollIntoView({ block: "center" }));
+    await sleep(200);
+    await shot(page, "05b-heard-as-more");
+    await page.evaluate(() => [...document.querySelectorAll("[data-heard-as] button")].find((b) => b.textContent.trim() === "Less")?.click());
+    await sleep(200);
+  }
   log(`  axis: ${JSON.stringify(s.heardAs?.axis)}`);
   check("no page errors (man)", errors.length === 0, errors.slice(0, 3).join(" | "));
 }

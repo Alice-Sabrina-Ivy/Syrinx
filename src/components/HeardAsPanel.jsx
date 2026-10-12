@@ -85,6 +85,16 @@ export const WHISPER_TEXT =
 export const PITCH_ONLY_MISSES_TEXT =
   "The note about pitch-only changes doesn't catch every case — on new voices it missed about 4 in 10 — so no note doesn't mean the guess is right.";
 
+// The pitch-only warning's false alarms (shipped rule S0, at the app's 0.2 s
+// resonance cadence; measurements/heard-as-pitch-only-warning-2026-10-07.md
+// §8.5): natural reading, reader-balanced, 96 readers per sex — men 2.27 %
+// (1.15 % dev / 3.39 % test), women 0.34 % (0.35 / 0.33 %); concentrated in
+// readers whose pitch varies a lot (worst man 85 %, worst woman 6.9 %). The
+// pre-registered fixes failed their held-out tests (§8.3–8.5), so the rule
+// is unchanged and this is disclosed instead.
+export const PITCH_ONLY_FALSE_ALARM_TEXT =
+  "The note about pitch-only changes can also appear when you haven't deliberately changed your voice, if your pitch varies a lot as you talk. In tests on 192 people reading aloud that happened more often for men's voices (about 2 in 100 updates) than for women's (fewer than 1 in 100), and for a few voices much of the time.";
+
 // Replaces "In background noise, low voices are recognised as speech less
 // often …" (that described the old pitch-voicing gate). With the speech
 // detector, the panel's own rule — >= 3 s of voiced pitch in 8 s — is what
@@ -314,6 +324,7 @@ export function HeardAsPanel({
           <li data-heard-as-one-talker="">{ONE_TALKER_TEXT}</li>
           <li data-heard-as-whisper="">{WHISPER_TEXT}</li>
           <li data-heard-as-pitch-only-misses="">{PITCH_ONLY_MISSES_TEXT}</li>
+          <li data-heard-as-pitch-only-false-alarms="">{PITCH_ONLY_FALSE_ALARM_TEXT}</li>
           <li>Typical voices are shown further from the ends than listeners put them: clearly feminine and clearly masculine voices look less clear-cut here than they are.</li>
           <li data-heard-as-cant-tell="">{CANT_TELL_TEXT}</li>
           <li>Within clearly feminine or clearly masculine voices it does not track small changes — use the cue strip for those.</li>
