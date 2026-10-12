@@ -58,10 +58,11 @@ export function PitchTrace({
   // computed once per size, not per point (canvas.width is a DOM read). With `subscribeTrace` (the hook's
   // append notification) the redraw is scheduled by traceRedrawScheduler.js:
   // while data arrives an animation-frame loop capped at ~60 Hz (at most one
-  // draw per 16 ms, so a stalled feed keeps scrolling), ~100 ms redraws once
-  // data has stopped for 1 s (measurements/phone-cpu-2026-10-12.md: adopted
-  // over one draw per appended point for smoother scrolling on 40 ms-buffer
-  // phones). Without a notifier, an uncapped rAF loop.
+  // draw per 15 ms of frame timestamp: every 60 Hz frame; a stalled feed
+  // keeps scrolling), ~100 ms redraws once data has stopped for 1 s
+  // (measurements/phone-cpu-2026-10-12.md §4, §7: adopted over one draw per
+  // appended point for smoother scrolling on 40 ms-buffer phones). Without a
+  // notifier, an uncapped rAF loop.
   useEffect(() => {
     const canvas = canvasRef.current;
     const container = containerRef.current;
