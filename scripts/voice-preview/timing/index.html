@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Voice preview timing</title>
+<link rel="icon" href="data:,">
+<style>
+  :root { --bg: #fafafa; --fg: #1d1d1f; --muted: #6b6b70; --line: #d9d9de; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #161618; --fg: #ececf0; --muted: #a0a0a8; --line: #33333a; } }
+  body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg); font: 14px/1.45 system-ui, sans-serif; }
+  h1 { font-size: 18px; margin: 0 0 8px; }
+  p, li { color: var(--muted); max-width: 70ch; }
+  code { font-size: 12px; }
+  #status { font-weight: 600; color: var(--fg); }
+  pre { white-space: pre-wrap; word-break: break-all; border: 1px solid var(--line); padding: 8px; max-height: 50vh; overflow: auto; font-size: 12px; }
+  button { font: inherit; padding: 6px 12px; }
+</style>
+</head>
+<body>
+<h1>Voice preview timing (spike)</h1>
+<p>Times WORLD (WebAssembly) and the PSOLA fallback on public clips, as pre-registered in
+<code>measurements/voice-preview-spike-2026-10-12.md</code> §P5. Add <code>?auto=1</code> to run the
+matrix; the result is exposed as <code>window.__vpResult</code> once <code>window.__vpDone</code> is true.</p>
+<p>Parameters: <code>runs</code> (10), <code>fe</code> selected front end H|D|S|L (L),
+<code>blocks</code> (world-auto,world-nosimd,psola,fe-other,fp10), <code>rates</code>, <code>lengths</code>,
+<code>clips</code>, <code>run</code> (one run index only), <code>mode=identity</code> (output hashes for the
+browser-vs-Node check).</p>
+<p><button id="go" type="button">Run</button> <span id="status">idle</span></p>
+<pre id="log"></pre>
+<script type="module" src="./timing.js"></script>
+</body>
+</html>
