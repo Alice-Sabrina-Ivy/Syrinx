@@ -17,6 +17,8 @@ recordings are not read by any script here.
 | `train_side_r4.py` | D1 (`d1`: the corrected training lists, the 203 shared-uploader training records removed) and D2 (`d2`: S_stat, census labels, the steady pool `stat`) |
 | `d6.py` | D6: `specs` (the `stat` pool + fsr4 training clips, FNV order, <= 40 h) for the current app's dumps (`ROOT=build/vad-train/r4/d6 run-dumps.sh tneg4:2`), `masks` (model frames the app paints falsely, td rule) |
 | `../train/synth_r4.py` | D4: the steady synthetic interferer families, training seeds [2e9, 3e9); `pack` writes `synth_r4_train.*` |
+| `sel_inputs.py` | §4 / B.10: sha256 of every selection input (`build/vad-train/r4/sel/inputs.sha256`) and a check that none changed after round 3's rule output |
+| `fsr4val.py` | B.10: stream specs of the 14 fsr4 val clips (a reported V2 row); dumps via `ROOT=build/vad-train/r4/fsr4val run-dumps.sh fsr4val:1` |
 | `../r3/seal.py --tag=r4` | §2.3: the re-seal (`seal-confirmatory-r4.sha256`, `seal-r4.json`, `conf-manifest.jsonl`, `seal-r4-changes.json`); `verify --tag=r4`, `verify-r3` |
 
 ```bash
@@ -35,3 +37,5 @@ python scripts/voice-detector/r4/train_side_r4.py d1 && python scripts/voice-det
 python scripts/voice-detector/train/synth_r4.py pack --n=2000
 python scripts/voice-detector/r4/d6.py specs && ROOT=build/vad-train/r4/d6 bash scripts/voice-detector/r3/run-dumps.sh tneg4:2 && python scripts/voice-detector/r4/d6.py masks
 ```
+
+Step 3 (training, selection, freeze; Addenda R4-B part 2 and R4-C): `../train/run-r4-train.sh`, `../train/run-r4-select.sh`, then `../train/choose_r4.py`, `export.py`, `infer.py --onnx` / `infer_carried.py --onnx`, `opselect_r3.py DIR:file`, `wasm_bench.mjs`, `../train/report_r4.py`, `../train/freeze_r4.py`. Results: [measurements/voice-detector-round4-selection-2026-10-12.md](../../../measurements/voice-detector-round4-selection-2026-10-12.md).

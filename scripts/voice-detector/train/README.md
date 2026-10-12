@@ -33,6 +33,8 @@ session recordings are not read by any script here.
 | `valtable.py`, `valpoint.py`, `report.py` | the current app on the validation streams; one candidate at its point on the validation streams; training-curve and selection tables |
 | `valsets_r2.py` | round 2 (Addendum D.4): the added validation streams (SVD / SingBAP / children / Freesound voice val, and one more val mix per val noise clip), appended to the round-1 stream lists |
 | `infer_carried.py` | round 2: probability files with the model's state carried across streams (seeded random order, sessions of at least N minutes), for carried-state selection and evaluation |
+| `train_r4.py`, `pack_r4.py`, `run-r4-train.sh` | round 4 (pre-registration 2026-10-11, Addendum R4-B): round 3's `train.py` with D1 (corrected training list), D5 (steady-noise pools and weights), D6 (paint-aware hard negatives), 64-256 s sessions and the F1 features (`model.py` cfg `f1`); the fsr4 training bank; the four runs |
+| `run-r4-select.sh`, `choose_r4.py`, `report_r4.py`, `freeze_r4.py` | round 4 selection: `infer_r3.py` files per run, `opselect_r3.py` (+ the `custom-vd-r3` reference row), the between-candidate choice (WASM cost per architecture), the reported rows (tuning-194 per census label, steady / not-steady val negatives, fsr4 val), the freeze `frozen/candidate-r4.json` |
 | `frozen/candidate.json` | **the frozen candidate** (operating point, sha256 of checkpoint / state / ONNX, V4 facts), committed before any evaluation stream was read |
 
 ```bash

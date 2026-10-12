@@ -1168,3 +1168,38 @@ run with seed 44**. This is recorded here, before run 4 starts.
   `r4/d1.json`), case-insensitively, as well as the lists §2.2 names. That
   rule can only exclude more, so the models trained now stay valid. R4-A′ (the
   re-seal) then comes before the look.
+
+## Addendum R4-C — selection, freeze and go / no-go (2026-10-12)
+
+Results: [voice-detector-round4-selection-2026-10-12.md](voice-detector-round4-selection-2026-10-12.md).
+
+- **Training.** The four runs of B.10 finished without a crash or resume.
+- **The rule's choice** (§4, validation data only; 29 candidates, all with
+  a feasible point): **r10-notch-e8000, plain**. That is an F1 network,
+  seed 44, single model, state carried and never reset. The point is agg
+  `mean`, p ≥ 0.10, hangover 300 ms.
+  - It ties on O with r10-notch-e16000 (69.30 %).
+  - Both are F1, so the cost tie-break does not separate them. The pick
+    goes to the larger val-negatives V2 (86.65 vs 86.46 %).
+- **Deployable re-check.** Streaming ONNX, onnxruntime CPU, 1 thread: the
+  same pick and the same numbers. It is frozen in
+  `scripts/voice-detector/train/frozen/candidate-r4.json`, committed and
+  pushed with this addendum, before any harness or confirmatory stream is
+  read by it.
+- **The frozen point is feasible:**
+  - worst clean group 0.49 % fresh / 0.27 % carried;
+  - worst mix cell 0.95 % fresh / 1.19 % carried;
+  - `frame_ms` 82 ms;
+  - WASM 0.56 ms (Node) / 0.52 ms (Chrome) per 25 ms.
+- **O = 69.30 %**: tuning-194 69.30, val negatives 86.65, one-room
+  sessions 89.37.
+- **Selection inputs.** They are round 3's: the reference row reproduces
+  round 3's rule output at every grid point. The sha256 list is in
+  `build/vad-train/r4/sel/inputs.sha256`.
+- **Go / no-go (§5): go by the rule** (feasible, O ≥ 60 %). The look is
+  **not** started:
+  - the user's ruling on the trills clip `c_tr4_wc__a488f3b5` (A.5, B.11)
+    comes first;
+  - no harness or confirmatory probability file has been written, so the
+    seal is unbroken;
+  - V5 has not run.

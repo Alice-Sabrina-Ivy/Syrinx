@@ -6,7 +6,9 @@
 #   python attribution.py --out=build/vad-train/model [--tag=r2]   -> LICENSE, ATTRIBUTION.md
 # Per CC BY clip: title, author, freesound.org/s/<id>/ link and the licence URL;
 # per dataset: its licence link; plus a note of the changes made (2026-10-07,
-# round-1 review). --tag=r2 adds the round-2 sources (Addendum D).
+# round-1 review). --tag=r2 adds the round-2 sources (Addendum D). --tag=r4
+# (round 4, Addendum R4-B): exactly the records of the round-4 training list
+# (build/vad-train/r4/d1.json train_ids), including the fsr4 clips.
 import collections
 import os
 import re
@@ -42,7 +44,7 @@ LIC_URL = {"CC BY 4.0": "https://creativecommons.org/licenses/by/4.0/", "CC BY 3
            "CC0 1.0": "https://creativecommons.org/publicdomain/zero/1.0/"}
 R1_SOURCES = {"librispeech", "vctk", "coswara", "mdvr", "dcs", "esmuc", "csd", "fsd50k", "fstrain"}
 R2_SOURCES = {"svd", "singbap", "imitations", "kids", "fsvoice"}
-FREESOUND = ("fsd50k", "fstrain", "fsvoice")
+FREESOUND = ("fsd50k", "fstrain", "fsvoice", "fsr4")
 NL = chr(10)
 CHANGES = ("Changes: every recording was converted to mono, resampled to 16 kHz, cut into excerpts, level-scaled, filtered, "
            "reverberated and mixed with other recordings, and used only to train the model. The model's weights do not "
@@ -59,10 +61,16 @@ def title_of(r):
 def main():
     out = A.get("out", "build/vad-train/model")
     tag = A.get("tag", "")
-    srcs = R1_SOURCES | (R2_SOURCES if tag == "r2" else set())
+    srcs = R1_SOURCES | (R2_SOURCES if tag in ("r2", "r4") else set())
     os.makedirs(out, exist_ok=True)
     man = load_manifest()
     tr = [r for r in man.values() if not r.get("drop") and r["split"] == "train" and r["source"] in srcs]
+    if tag == "r4":
+        import json
+        from tcommon import ROOT
+        ids = set(json.load(open(os.path.join(ROOT, "r4", "d1.json"), encoding="utf8"))["train_ids"])
+        f4 = [json.loads(x) for x in open(os.path.join(ROOT, "r4", "data", "manifest.fsr4.jsonl"), encoding="utf8") if x.strip()]
+        tr = [r for r in list(man.values()) + f4 if r["id"] in ids and (r["source"] in srcs or r["source"] == "fsr4")]
     L = ["# Training-data attribution — Syrinx custom voice detector", "",
          "The model weights are released under the MIT licence (LICENSE). They were trained on the",
          "openly licensed audio below (training split only; no NC / ND / ShareAlike material).",
@@ -79,7 +87,8 @@ def main():
         lic = collections.Counter(r["licence"] for r in rs)
         if src in FREESOUND:
             attr = {"fsd50k": "Freesound users (per clip, below); FSD50K, E. Fonseca et al., zenodo 4060432 (https://zenodo.org/records/4060432), CC BY 4.0",
-                    "fstrain": "Freesound users (per clip, below)", "fsvoice": "Freesound users (per clip, below)"}[src]
+                    "fstrain": "Freesound users (per clip, below)", "fsvoice": "Freesound users (per clip, below)",
+                    "fsr4": "Freesound users (per clip, below)"}[src]
         else:
             attr = rs[0].get("attribution")
         L.append(f"| {src} | {len(rs)} | {', '.join(f'[{k}]({LIC_URL.get(k, k)}) ({v})' for k, v in lic.most_common())} | {attr} |")
