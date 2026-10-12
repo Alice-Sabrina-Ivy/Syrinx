@@ -923,7 +923,9 @@ the switch-on update, the deployed q8-v2 classifier (`--classifier=real`).
 It logs every main-thread event, so every candidate is replayed over the
 same event stream. Chain = a clone of `cue-strip` @ cf76c58 (module sha256
 `5a7a5814f827c48d019b8bfe450de85ffb0855220c88e7e57440df4fc6c43a6a`, the
-module still on `cue-strip`; no chain or panel file has changed since).
+module still on `cue-strip`; no file on the warning's input path has changed
+since — `HeardAsPanel.jsx` later gained only the text-only false-alarm line,
+56c886c, and its rewording after review).
 Because the panel's 2 s timer phase is arbitrary in the app and moves
 per-reader figures by about ±2–6 pp, every session ran with four panel
 phases (0 / 500 / 1000 / 1500 ms, each its own warning instance and timers)
@@ -958,7 +960,8 @@ Before any warning result, the real pitch worker alone ran over each
 speaker's first 125 s; **drift D** = SD of the medians of posted voiced
 pitch (st) in six 20 s blocks. The split is stratified by sex × D tercile ×
 corpus group, pairs assigned by a sha256 coin, so both splits contain the
-drifting male readers:
+drifting male readers (but see "For any further round" below: a full-span
+drift measure shows the test held the two most-drifting men):
 
 | Split | Sex | n | D median | D q90 | D max | n with D ≥ 1 st |
 |---|---|---|---|---|---|---|
@@ -973,6 +976,14 @@ spread and the top quarter by D, fixed at registration: dev 19 W / 15 M,
 test 20 W / 17 M. Sessions (§8.4's constructions, unchanged): dev 1,480
 (nat 96 + off 136, hcs 768, ehcs 192, picka 288), test 1,492 (nat 96 +
 off 148, hcs 768, ehcs 192, picka 288).
+
+*Exclusion scan, disclosed after review.* The scan's regular expression did
+not find overlapping matches (a match consumes the `/` a following id
+needs), so one test man the written rule would have excluded was kept:
+mlsfr7142. His number appears in an earlier study's paths only as a
+LibriSpeech chapter id of another speaker (`…/train-other-500/3179/7142/`),
+not as a reused speaker; an overlapping scan finds no other case. He has
+0 % natural false alarms under both rules, so no outcome changes.
 
 **Pre-registration.** Reproduced verbatim in Appendix E, sha256
 `c6fb5e3f908963b91616246439236005ecb68cf38efa02f43eaba3dd936c049a`, hashed
@@ -1051,12 +1062,21 @@ Chosen rule vs S0 on the same sessions, phase-averaged:
 |---|---|---|---|---|---|
 | Natural FA (reader-balanced) | ≤ 2 % | 0.33 % | 0.00 % ✓ | 3.39 % | 0.27 % ✓ |
 | Gap \|men − women\| | ≤ 1.5 pp | | | 3.06 pp | 0.27 pp ✓ |
-| Per-reader natural-FA max | ≤ 15 % | 6.2 % (ls6300) | 0.0 % ✓ | 85.0 % (mlsdu4429) | 6.6 % (ls3783) ✓ |
-| Expressive readers' worst start | ≤ 15 % | 16.6 % (mlsfr7400) | 0.6 % (ls2598) ✓ | 95.2 % (mlsdu4429) | 5.6 % (mlsit7372) ✓ |
+| Per-reader natural-FA max | ≤ 15 % | 6.2 % (ls6300) | 0.0 % ✓ | 85.0 % (mlsdu4429)¹ | 6.6 % (ls3783) ✓ |
+| Expressive readers' worst start | ≤ 15 % | 16.6 % (mlsfr7400) | 0.6 % (ls2598) ✓ | 95.2 % (mlsdu4429)¹ | 5.6 % (mlsit7372) ✓ |
 | Hits ≤ 10 s, Meyer (by base sex) | ≥ S0 − 0.03 | 0.867 | 0.843 ✓ (−0.024) | 0.898 | **0.863 ✗ (−0.036)** |
 | Early-shift hits (by base sex) | ≥ S0 − 0.03 | 0.913 | **0.863 ✗ (−0.050)** | 0.903 | 0.874 ✓ (−0.029) |
 | Together FA | ≤ S0 + 2 pp | 6.3 % | 5.0 % ✓ | 1.1 % | 1.1 % ✓ |
 | Resonance-only FA | ≤ S0 + 2 pp | 0.3 % | 0.2 % ✓ | 0.0 % | 0.0 % ✓ |
+
+¹ Few eligible updates. mlsdu4429's natural session had 6–8 eligible
+updates per panel phase (7 of 8 on at phase 0) out of ~93: the panel was
+hidden ("short") on the rest. 85.0 % is about 7 of 8, i.e. the warning
+showed on about 6 % of his session's panel updates. His worst start
+(95.2 %, k = 3 and 5) is 18–22 of 19–23 eligible updates out of ~91.
+Without him, the men's test reader max is 39.9 % (ls4402, ~32 of 80
+eligible). Readers' eligible counts are listed with the per-reader figures
+below.
 
 The two failing checks are hit checks, on opposite base sexes. S0 against
 the same absolute bars (descriptive) passes 10 of 15: men's natural FA,
@@ -1095,13 +1115,18 @@ otherwise):
 | Flash after a together shift, men / women | 18.5 / 15.5 % | 15.4 / 12.0 % |
 | FA in the baseline phase of shift sessions, men / women | 0.2 / 0.2 % | 0.0 / 0.0 % |
 
-Natural FA by reader (phase-averaged; readers above 0):
-- Men, S0: mlsdu4429 85.0, ls4402 39.9, mlsit7372 10.0, ls3783 8.6,
-  ls5918 6.9, ls5894 5.8, ls5765 4.2, ls3088 1.2, mlspo6566 0.6,
-  mlsfr4482 0.3 % (10 of 48). Chosen: ls3783 6.6, mlsit7372 5.0,
-  ls5918 1.1 % (3 of 48).
-- Women, S0: ls6300 6.2, ls5060 5.4, ls2598 2.2, mlsfr7400 1.0,
-  ls6696 0.9 % (5 of 48). Chosen: none.
+Natural FA by reader (phase-averaged; readers above 0; in brackets the
+reader's eligible updates per panel phase, mean over the four phases —
+eligibility does not depend on the rule; median over all readers 78 men /
+80 women, below 30 for 3 men and 1 woman):
+- Men, S0: mlsdu4429 85.0 (7), ls4402 39.9 (80), mlsit7372 10.0 (70),
+  ls3783 8.6 (76), ls5918 6.9 (69), ls5894 5.8 (77), ls5765 4.2 (42),
+  ls3088 1.2 (86), mlspo6566 0.6 (82), mlsfr4482 0.3 % (78) (10 of 48).
+  Chosen: ls3783 6.6, mlsit7372 5.0, ls5918 1.1 % (3 of 48).
+- Women, S0: ls6300 6.2 (81), ls5060 5.4 (79), ls2598 2.2 (81),
+  mlsfr7400 1.0 (79), ls6696 0.9 % (83) (5 of 48). Chosen: none.
+- Dev, S0, for comparison: men's maximum ls3541 39.9 % (80), then
+  mlsdu4396 6.9 % (65); women's ls5054 6.9 % (80).
 
 Expressive readers' false-alarm share at starts k = 0, 1, 2, 3, 5 (readers
 with any under either rule, the larger ones):
@@ -1161,21 +1186,85 @@ confirmation report 06:15:48, all 2026-10-12 −05:00) and the commit
 message of this section.
 
 **False alarms of the shipped rule (S0) at the app cadence, this round.**
-Natural reading, reader-balanced: men 1.15 % (dev) / 3.39 % (test), women
-0.35 % / 0.33 %; pooled over all 96 readers per sex, men 2.27 %, women
-0.34 %. Readers with any false alarm: men 8 / 48 (dev) and 10 / 48 (test),
-women 5 / 48 and 5 / 48. Per-reader maximum: men 39.9 % (dev) and 85.0 %
-(test, one MLS reader, 85–95 % from every start), women 6.9 % and
-6.2 %. The false alarms concentrate in readers whose pitch varies a lot:
-both reader maxima are expressive readers (selected by pitch spread or
-drift). **Panel text (new "More" line,
-`PITCH_ONLY_FALSE_ALARM_TEXT` in `HeardAsPanel.jsx`):** "The note about
-pitch-only changes can also appear when you haven't deliberately changed
-your voice, if your pitch varies a lot as you talk. In tests on 192 people
-reading aloud that happened more often for men's voices (about 2 in 100
-updates) than for women's (fewer than 1 in 100), and for a few voices much
-of the time." The figures are S0's pooled natural false alarms above; the
-wording names no sex except in that measured comparison.
+Natural reading, share of eligible updates (panel showing an estimate),
+phase-averaged:
+
+| | Dev men | Test men | Pooled men | Dev women | Test women | Pooled women |
+|---|---|---|---|---|---|---|
+| Reader-balanced (the bar's statistic) | 1.15 % | 3.39 % | 2.27 % | 0.35 % | 0.33 % | 0.34 % |
+| Update-weighted (all eligible updates of the sex) | 1.19 % | 1.82 % | 1.50 % | 0.35 % | 0.33 % | 0.34 % |
+| Readers with any | 8 / 48 | 10 / 48 | | 5 / 48 | 5 / 48 | |
+| Per-reader maximum (eligible updates per phase) | 39.9 % (80) | 85.0 % (7)¹ | | 6.9 % (80) | 6.2 % (81) | |
+
+The men's two statistics differ on test because one reader with few
+eligible updates (mlsdu4429, ¹ above) weighs 1/48 in the reader-balanced
+mean however few updates he has; for women they agree. The false alarms
+concentrate in readers whose pitch varies a lot: both men's maxima are
+expressive readers (selected by pitch spread or drift), and the other two
+men above 15 % (ls3541 dev, ls4402 test) see it on ~40 % of ~80 eligible
+updates.
+mlsdu4429's case is not an octave error: the review's WORLD Harvest
+cross-check of three of his utterances gives medians of 149–159 Hz against
+about 85 Hz for the others — he genuinely reads those passages higher.
+
+**Panel text (new "More" line, `PITCH_ONLY_FALSE_ALARM_TEXT` in
+`HeardAsPanel.jsx`; reworded after review):** "The note about pitch-only
+changes can also appear when you haven't deliberately changed your voice,
+if your pitch varies a lot as you talk. In tests on 192 people reading
+aloud that happened more often for men's voices (about 1 to 2 in 100
+updates) than for women's (fewer than 1 in 100), and for a few voices far
+more often — up to most of the updates where the panel showed an
+estimate." "About 1 to 2 in 100" spans the men's pooled update-weighted
+(1.50 %) and reader-balanced (2.27 %) figures. The first version said
+"about 2 in 100" (reader-balanced only) and "for a few voices much of the
+time", which overstated the one reader at 85 % (7 of 8 eligible updates,
+about 6 % of his panel updates). The wording names no sex except in that
+measured comparison.
+
+**Which miss figure stands.** The "More" list's "on new voices it missed
+about 4 in 10" (`PITCH_ONLY_MISSES_TEXT`) is §8.2's S0 test result on
+LibriSpeech test-other: 0.59 / 0.65 within 10 s on 17 male-base and 22
+female-base failure-set sessions, with the chain and replay of that time.
+The same definitions (failure set, hit within 10 s) give higher hit rates
+on the larger later sets: §8.3 0.83 / 0.86, and here, at the app cadence,
+0.88 / 0.84 on dev and 0.90 / 0.87 on test (about 49 male-base and 115
+female-base failure-set sessions per phase on test). The runs differ in
+speakers, set size, chain and cadence, and none re-ran §8.2's sessions, so
+which of these explains the gap is not separated. The panel keeps "about 4
+in 10" as the largest miss rate measured (conservative); changing it to the
+larger sets' "about 1 in 10" is left to the user.
+
+**For any further round (from the review of this round; not applied
+retroactively).**
+1. *Stratify on the full span.* The pre-registered D used only the first
+   125 s. Over each full natural session (descriptive, computed after the
+   verdict; SD of 20 s block medians of posted voiced pitch), the two
+   most-drifting men of all 96 are both test readers — mlsdu4429 3.79 st
+   (pre-registered D 0.55 st, rank 44, middle tercile; his high passages
+   start at 157 s) and ls4402 2.83 st — then ls3541 (dev) 2.51 st; on the
+   pre-registered D the top two were one per split (ls4402 3.15, ls3541
+   2.30), so only mlsdu4429 was misplaced. In the top third of men on the
+   full-span measure, 13 are dev and 19 test (women 18 / 14).
+   So dev held a milder form of the problem (S0 men's natural FA 1.15 % dev
+   vs 3.39 % test). Next time: stratify on the full span each speaker
+   contributes (or the maximum |20 s block median − start-window median|
+   over it), and before writing CHOICE report dev/test balance on that
+   statistic and on pitch-only proxies of S0's false alarms.
+2. *Stop before the test when no candidate passes every dev check*, and
+   keep the test split fresh — unless the user has first pre-registered a
+   different trade (e.g. a 14 s hit window or a larger hit tolerance). This
+   round's fallback spent the test on a rule that had already failed the
+   same check on dev (male-base hits −0.057); it failed it again (−0.036).
+3. *Anchor hashes in git before results.* Push a pre-registration-only
+   commit carrying PREREG's sha256 before the dev run, and one carrying
+   CHOICE's before any test job is built. This round's external hash log is
+   an editable file; the first git-anchored copy (e7cd062) postdates the
+   test.
+4. *Few-update readers.* Pre-register a minimum eligible-update count (for
+   example ≥ 30 per phase) for a reader to count toward the per-reader
+   maximum, and report update-weighted natural FA beside reader-balanced.
+5. *Exclusion scan with overlapping matches* (lookahead patterns, e.g.
+   `(?<![\d.])(?=(IDS)[-_/]\d{2,6}[-_/])` and `(?=/(IDS)/)`).
 
 ## Reproduce
 
