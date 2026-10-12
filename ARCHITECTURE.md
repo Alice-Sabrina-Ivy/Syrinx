@@ -115,8 +115,9 @@ Everything runs in the browser. There is no backend.
 
 **As built (2026-10-07).** The capture source (AudioWorklet or a main-thread
 MediaStreamTrackProcessor) broadcasts ~25 ms chunks to several workers, each on
-its own thread: the **DSP worker** (formants, spectral tilt, HNR, intensity,
-CPP), the **pitch worker** (Boersma autocorrelation + path tracker), the
+its own thread: the **DSP worker** (formants, spectral tilt, HNR, intensity;
+CPP only on request — off in production since 2026-10-11, when the clarity row
+was hidden: `measurements/vocal-weight-pipeline-retire-2026-10-11.md`), the **pitch worker** (Boersma autocorrelation + path tracker), the
 **resonance worker** (the Dashboard's spectral-warp resonance cue — it reuses
 the pitch worker's posted decisions, relayed by the main thread, instead of
 running its own pitch tracker), the **gender worker** (voice classifier, only

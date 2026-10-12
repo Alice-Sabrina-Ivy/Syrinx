@@ -69,6 +69,72 @@ so the after-runs are interleaved with further base runs, §5.)
 3. **CPU**: DSP-worker thread CPU per audio second falls; no other thread rises beyond run-to-run
    noise.
 
-## 5. Results
+## 5. Results (head = this change, base = `364e0e1`)
 
-(filled in after the change)
+**Code change** (after this note): `dsp-worker.js` runs `computeCPP` (and `resetCppState`) only when
+`init` carries `cpp: true` — no production caller sets it; `useAudioPipeline.js` drops the
+aggregator / baseline / level refs, the per-frame push, the `buildVocalWeightState` calls and the
+`vocalWeight` state slice; `diag.js` drops `vocalWeightEmits` / `vocalWeightFrames`. `cpp.js` and the
+three vocal-weight modules are unchanged apart from a "dormant" header line; their unit tests still run.
+
+### 5.1 Bit identity (acceptance 1): PASS
+
+Every digest identical, base vs head, on all four inputs (9 of 9 streams each); the base tree run twice
+gives the same digests (the harness is deterministic). On base the retired path really ran (CPP on
+every DSP frame; non-null `vocalWeight.cpp` on 2881 / 2888, 2900 / 2933, 235 / 279 and 0 / 799 state
+updates); on head the DSP worker posted no CPP and the state has no `vocalWeight`.
+
+| input (48 kHz) | chunks | pitch msgs | DSP frames | formant / tilt / HNR frames | streams identical |
+|---|---|---|---|---|---|
+| speech-woman.wav (LibriSpeech) | 2889 | 2884 | 2888 | 482 / 474 / 473 | 9 / 9 |
+| speech-man.wav (LibriSpeech) | 2934 | 2929 | 2933 | 489 / 481 / 476 | 9 / 9 |
+| held.wav (synthetic vowel) | 280 | 275 | 279 | 47 / 40 / 40 | 9 / 9 |
+| noise.wav (synthetic) | 800 | 795 | 799 | 134 / 134 / 133 | 9 / 9 |
+
+Streams: posted pitch messages; DSP payloads minus `cpp` / timing; intensity; formants; spectral
+tilt; HNR; hook state per frame minus `vocalWeight`; session frame-callback records; painted trace
+points. Harness: drives the real workers + hook as described in §4 (kept outside the repo; the
+session-oracle loader `scripts/session-oracle/lib/register.mjs` with `SO_TAP=0`).
+
+### 5.2 Resonance, heard-as, pitch, lab workers (acceptance 2): PASS
+
+Built worker chunks, base vs head: `pitch-worker`, `resonance-worker`, `gender-worker` and
+`lab-worker` are **byte-identical** (same hashed file names, `cmp` equal); only `dsp-worker` changed
+(11 530 → 11 571 B: the flag check; `cpp.js` is still bundled for the
+opt-in path). The cue-strip smoke (resonance row, panel) and the lab smoke results are in the commit
+that ran them (CLAUDE.md "Current state").
+
+### 5.3 CPU (acceptance 3): PASS
+
+Thread CPU ms per audio second, interleaved runs (base-1 before the change, then head-1, base-2,
+head-2, base-3, head-3), same method as §3:
+
+| run | DSP worker | pitch worker | resonance worker | main | app (main + workers) |
+|---|---|---|---|---|---|
+| base-1 | 24.5 | 27.6 | 18.6 | 56.4 | 127.1 |
+| head-1 | 8.4 | 31.6 | 21.6 | 71.0 | 132.5 |
+| base-2 | 25.8 | 29.6 | 19.2 | 61.6 | 136.3 |
+| head-2 | 8.1 | 29.7 | 20.3 | 62.0 | 120.2 |
+| base-3 | 34.9 | 36.8 | 28.5 | 86.0 | 186.3 |
+| head-3 | 8.5 | 31.8 | 20.7 | 66.4 | 127.4 |
+| **median base / head** | **25.8 / 8.4** | 29.6 / 31.6 | 19.2 / 20.7 | 61.6 / 66.4 | 136.3 / 127.4 |
+
+- **DSP worker −17.4 ms per audio second (−67 %)**, every head run below every base run (8.1–8.5 vs
+  24.5–34.9). That is the per-frame CPP (~0.4 ms × 40 frames/s on this desktop); formants / tilt / HNR
+  every 6th frame and intensity remain.
+- The other threads move within run-to-run noise in both directions (base-3 ran under outside load:
+  its wall times are 1.3–1.6× its CPU times on every thread). The main-thread saving of the removed
+  aggregator push and slice build is too small to resolve against that noise (main 56–86 base,
+  62–71 head) — not claimed.
+- Mobile not measured (the 2026-05-10 note put per-frame CPP at ~80 ms/s on desktop under diag
+  timing; on a phone the saving is larger in absolute terms). The phone session planned for
+  2026-10-11 can confirm it with the same build.
+
+### 5.4 What stays
+
+- `src/dsp/cpp.js`, `src/audio/vocal-weight-{aggregator,baseline,level}.js` and their unit tests
+  (`tests/dsp/cpp-test.js`, `tests/audio/vocal-weight-*-test.js`) — library code, not called.
+- Stored data: nothing to migrate — no session frame, summary or export ever held a CPP or
+  vocal-weight value; Dexie v2's `vocalWeightCalibration: null` drop is unchanged.
+- The Resonance lab's "Weight × clarity" view computes its own features in the lab worker and is
+  unaffected (lab worker chunk byte-identical).
