@@ -24,8 +24,14 @@
 #           removed / added / changed against round 3's seal); `verify --tag=r4`
 #           checks the round-4 seal, `verify-r3` re-hashes round 3's seal minus
 #           the listed changes (nothing else may have moved)
+#   --tag=r5 (round-5 pre-registration §1.3, Addendum R5-A): the re-seal after the
+#           blind trills ruling -> seal-confirmatory-r5.sha256, seal-r5.json, the
+#           updated conf-manifest.jsonl and seal-r5-changes.json (against the
+#           ROUND-4 seal); `verify --tag=r5`; `verify-r4 --tag=r5` re-hashes the
+#           round-4 seal minus the round-5 changes; `verify-r3 --tag=r5` re-hashes
+#           round 3's seal minus the round-4 and round-5 changes
 #
-#   python scripts/voice-detector/r3/seal.py counts|seal|verify|verify-r3 [--tag=r4]
+#   python scripts/voice-detector/r3/seal.py counts|seal|verify|verify-r3|verify-r4 [--tag=r4|r5]
 import collections
 import glob
 import hashlib
@@ -45,7 +51,10 @@ SEAL = os.path.join(HERE, f"seal-confirmatory{SFX}.sha256")
 SEAL_R3 = os.path.join(HERE, "seal-confirmatory.sha256")
 SEALJ = os.path.join(HERE, f"seal{SFX}.json")
 CMAN = os.path.join(HERE, "conf-manifest.jsonl")
-CHANGES = os.path.join(HERE, "seal-r4-changes.json")
+SEAL_R4 = os.path.join(HERE, "seal-confirmatory-r4.sha256")
+CHANGES = os.path.join(HERE, f"seal-{TAG or 'r4'}-changes.json")
+CHANGES_R4 = os.path.join(HERE, "seal-r4-changes.json")
+PREV = {"r4": SEAL_R3, "r5": SEAL_R4}.get(TAG, SEAL_R3)
 SETS = ["cvoice", "cneg", "cmix20", "cmix0", "csess"]
 BANDS = [(75, 130, "75-130"), (130, 300, "130-300"), (300, 400, "300-400")]
 
@@ -192,7 +201,10 @@ def seal():
     commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO, capture_output=True, text=True).stdout.strip()
     kept = man.kept()
     J = {"what": "round-3 confirmatory set seal (pre-registration §1.6)" if not TAG else
-         f"round-4 re-seal of the confirmatory set (round-4 pre-registration §2.3, Addendum R4-A); round 3's seal: seal-confirmatory.sha256",
+         f"round-4 re-seal of the confirmatory set (round-4 pre-registration §2.3, Addendum R4-A); round 3's seal: seal-confirmatory.sha256"
+         if TAG == "r4" else
+         "round-5 re-seal of the confirmatory set (round-5 pre-registration §1.3, Addendum R5-A = R4-A'); round 4's seal: seal-confirmatory-r4.sha256, "
+         "round 3's: seal-confirmatory.sha256",
          "code_commit": commit, "files": len(fs), "bytes": n_bytes[0],
          "seal_sha256": sha(SEAL), "conf_manifest_sha256": sha(CMAN), "exclude_sha256": sha(os.path.join(R3, "exclude.json")),
          "records": {"kept": len(kept), "dropped": len(man.have) - len(kept)},
@@ -203,7 +215,7 @@ def seal():
                               "seed": 20261011, "minutes": 20},
          "counts": cnt}
     if TAG:
-        J["changes_vs_round3"] = changes()
+        J["changes_vs_round3" if TAG == "r4" else "changes_vs_round4"] = changes()
     write_json(SEALJ, J, indent=1)
     log(f"sealed {len(fs)} files; seal sha256 {J['seal_sha256']}")
 
@@ -217,19 +229,28 @@ def read_seal(p):
 
 
 def changes():
-    """Paths removed / added / changed in the round-4 seal against round 3's (written to seal-r4-changes.json)."""
-    a, b = read_seal(SEAL_R3), read_seal(SEAL)
-    C = {"what": "paths of the round-4 seal removed / added / changed against round 3's seal (seal-confirmatory.sha256)",
+    """Paths removed / added / changed in the round-4 seal against round 3's (seal-r4-changes.json), or in the round-5 seal
+    against round 4's (seal-r5-changes.json)."""
+    a, b = read_seal(PREV), read_seal(SEAL)
+    C = {"what": f"paths of the {TAG} seal removed / added / changed against the previous seal ({os.path.basename(PREV)})",
          "removed": sorted(set(a) - set(b)), "added": sorted(set(b) - set(a)), "changed": sorted(k for k in set(a) & set(b) if a[k] != b[k])}
     write_json(CHANGES, C, indent=1)
-    log(f"changes vs round 3: removed {len(C['removed'])}, added {len(C['added'])}, changed {len(C['changed'])}")
+    log(f"changes vs {os.path.basename(PREV)}: removed {len(C['removed'])}, added {len(C['added'])}, changed {len(C['changed'])}")
     return {k: len(v) for k, v in C.items() if k != "what"}
 
 
+def _skip(paths):
+    skip = set()
+    for p in paths:
+        C = json.load(open(p, encoding="utf8"))
+        skip |= set(C["removed"]) | set(C["changed"])
+    return skip
+
+
 def verify_r3():
-    """Round 3's seal minus the listed round-4 changes: every other path must hash as round 3 sealed it."""
-    C = json.load(open(CHANGES, encoding="utf8"))
-    skip = set(C["removed"]) | set(C["changed"])
+    """Round 3's seal minus the listed round-4 (and, with --tag=r5, round-5) changes: every other path must hash as round 3
+    sealed it."""
+    skip = _skip([CHANGES_R4] + ([CHANGES] if TAG == "r5" else []))
     bad = n = 0
     for rel, h in read_seal(SEAL_R3).items():
         if rel in skip:
@@ -240,6 +261,23 @@ def verify_r3():
             bad += 1
             print("MISMATCH", rel)
     print(f"verify-r3: {n} round-3 paths outside the listed changes, {bad} mismatches")
+    return bad
+
+
+def verify_r4():
+    """Round 4's seal minus the listed round-5 changes (--tag=r5)."""
+    assert TAG == "r5", "verify-r4 needs --tag=r5"
+    skip = _skip([CHANGES])
+    bad = n = 0
+    for rel, h in read_seal(SEAL_R4).items():
+        if rel in skip:
+            continue
+        n += 1
+        p = os.path.join(R3, rel)
+        if not os.path.exists(p) or sha(p) != h:
+            bad += 1
+            print("MISMATCH", rel)
+    print(f"verify-r4: {n} round-4 paths outside the listed round-5 changes, {bad} mismatches")
     return bad
 
 
@@ -256,4 +294,4 @@ def verify():
 
 
 if __name__ == "__main__":
-    {"counts": counts, "seal": seal, "verify": verify, "verify-r3": verify_r3}[sys.argv[1]]()
+    {"counts": counts, "seal": seal, "verify": verify, "verify-r3": verify_r3, "verify-r4": verify_r4}[sys.argv[1]]()

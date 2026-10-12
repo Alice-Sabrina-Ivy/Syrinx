@@ -654,9 +654,19 @@ def ds_scan():
     for q in DS_Q:
         # Zenodo
         try:
-            j = requests.get("https://zenodo.org/api/records", params={"q": f'"{q}"', "type": "dataset", "access_right": "open", "size": 100},
-                             headers=UA, timeout=60).json()
-            for h in j.get("hits", {}).get("hits", []):
+            # Zenodo caps anonymous pages at 25 records (a size of 100 returns HTTP 400 with no hits, which the round-4
+            # code read as "no records"; found in round 5, Addendum R5-A): up to 4 pages of 25 = the intended 100.
+            hits = []
+            for pg in (1, 2, 3, 4):
+                r = requests.get("https://zenodo.org/api/records", params={"q": f'"{q}"', "type": "dataset", "access_right": "open", "size": 25,
+                                                                          "page": pg}, headers=UA, timeout=60)
+                if r.status_code != 200:
+                    raise IOError(f"zenodo HTTP {r.status_code}: {r.text[:200]}")
+                hh = r.json().get("hits", {}).get("hits", [])
+                hits += hh
+                if len(hh) < 25:
+                    break
+            for h in hits:
                 rid = f"zenodo:{h['id']}"
                 R.setdefault(rid, {"repo": "zenodo", "id": h["id"], "title": h["metadata"].get("title"), "licence": (h["metadata"].get("license") or {}).get("id"),
                                    "url": h["links"].get("self_html") or f"https://zenodo.org/records/{h['id']}", "queries": [],
