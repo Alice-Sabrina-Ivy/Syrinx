@@ -448,7 +448,7 @@ milliseconds per second; read as noise. The TARGET cut is unaffected
 33.7 / 33.9 ms, max 39.6 / 52.1 ms, step p99 1.43 px (guard 3c pass),
 draw − readout 3.4 / 3.4 ms.
 
-**Not adopted:** the review's display-rate rAF loop capped at 60 Hz (F1,
+**Not adopted** (superseded 2026-10-12, §4: adopted after the phone check): the review's display-rate rAF loop capped at 60 Hz (F1,
 reason in §3). It is prepared as a phone-check variant, so the phone session
 can price its smoothness against its main-thread cost if the data-driven
 cadence fails there.
@@ -458,7 +458,28 @@ the new `tests/audio/trace-redraw-test.js`, 15 checks), `npm run build`, and
 `scripts/cue-strip-smoke.mjs --pitch-only=man,woman` at the five viewports
 (90 / 90 at each: phone 448 × 890, p402 402 × 750, p360 360 × 690, landscape 890 × 360, desktop 1280 × 800).
 
-**Phone.** Not measured here. The phone check covers main-thread CPU (base
+**Phone.** Not measured here (measured 2026-10-12, §4). The phone check covers main-thread CPU (base
 adf19c3 vs head, production page), guard 3c on the phone's 40 ms audio
 buffers (and the by-eye judder check), the resonance worker, and the gender
 worker + speech detector at the 450 ms hop, in one session.
+
+## 4. Status after the phone check (2026-10-12)
+
+[phone-cpu-2026-10-12.md](phone-cpu-2026-10-12.md). On a Pixel 11 Pro XL
+(Chrome 154, portrait, 40 ms audio buffers, public LibriSpeech speech) the
+`cue-strip` head (c925457) used 30 % (panel off) / 34 % (panel on) less
+main-thread CPU than adf19c3 (`/proc`; the whole cue-strip change, not this
+pass alone). Its data-driven redraw ran at ~25 draws/s: SMOOTH by the
+automated screen-recording rule, but guard 3c failed on the gap p99 (52 ms vs
+the desktop-set 50 ms bar). The rAF loop capped at ~60 Hz (F1's rejected
+option) drew ~53 /s, passed 3c and was also SMOOTH, at +27 / +30 % main
+thread vs the head on the phone. **User decision 2026-10-12: adopted** — the
+F1 decision above ("not adopted") is superseded; `traceRedrawScheduler.js` is
+now that loop (branch `trace-raf60`). Desktop cost of the change (headless
+Chrome 154 at ~180 frames/s, `mt-cpu.mjs`, 1280 × 800, no diag): main thread
+108 → 172 ms/s panel off (+58 %), 114 → 174 panel on (+53 %); women +51 /
++44 %, men +82 / +55 % (off / on); a new point reaches the screen ~6–7 ms
+later on the desktop (~1 ms on the phone); trace pixels at data steps and the
+cue strip unchanged. The desktop was not re-measured against adf19c3 (the
+§3.1 TARGET figures come from another session; compare within one table
+only). On the phone the adopted build stays 11 % / 14 % below adf19c3.
