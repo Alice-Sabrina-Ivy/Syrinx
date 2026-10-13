@@ -15,8 +15,9 @@
 // ran S0 (`S0_CONFIG` below). KS-Q5, the late-panel fallback below, was
 // adopted by user decision 2026-10-13 (§8.9) overriding the recorded FAIL of
 // its pre-registered test (§8.8, 29 of 30 checks: one man's natural false
-// alarms 16.76 % with the panel switched on at ~120 s, limit 15 %; the shipped
-// rule with the panel on from the start gives him 18.57 % over the same span).
+// alarms 16.76 % with the panel switched on at ~120 s, limit 15 %; post hoc,
+// not pre-registered: the shipped rule with the panel on from the start gives
+// him 18.57 % over the same span).
 // With the panel on from the start KS-Q5 never runs and the warning is the
 // §8.6 rule tick for tick (§8.9 (a)). The KS-Q5 code is ported from the
 // round-2 harness (late-variants-r2.js, sha256 956061543a…; §8.9 (b): 0
@@ -89,10 +90,12 @@
 //     first shown triggered update (fbT0) for 20 s, and after that until 5
 //     are collected; while that window is open the gate fails (no warning).
 // With the panel on from the start no update is triggered: the rule is §8.6's.
-// Limit that remains (§8.9): a panel that was on before t_fill (first update
+// Limits that remain (§8.9): a panel that was on before t_fill (first update
 // before the cue filled) but showed no estimate in the start window — hidden
-// throughout, or its model still downloading — cannot warn until stop / start
-// or a cue restart.
+// throughout, its model still downloading, or the user on another tab (the
+// panel then makes no updates) — cannot warn until stop / start or a cue
+// restart; nor can one that was on before t_fill, switched off, and switched
+// on again after a cue restart's new t_fill (the late flag stays false).
 //
 // Bounded storage (§8.9 2). The shipped module kept every voiced posted frame
 // until a panel update froze A40, i.e. for the whole session while the panel
@@ -109,7 +112,10 @@
 //     module gives up on this start: P0 is null (as with fewer than 20 start
 //     frames), no warning and pitchStart() null until a cue restart or
 //     reset(). It never applied on the recorded streams (t_start - t_fill
-//     <= 81.5 s).
+//     <= 81.5 s). It counts audio time, silence included: a pause of about
+//     3 min after the cue fills ends the start, also with the panel on from
+//     the start, where the shipped module could still warn (§8.9 review
+//     fixes; a voiced-frame cap awaits a user decision).
 //   - The K-seed ring holds the posted frames of the last 8 s (<= 321 at the
 //     25 ms cadence) in typed arrays; it stops and is released once the first
 //     panel update came before t_fill (the shadow can then never be used

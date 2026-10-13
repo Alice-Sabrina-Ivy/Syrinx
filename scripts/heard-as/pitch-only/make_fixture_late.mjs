@@ -14,7 +14,10 @@
 // T120 (the first by key order hit at T120 in all four phases: hcsL_ls2654_PO, hcsL_ls1474_PO; the latter's T30p0
 // got a start share); natL_ls3792 at T120 (the failed check's reader); hcsL_ls2473_PO at T120p450 (the Q5 window
 // never closes); hcsL_ls3171_PO at T60p1050 (one of the few panels where a 7.9 s seed window changes the output); a
-// natural woman with no warning (natL_ls1474, the first by key order); and two panels on from the start.
+// natural woman with no warning (natL_ls1474, the first by key order); and two panels on from the start. Since the
+// §8.9 review fixes also panels where three K-seed rules change the output (no other panel does): the seed's F0
+// range check (hcsL_mlspo3492_PO T30p1500 / T120p1500), copying the shadow's pending values at the first triggered
+// update (hcsL_ls2853_PO T30p1500, hcsL_ls2694_PO T30p0) and the shadow's back-fill of them (hcsL_ls2853_PO T60p1500).
 // Per session the fixture keeps every posted frame (times as t0 + 25 ms steps with exceptions, voicing as runs, the
 // voiced f0 as base64 float64 — exact), the resonance posts that set t_fill / t_start, change the verdict or are the
 // last before an included update (with each included stream's clock), and each panel's updates. EXPECTED: the
@@ -50,6 +53,9 @@ const WANT = {
   hcsL_ls2473_PO: { why: "male base, T120p450: the Q5 window never closes", panels: ["T120p450"] },
   hcsL_ls3171_PO: { why: "a panel where a 7.9 s seed window changes the output", panels: ["T60p1050"] },
   natL_ls1474: { why: "natural reading, a woman with no warning", panels: ["T30p0", "T120p0"] },
+  hcsL_mlspo3492_PO: { why: "panels where the seed's F0 range check changes the output", panels: ["T30p1500", "T120p1500"] },
+  hcsL_ls2853_PO: { why: "panels where copying the shadow's pending values (T30p1500) and its back-fill (T60p1500) change the output", panels: ["T30p1500", "T60p1500"] },
+  hcsL_ls2694_PO: { why: "a panel where copying the shadow's pending values changes the output", panels: ["T30p0"] },
 };
 
 function panelsOf(r) {

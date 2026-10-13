@@ -60,7 +60,12 @@
 > study harness's KS-Q5 (0 mismatches on 975,519), and the module keeps at
 > most 7,522 pitch frames (about 74 KB after an hour with the panel off,
 > against 7.1 MB before). The panel's "More" list now says it can be turned
-> on at any time.
+> on at any time. A review then found that the 180 s start cap counts
+> silence: a pause of about 3 minutes after the cue fills ends the warning
+> for the session, also with the panel on from the start. The fix (a cap on
+> voiced frames, §8.9 "Review fixes") was stopped before the code change,
+> because one pre-committed check cannot hold with it; it awaits a user
+> decision.
 
 The experimental, opt-in "Likely heard as" panel follows pitch more than
 listeners do. When a voice changes pitch without changing resonance, the panel
@@ -3180,6 +3185,128 @@ not mention them.
 - A panel on before the cue filled, then switched off; a resonance
   overload restarts the cue; the panel is switched on after the new fill.
   The late flag stays false, so it cannot warn until stop / start.
+
+*Status of this step (2026-10-13): stopped before 2c′; a user decision is
+needed.*
+
+- **Why it stopped.** (b)'s not-blind clause ("the same comparison with
+  one constant changed (… cap 180 → 30 s) finds mismatches"), restated in
+  (h1) as `maxStartVoicedMs` 30,000, cannot hold with 2c′. The most voiced
+  frames that a still-open start window held on any recorded stream is 666,
+  about 16.7 s of voiced audio:
+
+  | Streams | Most voiced frames in a still-open start window |
+  |---|---|
+  | Pool A | 666 |
+  | Pool B | 603 |
+  | Fresh pool | 614 |
+  | §8.5's streams | 666 / 624 (dev / test) |
+
+  So a 30 s voiced-frame cap (1,200 frames) never applies, and the
+  comparison finds 0 mismatches. The replay is not blind: with 15 s (600
+  frames) it finds mismatches on every pool (pool A 1,876 + 2,866
+  mismatching updates, pool B 2,885 + 1,908, fresh pool 4,259 + 3,508;
+  with 16 s only on pool A). §8.9's requirements are not edited, so 2c′ is
+  not committed. The module keeps 2c (the time cap), and the pause issue
+  stays open.
+- **What 2c′ did meet before the stop.** Measured in scratch on the
+  module with 2c′ (sha256 `c1dbeba33e…`, kept with the full patch in
+  `warning-ks-q5-adopt/fix/countcap/`):
+  - (a) and (b): 0 mismatches, with the same update and trigger counts
+    as the results above.
+  - The cap applied on 0 recorded panels.
+  - The seed-window, Q5-window and Q5-minimum changes found mismatches as
+    before.
+  - The reviewer's pause case (seeds 1–3): the new module, the shipped
+    module and the harness all first warn at 306 s.
+  - Every scenario of `bound_adv.mjs` (25 ms frames, seeds 1–3): 0 calls
+    over the bound; the A40 buffer peaked at 7,200, in "long".
+  - Node 24, 1 h: retained ≤ 1,318 frames; heap 74.0 / 35.0 / 75.8 KB
+    (panel off / on from the start / on at 30 min); 20.4 ms of CPU per
+    audio hour with the panel off.
+  - The unit test with 2c′: 217 of 217 checks.
+
+  Not run: Chrome CPU, `bound_adv.mjs` at 24.989 ms frames, the smoke.
+- **The decision.**
+  1. Adopt 2c′, with (b)'s not-blind cap check run at a value that reaches
+     the recorded data (15 s). That changes a requirement, so it is the
+     user's call. The patch is ready.
+  2. Keep the time cap, and say in the panel's "More" text that a pause
+     of about 3 minutes after starting can turn the note off until stop /
+     start. The wording needs approval.
+  3. Something else.
+
+  The three wording proposals above also wait for a decision.
+
+*Committed in this step: no behaviour change.* The module's code is
+unchanged; only its header comments changed. `git diff` shows no
+non-comment line. The new module hashes to
+`a5879f5a54b5dd40bb32c6990476531273b5e8c58f229c1b9d327c014909f6a5`.
+
+- **Module header.** The post-hoc label on the 18.57 % figure; the limits
+  below; a sentence that the time cap counts silence, with the open
+  decision.
+- **`CLAUDE.md`.**
+  - The cap is now described as counting audio time, silence included,
+    with the open issue (it read "ends a start window that never
+    closes").
+  - The Q5 window is described correctly.
+  - The two added limits.
+- **Tests.** The K-seed pins: the fixture panels and the seven synthetic
+  cases above, plus three checks that they are present and give the
+  designed first warnings.
+  - `tests/ml/pitch-only-warning-test.js`: 212 of 212 checks (197 before).
+  - The fixture is 879 KB (sha256 `106822e0…`; 9 sessions, 21 panels, 18
+    synthetic cases). The generator's checks passed: the harness and the
+    repo module agree on the pruned and full streams.
+  - The bound section is unchanged, since the cap is unchanged.
+  - `npm run lint`, `npm run test:unit` (40 of 40) and `npm run build`
+    pass.
+- **Parity of the committed module.** `replay_adopt.mjs`, unchanged, run
+  on every stream of (a) and (b): 0 mismatches.
+  - The counts equal the results above (for example pool A on0 + on0L:
+    299,233 updates, 22,579 with the warning on).
+  - Trigger path on the fresh pool: 1,095 / 1,152 / 1,152.
+  - The cap applied on 0 panels.
+- **Mutation check.** `mutate_fix.mjs` runs the test against other copies
+  of the module.
+
+  | Module under test | Groups that fail (checks) |
+  |---|---|
+  | Shipped module (2a1f4022…) | late (25), bound (1); identity, golden, rule and wiring pass |
+  | No K-seed | late (11) |
+  | Seed window 7.9 s | late (3; now also `seed_first`) |
+  | Q5 window 19.9 s | late (6) |
+  | Q5 minimum 4 | late (3) |
+  | Trigger without the late flag | identity (1), late (2) |
+  | No freeze in `addPitch` | bound (4) |
+  | No cap | bound (2) |
+  | Shadow kept running when the late flag is false | bound (1) |
+  | No F0 range check in the seed | late (2: hcsL_mlspo3492_PO T30p1500, T120p1500) |
+  | No copy of the shadow's pending values | late (2: hcsL_ls2694_PO T30p0, hcsL_ls2853_PO T30p1500) |
+  | No back-fill of them | late (1: hcsL_ls2853_PO T60p1500) |
+  | No verdict check in the seed | late (1: `seed_sustained`) |
+  | No freshness check in the seed | late (1: `seed_fresh`) |
+  | A 50 ms gap cap | late (1: `seed_gap`) |
+  | A 0 ms first gap | late (1: `seed_first`) |
+  | The window edge counted inside the window | late (1: `seed_edge`) |
+  | The ring cleared at a cue restart | late (1: `seed_restart`) |
+  | The 2 s grid's first step by `ceil` (equivalent) | none (212 of 212 pass, as expected) |
+
+Inputs and outputs of this step (scratch folder `warning-ks-q5-adopt/`):
+
+- `fix/replay_fix.mjs` `201bd5a008b543afd116db26a92719348c108dd0fc749d13e7c210cd763c58d4`
+- `fix/replay_fix_cap.mjs` `9df3d19f1d5f1569227ab15aa97438440650b2385bb83ee3c6e0b1018b4791f6`
+  (the 15 / 16 s caps)
+- `fix/mutate_fix.mjs` `c8f191dbfd39fbccd3434ebfb98ed83e0769c5e3bcac332afd170c1826d4e6f7`
+  and its output `fix/mut2/mutate_result.json` `654aba3f5d3cc60b40476b63613be111a9fe7402f4d1294705277d55365b2086`
+- the reviewer's `review-parity/bound_adv.mjs` `98eb60cedcb820a4f06ce1ad359f2926d474e101e579b55d35062dc34389bf85`
+- `fix/syn_eval.mjs` `d60c21225cf5700c451d5c792f765a480681ded840a002bb5846ce4f3146b2f1`
+  (the synthetic cases against the harness and each mutant)
+- `fix/mut_panels.mjs` `e201c97cf8a172487e2271ce30b6f3ef429a463d8004d368af6ac34d13c94a45`
+  (the fresh-pool panels each K-seed mutant changes)
+- the 2c′ patch `fix/countcap/countcap-full.patch` `03a6c8bda5ceb336223db0094d05084a93722e64de6b9d0de2730d1e58af0c4f`
+  and its Node memory and CPU output `fix/out/bound_countcap.json` `36a730fdd0c6600b2722251ecb406b911f767958d91159e9e4c187be4abd90e6`
 
 
 ## Reproduce
