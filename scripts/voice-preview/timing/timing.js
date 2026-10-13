@@ -16,7 +16,9 @@ const cfg = cfgFromParams(qs);
 const WORKER_URL = new URL("../worker/vp-worker.js", import.meta.url);
 const WASM_BASE = new URL("/vp-cache/wasm/", location.origin).href;
 const CLIP_BASE = new URL(`/vp-cache/clips/${cfg.clipset}/`, location.origin).href;
-const SR_IN = 48000;
+// Capture rate of the clip set (index.json "sr"): 48 000 Hz, or 44 100 Hz for the 44.1 kHz copies
+// (prep/clips-44k.mjs; § Addition 2026-10-12, A3). The PCM is posted to the Worker at this rate.
+const SR_DEFAULT = 48000;
 
 const $ = (id) => document.getElementById(id);
 const logLines = [];
@@ -43,7 +45,7 @@ async function clipData(clip, length) {
     const c = index.clips.find((e) => e.name === clip);
     if (!c) throw new Error(`no clip ${clip}`);
     const e = c.lengths[String(length)];
-    clipCache.set(key, { pcm: await fetchF32(e.pcm), posted: e.posted ? await fetchF32(e.posted) : null });
+    clipCache.set(key, { pcm: await fetchF32(e.pcm), posted: e.posted ? await fetchF32(e.posted) : null, sr: c.sr || SR_DEFAULT });
   }
   return clipCache.get(key);
 }
@@ -81,9 +83,9 @@ function workerClient(nonce) {
 const needWorld = (engine, fe) => engine === "world" || fe === "H" || fe === "D";
 
 async function runOne(spec) {
-  const { pcm: src, posted } = await clipData(spec.clip, spec.length);
+  const { pcm: src, posted, sr: srIn } = await clipData(spec.clip, spec.length);
   const nonce = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-  const out = { ...spec, clipset: cfg.clipset, startedAt: new Date().toISOString() };
+  const out = { ...spec, clipset: cfg.clipset, srIn, startedAt: new Date().toISOString() };
   const tW = performance.now();
   const W = workerClient(nonce);
   try {
@@ -97,7 +99,7 @@ async function runOne(spec) {
       const pcm = src.slice(); // copied before the clock starts; transferred below
       const t = performance.now();
       const r = await W.call({
-        type: "analyse", pcm, srIn: SR_IN, rate: spec.rate, frontEnd: spec.fe,
+        type: "analyse", pcm, srIn, rate: spec.rate, frontEnd: spec.fe,
         posted: spec.fe === "S" ? posted : null, framePeriod: spec.fp, first: FIRST,
       }, [pcm.buffer]);
       toAudioBuffer(r.pcm, r.rate);
@@ -133,13 +135,13 @@ async function identity() {
   const rows = [];
   for (const build of cfg.builds) {
     for (const c of IDENTITY_CASES) {
-      const { pcm: src, posted } = await clipData(c.clip, c.length);
+      const { pcm: src, posted, sr: srIn } = await clipData(c.clip, c.length);
       const W = workerClient(`id-${build}-${Date.now()}`);
       try {
         await W.call({ type: "init", engine: c.engine, build, needWorld: needWorld(c.engine, c.fe), needLab: c.fe === "L", wasmBase: WASM_BASE });
         const [first, ...rest] = IDENTITY_CELLS;
         const pcm = src.slice();
-        let r = await W.call({ type: "analyse", pcm, srIn: SR_IN, rate: c.rate, frontEnd: c.fe, posted: c.fe === "S" ? posted : null,
+        let r = await W.call({ type: "analyse", pcm, srIn, rate: c.rate, frontEnd: c.fe, posted: c.fe === "S" ? posted : null,
           framePeriod: 5, first: { st: first[0], a: first[1] } }, [pcm.buffer]);
         rows.push({ build, ...c, clipset: cfg.clipset, st: first[0], a: first[1], n: r.pcm.length, sha256: await sha256Hex(r.pcm) });
         for (const [st, a] of rest) {

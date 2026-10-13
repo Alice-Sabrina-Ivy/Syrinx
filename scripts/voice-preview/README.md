@@ -26,7 +26,10 @@ files are not committed; the build is byte-reproducible from `build.mjs`.
 | `parity/` | WebAssembly vs pyworld 0.3.5 (Levels 1–3), SIMD vs non-SIMD, PSOLA vs the prototype, browser vs Node; `pyworld_fe.py` extends Levels 2–3 to every F0 front end |
 | `fe/` | F0 front-end comparison (§P4): `fe-run.mjs` renders and tracks, `fe_score.py` checks 1–4 and the F-S alignment; `rate-check.mjs` + `rate_score.py` re-run checks 1, 2 and 4 with F-S at 16 / 22.05 / 24 kHz (addition after review) |
 | `hum/` | Hum and noise tests (§P7): `make_conditions.py`, `hum-run.mjs` (real pitch chain, notch, level check, VTLN), `hum_score.py`; `make_tonal_conditions.mjs` adds in-range tonal noise (fan hum, mains complex) and `hum-run.mjs --track=live` tests listening before recording (additions after review) |
-| `listen/make-listen.mjs` | The listening set (§P9), written outside the repository |
+| `listen/make-listen.mjs` | The listening set (§P9), written outside the repository; `make-listen-hi.mjs` adds the 32 and 48 kHz rebuilds (addition 2026-10-12) |
+| `prep/clips-44k.mjs` | 44.1 kHz copies of the timing clips with their own posted tracks (addition 2026-10-12, A3) |
+| `parity/pyworld_hi.py`, `parity/hirate-meters.mjs`, `parity/hirate_score.py`, `parity/mem-hi.mjs` | Levels 2 and 3 at 32 / 44.1 / 48 kHz with F-S (on `fe/rate-check.mjs --l2=1` output), FFT sizes and WebAssembly memory per rate (addition 2026-10-12, A4) |
+| `timing/hi-verdict.mjs` | The addition's 44.1 kHz check, phone inclusion rule and phone-time estimate, from `analyze.mjs --by-clipset=1` output (A3, A6, A7) |
 | `timing/` | Timing page, matrix, static server, desktop driver, summary; `analyze.mjs` (statistics, gate conditions, phone predictions), `load-log.mjs` (machine load), `fp10-renders.mjs` + `fp10_lsd.py` (the 10 ms lever's spectral distance) |
 
 ## Reproduce
@@ -84,6 +87,39 @@ node scripts/voice-preview/timing/load-log.mjs --out=<load.jsonl> --stop-file=<f
 node scripts/voice-preview/timing/run-desktop.mjs --browser=chrome --per-run-context --params="runs=10&fe=S"
 node scripts/voice-preview/timing/run-desktop.mjs --browser=firefox --params="runs=5&fe=S&blocks=world-auto,world-nosimd,psola&lengths=5"
 node scripts/voice-preview/timing/analyze.mjs <result.json>[,...] --load=<load.jsonl> --json=<out.json>
+```
+
+```sh
+# addition 2026-10-12: 32, 44.1 and 48 kHz
+node --import ./scripts/session-oracle/lib/register.mjs scripts/voice-preview/prep/clips-44k.mjs
+node scripts/voice-preview/parity/run-wasm.mjs --build=simd --level=1 --l1-rates=32000,44100,48000
+node scripts/voice-preview/parity/run-wasm.mjs --build=nosimd --level=1 --l1-rates=32000,44100,48000 --hashes-only
+node scripts/voice-preview/parity/compare-builds.mjs simd nosimd 1-32000-44100-48000
+python -I scripts/voice-preview/parity/pyworld_ref.py --pyworld <dir> --build simd --level 1 --rates 32000,44100,48000
+node --import ./scripts/session-oracle/lib/register.mjs scripts/voice-preview/fe/rate-check.mjs --rates=16000,32000,44100,48000 --out=rate-hi --l2=1
+python -I scripts/voice-preview/fe/rate_score.py --dir rate-hi --rates 16000,32000,44100,48000
+python -I scripts/voice-preview/parity/pyworld_hi.py --pyworld <dir>
+node --import ./scripts/session-oracle/lib/register.mjs scripts/voice-preview/parity/hirate-meters.mjs
+python -I scripts/voice-preview/parity/hirate_score.py
+node scripts/voice-preview/parity/mem-hi.mjs --json=<out.json>
+node scripts/voice-preview/timing/run-desktop.mjs --browser=chrome --mode=identity   # 48 outputs
+node scripts/voice-preview/timing/run-desktop.mjs --browser=firefox --mode=identity
+node scripts/voice-preview/timing/run-desktop.mjs --browser=chrome --per-run-context --plans=<plans.json> --params="runs=10&fe=S"
+node scripts/voice-preview/timing/run-desktop.mjs --browser=firefox --params="runs=5&fe=S&blocks=world-auto,world-nosimd,psola&lengths=5&rates=48000,32000"
+node scripts/voice-preview/timing/analyze.mjs <result.json> --load=<load.jsonl> --by-clipset=1 --json=<analysis.json>
+node scripts/voice-preview/timing/hi-verdict.mjs <analysis.json>
+```
+
+`plans.json` for the addition's matrix (A5), one page configuration per line, interleaved repeat by
+repeat:
+
+```json
+["clipset=timing&blocks=world-auto,world-nosimd,psola&rates=48000,32000&lengths=3,5,8",
+ "clipset=timing-speech&blocks=world-auto,world-nosimd,psola&rates=48000,32000&lengths=5,8",
+ "clipset=timing-44k&blocks=world-auto&rates=44100&lengths=5",
+ "clipset=timing-speech-44k&blocks=world-auto&rates=44100&lengths=5",
+ "clipset=timing&blocks=world-auto&rates=24000&lengths=5",
+ "clipset=timing-speech&blocks=world-auto&rates=24000&lengths=5"]
 ```
 
 Manual use: `node scripts/voice-preview/timing/serve.mjs`, then open

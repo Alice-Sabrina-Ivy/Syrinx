@@ -12,8 +12,12 @@ Per rate, on 8 clips (speech-dense 5 s and pre-registered 8 s timing clips, 48 k
 Judged against 16 kHz on the same clips with §P4's margins (post hoc: 16 kHz is the baseline here):
 check 1 <= 16 kHz + 2 pp, check 2 <= 16 kHz + 1 pp, check 4 all four pass.
 Output: VP_CACHE/fe/rate/scores.json and a printed table.
+
+§ Addition 2026-10-12 (A4): --dir rate-hi --rates 16000,32000,44100,48000 scores rate-check.mjs's
+run at the new rates (the first rate is the baseline). At 44 100 Hz the original is the clip's
+44.1 kHz copy, so checks 1 and 2 read against that copy's posted track (clips.json byRate).
 """
-import json, os, site, sys
+import argparse, json, os, site, sys
 
 _us = site.getusersitepackages()
 if _us not in sys.path:
@@ -23,8 +27,12 @@ import numpy as np  # noqa: E402
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, "..", "..", ".."))
 CACHE = os.environ.get("VP_CACHE") or os.path.join(REPO, "build", "voice-preview")
-D = os.path.join(CACHE, "fe", "rate")
-RATES = [16000, 22050, 24000]
+ap = argparse.ArgumentParser()
+ap.add_argument("--dir", default="rate")
+ap.add_argument("--rates", default="16000,22050,24000")
+A = ap.parse_args()
+D = os.path.join(CACHE, "fe", A.dir)
+RATES = [int(r) for r in A.rates.split(",")]
 ST = [-6, -3, 0, 3, 6]
 AL = [0.88, 0.94, 1.00, 1.06, 1.12]
 G = 0.111
@@ -61,7 +69,7 @@ res = {}
 for rate in RATES:
     p1, p2, rows = [], [], []
     for c in clips:
-        po = f32(c["posted"])
+        po = f32(c.get("byRate", {}).get(str(rate), {}).get("posted") or c["posted"])
         mo = med_voiced(po)
         for st, a in cells(c["sex"]):
             pr = f32(os.path.join(D, "post", str(rate), c["name"], cn(st, a) + ".f32"))
@@ -98,7 +106,7 @@ for rate in RATES:
                            monotonic=bool(vt4["monotonic"] >= 0.8), leak=bool(vt4["leak"] <= 0.2))
     res[rate] = dict(P1_median=float(np.median(p1)), P1_per_clip=dict(zip([c["name"] for c in clips], p1)),
                      P2_median=float(np.nanmedian(p2)), P2_p90=float(np.nanpercentile(p2, 90)), eligible=len(p2), vtln=vt4)
-b = res[16000]
+b = res[RATES[0]]
 for rate in RATES:
     r = res[rate]
     r["checks"] = dict(c1=bool(r["P1_median"] <= b["P1_median"] + 0.02), c2=bool(r["P2_median"] <= b["P2_median"] + 0.01),

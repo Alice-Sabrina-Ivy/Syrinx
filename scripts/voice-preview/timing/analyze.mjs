@@ -9,7 +9,11 @@
 // suspension) are excluded and listed.
 //
 //   node scripts/voice-preview/timing/analyze.mjs <result.json>[,<result.json>...] [--load=load.jsonl]
-//        [--factors=2,2.4,4.5] [--json=out.json]
+//        [--factors=2,2.4,4.5] [--json=out.json] [--by-clipset=1]
+// --by-clipset=1 (§ Addition 2026-10-12): the clip set (run row "clipset", default "timing") is part
+// of the group key, for result files that mix clip sets (run-desktop.mjs --plans). Each group also
+// reports runComputeMeanMs, the mean of C0 + cold G1 + 20 x G2 + 5 x warm G1 per run (the phone
+// session estimate, A7).
 import { readFileSync, writeFileSync } from "node:fs";
 import { quantile } from "./summarize.mjs";
 
@@ -44,8 +48,9 @@ for (const f of files) {
       const t0 = Date.parse(r.startedAt), t1 = t0 + runSpanMs(r) + 2000;
       if (gaps.some(([a, b]) => t0 < b && t1 > a)) { excluded.push({ file: f, i: r.i, block: r.block, rate: r.rate, length: r.length, clip: r.clip, startedAt: r.startedAt }); continue; }
     }
-    const key = [browser, r.engine, r.ready?.build || "js", r.fe, `fp${r.fp}`, r.rate, `${r.length}s`].join(" ");
-    if (!groups.has(key)) groups.set(key, { browser, engine: r.engine, build: r.ready?.build || "js", fe: r.fe, fp: r.fp, rate: r.rate, length: r.length, runs: [] });
+    const clipset = r.clipset || "timing";
+    const key = [browser, r.engine, r.ready?.build || "js", r.fe, `fp${r.fp}`, r.rate, `${r.length}s`, ...(args["by-clipset"] ? [clipset] : [])].join(" ");
+    if (!groups.has(key)) groups.set(key, { browser, engine: r.engine, build: r.ready?.build || "js", fe: r.fe, fp: r.fp, rate: r.rate, length: r.length, ...(args["by-clipset"] ? { clipset } : {}), runs: [] });
     groups.get(key).runs.push(r);
   }
 }
@@ -80,6 +85,7 @@ for (const [key, g] of groups) {
     c0: q((r) => [r.c0]), g1cold: q((r) => [r.g1cold.ms]), g2: q((r) => r.g2.map((x) => x.ms)), g1warm: q((r) => r.g1warm.map((x) => x.ms)),
     stagesColdMedian: stages, stagesG2Median: g2stages, memMB: Math.max(...rs.map((r) => r.memBytes || 0)) / 1048576,
     loadBusyPct: loads.length ? st(loads) : null,
+    runComputeMeanMs: rs.reduce((a, r) => a + runSpanMs(r), 0) / rs.length,
   };
   s.gateDesktop = gate(s, 1);
   // the largest desktop-to-phone factor at which all four conditions would still hold (C0 excess ignored: C0 << 3 s)
@@ -92,9 +98,9 @@ if (args.json) writeFileSync(args.json, JSON.stringify({ groups: out, gaps: gaps
 console.log(`load-log gaps (> 30 s): ${gaps.map(([a, b]) => `${new Date(a).toISOString().slice(11, 19)}-${new Date(b).toISOString().slice(11, 19)}`).join(", ") || "none"}; runs excluded: ${excluded.length}`);
 
 const sec = (v) => (v / 1000).toFixed(2);
-console.log(`${"group".padEnd(42)} runs  C0 med  G1cold med [p25-p75] wcp90 min   G2 med wcp90 min   G1warm  (ms/s G1,G2)  halves G1 / G2   load%  mem`);
+console.log(`${"group".padEnd(56)} runs  C0 med  G1cold med [p25-p75] wcp90 min   G2 med wcp90 min   G1warm  (ms/s G1,G2)  halves G1 / G2   load%  mem`);
 for (const s of out) {
-  console.log(`${s.key.padEnd(42)} ${String(s.nRuns).padStart(4)}  ${sec(s.c0.median)}  ${sec(s.g1cold.median)} [${sec(s.g1cold.p25)}-${sec(s.g1cold.p75)}] ${sec(s.g1cold.worstClipP90)} ${sec(s.g1cold.min)}` +
+  console.log(`${s.key.padEnd(56)} ${String(s.nRuns).padStart(4)}  ${sec(s.c0.median)}  ${sec(s.g1cold.median)} [${sec(s.g1cold.p25)}-${sec(s.g1cold.p75)}] ${sec(s.g1cold.worstClipP90)} ${sec(s.g1cold.min)}` +
     `   ${sec(s.g2.median)} ${sec(s.g2.worstClipP90)} ${sec(s.g2.min)}   ${sec(s.g1warm.median)}  (${s.g1cold.msPerSecond.toFixed(0)},${s.g2.msPerSecond.toFixed(0)})` +
     `  ${s.g1cold.half1 === null ? "-" : sec(s.g1cold.half1)}/${s.g1cold.half2 === null ? "-" : sec(s.g1cold.half2)} ${s.g2.half1 === null ? "-" : sec(s.g2.half1)}/${s.g2.half2 === null ? "-" : sec(s.g2.half2)}` +
     `  ${s.loadBusyPct ? s.loadBusyPct.median.toFixed(0) : "-"}  ${s.memMB.toFixed(0)}`);
@@ -102,5 +108,5 @@ for (const s of out) {
 console.log("\nGate conditions (5 s groups): desktop as measured, then PREDICTED phone = desktop x factor");
 for (const s of out.filter((x) => x.length === 5 && x.fp === 5)) {
   const fmt = (gt) => `${gt.pass ? "PASS" : "fail"} (G1 ${sec(gt.g1med)}/${sec(gt.g1p90)}, G2 ${sec(gt.g2med)}/${sec(gt.g2p90)})`;
-  console.log(`${s.key.padEnd(42)} desktop ${fmt(s.gateDesktop)}  ${s.predicted.map((p) => `x${p.factor}: ${fmt(p)}`).join("  ")}  passes up to x${s.maxFactor.toFixed(1)}`);
+  console.log(`${s.key.padEnd(56)} desktop ${fmt(s.gateDesktop)}  ${s.predicted.map((p) => `x${p.factor}: ${fmt(p)}`).join("  ")}  passes up to x${s.maxFactor.toFixed(1)}`);
 }

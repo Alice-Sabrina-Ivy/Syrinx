@@ -2,7 +2,10 @@
 measurements/voice-preview-spike-2026-10-12.md). Reads the exact inputs run-wasm.mjs wrote,
 runs pyworld 0.3.5 on them, and scores Levels 1 and 2 against the WebAssembly outputs.
 
-  python -I pyworld_ref.py --pyworld DIR --build simd [--level 1|2|all]
+  python -I pyworld_ref.py --pyworld DIR --build simd [--level 1|2|all] [--rates 32000,44100,48000]
+
+--rates (§ Addition 2026-10-12, A4): Level 1 only at these rates (folders l1/<rate>); the result
+goes to parity-level1-<rates>.json.
 
 Level 1 (identical inputs per stage)                         pass
   StoneMask   voicing identical on 100 % of frames and |12 log2(fw/fp)| <= 0.001 st on
@@ -25,6 +28,7 @@ ap = argparse.ArgumentParser()
 ap.add_argument("--pyworld", required=True)
 ap.add_argument("--build", default="simd")
 ap.add_argument("--level", default="all")
+ap.add_argument("--rates", default="")
 A = ap.parse_args()
 sys.path.insert(0, A.pyworld)
 _us = site.getusersitepackages()
@@ -93,7 +97,8 @@ def tracker(fw, fp):
 
 def level1():
     res = {}
-    for fs in sorted(os.listdir(os.path.join(ROOT, "l1")), key=int):
+    rates = [r for r in A.rates.split(",") if r]
+    for fs in sorted(rates or os.listdir(os.path.join(ROOT, "l1")), key=int):
         for clip in sorted(os.listdir(os.path.join(ROOT, "l1", fs))):
             d = os.path.join(ROOT, "l1", fs, clip)
             fsi = int(fs)
@@ -236,5 +241,5 @@ if A.level in ("1", "all"):
     out["level1"] = level1()
 if A.level in ("2", "all"):
     out["level2"] = level2()
-with open(os.path.join(ROOT, f"parity-level{A.level}.json"), "w") as f:
+with open(os.path.join(ROOT, f"parity-level{A.level}{'-' + A.rates.replace(',', '-') if A.rates else ''}.json"), "w") as f:
     json.dump(out, f, indent=1)

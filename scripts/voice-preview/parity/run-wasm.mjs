@@ -3,6 +3,7 @@
 // and outputs of every stage so pyworld_ref.py can run pyworld on identical inputs.
 //
 //   node scripts/voice-preview/parity/run-wasm.mjs --build=simd|nosimd [--level=1|2|all] [--hashes-only]
+//        [--l1-rates=32000,44100,48000]
 //
 // Level 1 (each stage on identical inputs):
 //   16 kHz     the 8 prototype clips (clips/proto16); StoneMask's initial F0 = the
@@ -20,6 +21,9 @@
 // Output: VP_CACHE/parity/<build>/{l1,l2}/<case>/..., manifest.json (sha256 of every output).
 // --hashes-only writes only the manifest (used for the second build: if every hash
 // equals the first build's, the two builds are bit-identical on every parity output).
+// --l1-rates (§ Addition 2026-10-12, A4): Level 1 on the 4 timing clips at 5 s at these rates
+// only (the 16 kHz prototype clips are skipped), brought from 48 kHz with the page's resampler
+// (at 48 kHz the clip itself); manifest-1-<rates>.json.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { P } from "../lib/paths.mjs";
@@ -32,6 +36,7 @@ import { finish } from "../lib/psola.js";
 const args = Object.fromEntries(process.argv.slice(2).map((a) => a.replace(/^--/, "").split("=")).map(([k, v]) => [k, v ?? true]));
 const build = args.build || "simd";
 const level = args.level || "all";
+const l1Rates = args["l1-rates"] ? String(args["l1-rates"]).split(",").map(Number) : null;
 const hashesOnly = !!args["hashes-only"];
 const W = await loadWorldNode(build);
 const OUT = path.join(P.parity, build);
@@ -79,7 +84,7 @@ function level1Case(dir, x, fs, init, cellList) {
 
 const meta = { l1: {}, l2: {} };
 if (level === "1" || level === "all") {
-  for (const c of proto) {
+  if (!l1Rates) for (const c of proto) {
     const x = Float64Array.from(readF32(path.join(P.clips, "proto16", `${c.name}.f32`)));
     const grid = readF32(path.join(P.clips, "proto16", `${c.name}.protogrid.f32`));
     const init = gridToFrames(grid, x.length, 16000, 5);
@@ -87,7 +92,7 @@ if (level === "1" || level === "all") {
     console.log(`L1 16000 ${c.name} done (${((Date.now() - t00) / 1000).toFixed(0)} s)`);
   }
   const lab = await loadLab();
-  for (const r of [22050, 24000]) {
+  for (const r of l1Rates || [22050, 24000]) {
     for (const c of timing) {
       const pcm = readF32(path.join(P.clips, "timing", c.lengths["5"].pcm));
       const x = Float64Array.from(resampleClip(pcm, 48000, r));
@@ -123,5 +128,5 @@ if (level === "2" || level === "all") {
 
 manifest.meta = meta;
 mkdirSync(OUT, { recursive: true });
-writeFileSync(path.join(OUT, `manifest-${level}.json`), JSON.stringify(manifest, null, 1));
+writeFileSync(path.join(OUT, `manifest-${level}${l1Rates ? `-${l1Rates.join("-")}` : ""}.json`), JSON.stringify(manifest, null, 1));
 console.log(`${Object.keys(manifest.files).length} outputs, ${((Date.now() - t00) / 1000).toFixed(0)} s`);

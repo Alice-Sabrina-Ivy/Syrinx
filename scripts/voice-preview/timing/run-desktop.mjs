@@ -3,7 +3,7 @@
 //
 //   node scripts/voice-preview/timing/run-desktop.mjs [--browser=chrome|firefox] [--headful]
 //        [--params="runs=1&blocks=world-auto&lengths=5"] [--mode=identity] [--per-run-context]
-//        [--out=FILE] [--timeout-min=600]
+//        [--plans=FILE] [--out=FILE] [--timeout-min=600]
 //
 // Browsers: only the pinned builds under VP_CACHE/browsers (installed with
 // @puppeteer/browsers 2.13.0; see the note for versions and archive hashes):
@@ -16,10 +16,14 @@
 // The page runs from a local static server (serve.mjs) on 127.0.0.1. The result is read
 // through the protocol (window.__vpResult once window.__vpDone) — nothing is downloaded.
 // --per-run-context (Chrome): each run of the matrix in a fresh browser context.
+// --plans=FILE (with --per-run-context; § Addition 2026-10-12, A5): FILE is a JSON array of page
+// parameter strings, one matrix each (for example one per clip set). Their runs are interleaved
+// repeat by repeat (repeat 0 of every plan, then repeat 1, ...), so every plan sees the same
+// machine load; --params is added to every plan. Each run row keeps its plan's clipset.
 // --mode=identity: the page hashes its output PCM; this script compares the hashes with
 // the same engine in Node (parity/identity-node.mjs) and fails on any difference.
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import puppeteer from "puppeteer-core";
@@ -97,17 +101,26 @@ const t0 = Date.now();
 try {
   if (args["per-run-context"]) {
     if (BROWSER !== "chrome") throw new Error("--per-run-context is Chrome-only here");
-    const plan = buildMatrix(cfgFromParams(params));
-    out = { meta: null, runs: [], errors: [] };
-    for (const s of plan) {
+    const plans = (args.plans ? JSON.parse(readFileSync(args.plans, "utf8")) : [""]).map((ps) => {
+      const q = new URLSearchParams(ps);
+      for (const [k, v] of params) q.set(k, v);
+      return { q, matrix: buildMatrix(cfgFromParams(q)) };
+    });
+    const queue = [];
+    const reps = Math.max(...plans.map((p) => Math.max(...p.matrix.map((s) => s.rep)) + 1));
+    for (let rep = 0; rep < reps; rep++) for (const p of plans) for (const s of p.matrix.filter((x) => x.rep === rep)) queue.push({ q: p.q, s });
+    out = { meta: null, metas: [], plans: plans.map((p) => p.q.toString()), runs: [], errors: [] };
+    let k = 0;
+    for (const { q: pq, s } of queue) {
       const ctx = await browser.createBrowserContext();
-      const q = new URLSearchParams(params); q.set("run", String(s.i));
+      const q = new URLSearchParams(pq); q.set("run", String(s.i));
       const { result, errors } = await runPage(ctx, `${base}?${q}`);
       await ctx.close();
       out.meta = out.meta || result.meta;
+      if (!out.metas.some((m) => m.href.split("&run=")[0] === result.meta.href.split("&run=")[0])) out.metas.push(result.meta);
       out.runs.push(...result.runs);
       out.errors.push(...errors);
-      if (s.i % 10 === 0) log(`run ${s.i + 1}/${plan.length}`);
+      if (k++ % 10 === 0) log(`run ${k}/${queue.length}: ${s.block} ${s.rate} ${s.length}s ${s.clip} ${q.get("clipset") || "timing"}`);
     }
   } else {
     const { result, errors } = await runPage(browser.defaultBrowserContext(), `${base}?${params}`);
