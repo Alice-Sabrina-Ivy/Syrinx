@@ -1856,3 +1856,128 @@ rule; when it cannot be avoided, report the margins against an in-run anchor.
     reconnect and a re-run, and the session completes; a session stopped by a thermal give-up in
     block 5 prints the resume command, which runs as printed from block 5, and the two files combine
     into one summary.
+
+## Addition 2026-10-13: staged phone session (user decision, before any phone data)
+
+**Status: plan only.** This section was written and committed before the phone session ran: no
+phone number exists yet. Nothing above this section is edited. It changes how much of the phone
+matrix runs and when the session stops (A7, deviation 25). It does not change the gate (§P6), the
+phone rates (A6), the clip sets (deviation 18) or the rate rule (A2). Its deviations are numbered
+from 38.
+
+### S1. Order and stop rule
+
+**User decision (2026-10-13):** the phone session is staged.
+
+1. The identity check (54 outputs), unchanged.
+2. **WORLD 5 s at 48 kHz on both clip sets**: the pre-registered clips, then the speech-dense
+   clips. Each is a block of 4 clips × 10 runs with 60 s idle first, as in A7.
+3. The gate for that rate is computed at once (§P6, both clip sets must pass).
+   - **Pass:** the session stops. WORLD at 48 kHz is the result.
+   - **Fail:** the next lower rate is timed the same way (both clip sets, then the gate).
+4. The rates are tried one at a time, going down: **48, 32, 24, 22.05, 16 kHz**. The session
+   stops at the first rate that passes.
+5. **PSOLA only if WORLD fails at every rate.** It is then staged the same way: 32, 24, 22.05,
+   16 kHz. PSOLA 48 kHz stays a predicted fail (A6) and is not timed.
+6. If PSOLA also fails at every rate, no engine passes and the spike stops and reports (§P6).
+
+Details:
+
+- A rate fails as soon as either clip set fails (deviation 18). Both clip sets of a rate are still
+  timed before its gate is computed.
+- **An undecided rate stops the session.** If a clip set ends with fewer than 10 clean runs on a
+  clip (a run error, or a run hidden twice), that rate has no verdict (§P6). The session then stops
+  without timing a lower rate, and that rate is re-run with the resume command.
+- The rates that are timed run in the same order and at the same place in the session as in A7's
+  plan. The staged session is A7's session stopped early.
+
+### S2. Extras deferred (not run in this session)
+
+These are report-only in the plan (§P5, §P6). They are deferred, not dropped:
+
+- P2: WORLD 3 s and 8 s;
+- P3: the other WORLD build (non-SIMD), 5 s;
+- P4: 10 ms frames, 5 s;
+- P5: the other front ends, 5 s.
+
+The rates below the first passing rate, and PSOLA when WORLD passes somewhere, are not timed
+either.
+
+### S3. Why this gives the same answer as the full matrix
+
+- The rule (§P6, A2) is: the highest passing rate wins, and WORLD at any rate beats PSOLA at any
+  rate.
+- The staged session tries the rates from the top. A rate is timed only when every higher rate has
+  failed. So the first rate that passes is the highest passing rate. The rates below it cannot
+  win, so timing them could not change the result.
+- PSOLA is timed only when WORLD has failed at every rate, which is the only case where PSOLA can
+  win.
+- So for the same phone numbers, the verdict is the one the full matrix would give. What is lost is
+  report-only: the gate numbers at the rates that are skipped, and P2–P5.
+
+### S4. Devices that capture at 44.1 kHz
+
+Unchanged (A3, and its result: 44.1 kHz behaves like 48 kHz within 5 %). If WORLD passes at
+48 kHz, 44.1 kHz devices run WORLD at 44.1 kHz. If a lower rate wins, 44.1 and 48 kHz devices
+resample down to it.
+
+### S5. Expected duration
+
+Same estimate as A7: 2.0× (or 3.0×) the desktop Chrome compute time per run + 2.5 s, plus 60 s idle
+per block, plus setup and the identity check. Total time if the session ends at that rate:
+
+| Session ends at | Runs | ×2.0 | ×3.0 |
+|---|---|---|---|
+| WORLD 48 kHz passes (best case) | 80 | 35 min | 48 min |
+| WORLD 32 kHz passes | 160 | 66 min | 93 min |
+| WORLD 24 kHz passes | 240 | 83 min | 116 min |
+| WORLD 22.05 kHz passes | 320 | 100 min | 139 min |
+| WORLD 16 kHz passes | 400 | 116 min | 160 min |
+| PSOLA 32 kHz passes | 480 | 143 min | 198 min |
+| PSOLA 24 kHz passes | 560 | 164 min | 226 min |
+| PSOLA 22.05 kHz passes | 640 | 183 min | 253 min |
+| PSOLA 16 kHz passes, or nothing passes (worst case) | 720 | 199 min | 274 min |
+
+- `START-both.sh` adds the trace check and the rest, about 14 min, plus any thermal pauses.
+- Like A7's estimate, these use A5's compute times from a loaded desktop, so they are likely on
+  the long side (§ Corrected reading of A5 and A6).
+- **Budget:** 1.5 × the worst case at ×2.0 = **299 min** (A7's rule applied to the staged plan). It
+  is still only a safety stop. The site server lives 6 h.
+
+### S6. What is reported
+
+- The identity check (54 outputs bit-identical to Node, or the mismatches).
+- For each rate that was timed: the gate on each clip set and combined, with the four conditions,
+  the margin ("passes up to ×N slower than this phone") and the battery temperature of its runs
+  (deviations 20 and 24).
+- For each rate that was not timed, the reason: a higher rate passed; WORLD passed, so PSOLA was
+  not needed; predicted fail on the desktop (A6); or the session stopped before it.
+- That P2–P5 were deferred.
+- The verdict: the engine and rate (for example "WORLD 48 kHz"), its margin, and what it means for
+  44.1 kHz devices (A3).
+- Thermal pauses, and any run left out (error or page hidden), as before.
+
+### S7. Phone kit (outside this repository)
+
+- `START-both.sh` and `START-preview.sh` run the staged session by default. `--staged=0` keeps
+  the whole matrix (P1–P5).
+- After each rate's two blocks, the kit computes that rate's gate with the summary's own code and
+  decides whether to time the next rate.
+- A session that stops part-way prints a resume command. It names the earlier session file
+  (`--prior`), whose runs count for the decisions and for the summary.
+- This commit changes no code, so the kit's site copy and its 54 expected identity hashes still
+  match the branch.
+
+### Deviations for this addition (2026-10-13)
+
+38. **Staged phone session** instead of one long session with no early cap (A7, deviation 25),
+    by user decision. WORLD is timed from 48 kHz down and the session stops at the first rate that
+    passes; PSOLA only if WORLD fails at every rate. The gate, the rates, the rule and the order
+    of the timed blocks are unchanged.
+39. **P2–P5 deferred** (user decision): not run in this session. §P5's phone priority list and
+    A7 included them; they are report-only.
+40. **An undecided rate stops the session** (new, follows from the stop rule): a rate with a
+    clip set short of 10 clean runs per clip is re-run before a lower rate is timed. In the full
+    matrix the summary would only have reported it as undecided after the session.
+41. **Budget 299 min** instead of 723 min: 1.5 × the staged worst case at ×2.0 (A7's rule). Still
+    only a safety stop.
