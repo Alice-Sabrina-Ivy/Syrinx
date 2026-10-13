@@ -1,5 +1,9 @@
 # Voice preview spike (Phase 0) — 2026-10-12
 
+> **Results follow the plan:** see § Results (desktop, 2026-10-12, revised after review) and
+> § Review notes. The plan text below, from the status line to the end of §P10, is unchanged
+> since commit 7487aea. This pointer was added after review (deviation 19).
+
 **Status: plan only.** This section was written and committed before any spike code existed and
 before any result was measured. Results go in later sections of this file. The plan is not edited
 afterwards. Any change is recorded under "Deviations from the plan", with its date and reason.
@@ -518,24 +522,36 @@ repo), with an `index.md`:
 
 ## Results
 
-**Status (2026-10-12, Measure step):** everything that runs on the desktop is done: parity,
-front-end selection, the desktop timing matrix in Chrome and Firefox, hum and noise, and the
-listening set. **The gate (§P6) is not decided.** It counts only the phone's numbers, and the
-phone session (with the user present) is still to come. Every timing below is desktop-only.
+**Status (2026-10-12, Measure step; revised after review):** everything that runs on the
+desktop is done: parity, front-end selection, the desktop timing matrix in Chrome and Firefox,
+hum and noise, and the listening set. After review, an in-range tonal-noise test, a render
+check at 22.05 and 24 kHz and more identity cases were added (§ Review notes). **The gate
+(§P6) is not decided.** It counts only the phone's numbers, and the phone session (with the user
+present) is still to come. Every timing below is desktop-only.
+
+**Reported first, as §P7 requires: WORLD adds a tonal peak in rooms with hum inside the pitch
+range.** With a 120 Hz fan hum (the repository's own `fanHum` noise class, an addition after
+review), the pitch chain posts the hum as voiced in 20–72 % of pause hops. F-S hands that
+voicing to WORLD, and WORLD moves the hum with the pitch slider: 47 of the 48 shifted renders
+add a peak at the hum × the pitch step (9–29 dB). That is the failure the scoping held against
+Signalsmith. By §P7's rule this **reopens the engine question for rooms with in-range hum**.
+WORLD's "no added peak" result holds for mains hum (fundamental below 75 Hz) and for broadband
+noise. PSOLA does no better: it keeps the hum and adds peaks too. See § Hum and noise.
 
 ### Verdict so far (desktop only; the phone decides)
 
 | Decision | Status | Basis |
 |---|---|---|
-| Engine | WORLD, **pending the phone gate** | Parity passes. Predicted to pass the gate at every rate (§ Desktop timing) |
+| Engine | WORLD, **pending the phone gate**; **open for rooms with in-range hum** (§ Hum and noise) | Parity passes. Predicted to pass the gate at every rate (§ Desktop timing) |
 | F0 front end | **F-S** (Syrinx's posted pitch track + StoneMask), selected on the desktop as §P4 requires | Meets checks 1–4, and is the cheapest of the front ends that do |
 | Build | the page's choice: SIMD where supported (both desktop browsers picked it) | SIMD and non-SIMD outputs are identical. SIMD is 5–8 % faster |
-| Sample rate | **open until the phone session.** Predicted: 24 kHz | Desktop times × the measured phone factors (2.0–4.5) pass at 24 kHz. The margin runs to ×4.8 (speech-dense clips) or ×6.1 (pre-registered clips) |
-| Recording check | informs Phase 1 only | WORLD did not need one for hum. Broadband noise is what moves the meters (§ Hum and noise) |
+| Sample rate | **open until the phone session.** Predicted: 24 kHz | Desktop times × 2.0 (the session phone's measured ratio for JavaScript) pass at 24 kHz on both clip sets. Margin: ×4.8 on the speech-dense clips, ×6.1 on the pre-registered clips. 22.05 and 24 kHz renders read the same as 16 kHz on checks 1, 2 and 4 (§ F0 front ends) |
+| Clip sets | **both decide** (deviation 18) | A rate passes only if it passes on the pre-registered clips and on the speech-dense clips. At equal machine load the speech-dense clips take 21–28 % longer to analyse |
+| Recording check | informs Phase 1 only | Mains hum: not needed. In-range hum: only the tonal-noise detector after ≥ 5.5 s of listening catches it; the level check does not (§ Hum and noise) |
 
-The phone session should time both the pre-registered clips and the speech-dense clips at 5 s
-(deviation 8). It should also note whether 24 kHz sounds better than 16 kHz in the listening
-set (§P9).
+The phone session times both clip sets at 5 s (deviation 18) on a Pixel 11 Pro XL, a flagship,
+so a pass covers phones that fast or faster (deviation 20). It should also note whether 24 kHz
+sounds better than 16 kHz in the listening set (§P9).
 
 ### Parity (§P3)
 
@@ -576,7 +592,10 @@ have identical sha256. So the non-SIMD build meets every criterion as well.
 **Browsers vs Node:** the output PCM of the identity cases (M01 at 16 kHz with F-L, F01 at 24 kHz
 with F-H, both WORLD; M01 PSOLA with F-L; 3 cells each; both builds) is bit-identical to Node's:
 18 of 18 in headless Chrome for Testing 154.0.8037.57 and 18 of 18 in headless Firefox 156.0.1.
-The phone is still to come.
+After review, three cases with the gate configuration were added (WORLD with F-S at 24 kHz on
+F01 and at 22.05 kHz on M02, and PSOLA with F-S at 24 kHz on F02; the posted track is passed as
+the timing page passes it): **36 of 36 outputs bit-identical to Node in both browsers.** The
+phone is still to come; it checks the same 36.
 
 **PSOLA arm:** `lib/psola.js` reproduces all 208 of the prototype's stored PSOLA renders bit for
 bit (same clips, same stored grids, same cells).
@@ -612,6 +631,12 @@ grid, not the prototype's stored grid (the stored grid is the Level 2 input abov
   synthesises false-voiced frames as buzz.
 - DIO loses voicing on the creaky and the noisy clip (`ls_m1` 21.6 %, `ls_mn` 24.6 % of
   originally voiced hops).
+- **Checks 1 and 2 cannot separate F-S from F-L.** They read the renders with the real pitch
+  chain, and F-S is that chain's own posted track, F-L its replica. So both checks favour F-S
+  and F-L by construction. DIO's "fail" on check 1 means it disagrees with Syrinx's voicing, not
+  that it is less accurate: on the laryngograph reference (check 3) its voicing recall is
+  98.4 % against F-L's 98.8 %. **Check 3 is the only independent accuracy check.** The
+  selection still stands: F-S and F-L were separated on cost, and F-H failed check 3.
 - **F-S alignment:** the lag that best aligns the mapped F-S track with the mapped F-L track is
   0 ms (1 ms steps, ±20 ms). Pass (±5 ms); no correction.
 - **Parity for every front end (an addition to §P3):** pyworld 0.3.5 rendered the same 8 clips ×
@@ -620,6 +645,25 @@ grid, not the prototype's stored grid (the stored grid is the Level 2 input abov
   all four front ends: clip medians identical, voicing agreement 100 %, VTLN readings within
   6e-8 ln, the four VTLN checks identical (largest statistic difference 7e-8).
 - Check 5 (Harvest and DIO against pyworld) passed in the Build step (Level 1).
+
+**Render quality at 22.05 and 24 kHz (addition after review; `fe/rate-check.mjs`,
+`fe/rate_score.py`).** Checks 1–4 above ran on 16 kHz renders only, while §P6's rule takes the
+highest passing rate. So checks 1, 2 and 4 were re-run with F-S at all three rates, on the same
+48 kHz sources: the 4 speech-dense clips at 5 s and the 4 pre-registered timing clips at 8 s,
+26 cells each (624 renders). Pitch is read at each render's own rate; the VTLN meter (16 kHz
+input) reads each render brought to 16 kHz with the same sinc resampler. Judged against 16 kHz
+with §P4's margins (post hoc: 16 kHz is the baseline here).
+
+| Rate | 1. Voicing loss at (0, 1.00), median of 8 | 2. Gross errors, median of 163 eligible (p90) | 4. VTLN slope / sign / monotonic / leak | Holds |
+|---|---|---|---|---|
+| 16 000 | 1.4 % | 0.0 % (1.3 %) | 1.106 / 0.987 / 0.846 / 0.103, pass | (baseline) |
+| 22 050 | 1.1 % | 0.0 % (1.6 %) | 1.121 / 1.000 / 0.895 / 0.128, pass | yes |
+| 24 000 | 1.4 % | 0.0 % (1.3 %) | 1.095 / 0.974 / 0.842 / 0.041, pass | yes |
+
+So **a higher rate is not worse on these checks**, which is what the rate rule assumes. One clip
+varies most: speech-dense M02 loses 6.1 / 12.2 / 8.2 % of its voiced hops at 16 / 22.05 /
+24 kHz; the medians do not move. 1–2 of the 40 VTLN rows per rate have fewer than 10 readable
+bins and are left out, as in check 4.
 
 ### Desktop timing (§P5) — desktop only, not the gate
 
@@ -692,16 +736,21 @@ still hold. It is the smallest of 3 s ÷ median cold G1, 3 s ÷ worst-clip p90 c
 
 - **SIMD gains little:** 5–8 % on cold G1 and 0.01 s on G2.
 - **The 10 ms frame lever** cuts cold G1 by 25–28 % and G2 by 0.01 s. Its cost is spectral:
-  the log-spectral distance between the 10 ms and 5 ms renders is 4.8 dB median (p90 5.3 dB,
-  all three rates). The unchanged rebuild moves from 5.8–6.3 dB from the clip at 5 ms to
-  6.2–6.8 dB at 10 ms. Part of the 4.8 dB is WORLD's random noise excitation, which differs
-  between any two renders. The lever is reported only (§P6).
+  the unchanged rebuild moves from 5.8–6.3 dB from the clip at 5 ms to 6.2–6.8 dB at 10 ms
+  (log-spectral distance), so **+0.4–0.5 dB is the useful number.** The distance between the
+  10 ms and 5 ms renders themselves (4.8 dB median, p90 5.3 dB, all three rates) is not a
+  quality measure. WORLD's synthesis reseeds its noise generator on every call
+  (`synthesis.cpp`, `randn_reseed` at the start of `Synthesis()`), so renders are deterministic,
+  but the noise is drawn per frame, so its realisation changes with the frame period. (Revised
+  after review: an earlier wording said the noise "differs between any two renders".) The lever
+  is reported only (§P6).
 - **Front-end selection (§P4):** among the two front ends that meet checks 1–4, F-S costs
   0.36 s and F-L 0.56 s (cold G1, 5 s, 16 kHz). F-S is 36 % cheaper, so **F-S is selected.**
   F-L's extra 0.24 s is the lab pitch replica running over the clip.
 
 **Speech-dense clips** (deviation 8; the same speakers with the leading silence trimmed; WORLD
-SIMD F-S at 5 and 8 s, PSOLA F-S at 5 s; 10 runs per clip; machine 40 % busy, median):
+SIMD F-S at 5 and 8 s, PSOLA F-S at 5 s; 10 runs per clip; machine 35–41 % busy, median per
+group):
 
 | Speech-dense clips, Chrome | Cold G1 median (worst-clip p90) | G2 median (worst-clip p90) | Passes the gate on a phone up to |
 |---|---|---|---|
@@ -713,11 +762,18 @@ SIMD F-S at 5 and 8 s, PSOLA F-S at 5 s; 10 runs per clip; machine 40 % busy, me
 | WORLD SIMD F-S, 24 000 Hz, 8 s | 0.71 (0.91) s | 0.15 (0.25) s | ×3.3 |
 | PSOLA F-S, 16 000 / 22 050 / 24 000 Hz, 5 s | 0.20 (0.25) / 0.25 (0.34) / 0.27 (0.37) s | 0.14 (0.19) / 0.19 (0.25) / 0.21 (0.28) s | ×5.4 / ×4.0 / ×3.5 |
 
-- **With more speech in the clip, analysis takes 3–8 % longer at 5 s and a slider change about
-  0.02 s less.** D4C analyses voiced frames only (139–197 ms here, against 90–126 ms on the
-  pre-registered clips). Synthesis has fewer 500 Hz pulses to render in silence.
+- **With more speech in the clip, analysis takes 21–28 % longer at 5 s, and its worst-clip p90
+  33–53 % longer** (16 / 22.05 / 24 kHz: median +21 / +28 / +23 %, p90 +33 / +39 / +53 %),
+  compared with the repeat of the gate cells, which ran at a similar machine load (36–37 %
+  busy against 35–41 % here). A slider change takes 7–9 % less. D4C analyses voiced frames
+  only: 139 / 180 / 197 ms here, against 78 / 97 / 114 ms on the pre-registered clips in the
+  repeat run. Synthesis has fewer 500 Hz pulses to render in silence. (Corrected after review:
+  the earlier "3–8 % longer" compared this run with the main run, which ran at 48 % busy, so
+  the machine load hid most of the difference.)
+- **A real record-then-play phrase looks like the speech-dense clips**, not like 2.5 s of
+  leading silence. So both sets decide the phone gate (deviation 18).
 - **The worst-clip p90 first render at 24 kHz rises to 0.63 s**, so 24 kHz holds up to ×4.8
-  instead of ×6.1. That is still above 4.5, the slowest factor this repository has measured.
+  instead of ×6.1.
 - **8 s phrases with real speech hold only up to ×3.3** (worst-clip p90 first render
   0.90–0.91 s).
 
@@ -734,39 +790,107 @@ per clip, run last, machine 37 % busy, median):
 With the machine at 37 % busy instead of 48 %, the medians are 12–15 % lower. The main run is
 the slower of the two, and the predictions below use it.
 
-**Predicted phone result (a prediction, not a measurement).** Phone time is taken as desktop
-Chrome time × a slowdown factor this repository has measured between this desktop and a Pixel:
+**Predicted phone result (a prediction, not a measurement; revised after review).** Phone time
+is taken as desktop Chrome time × a slowdown factor. The prediction uses **×2.0**, the only ratio
+this repository has measured for CPU-bound code like this on the session phone: the JavaScript
+resonance worker on the Pixel 11 Pro XL, Chrome 154 (84–96 against ~46 ms of CPU per audio
+second; `resonance-cue-cpu-2026-10-07.md`). WORLD runs WebAssembly, not JavaScript, so even this
+factor is borrowed.
 
-- **2.0×**: Pixel 11 Pro XL, Chrome 154, the JavaScript resonance worker (84–96 against
-  ~46 ms per audio second; `resonance-cue-cpu-2026-10-07.md`);
-- **2.4×** and **4.5×**: Pixel 8 Pro, ONNX Runtime WebAssembly (ECAPA-TDNN and wav2vec2-base;
-  INVESTIGATIONS.md, gender model arc).
+**Stress cases only:** ×2.4 and ×4.5 are desktop-to-Pixel-8-Pro ratios for ML inference
+(ECAPA-TDNN and wav2vec2-base) from the May 2026 gender-model work. INVESTIGATIONS.md calls them
+WebAssembly ratios, but `gender-model-latency-2026-07-19.md` §1 found that the mobile figures
+behind them were WebGPU numbers, and that mobile WebAssembly was never measured. The same arc
+also recorded ~21× for wav2vec2-large. None of these is a CPU ratio for code like WORLD's.
+(Corrected after review: an earlier version labelled ×2.4 and ×4.5 as WebAssembly ratios and
+called 4.5 the slowest factor this repository had measured.)
 
-| 5 s phrase, worst-clip p90 in brackets | ×2.0 | ×2.4 | ×4.5 | Predicted |
-|---|---|---|---|---|
-| WORLD 24 kHz: cold G1 / G2 | 0.79 (0.99) / 0.23 (0.29) s | 0.95 (1.19) / 0.27 (0.35) s | 1.78 (2.23) / 0.51 (0.66) s | **pass** at all three factors |
-| WORLD 22.05 kHz | 0.77 (0.89) / 0.23 (0.29) s | 0.93 (1.07) / 0.27 (0.35) s | 1.74 (2.00) / 0.51 (0.66) s | pass |
-| WORLD 16 kHz | 0.71 (0.84) / 0.23 (0.31) s | 0.85 (1.01) / 0.27 (0.37) s | 1.60 (1.89) / 0.51 (0.69) s | pass |
-| WORLD 24 kHz, speech-dense clips | 0.85 (1.26) / 0.18 (0.29) s | 1.02 (1.51) / 0.22 (0.35) s | 1.92 (2.83) / 0.41 (0.65) s | pass; at ×4.5 the p90 first render is 0.17 s inside the limit |
-| PSOLA 24 kHz (only if WORLD fails) | 0.60 (0.71) / 0.48 (0.57) s | 0.72 (0.85) / 0.58 (0.68) s | 1.35 (1.60) / 1.08 (1.28) s | pass at ×2.0 and ×2.4; fails at ×4.5 (G2) |
+| 5 s phrase, cold G1 / G2 median (worst-clip p90) | ×2.0 (prediction) | ×4.5 (stress) | Desktop margin ("passes up to") |
+|---|---|---|---|
+| WORLD 24 kHz, pre-registered clips | 0.79 (0.99) / 0.23 (0.29) s | 1.78 (2.23) / 0.51 (0.66) s | ×6.1 |
+| WORLD 24 kHz, speech-dense clips | 0.85 (1.26) / 0.18 (0.29) s | 1.92 (2.83) / 0.41 (0.65) s | **×4.8** |
+| WORLD 22.05 kHz, pre-registered / speech-dense | 0.77 (0.89) / 0.23 (0.29); 0.85 (1.11) / 0.18 (0.31) s | 1.74 (2.00) / 0.51 (0.66); 1.91 (2.49) / 0.40 (0.70) s | ×6.8 / ×5.4 |
+| WORLD 16 kHz, pre-registered / speech-dense | 0.71 (0.84) / 0.23 (0.31); 0.74 (0.92) / 0.18 (0.28) s | 1.60 (1.89) / 0.51 (0.69); 1.67 (2.07) / 0.40 (0.63) s | ×6.5 / ×6.5 |
+| PSOLA 24 kHz, pre-registered / speech-dense (only if WORLD fails) | 0.60 (0.71) / 0.48 (0.57); 0.53 (0.74) / 0.42 (0.57) s | 1.35 (1.60) / 1.08 (1.28); 1.20 (1.67) / 0.95 (1.28) s: fails (G2) | ×3.5 / ×3.5 |
 
-- **So the predicted outcome is WORLD at 24 kHz**, the highest rate. It has room up to about a
-  6× slowdown on the pre-registered clips and 4.8× on the speech-dense clips. C0 (0.03–0.04 s here) stays far below 3 s at any of these factors.
-- **8 s phrases** (reported, not gating): WORLD 24 kHz passes up to ×4.0. At ×4.5 an 8 s phrase
-  would miss on two worst-clip p90s: the slider change (0.25 s → 1.1 s) and the first render
-  (0.69 s → 3.1 s). If the phone is that slow, Phase 1 should cap recordings near 7 s.
+- **Predicted outcome: WORLD at 24 kHz**, the highest rate, on both clip sets. At ×2.0 the
+  binding number is the speech-dense worst-clip p90 first render, 1.26 s against 3 s. The
+  desktop margin with both sets deciding is ×4.8 at 24 kHz, ×5.4 at 22.05 kHz and ×6.5 at
+  16 kHz, so the phone could run 2.4× slower than the ×2.0 prediction and 24 kHz would still
+  pass. C0 (0.03–0.04 s here) stays far below 3 s at any of these factors.
+- **8 s phrases** (reported, not gating): WORLD 24 kHz passes up to ×4.0 on the pre-registered
+  clips and ×3.3 on the speech-dense clips. At ×2.0 they pass. Phase 1 should cap recordings if
+  a phone runs slower than about ×3.
 - **Caveats:**
   - The desktop was about half loaded, so these times are slower than a quiet desktop's. How
-    loaded the desktop was when the factors were measured is not recorded consistently.
-  - The factors come from other workloads, and the WebAssembly ones from an older phone and
-    Chrome.
+    loaded the desktop was when the factor was measured is not recorded consistently.
+  - The factor comes from another workload (JavaScript, not WebAssembly).
+  - **The session phone is a flagship** (Pixel 11 Pro XL, Tensor G6; deviation 20). A pass
+    there says little about mid-range phones, which are much slower. The phone summary reports
+    its own "passes up to ×N slower than this phone" margin beside the verdict. If that margin
+    is small (under ×2), Phase 1 needs a mid-range phone check or a recording-length cap.
+  - **WORLD ran alone.** In the app, the DSP, pitch, gender (WebAssembly, about 6 inferences per
+    second) and lab workers may still run while the preview analyses, if listening continues.
+    Phase 1 should pause the pipeline during analysis, or time one phone block with it running.
   - Thermal throttling and Android's scheduling of a background Worker are not modelled.
 
 ### Hum and noise (§P7)
 
-**WORLD with F-S adds no tonal peak in pauses and does not raise the pause voiced share in any
-hum or noise condition.** It turns the hum in pauses into noise. PSOLA keeps the hum and, in
-about half of its hum renders, moves some of it to new frequencies.
+**First, as §P7 requires: with hum inside the pitch range, WORLD adds a tonal peak.** This is a
+labelled addition after review: §P7's pre-registered hum conditions are 50 / 60 Hz mains
+stacks, whose fundamentals sit below the 75 Hz pitch floor. **WORLD's "no added peak" result
+below holds for mains hum and broadband noise only. By §P7's rule, the engine question is
+reopened for rooms with in-range hum.**
+
+**In-range tonal noise (addition after review; `hum/make_tonal_conditions.mjs`, `hum-run.mjs
+--index=index-tonal.json`).** The repository's own noise classes (`scripts/noise-synth.js`):
+fan hum (120 Hz + 240 / 360 Hz over low-passed rumble) and mains complex (60 / 120 / 180 / 240 Hz,
+prominent 180 Hz). Each at −40, −30 and −20 dB on the four base clips (24 conditions), plus a
+24 kHz spot check (`pt_m1`, `pt_f1` from 48 kHz, both classes at −20 dB). Same cells, measures
+and scoring as §P7 (`hum_score.py --index index-tonal.json`).
+
+| Recording only (F-S from the recording, as §P7) | Fan hum, WORLD | Fan hum, PSOLA | Mains complex, WORLD | Mains complex, PSOLA |
+|---|---|---|---|---|
+| Pause hops the chain posts voiced, in the original-with-noise | 20–72 % (median 120 Hz) | same | 0–1 % | same |
+| Shifted renders (16 kHz) that add a ≥ 9 dB peak | **47 of 48** | 47 of 48 | 0 of 48 | 32 of 48 |
+| Added peaks, by label | all 87 at the hum × the pitch step (9–29 dB) | 65 hum × step, 9 hum × scale, 72 other | none | 15 hum × step, 5 hum × scale, 88 other |
+| 24 kHz spot check: shifted renders with an added peak | 8 of 8 (hum × step, 10–27 dB) | 8 of 8 | 0 of 8 | 5 of 8 |
+| Speech hops: voicing loss vs the clean-clip render, median (p90), men / women | 1.3 (4.5) / 0.0 (1.4) % | 4.3 (12.2) / 0.4 (2.7) % | 3.0 (7.3) / 1.4 (2.8) % | 3.4 (10.5) / 1.1 (3.7) % |
+
+- **Fan hum:** the chain voices the hum in pauses, F-S passes that voicing to WORLD, and WORLD
+  resynthesises the pauses as a pitched sound at the shifted hum frequency. For example, on
+  `pt_f1` at −30 dB the original pauses are voiced on 72 % of hops at 120 Hz; at +6 st / ×1.12
+  WORLD adds peaks at 169.9 Hz (27.3 dB) and 339.8 Hz (12.5 dB), at −6 st / ×0.88 at 84.0,
+  169.9 and 253.9 Hz (27.3, 20.6, 12.7 dB). The unchanged cell adds nothing, because the hum
+  stays where it was; the one shifted render without an added peak is the smallest case
+  (`ls_m2`, −40 dB, +2 st, largest pause peak 14.3 dB). This is the failure the scoping held
+  against Signalsmith. The listener hears the room hum move with the pitch slider.
+- **Mains complex:** the chain leaves its pauses unvoiced (the 60 Hz periodicity is below the
+  floor), so WORLD renders them as noise, as with mains hum.
+- **PSOLA** keeps the hum and adds peaks in both classes, so it is no way out.
+- **Recording checks:** the level check (d2) measures fan hum at −30 dB as 37.0–39.0 dB and at
+  −40 dB as 47.0–48.5 dB, inside the clean clips' 39.1–60.1 dB. Neither the pre-registered 25 dB
+  nor the post hoc 35 dB threshold flags them (35 dB flags the −20 dB conditions only). The
+  notch on the recording alone (d1, "rec") flags 3 of the 8 conditions at −20 dB and none
+  below, 5.5 s in. **The notch after a 10 s pre-roll (d1, "live") flags all 24 conditions
+  and no clean clip: the only adequate check for in-range hum.**
+- **Mitigation tested: listen before recording.** With F-S taken from the chain after 10 s of
+  the hum alone (`--track=live`; the notch promotes 4.5 s before the recording starts, and its
+  ghost veto unvoices decodes on and near the notched lines), **no WORLD render adds a peak** in
+  any fan or mains-complex condition (0 of 120 at 16 kHz, 0 of 20 at 24 kHz), and the pause
+  voiced share rises by at most 4.4 pp. **The cost is men's voicing:** the ghost veto also
+  unvoices voice within 2 % of a notched line or its octave, and WORLD renders those frames as
+  noise. Speech-hop voicing loss is 14.9 % (p90 27.5 %) for men with fan hum and 18.2 % (p90
+  24.2 %) with mains complex, against 1.3–3.0 % from the recording alone; women 2.7–6.4 %.
+- **For Phase 1** (not decided here): (a) ask for ~6 s of listening before recording, and warn
+  when the notch has an active line (the hum is in range), suggesting a quieter spot; (b) the
+  same, plus unvoicing F-S frames on notched lines only in pauses (not tested); (c) accept the
+  shifted hum. The level check cannot replace (a).
+
+**Mains hum and pink noise (the pre-registered conditions).** WORLD with F-S adds no tonal peak
+in pauses and does not raise the pause voiced share in any of these conditions. It turns the hum
+in pauses into noise. PSOLA keeps the hum and, in about half of its hum renders, moves some of it
+to new frequencies.
 
 160 WORLD and 160 PSOLA renders at 16 kHz: 4 base clips × 8 hum / noise conditions × 5 cells,
 plus the clean conditions. The F-S track is the real pitch chain's posted track on the noisy
@@ -825,10 +949,13 @@ vacuous. Every candidate "passes" it, because none flags a clean clip.
     and every pink-noise condition, and no clean clip.
   - Hum at −30 and −40 dB (36.8–48.8 dB) overlaps the clean clips, so a level check cannot
     catch it. The notch can, if the app has been listening for 5.5 s before the recording.
-- **For Phase 1:** with WORLD, hum left the preview's pauses and meters almost unchanged.
-  Broadband noise moved the speech meters most (VTLN shift p90 0.095 ln, against 0.022 ln for
-  hum). So a level check (d2) is the more useful warning. The notch helps only if the app has
-  been listening before the recording starts.
+- **For Phase 1 (revised after review):** with WORLD, *mains* hum left the preview's pauses
+  and meters almost unchanged, and broadband noise moved the speech meters most (VTLN shift p90
+  0.095 ln, against 0.022 ln for mains hum). A level check (d2) is the useful warning for
+  broadband noise. It is not enough for hum inside the pitch range, which only the notch catches,
+  and only if the app has been listening for about 5.5 s before the recording starts (see the
+  in-range results above). (An earlier version said WORLD did not need a recording check for
+  hum and that the level check was the more useful warning; that held for mains hum only.)
 
 ### Cross-browser (§P8)
 
@@ -942,10 +1069,13 @@ are not typical of a real recording, which starts near the speech. The rule is u
 the next step should decide whether to keep it.
 
 **Decision (Measure step).** The pre-registered rule is kept, and its clips remain the primary
-timing set. A speech-dense set was added beside it (deviation 8). On the desktop the two sets
-give medians within 8 % for the first render and 0.02 s apart for a slider change. The
-speech-dense set has the larger worst-clip p90 at 24 kHz (0.63 against 0.50 s), so it is the
-stricter test. The phone session times both at 5 s.
+timing set. A speech-dense set was added beside it (deviation 8). The speech-dense set has the
+larger worst-clip p90 at 24 kHz (0.63 against 0.50 s), so it is the stricter test. The phone
+session times both at 5 s.
+
+**Revised after review (2026-10-12).** At equal machine load the speech-dense clips take
+21–28 % longer to analyse, not 3–8 % (§ Desktop timing), and a real phrase looks like them. So
+both sets decide the phone gate: a rate passes only if it passes on both (deviation 18).
 
 ## Deviations from the plan
 
@@ -1024,3 +1154,55 @@ Measure step (2026-10-12):
     because the plan named no STFT.
 17. **Firefox** ran the matrix inside one page load: a fresh Worker and unique URLs per run, but
     no fresh browser context (deviation 4).
+
+Review (2026-10-12), before the phone session:
+
+18. **Both timing clip sets decide the phone gate.** §P6 names 5 s phrases on the
+    pre-registered timing clips, which start with about 2.5 s of silence. At equal machine load
+    the speech-dense clips (deviation 8) take 21–28 % longer to analyse, and a real recording
+    looks like them. So §P6's four conditions are applied to each set, and an engine passes at a
+    rate only if it passes on both: the stricter result decides. Decided before any phone
+    number exists, and only in the stricter direction. The phone harness times both sets (WORLD
+    on both before PSOLA), tags each run with its `clipset`, and prints the gate per set and
+    combined.
+19. **A pointer line above the status line** ("Results follow the plan …"). The status line
+    still reads "plan only", as committed in 7487aea; no plan sentence changed.
+20. **The phone is a Pixel 11 Pro XL** (Tensor G6, Android 17, Chrome 154.0.8037.127), not the
+    Pixel 8 Pro that §P5 names: that is the phone available for the session. It is a current
+    flagship, so a pass covers phones as fast or faster only. The phone summary reports its
+    measured margin ("passes up to ×N slower than this phone") beside the verdict, and flags a
+    margin under ×2: then Phase 1 needs a mid-range phone check or a recording-length cap.
+21. **Phone order:** all WORLD blocks run before PSOLA, so a short session still finishes
+    WORLD's gate. On the desktop `matrix.js` interleaves the engines within each repeat.
+    Battery temperature is recorded per run, so any drift between the blocks can be checked.
+22. **Additions after review**, each labelled where reported: in-range tonal noise in §P7 (fan
+    hum, mains complex; `make_tonal_conditions.mjs`) and a "listen first" F-S track
+    (`hum-run.mjs --track=live`); checks 1, 2 and 4 at 22.05 and 24 kHz (`fe/rate-check.mjs`);
+    three more identity cases with the gate configuration (F-S at 24 and 22.05 kHz, PSOLA with
+    F-S); a `clipset` field on every timing-page run row. The pre-registered hum outputs
+    (`detect.json`, `scores.json`, `vtln.jsonl`) were checked unchanged by hash after the new
+    runs, and re-scoring them with the extended `hum_score.py` reproduces them.
+
+## Review notes
+
+Two reviews of the branch at 8cfe0c1 (2026-10-12). Both found the core results reproducible:
+WORLD's parity with pyworld, the build pins and byte-identical rebuild, the PSOLA port and the
+desktop timing. What changed in response:
+
+| Finding | Severity | What was done |
+|---|---|---|
+| The hum test covered only sub-75 Hz mains hum; in-range tonal noise breaks "WORLD adds no tonal peak" | high | Holds. Fan hum and mains complex added to §P7 as a labelled addition; the result is reported first (Results status and § Hum and noise); the hum verdict and the Phase 1 advice now say they hold for mains hum only; the "listen first" mitigation was tested (it removes the shifted hum and costs men 15–18 % of voiced hops) |
+| The phone harness was set to F-L, not the selected F-S | high | Holds. `selected-fe.txt` now says S; the harness reads the front end the note selects ("**Selected: F-X") and refuses to start when they differ; the START scripts print the front end in use. (The phone harness is scratch tooling outside this repository.) |
+| The pre-registered clips understate analysis cost; the "3–8 %" comparison was confounded by machine load | medium | Holds. Corrected to 21–28 % (p90 33–53 %) at equal load; both clip sets now decide (deviation 18); the timing page tags rows with `clipset`, the phone harness times both sets and the gate filters on it; the phone site is rebuilt from this commit |
+| ×2.4 and ×4.5 are mislabelled; 4.5 is not the slowest factor measured | medium | Holds. The prediction now uses ×2.0 only; ×2.4 / ×4.5 are labelled WebGPU-era ML-inference ratios and shown as a stress case; the "slowest factor" claim is gone and the ~21× is cited. INVESTIGATIONS.md still calls the ratios "WASM"; that file is outside the spike's scope and is left unchanged |
+| The gate runs on a flagship (Tensor G6), not the Pixel 8 Pro | medium | Holds. Deviation 20; the phone summary prints its margin and flags a margin under ×2 |
+| Front-end checks 1–2 are circular for F-S and F-L | low | Holds. Stated in § F0 front ends; check 3 is the only independent accuracy check; the selection stands |
+| Render quality checked at 16 kHz only | low | Holds. Checks 1, 2 and 4 re-run at 16 / 22.05 / 24 kHz: no rate is worse (§ F0 front ends) |
+| Identity cases skip F-S and 22.05 kHz | low | Holds. Three cases added; 36 of 36 bit-identical in Chrome and Firefox; the phone checks the same 36 |
+| Timing ran with WORLD alone | low | Holds. Stated as a caveat; Phase 1 should pause the pipeline during analysis or time it with the pipeline running |
+| Stale "plan only" status; the 10 ms lever's noise sentence | low | Holds. Pointer line added (deviation 19); the lever sentence reworded (WORLD reseeds its noise per render, so renders are deterministic; the realisation changes with the frame period) |
+| The desktop timing server could crash on a malformed %-escape | low (note) | Fixed in `timing/serve.mjs` (answered as not found) |
+| Phone harness: Ctrl-C under `START-both.sh` skipped the preview's clean-up; a failed restore deleted the saved phone settings; Ctrl-C during the vsync check did not stop the session; adb forward / reverse and the tab could be left behind; tab choice not newest-first; kit stale | medium / low | All hold and were fixed in the scratch harness (outside this repository): tee ignores Ctrl-C and both scripts ignore SIGPIPE; restore verifies every value and keeps the saved file unless all match; Ctrl-C during the vsync check exits; the bash clean-up removes the harness's own forward and reverse; the node handler closes its tab; the tab is the one the intent opened; the site and expected hashes were rebuilt from this branch. A dry run with a simulated Ctrl-C checks all of it |
+
+No finding was judged wrong. One detail differs from the review's numbers: the speech-dense
+analysis increase at 22.05 kHz is +28 % (0.424 against 0.333 s), not +27 %, from rounding.
