@@ -73,6 +73,13 @@
 > requirement (results at the end of §8.9): 0 mismatches on every recorded
 > stream as before, the review's 200 s-pause case warns at 306 s as the
 > shipped module does, and the module keeps at most 7,521 pitch frames.
+> Review round 3 found no fault in the code (§8.9, "Review notes, round
+> 3"). The docs now say that the voiced-frame cap is the one exception to
+> "tick for tick" with the panel on from the start, and that the 7,521
+> bound is for the production 25 ms frame spacing. A test of the built app
+> showed that the late line's "another tab" holds for the app's own tabs
+> but not for a different browser tab; that wording, and "first few
+> seconds of listening", await a user decision.
 
 The experimental, opt-in "Likely heard as" panel follows pitch more than
 listeners do. When a voice changes pitch without changing resonance, the panel
@@ -3715,6 +3722,110 @@ Inputs and outputs of this step (scratch folder `warning-ks-q5-adopt/code/`):
 - smoke logs `smoke/`: `phone.log` `3a0cdd96…`, `p402.log` `c455c30c…`,
   `p360.log` `e2feb30f…`, `landscape.log` `9e6a53f2…`, `desktop.log`
   `80477749…`
+
+
+#### Review notes, round 3 (2026-10-13)
+
+The third review (of f98a4d3) re-ran the parity replays, the pause and
+frame-timing simulations, the text checks and the suite. It found the code
+correct: 0 mismatches everywhere it compares, the counts above, and
+`retained()` never over the bound. Its five findings are about wording and
+documentation. Nothing above is edited and no requirement changes. The
+module's code is unchanged: only its header comments change (sha256
+`f9c1573462b3e496566fb89147c18aa1afa8212117d97c9990690a7963f01ad4`; with
+the comments removed it is identical to `c1dbeba33e…`), and the built
+bundle is byte-identical (`index-DFsFzVEq.js`, `8c562211…`).
+
+1. **"Another tab" in the late line (medium): needs a user decision; the
+   text is not changed.** The decision as relayed said "another browser
+   tab"; the text says "another tab" (Decisions, above). The review asked
+   for a test before a browser tab is named. Tested now on the built app
+   (`r3fix/tabaway.mjs`: headless Chrome 155 via puppeteer with a temporary
+   profile, Chrome's background throttling left on; the smoke's pitch-only
+   WAVs; panel on from the start; away from 4 s to about 45 s, which covers
+   the cue's fill and its start marker at 30–38 s):
+
+   | Voice (shift at) | Stayed on the Dashboard | Another browser tab in front (the app's page hidden) | The app's Pitch tab |
+   |---|---|---|---|
+   | Man (57.7 s) | warning 6.4 s after the shift | 6.4 s; the panel showed an estimate on 38 of 41 one-second samples while hidden | no warning within 25 s |
+   | Woman (68.4 s) | 7.5 s | 7.6 s; 39 of 41 | no warning within 25 s |
+
+   So the limit is the app's own tabs, where the panel is not mounted. A
+   different browser tab did not stop the warning: the hidden page kept
+   making its 2 s updates (Chrome's heavier throttling, to about once a
+   minute, starts only after about 5 minutes hidden). Not tested: more than
+   about 40 s hidden, a minimised window, other browsers, phones (where a
+   background tab may be frozen). "Another tab" is true only when read as
+   the app's tabs; "another browser tab" would be wrong by this test.
+   Options for the user: keep "another tab", or name the app's tabs as the
+   review suggests ("while you are on the Pitch, History or Resonance lab
+   tab"). The module header and CLAUDE.md now say "another of the app's
+   tabs" and give this result.
+
+2. **"On from your first few seconds of listening" (low): needs a user
+   decision; the text is not changed.** The limit applies when the panel's
+   first update came before the cue filled (about 5 s of voiced speech,
+   however long listening has run) and it showed no estimate in the start
+   window. A user who starts listening with the panel off, turns it on
+   before talking, and then talks while the first download runs past the
+   start window gets no warning that session, and neither sentence of the
+   late line describes them (the old "already on when you start talking"
+   did). The review suggests: "If the panel is on before you start talking
+   but shows no reading during roughly your first half-minute to a minute
+   of talking …".
+
+3. **"Tick for tick" without the cap's exception (low): applied in the
+   docs.** With the panel on from the start the module equals the shipped
+   module except after the voiced-frame cap applies. The review's
+   simulation (`review-r3/sim3.mjs`, re-run on the edited module as
+   `r3fix/sim3r.mjs`: 40 scenarios × 7 frame timings × 3 seeds, 840 runs,
+   every row identical to the review's output) finds the new module
+   different from the shipped one only in its four scenarios with more than
+   7,200 voiced frames before t_start (held170, held200, heldPauseHeld170,
+   heldPauseHeld190: 9 s of speech, then 170–200 s of held notes, in two
+   cases split by a 300 s pause). In held170 (then speech and a +8 st
+   shift) the shipped module warns at 272 s in 17 of 21 runs, the new
+   module in 3 (the "drops" timing, whose stalls keep the voiced count
+   under the cap) and b72bb8a's time cap in none. Added: the exception to
+   "tick for tick" in the module header, the CLAUDE.md row and its
+   resolved-issue entry, and this note's header; the cap as a limit in the
+   module header's and CLAUDE.md's limits. Not changed: the panel's "More"
+   text, which says held vowels are not supported but not this; its wording
+   is the user's.
+
+4. **The f98a4d3 commit message's "every mutant fails a check" (nit): no
+   change.** It leaves out the `ceil` mutant, which is equivalent and
+   expected to pass. The results above have it right; the commit is pushed
+   and is not rewritten.
+
+5. **The 7,521 bound at other frame spacings (nit): applied.** The module
+   header and CLAUDE.md now say the bound is for the production ~25 ms
+   spacing. With the measurement-only `?chunk=N` (5–50 ms) the buffer
+   between S0's P0 and A40's freeze holds up to 40 s of voiced frames.
+   `r3fix/chunkbound.mjs` (panel off, every frame voiced, the cue fills at
+   10 s and sets its start 12, 39, 60 or 400 s later; the f98a4d3 module
+   and the edited one give the same output):
+
+   | Frame spacing | Most frames retained (buffer + ring) |
+   |---|---|
+   | 5 ms | 9,601 (8,001 + 1,600) |
+   | 10 ms | 8,000 (7,200 + 800) |
+   | 25 ms | 7,520 (7,200 + 320) |
+   | 50 ms | 7,360 (7,200 + 160) |
+
+Checks on this step's tree: `node tests/ml/pitch-only-warning-test.js`
+217 of 217; `npm run lint`, `npm run test:unit` (40 of 40) and
+`npm run build` pass.
+
+Inputs and outputs of this step (scratch folder `warning-ks-q5-adopt/r3fix/`):
+
+- `tabaway.mjs` `492081f566385e11a0a3013b5502afd92aa4f8931f99b0532dca105b02c0487c`
+  and its output `tabaway.json` `65677d87067eafddb145937eeb60f2fdac3e43d62adab0ffee53ee9428ea54ed`
+- `sim3r.mjs` `029e695b54a95b5f9d924781df9dbbec26a1cc377fb8a9aa7239b092b7dabfe7`
+  (the review's `sim3.mjs` with the module path and output folder changed)
+  and its output `sim3r.json` `66b3391430d252ba183c1e46f610148a127fe475f4d21f983908c64e49e13946`
+- `chunkbound.mjs` `dce5b6b4f79183aed47038f127a7d522f8752c8fccc1a11d89cf1428c1ecbac5`
+  and its output `chunkbound.txt` `5bbd879a04167a6534d2b8236f0431e85bf913781efb10055e8cb1856c7a02e4`
 
 
 ## Reproduce
