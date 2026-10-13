@@ -37,6 +37,16 @@
 > gap the study did not cover: the adopted rule cannot warn for the rest of
 > a session whose start window had no shown panel estimate (panel off,
 > still loading or hidden then); S0 could.
+>
+> **Update 2026-10-12 / 2026-10-13 (§8.7, §8.8): late switch-on.** Two
+> pre-registered fallbacks for a panel switched on after the start window
+> failed their fresh-pool tests, 29 of 30 checks each. §8.7's F4-Q5 missed
+> men's hits within 10 s with the panel switched on at ~120 s (0.853 vs bar
+> 0.867). §8.8's KS-Q5 (F4-Q5 plus KP8's quiet history seeded from the
+> posted pitch) passed every hit check but one man's natural false alarms
+> at ~120 s were 16.76 % (limit 15 %). The shipped rule and the panel's
+> "More" line are unchanged; KS-Q5's numbers are in §8.8 for a user
+> decision.
 
 The experimental, opt-in "Likely heard as" panel follows pitch more than
 listeners do. When a voice changes pitch without changing resonance, the panel
@@ -1501,7 +1511,8 @@ not by the study; nothing in the rule was changed for it (Hard rule 3).
   without the DS gate while the start share is empty; or the median of the
   first N shown shares after switch-on, taken while the resonance is still
   within 0.6 u of `startU`. **Done 2026-10-12 (§8.7): the pre-registered
-  fallback failed its fresh-pool test; the shipped rule is kept.**
+  fallback failed its fresh-pool test; the shipped rule is kept. Round 2,
+  which also seeded KP8, failed too, 2026-10-13 (§8.8).**
 
 **Addendum (2026-10-12, review): the "More" list's sources.** The rule was
 selected on the dev split, so dev figures are in-sample. The user-facing
@@ -2185,6 +2196,20 @@ re-scored against the bar).**
   15 % at T120, so no candidate in this family could have passed that
   check on this pool: the per-reader maximum is a share of eligible
   updates, and a late panel has fewer.
+- *Same span (added 2026-10-13 after review).* Scored only over the span
+  each T120 panel covers (eligible updates from 130.0 / 130.5 / 133.1 /
+  133.5 s), the shipped rule with the panel on from 0 warns him on
+  16/87, 17/88, 16/87 and 16/88 updates: 18.57 %, above both the 15 %
+  limit and KS-Q5's 16.76 % over the same stretch (15/87, 16/89, 14/88,
+  14/88). KS-Q5 warns him slightly less often, not more: 59 against 65
+  warnings over the four phases. The 11.84 % with the panel on from the
+  start includes his first ~130 s, which have no warning; a late panel's
+  eligible updates leave them out. The bar's per-reader maximum is scored
+  only after switch-on, so it is stricter for a reader whose natural
+  pitch excursions come late. That is a property of the unchanged bar,
+  not of this round, and it does not change the FAIL (`fix/same_window.py`,
+  sha256 `bdc8272d…`; output `fix/same_window_ls3792.txt`, both in the
+  hash log).
 - *Passing cells.* At T120 KS-Q5 loses 2 male-base phase-hits against
   shipped-on0 and gains 1. The losses are hcsL_ls2473_PO in j1 and j2: the
   shift came 55 s after switch-on, and the Q5 window had only 3–4 of the
@@ -2220,8 +2245,15 @@ DEVIATIONS_confirm.md; none changes the choice or the verdict):
   were written after the verdict, for the post-hoc attribution only. One
   launch of `attrib_times.py` failed on a wrong path before running.
 - Hash log at the confirmation: all 72 entries made before the test
-  matched the files on disk; afterwards 108 of 110 match (the other two
-  are the two `test_started_at.txt` entries above).
+  matched the files on disk; afterwards 109 of 110 match. Only the
+  22:43:14 `test_started_at.txt` entry is stale (logged before the end
+  time was appended); the 01:29:13 entry matches. **Corrected 2026-10-13
+  after review:** the confirmation step's report and the first version
+  of this note said 108, because `verify_hashlog.py` read the 01:29:13
+  entry's "(start+end)" label as part of the path (DEVIATIONS_confirm.md
+  §2 describes the two entries correctly and gives no count). The
+  correction is recorded in `fix/DEVIATIONS_fix.md`; no hashed file was
+  edited.
 - Python that reads downloaded data ran with `-I` through a launcher that
   adds back only the fixed per-user site-packages path (numpy, pyarrow);
   this is in PREREG §2.3, not a deviation.
@@ -2252,14 +2284,88 @@ PREREG §6.5 then sets the port: the FALLBACK blocks of
 `late-variants-r2.js` in `src/ml/pitch-only-warning.js` with the K-seed
 constants taken from HEARD_AS_CALIBRATION, a port-parity replay of the repo
 module against `late-variants-r2.js` on the test sessions (0 mismatches),
-and the panel's "More" lines updated to these numbers. On this pool the
-limit a late panel cannot meet is the per-reader maximum, not the hit
-rate; any further round needs its own pre-registration and fresh speakers.
+and the panel's "More" lines updated to these numbers. Post hoc (see the
+descriptive block above, not pre-registered): on this pool every rule
+that can warn on a late panel puts the same man above the per-reader
+limit at T120, while the hit checks pass. Any further round needs its own
+pre-registration and fresh speakers (see the review notes below).
 
 Tooling (scratch, not committed): `late-variants-r2.js`,
 `make_variants_r2.py`, `replay_r2.mjs`, `indep_r2.py`, `seed_diag.mjs`,
 `iso.py` and `late_eval_r2.py`, with round 1's `session_late.mjs`; their
 sha256 are in PREREG §11 (Appendix I).
+
+**Review notes (2026-10-13).** Two independent reviews (validity, and
+code / repo state) both found that the result holds, with small fixes;
+they reproduced the tables, the choice, the hash order and the replay
+with their own code. All their findings were low severity. Changed after
+review:
+
+- *Post-hoc labels.* The ls3792 explanation appeared without a post-hoc
+  label in the CLAUDE.md row and at the end of the Consequence paragraph.
+  Both are now labelled. The CLAUDE.md row also now says "about the same
+  warnings": KS-Q5 at T120 gives him 59 warnings over the four phases,
+  the shipped rule with the panel on from the start 65. Commit 098a401's
+  message says "(the same warnings over 87-89 instead of 135-139 eligible
+  updates; 11.84 % with the panel on from the start)" without a label; it
+  is pushed, so it is left as it is and corrected here.
+- *Same-window figure.* Added inside the descriptive block (18.57 %, see
+  "Same span").
+- *Hash-log count.* 109 of 110, not 108 (Deviations above).
+- *Pointers.* The §8.6 follow-up bullet and the header now mention
+  §8.7 and §8.8.
+
+No change, with the reason:
+
+- *Exclusion scan blind spots.* The pre-registered id scan
+  (`fresh/tools/used_speakers.py`) reads only 12 file types under 8 MB,
+  and its patterns miss a speaker id stored as a bare number in a CSV or JSON
+  column. A reviewer closed these gaps by hand: files over 8 MB (222,
+  5.8 GB, including every earlier study's session jsonl), 11,679 text
+  files with other extensions, a wider pattern over the rest, every file
+  and directory name, 651 parsed earlier speaker lists, and every Syrinx
+  worktree. No fresh-pool speaker had been used by an earlier study, so
+  the pool stands. A future round should add a bare-number column pattern
+  and scan large files, or keep explicit per-study speaker lists as the
+  primary exclusion.
+- *Candidate strings before PREREG.* PREREG says no candidate outcome
+  existed at registration. That holds for scored outcomes (hits, false
+  alarms, bar). But the implementation-check replays written at
+  20:53–20:58 (`impl_rep.json` on 16 non-study sessions,
+  `sampleA_rep.json` and `sampleB_rep.json` on 8 sessions of each dev
+  pool) hold the six candidates' per-update on/off strings. These are dev
+  data only and cannot touch the fresh test. A future PREREG should say
+  that its implementation checks contain candidate strings on N named dev
+  sessions.
+- *Two hashed files rewritten after hashing* (both disclosed in
+  DEVIATIONS_confirm.md). `test_started_at.txt` gained its end time
+  after the first hash. The debug copy `confirm/tmp/late-variants-r2-dbg.mjs`
+  was rewritten with identical bytes, so its hash still matches. Neither
+  feeds the verdict. In future, start and end times go to separate files,
+  and debug copies go outside hashed paths.
+- *Per-reader maximum after switch-on.* The same-window figure shows
+  that the bar's per-reader maximum, scored only after switch-on, is
+  stricter for a reader whose natural pitch excursions come late. This
+  round does not re-score anything. A future round that means to compare
+  like with like should pre-register a window-matched per-reader
+  reference (for example, the shipped rule with the panel on from 0,
+  scored over the same span).
+- *Found in review, older than this round: the module keeps every voiced
+  pitch frame while the panel is off.* In `src/ml/pitch-only-warning.js`
+  the `frames` buffer is emptied only in `refAt()`, which only `update()`
+  calls, and only `HeardAsPanel` calls `update()`, only while the panel
+  is on. The hook calls `addPitch()` for every posted pitch frame and
+  `noteResonance()` for every resonance-cue state, whether or not the
+  panel is on. So with the panel off (the default), every voiced frame
+  after the cue's first fill is kept until stop / start, a cue restart, or
+  an "overloaded" or "error" status from the resonance worker: up to 40
+  small objects per second of voiced audio, about 144,000 per hour (a few
+  MB; not measured). When the panel is switched on, the first `update()` scans the buffer
+  once, freezes A40 and empties it. Not fixed here. A fix that freezes
+  A40 inside `addPitch()` would change the module, so hard rule 3 applies:
+  a replay-parity run showing the same warning strings comes first. It
+  also matters for any KS-Q5 port, whose K-seed reads the same buffer.
+  CLAUDE.md lists it under known issues.
 
 
 ## Reproduce
