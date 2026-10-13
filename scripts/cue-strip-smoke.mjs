@@ -44,8 +44,9 @@
 //                   best guess sits left of the woman's (orientation). The
 //                   panel's "More" list opens and carries the pitch-only
 //                   late-switch-on line and false-alarm line (no "turn it on
-//                   before you start talking" line; measurement note §8.9),
-//                   wrapped inside the panel.
+//                   before you start talking" line; measurement note §8.9,
+//                   wording of its "Decisions 2026-10-13"), wrapped inside
+//                   the panel.
 //   3 held          resonance "sustained" for >= 60 % of the voiced hold after
 //                   its first second; the panel says "sustained", never ranges.
 //   4 noise / 5 silence  no dot on any row after the 5 s hold; the panel never
@@ -600,7 +601,10 @@ check("man: listening", await continueAfterReload(page));
     });
     check("heard-as 'More': opens with the pitch-only late-switch-on and false-alarm lines (no start line), wrapped inside the panel, no horizontal page scroll",
       m.found && m.li && m.late && /pitch varies a lot/.test(m.text) && /men's voices/.test(m.text) && /turn this panel on at any time/.test(m.lateText)
-      && /about 9 in 10 pitch-only changes in men's voices/.test(m.lateText) && !m.startLine && m.inside && m.noOverflow && m.pageScrollW <= m.vw,
+      && /about 9 in 10 pitch-only changes in men's voices/.test(m.lateText)
+      && /about as many as in the same test with the panel on from the start/.test(m.lateText) && /or while you are on another tab/.test(m.lateText)
+      && /Some expressive speakers see it much more often — up to about 1 in 6 updates/.test(m.text)
+      && !m.startLine && m.inside && m.noOverflow && m.pageScrollW <= m.vw,
       JSON.stringify({ ...m, text: m.text?.slice(0, 60), lateText: m.lateText?.slice(0, 60) }));
     await page.evaluate(() => document.querySelector("[data-heard-as-pitch-only-late]")?.scrollIntoView({ block: "center" }));
     await sleep(200);

@@ -461,13 +461,14 @@ section("wiring", "11. wiring", () => {
   check("switching the panel off drops the run", /warning\?\.resetRun\(\)/.test(panel));
   // The "More" list (§8.9 (e)): the late line replaces "turn it on before you start talking"; the false-alarm line is
   // replaced; the misses line and the warning text are unchanged. The two new strings, copied verbatim from the
-  // measurement note's §8.9 (the test does not read measurements/: CI skips Markdown-only pushes).
-  const NOTE_LATE = "You can turn this panel on at any time. If you turn it on after you've started talking, the note about pitch-only changes still compares with how you sounded at the start, but it needs about 20 seconds of readings before it can appear. In a test on about 70 other people with the panel turned on half a minute to two minutes in, it then caught about 9 in 10 pitch-only changes in men's voices and about 3 in 4 in women's voices within 10 seconds — about as many as with the panel on from the start. If the panel is already on when you start talking but shows no reading during roughly your first half-minute to a minute (for example while it is still downloading), the note may not appear until you stop and start listening again.";
-  const NOTE_FALSE_ALARM = "The note about pitch-only changes can also appear when you haven't deliberately changed your voice, if your pitch varies a lot as you talk. In tests on 192 people reading aloud that happened on about 3 to 4 in 1,000 updates for men's voices and almost never for women's, also when the panel was turned on later. A single expressive speaker can see it much more often: one man whose pitch rose a long way in a few places saw it on about 1 in 8 to 1 in 6 updates where the panel showed an estimate.";
+  // measurement note's §8.9 "Decisions 2026-10-13" (the review's three wording changes; the test does not read
+  // measurements/: CI skips Markdown-only pushes).
+  const NOTE_LATE = "You can turn this panel on at any time. If you turn it on after you've started talking, the note about pitch-only changes still compares with how you sounded at the start, but it needs about 20 seconds of readings before it can appear. In a test on about 70 other people with the panel turned on half a minute to two minutes in, it then caught about 9 in 10 pitch-only changes in men's voices and about 3 in 4 in women's voices within 10 seconds — about as many as in the same test with the panel on from the start. If the panel is on from your first few seconds of listening but shows no reading during roughly your first half-minute to a minute (for example while it is still downloading, or while you are on another tab), the note may not appear until you stop and start listening again.";
+  const NOTE_FALSE_ALARM = "The note about pitch-only changes can also appear when you haven't deliberately changed your voice, if your pitch varies a lot as you talk. In tests on 192 people reading aloud that happened on about 3 to 4 in 1,000 updates for men's voices and almost never for women's, also when the panel was turned on later. Some expressive speakers see it much more often — up to about 1 in 6 updates where the panel showed an estimate, for one man whose pitch rose a long way in a few places.";
   const constant = (name) => { const m = panel.match(new RegExp(`export const ${name} =\\s*"([^"]*)";`)); return m ? m[1] : null; };
   const lateText = constant("PITCH_ONLY_LATE_TEXT"), faText = constant("PITCH_ONLY_FALSE_ALARM_TEXT");
-  check("PITCH_ONLY_LATE_TEXT is the note's §8.9 wording, verbatim", lateText === NOTE_LATE, lateText?.slice(0, 60));
-  check("PITCH_ONLY_FALSE_ALARM_TEXT is the note's §8.9 wording, verbatim", faText === NOTE_FALSE_ALARM, faText?.slice(0, 60));
+  check("PITCH_ONLY_LATE_TEXT is the note's §8.9 wording (Decisions 2026-10-13), verbatim", lateText === NOTE_LATE, lateText?.slice(0, 60));
+  check("PITCH_ONLY_FALSE_ALARM_TEXT is the note's §8.9 wording (Decisions 2026-10-13), verbatim", faText === NOTE_FALSE_ALARM, faText?.slice(0, 60));
   check("the 'turn it on before you start talking' line is gone (PITCH_ONLY_START_TEXT and its item)",
     !/PITCH_ONLY_START_TEXT|data-heard-as-pitch-only-start/.test(panel));
   check("the 'More' list carries the late line, the misses line and the false-alarm line",
@@ -489,7 +490,7 @@ section("wiring", "11. wiring", () => {
 section("golden", "12. golden replay (public sessions at the app cadence, the study's own scored strings)", () => {
   const G = JSON.parse(readFileSync(path.join(here, "fixtures/pitch-only-golden.json"), "utf8"));
   const { name: ruleName, ...ruleCfg } = G.rule;
-  // The fixture records the §8.6 rule's constants; the module's late-switch-on constants (late, maxStartWaitMs; §8.9)
+  // The fixture records the §8.6 rule's constants; the module's late-switch-on constants (late, maxStartVoicedMs; §8.9)
   // never act on these panel-on-from-the-start streams and are checked in section 14.
   check("fixture rule = the module's constants (A40+KP8-3+DS10)", ruleName === "A40+KP8-3+DS10"
     && JSON.stringify(ruleCfg) === JSON.stringify(Object.fromEntries(Object.keys(ruleCfg).map((k) => [k, C[k]]))));
@@ -631,10 +632,10 @@ section("identity", "13. identity with the shipped module (2a1f4022…) whenever
 
 section("late", "14. late switch-on: KS-Q5 against the round-2 harness (§8.9 (b), (f) 2)", () => {
   const L = C.late;
-  check("the late-switch-on constants: the panel's pooling and hide rules (HEARD_AS_CALIBRATION), Q5 20 s / 5 shares, cap 180 s",
+  check("the late-switch-on constants: the panel's pooling and hide rules (HEARD_AS_CALIBRATION), Q5 20 s / 5 shares, cap 180 s of voiced frames",
     !!L && L.updateMs === HEARD_AS_CALIBRATION.updateMs && L.updateMs === 2000 && L.seedWindowMs === HEARD_AS_CALIBRATION.windowMs && L.seedWindowMs === 8000
     && L.seedMinVoicedMs === 3000 && L.seedFreshMs === 5000 && L.seedLnF0[0] === Math.log(81.0) && L.seedLnF0[1] === Math.log(293.1)
-    && L.windowMs === 20000 && L.minShares === 5 && C.maxStartWaitMs === 180000 && S0_CONFIG.late === null, JSON.stringify(L));
+    && L.windowMs === 20000 && L.minShares === 5 && C.maxStartVoicedMs === 180000 && S0_CONFIG.late === null, JSON.stringify(L));
   // section 6's late panel: no start share; the fallback share closes after 20 s of quiet shown updates
   const c = primed({ cfg: { consecutive: 1, kp8: null }, startUpdates: 0 });
   const early = [];
@@ -707,8 +708,69 @@ section("late", "14. late switch-on: KS-Q5 against the round-2 harness (§8.9 (b
     fw("seed_fresh") === 132000 && fw("seed_gap") === null && fw("seed_first") === null && fw("seed_edge") === null && fw("seed_restart") === null);
 });
 
-section("bound", "15. retained pitch frames are bounded (§8.9 2, (c), (f) 3)", () => {
-  const BOUND = 7522, RING = 321;
+// Calls of a session with no t_start (the cue fills at fillMs and never sets its start): a frame every frameMs,
+// voiced at 150 Hz where voicedAt(t), a resonance state at each 200 ms boundary, panel updates at each 2 s boundary
+// when panelOn (shown at 150 Hz while voiced). Frame times are i * frameMs (24.988662 ms = 1,102-sample chunks at
+// 44.1 kHz).
+function noStartCalls({ frameMs = 25, endMs = 400000, fillMs = 10000, panelOn = false, voicedAt = () => true } = {}) {
+  const calls = [];
+  for (let i = 1, prev = 0; i * frameMs <= endMs; i++) {
+    const t = i * frameMs, v = voicedAt(t);
+    calls.push(["p", t, v ? 150 : null]);
+    if (Math.floor(t / 200) > Math.floor(prev / 200))
+      calls.push(["r", { type: "state", u: 0.2, startU: null, fill: Math.min(1, t / fillMs), verdict: "score", sinceResumeS: t / 1000 }, t]);
+    if (panelOn && Math.floor(t / 2000) > Math.floor(prev / 2000)) calls.push(["u", v ? Math.log(150) : null, v ? 0.3 : null, t]);
+    prev = t;
+  }
+  return calls;
+}
+// The reviewer's pause case (§8.9 review fixes): panel on from the start; 9 s of speech (the cue fills), a 200 s
+// pause, 90 s of speech (the cue sets its start), a +8 st pitch-only shift for 30 s, 60 s of speech. A simple cue:
+// fill = admitted voiced speech / 5 s, startU once 17 s are admitted; the panel's estimate is the ln median of the
+// voiced frames of the last 8 s, hidden below 3 s voiced; its drawn share moves 25 points during the shift.
+function pauseCalls(seed = 1, pauseS = 200) {
+  let x = seed;
+  const rnd = () => ((x = (Math.imul(x, 1664525) + 1013904223) >>> 0) / 4294967296);
+  const calls = [], recent = [];
+  let t = 0, adm = 0, startU = null, verdict = "silent", nextRes = 0, nextUpd = 0, shiftSt = 0, bias = 0;
+  const frame = (f0) => {
+    t += 25;
+    calls.push(["p", t, f0 > 0 ? f0 : null]);
+    recent.push([t, f0]);
+    while (recent.length && recent[0][0] <= t - 8000) recent.shift();
+    if (f0 > 0 && verdict === "score") adm += 0.025;
+    if (adm >= 17 && startU === null) startU = 0.2;
+    if (t >= nextRes) {
+      nextRes = t + 200;
+      calls.push(["r", { type: "state", u: 0.2 + 0.05 * Math.sin(t / 3000), startU, fill: Math.min(1, adm / 5), verdict, sinceResumeS: 10 }, t]);
+    }
+    if (t >= nextUpd) {
+      nextUpd += 2000;
+      const v = recent.filter((r) => r[1] > 0).map((r) => r[1]).sort((a, b) => a - b);
+      const ok = v.length * 25 >= 3000, h = v.length >> 1;
+      calls.push(["u", ok ? Math.log(v.length % 2 ? v[h] : (v[h - 1] + v[h]) / 2) : null, ok ? 0.3 + bias + 0.03 * Math.sin(t / 7000) : null, t]);
+    }
+  };
+  const speech = (s, st = 0) => {
+    shiftSt = st; bias = st ? 0.25 : 0;
+    const end = t + s * 1000;
+    while (t < end) {
+      verdict = "score";
+      const vLen = Math.round((100 + rnd() * 400) / 25), gLen = Math.round((40 + rnd() * 160) / 25);
+      for (let k = 0; k < vLen && t < end; k++) frame(120 * 2 ** ((shiftSt + 1.2 * Math.sin(t / 47000) + (rnd() - 0.5) * 0.6) / 12));
+      verdict = "pause";
+      for (let k = 0; k < gLen && t < end; k++) frame(0);
+    }
+  };
+  speech(9);
+  verdict = "silent";
+  for (const end = t + pauseS * 1000; t < end;) frame(0);
+  speech(90); speech(30, 8); speech(60);
+  return calls;
+}
+
+section("bound", "15. retained pitch frames are bounded (§8.9 2, (c), (f) 3; 2c' since the review fixes)", () => {
+  const BOUND = 7521, RING = 321, CAP = 7200;   // (c) asked for <= 7,522; 2c' gives 7,200 buffered + 321 in the ring
   const S = buildSession({ hours: 1 });
   const E = Math.max(S.startMs, S.fillMs + 40000);
   for (const [sc, cfg] of Object.entries(SCENARIOS)) {
@@ -717,7 +779,7 @@ section("bound", "15. retained pitch frames are bounded (§8.9 2, (c), (f) 3)", 
     drive(w, S, eventsFor(S, cfg), (kind, i) => {
       const r = w.retained(), tot = r.a40Frames + r.ringFrames;
       maxTot = Math.max(maxTot, tot);
-      if (tot > BOUND) over++;
+      if (tot > BOUND || r.a40Frames > CAP) over++;
       if (S.t[i] > E && (r.a40Frames !== 0 || tot > RING)) overAfter++;
       if (kind === "u" && firstU === null) firstU = S.t[i];
       if (firstU !== null && firstU < S.fillMs && r.ringFrames !== 0) ringAfterEarly++;
@@ -726,26 +788,71 @@ section("bound", "15. retained pitch frames are bounded (§8.9 2, (c), (f) 3)", 
       + ` 0 A40 frames and <= ${RING} in all once A40 is final${sc === "on0" ? ", no ring once the first update came before t_fill" : ""}`,
     over === 0 && overAfter === 0 && ringAfterEarly === 0 && (sc !== "on0" || firstU < S.fillMs), `${over} / ${overAfter} / ${ringAfterEarly}`);
   }
-  // t_start never comes: the buffer holds no frame past t_fill + 180 s and is then emptied; no reference, no warning
+  // t_start never comes, held notes (every frame voiced; (f) 3 as written): the buffer holds no frame past
+  // t_fill + 180 s and at most 7,200 frames, and is then emptied; no reference, no warning. Also at the 44.1 kHz
+  // chunk spacing (1,102 samples = 24.989 ms), where the first cap (t_fill + 180 s of audio) let 7,204 in.
+  for (const [frameMs, label] of [[25, "25 ms frames"], [1102000 / 44100, "24.989 ms frames (44.1 kHz)"]]) {
+    for (const panelOn of [false, true]) {
+      const calls = noStartCalls({ frameMs, panelOn });
+      const w = createPitchOnlyWarning();
+      let tFill = null, voicedIn = 0, mx = 0, bad = 0, emptied = true, ons = 0;
+      const p0s = new Set();
+      for (const c of calls) {
+        if (c[0] === "p") w.addPitch({ audioMs: c[1], f0: c[2] });
+        else if (c[0] === "r") { w.noteResonance(c[1], c[2]); if (tFill === null && c[1].fill >= 1) tFill = c[2]; }
+        else { p0s.add(w.pitchStart()); if (w.update({ lnF0: c[1], resonance: null, share: c[2], audioMs: c[3] })) ons++; }
+        const tm = c[0] === "u" ? c[3] : c[c[0] === "p" ? 1 : 2];
+        if (c[0] === "p" && c[2] > 0 && tFill !== null && tm <= tFill + 180000) voicedIn++;
+        const r = w.retained();
+        mx = Math.max(mx, r.a40Frames);
+        if (r.a40Frames > voicedIn + 81 || r.a40Frames > CAP || r.ringFrames > RING) bad++;   // (+ the 2 s pre-buffer before t_fill)
+        if (tFill !== null && tm > tFill + 180000 && r.a40Frames !== 0) emptied = false;
+      }
+      check(`t_start never comes, held notes, ${label}, panel ${panelOn ? "on from the start" : "off"}: no frame past t_fill + 180 s is kept,`
+        + ` at most ${CAP} (max ${mx}), emptied then, pitchStart() null, no warning`,
+      tFill !== null && bad === 0 && emptied && mx >= CAP - 4 && w.pitchStart() === null && ons === 0
+        && (!panelOn || (p0s.size === 1 && p0s.has(null))), `${bad} ${emptied} ${mx} ${ons}`);
+    }
+  }
+  // t_start never comes, speech with pauses: pauses do not count, so the buffer keeps voiced frames past t_fill + 180 s,
+  // never more than 7,200; it is emptied when the 7,201st voiced frame since t_fill arrives; no reference, no warning.
   {
     const N = buildSession({ hours: 0.25, startMs: null });
-    const cap = N.fillMs + C.maxStartWaitMs;
     for (const [sc, cfg] of [["off", SCENARIOS.off], ["on from the start", SCENARIOS.on0]]) {
       const w = createPitchOnlyWarning();
-      let voicedIn = 0, bad = 0, emptied = true, ons = 0;
+      let voiced = 0, bad = 0, keptPast = false, giveUpAt = null, ons = 0;
       const p0s = new Set();
       drive(w, N, eventsFor(N, cfg), (kind, i) => {
-        const tm = N.t[i];
-        if (kind === "p" && N.f0[i] > 0 && tm >= N.fillMs && tm <= cap) voicedIn++;
-        const r = w.retained();
-        if (r.a40Frames > voicedIn + 81) bad++;                 // (+ the 2 s pre-buffer before t_fill)
-        if (tm > cap && r.a40Frames !== 0) emptied = false;
-        if (r.ringFrames > RING) bad++;
+        const tm = N.t[i], r = w.retained();
+        if (kind === "p" && N.f0[i] > 0 && tm >= N.fillMs) {
+          voiced++;
+          if (voiced === CAP + 1) giveUpAt = tm;
+          if (voiced <= CAP && tm > N.fillMs && r.a40Frames !== voiced) bad++;   // (the frame at t_fill comes before its snapshot)
+        }
+        if (giveUpAt !== null && r.a40Frames !== 0) bad++;
+        if (r.a40Frames > CAP || r.ringFrames > RING) bad++;
+        if (tm > N.fillMs + 180000 && r.a40Frames > 0) keptPast = true;
         if (kind === "u") { p0s.add(w.pitchStart()); if (w.isOn()) ons++; }
       });
-      check(`t_start never comes (${sc}): no frame past t_fill + 180 s is kept, the buffer is emptied then, pitchStart() null, no warning`,
-        bad === 0 && emptied && w.pitchStart() === null && ons === 0 && (sc === "off" || (p0s.size === 1 && p0s.has(null))), `${bad} ${emptied} ${ons}`);
+      check(`t_start never comes, speech with pauses (panel ${sc}): frames kept past t_fill + 180 s, never more than ${CAP},`
+        + ` emptied at the ${CAP + 1}st voiced frame (${giveUpAt === null ? "never" : `${(giveUpAt / 1000).toFixed(1)} s`}), pitchStart() null, no warning`,
+      bad === 0 && keptPast && giveUpAt !== null && w.pitchStart() === null && ons === 0 && (sc === "off" || (p0s.size === 1 && p0s.has(null))), `${bad}`);
     }
+  }
+  // A long pause after the cue fills (the review's case; §8.9 "Decisions 2026-10-13" (h6) 1): t_start comes ~280 s
+  // after t_fill; the start is kept (silence does not count) and the outputs are the shipped module's at every update
+  // — it warns, first after the shift (which starts at 299 s: 9 s of speech, the 200 s pause, 90 s of speech).
+  {
+    let ok = true, d = "";
+    const firsts = [];
+    for (const seed of [1, 2, 3]) {
+      const calls = pauseCalls(seed);
+      const a = play(createPitchOnlyWarning(), calls), b = play(SH.createPitchOnlyWarning(), calls);
+      const ut = calls.filter((c) => c[0] === "u").map((c) => c[3]), i = a.on.indexOf("1");
+      firsts.push(i < 0 ? null : ut[i]);
+      if (!sameOut(a, b) || i < 0 || ut[i] <= 299000) { ok = false; d = `seed ${seed}: ${firstDiff(a, b) || (i < 0 ? "never warns" : `first warning at ${ut[i]} ms, before the shift`)}`; break; }
+    }
+    check(`a 200 s pause after the cue fills, panel on from the start: the same outputs as the shipped module at every update, which warns after the shift (first at ${firsts.map((x) => (x === null ? "never" : `${x / 1000} s`)).join(" / ")})`, ok, d);
   }
   // t_start at t_fill + 170 s: within the cap — the same outputs as the shipped module
   {

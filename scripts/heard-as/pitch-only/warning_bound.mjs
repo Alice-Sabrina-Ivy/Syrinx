@@ -8,7 +8,8 @@
 //   node --expose-gc scripts/heard-as/pitch-only/warning_bound.mjs [--hours=1] [--runs=5] [--chrome] [--out=<json>]
 //
 // (c) Retained pitch frames: the new module's retained() after EVERY call
-//     against the bound (<= 7,522 = 321 ring + 7,201 buffer; <= 321 once A40
+//     against the bound (<= 7,521 = 321 ring + 7,200 buffer since the §8.9
+//     review fixes' voiced-frame cap, 2c'; (c) asked for <= 7,522; <= 321 once A40
 //     is final; no ring once the first panel update came before t_fill); the
 //     shipped module's buffer, which is not observable, counted from the
 //     stream by its own rule (every voiced frame from t_fill until an update
@@ -46,7 +47,7 @@ for (const [k, p] of Object.entries(MODS)) M[k] = await import(pathToFileURL(pat
 const median = (xs) => { const q = [...xs].sort((a, b) => a - b), h = q.length >> 1; return q.length % 2 ? q[h] : (q[h - 1] + q[h]) / 2; };
 const S = buildSession({ hours: HOURS });
 const EV = Object.fromEntries(Object.entries(SCENARIOS).map(([k, sc]) => [k, eventsFor(S, sc)]));
-const BOUND = 7522, RING = 321;
+const BOUND = 7521, RING = 321;
 const E = Math.max(S.startMs, S.fillMs + 40000);
 const result = { hours: HOURS, frames: S.n, voicedFrac: +S.voicedFrac.toFixed(4), fillMs: S.fillMs, startMs: S.startMs, a40FinalAfterMs: E };
 console.log(`session: ${HOURS} h, ${S.n} frames, ${(100 * S.voicedFrac).toFixed(1)} % voiced; t_fill ${S.fillMs} ms, t_start ${S.startMs} ms, A40 final after ${E} ms`);

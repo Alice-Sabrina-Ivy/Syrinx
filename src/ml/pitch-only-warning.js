@@ -106,24 +106,25 @@
 //     posted frame later than max(t_start, t_fill + 40 s) and the buffer is
 //     emptied. So the buffer holds at most the voiced frames from t_fill to
 //     that point (~40-82 s on the recorded streams), in typed arrays.
-//   - Cap (the one behaviour change outside KS-Q5): if the start window has
-//     not closed by t_fill + 180 s (`maxStartWaitMs`; t_start unknown or
-//     later than that) when a posted frame later than that arrives, the
-//     module gives up on this start: P0 is null (as with fewer than 20 start
-//     frames), no warning and pitchStart() null until a cue restart or
-//     reset(). It never applied on the recorded streams (t_start - t_fill
-//     <= 81.5 s). It counts audio time, silence included: a pause of about
-//     3 min after the cue fills ends the start, also with the panel on from
-//     the start, where the shipped module could still warn (§8.9 review
-//     fixes; a voiced-frame cap awaits a user decision).
-//   - The K-seed ring holds the posted frames of the last 8 s (<= 321 at the
-//     25 ms cadence) in typed arrays; it stops and is released once the first
-//     panel update came before t_fill (the shadow can then never be used
-//     before reset()).
+//   - Cap (the one behaviour change outside KS-Q5; §8.9 2c', review fixes):
+//     while S0's P0 is not decided, a voiced frame that would make the buffer
+//     hold more than 7,200 frames (`maxStartVoicedMs` 180 s / the 25 ms frame
+//     spacing) makes the module give up on this start: P0 is null (as with
+//     fewer than 20 start frames), no warning and pitchStart() null until a
+//     cue restart or reset(). Unvoiced frames and silence never count, so a
+//     long pause after the cue fills does not end the start (the first cap,
+//     t_fill + 180 s of audio time, did). It never applied on the recorded
+//     streams.
+//   - The K-seed ring holds the posted frames of the last 8 s (<= 321 with
+//     25 ms capture chunks, also at 44.1 kHz) in typed arrays; it stops and
+//     is released once the first panel update came before t_fill (the
+//     shadow can then never be used before reset()).
 //   - KP8's quiet histories are a count and a running sum of squares (the
 //     same threshold bit for bit as summing the list in order).
-// At most 7,522 retained frames at any time, at most 321 once A40 is final
-// (`retained()`, for tests).
+// At most 7,521 retained frames at any time (7,200 buffered + 321 in the
+// ring), at most 321 once A40 is final (`retained()`, for tests). The
+// `?chunk=N` diagnostic flag changes the frame spacing: the ring then holds
+// 8 s of frames and the cap comes after proportionally less voiced audio.
 //
 // Eligible update: the panel shows an estimate (lnF0 known), startU, u and
 // the reference known, fill ≥ 1, verdict ≠ "sustained", sinceResumeS ≥ 2.
@@ -159,7 +160,7 @@ export const PITCH_ONLY_WARNING = Object.freeze({
   kp8: 3,                 // KP8: threshold = max(X, kp8 x RMS(quiet history)); null = fixed X
   kp8MinHistory: 5,       // KP8: quiet values needed before the threshold adapts
   ds: 10,                 // DS: points the drawn share must have moved; null = no gate
-  maxStartWaitMs: 180000, // cap: give up on a start window not closed by t_fill + this (§8.9 2c)
+  maxStartVoicedMs: 180000, // cap: give up on a start window holding more voiced frames than this / 25 ms (§8.9 2c')
   // KS-Q5 (§8.9): the late-switch-on fallback; null = none (the §8.6 rule).
   late: Object.freeze({
     // K-seed: the panel's own pooling and hide rules (heard-as.js)
@@ -190,6 +191,7 @@ export const PITCH_ONLY_TEXT =
 const ST_PER_LN = 12 / Math.LN2;
 const EPS = 1e-9; // boundary values (4.00 st, 0.60 u) count as met despite float rounding
 const PRE_BUFFER_MS = 2000;
+const FRAME_MS = 25;           // the production spacing of posted pitch frames (one per 25 ms capture chunk)
 const SEED_FIRST_GAP_MS = 25;  // K-seed: the first frame's spacing
 const SEED_MAX_GAP_MS = 100;   // K-seed: a frame's spacing is capped at this
 
@@ -229,7 +231,8 @@ export function createPitchOnlyWarning(C = PITCH_ONLY_WARNING) {
   // KS-Q5 is on only with the DS gate it stands in for; the K-seed only with KP8.
   const L = C.late != null && C.ds != null ? C.late : null;
   const SEED = L !== null && C.kp8 != null;
-  const CAP = typeof C.maxStartWaitMs === "number" && Number.isFinite(C.maxStartWaitMs) ? C.maxStartWaitMs : Infinity;
+  const CAP_FRAMES = typeof C.maxStartVoicedMs === "number" && Number.isFinite(C.maxStartVoicedMs)
+    ? Math.floor(C.maxStartVoicedMs / FRAME_MS) : Infinity;   // 7,200
 
   // References
   let tFill = null, tStart = null;   // audio ms of the first fill >= 1 / startU snapshot
@@ -389,19 +392,16 @@ export function createPitchOnlyWarning(C = PITCH_ONLY_WARNING) {
       if (typeof audioMs !== "number" || !Number.isFinite(audioMs)) return;
       latestFrameMs = Math.max(latestFrameMs, audioMs);
       if (shadowOn) seedFrame(audioMs, f0); // K-seed (every posted frame; its pseudo updates may still read the buffer)
-      if (!s0Done && tFill !== null) {
-        if (audioMs > tFill + CAP && (tStart === null || tStart > tFill + CAP)) {
-          p0S0 = null; s0Done = true; giveUpStart();   // 2c: the start window did not close in time
-        } else if (tStart !== null && audioMs > tStart) {
-          s0P0();                                      // 2a: decide S0's P0 now (empties the buffer if null / S0)
-        }
-      }
+      if (!s0Done && tFill !== null && tStart !== null && audioMs > tStart) s0P0(); // 2a: decide S0's P0 now (empties the buffer if null / S0)
       if (C.ref !== "S0" && a40Frozen === null && s0Done && p0S0 !== null) {   // 2b: freeze A40 now
         const E = Math.max(tStart, tFill + C.growMs);
         if (audioMs > E) { a40Frozen = lnMedianUpTo(E).v; dropBuffer(); }
       }
       if (a40Frozen !== null || (s0Done && (C.ref === "S0" || p0S0 === null))) return;
       if (!(typeof f0 === "number" && f0 > 0)) return;
+      if (!s0Done && tFill !== null && bN - bLo >= CAP_FRAMES) { // 2c': the start window holds too much voiced audio
+        p0S0 = null; s0Done = true; giveUpStart(); return;
+      }
       bufPush(audioMs, f0);
       // Before the start window opens keep only a short pre-buffer (a frame
       // can arrive just after the snapshot that opens the window).
