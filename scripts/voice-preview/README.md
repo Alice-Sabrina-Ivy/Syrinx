@@ -30,7 +30,8 @@ files are not committed; the build is byte-reproducible from `build.mjs`.
 | `prep/clips-44k.mjs` | 44.1 kHz copies of the timing clips with their own posted tracks (addition 2026-10-12, A3) |
 | `parity/pyworld_hi.py`, `parity/hirate-meters.mjs`, `parity/hirate_score.py`, `parity/mem-hi.mjs` | Levels 2 and 3 at 32 / 44.1 / 48 kHz with F-S (on `fe/rate-check.mjs --l2=1` output), FFT sizes and WebAssembly memory per rate (addition 2026-10-12, A4) |
 | `timing/hi-verdict.mjs` | The addition's 44.1 kHz check, phone inclusion rule and phone-time estimate, from `analyze.mjs --by-clipset=1` output (A3, A6, A7) |
-| `timing/` | Timing page, matrix, static server, desktop driver, summary; `analyze.mjs` (statistics, gate conditions, phone predictions), `load-log.mjs` (machine load), `fp10-renders.mjs` + `fp10_lsd.py` (the 10 ms lever's spectral distance) |
+| `timing/hi-normalize.mjs` | The addition's desktop margins with the machine load taken out: each cell over the in-run 24 kHz anchor, times the earlier runs' 24 kHz value; also a re-time run (review of the addition, 2026-10-13) |
+| `timing/` | Timing page, matrix, static server, desktop driver, summary; `analyze.mjs` (statistics, gate conditions, phone predictions; `--governor` excludes runs that overlap a governor suspension of the driver, the load logger, the server or a pinned browser), `load-log.mjs` (machine load), `fp10-renders.mjs` + `fp10_lsd.py` (the 10 ms lever's spectral distance) |
 
 ## Reproduce
 
@@ -102,12 +103,16 @@ python -I scripts/voice-preview/parity/pyworld_hi.py --pyworld <dir>
 node --import ./scripts/session-oracle/lib/register.mjs scripts/voice-preview/parity/hirate-meters.mjs
 python -I scripts/voice-preview/parity/hirate_score.py
 node scripts/voice-preview/parity/mem-hi.mjs --json=<out.json>
-node scripts/voice-preview/timing/run-desktop.mjs --browser=chrome --mode=identity   # 48 outputs
+node scripts/voice-preview/timing/run-desktop.mjs --browser=chrome --mode=identity   # 54 outputs since the review of the addition (48 before)
 node scripts/voice-preview/timing/run-desktop.mjs --browser=firefox --mode=identity
 node scripts/voice-preview/timing/run-desktop.mjs --browser=chrome --per-run-context --plans=<plans.json> --params="runs=10&fe=S"
 node scripts/voice-preview/timing/run-desktop.mjs --browser=firefox --params="runs=5&fe=S&blocks=world-auto,world-nosimd,psola&lengths=5&rates=48000,32000"
 node scripts/voice-preview/timing/analyze.mjs <result.json> --load=<load.jsonl> --by-clipset=1 --json=<analysis.json>
 node scripts/voice-preview/timing/hi-verdict.mjs <analysis.json>
+# review of the addition (2026-10-13): governor log, sensitivity without repeats 0-1, load-normalised margins
+node scripts/voice-preview/timing/analyze.mjs <result.json> --load=<load.jsonl> --by-clipset=1 --factors=2,3 --governor=<governor.log> --json=<gov.json>
+node scripts/voice-preview/timing/analyze.mjs <result.json> --load=<load.jsonl> --by-clipset=1 --factors=2,3 --governor=<governor.log> --skip-reps=0,1 --json=<skip.json>
+node scripts/voice-preview/timing/hi-normalize.mjs --hi=<gov.json> --pre=<earlier main-run analysis> --speech=<earlier speech-run analysis> --hiSkip=<skip.json> [--retime=<analysis.json>,...]
 ```
 
 `plans.json` for the addition's matrix (A5), one page configuration per line, interleaved repeat by

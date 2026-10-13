@@ -55,7 +55,8 @@ export function buildMatrix({
  * next three (added after review, 2026-10-12) cover the gate configuration: F-S (the posted
  * track, mapped, + StoneMask) at 24 and 22.05 kHz, and PSOLA with F-S. The last two (§ Addition
  * 2026-10-12, A4) are WORLD F-S at the new rates: 48 kHz on M01 (no resampling) and 32 kHz on
- * F02. 8 cases x 3 cells x 2 builds = 48 outputs. */
+ * F02. The last one (review of the addition, 2026-10-13) is PSOLA F-S at 32 kHz on M02, the
+ * PSOLA rate the phone times above 24 kHz. 9 cases x 3 cells x 2 builds = 54 outputs. */
 export const IDENTITY_CASES = Object.freeze([
   { clip: "M01", length: 5, rate: 16000, fe: "L", engine: "world" },
   { clip: "F01", length: 5, rate: 24000, fe: "H", engine: "world" },
@@ -65,6 +66,7 @@ export const IDENTITY_CASES = Object.freeze([
   { clip: "F02", length: 5, rate: 24000, fe: "S", engine: "psola" },
   { clip: "M01", length: 5, rate: 48000, fe: "S", engine: "world" },
   { clip: "F02", length: 5, rate: 32000, fe: "S", engine: "world" },
+  { clip: "M02", length: 5, rate: 32000, fe: "S", engine: "psola" },
 ]);
 export const IDENTITY_CELLS = Object.freeze([[2, 1.03], [-2, 0.97], [0, 1.0]]);
 

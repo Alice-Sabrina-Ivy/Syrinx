@@ -14,6 +14,18 @@
 // of the group key, for result files that mix clip sets (run-desktop.mjs --plans). Each group also
 // reports runComputeMeanMs, the mean of C0 + cold G1 + 20 x G2 + 5 x warm G1 per run (the phone
 // session estimate, A7).
+//        [--governor=governor.log] [--governor-match=REGEX] [--skip-reps=0,1]
+// --governor (review of the addition, 2026-10-13): the resource governor's own log. A gap in the
+// load log shows a suspension only when the load logger itself was suspended; the governor can
+// also suspend the driver or a browser process for a few seconds while the logger keeps running.
+// Every "suspend pid N (...) <command line>" whose command line matches --governor-match
+// (default: the timing driver, the load logger, the static server and the pinned browsers under
+// voice-preview/browsers) opens a suspension that the next "resume pid N" (or "resumed leftover
+// pid N") closes. A run whose span overlaps one (widened by 1 s each side: the log has 1-s
+// resolution) is excluded and listed with the process. The log's timestamps are local time, read
+// in this machine's time zone.
+// --skip-reps: leave out these repeat indices (a sensitivity check, e.g. repeats that ran beside
+// other heavy jobs); listed like the other exclusions.
 import { readFileSync, writeFileSync } from "node:fs";
 import { quantile } from "./summarize.mjs";
 
@@ -36,7 +48,34 @@ function loadNear(iso) {
 // excluded and counted, so a suspension never enters the statistics.
 const gaps = [];
 for (let i = 1; i < load.length; i++) if (load[i].t - load[i - 1].t > 30000) gaps.push([load[i - 1].t, load[i].t]);
+// Governor suspensions (--governor): [from, to, pid, command line] per matching suspension.
+const govMatch = new RegExp(args["governor-match"] || "run-desktop\\.mjs|load-log\\.mjs|serve\\.mjs|voice-preview[\\\\/]browsers[\\\\/]", "i");
+const suspensions = [];
+if (args.governor) {
+  const open = new Map();
+  const resumes = []; // every resume time, in log order
+  const local = (d, t) => { const [y, mo, da] = d.split("-").map(Number), [h, mi, se] = t.split(":").map(Number); return new Date(y, mo - 1, da, h, mi, se).getTime(); };
+  for (const line of readFileSync(args.governor, "utf8").split(/\r?\n/)) {
+    const m = line.match(/^(\d{4}-\d\d-\d\d) (\d\d:\d\d:\d\d) (suspend|resume|resumed leftover) pid (\d+)\s*(.*)$/);
+    if (!m) continue;
+    const t = local(m[1], m[2]), pid = m[4];
+    if (m[3] === "suspend") { const cmd = m[5].replace(/^\([^)]*\)\s*/, ""); if (govMatch.test(cmd) && !open.has(pid)) open.set(pid, { t, cmd }); continue; }
+    resumes.push(t);
+    if (open.has(pid)) { const o = open.get(pid); open.delete(pid); suspensions.push([o.t - 1000, t + 1000, pid, o.cmd]); }
+  }
+  // A process that exits while suspended (e.g. a renderer of a closed browser context) gets no
+  // resume line: its suspension is taken to end with the governor's next resume wave (the first
+  // resume after it, and every resume that follows within 15 s of the previous one).
+  for (const [pid, o] of open) {
+    let k = resumes.findIndex((t) => t >= o.t);
+    if (k < 0) { suspensions.push([o.t - 1000, Infinity, pid, `${o.cmd} (no resume in the log)`]); continue; }
+    while (k + 1 < resumes.length && resumes[k + 1] - resumes[k] <= 15000) k++;
+    suspensions.push([o.t - 1000, resumes[k] + 1000, pid, `${o.cmd} (exited while suspended: ends with the next resume wave)`]);
+  }
+}
+const skipReps = new Set((args["skip-reps"] || "").split(",").filter((x) => x !== "").map(Number));
 const runSpanMs = (r) => r.c0 + r.g1cold.ms + r.g2.reduce((a, g) => a + g.ms, 0) + r.g1warm.reduce((a, g) => a + g.ms, 0);
+const hhmmss = (t) => (Number.isFinite(t) ? new Date(t).toISOString().slice(11, 19) : "?");
 const excluded = [];
 const groups = new Map();
 for (const f of files) {
@@ -44,9 +83,13 @@ for (const f of files) {
   const browser = res.driver?.browser || "?";
   for (const r of res.runs) {
     if (r.error) continue;
-    if (r.startedAt && gaps.length) {
+    const ex = { file: f, i: r.i, rep: r.rep, block: r.block, rate: r.rate, length: r.length, clip: r.clip, clipset: r.clipset || "timing", startedAt: r.startedAt };
+    if (skipReps.has(r.rep)) { excluded.push({ ...ex, why: "--skip-reps" }); continue; }
+    if (r.startedAt && (gaps.length || suspensions.length)) {
       const t0 = Date.parse(r.startedAt), t1 = t0 + runSpanMs(r) + 2000;
-      if (gaps.some(([a, b]) => t0 < b && t1 > a)) { excluded.push({ file: f, i: r.i, block: r.block, rate: r.rate, length: r.length, clip: r.clip, startedAt: r.startedAt }); continue; }
+      if (gaps.some(([a, b]) => t0 < b && t1 > a)) { excluded.push({ ...ex, why: "load-log gap > 30 s" }); continue; }
+      const s = suspensions.find(([a, b]) => t0 < b && t1 > a);
+      if (s) { excluded.push({ ...ex, why: "governor suspension", pid: s[2], suspended: `${hhmmss(s[0] + 1000)}-${hhmmss(s[1] - 1000)} UTC`, cmd: s[3].slice(0, 110) }); continue; }
     }
     const clipset = r.clipset || "timing";
     const key = [browser, r.engine, r.ready?.build || "js", r.fe, `fp${r.fp}`, r.rate, `${r.length}s`, ...(args["by-clipset"] ? [clipset] : [])].join(" ");
@@ -94,8 +137,17 @@ for (const [key, g] of groups) {
   out.push(s);
 }
 out.sort((a, b) => a.key.localeCompare(b.key));
-if (args.json) writeFileSync(args.json, JSON.stringify({ groups: out, gaps: gaps.map(([a, b]) => [new Date(a).toISOString(), new Date(b).toISOString()]), excluded }, null, 1));
+const iso = (t) => (Number.isFinite(t) ? new Date(t).toISOString() : null);
+if (args.json) {
+  writeFileSync(args.json, JSON.stringify({ groups: out, gaps: gaps.map(([a, b]) => [iso(a), iso(b)]),
+    governor: args.governor ? { file: args.governor, match: govMatch.source, suspensions: suspensions.map(([a, b, pid, cmd]) => ({ from: iso(a + 1000), to: iso(b - 1000), pid, cmd })) } : null,
+    skipReps: [...skipReps], excluded }, null, 1));
+}
 console.log(`load-log gaps (> 30 s): ${gaps.map(([a, b]) => `${new Date(a).toISOString().slice(11, 19)}-${new Date(b).toISOString().slice(11, 19)}`).join(", ") || "none"}; runs excluded: ${excluded.length}`);
+if (args.governor) console.log(`governor log: ${suspensions.length} suspension(s) of matching processes (/${govMatch.source}/i)`);
+const why = new Map();
+for (const e of excluded) { const k = e.why === "governor suspension" ? `governor suspended pid ${e.pid} ${e.suspended} (${e.cmd.slice(0, 70)})` : e.why || "load-log gap > 30 s"; why.set(k, (why.get(k) || 0) + 1); }
+for (const [k, n] of why) console.log(`  excluded ${n}: ${k}`);
 
 const sec = (v) => (v / 1000).toFixed(2);
 console.log(`${"group".padEnd(56)} runs  C0 med  G1cold med [p25-p75] wcp90 min   G2 med wcp90 min   G1warm  (ms/s G1,G2)  halves G1 / G2   load%  mem`);
