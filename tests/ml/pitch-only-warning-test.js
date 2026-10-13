@@ -679,6 +679,11 @@ section("late", "14. late switch-on: KS-Q5 against the round-2 harness (§8.9 (b
     byKey.natL_ls3792?.panels.filter((P) => P.name.startsWith("T120")).length === 4
     && byKey.hcsL_ls2473_PO?.panels.some((P) => P.name === "T120p450" && !P.expect.on.includes("1"))
     && byKey.natL_ls1474?.sex === "f" && byKey.natL_ls1474.panels.every((P) => !P.expect.on.includes("1")));
+  check("…panels where three K-seed rules change the output (§8.9 review fixes): the seed's F0 range check (hcsL_mlspo3492_PO "
+    + "T30p1500 / T120p1500), copying the shadow's pending values (hcsL_ls2853_PO T30p1500, hcsL_ls2694_PO T30p0), its back-fill (hcsL_ls2853_PO T60p1500)",
+    ["T30p1500", "T120p1500"].every((n) => byKey.hcsL_mlspo3492_PO?.panels.some((P) => P.name === n))
+    && ["T30p1500", "T60p1500"].every((n) => byKey.hcsL_ls2853_PO?.panels.some((P) => P.name === n))
+    && byKey.hcsL_ls2694_PO?.panels.some((P) => P.name === "T30p0"));
   // the synthetic cases (late_synthetic.mjs; expected values from the harness)
   for (const c2 of F.synthetic) {
     const calls = callsFor(c2.spec), want = expand(c2.expect);
@@ -693,6 +698,13 @@ section("late", "14. late switch-on: KS-Q5 against the round-2 harness (§8.9 (b
     ["repro_on22", "repro_on30"].every((k) => firstAt(syn[k], SH.createPitchOnlyWarning()) === null && firstAt(syn[k], createPitchOnlyWarning()) === 62000));
   check("the limit that remains: on from the start but hidden through the start window — no warning",
     firstAt(syn.early_hidden, createPitchOnlyWarning()) === null);
+  // The K-seed's rules, each changing the output of one synthetic case (§8.9 review fixes; values from the harness).
+  const fw = (k) => F.synthetic.find((x) => x.name === k)?.expect.firstWarningMs;
+  check("K-seed cases: held notes while the panel is off are not seeded (warns at 132 s), the same notes spoken are (never warns)",
+    fw("seed_sustained") === 132000 && fw("seed_spoken") === null);
+  check("…a stale burst (newest frame over 5 s old) is not shown (warns), a 100 ms stall's spacing counts (never), the first frame counts 25 ms (never),"
+    + " a frame exactly 8 s back is outside the window (never), the ring is kept across a cue restart (never)",
+    fw("seed_fresh") === 132000 && fw("seed_gap") === null && fw("seed_first") === null && fw("seed_edge") === null && fw("seed_restart") === null);
 });
 
 section("bound", "15. retained pitch frames are bounded (§8.9 2, (c), (f) 3)", () => {
