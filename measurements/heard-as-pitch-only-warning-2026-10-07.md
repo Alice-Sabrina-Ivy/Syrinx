@@ -1859,6 +1859,408 @@ Tooling (scratch, not committed): the harness (`session_late.mjs`,
 `replay_late.mjs`, `late-variants.js`, `indep_late.py`) and
 `late_eval.py`, with their sha256 in PREREG §9 (Appendix G).
 
+### 8.8 Late switch-on, round 2: a KP8 fallback as well — pre-registered, confirmation FAILED; the shipped rule is kept (2026-10-13)
+
+User decision (2026-10-12): one more round that also gives KP8 a late-panel
+fallback (for example seeded from the pitch the app already tracks), with
+§8.7's bar unchanged and a brand-new fresh pool. Public data only
+(LibriSpeech, Multilingual LibriSpeech — CC BY 4.0); no private recordings.
+Every number below is per sex. **Verdict: FAIL, 29 of 30 checks.** The
+chosen rule, KS-Q5, passed every hit check (including men's hits with the
+panel switched on at ~120 s, the check §8.7 failed), but one man's natural
+false-alarm rate at that switch-on time was 16.76 % against the 15 % limit.
+**`src/ml/pitch-only-warning.js` is unchanged (A40+KP8-3+DS10, module
+sha256 `2a1f4022…`), and so is the panel's "More" line about turning the
+panel on before you start talking.**
+
+**Mechanism.** §8.7 found two things a late panel lacks: DS10's start
+share (empty, so the DS gate fails), and, post hoc, KP8's quiet history,
+which is built from shown panel updates only and so starts at switch-on;
+that late history cost men's hits at T120. Before a late switch-on the
+warning object already has, from the start of listening:
+
+- every posted pitch frame (time, and the pitch when voiced; `addPitch`
+  from the hook's `handlePitchMessage`);
+- every resonance post (u, startU, fill, the utterance-gate verdict,
+  sinceResumeS).
+
+It has no classifier output, because the gender worker runs only while the
+panel is on. So KP8's history can be seeded from the posted pitch frames
+(plus the resonance verdict for the panel's "sustained" hide rule), but
+the DS start share cannot. DS keeps round 1's fallbacks after switch-on,
+or none.
+
+**Pre-registration, choice and outputs** (PREREG and CHOICE verbatim in
+Appendices I and J). Each sha256 was appended, when the file was written,
+to a hash log outside the scratch folder; times are −05:00.
+
+- PREREG.md sha256
+  `dd3cf7bc6c211f1bf576e6e27f04d9942826e382f791752c55de77c50d279785`,
+  logged 2026-10-12 21:14:16, before any round-2 candidate was scored on
+  any session and before anything of the fresh pool existed. Its §11 fixes
+  the sha256 of 44 harness, input and tool files; `late_eval_r2.py check`
+  verified them before the dev run, the pool build and the test.
+- CHOICE.md sha256
+  `17b948d9b2e00665c33b2a7db52a4e22b3031fc825846848b22cc44480816ef9`,
+  written by `late_eval_r2.py dev` and logged 21:21:13, with the dev tables
+  in it (`dev_table.md` `1f007c85…` 21:21:12, `dev_table.csv` `9cad1032…`
+  and `dev_bars.json` `7ca2de7e…` 21:21:13). The first fresh-pool file (a
+  download) was created at 21:24:46.
+- Fresh pool: `pool.json` `b5642f68…` and `jobs_test_all.json`
+  `7849ac8c…` (22:34:16), `run_test.sh` `6e33e834…` (22:34:33; also fixed
+  in PREREG §11).
+- Test output `test_result.md` sha256
+  `5d196daf8dc1f5021cffc06f384bddeac4278f0722abc3e1c96eddb112b7c320`,
+  written and logged by `late_eval_r2.py test` at 2026-10-13 01:29:02.
+- Notes: `DEV_NOTES.md` `b625b815…` (2026-10-12 21:22:37),
+  `DEVIATIONS_pool.md` `c53f5c13…` (22:35:44), the confirmation write-up
+  `RESULT.md` `191b585f…` and `DEVIATIONS_confirm.md` `6a8a7915…`
+  (2026-10-13 01:33:30).
+
+**Harness.** §8.7's, with the chain harness `session_late.mjs`
+byte-identical (sha256 `14cc38df…`): the same conditions (on0, on0L, T30,
+T60, T120, four phases each) and the deployed q8-v2 classifier. New:
+
+- `late-variants-r2.js`: the candidates, generated from the shipped module
+  by asserted exact string replacements (with no fallback it is the shipped
+  code path);
+- `replay_r2.mjs`: drives the shipped copy, the repo module (cue-strip
+  4c81fea, sha256 asserted), the variants with no fallback, S0, the six
+  candidates and round 1's F4-Q5 over each panel's recorded call stream;
+- `indep_r2.py`: an independent Python implementation from the rule text;
+- `late_eval_r2.py`: round 1's outcome definitions, unchanged.
+
+Checks before registration (counts only, no outcome):
+
+- Replay parity on both dev pools (625,687 and 621,135 updates): the
+  shipped copy, the repo module and the variants with no fallback equal
+  the live shipped column, and S0 the live S0 column: 0 mismatches.
+- Identity: every candidate equals the shipped rule on on0 + on0L
+  (299,233 / 297,218 updates) and before its first triggered update
+  (308,026 / 301,168): 0 mismatches.
+- Round 1's five candidates rebuilt from the new variants file equal
+  round 1's recorded strings on every update: 0 mismatches.
+- `indep_r2.py` vs the JS on three samples (16,619, 17,478 and 17,248
+  updates; the seed taken on 155, 92 and 96 panels): 0 on/off and 0 state
+  mismatches (thresholds and history lengths included).
+- The outcome code equals round 1's `late_eval.py` on 306 values per pool
+  (shipped, S0, F4-Q5): 0 differ.
+- Seed sanity check (non-study sessions, panel on from 0): the seeded
+  threshold tracks the panel's own; median difference per session
+  0.00–0.28 st, at most 1.22 st.
+
+**Candidates.** Every candidate uses §8.7's trigger unchanged: it departs
+from the shipped rule only at an update where the start window has closed,
+the start share is empty, and the panel's first `update()` since creation
+or `reset()` came after t_fill (a cue restart keeps that flag). With the
+panel on from the start it is the shipped rule. KP8 options:
+
+- **K-seed.** From creation or `reset()` the module keeps a shadow KP8
+  history. At every 2 s of audio clock (computed when the first later
+  posted frame arrives, so only earlier frames are used) a pseudo update
+  takes lnF0 = ln of the median of the posted voiced frames in the last
+  8 s. It counts as shown when those frames' voiced time is ≥ 3 s (frame
+  gaps capped at 100 ms), the newest voiced frame is ≤ 5 s old, F0 is
+  81–293.1 Hz and the latest resonance verdict is not "sustained": the
+  panel's own pooling window and hide rules, without the classifier. Shown
+  pseudo updates go through the shipped KP8 bookkeeping: before t_start
+  they pend and are back-filled against S0's P0; after it, |ΔP| from the
+  A40 reference is kept if it is below the shadow's own max(4 st, 3 × RMS)
+  (once it holds ≥ 5 values). At the first triggered update the shadow's
+  history and pending values replace the panel's; after that the panel's
+  shown updates add to it as shipped. A cue restart clears it.
+- **K-hold-20.** KP8 held at 4 st until the panel's own quiet history has
+  20 values, then as shipped.
+- **K-off.** A fixed 4 st at triggered updates (no KP8).
+
+DS options (round 1's): **Q5** = round 1's F4-Q5 (the median of ≥ 5
+"quiet" shown shares collected for ≥ 20 s from the first shown update
+after the start window; no warning while the window is open), **F1**
+(every shown share in that 20 s), **N** (no DS gate).
+
+| Name | KP8 | DS |
+|---|---|---|
+| `KS-Q5` | K-seed | Q5 |
+| `KS-F1` | K-seed | F1 |
+| `KH20-Q5` | K-hold-20 | Q5 |
+| `KO-Q5` | K-off | Q5 |
+| `KO-F1` | K-off | F1 |
+| `KS-N` | K-seed | none |
+
+Round 1's F4-Q5 (`R1-F4-Q5`) is replayed as a descriptive row only.
+
+**The bar** (§8.7's 30 checks, unchanged; all required on the evaluated
+pool). For T30, T60, T120 and their pooled values:
+
+- Hits within 10 s per base sex ≥ the shipped rule's hits with the panel
+  on from 0 (`on0`) on the same sessions − 0.05.
+- Natural false alarms ≤ 2 % per sex.
+- \|men − women\| ≤ 1.5 pp.
+- Per-reader maximum ≤ 15 % per sex.
+
+Plus identity on every on0 update and on every update before the trigger.
+
+**Dev.** A replay, not a chain run: the candidates change only the warning
+module, which never feeds back into the chain, so round 1's recorded chain
+outputs (deployed q8-v2 classifier) were replayed. Two pools, each scored
+on the 30 checks against its own on0 hit reference (60 checks):
+
+- **Pool A**: round 1's dev pool (96 speakers, 48 per sex; 288 sessions,
+  73,827 s of audio).
+- **Pool B**: round 1's spent fresh test pool (48 + 48 speakers; 288
+  sessions, 73,561 s). Dev only here, because round 1's result on it
+  shaped this round's candidates.
+
+`run_dev.sh` ran once, 21:15–21:21. Parity was 0 on both pools; identity
+was 0 mismatches for every candidate.
+
+| Candidate | Dev checks passed (A + B, of 60) | Failing checks |
+|---|---|---|
+| KS-Q5 | 60 (30 + 30) | none |
+| KS-F1 | 60 (30 + 30) | none |
+| KH20-Q5 | 58 (28 + 30) | A: men's reader max at T30 17.75 % (ls3541); male-base hits at T120 0.800 vs 0.802 |
+| KO-Q5 | 56 (26 + 30) | A: men's reader max 37.02 / 32.40 / 35.58 / 35.00 % at T30 / T60 / T120 / pooled (ls3541) |
+| KO-F1 | 56 (26 + 30) | A: men's reader max 36.64 / 23.54 / 29.98 / 30.05 % (ls3541) |
+| KS-N | 56 (30 + 26) | B: men's reader max 15.46 / 16.73 % at T30 / T60 and 15.52 % pooled (ls6276); women's 18.26 % at T120 (ls5570) |
+
+Dev, pooled over T30 / T60 / T120 (pool A ; pool B):
+
+| Rule | Hits ≤ 10 s, male base | Hits ≤ 10 s, female base | Nat. FA men % | Nat. FA women % | Reader max men % | Reader max women % |
+|---|---|---|---|---|---|---|
+| KS-Q5 | 0.846 ; 0.908 | 0.786 ; 0.802 | 0.12 ; 0.37 | 0.03 ; 0.00 | 3.06 ; 8.71 | 0.84 ; 0.21 |
+| KS-F1 | 0.846 ; 0.908 | 0.786 ; 0.802 | 0.12 ; 0.37 | 0.03 ; 0.00 | 2.95 ; 8.83 | 0.84 ; 0.21 |
+| KH20-Q5 | 0.846 ; 0.890 | 0.777 ; 0.789 | 0.38 ; 0.35 | 0.04 ; 0.01 | 14.35 ; 8.61 | 1.08 ; 0.34 |
+| KO-Q5 | 0.864 ; 0.936 | 0.802 ; 0.815 | 1.02 ; 0.81 | 0.15 ; 0.01 | 35.00 ; 11.26 | 3.78 ; 0.48 |
+| KO-F1 | 0.864 ; 0.936 | 0.802 ; 0.815 | 0.89 ; 0.73 | 0.14 ; 0.01 | 30.05 ; 9.41 | 3.78 ; 0.48 |
+| KS-N | 0.852 ; 0.908 | 0.788 ; 0.805 | 0.19 ; 0.74 | 0.10 ; 0.57 | 4.64 ; 15.52 | 2.40 ; 14.66 |
+| R1-F4-Q5 (descriptive) | 0.829 ; 0.871 | 0.777 ; 0.789 | 0.19 ; 0.31 | 0.02 ; 0.01 | 5.35 ; 8.61 | 0.54 ; 0.34 |
+| shipped, panel on from 0 (on0) | 0.852 ; 0.917 | 0.778 ; 0.804 | 0.19 ; 0.50 | 0.05 ; 0.00 | 3.35 ; 12.22 | 1.93 ; 0.18 |
+
+Hit bars: male base 0.802 (A) / 0.867 (B), female base 0.728 / 0.754.
+
+KS-Q5 on dev per switch-on time (reader with the maximum in brackets;
+none named where every reader of that sex is at 0.00 %):
+
+| Pool | Condition | Hits ≤ 10 s, male base | Hits ≤ 10 s, female base | Hits ≤ 15 s, male base | Hits ≤ 15 s, female base | Nat. FA men % | Nat. FA women % | \|M − F\| pp | Reader max men % | Reader max women % |
+|---|---|---|---|---|---|---|---|---|---|---|
+| A | T30 | 0.852 | 0.784 | 0.896 | 0.892 | 0.13 | 0.07 | 0.06 | 3.77 (mlsdu4396) | 2.52 (ls7717) |
+| A | T60 | 0.852 | 0.784 | 0.896 | 0.899 | 0.15 | 0.02 | 0.13 | 4.07 (mlsdu4396) | 0.85 (ls5968) |
+| A | T120 | 0.835 | 0.788 | 0.879 | 0.899 | 0.09 | 0.00 | 0.09 | 1.68 (ls4010) | 0.00 |
+| A | pooled | 0.846 | 0.786 | 0.890 | 0.897 | 0.12 | 0.03 | 0.09 | 3.06 (mlsdu4396) | 0.84 (ls7717) |
+| B | T30 | 0.908 | 0.804 | 0.908 | 0.892 | 0.51 | 0.00 | 0.51 | 12.57 (ls6276) | 0.00 |
+| B | T60 | 0.899 | 0.801 | 0.899 | 0.892 | 0.42 | 0.01 | 0.41 | 13.55 (ls6276) | 0.62 (mlsit13092) |
+| B | T120 | 0.917 | 0.801 | 0.927 | 0.892 | 0.19 | 0.00 | 0.19 | 3.78 (mlsit4998) | 0.00 |
+| B | pooled | 0.908 | 0.802 | 0.911 | 0.892 | 0.37 | 0.00 | 0.37 | 8.71 (ls6276) | 0.21 (mlsit13092) |
+
+**The choice.** KS-Q5 and KS-F1 both pass all 60 dev checks. They tie on
+the next two keys of the pre-registered order: the smallest pooled hit
+rate (0.786, rounded to 0.79) and the largest pooled natural FA (0.374 %
+vs 0.370 %, both 0.004 rounded). The fourth key, the largest pooled
+per-reader maximum, decides: KS-Q5 8.71 % vs KS-F1 8.83 % (pool B men,
+ls6276), a 0.12 pp margin. The two differ only in the DS window; the KP8
+seed is the same. Round 1's F4-Q5 again fails men's hits at T120 on both
+pools (0.774 vs 0.802 on A; 0.853 vs 0.867 on B, round 1's test failure);
+KS-Q5 has 0.835 and 0.917 there.
+
+**Fresh test pool** (PREREG §2.3; built once by `build_pool.sh` after
+CHOICE.md, 2026-10-12 21:24–22:34).
+
+- Sources no earlier study downloaded: LibriSpeech train-other-500 shards
+  0026–0033 and train-clean-360 shards 0020–0027; the second MLS train
+  parquet of fr / es / it / nl / pt / pl (22 parquet files, 10.5 GB).
+  OpenSLR 83 was dropped (round 1 found all of its speakers listed by an
+  earlier study). The reserve shard sets were not needed.
+- 371 candidates (176 women, 195 men). Excluded: 155 by the over-inclusive
+  id scan and the explicit earlier-pool lists, 16 with under 330 s of
+  audio, 1 with no drift value: 199 eligible (92 women, 107 men).
+- Drift-stratified with round 2's tercile boundaries (§8.5), 16 per
+  stratum: **48 women, 48 men** (LS-other 20 / 20, LS-clean 18 / 18, MLS
+  10 / 10). 0 id overlap with both dev pools and with all 192 speakers of
+  the men's-FA round-2 pool.
+- Drift D: women median 0.452 st (q90 0.917, 3 with D ≥ 1); men median
+  0.601 st (q90 1.163, 11 with D ≥ 1). Median F0 over the first 120 s:
+  women 204 Hz (151–244 Hz), men 118 Hz (95–209 Hz).
+- 288 sessions (natL 96, hcsL 96, pickaL 96), 73,818 s of audio.
+
+**Test run** (once, `run_test.sh`, 2026-10-12 22:39 – 2026-10-13 01:29,
+2 shards, deployed q8-v2 classifier).
+
+- Replay parity: 623,320 updates, 0 mismatches (shipped copy, repo module,
+  variants with no fallback, S0, held, pitchStart).
+- Identity: on0 149,107, on0L 149,065 and 306,625 updates before the first
+  trigger: 0 mismatches for every candidate.
+- Panels on the trigger path: T30 1,095 / 1,152, T60 and T120
+  1,152 / 1,152; on0 and on0L 0.
+- Failure sets per phase: male base 32 / 31 / 32 / 32, female base
+  66 / 66 / 67 / 65.
+
+Test table (`test_result.md`; phase-averaged; only KS-Q5 is judged; its
+on0 / on0L rows equal the shipped rule's):
+
+| Rule | Condition | Hits ≤ 10 s, male base | Hits ≤ 10 s, female base | Hits ≤ 15 s, male base | Hits ≤ 15 s, female base | Nat. FA men % | Nat. FA women % | \|M − F\| pp | Reader max men % | Reader max women % |
+|---|---|---|---|---|---|---|---|---|---|---|
+| shipped | on0 | 0.929 | 0.746 | 0.961 | 0.833 | 0.36 | 0.01 | 0.35 | 11.84 (ls3792) | 0.52 (ls3094) |
+| shipped | on0L | 0.929 | 0.731 | 0.961 | 0.833 | 0.36 | 0.01 | 0.35 | 11.84 (ls3792) | 0.52 (ls3094) |
+| shipped | T30 | 0.103 | 0.004 | 0.103 | 0.004 | 0.02 | 0.00 | 0.02 | 0.71 (ls2854) | 0.00 |
+| shipped | T60 | 0.000 | 0.000 | 0.000 | 0.000 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 |
+| shipped | T120 | 0.000 | 0.000 | 0.000 | 0.000 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 |
+| shipped | pooled | 0.034 | 0.001 | 0.034 | 0.001 | 0.01 | 0.00 | 0.01 | 0.24 (ls2854) | 0.00 |
+| S0 | on0 | 0.913 | 0.769 | 0.945 | 0.860 | 0.65 | 0.35 | 0.30 | 13.85 (ls3792) | 7.91 (ls3119) |
+| S0 | T30 | 0.921 | 0.773 | 0.945 | 0.860 | 0.67 | 0.35 | 0.31 | 14.34 (ls3792) | 8.17 (ls3119) |
+| S0 | T60 | 0.913 | 0.773 | 0.945 | 0.860 | 0.73 | 0.40 | 0.33 | 16.10 (ls3792) | 9.26 (ls3119) |
+| S0 | T120 | 0.913 | 0.769 | 0.937 | 0.860 | 0.83 | 0.46 | 0.38 | 21.59 (ls3792) | 12.81 (ls3119) |
+| S0 | pooled | 0.916 | 0.771 | 0.942 | 0.860 | 0.74 | 0.40 | 0.34 | 17.35 (ls3792) | 10.08 (ls3119) |
+| **KS-Q5** | T30 | 0.945 | 0.750 | 0.961 | 0.833 | 0.34 | 0.01 | 0.33 | 12.45 (ls3792) | 0.54 (ls3094) |
+| **KS-Q5** | T60 | 0.937 | 0.742 | 0.961 | 0.829 | 0.37 | 0.00 | 0.37 | 14.19 (ls3792) | 0.00 |
+| **KS-Q5** | T120 | 0.921 | 0.746 | 0.937 | 0.833 | 0.39 | 0.02 | 0.38 | **16.76 (ls3792)** | 0.80 (ls3094) |
+| **KS-Q5** | pooled | 0.935 | 0.746 | 0.953 | 0.832 | 0.37 | 0.01 | 0.36 | 14.47 (ls3792) | 0.45 (ls3094) |
+
+Bars: hits ≥ 0.879 male base and ≥ 0.696 female base (the shipped on0
+rule − 0.05). Where every reader of a sex is at 0.00 %, no reader is named.
+
+KS-Q5 hits within 10 s per phase (hit sessions of the failure set,
+j0 / j1 / j2 / j3):
+
+| Base sex | on0 | T30 | T60 | T120 |
+|---|---|---|---|---|
+| Male | 30/32, 29/31, 29/32, 30/32 | 30, 30, 30, 30 | 30, 30, 29, 30 | 30, 29, 28, 30 |
+| Female | 46/66, 49/66, 52/67, 50/65 | 46, 50, 52, 50 | 46, 50, 51, 49 | 46, 50, 51, 50 |
+
+Median time to the first warning after the shift, KS-Q5 at T30 / T60 /
+T120: men 7.2 s, women 8.2 s (shipped on0: men 7.2 s, women 8.4 s).
+
+**Bar for KS-Q5: 29 of 30.** The one failed check is **men's per-reader
+natural false-alarm maximum at T120: 16.76 % against ≤ 15 %**, one reader
+(ls3792); by hand from his four T120 panels,
+(15/87 + 16/89 + 14/88 + 14/88) / 4 = 16.76 %. Every other check passes:
+
+- Male-base hits: 0.945 / 0.937 / 0.921 at T30 / T60 / T120, pooled
+  0.935 (bar 0.879).
+- Female-base hits: 0.750 / 0.742 / 0.746, pooled 0.746 (bar 0.696).
+- Natural false alarms: men 0.34–0.39 %, women 0.00–0.02 %; gap
+  ≤ 0.38 pp.
+- Per-reader maximum: men 12.45 / 14.19 % at T30 / T60 and 14.47 %
+  pooled; women ≤ 0.80 %.
+- Both identity checks.
+
+Other candidates on the test pool (descriptive; values at T30 / T60 /
+T120 / pooled):
+
+| Rule | Hits ≤ 10 s, male base | Hits ≤ 10 s, female base | Nat. FA men % | Nat. FA women % | Reader max men % | Reader max women % |
+|---|---|---|---|---|---|---|
+| KS-F1 | 0.945 / 0.937 / 0.937 / 0.940 | 0.750 / 0.742 / 0.742 / 0.745 | 0.34 / 0.40 / 0.39 / 0.38 | 0.01 / 0.00 / 0.02 / 0.01 | 12.45 / 14.19 / 16.76 / 14.47 | 0.54 / 0.00 / 0.80 / 0.45 |
+| KH20-Q5 | 0.937 / 0.929 / 0.882 / 0.916 | 0.735 / 0.716 / 0.708 / 0.720 | 0.36 / 0.36 / 0.37 / 0.36 | 0.01 / 0.00 / 0.01 / 0.01 | 12.45 / 14.19 / 16.48 / 14.37 | 0.54 / 0.00 / 0.27 / 0.27 |
+| KO-Q5 | 0.945 / 0.937 / 0.921 / 0.935 | 0.777 / 0.769 / 0.769 / 0.771 | 0.40 / 0.44 / 0.48 / 0.44 | 0.02 / 0.03 / 0.02 / 0.02 | 12.45 / 14.19 / 16.76 / 14.47 | 0.54 / 0.83 / 0.80 / 0.45 |
+| KO-F1 | 0.945 / 0.937 / 0.937 / 0.940 | 0.777 / 0.769 / 0.765 / 0.770 | 0.40 / 0.46 / 0.48 / 0.45 | 0.02 / 0.03 / 0.02 / 0.02 | 12.45 / 14.19 / 16.76 / 14.47 | 0.54 / 0.83 / 0.80 / 0.45 |
+| KS-N | 0.945 / 0.937 / 0.937 / 0.940 | 0.750 / 0.754 / 0.750 / 0.751 | 0.40 / 0.48 / 0.55 / 0.48 | 0.09 / 0.10 / 0.10 / 0.09 | 14.91 / 16.53 / 22.16 / 17.87 | 2.23 / 2.53 / 3.34 / 2.70 |
+| R1-F4-Q5 | 0.937 / 0.929 / 0.882 / 0.916 | 0.735 / 0.716 / 0.705 / 0.718 | 0.34 / 0.36 / 0.37 / 0.36 | 0.01 / 0.00 / 0.01 / 0.01 | 12.45 / 14.19 / 16.48 / 14.37 | 0.54 / 0.00 / 0.27 / 0.27 |
+
+**Descriptive (post hoc, not pre-registered; nothing re-tuned or
+re-scored against the bar).**
+
+- *The seed did what it was built for.* Men's hits at T120 are 0.921 with
+  KS-Q5 against 0.882 for round 1's F4-Q5 (history from switch-on) on this
+  pool, and 0.917 against 0.853 on pool B. With the shipped rule a late
+  panel almost never warns: male base 0.103 / 0.000 / 0.000 at T30 / T60 /
+  T120, female base 0.004 / 0.000 / 0.000 (the 57 T30 panels that still
+  got a start share).
+- *The failing cell is one reader with fewer updates to divide by.*
+  ls3792 (natL, ~315 s of reading; next man at T120 1.26 %, ls2654)
+  raises his pitch 6.3–9.5 st above his A40 reference (104.6 Hz) in three
+  stretches of natural reading (154–168 s, 224–234 s, 296–308 s). The
+  drawn share falls there from ~0.95 to 0.64–0.82, and KP8's threshold
+  stays at 4.00 st. So the warning shows on about the same updates under
+  every rule that can warn: 16 / 17 / 16 / 16 (shipped rule, panel on from
+  0, j0–j3) and 15 / 16 / 14 / 14 (KS-Q5 at T120), none before 150 s.
+  With the panel on from 0 he has 135–139 eligible updates (11.84 %); a
+  panel switched on at ~120 s has 87–89 (16.76 %). At T30 he is at
+  12.45 %, at T60 14.19 %.
+- *Not the seed or the fallback share.* His start share with the panel
+  on from 0 is 0.951–0.953; KS-Q5's fallback share at T120 is 0.947–0.950
+  (closed at 152–156 s after 9–11 quiet shares). R1-F4-Q5 and KH20-Q5 give
+  him 16.48 % at T120, KO-Q5, KO-F1 and KS-F1 16.76 %, KS-N 22.16 %, S0
+  21.59 %. Replaying the shipped module from the repo on his four T120
+  panels: as shipped 0 % (no start share), without DS 19.3 %, without DS
+  and KP8 22.2 %. Every rule that can warn on a late panel puts him above
+  15 % at T120, so no candidate in this family could have passed that
+  check on this pool: the per-reader maximum is a share of eligible
+  updates, and a late panel has fewer.
+- *Passing cells.* At T120 KS-Q5 loses 2 male-base phase-hits against
+  shipped-on0 and gains 1. The losses are hcsL_ls2473_PO in j1 and j2: the
+  shift came 55 s after switch-on, and the Q5 window had only 3–4 of the
+  5 quiet shares it needs, so it never closed (KS-F1 and KS-N warn there at
+  7.3–7.9 s). The gain is hcsL_ls6346_PO in j1. Female base: −2 / −2 / −2
+  and +3 / +1 / +2 phase-hits at T30 / T60 / T120; the losses are mostly
+  pickaL_ls3926 (−6 st), whose first warning comes at 10.05–10.5 s, just
+  outside 10 s.
+
+**Deviations** (in DEV_NOTES.md, DEVIATIONS_pool.md and
+DEVIATIONS_confirm.md; none changes the choice or the verdict):
+
+- Dev: the frozen `late_eval_r2.py dev` hashes only the dev tables,
+  `dev_bars.json` and CHOICE.md. The replay outputs, features files, logs,
+  console output and CHOICE.sha256 were hashed by hand at 21:21:40, up to
+  ~1.5 min after each was written and before any was read. Three files
+  were added (console output, start / end time, and a descriptive helper
+  run after the choice); all are in the hash log.
+- Pool build: `build_pool.sh` hashes `pool.json`, `strata.json`,
+  `used_speakers.json`, `candidates.json` and `jobs_test_all.json` itself;
+  the other build files and logs were hashed by hand at 22:34:33–35,
+  before any was read. A descriptive pool-summary helper was added (not
+  pre-registered). The over-inclusive scan also excludes numeric id 2026,
+  because ISO dates in earlier files match its pattern (by design).
+- Test: `test_started_at.txt` was hashed at 22:43:14 with only the start
+  time, then again at 01:29:13 after the pre-set command appended the end
+  time, so the first log entry no longer matches the file. The chain
+  outputs were hashed 4–5 min after they were written (01:28:41–43) and
+  the replay, features and evaluation logs 11 s after the evaluation
+  ended, all before they were read. The checking and attribution tools
+  were not pre-registered: those written before the test outputs existed
+  were hashed at 22:43–22:44; two (`attrib_reader.mjs`, `attrib_times.py`)
+  were written after the verdict, for the post-hoc attribution only. One
+  launch of `attrib_times.py` failed on a wrong path before running.
+- Hash log at the confirmation: all 72 entries made before the test
+  matched the files on disk; afterwards 108 of 110 match (the other two
+  are the two `test_started_at.txt` entries above).
+- Python that reads downloaded data ran with `-I` through a launcher that
+  adds back only the fixed per-user site-packages path (numpy, pyarrow);
+  this is in PREREG §2.3, not a deviation.
+
+**Consequence.** The pre-registered bar decides (PREREG §6), so nothing
+is adopted: the shipped rule stays, a panel switched on after the start
+window has closed still cannot show the pitch-only warning until stop /
+start listening or a cue restart, and the "More" line still says so. For
+a user decision, the best candidate (KS-Q5, first by the pre-registered
+order and the only one tested) on the fresh pool:
+
+- Panel switched on late (T30 / T60 / T120), hits within 10 s: male base
+  0.945 / 0.937 / 0.921, pooled 0.935 (the shipped rule with the panel on
+  from the start: 0.929); female base 0.750 / 0.742 / 0.746, pooled 0.746
+  (0.746). Within 15 s, pooled: 0.953 male base, 0.832 female base. First
+  warning a median 7.2 s (men) and 8.2 s (women) after the shift.
+- Natural false alarms: men 0.34–0.39 % (panel on from the start 0.36 %),
+  women 0.00–0.02 % (0.01 %). Worst man 12.45 / 14.19 / 16.76 % at T30 /
+  T60 / T120, the same reader who has 11.84 % with the panel on from the
+  start; worst woman ≤ 0.80 % (0.52 %).
+- Without it a late panel almost never warns (male base 0.000–0.103,
+  female base 0.000–0.004).
+- With the panel on from the start it is the shipped rule tick for tick
+  (0 mismatches on 149,107 on0 and 149,065 on0L updates).
+
+Adopting it would be a user override of a recorded FAIL (as in §8.6).
+PREREG §6.5 then sets the port: the FALLBACK blocks of
+`late-variants-r2.js` in `src/ml/pitch-only-warning.js` with the K-seed
+constants taken from HEARD_AS_CALIBRATION, a port-parity replay of the repo
+module against `late-variants-r2.js` on the test sessions (0 mismatches),
+and the panel's "More" lines updated to these numbers. On this pool the
+limit a late panel cannot meet is the per-reader maximum, not the hit
+rate; any further round needs its own pre-registration and fresh speakers.
+
+Tooling (scratch, not committed): `late-variants-r2.js`,
+`make_variants_r2.py`, `replay_r2.mjs`, `indep_r2.py`, `seed_diag.mjs`,
+`iso.py` and `late_eval_r2.py`, with round 1's `session_late.mjs`; their
+sha256 are in PREREG §11 (Appendix I).
+
 
 ## Reproduce
 
@@ -3218,4 +3620,385 @@ Dev checks of the chosen rule:
 Pooled (T30/T60/T120) dev outcomes of the chosen rule: hits ≤ 10 s male base 0.829, female base 0.777; natural FA men 0.19 %, women 0.02 %; reader max men 5.35 % (ls3541), women 0.54 % (ls7717).
 
 Full dev table: `dev_table.md` / `dev_table.csv`.
+````
+
+## Appendix I. Late-panel study, round 2: pre-registration (verbatim)
+
+sha256 `dd3cf7bc6c211f1bf576e6e27f04d9942826e382f791752c55de77c50d279785` (of the file below, written and hashed in
+scratch and logged outside the scratch folder at 2026-10-12 21:14:16 −05:00, before any round-2 candidate was scored on
+any session and before any fresh-pool file existed; see §8.8). Relative paths in it refer to the study's scratch
+folder. The scratch file has LF line endings; the block below, with its lines ended LF (including the last), hashes
+to this value.
+
+````markdown
+# Pre-registration: late-panel study, round 2 — a KP8 fallback (with a DS fallback) for a panel switched on late
+
+Written 2026-10-12, **before any round-2 candidate has been scored (hits, false alarms, bar) on any session**.
+Hard rule 3 covers `src/ml/pitch-only-warning.js`: a candidate is selected on dev and tested once on a fresh pool of
+public speakers no earlier study used; it is adopted only if it passes (user decision 2026-10-12: one more round that
+also gives KP8 a late-panel fallback, same bar, brand-new fresh pool).
+
+**State at registration.** The harness is built and checked (§7). The dev pools are round 1's recorded chain outputs
+(§2.1): the candidates change only the warning module, which never feeds back into the chain, so dev needs a replay,
+not a chain run. On the dev pools only parity, identity and implementation-agreement COUNTS were computed (§7); no
+candidate outcome, bar check or comparison between candidates exists. Nothing of the fresh pool exists: no download,
+no scan, no session. It is built only after CHOICE.md and its hash exist (`fresh/tools/download.sh` refuses before).
+
+## 0. What feeds the rule, and what the app has before a late switch-on
+
+Read from cue-strip 4c81fea (`src/ml/pitch-only-warning.js` sha256 2a1f4022…, `src/components/HeardAsPanel.jsx`,
+`src/audio/useAudioPipeline.js`, `src/ml/heard-as.js`, `src/ml/heardAsCalibration.js`):
+
+- **A40 (pitch reference)**: `addPitch` gets EVERY posted pitch frame (`handlePitchMessage`; f0 = the posted pitch when
+  voiced, else null) from the start of listening, whether or not the panel is on; t_fill / t_start come from every
+  resonance-cue state post (`noteResonance`, hook audio clock). Same for a late panel.
+- **KP8 (threshold)**: the quiet history holds the dP of earlier **shown** panel updates (|dP| below that update's
+  threshold); shown updates before t_start pend and are back-filled against S0's P0. Only `update()` feeds it, and
+  only `HeardAsPanel` calls `update()`, so for a late panel the history starts at switch-on (round 1's review: this,
+  not the DS gate, costs the male-base T120 hits).
+- **DS10 (panel-moved gate)**: the start share = median of the drawn shares of shown updates in [t_fill, t_start];
+  empty for a panel off / loading / hidden through that window.
+- **Panel cadence**: `compute()` once at switch-on, then every 2 s (`setInterval`, from switch-on), plus the 250 ms
+  hide check while shown and the voice state is "sustained"; hidden "loading" updates until the model is ready.
+- **lnF0 of a shown update** = `heardAs.estimate(now).lnF0`: ln of the median of the posted voiced pitch values of the
+  frames inside the gated scored windows' 750 ms spans in the trailing 8 s. The aggregator gets pitch frames only while
+  the gender worker exists (it is reset at switch-on) and windows only from it (utterance gate + speech detector +
+  classifier). Hidden: voice state "sustained", nothing scored ("listening"), newest window > 5 s old ("stale"),
+  < 10 windows or < 3 s voiced ("short"), F0 outside 81–293.1 Hz or meter logit outside the fit range ("outside").
+- **Before switch-on the app has**: every posted pitch frame (time, f0 / unvoiced) and every resonance post (u,
+  startU, fill, the utterance-gate verdict, sinceResumeS), on the audio clock, already delivered to the warning object.
+  It has NO classifier output (the gender worker runs only while the panel is on), so no meter logit and no share.
+  Hence a KP8 seed can be built causally from the posted pitch frames (+ the resonance verdict for the "sustained"
+  hide); a DS start share cannot be seeded, so DS keeps round 1's post-switch-on fallbacks (or none).
+
+## 1. Code under test and harness (`../harness/`, hashes in §11)
+
+- **Shipped module** `shipped/pitch-only-warning.js` = cue-strip 4c81fea `src/ml/pitch-only-warning.js` (sha256
+  2a1f4022…; identical to round 1's copy of 36202c2).
+- **Chain harness** `session_late.mjs` = round 1's, byte-identical (sha256 14cc38df…; round 1 PREREG §1): round 2's
+  app-cadence harness + late switch-on and model loading; the chain is round 2's clone
+  `../../warning-male-fa-r2/harness/src-cue` (origin/cue-strip cf76c58, chain files identical to 36202c2). Used here
+  only for the fresh pool (the dev pools were recorded by it in round 1).
+- **Candidates** `late-variants-r2.js`, generated by `make_variants_r2.py` from the shipped module by asserted exact
+  string replacements (FALLBACK blocks only). With `fallback = null` it is the shipped code path; with a round-1 config
+  it is round 1's candidate (checked, §7).
+- **Replay** `replay_r2.mjs`: each panel's exact call stream (shared pitch / resonance events, the panel's own clock,
+  its own updates) drives the shipped module, the REPO module (Syrinx-cue checkout, sha256 asserted), the variants
+  module with fallback = null, round 2's S0 module, the six candidates and round 1's F4-Q5. Parity (shipped, repo,
+  fallback-null vs the live shipped column on on / held / pitchStart; S0 vs the live S0 column) must be zero, and all
+  rules must agree on the first triggered update, else `late_eval_r2.py features` refuses.
+- **Independent implementation** `indep_r2.py`: round 1's `indep_late.py` extended from the rule text of §3 (its
+  K-seed shadow keeps its own list of voiced frames for its reference instead of reading the module's state).
+- **Outcomes, bar, selection** `../select/late_eval_r2.py`: round 1's `late_eval.py` definitions copied unchanged
+  (verified to reproduce round 1's numbers exactly, §7); new: rule list, the repo-module parity assert, two dev pools.
+- **Plumbing diagnostic** `seed_diag.mjs` (non-study sessions only; not an outcome).
+
+## 2. Data (public only: LibriSpeech, Multilingual LibriSpeech — CC BY 4.0)
+
+### 2.1 Dev pool A: round 1's dev pool
+
+The 96 speakers (48 women, 48 men) of `../../warning-male-fa-r2/select/pool.json` (split "dev"), round 1's sessions
+`natL` / `hcsL` / `pickaL` (288 sessions, 73,827 s; round 1 PREREG §2.1), conditions on0 / on0L / T30 / T60 / T120 ×
+4 phases, recorded by round 1's chain run: `../../warning-late-panel/select/out/dev_{0,1}.jsonl`.
+
+### 2.2 Dev pool B: round 1's spent fresh test pool
+
+The 96 speakers (48 / 48) of `../../warning-late-panel/fresh/pool.json`, the same three constructions (288 sessions,
+73,561 s), recorded by round 1's single test run: `../../warning-late-panel/fresh/out/test_{0,1}.jsonl`. Pool B was
+spent by round 1's test (its F4-Q5 result and the review's post-hoc attribution of the four male-base T120 misses are
+known and informed this round's candidate design), so it is a second DEV pool here, never a test pool.
+
+Both pools are used together for the selection (§6). Neither pool's chain output is re-run.
+
+### 2.3 Fresh test pool (built after CHOICE.md by this rule; `../fresh/`, tools hashed in §11)
+
+- **Sources** (no study in this scratchpad downloaded these files; any speaker an earlier study used anywhere is
+  removed by the exclusion below): LibriSpeech (openslr/librispeech_asr parquet) train-other-500
+  shards 0026–0033 (`LS-other`) and train-clean-360 shards 0020–0027 (`LS-clean`); MLS (facebook/multilingual_
+  librispeech) French, Spanish, Italian, Dutch, Portuguese, Polish **train** partition, **second** parquet
+  (train-00001-of-N) of each language (`MLS`). OpenSLR 83 is dropped (round 1 found every OpenSLR 83 speaker listed by
+  an earlier study). `tools/download.sh 1`.
+- **Exclusion** (over-inclusive): `tools/used_speakers.py` = round 1's scan with only this round's `fresh/` folder
+  skipped: a candidate is excluded if its numeric id matches (`<id>[-_/]<2–6 digits>[-_/]`, `ls<id>`, `/<id>/`) any
+  file / directory name or text-file content (< 8 MB) anywhere under the scratchpad — every earlier study:
+  warning-male-fa, warning-male-fa-r2, warning-adopt, mainthread-warning (incl. the confirmation's 66 readers),
+  warning-late-panel (both its pools, its fresh inventory, candidates and excluded scan lists), this round's harness and
+  select folders — the voice-detector build manifests, and Syrinx-cue's and Syrinx main's measurements/, scripts/,
+  tests/. `tools/candidates.py` also excludes every numeric id of: the confirmation's 66 readers and its scan list;
+  the men's-FA round-1 and round-2 pool.json files, their inventories and round 2's scan list; the late-panel round-1
+  fresh pool.json, candidates.json (eligible and excluded), inventory.json and scan list.
+- **Eligible**: not excluded, sex f / m, ≥ 330 s of audio; D defined.
+- **Drift D** (round 2's statistic, unchanged): the REAL pitch worker alone (`../../warning-male-fa-r2/select/
+  pitch_only.mjs`) over each eligible speaker's first 125 s of natural audio; D = population SD of the medians of
+  12·log2 f0 of the posted voiced frames in the six 20 s blocks [0, 20) … [100, 120) s (a block counts with ≥ 100
+  voiced frames; ≥ 4 blocks needed).
+- **Stratified selection, per sex** (`tools/select.py` = round 1's minus the OpenSLR 83 group): strata by **round 2's
+  tercile boundaries** (women D < 0.35698 / < 0.61278 / above; men D < 0.39655 / < 0.68030 / above), **16 per stratum**
+  (48 per sex): within a stratum round robin over LS-other, LS-clean, MLS (MLS round robin over fr, es, it, nl, pt, pl;
+  numeric id order within a language / LibriSpeech subset), skipping exhausted groups.
+- **Reserve**: while any stratum has fewer than 16 eligible speakers, the next shard set is added and the whole rule
+  re-run: set 2 = train-other-500 0034–0041 + train-clean-360 0028–0035, then set 3 = 0042–0049 + 0036–0043. After
+  set 3 the pool must hold ≥ 40 per sex, else the test is not run and that is reported (`fresh/build_pool.sh`, exit 3).
+- **Test sessions**: `natL`, `hcsL`, `pickaL` exactly as round 1 (`../../warning-late-panel/select/build_jobs_late.py`,
+  `interleave.py`, unchanged); the same chain command as round 1's test (`fresh/run_test.sh`: `session_late.mjs …
+  --classifier=real --on0Load=7950`, 2 shards, conditions on0, on0L, T30, T60, T120 with round 1's phase offsets
+  0 / 450 / 1050 / 1500 ms and model-load times 4.05 / 5.40 / 6.60 / 7.95 s; on0 phases 0 / 500 / 1000 / 1500 ms).
+- Python that reads downloaded data runs with `-I` through `../harness/iso.py` (it appends only the fixed per-user
+  site-packages path, where numpy / pyarrow / soundfile live, and runs the script without its directory or the
+  working directory on sys.path); downloads live in `fresh/dl/` only, scripts in `fresh/tools/`. The same launcher
+  runs `late_eval_r2.py`.
+
+## 3. Candidates (fully specified in `late-variants-r2.js`; listing order KS-Q5, KS-F1, KH20-Q5, KO-Q5, KO-F1, KS-N)
+
+**Trigger (every candidate; round 1's, unchanged).** A candidate departs from the shipped rule only at an update where
+ALL hold: (a) t_start is known and the update's audio time is > t_start; (b) the start share is empty (no shown update
+in [t_fill, t_start]); (c) the panel came on late: the module's first `update()` since creation or `reset()` arrived
+when t_fill was already known (a cue restart keeps this flag). With the panel on from 0 (on0, on0L) (c) never holds,
+so behaviour there is the shipped rule's by construction; before the first triggered update every candidate is the
+shipped rule. A40's reference and everything not named below is the shipped rule (K = 2, the ≤ 5 hidden-update hold,
+eligibility, resets).
+
+**KP8 options.**
+
+- **K-seed** (`kp8: "seed"`). From creation / `reset()` the module keeps a SHADOW KP8 state built only from data the
+  app already has, causally: at every multiple of 2 s of the audio clock, computed when the first posted frame later
+  than it arrives (so only frames up to it are used), a pseudo update with lnF0 = ln median of the posted VOICED frames
+  in (t − 8 s, t]; it counts as "shown" when those frames' voiced time (each frame's spacing to the previous posted
+  frame, capped at 100 ms — heard-as.js's voicedMs) is ≥ 3 s, the newest voiced frame is ≤ 5 s old, lnF0 is inside the
+  panel's tested F0 range (ln 81 … ln 293.1) and the latest resonance verdict is not "sustained" (the panel's own
+  pooling window and hide rules, without the classifier). Each pseudo update goes through the shipped KP8 bookkeeping:
+  before t_start it pends and is back-filled against S0's P0 at the first pseudo update with a reference; later,
+  dP = 12·(lnF0 − the A40 reference at t)/ln 2 (the same reference the shipped rule uses at t), kept if |dP| < the
+  shadow's own KP8-3 threshold (max(4 st, 3 × RMS) once it holds ≥ 5 values). **At the first triggered update the
+  panel's KP8 state (quiet history + pending values; both empty for a late panel) is replaced by the shadow's**; from
+  then on the panel's shown updates add to it as shipped. The shadow's history is cleared with the references (cue
+  restart); its 8 s frame window only by `reset()`. Constants equal HEARD_AS_CALIBRATION (windowMs 8000, updateMs
+  2000, minVoicedMs 3000, freshMs 5000, range.lnF0).
+- **K-off** (`kp8: "off"`). At every triggered update the threshold is fixed at 4 st (S0's X; no KP8).
+- **K-hold-20** (`kp8: "hold", kp8N: 20`). At a triggered update the threshold is held at 4 st until the panel's own
+  quiet history holds ≥ 20 values (≈ 40 s of quiet shown updates, the span A40's reference grows), collected with the
+  held 4 st as the quiet filter; then KP8-3 as shipped. ("No KP8 tightening until N values" is the same rule: KP8
+  only ever raises X above 4 st. N = 20 is chosen here, not tuned.)
+
+**DS options (round 1's, unchanged).** `Q5` = round 1's F4-Q5: a fallback start share from the first shown update
+after the start window closed (fbT0): the median of the "quiet" drawn shares (eligible, |u − startU| ≤ 0.6 u,
+|dP| < that update's threshold X) of shown updates up to fbT0 + 20 s and beyond until ≥ 5 are collected; the DS gate
+fails while the window is open, then DS10 against the fallback share. `F1` = round 1's F1 (all shown shares in
+[fbT0, fbT0 + 20 s], ≥ 1). `N` = no DS gate (round 1's F2).
+
+| Name | KP8 | DS | Why in the family |
+|---|---|---|---|
+| `KS-Q5` | K-seed | Q5 | restores the on0 panel's KP8 history; keeps round 1's best DS fallback |
+| `KS-F1` | K-seed | F1 | same, round 1's simplest DS fallback (equal hits on round 1's dev) |
+| `KH20-Q5` | K-hold-20 | Q5 | no seed: 4 st until the late history is long |
+| `KO-Q5` | K-off | Q5 | the review's replay (no KP8) recovered every lost T120 phase-hit; DS fallback for false alarms |
+| `KO-F1` | K-off | F1 | same with F1 |
+| `KS-N` | K-seed | none | whether the seed makes a DS fallback unnecessary |
+
+Round 1's F4-Q5 (`R1-F4-Q5`, KP8 as shipped + Q5) is replayed as a descriptive row only; it is not a candidate.
+
+## 4. Outcomes (round 1's §4 definitions, unchanged; `late_eval_r2.py`, per phase index j, then averaged over j)
+
+On/off at the regular 2 s panel updates ("T" updates; switch-on and hide-check updates drive the module but are not
+scored). **Failure set** (per j, from the on0 panel of phase j; the same sessions for every condition and rule):
+pitch-only sessions (`hcsL` PO; `pickaL` (−6, 0), (−12, 0)) whose on0 shown estimate (median share over visible
+updates at t ≥ t_shift + 10 s, ≥ 3 updates) differs from the listener two-way share by ≥ 20 points (H&C MPO 65.7 /
+WPO 19.1; PICKA Meyer 2023 6.3 / 54.8); base sex = the reader's sex. **Hit**: on at ≥ 1 T update in (t_shift,
+t_shift + 10 s] and off at the last eligible update at or before t_shift; rate per base sex = mean over j. **Natural
+FA** (`natL`): per reader and condition the share of eligible T updates with the warning on, averaged over the phases
+with eligible updates; per sex = reader-balanced mean; per-reader max = the largest reader. **Pooled** over T30 / T60 /
+T120: hits = mean of the three rates; per-reader FA = mean of the reader's per-condition values; per sex = reader-
+balanced mean; max = largest. **Identity**: (i) every update of every on0 panel, candidate = shipped; (ii) every
+update of every panel before its first triggered update (all if never), candidate = shipped. Descriptive (not in the
+bar): hits within 15 s, median time to the first warning, panels on the trigger path, shipped / S0 / R1-F4-Q5 rows,
+on0L.
+
+## 5. The bar (round 1's §5, UNCHANGED; boundaries inclusive, tolerance 1e-12)
+
+For T ∈ {T30, T60, T120, pooled}:
+1. Hits within 10 s, per base sex ≥ the shipped rule's hits with the panel on from 0 (`on0`) on the same sessions
+   − 0.05 (8 checks; an n/a rate passes vacuously).
+2. Natural FA ≤ 2 % per sex (8 checks).
+3. |men − women| natural FA ≤ 1.5 pp (4 checks).
+4. Per-reader natural-FA maximum ≤ 15 % per sex (8 checks).
+5. Identity (i) on0: 0 mismatches. 6. Identity (ii) before the trigger: 0 mismatches (2 checks).
+
+PASS = all 30 hold on the evaluated pool.
+
+## 6. Selection on dev, the choice, the single test, and what follows
+
+1. `select/run_dev.sh` (once): replay both dev pools (parity must be zero), features, `late_eval_r2.py dev`.
+2. The 30 checks are computed on pool A and on pool B separately (each against its own shipped-on0 hit reference):
+   60 dev checks per candidate. A candidate **passes dev** when all 60 hold. Order (round 1's §6 shape): (a) more dev
+   checks passed (of 60); (b) the smallest of the four pooled hit rates (2 base sexes × 2 pools), rounded to 0.01,
+   higher first; (c) the largest of the four pooled natural-FA values, rounded to 0.001, lower first; (d) the largest
+   of the four pooled per-reader maxima, lower first; (e) listing order. The first is chosen. If none passes all 60,
+   the first by this order still goes to the test and CHOICE.md says so; only the test bar decides.
+3. `late_eval_r2.py dev` writes dev_table.{md,csv}, dev_bars.json, CHOICE.md (with PREREG's and the dev tables'
+   sha256) and CHOICE.sha256, and appends their hashes to the hash log, **before** any fresh-pool file exists (it
+   asserts that `fresh/dl` is empty and `fresh/out` holds no session output; `fresh/tools/download.sh` refuses to run
+   without CHOICE.md and CHOICE.sha256).
+4. Test (a later step): `fresh/build_pool.sh` builds the fresh pool (§2.3) and its sessions; `fresh/run_test.sh` runs
+   them once (2 shards), replays, `features test` and `late_eval_r2.py test` once: the chosen candidate against the 30
+   checks. Nothing is re-tuned on test data; every other test number is descriptive.
+5. **On PASS**: the candidate is proposed for cue-strip: the measurement note section
+   (`measurements/heard-as-pitch-only-warning-2026-10-07.md` §8.8: PREREG, CHOICE, dev and test tables, per sex) is
+   committed before or with the code; the code is the candidate's FALLBACK blocks ported into
+   `src/ml/pitch-only-warning.js` (K-seed constants taken from HEARD_AS_CALIBRATION), with a port-parity replay of the
+   repo module against `late-variants-r2.js` on the test sessions (0 mismatches required) and the panel's "More" lines
+   (start-window limit, hit and false-alarm figures) updated to the measured numbers. PREREG and CHOICE sha256 go in
+   the integrating commit message. Pushed to cue-strip; no PR.
+6. **On FAIL**: nothing is adopted. `src/ml/pitch-only-warning.js` (A40+KP8-3+DS10, sha256 2a1f4022…) and the panel's
+   start-window "More" line stay unchanged. Only the note §8.8 is written (verdict, the failed checks, dev and test
+   tables per sex), and the best candidate — the chosen one, i.e. the first by the §6 order on dev — is reported
+   with its test numbers (the other candidates' test rows descriptive) for a user decision.
+
+## 7. Harness checks done before registration (counts only; no outcome)
+
+1. **Replay parity and the repo module, both dev pools** (`check/log_full_dev{A,B}_check.txt`): pool A 288 sessions,
+   5,760 panels, 625,687 updates (on0 149,644); pool B 288, 5,760, 621,135 (on0 148,630): shipped copy, REPO module
+   (Syrinx-cue 4c81fea, tick for tick) and variants-with-fallback-null vs the live shipped column (on, held,
+   pitchStart), and S0 vs the live S0 column: **0 mismatches** each, on0 and all conditions. (Round 1 established that
+   the live on0 column equals round 2's recorded dev outputs on the 288 dev prefixes, 59,274 updates, 0 mismatches;
+   so the repo module equals them too.)
+2. **Identity of every candidate** (same runs): on0 + on0L 299,233 (A) / 297,218 (B) updates, and 308,026 (A) /
+   301,168 (B) updates before the first triggered update (all conditions): **0 mismatches** for all six candidates and
+   round 1's five. All rules agree on the first triggered update on every panel. Panels on the trigger path: A T30
+   1,090 / T60 1,152 / T120 1,152 of 1,152; B 1,134 / 1,144 / 1,152; on0 and on0L 0.
+3. **Round-1 regression**: round 1's five candidates rebuilt from `late-variants-r2.js` equal round 1's recorded
+   replay strings on every update of both pools (625,687 + 621,135; first triggered update identical): 0 mismatches.
+4. **Independent implementation** `indep_r2.py` vs the JS, on/off strings AND per-update state (trigger, DS window
+   state, share count, fallback median, seeded, history length, shadow history length, both KP8 thresholds):
+   round 1's implementation-check sample (16 men's-FA round-1 sessions, T = 20 / 30 / 60 s; 320 panels, 16,619
+   updates; seed taken on 155 panels) and 8 sessions of each dev pool (the first 8 of each pool's shard-0 file; 160 +
+   160 panels, 17,478 + 17,248 updates; seed taken on 92 + 96 panels): **0 on/off and 0 state mismatches** for the
+   shipped rule, all six candidates and R1-F4-Q5.
+5. **Outcome code** `late_eval_r2.py verify_r1`: on both pools (replayed with the round-1 rules only), every outcome
+   value of shipped, S0 and F4-Q5 in every condition and pooled equals round 1's `late_eval.py` (`check/log_verify_r1_
+   {A,B}.txt`; numbers in §7a).
+6. **Seed plumbing** (`seed_diag.mjs`, non-study sample of item 4): with the panel on from 0 the shadow's KP8
+   threshold tracks the panel's own: per-session median |difference| 0.00–0.28 st, largest 1.22 st (16 sessions).
+
+§7a — `verify_r1`: pool A against round 1's dev evaluation and pool B against round 1's test evaluation (round 1's
+`late_eval.py` on its own feature files): 306 values each (hit rates ≤ 10 / 15 s per base sex, failure-set sizes per
+phase, median first-warning times, natural FA per sex, the per-reader values and maxima; shipped, S0 and F4-Q5 in
+on0, on0L, T30, T60, T120 and pooled): **0 differ**; the failure sets and conditions are identical. The selection
+code path, run with round 1's F4-Q5 as a stand-in (`check/tmp/smoke_select.py`), gives its known 29 / 30 on each
+pool with the same failed check (male-base hits at T120).
+
+## 8. Notes and limits
+
+- Not covered (as round 1): a panel switched off and on again later in a session; model loads > 7.95 s; the speech
+  detector loading separately; panels switched on before t_fill (shipped rule); together / resonance-only shifts;
+  FA from natural reading only.
+- The K-seed pseudo updates approximate the panel's shown updates without the utterance gate's scored windows and the
+  classifier (all voiced frames of the 8 s window, not only those inside scored windows; no meter-logit hide).
+- The candidate family was designed with round 1's dev and test results and the review's attribution in view; that
+  is why pool B is dev here and only the brand-new fresh pool decides.
+- Hit checks have ~1/n resolution per phase (n = failure-set sessions per base sex and phase, reported); one lost hit
+  costs 0.25/n per phase.
+- Observation (not a result; nothing here changes it): with the panel never switched on, the shipped module's A40
+  frame buffer is never frozen (only `update()` freezes it), so it keeps every voiced frame of the session (~40 per
+  s). K-seed reads it (its own A40 value is cached once final) but does not change it.
+- Public data only (LibriSpeech, MLS); no private recordings, no names. Every number is reported per sex.
+
+## 9. Expected run time
+
+- Dev (`run_dev.sh`): replay of both pools in parallel ~8 min (measured: the 15-module check replay took 7.5 min),
+  features + evaluation ~10 min: **~20 min**.
+- Fresh pool (`build_pool.sh`): downloads ~15 GB ~15–25 min, inventory ~10 min, exclusion scan ~60 min (round 1:
+  57 min), extraction ~10 min, drift ~10 min, sessions (WORLD / PICKA) ~25 min: **~2–2.5 h** (+ ~1.5 h per reserve set,
+  if needed).
+- Test (`run_test.sh`): the chain on ~74,000 s of audio, 2 shards at ~3.7× real time each: **~2.8 h**; replay,
+  features, evaluation ~15 min.
+- Total after registration ≈ **5.5–6 h** of wall time.
+
+## 10. Reported to the orchestrating workflow
+
+This file's sha256 (also in PREREG.sha256 and the hash log
+`$SCRATCH/warning-late-panel-r2-hashes.log`),
+the candidate list, the check numbers, the dev pools, the expected run time.
+
+## 11. Hashes
+
+`late_eval_r2.py` refuses to run `dev` / `test` if this file or any file below changed (paths relative to this folder).
+
+- hash ../harness/session_late.mjs 14cc38df93aeaf309ff94896f4d5e4a79b8d65b7961f35aba79fe504a5cd9c88
+- hash ../harness/shipped/pitch-only-warning.js 2a1f4022db77599731cfcf6de4d42758d531239188bce20ddfdf991a868e658f
+- hash ../harness/make_variants_r2.py 04d56d0232a8899c45f506baafb84f23c21499d4927f724ad683ea0e5fb2f43d
+- hash ../harness/late-variants-r2.js 956061543a15b0372543fc32e797edbf316ac05632129bbf528a501d1d5de241
+- hash ../harness/replay_r2.mjs a3ec703cf6cedb12f7c033f700582a5a4a8328d8fef7f98eadeca786da5205e8
+- hash ../harness/indep_r2.py a74a936f7d98c0b984b4ab3b7e53547375bdf6e45498b2109cd32cc219a847ce
+- hash ../harness/seed_diag.mjs c6d210c632b9c703c77ca514852051c25089c8faee6699b202d1cefb9736ae83
+- hash ../harness/iso.py ae260af3d5fbcbe4800690bb00f1e95abdcb62f7af969a7ba6fbf05c3b055d1f
+- hash ../harness/replay_late.mjs c5f4e9face7ca2fe6856eabb4d57c60299e8503666fa5a63a6714bbb7613401e
+- hash ../harness/indep_late.py ae054ba7e60d5b1b75d935ea33412e08b55342a7774da97569eb4463c8316adc
+- hash ../harness/make_variants.py 67ac155081514b174902311dc27403d496a9bf9ac988189a81dacb78089d5023
+- hash ../harness/late-variants.js 8418fdcbdb6c601de750688f36c9e8970eb52765b3f7f1b4635dd5ff4daef351
+- hash late_eval_r2.py 9b17049d44e9fd1b80902948d2a21a8c21f0fe131f7692570fb99f594db90d6f
+- hash run_dev.sh eca92b3151509503c60fc574de17db99aa9d160ae5b7e3b52ac284900fa7e95d
+- hash ../fresh/build_pool.sh 3e70ac4ebc775fa883274b5b8dd718e37e699495d5b2b8a4cbcdf9c1910c495b
+- hash ../fresh/run_test.sh 6e33e834513a5cfee7dba6ca8cda9ab98f19d69b95c55f10bc00ee8a45a23f72
+- hash ../fresh/tools/download.sh 8c5c8af73325e42b4dc42fc0b2ab8e9b36d00d1171b12a0b13da5e1198e73092
+- hash ../fresh/tools/inventory.py 7dbb7c868fc994357113b7bda61e09964f605ed5b784cd6106e64df5ea7df0df
+- hash ../fresh/tools/used_speakers.py 2a37f945cce4ba432368e49c675759808211b0b5cff1633551f37856f507944e
+- hash ../fresh/tools/candidates.py 8af6a8562f2944ea10db10ec7dd10422d0737baefd6e197236dcd3bf6c9013e6
+- hash ../fresh/tools/select.py 7bd70bdec4cae00406ddb3f8de13eb86f28fde33d0c3528bf2905b1fa2cbb1d0
+- hash ../harness/check/log_full_devA_check.txt 951e5dc4ad20467a0c37724aa9f1f75f1339ad50d046ba6ba756dfeeec3a8965
+- hash ../harness/check/log_full_devB_check.txt 0030bb79d8d9dc5436519b1ad451981a942acbe3315a7fd1cb9991d1ab9e25dc
+- hash ../harness/check/log_impl_indep.txt c40e812e8d4e75bbac234cb743bd9c1bfa12edef1751af27ecd59ea7ec92ddd5
+- hash ../harness/check/log_sampleA_indep.txt 6b0a099da8dd460bcbfcc000b7e8e5509ecd1b98ba98d16e757db7cde0ed4c7f
+- hash ../harness/check/log_sampleB_indep.txt 4ba1e86213b7a0afaf35046fd4de6e411f6315c8c15f71f46d6383d974e7c053
+- hash ../harness/check/log_verify_r1_A.txt 248e5269762a821dc8200ddb0689ba57798e07cc0d064edbf3f58e98c85dfb99
+- hash ../harness/check/log_verify_r1_B.txt 47c4ad6f3e2b4158e50bb2f1e002b6891c884f39df4bcd3858abd1560b8fbb75
+- hash ../harness/check/log_seed_diag.txt b6fdc7a417018784ab8e6ec170b8fdbd6039b7ce8fcc9503e0e612fc37d3bc1b
+- hash ../../warning-late-panel/select/out/dev_0.jsonl 5af5bafdf1b6897d2d1bc9c60539e49ac2f0aa4442138521dc58ff40ccbb4e76
+- hash ../../warning-late-panel/select/out/dev_1.jsonl 3850c8b4f66432120ab0c4468a7d78c9351bcc2bad1502dbb49a69212ce496ed
+- hash ../../warning-late-panel/fresh/out/test_0.jsonl da9271d9ffb8be9e2476f7c574fe310a2aa34dd73e2c387ef125851f028939d8
+- hash ../../warning-late-panel/fresh/out/test_1.jsonl f4527a789466bf5b309d1e7ac15172c7bf51bdad49e8bdd9fce06d6d0ee7f30f
+- hash ../../warning-late-panel/select/out/rep_dev.json 626982a725bea0c30e2d8f3c5734513b97045880a225a284f0ecc32fc81f7d4e
+- hash ../../warning-late-panel/fresh/out/rep_test.json 185ad8292bf424593723cc26fca5752992e9e400c4b5ec11e5eaf587961d4697
+- hash ../../warning-late-panel/select/late_eval.py 74b4e221bc106713f13250d9504bb95c18cb007a4573ea3c8fda90f82b9cbb97
+- hash ../../warning-late-panel/select/build_jobs_late.py 2bbbbc02a28c2c245ec3fc1a5693fb19b00e46ed062d0614c36f0416b64c9abd
+- hash ../../warning-late-panel/select/interleave.py b9eebaf62b13add9ef3533923855f828d77c6b7a7704fe03c970e33fb14f9948
+- hash ../../warning-late-panel/fresh/pool.json 377bab2ad33b3ab7a656bb63bc9a3fc4d58e7699750c31f77eb818031474a5a2
+- hash ../../warning-male-fa-r2/select/pool.json 261a747077a4ce8b495417dff64aa560930e91c5007de0ac080232f274bde2a7
+- hash ../../warning-male-fa-r2/select/pitch_only.mjs 28ed34cf17016552386bcab6e11b532c08ac1b48471fbd0194f340a2e0aae9f9
+- hash ../../warning-male-fa-r2/select/tools/stratify.py d181dc59babf44d71726822a17d0631d01262830e31b501edcfa679d19954ed0
+- hash ../../warning-male-fa-r2/harness/src-cue/src/ml/pitch-only-warning.js 5a7a5814f827c48d019b8bfe450de85ffb0855220c88e7e57440df4fc6c43a6a
+- hash ../../warning-male-fa-r2/harness/session_app.mjs 190f021a5d6070b07b4d7ae22e494bc10a27acc3a567a26834dbd69eca45bbb9
+
+Also fixed: the REPO module `C:/Coding Projects/Syrinx-cue/src/ml/pitch-only-warning.js` (cue-strip 4c81fea) sha256
+2a1f4022db77599731cfcf6de4d42758d531239188bce20ddfdf991a868e658f (asserted by `replay_r2.mjs`); the chain clone
+`../../warning-male-fa-r2/harness/src-cue` at cf76c58ffa21ae3eae3b66a7efa2b8e5a628b4e3 with a clean status.
+````
+
+## Appendix J. Late-panel study, round 2: choice (verbatim)
+
+sha256 `17b948d9b2e00665c33b2a7db52a4e22b3031fc825846848b22cc44480816ef9` (of the file below, written by
+`late_eval_r2.py dev` and logged outside the scratch folder at 2026-10-12 21:21:13 −05:00, before any fresh test-pool
+file existed). The scratch file has CRLF line endings; the block below, with its lines ended CRLF (including the
+last), hashes to this value.
+
+````markdown
+# Choice (late-panel study round 2, dev pools A and B)
+
+Written by `late_eval_r2.py dev` before any fresh test-pool file (download, scan, pool, session) exists.
+
+- PREREG.md sha256: `dd3cf7bc6c211f1bf576e6e27f04d9942826e382f791752c55de77c50d279785`
+- dev_table.md sha256: `1f007c8592e4f2603446386ef39b90f53f0dcae11398e0e15aaf7a2b3f412035`
+- dev_table.csv sha256: `9cad1032b7b385c09f6d383739539103faa5e75f773b8a285672303e7858b544`
+- dev_bars.json sha256: `7ca2de7e0f5c562bce8506fa3ab3af95dd459089bc315619d2fb3f5ad82e9e46`
+
+- **Chosen: `KS-Q5`** (passes every dev check on both dev pools; first by the PREREG §6 order)
+- Candidates passing every dev check on both pools: KS-Q5, KS-F1
+- Order (PREREG §6): KS-Q5, KS-F1, KH20-Q5, KO-F1, KO-Q5, KS-N
+- Checks passed (of 60): KS-Q5 60, KS-F1 60, KH20-Q5 58, KO-Q5 56, KO-F1 56, KS-N 56
+
+Dev checks of the chosen rule (failed checks listed per pool):
+
+- devA: 30/30 passed; failed: none; pooled hits ≤ 10 s male base 0.846, female base 0.786; natural FA men 0.12 %, women 0.03 %; reader max men 3.06 % (mlsdu4396), women 0.84 % (ls7717).
+- devB: 30/30 passed; failed: none; pooled hits ≤ 10 s male base 0.908, female base 0.802; natural FA men 0.37 %, women 0.00 %; reader max men 8.71 % (ls6276), women 0.21 % (mlsit13092).
+
+Full dev tables: `dev_table.md` / `dev_table.csv`; bars: `dev_bars.json`.
 ````
