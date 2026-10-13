@@ -1,7 +1,7 @@
 """meters_score.py - Level 3 of the voice-preview parity check (§P3): do Syrinx's meters read
 the WebAssembly renders like the pyworld renders? Reads meters.mjs output for two render sets.
 
-  python -I meters_score.py [--a wasm-simd] [--b pyworld]
+  python -I meters_score.py [--a wasm-simd] [--b pyworld] [--out level3.json]
 
 Pass criteria (every render, 8 clips x 26 cells):
   pitch  clip median of the voiced posted pitch within 0.05 st; frame-wise posted-voicing
@@ -9,13 +9,14 @@ Pass criteria (every render, 8 clips x 26 cells):
   VTLN   clip reading (median of non-null 150 ms bins, missing if < 10) within 0.01 ln
   The prototype's four VTLN checks (its analyze.py a2, unchanged in substance), recomputed on
   each set: same pass/fail verdicts, each statistic within +-0.02.
-Output: VP_CACHE/parity/level3.json
+Output: VP_CACHE/parity/level3.json (or --out)
 """
 import argparse, json, os, site, sys
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--a", default="wasm-simd")
 ap.add_argument("--b", default="pyworld")
+ap.add_argument("--out", default="level3.json")
 A = ap.parse_args()
 _us = site.getusersitepackages()
 if _us not in sys.path:
@@ -121,7 +122,7 @@ out = dict(
     vtln_checks=dict(pass_=checks_pass, same_verdicts=same_verdicts, stat_abs_diff=stat_d, **chk),
 )
 out["pass_"] = bool(out["pitch"]["pass_"] and out["vtln"]["pass_"] and checks_pass)
-with open(os.path.join(PAR, "level3.json"), "w") as f:
+with open(os.path.join(PAR, A.out), "w") as f:
     json.dump(out, f, indent=1, default=lambda o: None if (isinstance(o, float) and not np.isfinite(o)) else str(o))
 print(f"pitch: max |d median| {out['pitch']['max_dmed_st']:.4f} st (median {out['pitch']['median_dmed_st']:.4f}), "
       f"voicing agreement min {out['pitch']['min_voicing_agree'] * 100:.2f} % -> {'PASS' if out['pitch']['pass_'] else 'FAIL'}")

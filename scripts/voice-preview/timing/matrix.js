@@ -72,5 +72,7 @@ export function cfgFromParams(qs) {
     clips: list("clips", ["M01", "M02", "F01", "F02"]),
     run: qs.get("run") === null ? null : Number(qs.get("run")),
     builds: list("builds", ["simd", "nosimd"]),
+    // clip folder under VP_CACHE/clips: "timing" (pre-registered) or "timing-speech"
+    clipset: /^[\w-]+$/.test(qs.get("clipset") || "") ? qs.get("clipset") : "timing",
   };
 }

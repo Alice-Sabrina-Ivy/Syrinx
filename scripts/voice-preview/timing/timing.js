@@ -15,7 +15,7 @@ const qs = new URLSearchParams(location.search);
 const cfg = cfgFromParams(qs);
 const WORKER_URL = new URL("../worker/vp-worker.js", import.meta.url);
 const WASM_BASE = new URL("/vp-cache/wasm/", location.origin).href;
-const CLIP_BASE = new URL("/vp-cache/clips/timing/", location.origin).href;
+const CLIP_BASE = new URL(`/vp-cache/clips/${cfg.clipset}/`, location.origin).href;
 const SR_IN = 48000;
 
 const $ = (id) => document.getElementById(id);
@@ -83,7 +83,7 @@ const needWorld = (engine, fe) => engine === "world" || fe === "H" || fe === "D"
 async function runOne(spec) {
   const { pcm: src, posted } = await clipData(spec.clip, spec.length);
   const nonce = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-  const out = { ...spec };
+  const out = { ...spec, startedAt: new Date().toISOString() };
   const tW = performance.now();
   const W = workerClient(nonce);
   try {

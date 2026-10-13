@@ -8,6 +8,9 @@
 // the lab bench's band-limited x3 upsample, as the prototype's f0front.mjs ran it).
 //
 //   node --import ./scripts/session-oracle/lib/register.mjs scripts/voice-preview/prep/tracks.mjs
+//        [--clipset=timing|timing-speech] [--no-proto]
+// --clipset picks the 48 kHz clip folder (timing-speech = prep_speech_clips.py's speech-dense
+// variant); --no-proto skips the 16 kHz prototype clips.
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -20,7 +23,8 @@ const { upsample } = await import(pathToFileURL(path.join(REPO, "scripts/resonan
 const S = await loadSrc(path.join(REPO, "src"));
 const lab = await loadLab();
 
-const TD = path.join(P.clips, "timing");
+const args = Object.fromEntries(process.argv.slice(2).map((a) => a.replace(/^--/, "").split("=")));
+const TD = path.join(P.clips, args.clipset || "timing");
 const idx = JSON.parse(readFileSync(path.join(TD, "index.json"), "utf8"));
 for (const c of idx.clips) {
   for (const [L, e] of Object.entries(c.lengths)) {
@@ -31,13 +35,13 @@ for (const c of idx.clips) {
     e.grid = e.pcm.replace(/\.f32$/, ".grid.f32");
     writeArr(path.join(TD, e.posted), post);
     writeArr(path.join(TD, e.grid), Float32Array.from(grid));
-    console.log(`timing ${c.name} ${L} s: ${post.length} hops (${post.filter((v) => v > 0).length} voiced), ${grid.length} grid frames`);
+    console.log(`${path.basename(TD)} ${c.name} ${L} s: ${post.length} hops (${post.filter((v) => v > 0).length} voiced), ${grid.length} grid frames`);
   }
 }
 writeFileSync(path.join(TD, "index.json"), JSON.stringify(idx, null, 1));
 
 const PD = path.join(P.clips, "proto16");
-for (const c of JSON.parse(readFileSync(path.join(PD, "clips.json"), "utf8"))) {
+if (!("no-proto" in args)) for (const c of JSON.parse(readFileSync(path.join(PD, "clips.json"), "utf8"))) {
   const x = readF32(path.join(PD, `${c.name}.f32`));
   writeArr(path.join(PD, `${c.name}.post.f32`), Float32Array.from(runWorkers(S, x, 16000).col.post));
   writeArr(path.join(PD, `${c.name}.grid.f32`), Float32Array.from(labGridTrack(lab, Float32Array.from(upsample(x)), 48000)));

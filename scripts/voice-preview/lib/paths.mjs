@@ -8,6 +8,9 @@
 //   parity/       parity runs (Node + pyworld outputs, results JSON)
 //   timing/       timing-page results
 //   browsers/     pinned browsers for the timing driver (@puppeteer/browsers)
+//   fe/           F0 front-end comparison (§P4): tracks and scores
+//   hum/          hum and noise tests (§P7): condition clips, renders, meter outputs
+//   listen/       the listening set's working files (§P9; the WAVs go to a scratch folder)
 // The 2026-10-12 runs used VP_CACHE=C:/Coding Projects/Syrinx-cache/voice-preview.
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -24,4 +27,7 @@ export const P = {
   parity: path.join(CACHE, "parity"),
   timing: path.join(CACHE, "timing"),
   browsers: path.join(CACHE, "browsers"),
+  fe: path.join(CACHE, "fe"),
+  hum: path.join(CACHE, "hum"),
+  listen: path.join(CACHE, "listen"),
 };

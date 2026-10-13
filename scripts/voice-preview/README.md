@@ -22,8 +22,12 @@ files are not committed; the build is byte-reproducible from `build.mjs`.
 | `lib/preview-core.js` | The engine shared by the Worker and Node: resample, front end, analysis, render, finish |
 | `worker/vp-worker.js` | Module Worker (`init` / `analyse` / `render`, transferable PCM) |
 | `prep/prep_clips.py`, `prep/tracks.mjs` | Public clips (LibriSpeech, PTDB-TUG) and their precomputed F0 tracks |
-| `parity/` | WebAssembly vs pyworld 0.3.5 (Levels 1–3), SIMD vs non-SIMD, PSOLA vs the prototype, browser vs Node |
-| `timing/` | Timing page, matrix, static server, desktop driver, summary |
+| `prep/prep_speech_clips.py` | Speech-dense variant of the timing clips (each file trimmed to its reference-voiced span ± 0.3 s) |
+| `parity/` | WebAssembly vs pyworld 0.3.5 (Levels 1–3), SIMD vs non-SIMD, PSOLA vs the prototype, browser vs Node; `pyworld_fe.py` extends Levels 2–3 to every F0 front end |
+| `fe/` | F0 front-end comparison (§P4): `fe-run.mjs` renders and tracks, `fe_score.py` checks 1–4 and the F-S alignment |
+| `hum/` | Hum and noise tests (§P7): `make_conditions.py`, `hum-run.mjs` (real pitch chain, notch, level check, VTLN), `hum_score.py` |
+| `listen/make-listen.mjs` | The listening set (§P9), written outside the repository |
+| `timing/` | Timing page, matrix, static server, desktop driver, summary; `analyze.mjs` (statistics, gate conditions, phone predictions), `load-log.mjs` (machine load), `fp10-renders.mjs` + `fp10_lsd.py` (the 10 ms lever's spectral distance) |
 
 ## Reproduce
 
@@ -51,6 +55,25 @@ node node_modules/@puppeteer/browsers/lib/esm/main-cli.js install chrome@154.0.8
 node scripts/voice-preview/timing/run-desktop.mjs --browser=chrome --mode=identity
 node scripts/voice-preview/timing/run-desktop.mjs --browser=chrome --params="runs=10&fe=L"
 node scripts/voice-preview/timing/summarize.mjs <result.json>
+
+# front ends, hum and noise, listening set, desktop timing (Measure step)
+node scripts/voice-preview/fe/fe-run.mjs
+for s in H D S L; do
+  node --import ./scripts/session-oracle/lib/register.mjs scripts/voice-preview/parity/meters.mjs --set=fe-$s --meter=pitch
+  node scripts/voice-preview/parity/meters.mjs --set=fe-$s --meter=vtln
+done
+python -I scripts/voice-preview/fe/fe_score.py --ptdb <PTDB-TUG subset root>
+python -I scripts/voice-preview/parity/pyworld_fe.py --pyworld <dir>   # then meters.mjs on pyworld-fe-<X>, meters_score.py --a fe-<X> --b pyworld-fe-<X> --out level3-fe-<X>.json
+python -I scripts/voice-preview/prep/prep_speech_clips.py --ptdb <PTDB-TUG subset root>
+node --import ./scripts/session-oracle/lib/register.mjs scripts/voice-preview/prep/tracks.mjs --clipset=timing-speech --no-proto
+python -I scripts/voice-preview/hum/make_conditions.py --ptdb <PTDB-TUG subset root>
+node --import ./scripts/session-oracle/lib/register.mjs scripts/voice-preview/hum/hum-run.mjs
+python -I scripts/voice-preview/hum/hum_score.py
+node scripts/voice-preview/listen/make-listen.mjs --out=<folder outside the repo>
+node scripts/voice-preview/timing/load-log.mjs --out=<load.jsonl> --stop-file=<file> &
+node scripts/voice-preview/timing/run-desktop.mjs --browser=chrome --per-run-context --params="runs=10&fe=S"
+node scripts/voice-preview/timing/run-desktop.mjs --browser=firefox --params="runs=5&fe=S&blocks=world-auto,world-nosimd,psola&lengths=5"
+node scripts/voice-preview/timing/analyze.mjs <result.json>[,...] --load=<load.jsonl> --json=<out.json>
 ```
 
 Manual use: `node scripts/voice-preview/timing/serve.mjs`, then open
