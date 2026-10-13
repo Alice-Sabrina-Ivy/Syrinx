@@ -19,7 +19,11 @@
 // not pre-registered: the shipped rule with the panel on from the start gives
 // him 18.57 % over the same span).
 // With the panel on from the start KS-Q5 never runs and the warning is the
-// §8.6 rule tick for tick (§8.9 (a)). The KS-Q5 code is ported from the
+// §8.6 rule tick for tick (§8.9 (a)), except once the start cap below
+// applies (more than 7,200 voiced frames before the cue sets its start, for
+// example about 3 min of held notes or humming after the first words: no
+// warning for that start, where the shipped module could still warn; it
+// never applied on the recorded streams). The KS-Q5 code is ported from the
 // round-2 harness (late-variants-r2.js, sha256 956061543a…; §8.9 (b): 0
 // mismatches on every recorded late and on0 panel).
 //
@@ -92,10 +96,16 @@
 // With the panel on from the start no update is triggered: the rule is §8.6's.
 // Limits that remain (§8.9): a panel that was on before t_fill (first update
 // before the cue filled) but showed no estimate in the start window — hidden
-// throughout, its model still downloading, or the user on another tab (the
-// panel then makes no updates) — cannot warn until stop / start or a cue
-// restart; nor can one that was on before t_fill, switched off, and switched
-// on again after a cue restart's new t_fill (the late flag stays false).
+// throughout, its model still downloading, or the user on another of the
+// app's tabs (Pitch, History, Resonance lab: the panel is not mounted and
+// makes no updates; a different browser tab did not stop it in §8.9's
+// round-3 test) — cannot warn until stop / start or a cue restart; nor
+// can one that was on before t_fill, switched off, and switched on again
+// after a cue restart's new t_fill (the late flag stays false). No panel,
+// on from the start or switched on late, can warn for a start that more
+// than 7,200 voiced frames reach before t_start (the cap below; e.g. about
+// 3 min of held notes or humming after the first words) until stop / start
+// or a cue restart.
 //
 // Bounded storage (§8.9 2). The shipped module kept every voiced posted frame
 // until a panel update froze A40, i.e. for the whole session while the panel
@@ -121,10 +131,13 @@
 //     shadow can then never be used before reset()).
 //   - KP8's quiet histories are a count and a running sum of squares (the
 //     same threshold bit for bit as summing the list in order).
-// At most 7,521 retained frames at any time (7,200 buffered + 321 in the
-// ring), at most 321 once A40 is final (`retained()`, for tests). The
-// `?chunk=N` diagnostic flag changes the frame spacing: the ring then holds
-// 8 s of frames and the cap comes after proportionally less voiced audio.
+// At the production ~25 ms frame spacing: at most 7,521 retained frames at
+// any time (7,200 buffered + 321 in the ring), at most 321 once A40 is final
+// (`retained()`, for tests). The `?chunk=N` diagnostic flag (5–50 ms)
+// changes the frame spacing: the ring then holds 8 s of frames, the buffer
+// between S0's P0 and A40's freeze up to 40 s of voiced frames (so up to
+// 9,601 frames in all at ?chunk=5: 8,001 + 1,600), and the cap comes after
+// proportionally less voiced audio.
 //
 // Eligible update: the panel shows an estimate (lnF0 known), startU, u and
 // the reference known, fill ≥ 1, verdict ≠ "sustained", sinceResumeS ≥ 2.
