@@ -14,7 +14,7 @@ case "$1" in
   cand)
     NETS=""
     for s in $STEPS; do NETS="$NETS${NETS:+,}$2-e$s=$R/train/runs/$2/ckpt_ema_$(printf %06d $s).pt"; done
-    PYTHONIOENCODING=utf8 $PY infer_r3.py --nets="$NETS" --groups=fresh,vsess,spl,hval --variants=plain --out=$R/r5/cand ;;
+    PYTHONIOENCODING=utf8 $PY infer_r3.py --nets="$NETS" --groups=fresh,vsess,spl,hval --variants=plain --out=$R/r5/cand ${BUDGET:+--budget=$BUDGET} ;;
   rule)
     shift
     C=""

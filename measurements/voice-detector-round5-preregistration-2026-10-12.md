@@ -1421,3 +1421,46 @@ custom-vd-r4: H feasible False, fails 64, round-4 rows feasible True, O 69.30 ·
 - **H3 (reported):** the round-4 medium finding (female speech 15.5 % vetoed
   at 0 dB in VocalSet sessions) does not appear in the validation one-room
   sessions: speech rows ≤ 0.09 % for all three networks, both sexes.
+
+## Addendum R5-C — runs 1–3 and the run-4 decision (2026-10-12, before run 4 starts)
+
+Runs 1–3 trained as B2.6 (`run-r5-train.sh`, 16,000 steps each, no crash or
+resume; a governor paused the jobs at times under other load). Their 21 EMA
+checkpoints were scored by §4's rule (`opselect_r5.py`, validation data only),
+in the same rule runs as the two reference rows. Notes:
+
+- The selection inputs were re-hashed first: round 4's 18,610 files and the
+  8,198 H files, 0 mismatches (`r5/verify_inputs.py`).
+- `r11-harm`'s files were made with a smaller GPU frame budget per batch
+  (`infer_r3.py --budget=40000`; runs 1–2: the default 300,000): F5's batch
+  spectrum did not fit next to the other GPU work at the default. Only the
+  chunking differs (state carried; float rounding only).
+- Reference rows: `custom-vd-r4` has **no** feasible point under the extended
+  bar (round-4 rows alone: 229 feasible points); `custom-vd-r3` is feasible
+  only at mean, p ≥ 0.01, 50 ms, O = 5.48 %.
+
+**Best feasible point per run** (extended bar; torch files; the last column is
+the best O on round 4's rows alone, reported):
+
+| run | step | pick (agg / p / hangover) | O % | val-negatives V2 % | one-room sessions V2 % | same checkpoint, best O on round-4 rows only % |
+|---|---|---|---|---|---|---|
+| `r11-data` | 16,000 | mean / 0.05 / 3000 ms | 10.15 | 20.98 | 39.50 | 53.32 |
+| `r11-floor` | 10,000 | mean / 0.05 / 200 ms | 12.21 | 28.18 | 37.52 | 34.02 |
+| `r11-harm` | 10,000 | mean / 0.05 / 200 ms | 31.22 | 45.84 | 56.66 | 44.29 |
+
+- 20 of the 21 checkpoints have a feasible point (`r11-data-e12000` has
+  none), but only at low thresholds: the best O is **31.22 %**
+  (`r11-harm-e10000`), far under the go bar of 60 %.
+- Even on round 4's rows alone, the round-5 runs reach at most 53.3 % (round
+  4's best: 69.3 %): the D7 training costs steady-noise removal.
+- A reported diagnostic (`hbind_r5.py`, not in the rule) on runs 1–2: setting
+  aside the 0 dB and +10 dB readings, or the men's readings, restores most of
+  each checkpoint's round-4-rows O; the men's synthetic hums and vowels next
+  to machines and the men's synthetic long holds are what bind.
+
+**The run-4 rule (§3.6).** At least one checkpoint of runs 1–3 has a feasible
+point, so run 4 is a **second seed (54) of the best such candidate's feature
+set**. The best is `r11-harm-e10000` (O 31.22 %); no other checkpoint is
+within 1 pp (next: `r11-harm-e12000`, 27.06 %), so no tie-break is needed.
+**Run 4 = `r11-harm-s54`: F1m + F5, seed 54**, everything else as runs 1–3.
+Bound is not trained.
