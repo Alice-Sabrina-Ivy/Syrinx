@@ -47,6 +47,13 @@
 > at ~120 s were 16.76 % (limit 15 %). The shipped rule and the panel's
 > "More" line are unchanged; KS-Q5's numbers are in §8.8 for a user
 > decision.
+>
+> **Update 2026-10-13 (§8.9): KS-Q5 adopted by user decision,** overriding
+> §8.8's recorded FAIL (the one failed check: that man's 16.76 % at ~120 s;
+> the shipped rule with the panel on from the start gives him 18.57 % over
+> the same span), together with a bound on the pitch frames the module
+> keeps while the panel is off. §8.9 lists what changes and the acceptance
+> requirements; it was committed before the code change.
 
 The experimental, opt-in "Likely heard as" panel follows pitch more than
 listeners do. When a voice changes pitch without changing resonance, the panel
@@ -1512,7 +1519,8 @@ not by the study; nothing in the rule was changed for it (Hard rule 3).
   first N shown shares after switch-on, taken while the resonance is still
   within 0.6 u of `startU`. **Done 2026-10-12 (§8.7): the pre-registered
   fallback failed its fresh-pool test; the shipped rule is kept. Round 2,
-  which also seeded KP8, failed too, 2026-10-13 (§8.8).**
+  which also seeded KP8, failed too, 2026-10-13 (§8.8). Its rule, KS-Q5,
+  was adopted by user decision the same day (§8.9).**
 
 **Addendum (2026-10-12, review): the "More" list's sources.** The rule was
 selected on the dev split, so dev figures are in-sample. The user-facing
@@ -2366,6 +2374,438 @@ No change, with the reason:
   a replay-parity run showing the same warning strings comes first. It
   also matters for any KS-Q5 port, whose K-seed reads the same buffer.
   CLAUDE.md lists it under known issues.
+
+### 8.9 Adopted 2026-10-13 by user decision: KS-Q5 + bounded pitch buffer
+
+**Decision.** On 2026-10-13 the user adopted §8.8's chosen candidate
+**KS-Q5** for the app, together with a fix for the pitch frames the module
+keeps while the panel is off (§8.8, last review note), and asked for the
+panel's "turn it on before you start talking" line to go. This overrides
+§8.8's recorded verdict, which stays **FAIL, 29 of 30 checks**; this
+section does not re-read the test. The precedent is §8.6: the verdict is
+kept as recorded, and the facts behind it stay attached to the adoption.
+
+This section is committed and pushed before any code change (Hard rule 3).
+The code commit changes only what "What changes" below lists, and must meet
+every "Acceptance requirement" below; its results are added to this
+section. If a requirement cannot be met, the code is not committed and the
+failure is reported for a user decision. No requirement is relaxed
+afterwards.
+
+**The failed check, with its same-window context** (§8.8, fresh test pool,
+48 men and 48 women; a reader's natural false alarms = the share of their
+eligible 2 s updates with the warning on, averaged over the four phases):
+
+| Check | Bar | KS-Q5 | Context (shipped rule, panel on from the start) |
+|---|---|---|---|
+| Men's per-reader maximum, panel switched on at ~120 s (T120) | ≤ 15 % | **16.76 %** (ls3792: 15/87, 16/89, 14/88, 14/88) | 11.84 % over his whole session (135–139 eligible updates); **18.57 %** over the same span as his T120 panels (eligible updates from 130.0–133.5 s: 16/87, 17/88, 16/87, 16/88) |
+
+- Post hoc, not pre-registered (§8.8, "Same span"): over that span KS-Q5
+  warns him on 59 updates in the four phases, the shipped rule on 65. His
+  three natural pitch rises (6.3–9.5 st above his reference) all come
+  after 150 s, and a panel switched on at ~120 s has fewer eligible updates
+  to divide them by.
+- Next man at T120: 1.26 % (ls2654). Women: at most 0.80 % at every
+  switch-on time.
+
+**What the decision gains and costs, per sex** (§8.8 test pool, phase
+averaged; a hit = a pitch-only shift warned within 10 s):
+
+| | Men (male base) | Women (female base) |
+|---|---|---|
+| Hits, panel switched on at ~30 / 60 / 120 s, shipped rule | 0.103 / 0.000 / 0.000 | 0.004 / 0.000 / 0.000 |
+| Hits, the same, KS-Q5 | 0.945 / 0.937 / 0.921 (pooled 0.935) | 0.750 / 0.742 / 0.746 (pooled 0.746) |
+| Hits, panel on from the start (shipped = KS-Q5) | 0.929 | 0.746 |
+| Hits within 15 s, KS-Q5, pooled over the switch-on times | 0.953 | 0.832 |
+| Median time to the first warning after the shift, KS-Q5 late | 7.2 s | 8.2 s |
+| Natural false alarms, KS-Q5 late (panel on from the start) | 0.34–0.39 % (0.36 %) | 0.00–0.02 % (0.01 %) |
+| Worst reader, KS-Q5 at ~30 / 60 / 120 s (panel on from the start) | 12.45 / 14.19 / 16.76 % (11.84 %), all ls3792 | ≤ 0.80 % (0.52 %) |
+
+The hit rates come from the 32 men and 37 women whose pitch-only sessions
+are in the failure sets (31–32 men and 35–36 women per phase;
+`fs_readers.txt` below). With the panel on from the start KS-Q5 is the
+shipped rule tick for tick (0 differences on this pool's 149,107 on0 and
+149,065 on0L updates, and on 299,233 and 297,218 on0 + on0L updates of dev
+pools A and B).
+
+**What the rule reads, and the smallest state that gives the same
+answers.** Measured first on the recorded call streams (inputs only; no
+rule was evaluated): the late-panel pools A, B and the round-2 fresh pool
+(864 sessions, 17,280 panels, 1,870,142 updates) and §8.5's app-cadence
+pools (2,972 sessions, 11,888 panels, 701,506 updates), with
+`scan_streams.mjs` (outputs listed below).
+
+| Input property | On the recorded streams |
+|---|---|
+| Posted pitch frames in time order | always (0 out of order); one every 25 ms |
+| Posted frames in any 8 s span | at most 321 |
+| An update's audio time earlier than the newest frame already passed to `addPitch` | never (0 of 2,571,648 updates). In the hook every write to the audio clock takes the maximum, and the pitch handler writes it right after `addPitch` |
+| t_start − t_fill | median 20.4–21.4 s per pool, maximum 81.5 s; 16 panels (4 short §8.5 sessions) never reach t_start |
+| Voiced frames in A40's window [t_fill − 2 s, max(t_start, t_fill + 40 s)] | median 981–1,049 per pool, maximum 1,450 |
+| Resonance-cue restarts | none |
+| Voiced frames the shipped module holds at the end of a session with the panel off | late-panel pools (sessions ≤ 325 s, 56–60 % of frames voiced): median 5,311–5,672, maximum 10,079; at that rate about 81,000–87,000 per hour of reading, 144,000 per hour if every frame is voiced |
+
+What each part of the rule needs:
+
+- **S0's P0 and A40's reference** are medians of the posted voiced frames
+  in [t_fill, t_start] and in [t_fill, E], E = max(t_start, t_fill +
+  40 s). An exact median needs the values themselves, but only until the
+  last frame of its span has arrived (frames arrive in time order); after
+  that each is one number. The shipped module freezes A40 only inside
+  `update()`, so with the panel off it never lets go of the frames.
+- **K-seed** reads, at each 2 s pseudo update t, the posted frames in
+  (t − 8 s, t] (pitch or unvoiced, and the spacing to the previous frame)
+  and the latest resonance verdict. t is always earlier than the newest
+  frame, so a ring holding the posted frames of the last **N = 8 s** is
+  enough. 8 s is the panel's own pooling window
+  (`HEARD_AS_CALIBRATION.windowMs`), which the pseudo update reproduces:
+  at most 321 frames at the 25 ms cadence. Its A40 value is the one above.
+- **KP8's threshold** uses only the number of quiet values and the sum of
+  their squares (summed in order from 0), so a quiet history is two
+  numbers. The pending values (shown updates before t_start), the start
+  shares (shown updates in [t_fill, t_start]) and the Q5 shares (20 s and
+  then until 5 are collected) are lists limited by their windows.
+- Nothing else of the pitch stream is read.
+
+**What changes in `src/ml/pitch-only-warning.js`.** Everything not listed
+stays as shipped (sha256 `2a1f4022…`): A40, KP8-3, DS10, K = 2, the
+≤ 5 hidden-update hold, eligibility, the 0.6 u bound, EPS, the resets,
+`S0_CONFIG`'s S0 rule, `pitchOnlyCondition`, `pitchOnlyEligible` and
+`PITCH_ONLY_TEXT`.
+
+1. **KS-Q5**, ported from the FALLBACK blocks of `late-variants-r2.js`
+   (sha256 `956061543a15b0372543fc32e797edbf316ac05632129bbf528a501d1d5de241`)
+   for `LATE_CANDIDATES["KS-Q5"]` only (round 1's trigger, K-seed and Q5;
+   §8.8 "Candidates", Appendix I §3), in the same order of operations:
+   - *Late flag.* At the first `update()` since creation or `reset()`, the
+     panel counts as switched on late if t_fill is already known. A cue
+     restart keeps the flag; `reset()` clears it.
+   - *Trigger.* An update whose audio time is later than a known t_start,
+     with an empty start share and the late flag set.
+   - *K-seed.* §8.8's shadow KP8 state, with its constants taken from
+     `HEARD_AS_CALIBRATION` (updateMs 2,000, windowMs 8,000, minVoicedMs
+     3,000, freshMs 5,000, range.lnF0 = [ln 81, ln 293.1]): every 2 s of
+     audio time t, computed when the first posted frame later than t
+     arrives, a pseudo update with lnF0 = ln median of the voiced posted
+     frames in (t − 8 s, t], counted as shown when their voiced time is
+     ≥ 3 s, the newest of them is ≤ 5 s old, lnF0 is in range and the
+     latest resonance verdict is not "sustained"; it goes through the
+     shipped KP8 bookkeeping against the A40 reference at t. A frame's
+     spacing is 25 ms for the first frame, else the gap to the previous
+     posted frame, capped at 100 ms; voiced time is summed from the oldest
+     frame to the newest. At the first triggered update the panel's quiet
+     history and pending values are replaced by the shadow's. The shadow's
+     history and pending values are cleared with the references (cue
+     restart); its frame ring only by `reset()`.
+   - *Q5.* At triggered updates the DS10 start share is replaced by the
+     median of quiet drawn shares (eligible, |u − startU| ≤ 0.6 u,
+     |ΔP| < X − EPS) collected from the first shown triggered update (fbT0)
+     until fbT0 + 20 s, and after that until 5 are collected. The window
+     closes at the first update, shown or hidden, later than fbT0 + 20 s
+     with at least 5 shares; while it is open the gate fails. Each update
+     is gated before its own share is collected. The state is cleared with
+     the references.
+   - New configuration: `PITCH_ONLY_WARNING.late` (the seed constants and
+     Q5's 20,000 ms / 5 shares) and `maxStartWaitMs` (2c below);
+     `S0_CONFIG` sets `late: null`.
+2. **Bounded pitch storage.** The outputs equal (1)'s whenever frames
+   arrive in time order and no update's audio time is earlier than the
+   newest frame (both always hold above and in the app), unless the cap
+   in 2c applies.
+   - a. *S0's P0 decided in `addPitch`*, at the first posted frame later
+     than t_start (t_fill and t_start known), from the buffered frames,
+     with the value `s0P0()` would give at its next call. If it is null
+     (fewer than 20 voiced frames), the buffer is emptied and no frames are
+     kept until a cue restart or `reset()`: nothing can read them, since
+     the reference stays null. With `ref: "S0"` (`S0_CONFIG`) the buffer
+     is emptied once P0 is decided, whatever its value. For a frame that
+     passes both t_start and E, 2a comes before 2b.
+   - b. *A40 frozen in `addPitch`*, at the first posted frame later than
+     E (P0 known): A40 = ln median of the buffered voiced frames in
+     [t_fill, E]; then the buffer is emptied and no more frames are kept,
+     as the shipped `refAt()` does at the first update after that point.
+     This comes after that frame's K-seed pseudo updates (which may still
+     read the buffer for times up to E) and before the frame would be
+     buffered. `refAt()` keeps its own freeze (now redundant).
+   - c. *Cap: the one change in behaviour outside KS-Q5.* If the start
+     window has not closed by t_fill + **180 s** (`maxStartWaitMs`; t_start
+     unknown or later than that) when a posted frame later than t_fill +
+     180 s arrives, the module gives up on this start: S0's P0 is decided
+     null, as with fewer than 20 start frames, so the warning cannot appear
+     until a cue restart or `reset()`, and `pitchStart()` is null. Without
+     a cap the buffer is limited only by how long the cue takes to set its
+     start, and a session of held notes (which the cue does not admit) can
+     stretch that without limit. 180 s is 2.2 × the longest t_start − t_fill
+     on the recorded streams (81.5 s), so it never applies there.
+   - d. *After P0 is decided null* (2a or 2c), pending values (the
+     panel's and the shadow's) and start shares are no longer collected:
+     they cannot be read before the next cue restart or `reset()`, which
+     clear them.
+   - e. *K-seed ring.* The posted frames of the last 8 s (time, pitch or 0,
+     spacing) in preallocated typed arrays, grown only if more frames than
+     their capacity arrive within 8 s; no allocation per frame. When the
+     first `update()` came before t_fill (late flag false) the shadow can
+     never be used before `reset()`, so it stops and its ring is released.
+   - f. *Storage form.* Buffered frames as numbers in parallel arrays (time,
+     pitch) instead of one object each. The KP8 quiet histories (the
+     panel's and the shadow's) as a count and a running sum of squares,
+     which give the shipped loop's threshold bit for bit.
+   - g. *For tests:* `retained()` → `{ a40Frames, ringFrames }`.
+3. **Comments.** The header describes KS-Q5, the bounded storage and the
+   cap and cites this section. The §8.6-addendum paragraph on the empty
+   start share is replaced by the limit that remains (below).
+
+**What changes in the wiring and the panel.**
+
+- `src/audio/useAudioPipeline.js`: comments only. The calls stay as they
+  are: `addPitch` for every posted pitch frame and `noteResonance` for
+  every resonance-cue state message (it carries `verdict`) from the start
+  of listening, `reset()` at start and stop.
+- `src/components/HeardAsPanel.jsx`: the `update()` calls stay as they
+  are. In the "More" list, `PITCH_ONLY_START_TEXT` and its item
+  (`data-heard-as-pitch-only-start`) are removed; `PITCH_ONLY_LATE_TEXT`
+  takes their place (`data-heard-as-pitch-only-late`);
+  `PITCH_ONLY_FALSE_ALARM_TEXT` is replaced; `PITCH_ONLY_MISSES_TEXT` stays
+  (its figures are §8.6's, panel on from the start, where nothing
+  changes). Comments cite this section.
+- `scripts/cue-strip-smoke.mjs` (and `scripts/cue-strip-smoke-wavs.mjs`
+  for its audio): the "More" checks also find the late line; the late
+  switch-on run of (g).
+- New: `tests/ml/fixtures/pitch-only-warning-shipped-2a1f4022.js` (a byte
+  copy of the shipped module, the test's comparison module); the late-panel
+  fixture and its generator `scripts/heard-as/pitch-only/make_fixture_late.mjs`;
+  the measurement script for (c) and (d) under
+  `scripts/heard-as/pitch-only/`. `tests/ml/pitch-only-warning-test.js` is
+  extended; its checks that encode the old late-panel limit get their KS-Q5
+  expectations.
+- `CLAUDE.md`: the "Likely heard as" row and the HeardAsPanel entry; the
+  known issue "Pitch-only warning keeps every voiced pitch frame while the
+  panel is off" is marked resolved.
+- This note: the header update, the results of (a)–(g) in this section and
+  the "Reproduce" commands for them.
+
+**Limits that remain.** A panel that was already on before t_fill (first
+`update()` before the cue filled) but showed no estimate in the start
+window — hidden throughout, or its model still downloading — still cannot
+warn until stop / start or a cue restart (test man mlsdu4429, §8.6
+addendum). Not covered by any study: a panel switched off and on again
+later in a session (the late flag stays as it was first set), model loads
+longer than 7.95 s, the speech detector loading separately, and the cap's
+path (it never ran on recorded data).
+
+**The panel's new wording** (fixed now; plain words, no percent signs; the
+code uses these strings verbatim):
+
+- `PITCH_ONLY_LATE_TEXT`, replacing the "turn it on before you start
+  talking" line:
+
+  > You can turn this panel on at any time. If you turn it on after you've
+  > started talking, the note about pitch-only changes still compares with
+  > how you sounded at the start, but it needs about 20 seconds of readings
+  > before it can appear. In a test on about 70 other people with the panel
+  > turned on half a minute to two minutes in, it then caught about 9 in 10
+  > pitch-only changes in men's voices and about 3 in 4 in women's voices
+  > within 10 seconds — about as many as with the panel on from the start.
+  > If the panel is already on when you start talking but shows no reading
+  > during roughly your first half-minute to a minute (for example while it
+  > is still downloading), the note may not appear until you stop and start
+  > listening again.
+
+  Numbers (§8.8 test pool): within 10 s, male base 0.945 / 0.937 / 0.921
+  at T30 / T60 / T120 ("about 9 in 10"), female base 0.750 / 0.742 / 0.746
+  ("about 3 in 4"); with the panel on from the start 0.929 / 0.746 ("about
+  as many"); 69 readers in the failure sets (32 men, 37 women; "about 70
+  other people": none of them is in §8.6's test pool, which the misses
+  line's "about 70 people" describes); "about 20 seconds of readings" = the
+  Q5 window (20 s of shown estimates after switch-on and at least 5 quiet
+  ones); "half a minute to a minute" = when the start window closes (§8.6
+  addendum: median 30–36 s, 95th percentile 42–50 s into a session).
+- `PITCH_ONLY_FALSE_ALARM_TEXT`, replacing the current false-alarm line:
+
+  > The note about pitch-only changes can also appear when you haven't
+  > deliberately changed your voice, if your pitch varies a lot as you
+  > talk. In tests on 192 people reading aloud that happened on about 3 to
+  > 4 in 1,000 updates for men's voices and almost never for women's, also
+  > when the panel was turned on later. A single expressive speaker can see
+  > it much more often: one man whose pitch rose a long way in a few places
+  > saw it on about 1 in 8 to 1 in 6 updates where the panel showed an
+  > estimate.
+
+  Numbers: 192 = §8.6's test split (96 readers, panel on from the start)
+  + §8.8's test pool (96 other readers). Men 0.26 % (§8.6, update weighted;
+  0.27 % reader balanced), 0.36 % (§8.8, panel on from the start),
+  0.34–0.39 % (§8.8, KS-Q5 at ~30 / 60 / 120 s) — "about 3 to 4 in 1,000";
+  women 0.00 %, 0.01 %, 0.00–0.02 % — "almost never". The man is ls3792:
+  11.84 % with the panel on from the start ("about 1 in 8") up to 16.76 %
+  with KS-Q5 at ~120 s ("about 1 in 6"); his pitch rose 6.3–9.5 st above
+  his reference in three stretches.
+- `PITCH_ONLY_MISSES_TEXT` and `PITCH_ONLY_TEXT`: unchanged.
+
+**Acceptance requirements for the code commit** (fixed now; all must hold):
+
+- **(a) Panel on from the start: identical to the shipped module.** The
+  new module and the shipped module (sha256 `2a1f4022…`), fed the same
+  calls (rebuilt as `replay_r2.mjs` does; as `warning-male-fa-r2/select/replay2.mjs`
+  does in mode `app` for §8.5's streams), give the same on/off at every update, the same `held()` after
+  it and the same `pitchStart()` before it (`Object.is`), with **0
+  mismatches**, on every on0 and on0L panel (four phases each) of every
+  recorded session of:
+  - dev pool A: `warning-late-panel/select/out/dev_{0,1}.jsonl` (sha256
+    `5af5bafd…` / `3850c8b4…`), 299,233 updates;
+  - dev pool B: `warning-late-panel/fresh/out/test_{0,1}.jsonl`
+    (`da9271d9…` / `f4527a78…`), 297,218 updates;
+  - the round-2 fresh pool: `warning-late-panel-r2/fresh/out/test_{0,1}.jsonl`
+    (`839310cf963b…` / `0d1a5a754edc…`), 298,172 updates;
+  - and §8.5's app-cadence streams `warning-male-fa-r2/select/out/{dev,test}_{0,1}.jsonl`
+    (`193f18e8…`, `e4cb9ec7…`, `3c7cefcf…`, `b1554d7f…`; 2,972 sessions
+    × 4 phases, 701,506 updates);
+
+  and on every T30 / T60 / T120 panel of the three late-panel pools before
+  its first triggered update. Reported per pool: panels, updates, updates
+  with the warning on.
+- **(b) Late panel: identical to the harness's KS-Q5.** On every T30, T60
+  and T120 panel of the three late-panel pools — switch-on offsets 0 / 450
+  / 1,050 / 1,500 ms with model-load times 4.05 / 5.40 / 6.60 / 7.95 s;
+  326,454 + 323,917 + 325,148 updates — and on every on0 and on0L panel,
+  the new module equals `late-variants-r2.js` (sha256 `956061543a…`)
+  created with `fallback = LATE_CANDIDATES["KS-Q5"]`: on/off at every
+  update, `held()` after it, `pitchStart()` before it, **0 mismatches**.
+  Its on/off strings also equal the recorded KS-Q5 strings of
+  `warning-late-panel-r2/select/out/rep_devA.json` (`9fc85a65…`),
+  `rep_devB.json` (`edd9bc74…`) and `warning-late-panel-r2/fresh/out/rep_test.json`
+  (`67081cfb…`): 0 mismatches. Reported: panels on the trigger path per
+  condition (the fresh pool must give §8.8's T30 1,095, T60 1,152, T120
+  1,152 of 1,152) and panels on which the 180 s cap applied (must be 0 on
+  every recorded stream, §8.5's included). Not a blind check: the same
+  comparison with one constant changed (seed window 8 → 7.9 s, Q5 window
+  20 → 19.9 s, Q5 minimum 5 → 4 shares, cap 180 → 30 s) finds mismatches.
+- **(c) Memory: retained pitch frames bounded.** The bound, at the
+  production 25 ms cadence: the K-seed ring holds the posted frames of at
+  most the last 8 s (≤ 321), and the A40 buffer at most the voiced frames
+  of [t_fill, t_fill + 180 s] (≤ 7,201), so **≤ 7,522 frames at any time**;
+  **≤ 321 once A40 is final** (on the recorded streams 40–82 s after
+  t_fill); and no ring at all once the first panel update came before
+  t_fill. Measured with a committed script under
+  `scripts/heard-as/pitch-only/` on a simulated session of at least 1 h
+  (deterministic; a posted frame every 25 ms, speech-like voicing of about
+  60 %; resonance states every 200 ms with t_fill at ~10 s and t_start at
+  ~30 s) in three panel scenarios — off throughout, on from the start
+  (updates every 2 s), switched on at 30 min — for the shipped and the new
+  module:
+  - the new module's `retained()` after every call ≤ the bound, and ≤ 321
+    once A40 is final; the shipped module's buffer size reported (from the
+    stream: with the panel off, every voiced frame after t_fill);
+  - the heap the warning object holds after the hour (Node `--expose-gc`:
+    heapUsed + arrayBuffers after a forced GC with the object alive, minus
+    the same after dropping it; median of 3 runs): **new ≤ 100 KB** in
+    every scenario; the shipped module's figure reported.
+- **(d) CPU of the background seed.** In (c)'s panel-off scenario, the
+  time spent in the new module's `addPitch` and `noteResonance` is **≤ 1.0 s
+  per audio hour** (≤ 0.03 % of one core; for scale, the pitch worker
+  spends ~23 ms per audio second, ~83 s per hour), median of 5 runs after
+  a warm-up run, both in Node 24 and in desktop Chrome (headless, via
+  puppeteer with a temp profile, closed with `browser.close()`). Reported
+  beside it: the shipped module on the same stream, the other two
+  scenarios, and the longest single call.
+- **(e) The panel's text.** `PITCH_ONLY_LATE_TEXT` and
+  `PITCH_ONLY_FALSE_ALARM_TEXT` exactly as written above;
+  `PITCH_ONLY_MISSES_TEXT` and `PITCH_ONLY_TEXT` unchanged;
+  `PITCH_ONLY_START_TEXT` gone from the source. The comments above the
+  constants give the numbers and their sources as listed above. The
+  cue-strip smoke's "More" check (it opens, the lines wrap inside the
+  panel, no horizontal page scroll) passes at all five viewports with the
+  new list.
+- **(f) Tests** (`tests/ml/pitch-only-warning-test.js`, self-contained, in
+  `npm run test:unit`):
+  1. *Identity with the shipped module on committed fixtures.* The existing
+     golden replay (14 public session-phases, panel on from the start)
+     still reproduces the study's scored strings for A40+KP8-3+DS10 and S0;
+     and the new module equals the shipped copy
+     (`tests/ml/fixtures/pitch-only-warning-shipped-2a1f4022.js`, its
+     sha256 asserted) in on/off, `held()` and `pitchStart()` on the golden
+     streams and on deterministic synthetic sessions with the panel on from
+     the start (including hidden runs, a cue restart, a null snapshot and a
+     null P0).
+  2. *The late-panel path on deterministic fixtures.* (i) A committed
+     fixture of public late-panel streams from §8.8's test pool
+     (LibriSpeech / MLS, CC BY 4.0; derived numbers only; ≤ 1 MB) with at
+     least: a male-base and a female-base pitch-only hit at T30, T60 and
+     T120; `natL_ls3792` at T120; `hcsL_ls2473_PO` at T120 phase 1 (the Q5
+     window never closes); a T30 panel that got a start share; a natural
+     woman with no warning. Expected values: the harness KS-Q5 variant's
+     on/off, `held()` and `pitchStart()` per update (its on/off equal to
+     `rep_test.json`'s KS-Q5 strings). The generator refuses to write
+     unless the new module reproduces them on the pruned and on the full
+     streams. (ii) Synthetic: §8.6's repro (steady 120 Hz, t_start at 20 s,
+     an 8 st pitch-only shift at 60 s, drawn share 0.2 → 0.6) with the
+     panel on from 0, 10 or 19 s (first warning at 62 s, as shipped) and
+     from 22 or 30 s (the harness variant's first-warning time; the shipped
+     rule never warns); a cue restart after a late switch-on; a late
+     switch-on during held notes. Expected values computed with the harness
+     variant and committed.
+  3. *The bound.* (c)'s three scenarios at ≥ 1 h: `retained()` ≤ the bound
+     after every call, 0 A40 frames once A40 is final, no ring once the
+     first update came before t_fill; a session whose t_start never comes
+     (the buffer never holds frames past t_fill + 180 s and is then
+     emptied; `pitchStart()` null; no warning); a session whose t_start
+     comes at t_fill + 170 s (the same outputs as the shipped copy).
+  4. *Mutation check.* Run against the shipped module (import swapped), the
+     test file passes its identity and golden checks and fails its
+     late-panel and bound checks. Each of these mutants of the new module
+     fails at least one check: no K-seed (KP8 history from switch-on); seed
+     window 7.9 s; Q5 window 19.9 s; Q5 minimum 4; trigger without the late
+     flag; no freeze in `addPitch`; no cap; the shadow kept running when
+     the late flag is false. Reported: which checks fail for each.
+
+  `npm run lint`, `npm run test:unit` and `npm run build` pass.
+- **(g) The production path.** In the built app, with the cue-strip smoke
+  harness (puppeteer, temp profile, cleanup of its own PID only): (1) the
+  existing `--pitch-only=man,woman` run passes at all five viewports (panel
+  on from the start; the warning never before the shift, within 25 s after
+  it); (2) a late run at the desktop viewport on two `hcsL` PO sessions of
+  §8.8's test pool — for each base sex, the first by key order that KS-Q5
+  hit (§8.8's definition: warned within 10 s) at T120 in all four phases
+  (≥ 170 s of natural reading, then the shift): the panel is turned on at ~120 s, after the
+  cue's start window has closed; the warning never shows before the shift
+  and appears within 25 s after it, for both.
+
+**Commit messages.** The code commit's message cites PREREG
+(`dd3cf7bc…`), CHOICE (`17b948d9…`), `late-variants-r2.js`
+(`956061543a…`) and this note commit.
+
+**Inputs of this section** (scratch folder `warning-ks-q5-adopt/`):
+`scan_streams.mjs` sha256
+`9a273df2026b7f41ec0561b802bf944ab4730503ba49fc971a0209229653ae58`, its
+outputs `scan_A.json` (`ffce7a9c…`), `scan_B.json` (`07f922ce…`),
+`scan_F.json` (`2a093319…`), `scan_R2dev.json` (`4de71be4…`),
+`scan_R2test.json` (`19328ae5…`); `fs_readers.py` (`958d17a9…`, run with
+`python -I` through the study's `iso.py`) and its output `fs_readers.txt`
+(`959380ef…`). The recorded streams, strings and harness files, sha256
+taken on 2026-10-13 before this section was written (paths relative to
+the scratchpad):
+
+- `warning-late-panel/select/out/dev_0.jsonl` `5af5bafdf1b6897d2d1bc9c60539e49ac2f0aa4442138521dc58ff40ccbb4e76`
+- `warning-late-panel/select/out/dev_1.jsonl` `3850c8b4f66432120ab0c4468a7d78c9351bcc2bad1502dbb49a69212ce496ed`
+- `warning-late-panel/fresh/out/test_0.jsonl` `da9271d9ffb8be9e2476f7c574fe310a2aa34dd73e2c387ef125851f028939d8`
+- `warning-late-panel/fresh/out/test_1.jsonl` `f4527a789466bf5b309d1e7ac15172c7bf51bdad49e8bdd9fce06d6d0ee7f30f`
+- `warning-late-panel-r2/fresh/out/test_0.jsonl` `839310cf963bbfe5b11ccbc35d1e5f365b322ccd32bfcc69325efff0d17952e1`
+- `warning-late-panel-r2/fresh/out/test_1.jsonl` `0d1a5a754edcac62543407bdb060d4e28cc9d9a7305395b46a9e572610c954fa`
+- `warning-male-fa-r2/select/out/dev_0.jsonl` `193f18e86dc8351a530b3ef97e540397abbb1d6221ae8f799dccebcae5b6cd49`
+- `warning-male-fa-r2/select/out/dev_1.jsonl` `e4cb9ec74ec8b518d47ad2d0738ee588310f9b13eabcb426f83ea2bdb4442573`
+- `warning-male-fa-r2/select/out/test_0.jsonl` `3c7cefcfc1a6cb51381f68d3c705cd18270dd719a045b4ed91a1d74cbb54fedd`
+- `warning-male-fa-r2/select/out/test_1.jsonl` `b1554d7f9f5ebcbf834e93353b631ca11b5574871f92b9e3550bcbea949d6ea6`
+- `warning-late-panel-r2/select/out/rep_devA.json` `9fc85a654f76286fd4bbe52246f47ec2350795232c5e105112b1bd43b46421b3`
+- `warning-late-panel-r2/select/out/rep_devB.json` `edd9bc74a2d28ee392813afb59dcf576767faf8224f9cfc646d0ca82a0374f9d`
+- `warning-late-panel-r2/fresh/out/rep_test.json` `67081cfbbce02628c4c737b81ea4d279aa51d3868a3d2f9f3188b421ae7b5c69`
+- `warning-late-panel-r2/harness/late-variants-r2.js` `956061543a15b0372543fc32e797edbf316ac05632129bbf528a501d1d5de241`
+- `warning-late-panel-r2/harness/replay_r2.mjs` `a3ec703cf6cedb12f7c033f700582a5a4a8328d8fef7f98eadeca786da5205e8`
+- `warning-male-fa-r2/select/replay2.mjs` `2569245ba2ddf163a0d1fc8da11cc0c3e398af589be5b9ab644bfa0bb016f122`
+- `warning-late-panel-r2/harness/shipped/pitch-only-warning.js` `2a1f4022db77599731cfcf6de4d42758d531239188bce20ddfdf991a868e658f`
+- `warning-late-panel-r2/select/PREREG.md` `dd3cf7bc6c211f1bf576e6e27f04d9942826e382f791752c55de77c50d279785`
+- `warning-late-panel-r2/select/CHOICE.md` `17b948d9b2e00665c33b2a7db52a4e22b3031fc825846848b22cc44480816ef9`
+- `warning-late-panel-r2/fresh/test_result.md` `5d196daf8dc1f5021cffc06f384bddeac4278f0722abc3e1c96eddb112b7c320`
+
+None of the study's hashed files was edited.
 
 
 ## Reproduce
