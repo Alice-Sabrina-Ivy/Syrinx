@@ -65,7 +65,11 @@
 > for the session, also with the panel on from the start. The fix (a cap on
 > voiced frames, §8.9 "Review fixes") was stopped before the code change,
 > because one pre-committed check cannot hold with it; it awaits a user
-> decision.
+> decision. Decided the same day (§8.9, "Decisions 2026-10-13"): the
+> voiced-frame cap is adopted, with that check run at 15 s instead of
+> 30 s, and the review's three wording changes to the panel's "More" text
+> are applied. That part, with the requirements for the code change, was
+> committed before the code change.
 
 The experimental, opt-in "Likely heard as" panel follows pitch more than
 listeners do. When a voice changes pitch without changing resonance, the panel
@@ -3307,6 +3311,207 @@ Inputs and outputs of this step (scratch folder `warning-ks-q5-adopt/`):
   (the fresh-pool panels each K-seed mutant changes)
 - the 2c′ patch `fix/countcap/countcap-full.patch` `03a6c8bda5ceb336223db0094d05084a93722e64de6b9d0de2730d1e58af0c4f`
   and its Node memory and CPU output `fix/out/bound_countcap.json` `36a730fdd0c6600b2722251ecb406b911f767958d91159e9e4c187be4abd90e6`
+
+#### Decisions 2026-10-13: voiced-time cap and help-text edits
+
+This part records two user decisions on the status above and the
+requirements the code commit must meet. It is committed and pushed before
+the code change (Hard rule 3). Nothing above is edited. Where a
+requirement above changes, this part says so.
+
+**Decision 1: adopt 2c′, the voiced-frame cap.** The user chose option 1
+of the status list. The start gives up when a voiced posted frame would
+make the buffer hold more than 7,200 frames (`maxStartVoicedMs` 180,000 ms
+÷ 25 ms), as 2c′ above describes. Unvoiced frames and silence never count.
+The time cap 2c goes.
+
+*A change to one check, made by user decision before the code change.*
+(b)'s not-blind clause ("… cap 180 → 30 s) finds mismatches"), which (h1)
+restates as `maxStartVoicedMs` 30,000 (1,200 frames), now runs at **15 s**:
+`maxStartVoicedMs` 15,000 (600 voiced frames). The reason: with a voiced
+cap, 30 s never applies on the recorded streams. A start window still open
+held at most 666 voiced frames, about 16.7 s (table above), so that
+comparison cannot find mismatches. At 15 s it finds them on every pool
+(measured before this decision with `fix/replay_fix_cap.mjs`: pool A
+1,876 + 2,866 mismatching updates, pool B 2,885 + 1,908, fresh pool
+4,259 + 3,508). The check's purpose is unchanged: to show that the
+comparison would notice a wrong cap. The other three one-constant changes
+stay as written.
+
+**Decision 2: apply the review's three wording changes** ("Not applied:
+they need a user decision", 1–3 above). The strings below are final. They
+replace §8.9's two quotes above as the reference for (e), and the code uses
+them verbatim.
+
+- `PITCH_ONLY_LATE_TEXT`:
+
+  > You can turn this panel on at any time. If you turn it on after you've
+  > started talking, the note about pitch-only changes still compares with
+  > how you sounded at the start, but it needs about 20 seconds of readings
+  > before it can appear. In a test on about 70 other people with the panel
+  > turned on half a minute to two minutes in, it then caught about 9 in 10
+  > pitch-only changes in men's voices and about 3 in 4 in women's voices
+  > within 10 seconds — about as many as in the same test with the panel on
+  > from the start. If the panel is on from your first few seconds of
+  > listening but shows no reading during roughly your first half-minute to
+  > a minute (for example while it is still downloading, or while you are
+  > on another tab), the note may not appear until you stop and start
+  > listening again.
+
+  What changed from the quote above:
+  - (i) "about as many as in the same test with the panel on from the
+    start" (it read "about as many as with the panel on from the start").
+    The misses line just above it gives about 85 in 100 from §8.6's other
+    test, so women's 3 in 4 read as fewer. Same test: §8.8's test pool,
+    panel on from the start 0.929 (male base) / 0.746 (female base).
+  - (ii) The last sentence, as the review wrote it. "Is on from your first
+    few seconds of listening" replaces "is already on when you start
+    talking": the limit is a panel whose first update came before the cue
+    filled, about 10 s into a session on the recorded streams. "Or while
+    you are on another tab" is added as a second example.
+  - The other numbers are as listed under the quote above.
+
+  "Another tab" is the review's word and is kept. The limit behind it is
+  the app's own tabs (Pitch, History, Resonance lab): off the practice
+  view `CombinedDashboard` renders nothing, so the panel makes no updates
+  there (§8.9, "Limits that remain, added"). The decision as relayed to
+  this step said "another browser tab". A different browser tab was not
+  tested, so the text does not single it out: there the panel stays
+  mounted, and whether it keeps updating depends on how the browser
+  treats a hidden page.
+
+- `PITCH_ONLY_FALSE_ALARM_TEXT`:
+
+  > The note about pitch-only changes can also appear when you haven't
+  > deliberately changed your voice, if your pitch varies a lot as you
+  > talk. In tests on 192 people reading aloud that happened on about 3 to
+  > 4 in 1,000 updates for men's voices and almost never for women's, also
+  > when the panel was turned on later. Some expressive speakers see it
+  > much more often — up to about 1 in 6 updates where the panel showed an
+  > estimate, for one man whose pitch rose a long way in a few places.
+
+  What changed from the quote above: (iii) the last sentence only. It read
+  "A single expressive speaker can see it much more often: one man whose
+  pitch rose a long way in a few places saw it on about 1 in 8 to 1 in 6
+  updates where the panel showed an estimate." Its numbers:
+  - "Some expressive speakers": among the 192 readers at least two men are
+    far above 3–4 in 1,000. ls3792 (§8.8 test pool) is at 11.84 % with the
+    panel on from the start and up to 16.76 % with KS-Q5 at ~120 s. ls3783
+    (§8.6 test split) is at 6.6 %.
+  - "Up to about 1 in 6" = ls3792's 16.76 % (1 in 5.97; the check KS-Q5
+    failed).
+  - "Updates where the panel showed an estimate" = eligible updates (§6),
+    the base of every false-alarm figure in this line.
+  - "Whose pitch rose a long way in a few places" = 6.3–9.5 st above his
+    reference in three stretches.
+  - The first two sentences and their numbers are unchanged.
+
+- `PITCH_ONLY_MISSES_TEXT` and `PITCH_ONLY_TEXT`: unchanged.
+
+**What the code commit changes.** Only these:
+
+- `src/ml/pitch-only-warning.js`: 2c′ (`maxStartVoicedMs` 180,000
+  replaces `maxStartWaitMs`; a 25 ms `FRAME_MS` constant), as in the ready
+  module (`fix/countcap/`, sha256 `c1dbeba33e…`). The header describes the
+  cap as 2c′ and drops the sentence on the open decision.
+- `src/components/HeardAsPanel.jsx`: the two strings above, and the
+  comments above them. The comments give the numbers and sources listed
+  here, the Q5 window as the review notes correct it ("20 s of audio from
+  the first shown estimate after the start window and the switch-on, then
+  until at least 5 quiet ones are in"), and the replaced wording in their
+  "Until 2026-10-13" lines.
+- `tests/ml/pitch-only-warning-test.js`: the 2c′ items of "What else
+  changes" in the review fixes (the constants check, the bound 7,521,
+  section 15's held-note and pause cases, the reviewer's pause case), and
+  its copies of the two strings. The K-seed pins are already in (b72bb8a).
+- `scripts/heard-as/pitch-only/warning_bound.mjs`: the bound 7,521 and its
+  comment.
+- `scripts/cue-strip-smoke.mjs`: only if its "More" check needs the new
+  text.
+- `CLAUDE.md`: the cap as 2c′ (the open issue goes; the bound 7,521); the
+  "More" wording in the "Likely heard as" row and the HeardAsPanel entry
+  (about as many as in the same test with the panel on from the start; up
+  to about 1 in 6 for some expressive speakers; on another tab).
+- This note: the header and the results of the requirements below.
+
+**Requirements for the code commit.** All must hold. If one cannot be met,
+the code is not committed and the failure is reported for a user
+decision. No requirement is relaxed afterwards.
+
+- **(a)–(g)** as written above, with only these changes:
+  - (b): the not-blind cap change is `maxStartVoicedMs` 15,000 (600 voiced
+    frames), per Decision 1, reported per pool. "Panels on which the 180 s
+    cap applied (must be 0 on every recorded stream, §8.5's included)"
+    now means panels on which 2c′ applied (still must be 0). Reported
+    beside it: the most voiced frames a start window still open held.
+  - (c): the limits are unchanged: ≤ 7,522 frames at any time (2c′ gives
+    ≤ 7,521: 7,200 buffered + 321 in the ring), ≤ 321 once A40 is final,
+    no ring once the first update came before t_fill, and a heap of
+    ≤ 100 KB in every scenario.
+  - (d): unchanged: ≤ 1.0 s of CPU per audio hour with the panel off,
+    median of 5 runs, in Node 24 and in headless desktop Chrome.
+  - (e): the two strings of this part, verbatim (the test compares them
+    with copies of this part's quotes); the smoke's "More" check passes at
+    all five viewports with them.
+  - (f) 3: as the review fixes restate it for 2c′ (held notes at 25 and
+    24.989 ms frames; speech with pauses).
+  - (g): re-run on the code commit's build: (1) at all five viewports, (2)
+    at the desktop viewport.
+- **(h1)–(h5)** of the review fixes as written, except (h1)'s not-blind
+  value: `maxStartVoicedMs` 15,000 (600 frames) instead of 30,000 (1,200
+  frames).
+- **(h6) The ~3-minute pause warns exactly when the shipped module does.**
+  The scenario, from the review: the panel is on from the start of
+  listening; 9 s of speech, which fills the cue; a 200 s pause; 90 s of
+  speech, during which the cue sets its start, more than 180 s after it
+  filled; a 30 s pitch-only shift of +8 st; 60 s of speech. 2c's time cap
+  gives up on this start, so the module as committed now (b72bb8a) never
+  warns. The new module must equal the shipped module (`2a1f4022…`): on/off
+  at every update, `held()` after it and `pitchStart()` before it
+  (`Object.is`), **0 mismatches**, and it must warn after the shift.
+  Checked in two places:
+  1. the unit test's pause case (`pauseCalls`, seeds 1–3, 25 ms frames),
+     every update compared;
+  2. `review-parity/bound_adv.mjs --scenario=pauseAfterFill` (read-only,
+     run with `--newmod=` on the committed module; seeds 1–3; 25 and
+     24.989 ms frames): the new module, the shipped module and the
+     harness first warn on the same update, at 306 s with 25 ms frames,
+     and are on for the same number of updates (12), with 0 mismatches
+     on the updates the script compares. Its control `pause100` (a 100 s
+     pause) the same, at 206 s.
+
+  `bound_adv.mjs` compares the new module with the shipped one only
+  outside the cue epoch that its own 180 s time model calls capped (94 of
+  195 updates in pauseAfterFill), so (1) is the every-update check.
+- **Memory and CPU limits: unchanged** ((c), (d), (h3)).
+- `npm run lint`, `npm run test:unit` and `npm run build` pass.
+
+The code commit's message cites PREREG (`dd3cf7bc…`), CHOICE
+(`17b948d9…`), `late-variants-r2.js` (`956061543a…`) and this part's
+commit.
+
+*Checked while writing this part* (scratch only, no code change):
+`bound_adv.mjs --newmod=` a copy of the ready module (`c1dbeba33e…`,
+beside the repo's `heardAsCalibration.js`, `a813cf6a…`) in
+`warning-ks-q5-adopt/decide/ml/`, scenarios pauseAfterFill and pause100,
+seeds 1–3, at 25 and 24.989 ms frames:
+
+| Scenario | Frames | First warning: new = shipped = harness | Updates on (each) | Updates compared, mismatches | Calls over the bound |
+|---|---|---|---|---|---|
+| pauseAfterFill | 25 ms | 306.000 s | 12 | 94 of 195, 0 | 0 |
+| pauseAfterFill | 24.989 ms | 306.015 s | 12 | 94 of 195, 0 | 0 |
+| pause100 | 25 ms | 206.000 s | 12 | 145 of 145, 0 | 0 |
+| pause100 | 24.989 ms | 206.009 s | 12 | 145 of 145, 0 | 0 |
+
+The same for all three seeds. This covers the status's "not run" item
+for these two scenarios at 24.989 ms. The other scenarios at 24.989 ms,
+Chrome CPU and the smoke are left to the code commit.
+
+Inputs of this part: `review-parity/bound_adv.mjs` `98eb60cedcb820a4f06ce1ad359f2926d474e101e579b55d35062dc34389bf85`,
+`decide/ml/pitch-only-warning.js` `c1dbeba33e8a449f45cf8dd32b4b183cf152d50b7a93282c348edc6e9ad87d32`
+(a byte copy of `fix/countcap/pitch-only-warning.countcap.js`),
+`decide/ml/heardAsCalibration.js` `a813cf6a5b542504bb57ba3991d20813c5758d94138fe1af6b6d54b7fd17475c`
+(the same bytes as `src/ml/heardAsCalibration.js` at b72bb8a).
 
 
 ## Reproduce
