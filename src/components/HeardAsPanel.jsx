@@ -97,37 +97,54 @@ export const PITCH_ONLY_MISSES_TEXT =
 
 // The late switch-on (KS-Q5, adopted by user decision 2026-10-13 over its
 // pre-registered test's FAIL, 29 of 30 checks; measurements/heard-as-pitch-
-// only-warning-2026-10-07.md §8.8, §8.9). Replaces "The note about
-// pitch-only changes needs this panel to be on, and finished loading, when
-// you start talking …". §8.8's fresh test pool, phase-averaged hits within
-// 10 s of the pitch-only shift with the panel switched on at ~30 / 60 /
-// 120 s: male base 0.945 / 0.937 / 0.921 ("about 9 in 10"), female base
-// 0.750 / 0.742 / 0.746 ("about 3 in 4"); panel on from the start 0.929 /
-// 0.746 ("about as many"); 69 readers in its failure sets (32 men, 37 women;
-// "about 70 other people" — none of them in §8.6's test split, which the
-// misses line's "about 70 people" describes). "About 20 seconds of readings"
-// = the Q5 window (20 s of shown estimates after switch-on and at least 5
-// quiet ones); "half a minute to a minute" = when the start window closes
-// (§8.6 addendum: median 30-36 s, 95th percentile 42-50 s). The last
-// sentence is the limit that remains (a panel on before the cue filled but
-// with no shown estimate in the start window).
+// only-warning-2026-10-07.md §8.8, §8.9 and its "Decisions 2026-10-13").
+// Replaces "The note about pitch-only changes needs this panel to be on, and
+// finished loading, when you start talking …". §8.8's fresh test pool,
+// phase-averaged hits within 10 s of the pitch-only shift with the panel
+// switched on at ~30 / 60 / 120 s: male base 0.945 / 0.937 / 0.921 ("about 9
+// in 10"), female base 0.750 / 0.742 / 0.746 ("about 3 in 4"); the same test
+// with the panel on from the start 0.929 / 0.746 ("about as many as in the
+// same test with the panel on from the start" — the misses line above gives
+// §8.6's other test, about 85 in 100); 69 readers in its failure sets (32
+// men, 37 women; "about 70 other people" — none of them in §8.6's test
+// split, which the misses line's "about 70 people" describes). "About 20
+// seconds of readings" = the Q5 window (20 s of audio from the first shown
+// estimate after the start window and the switch-on, then until at least 5
+// quiet ones are in); "half a minute to a minute" = when the start window
+// closes (§8.6 addendum: median 30-36 s, 95th percentile 42-50 s). The last
+// sentence is the limit that remains: a panel whose first update came before
+// the cue filled (about 10 s into a session on the recorded streams: "on
+// from your first few seconds of listening") but that showed no estimate in
+// the start window — its model still downloading, or the user on another of
+// the app's tabs (Pitch, History, Resonance lab: off the practice view the
+// panel makes no updates; another browser tab was not tested).
+// (Until the decisions of 2026-10-13: "… within 10 seconds — about as many
+// as with the panel on from the start. If the panel is already on when you
+// start talking but shows no reading … (for example while it is still
+// downloading), the note may not appear …".)
 export const PITCH_ONLY_LATE_TEXT =
-  "You can turn this panel on at any time. If you turn it on after you've started talking, the note about pitch-only changes still compares with how you sounded at the start, but it needs about 20 seconds of readings before it can appear. In a test on about 70 other people with the panel turned on half a minute to two minutes in, it then caught about 9 in 10 pitch-only changes in men's voices and about 3 in 4 in women's voices within 10 seconds — about as many as with the panel on from the start. If the panel is already on when you start talking but shows no reading during roughly your first half-minute to a minute (for example while it is still downloading), the note may not appear until you stop and start listening again.";
+  "You can turn this panel on at any time. If you turn it on after you've started talking, the note about pitch-only changes still compares with how you sounded at the start, but it needs about 20 seconds of readings before it can appear. In a test on about 70 other people with the panel turned on half a minute to two minutes in, it then caught about 9 in 10 pitch-only changes in men's voices and about 3 in 4 in women's voices within 10 seconds — about as many as in the same test with the panel on from the start. If the panel is on from your first few seconds of listening but shows no reading during roughly your first half-minute to a minute (for example while it is still downloading, or while you are on another tab), the note may not appear until you stop and start listening again.";
 
 // The pitch-only warning's false alarms (natural reading, the share of the
-// updates where the panel showed an estimate; §8.6 and §8.9). 192 people =
-// §8.6's test split (96 readers, panel on from the start) + §8.8's test pool
-// (96 other readers). Men: 0.26 % (§8.6, update-weighted; 0.27 % reader-
-// balanced), 0.36 % (§8.8, panel on from the start), 0.34-0.39 % (§8.8,
-// KS-Q5 switched on at ~30 / 60 / 120 s) — "about 3 to 4 in 1,000"; women
-// 0.00 %, 0.01 %, 0.00-0.02 % — "almost never". The man is §8.8's ls3792:
-// 11.84 % with the panel on from the start ("about 1 in 8") up to 16.76 %
-// with KS-Q5 switched on at ~120 s ("about 1 in 6"; the check KS-Q5 failed);
-// his pitch rose 6.3-9.5 st above his reference in three stretches.
-// (Until 2026-10-13: "In tests on 96 people … about 3 in 1,000 … up to about
-// 1 in 15", §8.6's test split.)
+// updates where the panel showed an estimate — eligible updates, the base of
+// every figure in the line; §8.6, §8.9 and its "Decisions 2026-10-13"). 192
+// people = §8.6's test split (96 readers, panel on from the start) + §8.8's
+// test pool (96 other readers). Men: 0.26 % (§8.6, update-weighted; 0.27 %
+// reader-balanced), 0.36 % (§8.8, panel on from the start), 0.34-0.39 %
+// (§8.8, KS-Q5 switched on at ~30 / 60 / 120 s) — "about 3 to 4 in 1,000";
+// women 0.00 %, 0.01 %, 0.00-0.02 % — "almost never". "Some expressive
+// speakers": at least two men among the 192 are far above that — §8.8's
+// ls3792 at 11.84 % with the panel on from the start and up to 16.76 % with
+// KS-Q5 switched on at ~120 s ("up to about 1 in 6"; the check KS-Q5
+// failed), and §8.6's ls3783 at 6.6 %. "For one man whose pitch rose a long
+// way in a few places" is ls3792: 6.3-9.5 st above his reference in three
+// stretches.
+// (Until the decisions of 2026-10-13: "A single expressive speaker can see it
+// much more often: one man … saw it on about 1 in 8 to 1 in 6 updates …";
+// before that, "In tests on 96 people … about 3 in 1,000 … up to about 1 in
+// 15", §8.6's test split.)
 export const PITCH_ONLY_FALSE_ALARM_TEXT =
-  "The note about pitch-only changes can also appear when you haven't deliberately changed your voice, if your pitch varies a lot as you talk. In tests on 192 people reading aloud that happened on about 3 to 4 in 1,000 updates for men's voices and almost never for women's, also when the panel was turned on later. A single expressive speaker can see it much more often: one man whose pitch rose a long way in a few places saw it on about 1 in 8 to 1 in 6 updates where the panel showed an estimate.";
+  "The note about pitch-only changes can also appear when you haven't deliberately changed your voice, if your pitch varies a lot as you talk. In tests on 192 people reading aloud that happened on about 3 to 4 in 1,000 updates for men's voices and almost never for women's, also when the panel was turned on later. Some expressive speakers see it much more often — up to about 1 in 6 updates where the panel showed an estimate, for one man whose pitch rose a long way in a few places.";
 
 // Replaces "In background noise, low voices are recognised as speech less
 // often …" (that described the old pitch-voicing gate). With the speech

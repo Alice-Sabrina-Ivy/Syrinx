@@ -69,7 +69,10 @@
 > voiced-frame cap is adopted, with that check run at 15 s instead of
 > 30 s, and the review's three wording changes to the panel's "More" text
 > are applied. That part, with the requirements for the code change, was
-> committed before the code change.
+> committed before the code change. The code change then met every
+> requirement (results at the end of §8.9): 0 mismatches on every recorded
+> stream as before, the review's 200 s-pause case warns at 306 s as the
+> shipped module does, and the module keeps at most 7,521 pitch frames.
 
 The experimental, opt-in "Likely heard as" panel follows pitch more than
 listeners do. When a voice changes pitch without changing resonance, the panel
@@ -3512,6 +3515,206 @@ Inputs of this part: `review-parity/bound_adv.mjs` `98eb60cedcb820a4f06ce1ad359f
 (a byte copy of `fix/countcap/pitch-only-warning.countcap.js`),
 `decide/ml/heardAsCalibration.js` `a813cf6a5b542504bb57ba3991d20813c5758d94138fe1af6b6d54b7fd17475c`
 (the same bytes as `src/ml/heardAsCalibration.js` at b72bb8a).
+
+**Results of the code commit (2026-10-13, 2c′ and the wording).** Every
+requirement of this part holds; nothing above was changed. The module
+`src/ml/pitch-only-warning.js` has sha256
+`c1dbeba33e8a449f45cf8dd32b4b183cf152d50b7a93282c348edc6e9ad87d32`, the
+same bytes as the ready module in `fix/countcap/` (b72bb8a's module was
+`a5879f5a…`). The ready patch did not apply cleanly at b72bb8a: it was made
+on an earlier tree and also carried the K-seed pins b72bb8a had already
+committed. The patched files in `fix/countcap/` (module, test, bound
+script) differ from b72bb8a only by 2c′, so they were copied over, and the
+two strings and the comments were then changed as this part lists.
+
+- **(a) Panel on from the start: identical to the shipped module.**
+  0 mismatches in on/off, `held()` and `pitchStart()`; the counts are the
+  ones in the first results above.
+
+  | Streams | Panels (on0 + on0L) | Updates | Updates with the warning on (new = shipped) |
+  |---|---|---|---|
+  | Dev pool A | 2,304 | 299,233 | 22,579 |
+  | Dev pool B | 2,304 | 297,218 | 23,798 |
+  | Round-2 fresh pool | 2,304 | 298,172 | 21,818 |
+  | §8.5's app-cadence streams | 11,888 | 701,506 | 49,908 |
+
+  Late panels before their first triggered update: 8,793 + 3,950 + 8,453
+  updates, 0 mismatches.
+- **(b) and (h1) Late panel: identical to the harness's KS-Q5.** 0
+  mismatches on every panel of the three pools (5,760 each, on0 and on0L
+  included); the on/off strings equal the recorded KS-Q5 strings of
+  `rep_devA.json`, `rep_devB.json` and `rep_test.json` (0 mismatches, none
+  missing). Updates, trigger counts and warnings are the ones in the first
+  results above (fresh pool on the trigger path: **1,095 / 1,152 / 1,152**
+  at T30 / T60 / T120). The first triggered update computed from the
+  inputs alone agrees with the harness on every panel. No stream has a
+  cue restart.
+  - 2c′ applied on **0** panels of every recorded stream. The most voiced
+    frames a start window still open held: pool A 666, pool B 603, fresh
+    pool 614, §8.5's streams 666 / 624 (dev / test); the cap is 7,200.
+  - Not blind (mismatching updates / panels, pools A, B, fresh): seed
+    window 7.9 s 4 / 3, 25 / 15, 18 / 12; Q5 window 19.9 s 45 / 32,
+    38 / 24, 62 / 42; Q5 minimum 4 shares 14 / 3, 61 / 5, 61 / 10;
+    **`maxStartVoicedMs` 15,000** (600 voiced frames; Decision 1)
+    4,742 / 40, 4,793 / 40, 7,767 / 80.
+- **(h2) The reviewer's adversarial simulation**
+  (`review-parity/bound_adv.mjs`, unchanged, `--newmod=` the committed
+  module; every scenario, seeds 1–3, at 25 ms frames, at exactly 24.989 ms
+  as in the pre-check above, and at 1,102 samples / 44.1 kHz = 24.9887 ms;
+  "lateRestarts" also with `--expr=1`; 63 runs): 0 calls over the bound in
+  every run, the A40 buffer at most **7,200** (in "long"; the script's own
+  check allows 7,201), the ring at most 321, 0 A40 frames once A40 is
+  final, no ring after its release, and 0 mismatches against the harness
+  and against the shipped module on the updates the script compares.
+
+  | Scenario | Updates (compared with the harness / shipped) | Most A40 frames | First warning, new = shipped = harness (25 / 24.989 / 24.9887 ms) | Updates on (each) |
+  |---|---|---|---|---|
+  | long | 2,741 (2,525 / 2,375) | 7,200 | new = shipped at 1,361.0 s (25 ms); see below | 29–31 |
+  | lateRestarts | 864 (864 / 213) | 1,153–1,203 | new = harness, 318–320 s | 61–64 |
+  | pauseAfterFill | 195 (94 / 94) | 478–484 | **306.000 / 306.015 / 306.011 s** | **12** |
+  | heldAfterFill | 190 (94 / 94) | 5,278–5,289 | none of the three warns | 0 |
+  | drill | 241 (241 / 241) | 4,080–4,092 | none of the three warns | 0 |
+  | pause100 | 145 (145 / 145) | 478–484 | **206.000 / 206.009 / 206.007 s** | **12** |
+
+  In "long" the harness warns on 12–13 more updates than the new module.
+  All of them are in the one cue epoch the script does not compare (216
+  updates; its 180 s time model calls it capped): after a cue restart, 8 s
+  of speech and then 200 s of held notes, every frame voiced. There the new
+  module's buffer reaches the 7,200 cap and it gives up, as 2c did; the
+  harness has no cap. In every other epoch the new module and the harness
+  warn on the same updates (checked per epoch with `code/adv_probe.mjs`, a
+  copy of the script that also counts per epoch).
+- **(h3), (c), (d) Memory and CPU** (`warning_bound.mjs`, simulated 1 h,
+  144,000 posted frames, 61.5 % voiced, A40 final after 50 s; Node
+  24.14.1 and headless Chrome 155 via puppeteer with a temporary profile,
+  closed with `browser.close()`):
+
+  | Panel | Retained frames, max (A40 buffer + ring) | After A40 is final | Heap held after 1 h (10 objects: per object) | CPU, ms per audio hour, Node / Chrome (shipped) | Longest call, Node / Chrome |
+  |---|---|---|---|---|---|
+  | Off throughout | 1,318 (998 + 320) | 320 | **74.0 KB** (24.9 KB) | **23.9 / 28.1** (4.6 / 7.6) | 0.10 / 0.30 ms |
+  | On from the start | 998 (ring ≤ 80, released at the first update) | 0 | **35.0 KB** (13.8 KB) | 20.7 / 19.4 (26.6 / 23.5) | 0.32 / 0.08 ms |
+  | Switched on at 30 min | 1,318 (998 + 320) | 320 | **75.8 KB** (29.0 KB) | 27.9 / 27.0 (16.8 / 12.9) | 0.09 / 0.10 ms |
+
+  `retained()` was checked after every call (162,000–163,800 per
+  scenario): 0 over 7,521. The shipped module held 7,114.7 KB after the
+  hour with the panel off. Limits: ≤ 100 KB and ≤ 1.0 s per audio hour
+  with the panel off. The simulated session never reaches the cap (its
+  start window closes 20 s after the fill). The CPU figures differ from
+  the first results (19.7 / 22.9 ms with the panel off) by a few ms per
+  audio hour.
+- **(e) Text.** `PITCH_ONLY_LATE_TEXT` and `PITCH_ONLY_FALSE_ALARM_TEXT`
+  are this part's two quotes, verbatim (the test compares them with copies
+  of the quotes); `PITCH_ONLY_MISSES_TEXT` and `PITCH_ONLY_TEXT` are
+  unchanged; no `PITCH_ONLY_START_TEXT`. The comments above the two
+  constants give this part's numbers and sources, the corrected Q5 window
+  and the replaced wording. The smoke's "More" check matched only phrases
+  the edits left alone, so it would have passed with the old text too; it
+  now also matches the three edited phrases ("about as many as in the same
+  test with the panel on from the start", "or while you are on another
+  tab", "Some expressive speakers see it much more often — up to about 1
+  in 6 updates"). It passed at all five viewports (both lines inside the
+  panel, no horizontal page scroll, no start line), and the built bundle
+  holds both new strings.
+- **(f), (h4) Tests.** `tests/ml/pitch-only-warning-test.js`: **217 of
+  217** checks (212 at b72bb8a). New or changed: the constants check names
+  `maxStartVoicedMs`; the bound is 7,521; "t_start never comes" runs on
+  held notes at 25 and 24.989 ms frames, panel off and on (buffer ≤ 7,200,
+  nothing kept past t_fill + 180 s, emptied, `pitchStart()` null, no
+  warning) and on speech with pauses, panel off and on (frames kept past
+  t_fill + 180 s, never more than 7,200, emptied at the 7,201st voiced
+  frame, at 304.7 s); the review's pause case (below). Mutation check
+  (`code/mutate_code.mjs`: the test run against other copies of the
+  module):
+
+  | Module under test | Groups that fail (checks) |
+  |---|---|
+  | Shipped module (2a1f4022…) | late (25), bound (1: the section throws, the shipped module has no `retained()`); identity, golden, rule and wiring pass |
+  | No K-seed | late (11) |
+  | Seed window 7.9 s | late (3) |
+  | Q5 window 19.9 s | late (6) |
+  | Q5 minimum 4 | late (3) |
+  | Trigger without the late flag | identity (1), late (2) |
+  | No freeze in `addPitch` | bound (4) |
+  | No cap | bound (6: held notes at 25 / 24.989 ms, panel off / on — up to 15,601 frames —, speech with pauses, panel off / on) |
+  | Shadow kept running when the late flag is false | bound (1) |
+  | **The cap as 2c** (312c36d's time test, t_fill + 180 s) | bound (7: the six "t_start never comes" checks — 7,201 frames at 25 ms, 7,204 at 24.989 ms; with pauses it empties at t_fill + 180 s, not at the 7,201st voiced frame — and **the 200 s pause case**) |
+  | No F0 range check in the seed | late (2) |
+  | No copy of the shadow's pending values | late (2) |
+  | No back-fill of them | late (1) |
+  | No verdict check in the seed | late (1) |
+  | No freshness check in the seed | late (1) |
+  | A 50 ms gap cap | late (1) |
+  | A 0 ms first gap | late (1) |
+  | The window edge counted inside the window | late (1) |
+  | The ring cleared at a cue restart | late (1) |
+  | The 2 s grid's first step by `ceil` (equivalent, not required) | none (217 of 217) |
+
+  `npm run lint`, `npm run test:unit` (40 of 40 scripts) and
+  `npm run build` pass.
+- **(g), (h5) Built app** (`scripts/cue-strip-smoke.mjs` on this commit's
+  build, puppeteer with a temporary profile, its own PIDs only):
+  1. `--pitch-only=man,woman`, panel on from the start: **95 / 95** checks
+     at 448 × 890, 402 × 750, 360 × 690 and 890 × 360, and the same checks
+     at 1280 × 800 (**113 / 113** there with the late runs). The warning
+     never showed before the shift and first showed 6.2–6.3 s after the
+     man's shift and 7.4–7.7 s after the woman's; it stayed on 76 of 76
+     shown samples in the next 20 s.
+  2. Late switch-on at 1280 × 800 (`--pitch-only-late=man,woman
+     --panelOnAt=120`; hcsL_ls2654_PO, male base, shift at 174.0 s;
+     hcsL_ls1474_PO, female base, shift at 180.6 s): the panel was off when
+     listening started and stayed off (no gender worker) until 120 s, when
+     the cue's start marker was already shown; it was turned on at 120.1 s
+     and showed its first estimate at 128.3 s. The warning never showed
+     before the shift and first showed **6.3 s** (man) and **7.6 s**
+     (woman) after it, under the axis with the shipped words and in the
+     live region.
+- **(h6) The ~3-minute pause warns exactly when the shipped module does.**
+  1. Unit test (`pauseCalls`, seeds 1–3, 25 ms frames, every update
+     compared): the new module equals the shipped copy in on/off, `held()`
+     and `pitchStart()` at every one of the case's updates, and it first
+     warns at **306 s** for each seed, after the shift (which starts at
+     299 s). The check also requires the first warning to come after the
+     shift. b72bb8a's module never warns there, and the "cap as 2c" mutant
+     fails this check.
+  2. `bound_adv.mjs --scenario=pauseAfterFill` (seeds 1–3; 25 ms, 24.989
+     ms and 24.9887 ms frames): the new module, the shipped module and the
+     harness first warn on the same update, at 306.000 / 306.015 /
+     306.011 s, and are on for 12 updates each, with 0 mismatches on the 94
+     updates the script compares (of 195). The control `pause100`: 206.000
+     / 206.009 / 206.007 s, 12 updates each, 0 mismatches on all 145.
+
+Changed in this commit: the module (2c′; header: the cap as 2c′, the bound
+7,521, the `?chunk=N` note, the open-decision sentence dropped);
+`HeardAsPanel.jsx` (the two strings and their comments); the test (the 2c′
+items, the pause case, the two string copies); `warning_bound.mjs` (the
+bound 7,521); `cue-strip-smoke.mjs` (the "More" check also matches the
+three edited phrases, as above); `CLAUDE.md` (the cap as 2c′ with the time
+cap marked historical, the bound 7,521, ~20–30 ms of CPU per audio hour
+with the panel off, the "More" wording); this note (the header and these
+results). One addition to (h6) 1: the test also checks that the first
+warning comes after the shift, which (h6) states but the ready test did
+not check.
+
+Inputs and outputs of this step (scratch folder `warning-ks-q5-adopt/code/`):
+
+- `replay_code.mjs` `b743dbbd7ed8a40de865ceb30ae7b3efca2e4ff12195ae557fb903224db9a150`
+  (`fix/replay_fix.mjs` with the 15 s cap variant) and its outputs
+  `out/{A0,A1,B0,B1,F0,F1,Pdev0,Pdev1,Ptest0,Ptest1}.json`
+  (`538ae686…`, `58ae43ee…`, `87b766ac…`, `cdcaf4bb…`, `35281372…`,
+  `d26167e9…`, `b43666b1…`, `f1c24431…`, `6b263c28…`, `619eb6a4…`)
+- `run_adv.mjs` `3dc57a7e846cf6d80b6ccdf394b2340907545c848a350f97a035986b6d24dcc4`
+  (runs `review-parity/bound_adv.mjs` `98eb60ce…`) and its outputs
+  `adv.json` `cd5eb22201c74fb41ce7d98d15821272b15f2f4377201a91b761d77b65b5ed62`,
+  `adv_24989.json` `c1e8c412f98d8073197f04c3cba98a7efa816703c51c214b727894d678032317`
+- `mutate_code.mjs` `9f62d34cfbdc8c5b05908e187e44467b502069001a4b1184edf8640330ed8793`
+  and its output `mut/mutate_result.json` `7643f73bc99e042960067d8acf374b656cf4c73977f6bc7c12245fb5c8aa5c9d`
+- `bound_1h.json` `40380b2d608cdeef50a3184b9c8ffa8ca3d439efc3a447cd224792ae07472e8f`
+  (`warning_bound.mjs --hours=1 --runs=5 --chrome`)
+- `adv_probe.mjs` `848988925809b28c9efe6a99994f58e1bf27bcc203ac3f9f90361bf5f4646cce`
+  (the per-epoch count for "long")
+- smoke logs `smoke/`: `phone.log` `3a0cdd96…`, `p402.log` `c455c30c…`,
+  `p360.log` `e2feb30f…`, `landscape.log` `9e6a53f2…`, `desktop.log`
+  `80477749…`
 
 
 ## Reproduce
