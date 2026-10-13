@@ -5,6 +5,7 @@
 //
 //   npm run build && node scripts/cue-strip-smoke-wavs.mjs --r1=<jobs> &&
 //   node scripts/cue-strip-smoke.mjs --viewport=phone|p402|p360|landscape|desktop [--out=<dir>] [--pitch-only=man,woman]
+//        [--pitch-only-late=man,woman [--panelOnAt=120]]
 //
 // Per viewport, one fresh profile (Chrome relaunched on it per WAV, since the
 // fake-capture file is a launch flag):
@@ -42,7 +43,9 @@
 //                   lower than the woman's; the axis is shown and the man's
 //                   best guess sits left of the woman's (orientation). The
 //                   panel's "More" list opens and carries the pitch-only
-//                   false-alarm line, wrapped inside the panel.
+//                   late-switch-on line and false-alarm line (no "turn it on
+//                   before you start talking" line; measurement note §8.9),
+//                   wrapped inside the panel.
 //   3 held          resonance "sustained" for >= 60 % of the voiced hold after
 //                   its first second; the panel says "sustained", never ranges.
 //   4 noise / 5 silence  no dot on any row after the 5 s hold; the panel never
@@ -56,6 +59,15 @@
 //                   always-mounted live region; on the first screen at
 //                   scrollTop 0 (phone, desktop; elsewhere wherever the axis
 //                   is); kept on >= 80 % of shown estimates in the next 20 s.
+//   (--pitch-only-late=man,woman) pitch-only-late-<who>  a §8.8 hcsL session
+//                   (>= 170 s natural reading, then the pitch moved with the
+//                   resonance kept; scripts/cue-strip-smoke-wavs.mjs
+//                   --pitch-only-late) with the panel switched OFF before
+//                   listening starts and turned on at --panelOnAt s (default
+//                   120), after the cue's start window has closed (its start
+//                   marker is shown): the pitch-only warning (KS-Q5, §8.9) is
+//                   never shown before the shift and appears within 25 s after
+//                   it. The panel is left on for the runs after it.
 // Screenshots: <out>/<viewport>/.
 //
 // Process hygiene (CLAUDE.md hard rule 2, copied from voice-direction-smoke.mjs):
@@ -79,6 +91,9 @@ const WAV = Object.fromEntries(["speech-woman", "speech-man", "held", "noise", "
 const VIEWPORT = arg("viewport", "phone");
 const PITCH_ONLY = arg("pitch-only", "").split(",").filter(Boolean);
 for (const who of PITCH_ONLY) WAV[`pitch-only-${who}`] = path.join(WAVDIR, `pitch-only-${who}.wav`);
+const PITCH_ONLY_LATE = arg("pitch-only-late", "").split(",").filter(Boolean);
+for (const who of PITCH_ONLY_LATE) WAV[`pitch-only-late-${who}`] = path.join(WAVDIR, `pitch-only-late-${who}.wav`);
+const PANEL_ON_AT_S = Number(arg("panelOnAt", "120"));
 const OUT = path.join(arg("out", path.join(repo, "build", "cue-strip-smoke")), VIEWPORT);
 const PORT = Number(arg("port", "4191"));
 const CHROME = ["C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
@@ -211,6 +226,7 @@ const state = (page) => page.evaluate(() => {
       live: (() => { const l = p.querySelector("[data-heard-as-live]"); return l ? { role: l.getAttribute("role"), text: l.textContent.trim() } : null; })(),
       wide: p.querySelector("[data-heard-as-axis]")?.dataset.axisWide === "1" } : null,
     listening: document.body.innerText.includes("Stop Listening"),
+    cueStart: !!document.querySelector('[data-cue="resonance"] [data-cue-start]'),
     stripText: document.querySelector("[data-cue-strip]")?.textContent ?? "",
     clarityNote: document.querySelector("[data-clarity-note]")?.textContent ?? null,
     cues: [...document.querySelectorAll("[data-cue]")].map((e) => e.dataset.cue),
@@ -564,25 +580,29 @@ check("man: listening", await continueAfterReload(page));
   await page.evaluate(() => document.querySelector("[data-heard-as]")?.scrollIntoView({ block: "center" }));
   await sleep(200);
   await shot(page, "05b-heard-as-panel");
-  // "More" list: opens, carries the pitch-only false-alarm disclosure
-  // (measurements/heard-as-pitch-only-warning-2026-10-07.md §8.5) and wraps
-  // inside the panel.
+  // "More" list: opens, carries the pitch-only late-switch-on and
+  // false-alarm disclosures (measurements/heard-as-pitch-only-warning-
+  // 2026-10-07.md §8.9) and wraps inside the panel.
   {
     await page.evaluate(() => [...document.querySelectorAll("[data-heard-as] button")].find((b) => b.textContent.trim() === "More")?.click());
     await sleep(300);
     const m = await page.evaluate(() => {
       const panel = document.querySelector("[data-heard-as]"), list = document.querySelector("[data-heard-as-more]");
       const li = document.querySelector("[data-heard-as-more] [data-heard-as-pitch-only-false-alarms]");
-      if (!panel || !list || !li) return { found: !!list, li: !!li };
-      const p = panel.getBoundingClientRect(), r = li.getBoundingClientRect();
-      return { found: true, li: true, text: li.textContent, items: list.querySelectorAll("li").length,
-        inside: r.left >= p.left - 0.5 && r.right <= p.right + 0.5, noOverflow: li.scrollWidth <= li.clientWidth + 1,
+      const late = document.querySelector("[data-heard-as-more] [data-heard-as-pitch-only-late]");
+      if (!panel || !list || !li || !late) return { found: !!list, li: !!li, late: !!late };
+      const p = panel.getBoundingClientRect();
+      const fits = (e) => { const r = e.getBoundingClientRect(); return r.left >= p.left - 0.5 && r.right <= p.right + 0.5; };
+      return { found: true, li: true, late: true, text: li.textContent, lateText: late.textContent, items: list.querySelectorAll("li").length,
+        inside: fits(li) && fits(late), noOverflow: li.scrollWidth <= li.clientWidth + 1 && late.scrollWidth <= late.clientWidth + 1,
+        startLine: !!list.querySelector("[data-heard-as-pitch-only-start]") || /before you start talking/.test(list.textContent),
         pageScrollW: document.documentElement.scrollWidth, vw: window.innerWidth };
     });
-    check("heard-as 'More': opens with the pitch-only false-alarm line, wrapped inside the panel, no horizontal page scroll",
-      m.found && m.li && /pitch varies a lot/.test(m.text) && /men's voices/.test(m.text) && m.inside && m.noOverflow && m.pageScrollW <= m.vw,
-      JSON.stringify({ ...m, text: m.text?.slice(0, 60) }));
-    await page.evaluate(() => document.querySelector("[data-heard-as-pitch-only-false-alarms]")?.scrollIntoView({ block: "center" }));
+    check("heard-as 'More': opens with the pitch-only late-switch-on and false-alarm lines (no start line), wrapped inside the panel, no horizontal page scroll",
+      m.found && m.li && m.late && /pitch varies a lot/.test(m.text) && /men's voices/.test(m.text) && /turn this panel on at any time/.test(m.lateText)
+      && /about 9 in 10 pitch-only changes in men's voices/.test(m.lateText) && !m.startLine && m.inside && m.noOverflow && m.pageScrollW <= m.vw,
+      JSON.stringify({ ...m, text: m.text?.slice(0, 60), lateText: m.lateText?.slice(0, 60) }));
+    await page.evaluate(() => document.querySelector("[data-heard-as-pitch-only-late]")?.scrollIntoView({ block: "center" }));
     await sleep(200);
     await shot(page, "05b-heard-as-more");
     await page.evaluate(() => [...document.querySelectorAll("[data-heard-as] button")].find((b) => b.textContent.trim() === "Less")?.click());
@@ -653,6 +673,57 @@ for (const who of PITCH_ONLY) {
     await contrastCheck(page, `pitch-only ${who}`);
   }
   check(`no page errors (pitch-only ${who})`, errors.length === 0, errors.slice(0, 3).join(" | "));
+}
+
+// ============================================================ pitch-only, panel switched on late (optional)
+for (const who of PITCH_ONLY_LATE) {
+  const meta = JSON.parse(readFileSync(path.join(WAVDIR, `pitch-only-late-${who}.json`), "utf8"));
+  log(`pitch-only late ${who} (${meta.key}, shift at ${meta.shiftS.toFixed(1)} s, panel on at ${PANEL_ON_AT_S} s)`);
+  // The panel must be OFF when listening starts, so that its first update() comes after t_fill. The setting persists
+  // in the profile (the earlier runs left it on): switch it off in Settings on the page still open from the previous
+  // run, before Chrome is relaunched with this run's audio. (The panel is not rendered before listening starts.)
+  await openSettings(page);
+  if ((await settingsSwitch(page)) === "true") await page.evaluate(() => document.querySelector("[data-settings-heard-as] [role=switch]")?.click());
+  await sleep(300);
+  const offSaved = (await settingsSwitch(page)) === "false";
+  await closeSettings(page);
+  await sleep(700);   // the setting's IndexedDB write
+  await launch(WAV[`pitch-only-late-${who}`]);
+  ({ page, errors } = await open());
+  const listening = await continueAfterReload(page);
+  const t0 = Date.now();
+  check(`pitch-only late ${who}: listening`, listening);
+  await sleep(300);
+  check(`pitch-only late ${who}: the panel is off when listening starts (switched off in Settings before)`,
+    offSaved && (await state(page)).heardAs?.mode === "off" && gw(page) === 0, `${(await state(page)).heardAs?.mode}, ${gw(page)} workers`);
+  let offOk = true, startBefore = false;
+  await sample(page, PANEL_ON_AT_S * 1000 - (Date.now() - t0), (s) => { if (s.heardAs?.mode !== "off" || gw(page) !== 0) offOk = false; startBefore = s.cueStart; });
+  check(`pitch-only late ${who}: the panel stayed off (no gender worker) until ${PANEL_ON_AT_S} s`, offOk);
+  check(`pitch-only late ${who}: the cue's start window had closed before switch-on (start marker shown)`, startBefore);
+  const onAt = (Date.now() - t0) / 1000;
+  await page.evaluate(() => [...document.querySelectorAll("[data-heard-as] button")].find((b) => b.textContent.includes("Turn on"))?.click());
+  await sleep(500);
+  check(`pitch-only late ${who}: turned on at ${onAt.toFixed(1)} s, the gender worker starts`, (await state(page)).heardAs?.mode !== "off" && gw(page) === 1);
+  let before = 0, first = null, firstState = null, shownTicks = 0, firstShown = null;
+  await sample(page, Math.max(0, (meta.shiftS + 25) * 1000 - (Date.now() - t0)), (s) => {
+    const t = (Date.now() - t0) / 1000;
+    if (s.heardAs?.mode === "shown") { shownTicks++; if (firstShown === null) firstShown = t; }
+    const w = s.heardAs?.pitchOnly;
+    if (w && t < meta.shiftS) before++;
+    if (w && t >= meta.shiftS && first === null) { first = t - meta.shiftS; firstState = s; return true; }
+  });
+  log(`  pitch-only late ${who}: switched on at ${onAt.toFixed(1)} s, first shown estimate at ${firstShown?.toFixed(1)} s, shift at ${meta.shiftS.toFixed(1)} s`);
+  check(`pitch-only late ${who}: the warning is never shown before the shift`, before === 0, `${before} samples`);
+  check(`pitch-only late ${who}: the warning appears within 25 s after the shift`, first !== null, first === null ? `panel shown on ${shownTicks} samples` : `${first.toFixed(1)} s after`);
+  const w = firstState?.heardAs?.pitchOnly;
+  check(`pitch-only late ${who}: shown under the axis with the shipped words, mirrored in the live region`,
+    !!w && w.slot === "pitch-only" && w.underAxis && w.text === PITCH_ONLY_TEXT && firstState.heardAs.live?.text === PITCH_ONLY_TEXT, JSON.stringify(w));
+  if (first !== null) {
+    await page.evaluate(() => document.querySelector("[data-pitch-only]")?.scrollIntoView({ block: "center" }));
+    await sleep(200);
+    await shot(page, `05d-pitch-only-late-${who}`);
+  }
+  check(`no page errors (pitch-only late ${who})`, errors.length === 0, errors.slice(0, 3).join(" | "));
 }
 
 // ============================================================ 3 held

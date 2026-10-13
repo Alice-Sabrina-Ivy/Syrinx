@@ -53,7 +53,13 @@
 > the shipped rule with the panel on from the start gives him 18.57 % over
 > the same span), together with a bound on the pitch frames the module
 > keeps while the panel is off. §8.9 lists what changes and the acceptance
-> requirements; it was committed before the code change.
+> requirements; it was committed before the code change. The code change
+> met every requirement (§8.9, results): with the panel on from the start
+> the warning is the shipped rule tick for tick (0 mismatches on 1,596,129
+> recorded updates), on every late panel it is the study harness's KS-Q5
+> (0 mismatches on 975,519), and the module keeps at most 7,522 pitch
+> frames (about 74 KB after an hour with the panel off, against 7.1 MB
+> before). The panel's "More" list now says it can be turned on at any time.
 
 The experimental, opt-in "Likely heard as" panel follows pitch more than
 listeners do. When a voice changes pitch without changing resonance, the panel
@@ -2807,6 +2813,165 @@ the scratchpad):
 
 None of the study's hashed files was edited.
 
+**Results of the code commit (2026-10-13).** Every requirement (a)–(g)
+holds; nothing above was changed. The new module
+`src/ml/pitch-only-warning.js` has sha256
+`1cd8b3ad25a962284cee63de44a9abefde559cf00219c1bd904dc6464f834472`
+(the shipped one was `2a1f4022…`). The replay (a)–(b) drives the repo
+module, the shipped module and the harness's KS-Q5 over the recorded call
+streams, rebuilt as `replay_r2.mjs` and `replay2.mjs` (mode `app`) build
+them (`warning-ks-q5-adopt/impl/replay_adopt.mjs`; hashes below).
+
+- **(a) Panel on from the start: identical to the shipped module.**
+  0 mismatches in on/off, `held()` and `pitchStart()`.
+
+  | Streams | Panels (on0 + on0L) | Updates | Updates with the warning on (new = shipped) |
+  |---|---|---|---|
+  | Dev pool A | 2,304 | 299,233 | 22,579 |
+  | Dev pool B | 2,304 | 297,218 | 23,798 |
+  | Round-2 fresh pool | 2,304 | 298,172 | 21,818 |
+  | §8.5's app-cadence streams | 11,888 (2,972 sessions × 4 phases) | 701,506 | 49,908 |
+
+  Late panels before their first triggered update (3,456 T30 / T60 / T120
+  panels per pool): 8,793 + 3,950 + 8,453 updates, 0 mismatches.
+- **(b) Late panel: identical to the harness's KS-Q5.** 0 mismatches on
+  every panel of the three pools (5,760 each, on0 and on0L included), and
+  the on/off strings equal the recorded KS-Q5 strings of `rep_devA.json`,
+  `rep_devB.json` and `rep_test.json` (0 mismatches, none missing).
+
+  | Pool | T30 updates (panels on the trigger path) | T60 | T120 | Warning on at T30 / T60 / T120 |
+  |---|---|---|---|---|
+  | Dev pool A | 132,190 (1,090 of 1,152) | 114,652 (1,152) | 79,612 (1,152) | 11,301 / 11,254 / 11,207 |
+  | Dev pool B | 131,225 (1,134) | 113,797 (1,144) | 78,895 (1,152) | 11,864 / 11,829 / 11,620 |
+  | Round-2 fresh pool | 131,638 (**1,095**) | 114,173 (**1,152**) | 79,337 (**1,152**) | 10,904 / 10,960 / 10,896 |
+
+  The fresh pool's trigger counts are §8.8's. The first triggered update
+  computed from the inputs alone agrees with the harness on every panel.
+  The 180 s cap applied on **0** panels of every recorded stream (§8.5's
+  16 panels that never reach t_start — 4 short sessions — end 68–69 s
+  after t_fill). No stream
+  has a resonance-cue restart. Not a blind check: with one constant
+  changed the same comparison finds mismatches (updates / panels; pools A,
+  B, fresh): seed window 7.9 s 4 / 3, 25 / 15, 18 / 12; Q5 window 19.9 s
+  45 / 32, 38 / 24, 62 / 42; Q5 minimum 4 shares 14 / 3, 61 / 5, 61 / 10;
+  cap 30 s 59,099 / 600, 7,394 / 80, 36,233 / 360.
+- **(c) Memory.** `scripts/heard-as/pitch-only/warning_bound.mjs` on a
+  simulated 1 h session (144,000 posted frames, 61.5 % voiced, t_fill
+  10 s, t_start 30 s, so A40 is final after 50 s), Node 24.14.1:
+
+  | Panel | New: retained frames, max (A40 buffer + ring) | New: after A40 is final | New: heap held after 1 h | Shipped: buffer, max / at 1 h | Shipped: heap held after 1 h |
+  |---|---|---|---|---|---|
+  | Off throughout | 1,318 (998 + 320) | 320 (ring only) | **73.7 KB** | 88,310 / 88,310 | 7,114.8 KB |
+  | On from the start | 998 (A40 buffer; the ring held at most 80 and was released at the first update, 2 s) | 0 | **33.7 KB** | 1,052 / 0 | 31.4 KB |
+  | Switched on at 30 min | 1,318 (998 + 320) | 320 | **75.5 KB** | 44,089 / 0 | 36.4 KB |
+
+  `retained()` was checked after every call (162,000–163,800 per
+  scenario): 0 calls over the bound. The heap figure is the median of 3
+  runs (one object alive, then dropped; a warm-up run first). It includes
+  what V8 keeps for the object's closures and frees with the last instance;
+  with 10 objects alive the per-object figure is 25.5 / 13.7 / 29.0 KB
+  (shipped 7,105.8 / 21.3 / 15.2 KB). The shipped module's buffer cannot
+  be observed; it is counted from the stream by its rule.
+- **(d) CPU** (the whole call loop, median of 5 runs after a warm-up run,
+  ms per audio hour; the panel-off loop is only `addPitch` +
+  `noteResonance`):
+
+  | Panel | Node 24.14.1: new / shipped | Chrome 155 headless: new / shipped | Longest single call, new (Node / Chrome) |
+  |---|---|---|---|
+  | Off throughout | **19.7** / 4.9 | **22.9** / 8.0 | 0.12 / 0.10 ms (`addPitch`) |
+  | On from the start | 17.0 / 27.0 | 17.0 / 23.6 | 0.07 / 0.08 ms |
+  | Switched on at 30 min | 28.3 / 13.9 | 27.1 / 12.5 | 0.10 / 0.09 ms |
+
+  The bar was 1.0 s per audio hour. The shipped module's longest call was
+  0.41 / 0.28 ms (on from the start) and 1.17 / 0.93 ms (switched on at
+  30 min: the first update sorts the whole half-hour buffer).
+- **(e) Text.** `PITCH_ONLY_LATE_TEXT` and `PITCH_ONLY_FALSE_ALARM_TEXT`
+  are the strings above, verbatim (the test compares them with copies of
+  the quotes above); `PITCH_ONLY_START_TEXT` and its item are gone;
+  `PITCH_ONLY_MISSES_TEXT` and `PITCH_ONLY_TEXT` are unchanged. The smoke's
+  "More" check passed at all five viewports (both lines inside the panel,
+  no horizontal page scroll, no start line).
+- **(f) Tests.** `tests/ml/pitch-only-warning-test.js`: 197 checks pass
+  (141 before). The late-panel fixture `tests/ml/fixtures/pitch-only-late.json`
+  is 632 KB: 6 sessions, 16 panels (hcsL_ls2654_PO on0p0 / T30p0 / T60p0 /
+  T120p0, male base; hcsL_ls1474_PO T30p0 — it got a start share — / T60p0
+  / T120p0, female base; natL_ls3792 on0p0 and T120 in four phases;
+  hcsL_ls2473_PO T120p450; hcsL_ls3171_PO T60p1050, where a 7.9 s seed
+  window changes the output; natL_ls1474 T30p0 / T120p0, a woman with no
+  warning), and 11 synthetic cases. §8.6's repro: first warning at 62 s
+  with the panel on from 0, 10 or 19 s (shipped too) and from 22 or 30 s
+  (shipped: never). The generator refused nothing: the harness gives the
+  same values on the pruned and the full streams, and the new module
+  reproduces them on both. Mutation check (the test run against another
+  copy of the module):
+
+  | Module under test | Groups that fail (checks) |
+  |---|---|
+  | Shipped module (2a1f4022…) | late (18), bound (1); identity, golden, rule and wiring pass |
+  | No K-seed | late (2: hcsL_ls3171_PO T60p1050, natL_ls3792 T120p1500) |
+  | Seed window 7.9 s | late (2: the constants, hcsL_ls3171_PO T60p1050) |
+  | Q5 window 19.9 s | late (6: the constants, natL_ls3792 T120 × 4, synthetic q5_edge) |
+  | Q5 minimum 4 | late (3: the constants, hcsL_ls2473_PO T120p450, synthetic q5_four) |
+  | Trigger without the late flag | identity (1: hidden through the start window), late (2: synthetic early_hidden, the remaining limit) |
+  | No freeze in `addPitch` | bound (4: the three 1 h scenarios, the 170 s case's buffer) |
+  | No cap | bound (2: t_start never comes, panel off and on) |
+  | Shadow kept running when the late flag is false | bound (1: 1 h, panel on from the start) |
+
+  `npm run lint`, `npm run test:unit` (40 of 40 scripts) and `npm run build`
+  pass.
+- **(g) Built app** (`scripts/cue-strip-smoke.mjs`, puppeteer with a
+  temporary profile, its own PIDs only).
+  1. `--pitch-only=man,woman`, panel on from the start: 95 / 95 checks at
+     448 × 890, 402 × 750, 360 × 690 and 890 × 360, and the same checks
+     at 1280 × 800 (113 / 113 there with the late runs). The warning never
+     showed before the shift and first showed 6.2–6.3 s after the man's
+     shift and 7.4–7.7 s after the woman's; it stayed on 76–77 of 76–77
+     shown samples in the next 20 s.
+  2. Late switch-on at 1280 × 800 (`--pitch-only-late=man,woman
+     --panelOnAt=120`; the smoke option is new): hcsL_ls2654_PO (male
+     base, shift at 174.0 s) and hcsL_ls1474_PO (female base, shift at
+     180.6 s), the first by key order that KS-Q5 hit at T120 in all four
+     phases. The panel was off when listening started and stayed off (no
+     gender worker) until 120 s, when the cue's start marker was already
+     shown; it was turned on at 120.0 / 120.1 s and showed its first
+     estimate at 128.2 / 128.3 s. The warning never showed before the
+     shift and first showed **6.3 s** (man) and **7.6 s** (woman) after
+     it, under the axis with the shipped words and in the live region.
+  The first 1280 × 800 attempt is not counted: its late runs tried to
+  switch the panel off before listening, where the panel is not rendered,
+  so both ran with the panel on from the start (4 setup checks failed; the
+  other 109 passed). The run now switches the panel off in Settings on the
+  previous page before relaunching Chrome; the rerun passed 113 / 113.
+  Logs (`warning-ks-q5-adopt/impl/smoke/`): `phone.log` `f5f048a4…`,
+  `p402.log` `2388f68a…`, `p360.log` `152986a9…`, `landscape.log`
+  `a43c472c…`, `desktop.log` `fc8906f1…`, the attempt not counted
+  `desktop_try1_late_setup_broken.log` `2e761fbb…`.
+
+Not bounded by the cap, and unchanged: the pending lnF0 values of shown
+updates before t_fill (the panel's and the shadow's) grow by at most one
+number per 2 s of audio until the cue first fills (about 10 s into a
+session on the recorded streams).
+
+Deviations: the heap measurement adds a warm-up run and reports the
+10-object figure beside the one the requirement names; the test checks the
+two strings against copies of this section's quotes instead of reading
+this note, because CI skips pushes that only change Markdown.
+
+Inputs and outputs of this step (scratch folder `warning-ks-q5-adopt/impl/`):
+`replay_adopt.mjs` `8efb9653f81511a5f8f3f4ed8ec4f7184095090db78923994b21352135ed64e7`,
+`agg.mjs` `792b4e885e42e19ea343f7c9844ccc6fe0739e198fee6749dcf16b451c8bf1e8`,
+`out/parity_summary.json` `df699d840670f220006d82a71c077281b5732dc15934120715925b86299e7556`,
+`mutate.mjs` `8bd9589d88e20564bd5e67609b8349d1e5241b17408218735451770be126daec`,
+`mut/mutate_result.json` `c9860403797fbc1f363e7fc2a92a438f33def30d443fc0b00b41a4bcd923b3c8`,
+`out/bound_1h.json` `a44410ee62127795bafdab39397644dc3d308d27f8c93c5818f238771718372e`,
+`select_fixture.mjs` `c0f4f9145203f94947dd1bb0137f2be41c8db7f072c5a267c3d989ea790c0cfd`
+(descriptive: hits, start shares and the panels each one-constant change
+affects, used to pick the fixture panels and the smoke sessions) and its
+output `out/select_fixture.txt` `a3de55e894403f089f065e719bca56abd61820b68b6ad733c490b6a588e2a51f`.
+Committed: the fixture `c1a0bd7594558b0c7a22610cb92ba0cf4cd1a5ea0fb147410f7acbe0126582ed`,
+the shipped copy `2a1f4022…`, `make_fixture_late.mjs`, `late_synthetic.mjs`,
+`warning_bound.mjs` and `warning_bound_sim.mjs` in `scripts/heard-as/pitch-only/`.
+
 
 ## Reproduce
 
@@ -2824,6 +2989,18 @@ python <repo>/scripts/heard-as/pitch-only/details.py > details.txt
 python <repo>/scripts/heard-as/pitch-only/posthoc.py                                    # the K = 1 / 2 / 3 flash check
 python <repo>/scripts/heard-as/pitch-only/make_fixture.py out/*.jsonl                   # golden replay fixture
 node tests/ml/pitch-only-warning-test.js
+```
+
+§8.9 (KS-Q5 and the bounded buffer; the study files are in the round-2
+late-panel scratch folder, `<r2>` = `warning-late-panel-r2`):
+
+```
+node tests/ml/pitch-only-warning-test.js                                   # (f); PITCH_ONLY_WARNING_MODULE=<file> for the mutation check
+node --expose-gc scripts/heard-as/pitch-only/warning_bound.mjs --hours=1 --runs=5 --chrome   # (c), (d)
+node scripts/heard-as/pitch-only/make_fixture_late.mjs --harness=<r2>/harness/late-variants-r2.js \
+     --rep=<r2>/fresh/out/rep_test.json <r2>/fresh/out/test_0.jsonl <r2>/fresh/out/test_1.jsonl
+npm run build && node scripts/cue-strip-smoke-wavs.mjs --pitch-only-late=<r2>/fresh/jobs_test_hcsL.json
+node scripts/cue-strip-smoke.mjs --viewport=desktop --pitch-only=man,woman --pitch-only-late=man,woman --panelOnAt=120   # (g)
 ```
 
 

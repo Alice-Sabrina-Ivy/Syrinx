@@ -14,9 +14,19 @@
 //                     and the resonance kept (man raised, woman lowered); the
 //                     shift time goes to the matching .json — the pitch-only
 //                     warning check of scripts/cue-strip-smoke.mjs --pitch-only
+//   pitch-only-late-man.wav / pitch-only-late-woman.wav  (with
+//                     --pitch-only-late=<jobs_test_hcsL.json> of the §8.8
+//                     late-panel study's fresh pool) one hcsL session each:
+//                     >= 170 s of a reader's natural speech, then the pitch
+//                     moved with the resonance kept; default the first by key
+//                     order that KS-Q5 hit at T120 in all four phases
+//                     (hcsL_ls2654_PO, hcsL_ls1474_PO; measurement note §8.9
+//                     (g)) — the late-switch-on check of cue-strip-smoke.mjs
+//                     --pitch-only-late
 //
 //   node scripts/cue-strip-smoke-wavs.mjs --r1=<jobs.json [{audio: float32 16 kHz file, speaker, sex}]>
 //        [--woman=<speaker>] [--man=<speaker>] [--pitch-only=<jobs_hcs.json>]
+//        [--pitch-only-late=<jobs_test_hcsL.json> [--late-man=<key>] [--late-woman=<key>]]
 
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
@@ -58,13 +68,12 @@ if (r1) {
   writeWav("speech-man.wav", m.y); console.log(`  (LibriSpeech test-clean reader ${m.spk})`);
 }
 
-const pitchOnlyJobs = arg("pitch-only", "");
-if (pitchOnlyJobs) {
-  // session.mjs layout: each file followed by a 0.25 s gap (or the phase's gapS)
-  const jobs = JSON.parse(readFileSync(pitchOnlyJobs, "utf8"));
-  for (const [name, key] of [["man", arg("pitch-only-man", "hcs_908_PO")], ["woman", arg("pitch-only-woman", "hcs_4970_PO")]]) {
+// session.mjs / session_late.mjs layout: each file followed by a 0.25 s gap (or the phase's gapS)
+function writePitchOnly(jobsPath, prefix, picks) {
+  const jobs = JSON.parse(readFileSync(jobsPath, "utf8"));
+  for (const [name, key] of picks) {
     const job = jobs.find((j) => j.key === key);
-    if (!job) { console.error(`no job ${key} in ${pitchOnlyJobs}`); continue; }
+    if (!job) { console.error(`no job ${key} in ${jobsPath}`); continue; }
     const parts = []; let n = 0, shiftS = null;
     for (const ph of job.phases) {
       if (ph.phase === "shift") shiftS = n / 16000;
@@ -79,11 +88,15 @@ if (pitchOnlyJobs) {
     const x = new Float32Array(n); let o = 0;
     for (const p of parts) { x.set(p, o); o += p.length; }
     let pk = 0; for (const v of x) pk = Math.max(pk, Math.abs(v));
-    writeWav(`pitch-only-${name}.wav`, Float32Array.from(upsample(x)).map((v) => (0.5 * v) / pk));
-    writeFileSync(path.join(OUT, `pitch-only-${name}.json`), JSON.stringify({ key, shiftS, durS: n / 16000 }));
+    writeWav(`${prefix}-${name}.wav`, Float32Array.from(upsample(x)).map((v) => (0.5 * v) / pk));
+    writeFileSync(path.join(OUT, `${prefix}-${name}.json`), JSON.stringify({ key, shiftS, durS: n / 16000 }));
     console.log(`  (${key}: shift at ${shiftS.toFixed(1)} s of ${(n / 16000).toFixed(1)} s)`);
   }
 }
+const pitchOnlyJobs = arg("pitch-only", "");
+if (pitchOnlyJobs) writePitchOnly(pitchOnlyJobs, "pitch-only", [["man", arg("pitch-only-man", "hcs_908_PO")], ["woman", arg("pitch-only-woman", "hcs_4970_PO")]]);
+const pitchOnlyLateJobs = arg("pitch-only-late", "");
+if (pitchOnlyLateJobs) writePitchOnly(pitchOnlyLateJobs, "pitch-only-late", [["man", arg("late-man", "hcsL_ls2654_PO")], ["woman", arg("late-woman", "hcsL_ls1474_PO")]]);
 
 const SR = 48000;
 {

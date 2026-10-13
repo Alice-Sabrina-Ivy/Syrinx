@@ -139,13 +139,15 @@ export function useAudioPipeline() {
   const heardAsRef = useRef(null);
   if (heardAsRef.current === null) heardAsRef.current = createHeardAsAggregator();
   // The panel's pitch-only-change warning (src/ml/pitch-only-warning.js):
-  // fed every posted pitch frame and every resonance state message whether
-  // or not the panel is on (its pitch reference is the session's start);
-  // the panel calls update() on its 2 s cadence with the share it draws and
-  // this hook's audio clock (rule A40+KP8-3+DS10 since 2026-10-12, §8.6).
-  // Its start SHARE comes only from shown panel updates in the cue's start
-  // window, so a panel switched on (or finishing its model load) after that
-  // window cannot warn until stop / start (§8.6 addendum).
+  // fed every posted pitch frame and every resonance state message from the
+  // start of listening whether or not the panel is on (its pitch reference
+  // is the session's start, and its late-switch-on fallback builds its
+  // quiet-pitch history from these frames in the background); the panel
+  // calls update() on its 2 s cadence with the share it draws and this
+  // hook's audio clock (rule A40+KP8-3+DS10 since 2026-10-12, §8.6; KS-Q5
+  // for a panel switched on after the cue's start window since 2026-10-13,
+  // §8.9). The module keeps a bounded number of frames (at most ~7,500,
+  // ~320 once its reference is final), however long the panel stays off.
   // measurements/heard-as-pitch-only-warning-2026-10-07.md
   const pitchOnlyRef = useRef(null);
   if (pitchOnlyRef.current === null) pitchOnlyRef.current = createPitchOnlyWarning();
@@ -1020,7 +1022,8 @@ export function useAudioPipeline() {
     // and gates on them with the same utterance gate.
     if (resonanceWorkerRef.current) resonanceWorkerRef.current.postMessage(hint);
     if (typeof msg.contextTime === "number") {
-      // The pitch-only warning's pitch start: posted voiced values only.
+      // The pitch-only warning's pitch start and its late-switch-on seed:
+      // every posted frame, voiced values only (unvoiced as null).
       pitchOnlyRef.current.addPitch({ audioMs: msg.contextTime * 1000, f0: msg.voiced && msg.pitch > 0 ? msg.pitch : null });
       audioClockRef.current = Math.max(audioClockRef.current ?? -Infinity, msg.contextTime * 1000);
     }

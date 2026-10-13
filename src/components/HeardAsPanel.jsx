@@ -29,7 +29,10 @@
 // conflict note ("Pitch and resonance point different ways …") was removed
 // by user decision 2026-10-07 (E); the pitch-only warning is the panel's
 // only built-in note. The warning compares with this session's start — same words in
-// every direction. Screen readers hear it through a live region that stays
+// every direction. It works when the panel is switched on later too (KS-Q5,
+// user decision 2026-10-13, measurement note §8.9): the hook feeds the
+// module from the start of listening, and the update() calls here are the
+// same either way. Screen readers hear it through a live region that stays
 // mounted while the panel is on ([data-heard-as-live]; a region mounted
 // together with its text is often not announced), kept through brief hides.
 // measurements/heard-as-pitch-only-warning-2026-10-07.md,
@@ -92,26 +95,39 @@ export const WHISPER_TEXT =
 export const PITCH_ONLY_MISSES_TEXT =
   "The note about pitch-only changes doesn't catch every change: in tests on about 70 people it caught about 85 in 100 pitch-only changes within 10 seconds and about 90 in 100 within 15 seconds, and fewer for some voices — so no note doesn't mean the guess is right.";
 
-// The warning's start share comes only from estimates this panel showed in
-// the session's start window (the resonance cue's fill -> start; closes
-// ~30-36 s in at the median, up to ~50 s at p95), so a panel turned on, or
-// finishing its first download, after that window cannot show the note
-// until listening restarts. Every tested session had the panel on from the
-// start, so the figures above do not cover this case (§8.6 addendum).
-export const PITCH_ONLY_START_TEXT =
-  "The note about pitch-only changes needs this panel to be on, and finished loading, when you start talking: if you turn it on after you've started, the note may not appear until you stop and start listening again.";
+// The late switch-on (KS-Q5, adopted by user decision 2026-10-13 over its
+// pre-registered test's FAIL, 29 of 30 checks; measurements/heard-as-pitch-
+// only-warning-2026-10-07.md §8.8, §8.9). Replaces "The note about
+// pitch-only changes needs this panel to be on, and finished loading, when
+// you start talking …". §8.8's fresh test pool, phase-averaged hits within
+// 10 s of the pitch-only shift with the panel switched on at ~30 / 60 /
+// 120 s: male base 0.945 / 0.937 / 0.921 ("about 9 in 10"), female base
+// 0.750 / 0.742 / 0.746 ("about 3 in 4"); panel on from the start 0.929 /
+// 0.746 ("about as many"); 69 readers in its failure sets (32 men, 37 women;
+// "about 70 other people" — none of them in §8.6's test split, which the
+// misses line's "about 70 people" describes). "About 20 seconds of readings"
+// = the Q5 window (20 s of shown estimates after switch-on and at least 5
+// quiet ones); "half a minute to a minute" = when the start window closes
+// (§8.6 addendum: median 30-36 s, 95th percentile 42-50 s). The last
+// sentence is the limit that remains (a panel on before the cue filled but
+// with no shown estimate in the start window).
+export const PITCH_ONLY_LATE_TEXT =
+  "You can turn this panel on at any time. If you turn it on after you've started talking, the note about pitch-only changes still compares with how you sounded at the start, but it needs about 20 seconds of readings before it can appear. In a test on about 70 other people with the panel turned on half a minute to two minutes in, it then caught about 9 in 10 pitch-only changes in men's voices and about 3 in 4 in women's voices within 10 seconds — about as many as with the panel on from the start. If the panel is already on when you start talking but shows no reading during roughly your first half-minute to a minute (for example while it is still downloading), the note may not appear until you stop and start listening again.";
 
-// The pitch-only warning's false alarms (adopted rule, at the app's 0.2 s
-// resonance cadence; §8.6 and its addendum): natural reading, share of the
-// updates where the panel showed an estimate, the held-out TEST split only
-// (48 men, 48 women; the rule was selected on dev): men 0.26 %
-// update-weighted (0.27 % reader-balanced), women 0.00 % — hence "about 3
-// in 1,000" and "almost never"; worst reader a man at 6.6 %, no woman above
-// 0 — "up to about 1 in 15". (Context, dev + test pooled: men 79 of 28,366
-// = 0.28 %, women 14 of 29,907 = 0.05 %, a dev woman at 3.4 %. The old rule
-// S0: men 1.50 %, worst man 85 %.)
+// The pitch-only warning's false alarms (natural reading, the share of the
+// updates where the panel showed an estimate; §8.6 and §8.9). 192 people =
+// §8.6's test split (96 readers, panel on from the start) + §8.8's test pool
+// (96 other readers). Men: 0.26 % (§8.6, update-weighted; 0.27 % reader-
+// balanced), 0.36 % (§8.8, panel on from the start), 0.34-0.39 % (§8.8,
+// KS-Q5 switched on at ~30 / 60 / 120 s) — "about 3 to 4 in 1,000"; women
+// 0.00 %, 0.01 %, 0.00-0.02 % — "almost never". The man is §8.8's ls3792:
+// 11.84 % with the panel on from the start ("about 1 in 8") up to 16.76 %
+// with KS-Q5 switched on at ~120 s ("about 1 in 6"; the check KS-Q5 failed);
+// his pitch rose 6.3-9.5 st above his reference in three stretches.
+// (Until 2026-10-13: "In tests on 96 people … about 3 in 1,000 … up to about
+// 1 in 15", §8.6's test split.)
 export const PITCH_ONLY_FALSE_ALARM_TEXT =
-  "The note about pitch-only changes can also appear when you haven't deliberately changed your voice, if your pitch varies a lot as you talk. In tests on 96 people reading aloud that happened on about 3 in 1,000 updates for men's voices and almost never for women's, and more often for a few voices — up to about 1 in 15 updates where the panel showed an estimate.";
+  "The note about pitch-only changes can also appear when you haven't deliberately changed your voice, if your pitch varies a lot as you talk. In tests on 192 people reading aloud that happened on about 3 to 4 in 1,000 updates for men's voices and almost never for women's, also when the panel was turned on later. A single expressive speaker can see it much more often: one man whose pitch rose a long way in a few places saw it on about 1 in 8 to 1 in 6 updates where the panel showed an estimate.";
 
 // Replaces "In background noise, low voices are recognised as speech less
 // often …" (that described the old pitch-voicing gate). With the speech
@@ -346,7 +362,7 @@ export function HeardAsPanel({
           <li data-heard-as-one-talker="">{ONE_TALKER_TEXT}</li>
           <li data-heard-as-whisper="">{WHISPER_TEXT}</li>
           <li data-heard-as-pitch-only-misses="">{PITCH_ONLY_MISSES_TEXT}</li>
-          <li data-heard-as-pitch-only-start="">{PITCH_ONLY_START_TEXT}</li>
+          <li data-heard-as-pitch-only-late="">{PITCH_ONLY_LATE_TEXT}</li>
           <li data-heard-as-pitch-only-false-alarms="">{PITCH_ONLY_FALSE_ALARM_TEXT}</li>
           <li>Typical voices are shown further from the ends than listeners put them: clearly feminine and clearly masculine voices look less clear-cut here than they are.</li>
           <li data-heard-as-cant-tell="">{CANT_TELL_TEXT}</li>
