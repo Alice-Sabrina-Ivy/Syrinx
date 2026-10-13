@@ -1725,3 +1725,134 @@ run (C0 + cold G1 + 20 × G2 + 5 × warm G1) + 2.5 s, plus 60 s idle per block (
     is reported per repeat.
 32. **The returned 16 kHz timing row** comes from the earlier runs. A5 does not re-time 16 kHz,
     and it was not re-timed.
+
+### Review of the addition (2026-10-13, Fix step)
+
+Two reviews of the branch at f4cdae5. Both found the addition reproducible: the pre-registration
+order (the addition section's sha256 matches at e347b5f and f4cdae5, and no 32 / 44.1 / 48 kHz data
+predates it), parity recomputed with the reviewer's own scripts (DIO / Harvest 2.7e-12 st, StoneMask
+7.7e-15 st, CheapTrick 1.4e-8 dB, D4C 2.4e-12, renders 245–284 dB), the timing method, the A6 rule
+as applied, the phone matrix and the gate code. Every correction is in the report text or in the
+phone kit; **none changes A6's inclusion, the phone rates or the gate.** The Measure-step
+subsections above stay as committed; where they are wrong or misleading, the next subsection
+replaces them.
+
+| Finding | Severity | What was done |
+|---|---|---|
+| A5's absolute times come from a slow, partly self-loaded session, but its margins sat next to the earlier runs' margins as if measured the same way | medium | Holds. Load-normalised margins and a light-load re-time below; the headline and the expectation for the user reworded; lesson recorded (deviation 36) |
+| "No governor pause" is not true: the governor suspended the A5 driver twice | low | Holds. Two 8 s suspensions; no reported number was affected. `analyze.mjs --governor` now reads the governor's log and excludes runs that overlap a suspension of the driver, the load logger, the server or a pinned browser; re-analysis in deviations 33 and 34 |
+| PSOLA at 32 kHz is timed on the phone but has no identity case | low | Holds. PSOLA F-S at 32 kHz (M02) added: 54 outputs, 54 of 54 bit-identical in Chrome and Firefox; the phone kit checks all 54 (deviation 35) |
+| PSOLA 48 kHz "fails on the slider change" names the knife-edge median | low | Holds. The binding condition is the worst-clip p90 slider change; the exclusion cannot change the outcome (below) |
+| "1.97–2.06× on every gate number" is slightly understated | low | Holds. 1.97–2.09× (below) |
+| Phone kit: a failed adb read when settings are saved leaves the restore silently incomplete | low | Holds. Fixed in the scratch kit (outside this repository): `set` refuses to change anything when a value cannot be read; the START scripts stop when `set` fails; `restore` treats an empty saved value as a failure and keeps the file |
+| Phone kit: one CDP error ends the 8–12 h session, with no resume | low | Holds. Fixed in the kit: a failed navigate or result read is a run error (3 in a row still stop) and that run is re-run once; a closed DevTools socket is reconnected to the same tab (at most 5 times); every stop prints the last finished block and a ready-to-paste `START-preview.sh --fromBlock=N` command, and `summary-preview.mjs` combines the session files (deviation 37) |
+| Phone kit: the DND restore can leave a manual Do Not Disturb on after a Bedtime schedule | low | Holds. `set` warns when DND is already on; `restore` prints the DND state it set and asks to check it (and says a schedule that started during the session was switched off) |
+| Phone kit: the site check depends on the local branch name | low | Holds. Falls back to `origin/voice-preview-spike`; `--checkSite` re-run after this step |
+| Phone kit: a PC restart or a closed window leaves the phone in the harness settings without a prompt | low | Holds. The START banners print the manual restore command and advise pausing Windows Update for the day |
+
+No finding was judged wrong.
+
+### Corrected reading of A5 and A6 (replaces the Measure step's headline and wording)
+
+**A5's absolute times are load-dependent by roughly 30–50 %.** The machine was 50–53 % busy (median
+per group; up to 73 % per repeat), and my own parity jobs ran beside repeats 0 and 1 (04:37–05:12
+UTC), the two busiest. The in-run 24 kHz anchor shows it: speech-dense cold first render 0.55 s,
+against 0.43 s in the earlier speech run and 0.40 s in a reviewer's re-time at 22–23 % load.
+**Ratios within the run are not affected:** every configuration shared the load, and the reviewer's
+re-time reproduces them (48 / 24 kHz: 2.05–2.06 on the first-render median, 1.99–2.03 on the slider
+change). Within A5, 48 kHz takes **1.97–2.06× the 24 kHz time on the medians and 2.03–2.09× on the
+worst-clip p90s** (so 1.97–2.09× over all eight gate numbers, not 1.97–2.06×). 32 kHz takes
+1.79–1.87× on the first-render medians (1.89–1.91× on its worst-clip p90s) and 1.99–2.01× on the
+slider-change medians (1.90–2.06× on its worst-clip p90s).
+
+"Passes up to" (all four §P6 conditions, WORLD SIMD F-S, 5 s, desktop Chrome) on the same footing:
+
+| Rate | Clip set | A5 as measured | A5 without repeats 0–1 | Normalised to the earlier runs' load | Re-time at 22–23 % load (reviewer, measured) |
+|---|---|---|---|---|---|
+| 16 000 | pre-registered / speech-dense | — | — | ×6.51 / ×6.51 (earlier runs) | — |
+| 24 000 | pre-registered | ×5.87 | ×6.08 | ×6.05 (earlier runs) | — |
+| 24 000 | speech-dense | ×4.29 | ×4.74 | ×4.77 (earlier runs) | ×6.15–6.32 |
+| 32 000 | pre-registered | ×3.09 | ×3.32 | ×3.20 | — |
+| 32 000 | speech-dense | ×2.24 | ×2.30 | ×2.49 | — |
+| 44 100 | pre-registered | ×2.96 | ×3.05 | ×3.04 | — |
+| 44 100 | speech-dense | ×2.09 | ×2.33 | ×2.32 | — |
+| 48 000 | pre-registered | ×2.88 | ×3.13 | ×2.90 | — |
+| 48 000 | speech-dense | ×2.11 | ×2.24 | ×2.35 | ×3.14–3.15 |
+
+- **Normalised** = A5 cell / A5 24 kHz anchor × the earlier runs' 24 kHz value, per clip set and per
+  statistic (`timing/hi-normalize.mjs`). It puts the new rates on the footing of the 16 and 24 kHz
+  rows (×6.51 and ×4.77 on the speech-dense clips), which came from lighter runs.
+- **Re-time:** a reviewer's 40 + 40 runs (48 and 24 kHz interleaved, speech-dense clips, same page,
+  driver and pinned Chrome), once at normal priority and once with the spawned browser held at idle
+  priority: 0.83 (worst-clip p90 0.95–0.96) s first render and 0.16 (0.24) s per slider change at
+  48 kHz, both times. Recomputed here with `analyze.mjs --governor` (no exclusions); the files are
+  kept outside this repository with the other raw results.
+- 32 kHz loses its small edge over 48 kHz on the slider change at every load: both use 2048-point
+  CheapTrick and 4096-point D4C FFTs.
+
+**Corrected headline.** 48 kHz is predicted to pass the phone gate at ×2.0 with a modest margin, not
+"almost no margin": on its binding cell (speech-dense clips, worst-clip p90 first render) it would
+still pass on a phone about **×2.3 slower than this desktop under the earlier runs' conditions**
+(×2.1 as measured in the loaded A5 session, about ×3.1 at light load). On the same footing 32 kHz
+passes up to ×2.5, 24 kHz up to ×4.8 and 16 kHz up to ×6.5. The cost gap between 48 and 24 kHz is
+about 2×, not the 2.3× that A5's ×2.1 next to the earlier ×4.8 suggested. So: if the phone is more
+than about ×2.3 slower than this desktop, 48 kHz fails, 32 kHz most likely fails with it, and
+24 kHz is then the highest passing rate. The A7 phone-time estimate (482 min at ×2.0) is inflated
+the same way, on the safe side; the kit's printed estimate (477 min) uses the same A5 compute times,
+so the session will likely run shorter than printed.
+
+**Governor pauses (corrects "No governor pause … no run is excluded").** The governor suspended the
+A5 driver (`run-desktop.mjs --plans`) twice, for 8 s each: 04:37:08–04:37:16 and 05:06:15–05:06:23
+UTC. The load logger kept running, so the 30-s gap rule did not see them. The runs in progress (32 kHz
+M02: 3 s pre-registered, 5 s speech-dense) had finished C0, and nothing timed after C0 needs the
+driver or its in-process server, so no reported number was affected. The new governor-log rule
+excludes 4 runs (those two and the runs that started just as each pause ended): deviation 33.
+
+**PSOLA 48 kHz (A6 verdict, corrected wording).** The condition that fails robustly is the
+**worst-clip p90 slider change**: 2.0 × 0.67 / 0.65 s = 1.34 / 1.30 s against 1.0 s (pre-registered /
+speech-dense), still 1.13–1.18 s without repeats 0–1 and 1.12–1.16 s load-normalised. The median
+(2.0 × 0.50 s = 1.01 s) sits at the limit and passes without repeats 0–1 (0.98–0.99 s), so it does
+not decide. Margin ×1.5 as measured, ×1.7–1.8 load-normalised. **The exclusion cannot change the
+outcome:** PSOLA counts only if WORLD fails at every phone rate, including 16 kHz (×6.5), and a phone
+that slow would fail PSOLA 48 kHz as well.
+
+**Lesson.** Do not run my own heavy jobs during a timing run whose absolute numbers feed a threshold
+rule; when it cannot be avoided, report the margins against an in-run anchor.
+
+### Deviations, Fix step of the addition (2026-10-13)
+
+33. **Governor-log exclusion, re-analysis of A5** (`analyze.mjs --governor`, the governor's log copied
+    to `VP_CACHE/timing/hi/review/`; reported only). 4 of 880 runs excluded: 32 kHz 3 s pre-registered
+    M02 and F01 (repeat 0), 32 kHz 5 s speech-dense M02 and F01 (repeat 1). Only two groups change:
+    32 kHz 3 s pre-registered (cold G1 median 0.324 → 0.322 s) and 32 kHz 5 s speech-dense (cold G1
+    median 1.024 → 1.020 s, G2 median 0.221 → 0.218 s, G2 worst-clip p90 0.349 → 0.345 s; margin
+    ×2.24 unchanged). No A6 number moves by more than 0.01 s; the A6 verdict is the same; the A7
+    estimate becomes 481 instead of 482 min. The A6 verdict file and the phone kit keep the Measure
+    step's analysis (the rule as applied).
+34. **The same rule on the earlier runs** (reported only; the earlier results are not edited). The main
+    run (`chrome-matrix-S`) loses 10 more runs (18 instead of 8: browser processes suspended for up
+    to 6 min while the load logger was running), in 5 of 27 groups: WORLD non-SIMD F-S 22.05 kHz 5 s
+    (G2 worst-clip p90 0.181 → 0.156 s, "passes up to" ×5.51 → ×6.09); 10 ms frames 16 kHz 5 s (G2
+    worst-clip p90 0.164 → 0.150 s, ×6.08 → ×6.66); F-L 22.05 kHz 5 s and 3 s at 16 and 22.05 kHz
+    (at most 0.005 s). **No gate cell (WORLD SIMD
+    F-S 5 s at 16 / 22.05 / 24 kHz) changes.** The speech, repeat and Firefox runs and the A5 Firefox
+    run lose no run. A process that exits while suspended (a renderer of a closed browser context)
+    has no resume line; its suspension is taken to end with the governor's next resume wave.
+35. **A ninth identity case**, PSOLA F-S at 32 kHz on M02 (`matrix.js`), so 54 outputs instead of
+    A4's 48. 54 of 54 bit-identical to Node in headless Chrome for Testing 154.0.8037.57 and in
+    headless Firefox 156.0.1; the 48 earlier outputs keep their hashes. The phone kit's expected
+    hashes were rebuilt from this branch (54 rows, all equal to the desktop Chrome hashes).
+36. **Load-normalised margins** (`timing/hi-normalize.mjs`) and a reviewer's light-load re-time are
+    reported beside A5's numbers. A6 still uses A5 as measured; the rule and its verdict are unchanged.
+37. **The phone session can now be split** (kit change, outside this repository): if it stops before
+    the end, `START-preview.sh --fromBlock=N` runs the rest (the stopped block in full, the identity
+    check skipped once it has passed), and the gate pools the session files, a later file's block
+    replacing the earlier file's runs of that block. A run that fails on a connection error is re-run
+    once, like §P5's re-run of a hidden run. Deviation 25 (one long session) still holds as the plan.
+    Dry runs on the rebuilt kit (mock adb, pinned headless Chrome for Testing, the real
+    `phone-settings.sh` against the mock): the four earlier ones (full, Ctrl-C, thermal give-up,
+    budget) pass again, and three new ones pass — a settings read that returns nothing stops the
+    session before the preview with nothing changed; a dropped DevTools socket gives one run error, a
+    reconnect and a re-run, and the session completes; a session stopped by a thermal give-up in
+    block 5 prints the resume command, which runs as printed from block 5, and the two files combine
+    into one summary.
