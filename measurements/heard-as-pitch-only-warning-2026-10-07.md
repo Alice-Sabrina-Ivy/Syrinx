@@ -1457,9 +1457,14 @@ not by the study; nothing in the rule was changed for it (Hard rule 3).
   switch-on downloads the model) or hidden through the whole start window,
   the start share stays empty and the DS10 check fails on every later
   update: the warning cannot appear until stop / start listening or a
-  resonance-cue restart. A40's pitch reference and KP8's threshold do not
-  have this problem (pitch frames arrive whether or not the panel is on;
-  an empty KP8 history just leaves the threshold at 4 st). Under S0 a panel
+  resonance-cue restart. A40's pitch reference does not have this problem
+  (posted pitch frames arrive whether or not the panel is on). KP8's quiet
+  history does not block the warning, but it is built from shown panel
+  updates too, so for a late panel it starts at switch-on (4 st until 5
+  quiet values exist, then 3 × RMS of a short history; *corrected
+  2026-10-12 after the §8.7 review — this sentence said the KP8 history
+  only leaves the threshold at 4 st; §8.7 shows the short late history
+  costs hits*). Under S0 a panel
   switched on late still warned. The module, the hook comment and the
   CLAUDE.md row said the start reference was the session's start; they now
   state this limit.
@@ -1520,7 +1525,8 @@ window) with its own pre-registration, and adopt it only if it passes.
 Public data only (LibriSpeech, Multilingual LibriSpeech — CC BY 4.0); no
 private recordings. Every number below is per sex. **Verdict: FAIL, 29 of
 30 checks. `src/ml/pitch-only-warning.js` is unchanged (A40+KP8-3+DS10,
-module sha256 `94554a8e…`), and the panel's "More" line about turning the
+module sha256 `2a1f4022…` (36202c2; code-identical to the
+port-parity-checked `94554a8e…`, comments only)), and the panel's "More" line about turning the
 panel on before you start talking stays.**
 
 **Mechanism.** DS10 takes its start share only from **shown** panel
@@ -1530,8 +1536,14 @@ that is off, loading or hidden throughout that window (it closes at a
 median ~30 s for women and ~34–36 s for men, p95 42–50 s, latest 100 s;
 §8.6 addendum) leaves the start share empty, and the DS gate then fails on
 every later update until stop / start or a cue restart. A40's pitch
-reference and KP8's threshold are fed by every pitch frame and resonance
-post whatever the panel does, so only the DS gate needs a fallback. The
+reference is fed by every posted pitch frame whatever the panel does, so
+it is the same for a late panel. KP8's quiet history is built from shown
+panel updates, so for a late panel it starts at switch-on: 4 st until 5
+quiet values exist, then 3 × RMS of a short history. Only the DS gate
+blocks the warning outright, so the fallbacks below target it; the
+Descriptive section shows the late KP8 history costs hits too
+(*corrected 2026-10-12 after review: this paragraph said KP8's threshold
+was fed by every pitch frame*). The
 panel's on/off setting persists, so this hits mainly the session in which
 it is first turned on, or sessions where the model is still loading.
 
@@ -1692,7 +1704,11 @@ choice):
 
 - Sources never used by a Syrinx study: LibriSpeech train-other-500 shards
   0018–0025 and train-clean-360 shards 0012–0019, the first MLS train
-  parquet of fr / es / it / nl / pt / pl, and OpenSLR 83.
+  parquet of fr / es / it / nl / pt / pl, and the OpenSLR 83 archives
+  northern_english_male / southern_english_female / southern_english_male
+  (round 2 used other OpenSLR 83 material, and its downloaded line index
+  lists every speaker, so the over-inclusive scan excluded all 71;
+  *corrected 2026-10-12: this line said OpenSLR 83 was never used*).
 - 410 candidates; 219 excluded by the over-inclusive id scan. That
   includes **all 71 OpenSLR 83 speakers**, because round 2's downloaded
   corpus index lists every one of them, so the OpenSLR 83 group was empty.
@@ -1706,8 +1722,9 @@ choice):
 - Wording deviation: the PREREG says the pool "is built … after the
   choice". The raw archive downloads ran at 10:38–10:47, before the
   choice. Every derived file (inventory, exclusion scan, drift, pool,
-  jobs, audio) dates from 14:20–15:40, after CHOICE.md, and no selection
-  step read the downloads.
+  jobs, audio) dates from 14:20–15:40, after CHOICE.md: nothing read the
+  downloads before CHOICE.md (the first derived file, inventory.json, is
+  14:20:19; download.log ends 10:47:27).
 
 **Test run** (once, 15:44–18:30, the dev command; checked by an
 independent evaluator).
@@ -1773,6 +1790,14 @@ Every other check passes:
   its gender worker start at switch-on (120–121.5 s; model ready by
   ~129.5 s), and the shift comes only ~40–60 s after the model is ready. No DS-gate fallback of
   this family could have passed that check on this pool.
+- *Post hoc, descriptive (added 2026-10-12 after review; nothing re-tuned
+  or re-scored against the bar):* replaying the shipped module (sha256
+  `2a1f4022…`) without the DS gate and without KP8 on the four sessions
+  below recovers all 8 lost male-base phase-hits at T120 (warning 3.3–8.6 s
+  after the shift); without the DS gate alone, none of them (the same
+  misses as F2; hcsL_mlssp8882_PO warns at 12.4–13.8 s). The T120 loss
+  comes from KP8's late-started quiet history, not from the fallback or
+  the gender worker. S0, which has no KP8, keeps its hits at T120 (below).
 - Male-base sessions the on0 panel hits and F4-Q5 at T120 misses:
   - hcsL_ls4687_PO (j0), hcsL_ls2946_PO (j2) and hcsL_ls4039_PO (j2, j3)
     do not warn after the shift.
@@ -1823,9 +1848,12 @@ panel to be on, and finished loading, when you start talking: if you turn
 it on after you've started, the note may not appear until you stop and
 start listening again."). Any next attempt needs a new pre-registration
 and fresh speakers; nothing here was tuned on the test pool. The
-binding limit on this pool is the T120 case: panel-side state (KP8
-history, the gender worker's first estimates) starts at switch-on, while
-the bar compares against a panel that had been on for two minutes.
+binding limit on this pool is the T120 case: KP8's quiet history starts
+at switch-on (post-hoc replay above), while the bar compares against a
+panel that had been on for two minutes. A next pre-registration needs a
+KP8 fallback as well as a DS fallback (for example seeding the KP8
+history from the posted pitch frames), or a hit reference a late panel
+can reach.
 
 Tooling (scratch, not committed): the harness (`session_late.mjs`,
 `replay_late.mjs`, `late-variants.js`, `indep_late.py`) and
