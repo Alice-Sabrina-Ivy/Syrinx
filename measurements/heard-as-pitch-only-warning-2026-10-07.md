@@ -50,16 +50,17 @@
 >
 > **Update 2026-10-13 (§8.9): KS-Q5 adopted by user decision,** overriding
 > §8.8's recorded FAIL (the one failed check: that man's 16.76 % at ~120 s;
-> the shipped rule with the panel on from the start gives him 18.57 % over
-> the same span), together with a bound on the pitch frames the module
-> keeps while the panel is off. §8.9 lists what changes and the acceptance
-> requirements; it was committed before the code change. The code change
-> met every requirement (§8.9, results): with the panel on from the start
-> the warning is the shipped rule tick for tick (0 mismatches on 1,596,129
-> recorded updates), on every late panel it is the study harness's KS-Q5
-> (0 mismatches on 975,519), and the module keeps at most 7,522 pitch
-> frames (about 74 KB after an hour with the panel off, against 7.1 MB
-> before). The panel's "More" list now says it can be turned on at any time.
+> post hoc, not pre-registered: the shipped rule with the panel on from the
+> start gives him 18.57 % over the same span), together with a bound on the
+> pitch frames the module keeps while the panel is off. §8.9 lists what
+> changes and the acceptance requirements; it was committed before the code
+> change. The code change met every requirement (§8.9, results): with the
+> panel on from the start the warning is the shipped rule tick for tick (0
+> mismatches on 1,596,129 recorded updates), on every late panel it is the
+> study harness's KS-Q5 (0 mismatches on 975,519), and the module keeps at
+> most 7,522 pitch frames (about 74 KB after an hour with the panel off,
+> against 7.1 MB before). The panel's "More" list now says it can be turned
+> on at any time.
 
 The experimental, opt-in "Likely heard as" panel follows pitch more than
 listeners do. When a voice changes pitch without changing resonance, the panel
@@ -2971,6 +2972,214 @@ output `out/select_fixture.txt` `a3de55e894403f089f065e719bca56abd61820b68b6ad73
 Committed: the fixture `c1a0bd7594558b0c7a22610cb92ba0cf4cd1a5ea0fb147410f7acbe0126582ed`,
 the shipped copy `2a1f4022…`, `make_fixture_late.mjs`, `late_synthetic.mjs`,
 `warning_bound.mjs` and `warning_bound_sim.mjs` in `scripts/heard-as/pitch-only/`.
+
+**Review fixes (2026-10-13), committed before the code change.** Two
+read-only reviews of 312c36d found one medium issue in the cap, one
+medium issue in the labels, and several low ones. Nothing above is
+edited. This part adds one change to "What changes" (2c′, which replaces
+2c's time test), the requirements that change must meet, and the review
+notes. Hard rule 3 applies as before: this part is committed and pushed
+first, and the code commit changes only what it lists.
+
+*The issue.* 2c gives up on the start when no frame has passed t_start by
+t_fill + 180 s of audio time. The cue sets its start only after 12 s of
+admitted speech after it fills, so a pause pushes t_start back by the
+length of the pause. A user who says a few words (so the cue fills) and
+then stops for about 3 minutes loses the warning until stop / start — also
+with the panel on from the start, where the module is meant to be the
+shipped rule tick for tick. The reviewer's simulation (panel on from the
+start; 9 s of speech, a 200 s pause, 90 s of speech, then an 8 st
+pitch-only shift; seeds 1–3): the shipped module and the harness's KS-Q5
+first warn at 306 s and are on for 12 updates; 312c36d never warns. With a
+100 s pause all three first warn at 206 s. The cap saved no memory there:
+the buffer keeps voiced frames only, and silence adds none (its A40 buffer
+peaked at 63–68 frames).
+
+*2c′, replacing 2c's time test: the cap counts voiced frames, not time.*
+While S0's P0 is not decided and t_fill is known, a voiced posted frame
+that would make the buffer hold more than **7,200** frames ends the start
+exactly as 2c did: P0 null, no warning and `pitchStart()` null until a cue
+restart or `reset()` (2d unchanged). 7,200 = `maxStartVoicedMs`
+(180,000 ms, the configuration key that replaces `maxStartWaitMs`) ÷ the
+25 ms frame spacing. Unvoiced frames and silence never count. On a session
+where every frame is voiced (held notes, the case 2c was written for) it
+gives up within one frame of where 2c did (the 7,201st voiced frame comes
+at least 180 s after the first); after pauses it waits as long as they
+last.
+
+*What this means for (c) and (f) 3.* (c)'s bound gets tighter and holds at
+44.1 kHz too. The A40 buffer holds at most 7,200 frames: before P0 by the
+cap, after it at most the voiced frames up to t_fill + 40 s (≤ 1,602 at
+25 ms chunks). The ring holds the posted frames of the last 8 s: ≤ 321 at
+25 ms chunks, also at 44.1 kHz, where a chunk is 1,102 samples (24.989 ms).
+So **≤ 7,521 frames** at any time (requirement (c): ≤ 7,522). (c)'s words
+"the voiced frames of [t_fill, t_fill + 180 s]" no longer say which frames
+they are: after a pause they can span more than 180 s of audio, which is
+the point of the change. (f) 3's "a session whose t_start never comes (the
+buffer never holds frames past t_fill + 180 s …)" holds as written on a
+session where every frame is voiced; on a session with pauses the buffer
+now keeps up to 7,200 voiced frames past that time, and the test checks
+that case too. The `?chunk=N` diagnostic URL flag (5–50 ms chunks) changes
+the frame spacing: the ring then holds 8 s of frames (1,601 at
+`?chunk=5`), and the cap comes after proportionally less voiced audio (36 s
+at `?chunk=5`). It is a measurement-only flag.
+
+*What else changes.*
+
+- `src/ml/pitch-only-warning.js`: 2c′ (`maxStartVoicedMs`, a 25 ms
+  `FRAME_MS` constant). Header comments: the cap and the bound as above;
+  "(post hoc, not pre-registered)" on the 18.57 % figure; the limits
+  below.
+- `tests/ml/pitch-only-warning-test.js`:
+  - The constants check names `maxStartVoicedMs`. The bound figure is
+    7,521.
+  - Section 15's "t_start never comes" runs on held notes (every frame
+    voiced) at 25 ms and at 24.989 ms frame spacing: (f) 3 as written, and
+    the buffer ≤ 7,200. It also runs on speech with pauses: the buffer
+    ≤ 7,200, emptied when the 7,201st voiced frame arrives, `pitchStart()`
+    null, no warning.
+  - New: the reviewer's pause case (panel on from the start; 9 s of
+    speech, a 200 s pause, 90 s of speech, an 8 st pitch-only shift)
+    equals the shipped copy, and it warns.
+- The late fixture (`make_fixture_late.mjs`) gets public panels of §8.8's
+  fresh pool on which three K-seed rules change the output (no current
+  fixture panel does):
+  - hcsL_mlspo3492_PO T30p1500 and T120p1500: the seed's F0 range check;
+  - hcsL_ls2853_PO T30p1500 and hcsL_ls2694_PO T30p0: copying the shadow's
+    pending values at the first triggered update;
+  - hcsL_ls2853_PO T60p1500: the shadow's back-fill of its pending values.
+
+  The fixture stays ≤ 1 MB (about 0.9 MB).
+- `late_synthetic.mjs` gets a `frames` option (posted-frame segments:
+  voiced at a given pitch, unvoiced, or no frame posted) and seven cases.
+  Each is built so that one seed rule changes the output, and as before
+  the harness gives the expected values:
+  - `seed_sustained`: held notes at +3.5 st while the panel is off are not
+    seeded (verdict "sustained");
+  - `seed_spoken`: the same notes spoken are seeded;
+  - `seed_fresh`: a voiced burst whose newest frame is over 5 s old is not
+    shown;
+  - `seed_gap`: after a 100 ms stall a frame's spacing counts 100 ms;
+  - `seed_first`: the session's first frame counts 25 ms;
+  - `seed_edge`: a frame exactly 8 s before a pseudo update is outside its
+    window;
+  - `seed_restart`: the ring is kept across a cue restart.
+- `scripts/heard-as/pitch-only/warning_bound.mjs`: the bound 7,521 and its
+  comment.
+- `CLAUDE.md`:
+  - The cap is described as 2c′. It read "ends a start window that never
+    closes", but it also ended start windows that close late.
+  - The Q5 window reads "collected for 20 s from the first shown estimate
+    after the start window and the switch-on, then until 5 are in". It
+    read "of the first 20 s of shown updates after switch-on".
+  - The limits below, and the bound 7,521.
+- This note: the results of the requirements below.
+
+*Requirements for this change.* All must hold. (a)–(g) above are unchanged
+and still apply to the new module.
+
+- **(h1) Parity.** (a) and (b) are re-run in full with the new module:
+  - 0 mismatches on every stream and panel named there;
+  - the same update and trigger counts;
+  - the cap (2c′) applies on 0 panels of every recorded stream (reported:
+    the most voiced frames a start window still open held);
+  - not blind: the same comparison with `maxStartVoicedMs` 30,000 (1,200
+    frames) finds mismatches, and so do (b)'s other three one-constant
+    changes.
+- **(h2) Adversarial simulation.** The reviewer's
+  `warning-ks-q5-adopt/review-parity/bound_adv.mjs` (read-only), run with
+  the new module:
+  - pause after fill, seeds 1–3: the new module, the shipped module and
+    the harness first warn at the same time (306 s);
+  - every scenario of the script (long, lateRestarts, pauseAfterFill,
+    heldAfterFill, drill, pause100; seeds 1–3; also at 24.989 ms frames):
+    0 calls over the bound (A40 buffer ≤ 7,200, ring ≤ 321) and 0 A40
+    frames once A40 is final.
+- **(h3) Memory and CPU.** (c) and (d) are re-measured
+  (`warning_bound.mjs`, Node 24 and headless Chrome):
+  - `retained()` ≤ 7,521 after every call, and ≤ 321 once A40 is final;
+  - heap ≤ 100 KB in every scenario;
+  - ≤ 1.0 s of CPU per audio hour with the panel off.
+- **(h4) Tests.**
+  - Every check passes.
+  - Run against the shipped module, the identity and golden groups pass
+    and the late and bound groups fail.
+  - Each of (f) 4's eight mutants still fails at least one check.
+  - So does each of these: the cap as 2c (312c36d's time test; it must
+    fail the pause case); no F0 range check in the seed; no copy of the
+    shadow's pending values; no back-fill of them; no verdict check; no
+    freshness check; a 50 ms gap cap; a 0 ms first gap; the window edge
+    (t − 8 s) counted inside the window; the ring cleared at a cue restart.
+  - Reported: which checks fail for each.
+  - The 2 s grid's first-step rule (`ceil` instead of `floor + 1`) is an
+    equivalent mutant: the extra pseudo update it adds can only read one
+    frame. It is reported, not required.
+- **(h5) The built app.** The cue-strip smoke's desktop run
+  (`--pitch-only=man,woman` and (g) 2's late run) passes again.
+- `npm run lint`, `npm run test:unit` and `npm run build` pass.
+
+*Review notes.*
+
+- **Applied.**
+  - The cap (medium): 2c′ above.
+  - Its frame figure at 44.1 kHz (low): the bound above.
+  - The post-hoc label (medium): added to this note's header update and to
+    the module's header. The 4fed00a commit message also gives the 18.57 %
+    figure without the label and cannot be changed without rewriting
+    pushed history. That figure is post hoc there too.
+  - The unpinned K-seed rules (low): the fixture panels and synthetic
+    cases above.
+  - The Q5 window's description (low): corrected in CLAUDE.md. In this
+    section's text-numbers paragraph above, "(20 s of shown estimates after
+    switch-on and at least 5 quiet ones)" should read "20 s of audio from
+    the first shown estimate after the start window and the switch-on,
+    then until at least 5 quiet ones are in". The panel's "about 20 seconds
+    of readings" stands.
+  - Edge paths (low): added to the limits below.
+- **Why the recorded FAIL is overridden, in one sentence.** This is the
+  note's summary of the trade, not the user's words; the user adopted
+  KS-Q5 as §8.6 adopted A40+KP8-3+DS10 and gave no further reason. With the
+  panel switched on late the shipped rule caught almost no pitch-only
+  changes (men 0.103 / 0 / 0, women 0.004 / 0 / 0 at ~30 / 60 / 120 s),
+  and KS-Q5 brings that up to the panel-on-from-the-start level (men
+  0.945 / 0.937 / 0.921 vs 0.929, women 0.750 / 0.742 / 0.746 vs 0.746), at
+  the cost of the one failed check: a reader whom the shipped rule warns at
+  least as often over the same span (18.57 % vs 16.76 %; post hoc, not
+  pre-registered).
+- **Not applied: they need a user decision.** (e) fixes the two strings
+  verbatim, and this step may not change a requirement. Each change would
+  change §8.9's quote, the test's copy and the constant together, with a
+  dated entry.
+  1. Late line: "— about as many as with the panel on from the start" →
+     "— about as many as in the same test with the panel on from the
+     start". The misses line just above gives about 85 in 100 from §8.6's
+     other test, so 3 in 4 for women's voices reads as fewer.
+  2. Late line, last sentence → "If the panel is on from your first few
+     seconds of listening but shows no reading during roughly your first
+     half-minute to a minute (for example while it is still downloading,
+     or while you are on another tab), the note may not appear until you
+     stop and start listening again."
+  3. False-alarm line, last sentence → "Some expressive speakers see it
+     much more often — up to about 1 in 6 updates for one man whose pitch
+     rose a long way in a few places." Among the 192 readers at least two
+     men are far above 3–4 in 1,000: ls3792 at 11.8–16.8 % and §8.6's worst
+     test man at 6.6 %.
+- **Noted, no change.** Run against the shipped module, the bound group
+  fails only because the shipped module has no `retained()` (the section
+  throws). The group's real checks are the mutants: no freeze, no cap, the
+  shadow kept running, and now the time cap.
+
+*Limits that remain, added.* Neither was studied, and the panel's text does
+not mention them.
+
+- The panel is part of the practice view, so on another tab it makes no
+  updates. A panel on at start whose user is on the Pitch or History tab
+  through the start window cannot warn that session. The reverse (starting
+  on another tab and coming back after the cue filled) takes the late path,
+  which works.
+- A panel on before the cue filled, then switched off; a resonance
+  overload restarts the cue; the panel is switched on after the new fill.
+  The late flag stays false, so it cannot warn until stop / start.
 
 
 ## Reproduce
