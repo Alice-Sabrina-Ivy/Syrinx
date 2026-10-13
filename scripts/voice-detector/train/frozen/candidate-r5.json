@@ -1,0 +1,793 @@
+{
+ "name": "custom-vd-r5",
+ "hop_ms": 12.5,
+ "first_avail_ms": 12.375,
+ "frame_ms": 82.0,
+ "lookahead_ms": 0,
+ "threshold": 0.05,
+ "hangover_ms": 200,
+ "agg": "mean",
+ "p_before_first": 0.0,
+ "v4": {
+  "license": "MIT",
+  "license_file": "build/vad-train/model-r5/LICENSE",
+  "attribution_file": "build/vad-train/model-r5/ATTRIBUTION.md",
+  "runtime": "onnxruntime-web-wasm",
+  "model_bytes": 2231552,
+  "wasm_ms_per_25ms": 2.020066743970313,
+  "wasm_measured_on": "node: 2.020 ms per 25 ms (wall 2.026), 1 run(s) per 25 ms, node v24.14.1, onnxruntime-web 1.30.0 (ort.node.min.mjs, wasm EP, 1 thread), 11th Gen Intel(R) Core(TM) i9-11900K @ 3.50GHz; chrome: 1.869 ms per 25 ms (wall 1.883), 1 run(s) per 25 ms, Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.0.0 Safari/537.36; onnxruntime-web 1.30.0 (ort.wasm.min.mjs, wasm EP, 1 thread), 11th Gen Intel(R) Core(TM) i9-11900K @ 3.50GHz",
+  "wasm_load_note": "shared machine under other load: total CPU 40-47 % during these runs (Node 2.02 / Chrome 1.87 ms); three more Node runs 1.96-2.00 ms at 39-47 %; first runs at 67-79 % load 2.65 (Node) / 2.46 (Chrome) ms; round 4's frozen model in the same session 0.93-0.95 ms (0.56 ms in round 4's quieter session)"
+ },
+ "deployment_rule": {
+  "rule": "plain",
+  "text": "one model, GRU state carried from the stream start, never reset",
+  "T_s": null,
+  "code": "scripts/voice-detector/train/stagger.py (combine), infer.py --onnx [--stagger=T --combine=mean|old]"
+ },
+ "model": {
+  "onnx": "build/vad-train/model-r5/custom-vd-r5.onnx",
+  "onnx_sha256": "191a973fdff34a10029ffbf7715dd2a2b0e07de6c5a73347f0a2f3589c5f9205",
+  "checkpoint": "build/vad-train/train/runs/r11-harm/ckpt_ema_010000.pt",
+  "checkpoint_sha256": "b1e305d36000b15f6a65df31a106ef1caa2e024ae6fd752691b2e1750c0c84b6",
+  "state_sha256": "cd19a9fb1a37dee883f0e947f69d0945bce3c357b729e1f31efac3fd8a92aff4",
+  "params": 97013,
+  "run": "r11-harm",
+  "step": 10000,
+  "weights": "EMA (decay 0.999)",
+  "cfg": {
+   "n_mels": 64,
+   "convs": [
+    [
+     24,
+     3
+    ],
+    [
+     48,
+     3
+    ],
+    [
+     48,
+     1
+    ]
+   ],
+   "gru": 96,
+   "gru_layers": 1,
+   "fc": 64,
+   "fmin": 50.0,
+   "fmax": 7800.0,
+   "win": 512,
+   "f1m": {
+    "tau": 1.0,
+    "rho_db_s": 0.05,
+    "eps": 0.001,
+    "v0": 1.0,
+    "w0": 1.0,
+    "fl_taus": [
+     1.0,
+     6.0
+    ],
+    "fl0": 1.0
+   },
+   "f5": {
+    "win": 1024,
+    "qlo": 40,
+    "qhi": 213,
+    "cpp_thr": 0.8114,
+    "dq0": 0.05492,
+    "de0": 0.078276,
+    "taus_mv": [
+     0.25,
+     1.0
+    ],
+    "taus_on": [
+     3.0,
+     30.0
+    ],
+    "eps_dq": 0.0001,
+    "eps_de": 0.001,
+    "eps_on": 0.001,
+    "n_dct": 12,
+    "ebins": [
+     4,
+     64
+    ],
+    "p_floor": 1e-10
+   }
+  }
+ },
+ "selection_deployable": {
+  "O": 31.150044810219253,
+  "agg": "mean",
+  "thr": 0.05,
+  "hang": 200,
+  "fresh": {
+   "clean speech": 0.024660132785330382,
+   "clean vowels": 0.015399799802602566,
+   "clean singing": 0.0,
+   "clean clinical": 0.43270831021857314,
+   "clean exercises": 0.14741384835601512,
+   "clean children": 0.418921277709897,
+   "mix vmix20 +10": 0.08102443062723477,
+   "mix vmix20 +0": 0.22172949002217296,
+   "mix vmix0 +10": 0.07979430800602891,
+   "mix vmix0 +0": 0.22887752617482346,
+   "tune_v2": 31.150044810219253,
+   "vneg_v2": 45.82941141129113,
+   "worst_clean": 0.43270831021857314,
+   "worst_mix": 0.22887752617482346,
+   "onset_median_worst": 0.0
+  },
+  "vsess": {
+   "vs clean speech": 0.0,
+   "vs clean vowels": 0.017085255424568596,
+   "vs clean singing": 0.0,
+   "vs clean clinical": 0.008299099547699074,
+   "vs clean exercises": 0.03320420586607637,
+   "vs clean children": 0.3508771929824561,
+   "vs mix +10": 0.04490733544052369,
+   "vs mix +0": 0.1540348575177568,
+   "vs_v2": 56.6543803067202,
+   "vs_short": 27.72025916772427,
+   "vs_v2 fsd50k": 38.32658569500675,
+   "vs_v2 fstrain": 53.92415053228449,
+   "vs_v2 synthetic": 68.15670052171765,
+   "worst_clean": 0.3508771929824561,
+   "worst_mix": 0.1540348575177568,
+   "onset_median_worst": 0.0
+  },
+  "spl": {
+   "clean speech": 0.023395510591210877,
+   "clean vowels": 0.024181670293917212,
+   "clean singing": 0.0,
+   "clean clinical": 0.003328525463219794,
+   "clean exercises": 0.3909671630311706,
+   "clean children": 0.017455053237912375,
+   "mix vmix20 +10": 0.0032139872726104006,
+   "mix vmix20 +0": 0.08653826802712875,
+   "mix vmix0 +10": 0.03191772320241156,
+   "mix vmix0 +0": 0.029218407596785977,
+   "tune_v2": 14.033803314693966,
+   "vneg_v2": 18.49678569282839,
+   "worst_clean": 0.3909671630311706,
+   "worst_mix": 0.08653826802712875,
+   "onset_median_worst": 0.0
+  },
+  "h_rows": {
+   "cells": {
+    "h1|f|clean|real": [
+     0.0,
+     31663
+    ],
+    "h1|f|snr+0|real": [
+     0.0126,
+     15831
+    ],
+    "h1|f|snr+10|real": [
+     0.0118,
+     25433
+    ],
+    "h1|f|snr+20|real": [
+     0.038,
+     28977
+    ],
+    "h1|f|clean|syn_hum": [
+     0.0,
+     22853
+    ],
+    "h1|f|snr+0|syn_hum": [
+     0.0699,
+     8588
+    ],
+    "h1|f|snr+10|syn_hum": [
+     0.0,
+     19334
+    ],
+    "h1|f|snr+20|syn_hum": [
+     0.0,
+     20416
+    ],
+    "h1|f|clean|syn_vowel": [
+     0.0,
+     21372
+    ],
+    "h1|f|snr+0|syn_vowel": [
+     0.0,
+     19652
+    ],
+    "h1|f|snr+10|syn_vowel": [
+     0.0,
+     20284
+    ],
+    "h1|f|snr+20|syn_vowel": [
+     0.0,
+     20206
+    ],
+    "h1|m|clean|real": [
+     0.0,
+     30292
+    ],
+    "h1|m|snr+0|real": [
+     0.2144,
+     20527
+    ],
+    "h1|m|snr+10|real": [
+     0.3062,
+     24492
+    ],
+    "h1|m|snr+20|real": [
+     0.1562,
+     27531
+    ],
+    "h1|m|clean|syn_hum": [
+     0.0,
+     23988
+    ],
+    "h1|m|snr+0|syn_hum": [
+     0.1134,
+     9699
+    ],
+    "h1|m|snr+10|syn_hum": [
+     0.0,
+     22554
+    ],
+    "h1|m|snr+20|syn_hum": [
+     0.0,
+     23267
+    ],
+    "h1|m|clean|syn_vowel": [
+     0.0,
+     23483
+    ],
+    "h1|m|snr+0|syn_vowel": [
+     0.0,
+     9792
+    ],
+    "h1|m|snr+10|syn_vowel": [
+     0.0,
+     17283
+    ],
+    "h1|m|snr+20|syn_vowel": [
+     0.03,
+     23305
+    ],
+    "h2|f|clean|real|bin0": [
+     0.0,
+     9361
+    ],
+    "h2|f|clean|real|bin1": [
+     0.0,
+     7971
+    ],
+    "h2|f|clean|real|bin2": [
+     0.0,
+     8609
+    ],
+    "h2|f|clean|real|bin3": [
+     0.0,
+     7591
+    ],
+    "h2|f|snr+0|real|bin0": [
+     0.0,
+     5129
+    ],
+    "h2|f|snr+0|real|bin1": [
+     0.0,
+     4508
+    ],
+    "h2|f|snr+0|real|bin2": [
+     0.0,
+     4367
+    ],
+    "h2|f|snr+0|real|bin3": [
+     0.1015,
+     3941
+    ],
+    "h2|f|snr+10|real|bin0": [
+     0.0,
+     7374
+    ],
+    "h2|f|snr+10|real|bin1": [
+     0.0,
+     5862
+    ],
+    "h2|f|snr+10|real|bin2": [
+     0.0,
+     5578
+    ],
+    "h2|f|snr+10|real|bin3": [
+     0.0,
+     5485
+    ],
+    "h2|f|clean|real|bin4": [
+     0.0,
+     5528
+    ],
+    "h2|f|clean|real|bin5": [
+     0.0,
+     3407
+    ],
+    "h2|f|clean|real|bin6": [
+     0.0,
+     3250
+    ],
+    "h2|f|snr+0|real|bin4": [
+     0.0793,
+     2523
+    ],
+    "h2|f|snr+0|real|bin5": [
+     0.0,
+     1615
+    ],
+    "h2|f|snr+0|real|bin6": [
+     0.2672,
+     1497
+    ],
+    "h2|f|snr+10|real|bin4": [
+     0.0,
+     3983
+    ],
+    "h2|f|snr+10|real|bin5": [
+     0.0,
+     2145
+    ],
+    "h2|f|snr+10|real|bin6": [
+     0.0,
+     2614
+    ],
+    "h2|f|clean|real|bin7": [
+     0.0,
+     1305
+    ],
+    "h2|f|clean|real|bin8": [
+     0.1024,
+     977
+    ],
+    "h2|f|clean|real|bin9": [
+     0.0,
+     1839
+    ],
+    "h2|f|snr+0|real|bin7": [
+     0.0,
+     724
+    ],
+    "h2|f|snr+0|real|bin8": [
+     0.0,
+     2108
+    ],
+    "h2|f|snr+10|real|bin7": [
+     0.0,
+     1011
+    ],
+    "h2|f|snr+10|real|bin8": [
+     0.0,
+     1929
+    ],
+    "h2|f|clean|syn|bin0": [
+     0.0,
+     15812
+    ],
+    "h2|f|clean|syn|bin1": [
+     0.0,
+     15917
+    ],
+    "h2|f|snr+0|syn|bin0": [
+     0.0,
+     8971
+    ],
+    "h2|f|snr+0|syn|bin1": [
+     0.0,
+     8794
+    ],
+    "h2|f|snr+10|syn|bin0": [
+     0.0,
+     14038
+    ],
+    "h2|f|snr+10|syn|bin1": [
+     0.0,
+     13726
+    ],
+    "h2|f|snr+20|syn|bin0": [
+     0.0,
+     14131
+    ],
+    "h2|f|snr+20|syn|bin1": [
+     0.0,
+     14286
+    ],
+    "h2|f|clean|syn|bin2": [
+     0.0,
+     4270
+    ],
+    "h2|f|clean|syn|bin3": [
+     0.0,
+     4029
+    ],
+    "h2|f|snr+0|syn|bin2": [
+     0.0,
+     3707
+    ],
+    "h2|f|snr+0|syn|bin3": [
+     0.0,
+     3438
+    ],
+    "h2|f|snr+10|syn|bin2": [
+     0.0,
+     4844
+    ],
+    "h2|f|snr+10|syn|bin3": [
+     0.0,
+     4810
+    ],
+    "h2|f|snr+20|syn|bin2": [
+     0.0,
+     4896
+    ],
+    "h2|f|snr+20|syn|bin3": [
+     0.0,
+     4435
+    ],
+    "h2|f|clean|syn|bin4": [
+     0.0,
+     2880
+    ],
+    "h2|f|snr+0|syn|bin4": [
+     0.0,
+     1778
+    ],
+    "h2|f|snr+10|syn|bin4": [
+     0.0,
+     2456
+    ],
+    "h2|f|snr+20|syn|bin4": [
+     0.0,
+     2453
+    ],
+    "h2|m|clean|real|bin0": [
+     0.0108,
+     18481
+    ],
+    "h2|m|clean|real|bin1": [
+     0.0,
+     15225
+    ],
+    "h2|m|clean|real|bin2": [
+     0.0492,
+     16255
+    ],
+    "h2|m|clean|real|bin3": [
+     0.0,
+     15395
+    ],
+    "h2|m|clean|real|bin4": [
+     0.0215,
+     9317
+    ],
+    "h2|m|clean|real|bin5": [
+     0.0,
+     5862
+    ],
+    "h2|m|clean|real|bin6": [
+     0.0,
+     3353
+    ],
+    "h2|m|snr+0|real|bin0": [
+     0.9708,
+     12876
+    ],
+    "h2|m|snr+0|real|bin1": [
+     0.7831,
+     7406
+    ],
+    "h2|m|snr+0|real|bin2": [
+     0.0,
+     9042
+    ],
+    "h2|m|snr+0|real|bin3": [
+     0.0,
+     9613
+    ],
+    "h2|m|snr+0|real|bin4": [
+     0.0,
+     5141
+    ],
+    "h2|m|snr+0|real|bin5": [
+     0.0,
+     3716
+    ],
+    "h2|m|snr+0|real|bin6": [
+     0.0,
+     1854
+    ],
+    "h2|m|snr+10|real|bin0": [
+     0.0063,
+     15942
+    ],
+    "h2|m|snr+10|real|bin1": [
+     0.1336,
+     11224
+    ],
+    "h2|m|snr+10|real|bin2": [
+     0.0,
+     12674
+    ],
+    "h2|m|snr+10|real|bin3": [
+     0.0,
+     12720
+    ],
+    "h2|m|snr+10|real|bin4": [
+     0.0,
+     7242
+    ],
+    "h2|m|snr+10|real|bin5": [
+     0.0,
+     5105
+    ],
+    "h2|m|snr+10|real|bin6": [
+     0.0,
+     3086
+    ],
+    "h2|m|clean|real|bin7": [
+     0.0,
+     2582
+    ],
+    "h2|m|snr+0|real|bin7": [
+     0.0,
+     1705
+    ],
+    "h2|m|snr+10|real|bin7": [
+     0.0,
+     2344
+    ],
+    "h2|m|clean|real|bin8": [
+     0.0,
+     1729
+    ],
+    "h2|m|snr+0|real|bin8": [
+     0.0,
+     1040
+    ],
+    "h2|m|snr+10|real|bin8": [
+     0.0,
+     1542
+    ],
+    "h2|m|clean|real|bin9": [
+     0.0,
+     1370
+    ],
+    "h2|m|clean|real|bin10": [
+     0.0,
+     938
+    ],
+    "h2|m|clean|real|bin11": [
+     0.0,
+     840
+    ],
+    "h2|m|clean|real|bin12": [
+     0.0,
+     1026
+    ],
+    "h2|m|clean|real|bin13": [
+     0.0,
+     1302
+    ],
+    "h2|m|snr+0|real|bin9": [
+     0.0,
+     1135
+    ],
+    "h2|m|snr+0|real|bin10": [
+     0.0,
+     783
+    ],
+    "h2|m|snr+0|real|bin11": [
+     0.0,
+     606
+    ],
+    "h2|m|snr+0|real|bin12": [
+     0.0,
+     478
+    ],
+    "h2|m|snr+0|real|bin13": [
+     0.0,
+     992
+    ],
+    "h2|m|snr+10|real|bin9": [
+     0.0,
+     1314
+    ],
+    "h2|m|snr+10|real|bin10": [
+     0.0,
+     886
+    ],
+    "h2|m|snr+10|real|bin11": [
+     0.0,
+     706
+    ],
+    "h2|m|snr+10|real|bin12": [
+     0.0,
+     961
+    ],
+    "h2|m|snr+10|real|bin13": [
+     0.0,
+     1270
+    ],
+    "h2|m|clean|syn|bin0": [
+     0.0,
+     15916
+    ],
+    "h2|m|clean|syn|bin1": [
+     0.0,
+     15993
+    ],
+    "h2|m|snr+0|syn|bin0": [
+     0.4785,
+     9404
+    ],
+    "h2|m|snr+0|syn|bin1": [
+     0.351,
+     8832
+    ],
+    "h2|m|snr+10|syn|bin0": [
+     0.0,
+     12686
+    ],
+    "h2|m|snr+10|syn|bin1": [
+     0.0,
+     12537
+    ],
+    "h2|m|snr+20|syn|bin0": [
+     0.0,
+     15738
+    ],
+    "h2|m|snr+20|syn|bin1": [
+     0.0,
+     15865
+    ],
+    "h2|m|clean|syn|bin2": [
+     0.0,
+     2407
+    ],
+    "h2|m|clean|syn|bin3": [
+     0.0,
+     2045
+    ],
+    "h2|m|snr+0|syn|bin2": [
+     0.2535,
+     5128
+    ],
+    "h2|m|snr+0|syn|bin3": [
+     0.0,
+     5126
+    ],
+    "h2|m|snr+10|syn|bin2": [
+     0.0,
+     4956
+    ],
+    "h2|m|snr+10|syn|bin3": [
+     0.0,
+     5048
+    ],
+    "h2|m|snr+20|syn|bin2": [
+     0.0,
+     6102
+    ],
+    "h2|m|snr+20|syn|bin3": [
+     0.0,
+     5940
+    ],
+    "h2|m|clean|syn|bin4": [
+     0.0,
+     1046
+    ],
+    "h2|m|snr+0|syn|bin4": [
+     0.0,
+     2493
+    ],
+    "h2|m|snr+10|syn|bin4": [
+     0.0,
+     2730
+    ],
+    "h2|m|snr+20|syn|bin4": [
+     0.0,
+     2266
+    ],
+    "h2|f|clean|real|last": [
+     0.0,
+     8992
+    ],
+    "h2|f|snr+0|real|last": [
+     0.2395,
+     4593
+    ],
+    "h2|f|snr+10|real|last": [
+     0.0,
+     6482
+    ],
+    "h2|f|clean|syn|last": [
+     0.0,
+     6031
+    ],
+    "h2|f|snr+0|syn|last": [
+     0.0,
+     6078
+    ],
+    "h2|f|snr+10|syn|last": [
+     0.0,
+     7709
+    ],
+    "h2|f|snr+20|syn|last": [
+     0.0,
+     6924
+    ],
+    "h2|m|clean|real|last": [
+     0.0129,
+     15517
+    ],
+    "h2|m|snr+0|real|last": [
+     0.0,
+     9014
+    ],
+    "h2|m|snr+10|real|last": [
+     0.0,
+     11819
+    ],
+    "h2|m|clean|syn|last": [
+     0.0,
+     4182
+    ],
+    "h2|m|snr+0|syn|last": [
+     0.0257,
+     7787
+    ],
+    "h2|m|snr+10|syn|last": [
+     0.0,
+     8059
+    ],
+    "h2|m|snr+20|syn|last": [
+     0.0,
+     9946
+    ]
+   },
+   "fail": [],
+   "worst_ratio": 0.647198923060992,
+   "feasible": true
+  }
+ },
+ "selection_torch": {
+  "r11-harm-e10000:plain": {
+   "agg": "mean",
+   "thr": 0.05,
+   "hang": 200,
+   "O": 31.22451813236055
+  }
+ },
+ "go": false,
+ "selection_inputs": {
+  "r4": {
+   "list": "build/vad-train/r4/sel/inputs.sha256",
+   "list_sha256": "7d8e6c2b9d0fd04ea66b55db39a20bad9f19ffb34fdd62401fcbb5b56433b46f",
+   "files": 18610,
+   "bytes": 9127506993,
+   "mismatches": 0
+  },
+  "r5": {
+   "list": "build/vad-train/r5/sel/inputs.sha256",
+   "list_sha256": "a5121c50a59f7f6c45a4d5a2c1fe392ba8f0541ae144e0d1bbe6c16d6ac07157",
+   "files": 8198,
+   "bytes": 11564316870,
+   "mismatches": 0
+  }
+ },
+ "notes": "Round 5 custom voice-vs-machine detector (pre-registration 2026-10-12 \u00a73-\u00a75, Addenda R5-A/R5-B). Frozen before any harness or confirmatory stream was read by it; operating point = the pre-registered rule's pick on the validation data (round-4 rows plus H1 / H2 per sex) with the deployable streaming ONNX files. Go by the rule: feasible (H1 / H2 included) and O >= 60 % (\u00a75).",
+ "look_status": "If go by the rule: the look waits for the \u00a76.2 review (round-4 review probes re-run) and the user's recorded confirmation (\u00a75); no harness or confirmatory probability file is written before that.",
+ "go_rule": {
+  "feasible_extended_bar_incl_H1_H2": true,
+  "O": 31.150044810219253,
+  "O_ge_60": false,
+  "V4_wasm_ms_per_25ms_max": 2.020066743970313,
+  "V4_le_2ms": false,
+  "failing": [
+   "O >= 60 % on the tuning-194 split",
+   "V4 <= 2 ms per 25 ms"
+  ]
+ }
+}

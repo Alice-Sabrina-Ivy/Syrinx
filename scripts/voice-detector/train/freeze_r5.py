@@ -82,6 +82,12 @@ def main():
         "look_status": "If go by the rule: the look waits for the §6.2 review (round-4 review probes re-run) and the user's recorded "
                        "confirmation (§5); no harness or confirmatory probability file is written before that.",
     }
+    wmax = max(w["ms_per_25ms"] for w in wasm)
+    spec["go_rule"] = {"feasible_extended_bar_incl_H1_H2": bool(best["feasible"]), "O": best["O"], "O_ge_60": bool(best["O"] >= 60.0),
+                       "V4_wasm_ms_per_25ms_max": wmax, "V4_le_2ms": bool(wmax <= 2.0),
+                       "failing": [k for k, ok in (("O >= 60 % on the tuning-194 split", best["O"] >= 60.0), ("V4 <= 2 ms per 25 ms", wmax <= 2.0),
+                                                   ("feasible under the extended bar", bool(best["feasible"]))) if not ok]}
+    spec["v4"]["wasm_load_note"] = MY.get("load_note", "")
     if spec["selection_inputs"]:
         spec["selection_inputs"] = {k: {kk: (len(vv) if kk == "mismatches" else vv) for kk, vv in v.items()} for k, v in spec["selection_inputs"].items()}
     out = MY.get("out", os.path.join(HERE, "frozen", "candidate-r5.json"))

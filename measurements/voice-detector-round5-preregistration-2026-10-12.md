@@ -1464,3 +1464,30 @@ set**. The best is `r11-harm-e10000` (O 31.22 %); no other checkpoint is
 within 1 pp (next: `r11-harm-e12000`, 27.06 %), so no tie-break is needed.
 **Run 4 = `r11-harm-s54`: F1m + F5, seed 54**, everything else as runs 1–3.
 Bound is not trained.
+
+## Addendum R5-D — selection, freeze and go / no-go (2026-10-12)
+
+Details: [voice-detector-round5-selection-2026-10-12.md](voice-detector-round5-selection-2026-10-12.md).
+
+- Run 4 (`r11-harm-s54`, F1m + F5, seed 54) trained as Addendum R5-C fixed
+  it. All 28 checkpoints and the two reference rows were scored by §4's rule
+  on validation data only.
+- **Choice:** `r11-harm-e10000` (F1m + F5, seed 53, step 10,000); mean,
+  p ≥ 0.05, 200 ms; O 31.22 % on the torch files.
+- **Deployable re-check** (every selection file through onnxruntime CPU,
+  H rows included): **same pick, O = 31.15 %**, feasible on every round-4
+  row and every H1 / H2 reading for both sexes.
+- **Frozen:** `scripts/voice-detector/train/frozen/candidate-r5.json`
+  (`custom-vd-r5`; ONNX sha256 `191a973f…9205`). It was committed and pushed
+  before any harness or confirmatory stream was touched; none has been.
+- **Go rule (§5): NO-GO.**
+  - O = 31.15 % < 60 %.
+  - V4 measured 2.02 ms (Node) / 1.87 ms (Chrome) per 25 ms at 40–47 %
+    machine load, against a 2 ms limit.
+- **Consequences:**
+  - Round 5 stops before the look.
+  - The round-5 seal stays unbroken: no model of any round has run on the
+    sealed set.
+  - The §6.2 review was not run, because it is required only before a go.
+  - V5 does not arise.
+  - The user decides what follows.
