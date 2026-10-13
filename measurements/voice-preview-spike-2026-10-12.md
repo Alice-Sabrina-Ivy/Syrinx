@@ -1429,3 +1429,299 @@ runs that overlap a governor pause excluded (`timing/analyze.mjs`).
 26. **Capture rates other than 48 kHz** (A3): a rule the plan did not have.
 27. **New rates reach the phone only through A6's desktop prediction.** The three earlier rates
     are timed whatever their desktop numbers.
+
+### Results of the addition (2026-10-13, Measure step; desktop only)
+
+**Status:** A4 (parity and quality), A5 (desktop timing), A6 (phone inclusion) and A8 (listening
+files) are done on the desktop. **The phone session has not run, so the rate is not decided.**
+Only the phone's numbers count (§P6). Nothing above this subsection was edited.
+
+| Rate | Quality (A4) | Desktop Chrome, 5 s, both clip sets: passes up to | A6 at ×2.0 | Phone session |
+|---|---|---|---|---|
+| 48 000 Hz | pass | ×2.1 (WORLD) | WORLD passes; PSOLA fails (×1.5) | WORLD timed; PSOLA not timed (predicted fail) |
+| 44 100 Hz (44.1 kHz capture, A3) | pass | ×2.1; within 5 % of 48 kHz on all 8 numbers | — | not timed; follows the 48 kHz verdict |
+| 32 000 Hz | pass | ×2.2 (WORLD), ×2.2 (PSOLA) | WORLD and PSOLA pass | WORLD and PSOLA timed |
+| 24 000 Hz (anchor, same run) | (passed earlier) | ×4.3 (×4.8 in the earlier runs) | — | timed, as pre-registered |
+
+**The main findings:**
+- **32 kHz costs almost as much as 48 kHz.** Both use the same FFT sizes (CheapTrick 2048,
+  D4C 4096), twice those at 16–24 kHz. In the same run, a slider change takes 0.22–0.24 s at
+  32, 44.1 and 48 kHz against 0.11–0.12 s at 24 kHz, and the first render 0.75–1.13 s against
+  0.42–0.55 s. 32 kHz saves only 10 % of the first render against 48 kHz, and 0–2 % on a
+  slider change.
+- **48 kHz is predicted to pass the phone gate with almost no margin.** At ×2.0 the binding
+  number is the speech-dense worst-clip p90 first render: 2.84 s against 3.0 s. If the phone is
+  more than ×2.1 slower than this desktop, 48 kHz fails, and 32 kHz (×2.2) most likely fails
+  with it. 24 kHz then remains (×4.3 in this run).
+- The desktop was loaded (33–73 % busy per repeat, 50–53 % per group), and the 24 kHz anchor ran
+  6 % (pre-registered clips) and 29 % (speech-dense clips) slower than in the earlier runs. So
+  these numbers are, if anything, on the slow side. The rule uses them as measured.
+
+#### A4: parity and quality at 32, 44.1 and 48 kHz
+
+**WebAssembly WORLD computes what pyworld 0.3.5 computes at the new rates, and the renders read
+no worse than at 16 kHz.** Every Level 1, 2 and 3 criterion and checks 1, 2 and 4 pass at
+32 000, 44 100 and 48 000 Hz, so all three rates stay candidates.
+
+**Level 1, each stage on identical inputs.** 12 cases: the 4 pre-registered timing clips at 5 s,
+at each rate (32 and 44.1 kHz brought from 48 kHz with the page's resampler; at 48 kHz the clip
+itself). StoneMask's initial F0 as in deviation 6. CheapTrick's FFT size is 2048 at all three
+rates.
+
+| Stage | Pass if | Result (32, 44.1 and 48 kHz together) | |
+|---|---|---|---|
+| DIO | ≥ 99.5 % of frames agree | 100 % of 12 012 frames; no disagreement; largest difference 3.1e-12 st | pass |
+| Harvest | ≥ 99.5 % of frames agree | 100 % of 12 012 frames; no disagreement; largest 1.2e-13 st | pass |
+| StoneMask | voicing identical; ≤ 0.001 st on ≥ 99.9 % | voicing identical on all frames; largest 9.6e-15 st | pass |
+| CheapTrick | ≤ 0.01 dB on ≥ 99.9 % | 100 % of 12 312 300 elements; largest 2.8e-7 dB | pass |
+| D4C | ≤ 1e-4 on ≥ 99.9 % | 100 %; largest 1.4e-11 | pass |
+| Warp | ≤ 1e-9 everywhere | 24 warps: largest \|Δ ln S′\| 2.2e-16, \|ΔA′\| 0 | pass |
+| Synthesis | SNR ≥ 60 dB per render | 36 renders: lowest 272.1 dB | pass |
+
+SIMD vs non-SIMD: all 240 Level 1 outputs at the new rates have identical sha256.
+
+**Level 2, end to end with F-S** (the posted track mapped in numpy, then StoneMask, CheapTrick,
+D4C, warp and synthesis; compared before `finish`). 208 renders per rate: the 4 speech-dense clips
+at 5 s and the 4 pre-registered clips at 8 s, 26 cells each.
+
+| Rate | Pass if | Lowest SNR | Median SNR | |
+|---|---|---|---|---|
+| 32 000 | ≥ 40 dB on every render | 228.6 dB | 279.3 dB | pass |
+| 44 100 | ≥ 40 dB on every render | 227.7 dB | 269.9 dB | pass |
+| 48 000 | ≥ 40 dB on every render | 225.3 dB | 273.9 dB | pass |
+
+**Level 3, Syrinx's meters** on the 208 finished renders per engine and rate:
+
+| Meter | Pass if | 32 000 Hz | 44 100 Hz | 48 000 Hz |
+|---|---|---|---|---|
+| Real pitch chain, at the render's rate | clip median within 0.05 st; voicing agreement ≥ 98 % | medians identical (largest difference 0.000 st); agreement 100 % on every render: pass | the same: pass | the same: pass |
+| Lab VTLN meter (render brought to 16 kHz) | reading within 0.01 ln | largest difference 2.3e-10 ln: pass | 4.6e-10 ln: pass | 4.0e-10 ln: pass |
+| Prototype's 4 VTLN checks (slope / sign / monotonic / leak) | same verdicts; each within ±0.02 | 1.097 / 1.000 / 0.895 / 0.102 for both engines; all pass | 1.146 / 1.000 / 0.868 / 0.099; all pass | 1.083 / 0.987 / 0.947 / 0.060; all pass |
+
+- 7–9 renders per rate have no VTLN reading for **either** engine (fewer than 10 readable bins).
+  All are M02 at −6 st, where the shifted pitch is near the 75 Hz floor. On those renders the
+  two engines' bins are null in the same places and the readable bins are equal, so they are
+  counted as agreeing (deviation 30). No render has a reading for one engine only.
+- 47, 69 and 60 of the 208 finished float32 renders (32 / 44.1 / 48 kHz) are bit-identical
+  between the engines. The rest differ by at most 3e-8 (one float32 step), as at 16 kHz.
+- The WebAssembly renders for Levels 2 and 3 are the same renders as for checks 1, 2 and 4
+  (`fe/rate-check.mjs --l2=1`, which also keeps each render before `finish`).
+
+**Browsers vs Node.** With the two new identity cases (WORLD F-S at 48 kHz on M01 and at 32 kHz on
+F02, 3 cells each, both builds), **48 of 48 outputs are bit-identical to Node in headless Chrome
+for Testing 154.0.8037.57 and 48 of 48 in headless Firefox 156.0.1.** The 36 earlier outputs
+have the same hashes as before. The phone is still to check all 48.
+
+**Checks 1, 2 and 4** (`fe/rate-check.mjs --rates=16000,32000,44100,48000`, `fe/rate_score.py`),
+judged against the 16 kHz row with §P4's margins:
+
+| Rate | 1. Voicing loss at (0, 1.00), median of 8 | 2. Gross errors, median of eligible renders (p90, n) | 4. VTLN slope / sign / monotonic / leak | Holds |
+|---|---|---|---|---|
+| 16 000 (re-run) | 1.4 % | 0.0 % (1.3 %, 163) | 1.106 / 0.987 / 0.846 / 0.103, pass | (baseline) |
+| 32 000 | 0.7 % | 0.0 % (1.6 %, 163) | 1.097 / 1.000 / 0.895 / 0.102, pass | yes |
+| 44 100 | 1.2 % | 0.0 % (1.3 %, 173) | 1.146 / 1.000 / 0.868 / 0.099, pass | yes |
+| 48 000 | 0.7 % | 0.0 % (1.4 %, 163) | 1.083 / 0.987 / 0.947 / 0.060, pass | yes |
+
+- **The 16 kHz row reproduces the earlier one exactly:** its 208 posted tracks and 208 16 kHz
+  renders are byte-identical to the earlier run's, and so are its 208 VTLN lines.
+- At 44.1 kHz the original is the clip's 44.1 kHz copy, analysed at its own rate, so checks 1
+  and 2 read against that copy's posted track (deviations 28 and 29). Its pitch medians differ
+  slightly, so 173 cells are eligible instead of 163.
+- Speech-dense M02 still varies most: 6.1 / 8.2 / 7.1 / 5.1 % voicing loss at 16 / 32 / 44.1 /
+  48 kHz. The medians do not move. 2 of the 40 VTLN rows per new rate (1 at 16 kHz) have fewer
+  than 10 readable bins and are left out, as in check 4.
+
+**CheapTrick FFT size and WebAssembly memory.** Node: a fresh module per measurement, the gate
+configuration (F-S, first render at +2 st / ×1.03), the largest of the 4 clips; both clip sets
+gave the same values. Chrome: the largest of the timing runs (A5).
+
+| Rate | CheapTrick FFT (module and pyworld) | D4C internal FFT (WORLD's rule) | Memory after 5 s, Node / Chrome | Memory after 8 s, Node / Chrome |
+|---|---|---|---|---|
+| 16 000 | 1024 | 2048 | 23 / 23 MB | 38 / 38 MB |
+| 22 050 | 1024 | 2048 | 28 / 28 MB | 38 / 38 MB |
+| 24 000 | 1024 | 2048 | 28 / 28 MB | 46 / 46 MB |
+| 32 000 | 2048 | 4096 | 47 / 47 MB | 75 / 75 MB |
+| 44 100 | 2048 | 4096 | 57 / 57 MB | 76 MB / not timed |
+| 48 000 | 2048 | 4096 | 58 / 58 MB | 92 / 92 MB |
+
+The FFT sizes are as A3 and A4 expected. The 16–24 kHz Chrome values are from the earlier matrix.
+
+#### A5: desktop timing at the new rates
+
+**Conditions.**
+- Headless Chrome for Testing 154.0.8037.57, a fresh browser context per run, the same page,
+  driver and machine as before (i9-11900K, Windows 11).
+- **880 runs**, 10 per (configuration, rate, length, clip, clip set), as A5's table. All six
+  configurations ran in one session, interleaved repeat by repeat (`run-desktop.mjs --plans`,
+  deviation 31): 04:37–07:17 UTC, 2 h 41 min. No errors.
+- The machine was shared with other jobs. Whole-machine CPU was 33–73 % busy (median per repeat;
+  50–53 % median per group). My own parity jobs ran beside repeats 0 and 1 (04:37–05:12), the
+  two busiest. Because every configuration ran in every repeat, comparisons within this run are
+  like for like. The first half (repeats 0–4) is slower than the second on all 44 group
+  medians (cold G1 and G2), by 6–29 %, median 16 %.
+- No governor pause: the load log has no gap over 30 s, so no run is excluded. One run has a
+  single 2.4 s slider change (48 kHz, pre-registered clips); it does not move the medians.
+
+**WORLD, SIMD build, F-S, 5 s** (the gate configuration). Seconds per phrase; in brackets, ms per
+second of audio. 16 kHz and the earlier 24 kHz rows are from the earlier runs (§ Desktop timing).
+
+| Rate | Clip set | Run (machine busy) | C0 | Cold G1 median (IQR) | G1 worst-clip p90 | G2 median | G2 worst-clip p90 | Warm G1 | Passes up to |
+|---|---|---|---|---|---|---|---|---|---|
+| 16 000 | pre-registered | earlier main run (49 %) | 0.04 | 0.36 (0.34–0.38) [71] | 0.42 | 0.11 [23] | 0.15 | 0.28 | ×6.5 |
+| 16 000 | speech-dense | earlier speech run (41 %) | 0.03 | 0.37 (0.34–0.40) [74] | 0.46 | 0.09 [18] | 0.14 | 0.31 | ×6.5 |
+| 24 000 | pre-registered | earlier main run (47 %) | 0.03 | 0.40 (0.37–0.42) [79] | 0.50 | 0.11 [23] | 0.15 | 0.32 | ×6.1 |
+| 24 000 | speech-dense | earlier speech run (35 %) | 0.03 | 0.43 (0.40–0.52) [85] | 0.63 | 0.09 [18] | 0.14 | 0.38 | ×4.8 |
+| **24 000, anchor** | pre-registered | this run (53 %) | 0.03 | 0.42 (0.38–0.45) [84] | 0.49 | 0.12 [24] | 0.17 | 0.35 | ×5.9 |
+| **24 000, anchor** | speech-dense | this run (52 %) | 0.03 | 0.55 (0.50–0.58) [110] | 0.70 | 0.11 [22] | 0.17 | 0.46 | ×4.3 |
+| **32 000** | pre-registered | this run (51 %) | 0.03 | **0.75** (0.70–0.82) [150] | **0.92** | **0.24** [48] | **0.32** | 0.65 | ×3.1 |
+| **32 000** | speech-dense | this run (52 %) | 0.03 | **1.02** (0.91–1.13) [205] | **1.34** | **0.22** [44] | **0.35** | 0.92 | ×2.2 |
+| 44 100 (44.1 kHz input) | pre-registered | this run (51 %) | 0.03 | 0.79 (0.69–0.86) [157] | 0.97 | 0.25 [49] | 0.34 | 0.69 | ×3.0 |
+| 44 100 (44.1 kHz input) | speech-dense | this run (51 %) | 0.03 | 1.05 (0.95–1.20) [211] | 1.44 | 0.22 [44] | 0.35 | 0.97 | ×2.1 |
+| **48 000** | pre-registered | this run (52 %) | 0.03 | **0.83** (0.74–0.87) [166] | **1.02** | **0.24** [49] | **0.35** | 0.73 | ×2.9 |
+| **48 000** | speech-dense | this run (52 %) | 0.04 | **1.13** (1.01–1.22) [227] | **1.42** | **0.22** [44] | **0.35** | 1.01 | ×2.1 |
+
+- **"Passes up to"** is the largest desktop-to-phone slowdown at which all four §P6 conditions
+  would still hold, as before.
+- **The anchor:** the same 24 kHz cells ran 6 % slower on the pre-registered clips (cold G1
+  median 0.420 against 0.396 s) and 29 % slower on the speech-dense clips (0.549 against
+  0.426 s) than in the earlier runs, at higher machine load (52–53 % against 35–47 %). Reported
+  only, as A5 says. Within this run, 48 kHz takes 1.97–2.06× the 24 kHz time on every gate
+  number, and 32 kHz 1.79–1.87× on the first render and 2.0× on a slider change.
+- **Where the time goes at 48 kHz** (cold G1, 5 s, pre-registered clips, medians): no resampling;
+  StoneMask 37 ms; CheapTrick 161 ms; D4C 312 ms; first render 292 ms (warp 47, synthesis 235,
+  finish 6). A slider change is warp 36 + synthesis 208 + finish 2 ms. In the same run at 24 kHz:
+  resample 31, StoneMask 19, CheapTrick 83, D4C 125, first render 144 ms; a slider change
+  18 + 102 + 1 ms. On the speech-dense clips D4C takes 575 ms at 48 kHz against 238 ms at 24 kHz.
+- **Why 32 kHz is close to 48 kHz:** both run CheapTrick with a 2048-point and D4C with a
+  4096-point FFT. WORLD synthesises one pulse at a time with an FFT of the CheapTrick size, so a
+  slider change costs about the same at 32, 44.1 and 48 kHz (0.22–0.25 s). 32 kHz also pays
+  31 ms to resample.
+
+**Other configurations, 5 s, desktop Chrome** — cold G1 median / G2 median in seconds, and
+"passes up to", on the pre-registered / speech-dense clips:
+
+| Configuration | 32 000 Hz | 48 000 Hz |
+|---|---|---|
+| WORLD SIMD, F-S | 0.75 / 0.24 and 1.02 / 0.22; ×3.1 / ×2.2 | 0.83 / 0.24 and 1.13 / 0.22; ×2.9 / ×2.1 |
+| WORLD non-SIMD, F-S | 0.84 / 0.25 and 1.06 / 0.23; ×2.7 / ×2.3 | 0.85 / 0.25 and 1.17 / 0.23; ×2.6 / ×2.1 |
+| PSOLA, F-S | 0.40 / 0.34 and 0.40 / 0.33; ×2.3 / ×2.2 | 0.54 / 0.50 and 0.55 / 0.50; ×1.5 / ×1.5 |
+
+PSOLA's slider change grows with the sample count (0.33–0.34 s at 32 kHz, 0.50 s at 48 kHz), so
+at 48 kHz it is slower than WORLD.
+
+**3 s and 8 s phrases** (WORLD SIMD F-S; reported, not gating, §P6) — cold G1 median (worst-clip
+p90) / G2 median (worst-clip p90), seconds:
+
+| Phrase | 32 000 Hz | 48 000 Hz |
+|---|---|---|
+| 3 s, pre-registered | 0.32 (0.44) / 0.16 (0.21); ×4.7 | 0.31 (0.40) / 0.16 (0.21); ×4.8 |
+| 8 s, pre-registered | 1.09 (1.35) / 0.40 (0.54); ×1.9 | 1.11 (1.33) / 0.39 (0.53); ×1.9 |
+| 8 s, speech-dense | 1.59 (2.06) / 0.36 (0.57); ×1.5 | 1.69 (2.22) / 0.36 (0.55); ×1.4 |
+
+**At ×2.0, 8 s phrases fail at 32 and 48 kHz** on both clip sets (speech-dense worst-clip p90
+first render 4.1 and 4.4 s; pre-registered worst-clip p90 slider change 1.08 and 1.06 s). If
+Phase 1 runs at these rates, recordings would need a cap near 5 s. (The 3 s pre-registered clips
+are mostly silence, § Note for the next steps.)
+
+**Desktop Firefox 156.0.1** (headless, one page load, 5 runs per clip, pre-registered clips,
+5 s, 120 runs, no errors; machine 48–56 % busy) — cold G1 median / G2 median, "passes up to":
+
+| Configuration | 32 000 Hz | 48 000 Hz |
+|---|---|---|
+| WORLD SIMD, F-S | 0.70 / 0.21 s; ×3.1 | 0.75 / 0.22 s; ×2.7 |
+| WORLD non-SIMD, F-S | 0.68 / 0.23 s; ×3.2 | 0.70 / 0.22 s; ×3.0 |
+| PSOLA, F-S | 0.15 / 0.10 s; ×6.6 | 0.17 / 0.16 s; ×4.7 |
+
+Reported only. WORLD in Firefox is about as fast as in Chrome at these rates; PSOLA is 3× faster.
+
+#### A3: 44.1 kHz behaves like 48 kHz
+
+WORLD SIMD F-S, 5 s, with the clips posted to the Worker as 44.1 kHz PCM (no resampling), in the
+same interleaved run as 48 kHz. Pass: each number ≤ the 48 kHz value × 1.05.
+
+| Clip set | Cold G1 median | G1 worst-clip p90 | G2 median | G2 worst-clip p90 | |
+|---|---|---|---|---|---|
+| pre-registered | 0.79 against 0.83 s (×0.95) | 0.97 against 1.02 s (×0.95) | 0.25 against 0.24 s (×1.01) | 0.34 against 0.35 s (×0.97) | pass |
+| speech-dense | 1.05 against 1.13 s (×0.93) | 1.44 against 1.42 s (×1.01) | 0.22 against 0.22 s (×0.99) | 0.35 against 0.35 s (×0.98) | pass |
+
+**44.1 kHz behaves like 48 kHz within 5 %**, so 44.1 kHz devices follow the phone's 48 kHz
+verdict. A slider change costs the same; the analysis is 5–7 % cheaper (8.1 % fewer samples).
+
+#### A6: phone inclusion
+
+Desktop Chrome, 5 s, each §P6 condition at ×2.0 (pass: G1 ≤ 3.0 s, G2 ≤ 1.0 s). C0 is
+0.03–0.04 s, so 2.0 × C0 adds no excess.
+
+| Engine, rate | Clip set | 2.0 × G1 median | 2.0 × G1 worst-clip p90 | 2.0 × G2 median | 2.0 × G2 worst-clip p90 | Result |
+|---|---|---|---|---|---|---|
+| WORLD 48 000 | pre-registered | 1.66 | 2.04 | 0.49 | 0.70 | pass |
+| WORLD 48 000 | speech-dense | 2.27 | 2.84 | 0.44 | 0.71 | pass |
+| WORLD 32 000 | pre-registered | 1.50 | 1.85 | 0.48 | 0.65 | pass |
+| WORLD 32 000 | speech-dense | 2.05 | 2.67 | 0.44 | 0.70 | pass |
+| PSOLA 48 000 | pre-registered | 1.08 | 1.31 | **1.01** | **1.34** | fail |
+| PSOLA 48 000 | speech-dense | 1.11 | 1.32 | **1.01** | **1.30** | fail |
+| PSOLA 32 000 | pre-registered | 0.79 | 0.99 | 0.68 | 0.89 | pass |
+| PSOLA 32 000 | speech-dense | 0.81 | 1.04 | 0.67 | 0.90 | pass |
+
+**Verdict (A6):**
+- **WORLD 48 000 Hz: timed on the phone.** Passes up to ×2.1 (speech-dense, worst-clip p90 first
+  render).
+- **WORLD 32 000 Hz: timed on the phone.** Passes up to ×2.2.
+- **PSOLA 32 000 Hz: timed on the phone.** Passes up to ×2.2.
+- **PSOLA 48 000 Hz: predicted fail**, not timed, cannot win. It fails on the slider change
+  (2.0 × 0.50 s median = 1.01 s). Passes up to ×1.5.
+- 16 000, 22 050 and 24 000 Hz stay in the phone matrix as pre-registered.
+
+#### A7: phone session estimate
+
+Phone time per run = 2.0 × the mean desktop Chrome compute time of the same configuration in this
+run (C0 + cold G1 + 20 × G2 + 5 × warm G1) + 2.5 s, plus 60 s idle per block (`timing/hi-verdict.mjs`).
+
+| Rate | Blocks (runs) | Runs | ×2.0 | ×3.0 |
+|---|---|---|---|---|
+| 48 000 | P1 WORLD 5 s on each clip set (40 + 40), P2 WORLD 3 s + 8 s (80), P3 non-SIMD 5 s (40); no PSOLA | 200 | 78 min | 111 min |
+| 32 000 | P1 WORLD 5 s (40 + 40), P1 PSOLA 5 s (40 + 40), P2 (80), P3 (40) | 280 | 104 min | 147 min |
+| 16 000, 22 050, 24 000 | as pre-registered (A7) | 1 320 | 300 min | 413 min |
+| **All** | | **1 800** | **482 min (8.0 h)** | **671 min (11.2 h)** |
+
+- **Budget = 1.5 × 482 = 723 min (12.1 h)**, a safety stop only. With the trace check and the rest
+  (14 min), the site server must live at least 12.3 h, so `--maxHours` 13.
+- The highest-rate gate comes first: the identity check, then WORLD 5 s at 48 kHz on both clip sets
+  (80 runs, about 33 min at ×2.0). A session that stops early still has the 48 kHz gate.
+- **Still to do before the session (not part of this step):** rebuild the phone kit from the
+  commit that records these results, with the rates 48 000 and 32 000 Hz added (PSOLA at
+  32 000 Hz only), the order highest rate first, the 48 expected identity hashes, `--budgetMin`
+  723, `--maxHours` 13 and the thermal-pause limit at 60 min (A7).
+
+#### A8: listening addition
+
+- The four files in the scratch folder (`11-man-unchanged-32k.wav`, `12-man-unchanged-48k.wav`,
+  `13-woman-unchanged-32k.wav`, `14-woman-unchanged-48k.wav`; WORLD WebAssembly SIMD, F-S,
+  unchanged rebuild, 5 s) were rebuilt by `listen/make-listen-hi.mjs` and are byte-identical to
+  the files already there (sha256 of all four).
+- `index.md` there now asks one plain question, "which is the lowest setting you would be happy
+  with?", and lists the pairs to compare for each voice: 16 vs 24, 24 vs 32, 32 vs 48 kHz, and
+  48 kHz vs the original for reference. It says that even 48 kHz is not identical to the original
+  (that difference comes from the engine, not the setting).
+- Not committed (§P10). The answer does not change the rule (A8).
+
+### Deviations, Measure step of the addition (2026-10-13)
+
+28. **44.1 kHz input and its F-S track.** The addition does not say which F-S track goes with the
+    44.1 kHz clips. Each 44.1 kHz copy (`prep/clips-44k.mjs`: the page's resampler from the
+    48 kHz cut) gets its own posted track, from the real pitch chain on the copy at 44.1 kHz with
+    1103-sample chunks, as on a 44.1 kHz device. The F-S mapping assumes 25 ms hops, so the
+    1103-sample (25.01 ms) hops drift by at most 2.2 ms over 5 s and 3.5 ms over 8 s, well inside
+    the nearest-hop reach of 12.5 ms. Level 1 at 44.1 kHz needs no track (deviation 6).
+29. **Checks 1 and 2 at 44.1 kHz** read the renders against the 44.1 kHz copy's posted track,
+    the original such a device would have, not the 48 kHz clip's.
+30. **Level 3, renders without a VTLN reading for either engine** (fewer than 10 readable bins in
+    both; 7–9 per rate, all M02 at −6 st) count as agreeing. §P3 met no such case at 16 kHz.
+    Their bins were compared and are identical; a reading missing for one engine only would
+    fail (none did).
+31. **One interleaved session for A5.** The six configurations of A5's table ran as one session,
+    repeat by repeat (`run-desktop.mjs --plans`), so the new rates, the 44.1 kHz block and the
+    24 kHz anchor share the machine load. My parity jobs ran beside repeats 0 and 1; the load
+    is reported per repeat.
+32. **The returned 16 kHz timing row** comes from the earlier runs. A5 does not re-time 16 kHz,
+    and it was not re-timed.
