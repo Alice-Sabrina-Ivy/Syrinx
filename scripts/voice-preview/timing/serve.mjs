@@ -31,7 +31,8 @@ const ROUTES = [
 export function startServer({ port = 8787, host = "127.0.0.1", log = false } = {}) {
   const server = createServer((req, res) => {
     const url = new URL(req.url, "http://x");
-    const p = decodeURIComponent(url.pathname);
+    let p = "";
+    try { p = decodeURIComponent(url.pathname); } catch { /* a malformed %-escape: answered as not found */ }
     let file = null;
     for (const [prefix, dir] of ROUTES) {
       if (p.startsWith(prefix)) {

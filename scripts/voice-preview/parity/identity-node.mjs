@@ -19,9 +19,10 @@ export async function identityNode(builds = ["simd", "nosimd"]) {
     for (const c of IDENTITY_CASES) {
       const e = idx.clips.find((k) => k.name === c.clip).lengths[String(c.length)];
       const pcm = readF32(path.join(P.clips, "timing", e.pcm));
+      const posted = c.fe === "S" ? readF32(path.join(P.clips, "timing", e.posted)) : null;
       const pv = new Preview({ engine: c.engine, world, lab });
       const [first, ...rest] = IDENTITY_CELLS;
-      let r = pv.analyse(pcm, 48000, { rate: c.rate, frontEnd: c.fe, framePeriod: 5, first: { st: first[0], a: first[1] } });
+      let r = pv.analyse(pcm, 48000, { rate: c.rate, frontEnd: c.fe, posted, framePeriod: 5, first: { st: first[0], a: first[1] } });
       rows.push({ build, ...c, st: first[0], a: first[1], n: r.pcm.length, sha256: sha256Arr(r.pcm) });
       for (const [st, a] of rest) {
         r = pv.render(st, a);

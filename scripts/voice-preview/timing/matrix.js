@@ -51,11 +51,16 @@ export function buildMatrix({
   return out;
 }
 
-/** The browser-vs-Node identity cases (§P3 cross-engine check): 2 clips x 3 cells per build. */
+/** The browser-vs-Node identity cases (§P3 cross-engine check): 3 cells each, per build. The
+ * last three (added after review, 2026-10-12) cover the gate configuration: F-S (the posted
+ * track, mapped, + StoneMask) at 24 and 22.05 kHz, and PSOLA with F-S. */
 export const IDENTITY_CASES = Object.freeze([
   { clip: "M01", length: 5, rate: 16000, fe: "L", engine: "world" },
   { clip: "F01", length: 5, rate: 24000, fe: "H", engine: "world" },
   { clip: "M01", length: 5, rate: 16000, fe: "L", engine: "psola" },
+  { clip: "F01", length: 5, rate: 24000, fe: "S", engine: "world" },
+  { clip: "M02", length: 5, rate: 22050, fe: "S", engine: "world" },
+  { clip: "F02", length: 5, rate: 24000, fe: "S", engine: "psola" },
 ]);
 export const IDENTITY_CELLS = Object.freeze([[2, 1.03], [-2, 0.97], [0, 1.0]]);
 

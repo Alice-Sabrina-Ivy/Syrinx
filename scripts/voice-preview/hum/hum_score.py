@@ -1,6 +1,6 @@
 """hum_score.py - scores the hum and noise tests (§P7 of measurements/voice-preview-spike-2026-10-12.md).
 
-  python -I hum_score.py [--threshold-db 25]
+  python -I hum_score.py [--threshold-db 25] [--index index-tonal.json] [--track rec|live] [--pre-sec 10]
 
 Reads hum-run.mjs output (VP_CACHE/hum). Per condition clip, engine and cell:
   pauses   25 ms hops whose clean-clip energy (25 ms centred on the hop's window centre,
@@ -21,11 +21,18 @@ pre-registered: adequate if it flags every condition in which any WORLD render r
 voiced share by > 5 pp over the same cell rendered from the clean clip, or adds a tonal peak, and
 flags none of the clean set (4 clean base clips, ls_f2, the 4 timing clips at 5 s).
 Output: VP_CACHE/hum/scores.json and a printed summary.
+--index / --track / --pre-sec select a labelled addition run by hum-run.mjs (review, 2026-10-12;
+e.g. --index index-tonal.json --track live): it reads detect-<tag>.json, vtln-<tag>.jsonl and the
+<engine>-<track> folders, and writes scores-<tag>.json. Added-peak labels use each condition's
+fundamental ("fund", or "mains" for the pre-registered hum).
 """
 import argparse, json, os, site, sys
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--threshold-db", type=float, default=25.0)
+ap.add_argument("--index", default="index.json")
+ap.add_argument("--track", default="rec", choices=["rec", "live"])
+ap.add_argument("--pre-sec", type=float, default=10.0)
 A = ap.parse_args()
 _us = site.getusersitepackages()
 if _us not in sys.path:
@@ -37,8 +44,12 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, "..", "..", ".."))
 CACHE = os.environ.get("VP_CACHE") or os.path.join(REPO, "build", "voice-preview")
 H = os.path.join(CACHE, "hum")
-idx = json.load(open(os.path.join(H, "clips", "index.json"), encoding="utf8"))
-det = json.load(open(os.path.join(H, "detect.json"), encoding="utf8"))
+PREREG = A.index == "index.json" and A.track == "rec"
+_pre = f"{A.pre_sec:g}"
+TAG = "" if PREREG else f"{A.index.replace('index', '', 1).lstrip('-').replace('.json', '') or 'prereg'}-{A.track}{_pre if A.track == 'live' else ''}"
+SUF = "" if A.track == "rec" else f"-{A.track}{_pre}"
+idx = json.load(open(os.path.join(H, "clips", A.index), encoding="utf8"))
+det = json.load(open(os.path.join(H, "detect.json" if PREREG else f"detect-{TAG}.json"), encoding="utf8"))
 CELLS = [tuple(c) for c in det["cells"]]
 ENG = ["world", "psola"]
 
@@ -52,7 +63,7 @@ def f32(p):
 
 
 vt = {}
-vp = os.path.join(H, "vtln.jsonl")
+vp = os.path.join(H, "vtln.jsonl" if PREREG else f"vtln-{TAG}.jsonl")
 if os.path.exists(vp):
     for line in open(vp, encoding="utf8"):
         d = json.loads(line)
@@ -112,6 +123,7 @@ def spectrum_peaks(xp, sr):
 
 
 def label(fr, mains, st, a):
+    """mains = the noise's fundamental (Hz): the mains frequency, or a tonal class's "fund"."""
     if not mains:
         return "other"
     for k in range(1, 9):
@@ -134,18 +146,18 @@ for c in idx["clips"]:
         clean_nm = nm.split("__")[0] + "__clean"
     clean = f32(os.path.join(H, "clips", clean_nm + ".f32"))
     x = f32(os.path.join(H, "clips", nm + ".f32"))
-    po = f32(os.path.join(H, "post", "orig", nm + ".f32"))
+    po = f32(os.path.join(H, "post", "orig" + SUF, nm + ".f32"))
     pz = pauses(clean, sr, len(po))
     orig_sp = spectrum_peaks(pause_samples(x, sr, pz), sr)
     orig_m1 = float(np.mean(po[pz] > 0)) if pz.sum() else np.nan
     for e in ENG:
         for st, a in CELLS:
-            pr = f32(os.path.join(H, "post", e, nm, cn(st, a) + ".f32"))
-            y = f32(os.path.join(H, "renders", e, nm, cn(st, a) + ".f32"))
+            pr = f32(os.path.join(H, "post", e + SUF, nm, cn(st, a) + ".f32"))
+            y = f32(os.path.join(H, "renders", e + SUF, nm, cn(st, a) + ".f32"))
             n = min(len(pr), len(pz))
             m1 = float(np.mean(pr[:n][pz[:n]] > 0)) if pz[:n].sum() else np.nan
             # m1 of the same cell rendered from the clean clip
-            pc = f32(os.path.join(H, "post", e, clean_nm, cn(st, a) + ".f32"))
+            pc = f32(os.path.join(H, "post", e + SUF, clean_nm, cn(st, a) + ".f32"))
             nc = min(len(pc), len(pz))
             m1_clean = float(np.mean(pc[:nc][pz[:nc]] > 0)) if pz[:nc].sum() else np.nan
             # pause hops the render rate maps to: the render is at `rate`; hops are 25 ms either way
@@ -154,7 +166,7 @@ for c in idx["clips"]:
             if sp is not None and orig_sp is not None:
                 for fr, prom in sp["peaks"]:
                     if not any(abs(fr - f2) <= 3 for f2, _ in orig_sp["peaks"]):
-                        added.append(dict(freq=fr, prom=prom, label=label(fr, c.get("mains"), st, a)))
+                        added.append(dict(freq=fr, prom=prom, label=label(fr, c.get("fund") or c.get("mains"), st, a)))
             # m3: speech hops vs the clean render of the same cell
             sp_h = (~pz[:min(n, nc)]) & (pc[:min(n, nc)] > 0)
             nn = min(n, nc)
@@ -163,7 +175,7 @@ for c in idx["clips"]:
             vk = f"{e}/{nm}/{cn(st, a)}"
             vck = f"{e}/{clean_nm}/{cn(st, a)}"
             rows.append(dict(
-                name=nm, base=c["base"], cond=c["cond"], kind=c["kind"], sr=sr, rate=rate, engine=e, st=st, a=a,
+                name=nm, base=c["base"], cond=c["cond"], kind=c["kind"], tonal=c.get("tonal"), level_db=c.get("level_db"), sr=sr, rate=rate, engine=e, st=st, a=a,
                 pause_hops=int(pz.sum()), m1_orig=orig_m1, m1=m1, m1_clean_cell=m1_clean, m1_rise_pp=(m1 - m1_clean) * 100,
                 m2_orig_max=None if orig_sp is None else orig_sp["max_prom"], m2_max=None if sp is None else sp["max_prom"],
                 m2_pause_s=None if sp is None else sp["pause_s"], added_peaks=added,
@@ -214,7 +226,7 @@ out = dict(rows=rows, triggers=trig, flags=cond_flags, clean_set_flags=clean_set
            adequacy=adequacy, margins=margins, threshold_db=TH,
            notch={nm: dict(rec=det["conditions"][nm]["d1rec"], live=det["conditions"][nm]["d1live"], worker_share=det["conditions"][nm]["workerNotchShare"]) for nm in det["conditions"]},
            clean_notch={k: dict(rec=d["d1rec"], live=d["d1live"]) for k, d in det["clean"].items()})
-with open(os.path.join(H, "scores.json"), "w") as f:
+with open(os.path.join(H, "scores.json" if PREREG else f"scores-{TAG}.json"), "w") as f:
     json.dump(out, f, indent=1, default=lambda o: None if (isinstance(o, float) and not np.isfinite(o)) else (bool(o) if isinstance(o, np.bool_) else float(o)))
 
 # ---------------------------------------------------------------- printed summary
@@ -255,7 +267,7 @@ print("\n== adequacy")
 for k, v in adequacy.items():
     print(f"  {k:36s} {'ADEQUATE' if v['adequate'] else 'not adequate'}: triggers {v['triggers']}, missed {len(v['missed'])} {v['missed'][:6]}, false flags {v['false_flags']}")
 print("\n== by noise kind (16 kHz conditions, excluding clean): median over renders")
-for kind in ("hum", "pink"):
+for kind in [k for k in ("hum", "pink", "tonal") if any(r["kind"] == k for r in rows)]:
     for e in ENG:
         R = [r for r in rows if r["kind"] == kind and r["engine"] == e and r["rate"] == 16000]
         lab = {}

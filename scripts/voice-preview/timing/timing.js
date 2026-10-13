@@ -83,7 +83,7 @@ const needWorld = (engine, fe) => engine === "world" || fe === "H" || fe === "D"
 async function runOne(spec) {
   const { pcm: src, posted } = await clipData(spec.clip, spec.length);
   const nonce = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-  const out = { ...spec, startedAt: new Date().toISOString() };
+  const out = { ...spec, clipset: cfg.clipset, startedAt: new Date().toISOString() };
   const tW = performance.now();
   const W = workerClient(nonce);
   try {
@@ -133,17 +133,18 @@ async function identity() {
   const rows = [];
   for (const build of cfg.builds) {
     for (const c of IDENTITY_CASES) {
-      const { pcm: src } = await clipData(c.clip, c.length);
+      const { pcm: src, posted } = await clipData(c.clip, c.length);
       const W = workerClient(`id-${build}-${Date.now()}`);
       try {
         await W.call({ type: "init", engine: c.engine, build, needWorld: needWorld(c.engine, c.fe), needLab: c.fe === "L", wasmBase: WASM_BASE });
         const [first, ...rest] = IDENTITY_CELLS;
         const pcm = src.slice();
-        let r = await W.call({ type: "analyse", pcm, srIn: SR_IN, rate: c.rate, frontEnd: c.fe, framePeriod: 5, first: { st: first[0], a: first[1] } }, [pcm.buffer]);
-        rows.push({ build, ...c, st: first[0], a: first[1], n: r.pcm.length, sha256: await sha256Hex(r.pcm) });
+        let r = await W.call({ type: "analyse", pcm, srIn: SR_IN, rate: c.rate, frontEnd: c.fe, posted: c.fe === "S" ? posted : null,
+          framePeriod: 5, first: { st: first[0], a: first[1] } }, [pcm.buffer]);
+        rows.push({ build, ...c, clipset: cfg.clipset, st: first[0], a: first[1], n: r.pcm.length, sha256: await sha256Hex(r.pcm) });
         for (const [st, a] of rest) {
           r = await W.call({ type: "render", st, a });
-          rows.push({ build, ...c, st, a, n: r.pcm.length, sha256: await sha256Hex(r.pcm) });
+          rows.push({ build, ...c, clipset: cfg.clipset, st, a, n: r.pcm.length, sha256: await sha256Hex(r.pcm) });
         }
       } catch (err) {
         rows.push({ build, ...c, error: String(err) });

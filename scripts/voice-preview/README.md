@@ -24,8 +24,8 @@ files are not committed; the build is byte-reproducible from `build.mjs`.
 | `prep/prep_clips.py`, `prep/tracks.mjs` | Public clips (LibriSpeech, PTDB-TUG) and their precomputed F0 tracks |
 | `prep/prep_speech_clips.py` | Speech-dense variant of the timing clips (each file trimmed to its reference-voiced span ± 0.3 s) |
 | `parity/` | WebAssembly vs pyworld 0.3.5 (Levels 1–3), SIMD vs non-SIMD, PSOLA vs the prototype, browser vs Node; `pyworld_fe.py` extends Levels 2–3 to every F0 front end |
-| `fe/` | F0 front-end comparison (§P4): `fe-run.mjs` renders and tracks, `fe_score.py` checks 1–4 and the F-S alignment |
-| `hum/` | Hum and noise tests (§P7): `make_conditions.py`, `hum-run.mjs` (real pitch chain, notch, level check, VTLN), `hum_score.py` |
+| `fe/` | F0 front-end comparison (§P4): `fe-run.mjs` renders and tracks, `fe_score.py` checks 1–4 and the F-S alignment; `rate-check.mjs` + `rate_score.py` re-run checks 1, 2 and 4 with F-S at 16 / 22.05 / 24 kHz (addition after review) |
+| `hum/` | Hum and noise tests (§P7): `make_conditions.py`, `hum-run.mjs` (real pitch chain, notch, level check, VTLN), `hum_score.py`; `make_tonal_conditions.mjs` adds in-range tonal noise (fan hum, mains complex) and `hum-run.mjs --track=live` tests listening before recording (additions after review) |
 | `listen/make-listen.mjs` | The listening set (§P9), written outside the repository |
 | `timing/` | Timing page, matrix, static server, desktop driver, summary; `analyze.mjs` (statistics, gate conditions, phone predictions), `load-log.mjs` (machine load), `fp10-renders.mjs` + `fp10_lsd.py` (the 10 ms lever's spectral distance) |
 
@@ -70,6 +70,16 @@ python -I scripts/voice-preview/hum/make_conditions.py --ptdb <PTDB-TUG subset r
 node --import ./scripts/session-oracle/lib/register.mjs scripts/voice-preview/hum/hum-run.mjs
 python -I scripts/voice-preview/hum/hum_score.py
 node scripts/voice-preview/listen/make-listen.mjs --out=<folder outside the repo>
+
+# additions after review (2026-10-12)
+node scripts/voice-preview/hum/make_tonal_conditions.mjs
+node --import ./scripts/session-oracle/lib/register.mjs scripts/voice-preview/hum/hum-run.mjs --index=index-tonal.json --track=rec
+node --import ./scripts/session-oracle/lib/register.mjs scripts/voice-preview/hum/hum-run.mjs --index=index-tonal.json --track=live --preSec=10
+python -I scripts/voice-preview/hum/hum_score.py --index index-tonal.json --track rec
+python -I scripts/voice-preview/hum/hum_score.py --index index-tonal.json --track live --pre-sec 10
+node --import ./scripts/session-oracle/lib/register.mjs scripts/voice-preview/fe/rate-check.mjs
+python -I scripts/voice-preview/fe/rate_score.py
+node scripts/voice-preview/timing/run-desktop.mjs --browser=firefox --mode=identity
 node scripts/voice-preview/timing/load-log.mjs --out=<load.jsonl> --stop-file=<file> &
 node scripts/voice-preview/timing/run-desktop.mjs --browser=chrome --per-run-context --params="runs=10&fe=S"
 node scripts/voice-preview/timing/run-desktop.mjs --browser=firefox --params="runs=5&fe=S&blocks=world-auto,world-nosimd,psola&lengths=5"
