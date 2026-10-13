@@ -1206,3 +1206,226 @@ desktop timing. What changed in response:
 
 No finding was judged wrong. One detail differs from the review's numbers: the speech-dense
 analysis increase at 22.05 kHz is +28 % (0.424 against 0.333 s), not +27 %, from rounding.
+
+## Addition 2026-10-12: 32 and 48 kHz (before any phone data)
+
+**Status: plan only.** This section was written and committed before any number at 32, 44.1 or
+48 kHz was measured, and before any phone data existed: the phone session has not run. Nothing
+above this section is edited. The results of this addition go in later subsections under it.
+Changes to this addition are recorded as deviations, numbered from 23 (list at its end).
+
+### A1. Why
+
+- **User decision (2026-10-12)**, after the listening set (§P9): the user can hear the
+  difference between 48, 24 and 16 kHz. So 32 and 48 kHz become candidate rates.
+- For scale (configuration, not a measurement): the page's resampler cuts off at 0.45 × the
+  rate, so a 16 kHz preview carries sound up to 7.2 kHz, 24 kHz up to 10.8 kHz and 32 kHz up to
+  14.4 kHz. At 48 kHz, with 48 kHz capture, there is no resampling at all.
+- **Second user decision (2026-10-12):** the phone session runs as one long session (A7).
+
+### A2. Candidate rates and the rule
+
+- Candidate rates: **16 000, 22 050, 24 000, 32 000 and 48 000 Hz.**
+- Unchanged:
+  - the gate (§P6): four conditions on 5 s phrases, with the module-load excess added;
+  - "the highest passing rate wins";
+  - "the engine comes first": WORLD at any rate beats PSOLA at any rate;
+  - both clip sets decide (deviation 18);
+  - the front end (F-S), the build (the one the page picks) and 5 ms frames.
+- WORLD runs at the highest of 48 000, 32 000, 24 000, 22 050 and 16 000 Hz that passes on the
+  phone. A rate the phone did not time (dropped on quality, A4, or predicted to fail, A6) cannot
+  be chosen.
+- PSOLA has the same rate list and the same inclusion rule. It matters only if WORLD fails at
+  every rate the phone timed.
+
+### A3. Devices that capture at 44.1 kHz
+
+**Decision: the engine rate is the lower of the selected rate and the capture rate.** Capture
+above the selected rate is resampled down with the same sinc resampler (cutoff 0.45 × the
+rate). Capture at or below the selected rate is used as it is, never resampled up.
+
+- **With 48 kHz selected, a 44.1 kHz device runs WORLD at 44.1 kHz, with no resampling.** It is
+  expected to cost the same as 48 kHz or less. From WORLD's own rules (code, not measurement):
+  - CheapTrick's FFT size, 2^(1 + ⌊log2(3·fs/71 + 1)⌋), is 2048 at both rates;
+  - D4C's internal FFT size, 2^(1 + ⌊log2(4·fs/47 + 1)⌋), is 4096 at both rates;
+  - the number of 5 ms frames is the same;
+  - 44.1 kHz has 8.1 % fewer samples.
+- **Check (desktop Chrome, A5):** WORLD SIMD F-S at 44.1 kHz, 5 s, both clip sets. The clips are
+  brought from 48 to 44.1 kHz in Node with the same resampler and posted to the Worker as
+  44.1 kHz PCM.
+  - Pass: on each clip set, the cold G1 median and worst-clip p90 and the G2 median and
+    worst-clip p90 are each ≤ the 48 kHz value × 1.05 (5 % for run-to-run noise).
+  - If it passes, 44.1 kHz devices follow the phone's 48 kHz verdict: **44.1 kHz behaves like
+    48 kHz within 5 %.**
+  - If it fails, a 44.1 kHz device runs at the highest rate below 44.1 kHz that passed on the
+    phone, resampled down.
+- With 32 kHz or lower selected, 44.1 kHz capture is resampled down, like 48 kHz capture.
+- Capture below the selected rate (for example a 16 kHz Bluetooth headset) runs at its own rate.
+  That is less work, because WORLD's FFT sizes never grow when the rate falls. It is not timed.
+- The phone captures at 48 kHz, so the phone session times 48 kHz directly.
+- The parity and quality checks (A4) also run at 44.1 kHz.
+
+### A4. Parity and quality at the new rates
+
+Rates: 32 000, 44 100 and 48 000 Hz. The thresholds are §P3's and §P4's, unchanged.
+
+- **Level 1, each stage on identical inputs** (§P3's table):
+  - the 4 pre-registered timing clips at 5 s, brought to each rate in Node with the page's
+    resampler (at 48 kHz, the clip itself);
+  - StoneMask's initial F0 as in deviation 6;
+  - synthesis at (0, 1.00), (+2, 1.03) and (−2, 0.97).
+- **Level 2, end to end:** SNR ≥ 40 dB on every render before `finish`; the median is also
+  reported.
+  - Both pipelines start from the same waveform at the rate and the same F-S posted track (the
+    mapping rewritten in numpy, as in `parity/pyworld_fe.py`), then StoneMask, CheapTrick, D4C,
+    warp and synthesis.
+  - 26 grid cells on the clips of the render check (the 4 speech-dense clips at 5 s and the 4
+    pre-registered clips at 8 s): 208 renders per rate.
+  - §P3's Level 2 ran at 16 kHz on the prototype's stored grid. No stored grid exists at these
+    rates, so this uses F-S, the gate's front end.
+- **Level 3, Syrinx's meters** on the 208 finished renders per engine (WebAssembly and pyworld)
+  and rate:
+  - the real pitch chain at the render's own rate: clip median within 0.05 st and voicing
+    agreement ≥ 98 %, on every render;
+  - the lab VTLN meter on each render brought to 16 kHz with the sinc resampler, as
+    `fe/rate-check.mjs` does: reading within 0.01 ln;
+  - the prototype's four VTLN checks: same verdicts, each statistic within ±0.02.
+- **Checks 1, 2 and 4** (`fe/rate-check.mjs`, `fe/rate_score.py`): the same clips, cells and
+  reading as the 22.05 / 24 kHz rows in § F0 front ends, judged against the 16 kHz row with
+  §P4's margins:
+  - voicing loss, median ≤ the 16 kHz median + 2 pp;
+  - gross errors, median ≤ the 16 kHz median + 1 pp;
+  - all four VTLN checks pass.
+
+  The 16 kHz row is re-run and must reproduce the earlier one exactly.
+- **What follows:** a new rate stays a candidate only if Level 3 and checks 1, 2 and 4 pass. A
+  Level 1 or Level 2 failure with no traceable bug is reported with its size and location
+  (§P3). A rate that fails is reported and not timed on the phone.
+- **CheapTrick FFT size and memory**, per rate:
+  - FFT size, expected from WORLD's rule: 1024 at 16 000, 22 050 and 24 000 Hz; 2048 at 32 000,
+    44 100 and 48 000 Hz. Measured and reported.
+  - WebAssembly memory after analysing 5 s and 8 s, in Node and in desktop Chrome. Reported,
+    not gating.
+  - With a 2048-point FFT, every spectral frame is twice as large and every synthesised pulse
+    needs a larger inverse FFT. So the per-change cost is no longer expected to be the same at
+    every rate (§ Desktop timing found it the same at 1024 points for all three earlier rates).
+- **Browsers vs Node:** two more identity cases, WORLD F-S at 48 kHz on M01 and at 32 kHz on
+  F02, 3 cells each, both builds: 48 outputs in all. All must be bit-identical in desktop Chrome,
+  desktop Firefox and on the phone.
+- **Not re-run at the new rates:** hum and noise (§P7). The 24 kHz spot checks matched 16 kHz.
+- §P8: `AudioBuffer` at 32 000, 44 100 and 48 000 Hz is inside the 8–96 kHz range the Web Audio
+  spec requires.
+
+### A5. Desktop timing at the new rates
+
+Same page, driver and browser (Chrome for Testing 154.0.8037.57, headless, a fresh browser
+context per run), same run (C0, cold G1 at +2 st / ×1.03, 20 × G2, 5 × warm G1), 10 runs per
+(rate, length, clip), clips M01, M02, F01 and F02 in rotated order, the machine-load log, and
+runs that overlap a governor pause excluded (`timing/analyze.mjs`).
+
+| Clip set | Configuration | Rates (Hz) | Lengths | Runs |
+|---|---|---|---|---|
+| pre-registered | WORLD SIMD, F-S | 48 000, 32 000 | 3, 5, 8 s | 240 |
+| pre-registered | WORLD non-SIMD, F-S | 48 000, 32 000 | 5 s | 80 |
+| pre-registered | PSOLA, F-S | 48 000, 32 000 | 5 s | 80 |
+| speech-dense | WORLD SIMD, F-S | 48 000, 32 000 | 5, 8 s | 160 |
+| speech-dense | WORLD non-SIMD, F-S | 48 000, 32 000 | 5 s | 80 |
+| speech-dense | PSOLA, F-S | 48 000, 32 000 | 5 s | 80 |
+| both | WORLD SIMD, F-S, 44.1 kHz input (A3) | 44 100 | 5 s | 80 |
+| both | WORLD SIMD, F-S, anchor | 24 000 | 5 s | 80 |
+
+- 880 runs in all.
+- **The 24 kHz anchor** re-times the gate cells in the same session, so a change in machine load
+  since the earlier matrix is visible. It is reported only. It does not change the earlier
+  results or the inclusion rule.
+- **Reported as before:** median, IQR, worst-clip p90 and minimum per configuration, rate, length
+  and clip set; ms per second of audio; per-stage times; WebAssembly memory; "passes the gate on
+  a phone up to ×N". 8 s phrases are reported, not gating (§P6).
+- **Desktop Firefox 156.0.1:** WORLD SIMD, WORLD non-SIMD and PSOLA, 5 s, pre-registered clips,
+  5 runs per clip, at 32 and 48 kHz, inside one page load (deviation 17). Reported only.
+- **Not timed at the new rates:** the other front ends and the 10 ms lever. The front end was
+  chosen at 16 kHz (§P4), and the lever is reported only (§P6).
+
+### A6. Phone inclusion rule (fixed now)
+
+- A new rate (32 or 48 kHz) goes into the phone matrix only if A4 passes at that rate **and** its
+  desktop Chrome numbers from A5 (WORLD SIMD, F-S, 5 s) pass all four §P6 conditions at
+  **×2.0**, on both clip sets:
+  1. 2.0 × median cold G1 ≤ 3.0 s (≤ 1.5 s on the desktop);
+  2. 2.0 × worst-clip p90 cold G1 ≤ 3.0 s;
+  3. 2.0 × median G2 ≤ 1.0 s (≤ 0.5 s on the desktop);
+  4. 2.0 × worst-clip p90 G2 ≤ 1.0 s.
+
+  §P6's module-load rule applies: if 2.0 × the median C0 is over 3.0 s, the excess is added to
+  every cold G1 first.
+- ×2.0 is this phone's measured desktop-to-phone factor (the JavaScript resonance worker,
+  § Desktop timing). No other factor is used for this decision.
+- Otherwise the rate is reported as **predicted fail** and is not timed on the phone. A
+  predicted-fail rate cannot win.
+- PSOLA blocks at a new rate need the same test on PSOLA's own numbers.
+- 16 000, 22 050 and 24 000 Hz stay in the phone matrix as pre-registered, whatever their
+  desktop numbers say.
+
+### A7. Phone session
+
+- **Order: WORLD, highest rate first.**
+  1. The identity check (48 outputs).
+  2. P1, the gate: for each phone rate from the highest down (48 000 and 32 000 Hz if included,
+     then 24 000, 22 050 and 16 000 Hz), WORLD 5 s on the pre-registered clips, then on the
+     speech-dense clips. Each is a block of 4 clips × 10 runs, with the clips rotated per
+     repeat and 60 s idle first.
+  3. PSOLA 5 s, in the same order.
+  4. P2 (WORLD 3 s and 8 s), P3 (the other build), P4 (10 ms frames) and P5 (the other front
+     ends), on the pre-registered clips, as §P5. P2 and P3 include the new rates that are in the
+     phone matrix. P4 and P5 stay at 16 000–24 000 Hz, as on the desktop.
+- **One long session.** `START-both.sh` runs the trace check (~12 min), a 2-minute rest, then
+  the whole preview timing, P1 to P5, with no early cap.
+  - `--budgetMin` is only a safety stop, set to the budget below.
+  - The site server's lifetime (`--maxHours`, now 4 h) is set above the budget.
+  - The thermal rule of §P5 stays (pause above 40 °C, resume at 38 °C or below). A long pause no
+    longer ends the session: the harness's 20-minute limit is raised to 60 minutes.
+  - The phone kit (site copy, rates, expected identity hashes) is rebuilt from the commit that
+    records this addition's results.
+- **Estimate.** Phone time per run = 2.0 × the run's desktop Chrome compute time (C0 + cold G1 +
+  20 × G2 + 5 × warm G1, taken from the same runs in the earlier desktop matrices) + 2.5 s
+  (page load and polling), plus 60 s idle per block.
+  - 16 000, 22 050 and 24 000 Hz, P1 to P5: **1 320 runs, about 300 min (5.0 h) at ×2.0**, or
+    413 min (6.9 h) at ×3.0. At ×2.0: P1 WORLD 44 min, P1 PSOLA 50 min, P2 47 min, P3 23 min,
+    P4 19 min, P5 98 min, idle, identity and setup 19 min.
+  - Each new rate in the phone matrix adds at most 280 runs: P1 WORLD 80, PSOLA 80 (if PSOLA is
+    included), P2 80 and P3 40. Its time is estimated the same way from its A5 numbers and
+    written into this addition's results before the session.
+  - **Budget = 1.5 × the total estimate at ×2.0**: 450 min (7.5 h) for the three earlier rates,
+    plus 1.5 × the new rates' share. The margin covers a slower phone and thermal pauses. The
+    trace check and rest add 14 min.
+- The phone summary reports the gate per rate and per clip set, then combined, and its margin
+  "passes up to ×N slower than this phone" (deviation 20).
+
+### A8. Listening addition (scratch only)
+
+- Four WAVs are added to the scratch listening folder
+  (`…/scratchpad/voice-preview/spike-listen/`), not to this repository. They are the unchanged
+  rebuilds of the same man (M01) and woman (F01) as before (speech-dense clips, 5 s), by WORLD
+  WebAssembly (SIMD build, F-S), at 32 and 48 kHz.
+- Same format as §P9: RMS-matched and peak-limited as `finish`, 10 ms fades, 16-bit WAV at the
+  render's rate. `index.md` gets a short section.
+- The question for the user: next to the 48 kHz original and the 24 kHz rebuild, how much do 32
+  and 48 kHz add? The answer does not change the rule (the highest passing rate wins). It tells
+  the user what is lost if only a lower rate passes.
+- Script: `listen/make-listen-hi.mjs`, committed after this section.
+
+### Deviations for this addition (2026-10-12)
+
+23. **Candidate rates 16 000–48 000 Hz**, instead of the three in §P2 and §P6 (user decision,
+    A1). The gate, the rate rule and deviation 18 are otherwise unchanged.
+24. **Phone order per rate, highest first,** instead of §P5's rates interleaved within a block
+    (user decision). A session that stops early still has the gate at the highest rate, which
+    wins if it passes. Cost: the rates run at different points of the session, so any thermal
+    drift falls between rates. The battery temperature of every run is reported per rate to
+    show it.
+25. **One long phone session with no early cap**, instead of §P5's "stopping when time runs
+    out" and the phone kit's 100-minute default (user decision). Everything pre-registered for
+    the phone (P1 to P5) runs.
+26. **Capture rates other than 48 kHz** (A3): a rule the plan did not have.
+27. **New rates reach the phone only through A6's desktop prediction.** The three earlier rates
+    are timed whatever their desktop numbers.
