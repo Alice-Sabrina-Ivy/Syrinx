@@ -3850,6 +3850,54 @@ decision). The full `PITCH_ONLY_LATE_TEXT`, which replaces the quote in
 > a minute (for example while it is still downloading), the note may not
 > appear until you stop and start listening again.
 
+#### Review notes, round 4 (2026-10-18)
+
+The fourth review (of 8a8ff79) re-ran the parity replays on every pool and
+panel (0 mismatches), the 15 s blind check (mismatches on every pool), 2,394
+synthetic runs (pauses, held notes, stop / start, late panels, ten frame
+timings, clock leads) and the suite. It found the code correct and the
+commit order right. Its four findings are about wording and documentation.
+Nothing above is edited, no requirement changes, and the module is
+unchanged.
+
+1. **"Another tab" in the late line (medium): fixed by the user decision
+   above, in bb06b51.** The line no longer mentions another tab. The
+   smoke's "More" check now requires "(for example while it is still
+   downloading), the note may not appear" and no "another tab" in the late
+   line. Re-run on the built tree of that change (bundle
+   `index-DeYxzpm5.js`, which has the new ending and not the old one):
+   95 of 95 at all five viewports (phone, p402, p360, landscape, desktop),
+   the "More" check passing at each. Lint, `npm run test:unit` (40 of 40),
+   the build and `pitch-only-warning-test` (217 of 217) pass.
+
+2. **"On from your first few seconds of listening" (low): not changed; the
+   wording needs a user decision.** Round 3's item 2 still stands: the
+   limit is a panel whose first update came before the cue filled (about
+   5 s of voiced speech, whenever that happens) and that showed no estimate
+   in the start window, so a user who turns the panel on before talking
+   but after listening started is not described. The user's 2026-10-18
+   answer covered the tab wording and the cap only. The review's
+   suggestion is unchanged: "If the panel is on before you start talking
+   but shows no reading during roughly your first half-minute to a minute
+   of talking …".
+
+3. **The CLAUDE.md held-notes case (nit): applied.** It said the shipped
+   module warns at 272 s "and this one never". It now gives the counts
+   from round 3's simulation (`r3fix/sim3r.json`, held170, 21 runs): the
+   shipped module warns (first at 272.0–272.2 s) in 17 of 21 runs, the new
+   module in 3 of 21 (all three with the "drops" frame timing, whose
+   stalls keep the voiced count under the cap), b72bb8a's time cap in
+   none.
+
+4. **Split the late line into two list items (nit, optional): not
+   applied.** The review found the line fits inside the panel, wraps
+   cleanly and is readable at 360 and 448 px. A split changes the "More"
+   list's structure, which the test (one `data-heard-as-pitch-only-late`
+   item holding `PITCH_ONLY_LATE_TEXT`) and the smoke check pin, and its
+   second item would be the sentence whose wording is still open (item 2).
+   If the user changes that sentence, the split can be made in the same
+   change.
+
 
 ## Reproduce
 
