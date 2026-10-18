@@ -46,8 +46,8 @@
 //                   late-switch-on line and false-alarm line (no "turn it on
 //                   before you start talking" line; measurement note §8.9,
 //                   wording of its "Decisions 2026-10-13", the late line as
-//                   amended 2026-10-18: no "another tab"), wrapped inside
-//                   the panel.
+//                   amended 2026-10-18: no "another tab", "on before you
+//                   start talking … of talking"), wrapped inside the panel.
 //   3 held          resonance "sustained" for >= 60 % of the voiced hold after
 //                   its first second; the panel says "sustained", never ranges.
 //   4 noise / 5 silence  no dot on any row after the 5 s hold; the panel never
@@ -597,13 +597,14 @@ check("man: listening", await continueAfterReload(page));
       const fits = (e) => { const r = e.getBoundingClientRect(); return r.left >= p.left - 0.5 && r.right <= p.right + 0.5; };
       return { found: true, li: true, late: true, text: li.textContent, lateText: late.textContent, items: list.querySelectorAll("li").length,
         inside: fits(li) && fits(late), noOverflow: li.scrollWidth <= li.clientWidth + 1 && late.scrollWidth <= late.clientWidth + 1,
-        startLine: !!list.querySelector("[data-heard-as-pitch-only-start]") || /before you start talking/.test(list.textContent),
+        startLine: !!list.querySelector("[data-heard-as-pitch-only-start]")
+          || [...list.querySelectorAll("li")].some((e) => !e.hasAttribute("data-heard-as-pitch-only-late") && /before you start talking|when you start talking:/.test(e.textContent)),
         pageScrollW: document.documentElement.scrollWidth, vw: window.innerWidth };
     });
     check("heard-as 'More': opens with the pitch-only late-switch-on and false-alarm lines (no start line), wrapped inside the panel, no horizontal page scroll",
       m.found && m.li && m.late && /pitch varies a lot/.test(m.text) && /men's voices/.test(m.text) && /turn this panel on at any time/.test(m.lateText)
       && /about 9 in 10 pitch-only changes in men's voices/.test(m.lateText)
-      && /about as many as in the same test with the panel on from the start/.test(m.lateText) && /\(for example while it is still downloading\), the note may not appear/.test(m.lateText) && !/another tab/.test(m.lateText)
+      && /about as many as in the same test with the panel on from the start/.test(m.lateText) && /If the panel is on before you start talking but shows no reading during roughly your first half-minute to a minute of talking \(for example while it is still downloading\), the note may not appear/.test(m.lateText) && !/another tab/.test(m.lateText)
       && /Some expressive speakers see it much more often — up to about 1 in 6 updates/.test(m.text)
       && !m.startLine && m.inside && m.noOverflow && m.pageScrollW <= m.vw,
       JSON.stringify({ ...m, text: m.text?.slice(0, 60), lateText: m.lateText?.slice(0, 60) }));

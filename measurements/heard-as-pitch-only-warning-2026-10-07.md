@@ -80,7 +80,9 @@
 > showed that the late line's "another tab" holds for the app's own tabs
 > but not for a different browser tab; that wording, and "first few
 > seconds of listening", await a user decision. Decided 2026-10-18 (end
-> of §8.9): the late line drops "another tab"; the rest of it is unchanged.
+> of §8.9): the late line drops "another tab" and says "on before you
+> start talking … of talking" in place of "on from your first few seconds
+> of listening"; round 3's wording questions are all decided.
 
 The experimental, opt-in "Likely heard as" panel follows pitch more than
 listeners do. When a voice changes pitch without changing resonance, the panel
@@ -3897,6 +3899,32 @@ unchanged.
    second item would be the sentence whose wording is still open (item 2).
    If the user changes that sentence, the split can be made in the same
    change.
+
+#### Decision 2026-10-18 (second): "on before you start talking"
+
+User decision on round 3's item 2 (round 4's item 2): the late line's last
+sentence takes the review's suggested wording. "If the panel is on from
+your first few seconds of listening but shows no reading during roughly
+your first half-minute to a minute (for example while it is still
+downloading)" becomes "If the panel is on before you start talking but
+shows no reading during roughly your first half-minute to a minute of
+talking (for example while it is still downloading)". The rest of the
+sentence and of the line is unchanged, and the line is not split (round
+4's item 4). With this and the decision above, round 3's wording questions
+are all decided. The full `PITCH_ONLY_LATE_TEXT`, which replaces the quote
+in "Decision 2026-10-18" above as the reference for (e):
+
+> You can turn this panel on at any time. If you turn it on after you've
+> started talking, the note about pitch-only changes still compares with
+> how you sounded at the start, but it needs about 20 seconds of readings
+> before it can appear. In a test on about 70 other people with the panel
+> turned on half a minute to two minutes in, it then caught about 9 in 10
+> pitch-only changes in men's voices and about 3 in 4 in women's voices
+> within 10 seconds — about as many as in the same test with the panel on
+> from the start. If the panel is on before you start talking but shows no
+> reading during roughly your first half-minute to a minute of talking
+> (for example while it is still downloading), the note may not appear
+> until you stop and start listening again.
 
 
 ## Reproduce

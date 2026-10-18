@@ -113,21 +113,24 @@ export const PITCH_ONLY_MISSES_TEXT =
 // quiet ones are in); "half a minute to a minute" = when the start window
 // closes (§8.6 addendum: median 30-36 s, 95th percentile 42-50 s). The last
 // sentence is the limit that remains: a panel whose first update came before
-// the cue filled (about 10 s into a session on the recorded streams: "on
-// from your first few seconds of listening") but that showed no estimate in
-// the start window — its model still downloading, or the user on another of
-// the app's tabs (Pitch, History, Resonance lab: off the practice view the
-// panel makes no updates; a different browser tab did not stop it in §8.9's
-// round-3 test). The text names only the download (user decision 2026-10-18,
-// §8.9: assume the user uses Syrinx in one tab).
+// the cue filled (about 5 s of voiced speech, whenever that comes; about 10 s
+// into a session on the recorded streams: "on before you start talking") but
+// that showed no estimate in the start window — its model still downloading,
+// or the user on another of the app's tabs (Pitch, History, Resonance lab:
+// off the practice view the panel makes no updates; a different browser tab
+// did not stop it in §8.9's round-3 test). The text names only the download
+// (user decisions 2026-10-18, §8.9: assume the user uses Syrinx in one tab;
+// "on before you start talking … of talking", round 3's suggested wording).
 // (Until the decisions of 2026-10-13: "… within 10 seconds — about as many
 // as with the panel on from the start. If the panel is already on when you
 // start talking but shows no reading … (for example while it is still
-// downloading), the note may not appear …". Until 2026-10-18: "… (for
-// example while it is still downloading, or while you are on another tab),
-// the note may not appear …".)
+// downloading), the note may not appear …". Until 2026-10-18: "… If the
+// panel is on from your first few seconds of listening but shows no reading
+// during roughly your first half-minute to a minute (for example while it is
+// still downloading, or while you are on another tab), the note may not
+// appear …".)
 export const PITCH_ONLY_LATE_TEXT =
-  "You can turn this panel on at any time. If you turn it on after you've started talking, the note about pitch-only changes still compares with how you sounded at the start, but it needs about 20 seconds of readings before it can appear. In a test on about 70 other people with the panel turned on half a minute to two minutes in, it then caught about 9 in 10 pitch-only changes in men's voices and about 3 in 4 in women's voices within 10 seconds — about as many as in the same test with the panel on from the start. If the panel is on from your first few seconds of listening but shows no reading during roughly your first half-minute to a minute (for example while it is still downloading), the note may not appear until you stop and start listening again.";
+  "You can turn this panel on at any time. If you turn it on after you've started talking, the note about pitch-only changes still compares with how you sounded at the start, but it needs about 20 seconds of readings before it can appear. In a test on about 70 other people with the panel turned on half a minute to two minutes in, it then caught about 9 in 10 pitch-only changes in men's voices and about 3 in 4 in women's voices within 10 seconds — about as many as in the same test with the panel on from the start. If the panel is on before you start talking but shows no reading during roughly your first half-minute to a minute of talking (for example while it is still downloading), the note may not appear until you stop and start listening again.";
 
 // The pitch-only warning's false alarms (natural reading, the share of the
 // updates where the panel showed an estimate — eligible updates, the base of
