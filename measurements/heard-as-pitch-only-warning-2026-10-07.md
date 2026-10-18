@@ -79,7 +79,8 @@
 > bound is for the production 25 ms frame spacing. A test of the built app
 > showed that the late line's "another tab" holds for the app's own tabs
 > but not for a different browser tab; that wording, and "first few
-> seconds of listening", await a user decision.
+> seconds of listening", await a user decision. Decided 2026-10-18 (end
+> of §8.9): the late line drops "another tab"; the rest of it is unchanged.
 
 The experimental, opt-in "Likely heard as" panel follows pitch more than
 listeners do. When a voice changes pitch without changing resonance, the panel
@@ -3826,6 +3827,28 @@ Inputs and outputs of this step (scratch folder `warning-ks-q5-adopt/r3fix/`):
   and its output `sim3r.json` `66b3391430d252ba183c1e46f610148a127fe475f4d21f983908c64e49e13946`
 - `chunkbound.mjs` `dce5b6b4f79183aed47038f127a7d522f8752c8fccc1a11d89cf1428c1ecbac5`
   and its output `chunkbound.txt` `5bbd879a04167a6534d2b8236f0431e85bf913781efb10055e8cb1856c7a02e4`
+
+#### Decision 2026-10-18: the late line drops "another tab"
+
+User decision on round 3, item 1: the late line no longer mentions being
+on another tab (assume the user uses Syrinx in one tab). Its last sentence
+now reads "… (for example while it is still downloading), the note may not
+appear until you stop and start listening again." Nothing else in the
+line changes, and no mention of the 7,200-voiced-frame cap is added (user
+decision). The full `PITCH_ONLY_LATE_TEXT`, which replaces the quote in
+"Decisions 2026-10-13" as the reference for (e):
+
+> You can turn this panel on at any time. If you turn it on after you've
+> started talking, the note about pitch-only changes still compares with
+> how you sounded at the start, but it needs about 20 seconds of readings
+> before it can appear. In a test on about 70 other people with the panel
+> turned on half a minute to two minutes in, it then caught about 9 in 10
+> pitch-only changes in men's voices and about 3 in 4 in women's voices
+> within 10 seconds — about as many as in the same test with the panel on
+> from the start. If the panel is on from your first few seconds of
+> listening but shows no reading during roughly your first half-minute to
+> a minute (for example while it is still downloading), the note may not
+> appear until you stop and start listening again.
 
 
 ## Reproduce
