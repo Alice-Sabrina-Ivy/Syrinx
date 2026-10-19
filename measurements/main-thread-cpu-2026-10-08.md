@@ -495,9 +495,13 @@ the cue strip unchanged. The desktop was not re-measured against adf19c3 (the
 §3.1 TARGET figures come from another session; compare within one table
 only). On the phone the adopted build stays 11 % / 14 % below adf19c3.
 **2026-10-12, branch `trace-vsync`** ([phone-cpu-2026-10-12.md](phone-cpu-2026-10-12.md)
-§7; not yet phone-checked, merge pending the §7.3 phone check as amended):
-the loop's gate compares the frame timestamp (15 ms) instead of
-`performance.now()`, so it should draw on every 60 Hz frame (~60 /s on the
-phone instead of a9ddd6b's ~53, unit model); on the desktop at ~180 Hz draws,
-main-thread CPU and latency are unchanged within run spread. The loop the
-user adopted on 2026-10-12 after the phone check is a9ddd6b's.
+§7): the loop's gate compares the frame timestamp (15 ms) instead of
+`performance.now()`; on the desktop at ~180 Hz draws, main-thread CPU and
+latency are unchanged within run spread. **Phone-checked 2026-10-19 (§7.6):
+PASS 6 / 6** — it draws on every 60 Hz frame (60.0 draws /s for women and
+men vs a9ddd6b's 52.3; frame-timestamp gap p99 16.8 ms; draw-end gap p99
+20.9 vs 33.5 ms; SMOOTH by the automated screen-recording check) at +10.5
+ms/s (+3.1 %) main thread in the one usable pair (diag on; the production
+pair was spoiled by the phone locking, so the production-page cost is
+unmeasured). `trace-vsync` merged into `cue-strip`, replacing the
+`performance.now()` gate a9ddd6b's loop (adopted 2026-10-12) used.
