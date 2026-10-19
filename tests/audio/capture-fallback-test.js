@@ -58,6 +58,7 @@ globalThis.AudioData = class {};
 globalThis.MediaStreamTrackProcessor = class {
   constructor({ track }) {
     if (mstpMode === "ctor-throws") throw new TypeError("Failed to construct 'MediaStreamTrackProcessor'");
+    if (mstpMode === "ctor-throws-nomsg") throw new Error("");
     const mode = mstpMode;
     let first = true; let pendingResolve = null;
     this.readable = {
@@ -80,14 +81,15 @@ globalThis.MediaStreamTrackProcessor = class {
 };
 
 const audioContexts = [];
-// AudioContext setup failure for the next construction: null | "addmodule" | "source"
+// AudioContext setup failure for the next construction: null | "addmodule" | "addmodule-nomsg" | "source"
 let ctxFail = null;
 class FakeAudioContext {
   constructor(o) {
     this.opts = o; this.sampleRate = 44100; this.state = "running"; this.closed = false;
     this.baseLatency = 0.01; this.outputLatency = 0.02; this.destination = {}; this.sources = [];
     const fail = ctxFail;
-    this.audioWorklet = { addModule: () => (fail === "addmodule" ? Promise.reject(new Error("addModule failed")) : Promise.resolve()) };
+    this.audioWorklet = { addModule: () => (fail === "addmodule" ? Promise.reject(new Error("addModule failed"))
+      : fail === "addmodule-nomsg" ? Promise.reject(new Error("")) : Promise.resolve()) };
     this.fail = fail;
     audioContexts.push(this);
   }
@@ -247,6 +249,17 @@ const warn = console.warn; console.warn = () => {};
   const st = await runHook();
   check("hook: message-less NotReadableError -> not 'denied'",
     st?.status === "error" && !/denied/i.test(st.error ?? "") && /could not be started/.test(st.error ?? ""), st?.error);
+}
+{
+  // Access granted, then capture fails to start with no message (MSTP, then
+  // the AudioContext fallback). The old code showed "Microphone access denied".
+  mstpMode = "ctor-throws-nomsg"; ctxFail = "addmodule-nomsg";
+  gumImpl = () => Promise.resolve(makeStream());
+  const st = await runHook();
+  ctxFail = null;
+  check("hook: message-less capture failure after access granted -> not 'denied'",
+    st?.status === "error" && !/denied/i.test(st.error ?? "") && /could not be started/.test(st.error ?? ""), st?.error);
+  check("hook: ... with one getUserMedia call", gumCalls === 1, String(gumCalls));
 }
 {
   mstpMode = "ctor-throws";
