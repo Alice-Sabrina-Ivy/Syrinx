@@ -1,6 +1,7 @@
 // no-local-paths-test.js — no tracked text file names a local Windows user
 // profile (a drive-letter "Users" folder with an account name after it) or a
-// Claude scratch folder under AppData/Local/Temp/claude. This repo is public:
+// Claude scratch folder (a "claude" folder in the user's local Temp folder,
+// spelled out in PATTERNS below). This repo is public:
 // such a path publishes the account name and a session id. Cite local files
 // with a placeholder instead ($SCRATCH/<file>, $SYRINX_SESSIONS_DIR/...).
 //
