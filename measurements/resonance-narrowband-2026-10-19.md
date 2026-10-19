@@ -141,8 +141,138 @@ smoke runs.
 
 ## Deviations
 
-(none yet)
+Recorded 2026-10-19, during the run.
+
+1. **Base commit.** `origin/cue-strip` was at 7928936 (not fdfa040) when the
+   plan was written; the plan (b991def) sits on top of it. No effect on the
+   measurement.
+2. **Budget rule (plan §3) not triggered.** The first condition (clean, dev
+   half, 20 jobs × 6 streams) took 1.6 min at two processes, projecting
+   ≈ 1 h for the 39 conditions, below 3 h, so every version (k = 0.88–1.12
+   plus the clean original) was used. Decided before any detector output was
+   computed. The whole dev run took 62 min.
+3. **Choices the plan left open:**
+   - Speaker split: within each sex, readers sorted by the numeric
+     LibriSpeech id; ranks 0, 2, 4, … = dev.
+   - Voiced time = voiced frames of the engine's 10 ms grid (the grid the
+     relayed pitch posts are mapped onto); the notice state of a frame is the
+     state after that frame's update.
+   - "On by the time 10 s of voiced audio has passed" = the notice first
+     comes on within the first 1000 voiced grid frames.
+   - Window: `ring16.at(c − 512 … c − 1)` of the engine's own ring (zero before
+     the stream start), periodic Hann, band bins k with lo ≤ 31.25 k ≤ hi.
+   - Selection tie-breaks after V_min (needed only if points tie on band /
+     τ): the (band, τ) with the longest run of tied T_on values, then shorter
+     τ, band A < B < C; T_on = lower middle of the run. Not used — no point
+     passed.
+   - Room responses: the study's final (noise-compensated) picks, its
+     deviation 8.
+4. **Harness.** `extract.mjs` drives the real pitch worker and the real lab
+   engine built as `resonance-worker.js` builds it, without the vtln model and
+   the cue (neither changes the 16 kHz ring or the grid). With the shipped
+   vtln model and reference loaded (`--vtln`) the output file was
+   byte-identical on a synthetic test stream. The rebuilt `streams.json` is
+   identical to the robustness study's cached copy.
+5. **Held-out extraction started early, then stopped.** To save time the
+   held-out half's feature extraction was queued to start right after the
+   dev run. No detector output on it was computed or looked at. It was
+   stopped once the dev grid had no passing point, since the plan then has
+   no confirmation to run.
 
 ## Results
 
-(not run yet)
+Run 2026-10-19 on the dev half (10 women, 10 men; 39 conditions; 3920
+streams, 51.6 h of audio). Scripts: `scripts/resonance-narrowband/`
+(`build_streams.py`, `cut40.py`, `upsample.mjs` copied from the robustness
+study at 99ff7fc; `conditions.py` = its `run_all.py` with the new `btnb`
+condition, the split and `extract.mjs`; `detector.mjs` = the pure detector;
+`sweep.mjs` = grid, selection, confirmation). Audio and features stay in the
+gitignored `build/resonance-narrowband/`.
+
+### Verdict: no detector meets the bar — nothing ships
+
+**None of the 1224 grid points passes both bars on the dev half**, so per
+§4 there is no selected point, no held-out confirmation, and §5 does not
+happen. The grid was not widened.
+
+Why: the **4 kHz low-pass** positive overlaps the wideband negatives. Its
+feature at stream end sits at a median of about −21 dB (best band C), the
+same range as wideband streams with a falling spectrum (the −6 dB/oct tilt,
+the headset combination, the short room) and one male reader whose clean
+recording is already dark above 4.5 kHz. Every threshold that catches ≥ 95 %
+of the low-pass streams turns the notice on for well over 1 % of wideband
+voiced time, and the clean bar fails too. The paths that really go through an
+8 kHz link (telephone band, AMR-NB, G.711, the narrowband-Bluetooth-like
+path) are far apart from all wideband streams (stream-end F ≤ −39.6 dB vs
+≥ −25.3 dB on dev, band C); Opus 8 kbit/s narrowband sits in between (max
+−22.1 dB). Those observations are descriptive only — the pre-registered
+positive set includes the 4 kHz low-pass, and changing it would be a new plan.
+
+Closest grid points (worst negative share over every condition and sex /
+clean streams with the notice / worst positive detection rate):
+
+- C τ4 V3 H3 T-21: neg 5.1 % (tilt-6|m), clean 3, pos 66.0 % (lp4k|m)
+- C τ4 V5 H3 T-21: neg 5.0 % (tilt-6|m), clean 3, pos 66.0 % (lp4k|m)
+- C τ4 V5 H3 T-20: neg 6.8 % (headset|f), clean 4, pos 70.0 % (lp4k|m)
+- C τ8 V3 H3 T-21: neg 5.1 % (headset|f), clean 1, pos 64.0 % (lp4k|m)
+- C τ8 V5 H3 T-21: neg 4.7 % (headset|f), clean 1, pos 64.0 % (lp4k|m)
+
+### Closest point in detail (dev): band C, τ 8 s, V_min 5 s, H 3 dB, T_on −21 dB — FAIL
+
+Worst negative: 4.7 % (headset|f); clean streams with the notice: 1; worst positive detection: 64.0 % (lp4k|m).
+
+Negatives (wideband): notice-on share of voiced time (bar ≤ 1 %), streams with any notice, F at stream end (dB, min / median)
+
+| Condition | women share | women streams on | men share | men streams on | F end women min / med | F end men min / med |
+|---|---|---|---|---|---|---|
+| agcfast | 0.0 % | 0/50 | 1.2 % | 1/50 | -19.3 / -5.9 | -23.2 / -8.1 |
+| agcslow | 0.0 % | 0/50 | 1.2 % | 1/50 | -18.3 / -6.5 | -23.9 / -9.7 |
+| amrwb | 0.029 % | 1/50 | 1.5 % | 1/50 | -21.1 / -7.8 | -23.5 / -9.6 |
+| babble+10 | 0.0 % | 0/50 | 0.0 % | 0/50 | -12.1 / -2.1 | -17.6 / -3.6 |
+| babble+20 | 0.0 % | 0/50 | 1.4 % | 1/50 | -18.3 / -5.0 | -22.5 / -7.4 |
+| bt | 0.0 % | 0/50 | 0.0 % | 0/50 | -13.6 / -2.2 | -18.7 / -3.9 |
+| clean | 0.0 % | 0/60 | 1.0 % | 1/60 | -19.1 / -6.1 | -23.6 / -8.8 |
+| comp | 0.0 % | 0/50 | 0.1 % | 1/50 | -14.4 / -3.5 | -20.7 / -5.7 |
+| fan+10 | 0.0 % | 0/50 | 0.7 % | 1/50 | -18.4 / -5.8 | -22.3 / -5.6 |
+| fan+20 | 0.0 % | 0/50 | 1.5 % | 1/50 | -19.3 / -5.9 | -21.9 / -6.0 |
+| headset | 4.7 % | 6/50 | 4.1 % | 3/50 | -21.1 / -9.1 | -21.0 / -9.8 |
+| hp100 | 0.0 % | 0/50 | 1.2 % | 1/50 | -19.6 / -5.9 | -23.2 / -8.4 |
+| hp200 | 0.0 % | 0/50 | 1.4 % | 1/50 | -19.9 / -6.2 | -24.1 / -8.6 |
+| hp300 | 0.0 % | 0/50 | 1.3 % | 1/50 | -19.8 / -6.3 | -24.7 / -9.3 |
+| laptop | 0.0 % | 0/50 | 0.037 % | 1/50 | -8.7 / -1.5 | -21.1 / -3.2 |
+| lev+20clip | 0.0 % | 0/50 | 0.0 % | 0/50 | -13.1 / -4.6 | -16.5 / -6.0 |
+| lev-10 | 0.0 % | 0/50 | 1.2 % | 1/50 | -19.1 / -6.1 | -23.6 / -8.8 |
+| lev-20 | 0.0 % | 0/50 | 1.2 % | 1/50 | -19.1 / -6.1 | -23.6 / -8.8 |
+| lp7k | 0.0 % | 0/50 | 1.2 % | 1/50 | -19.4 / -6.2 | -23.6 / -8.4 |
+| msbc | 0.0 % | 0/50 | 1.3 % | 1/50 | -19.4 / -5.8 | -23.8 / -8.8 |
+| opus12wb | 0.0 % | 0/50 | 1.4 % | 1/50 | -20.8 / -7.1 | -24.3 / -9.7 |
+| opus24wb | 0.2 % | 1/50 | 1.9 % | 2/50 | -21.8 / -7.7 | -24.8 / -10.9 |
+| phone | 0.0 % | 0/50 | 0.0 % | 0/50 | -16.5 / -2.7 | -18.0 / -6.0 |
+| room_l | 0.0 % | 0/50 | 0.0 % | 0/50 | -18.2 / -3.6 | -18.7 / -5.7 |
+| room_m | 0.0 % | 0/50 | 1.9 % | 2/50 | -10.4 / -1.0 | -23.6 / -1.7 |
+| room_s | 1.1 % | 1/50 | 2.9 % | 3/50 | -19.5 / -7.5 | -23.7 / -7.1 |
+| sr44k | 0.0 % | 0/50 | 1.2 % | 1/50 | -19.3 / -6.1 | -23.4 / -8.6 |
+| street+10 | 0.0 % | 0/50 | 0.9 % | 1/50 | -17.0 / -5.8 | -21.8 / -9.2 |
+| street+20 | 0.0 % | 0/50 | 1.2 % | 1/50 | -18.8 / -6.2 | -23.1 / -9.8 |
+| tilt+6 | 0.0 % | 0/50 | 0.0 % | 0/50 | -16.5 / -4.4 | -20.1 / -6.6 |
+| tilt-6 | 1.3 % | 3/50 | 3.3 % | 3/50 | -23.3 / -9.8 | -25.3 / -10.7 |
+| videocall | 0.0 % | 0/50 | 0.9 % | 1/50 | -8.3 / -0.6 | -19.2 / -1.3 |
+| wb | 0.0 % | 0/50 | 1.2 % | 1/50 | -19.6 / -6.0 | -23.2 / -8.4 |
+
+Positives (narrowband): detected by 10 s voiced (bar ≥ 95 %), time to notice (voiced s, median / q90), dropouts after first notice, F at stream end (dB, median / max)
+
+| Condition | women detected | men detected | women time med / q90 | men time med / q90 | women dropouts | men dropouts | F end women med / max | F end men med / max |
+|---|---|---|---|---|---|---|---|---|
+| amrnb | 50/50 (100.0 %) | 50/50 (100.0 %) | 5.00 / 5.00 | 5.00 / 5.00 | 0.0 % | 0.0 % | -57.6 / -50.7 | -54.4 / -48.3 |
+| btnb | 50/50 (100.0 %) | 50/50 (100.0 %) | 5.00 / 5.00 | 5.00 / 5.00 | 0.0 % | 0.0 % | -45.6 / -40.9 | -43.5 / -39.6 |
+| g711u | 50/50 (100.0 %) | 50/50 (100.0 %) | 5.00 / 5.00 | 5.00 / 5.00 | 0.0 % | 0.0 % | -54.3 / -49.3 | -51.8 / -46.7 |
+| lp4k | 33/50 (66.0 %) | 32/50 (64.0 %) | 5.00 / 9.35 | 5.00 / 9.45 | 4.2 % | 4.6 % | -20.9 / -12.3 | -21.5 / -15.6 |
+| opus8nb | 50/50 (100.0 %) | 50/50 (100.0 %) | 5.00 / 5.00 | 5.00 / 5.00 | 0.0 % | 0.0 % | -27.8 / -23.2 | -26.0 / -22.1 |
+| tel | 50/50 (100.0 %) | 50/50 (100.0 %) | 5.00 / 5.00 | 5.00 / 5.00 | 0.0 % | 0.0 % | -51.8 / -46.9 | -50.0 / -44.7 |
+
+Positive streams with < 10 s of voiced audio in total: 0.
+
+
+Detector cost: 4.9 ms CPU per second of audio (band energies incl. the lazy 16 kHz samples it reads; Node, desktop). Pitch frames dropped by the engine: 0.
+
+Re-run: `PY -I scripts/resonance-narrowband/build_streams.py --libri …`, `cut40.py`, `node upsample.mjs`, copy the study's final `rirs.json` into `build/resonance-narrowband/`, then `PY -I scripts/resonance-narrowband/conditions.py --cache <Syrinx-cache/resonance-robustness> --half dev` and `node scripts/resonance-narrowband/sweep.mjs --half=dev` (`--point=C,8,5,3,-21` for the table above).
