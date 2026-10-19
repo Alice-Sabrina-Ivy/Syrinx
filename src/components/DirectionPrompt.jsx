@@ -30,6 +30,9 @@ function optionHint(id) {
 }
 
 // Radio group of the four directions. `compact` = the settings-panel size.
+// The focus outline shows for keyboard focus only (:focus-visible), so a
+// tap never leaves a purple ring that looks like the selected state
+// (2026-10-19 review S-4c).
 export function DirectionOptions({ value, onChange, compact = false, name = "training-direction" }) {
   return (
     <div role="radiogroup" aria-label="What are you trying to sound like?" className={compact ? "space-y-1.5" : "space-y-2"}>
@@ -38,7 +41,7 @@ export function DirectionOptions({ value, onChange, compact = false, name = "tra
         return (
           <label
             key={d.id}
-            className={`flex items-center gap-3 rounded-xl border cursor-pointer transition-colors focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-purple-300 ${
+            className={`flex items-center gap-3 rounded-xl border cursor-pointer transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-purple-300 ${
               compact ? "px-3 py-2" : "px-3.5 py-2.5"
             } ${
               selected
@@ -63,7 +66,7 @@ export function DirectionOptions({ value, onChange, compact = false, name = "tra
             />
             <span className="text-left">
               <span className={`block ${compact ? "text-sm" : "text-[15px]"} text-neutral-200`}>{d.label}</span>
-              <span className="block text-[11px] text-neutral-500 mt-0.5">{optionHint(d.id)}</span>
+              <span className="block text-[11px] text-neutral-400 mt-0.5">{optionHint(d.id)}</span>
             </span>
           </label>
         );
@@ -80,13 +83,17 @@ export function DirectionPrompt({ initial, onConfirm }) {
   const [choice, setChoice] = useState(initial ?? null);
   const formRef = useRef(null);
   // Keyboard start point: Continue when the last answer is preselected
-  // (one key/tap to confirm), otherwise the first option.
+  // (one key/tap to confirm), otherwise the question itself — Tab then
+  // reaches the first option. Focusing the first option drew its ring on a
+  // first visit, which read as a preselected answer (2026-10-19 review
+  // S-4c; :focus-visible alone did not stop it — focus moved by script
+  // after the welcome's auto-focused button counts as keyboard focus).
   useEffect(() => {
     const form = formRef.current;
     if (!form) return;
     const target = initial != null
       ? form.querySelector('button[type="submit"]')
-      : form.querySelector('input[type="radio"]');
+      : form.querySelector("#direction-title");
     target?.focus();
   }, [initial]);
 
@@ -120,7 +127,7 @@ export function DirectionPrompt({ initial, onConfirm }) {
           if (choice != null) onConfirm(choice, { start: true });
         }}
       >
-        <h2 id="direction-title" className="text-lg font-light text-white text-center">
+        <h2 id="direction-title" tabIndex={-1} className="text-lg font-light text-white text-center outline-none">
           What are you trying to sound like?
         </h2>
         <p className="text-xs text-neutral-400 text-center mt-1.5 mb-4 leading-relaxed">
@@ -134,7 +141,7 @@ export function DirectionPrompt({ initial, onConfirm }) {
         >
           Continue
         </button>
-        <p className="text-[11px] text-neutral-500 text-center mt-2">Continue starts the microphone.</p>
+        <p className="text-[11px] text-neutral-400 text-center mt-2">Continue starts the microphone.</p>
       </form>
     </div>
   );

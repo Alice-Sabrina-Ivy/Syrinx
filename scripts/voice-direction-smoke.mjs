@@ -20,7 +20,7 @@
 //   1 speech  first visit: welcome (a modal, focus on Get Started), then
 //             the question with nothing preselected — a real modal: the
 //             page behind is inert (Tab, clicks on Start Listening / the
-//             gear do nothing), the focused option shows an outline,
+//             gear do nothing), focus starts on the question, a Tab-focused option shows an outline,
 //             Escape needs an answer; pick "More masculine", Continue
 //             starts listening; Settings mid-session (focus moves in,
 //             Escape closes it and returns focus to the gear) — the pitch
@@ -261,6 +261,7 @@ const dialogInfo = (page) => page.evaluate(() => {
     focus: (a?.getAttribute("aria-label") || a?.textContent || a?.tagName || "").trim().slice(0, 40),
     focusDirection: a?.dataset?.direction ?? null,
     focusOutline: lab ? getComputedStyle(lab).outlineStyle : null,
+    focusVisible: !!a?.matches(":focus-visible"),
   };
 });
 // Adds two sessions recorded before training directions existed (no
@@ -411,8 +412,10 @@ await launch(WAV.speech);
   check("first visit: question after welcome, nothing preselected", first && first.checked === null && !first.continueEnabled,
     JSON.stringify(first));
   const q = await dialogInfo(page);
-  check("question: modal, page behind inert, first option focused with a visible outline",
-    q.dialog === "direction" && q.modal && q.inert && q.focusDirection === "feminine" && q.focusOutline !== "none",
+  // Focus starts on the question, not an option (review S-4c: the first
+  // option's ring read as a preselected answer); Tab reaches the options.
+  check("question: modal, page behind inert, focus on the question (no option ringed)",
+    q.dialog === "direction" && q.modal && q.inert && q.focusDirection === null && /What are you trying/.test(q.focus),
     JSON.stringify(q));
   await shot(page, "02-question-first-visit");
   // Tab cycles inside the question; nothing behind it can take focus.
@@ -424,6 +427,15 @@ await launch(WAV.speech);
   }
   // (?diag=1 adds the focusable diag overlay outside the app, so skip there.)
   if (!DIAG) check("Tab never leaves the question for the page behind it", tabbed.every(Boolean), JSON.stringify(tabbed));
+  {
+    // Keyboard focus on an option shows its outline.
+    for (let i = 0; i < 8; i++) {
+      if (await page.evaluate(() => !!document.activeElement?.dataset?.direction)) break;
+      await page.keyboard.press("Tab");
+    }
+    const k = await dialogInfo(page);
+    check("keyboard focus on an option shows a visible outline", !!k.focusDirection && k.focusVisible && k.focusOutline !== "none", JSON.stringify(k));
+  }
   // What a user can do to the page behind: focus it (keyboard) or tap it.
   const behind = await page.evaluate(() => {
     const start = [...document.querySelectorAll("button")].find((x) => x.textContent.includes("Start Listening"));

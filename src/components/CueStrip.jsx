@@ -30,6 +30,7 @@
 
 import { memo, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { SteadinessReadout } from "./SteadinessReadout";
+import { useInfoPopover } from "./useInfoPopover";
 import {
   axisPos,
   bandsFor,
@@ -131,24 +132,15 @@ function directionNote(cue, direction) {
 const INFO_POPOVER_CLASS =
   "fixed z-40 inset-x-4 top-1/2 -translate-y-1/2 mx-auto max-w-md max-h-[80dvh] overflow-y-auto whitespace-normal break-words " +
   "rounded-lg border border-neutral-600 bg-neutral-900 px-3 py-2 text-left text-xs lg:text-sm leading-relaxed font-normal normal-case " +
-  "tracking-normal text-neutral-200 shadow-2xl shadow-black/70 space-y-1.5";
+  "tracking-normal text-neutral-200 shadow-2xl shadow-black/70 space-y-1.5 outline-none";
 function InfoToggle({ label, children }) {
-  const [open, setOpen] = useState(false);
-  const wrapRef = useRef(null);
-  const tipId = useId();
-  useEffect(() => {
-    if (!open) return undefined;
-    const onDown = (e) => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); };
-    const onKey = (e) => { if (e.key === "Escape") setOpen(false); };
-    document.addEventListener("pointerdown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => { document.removeEventListener("pointerdown", onDown); document.removeEventListener("keydown", onKey); };
-  }, [open]);
+  const { open, toggle, wrapRef, buttonRef, tipId, onBlur } = useInfoPopover();
   return (
-    <span ref={wrapRef} className="inline-flex">
+    <span ref={wrapRef} className="inline-flex" onBlur={onBlur}>
       <button
+        ref={buttonRef}
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={toggle}
         aria-expanded={open}
         aria-controls={tipId}
         aria-label={label}
@@ -160,6 +152,7 @@ function InfoToggle({ label, children }) {
         <div
           id={tipId}
           role="note"
+          tabIndex={-1}
           data-cue-info=""
           className={INFO_POPOVER_CLASS}
         >
@@ -307,12 +300,13 @@ const CueRow = memo(function CueRow({ cue, title, titleWord, info, headerRight, 
             circle it replaced (radius g.r; hollow = a 1.5 px ring), so its
             200 ms transform transition runs on the compositor — an SVG
             element's transition runs on the main thread at the display
-            rate (measurements/main-thread-cpu-2026-10-08.md). */}
+            rate (measurements/main-thread-cpu-2026-10-08.md). No transition
+            under prefers-reduced-motion: the dot jumps (review N-7). */}
         {dotPos && (
           <span
             data-cue-dot-mark=""
             aria-hidden="true"
-            className="absolute left-0 rounded-full box-border pointer-events-none"
+            className="absolute left-0 rounded-full box-border pointer-events-none motion-safe:transition-transform motion-safe:duration-200 motion-safe:ease-out"
             style={{
               top: ax - g.r,
               width: 2 * g.r,
@@ -321,7 +315,6 @@ const CueRow = memo(function CueRow({ cue, title, titleWord, info, headerRight, 
               border: hollow ? `1.5px solid ${color}` : "none",
               opacity: showDot,
               transform: `translateX(${X(dotPos.x) - g.r}px)`,
-              transition: "transform 200ms ease-out",
               willChange: "transform",
             }}
           />

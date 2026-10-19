@@ -187,9 +187,10 @@ const REASONS = {
   outside: () => "Outside the range it was tested on — no guess shown",
 };
 
-export function HeardAsSwitch({ on, onChange, label = "Likely heard as · Experimental" }) {
+export function HeardAsSwitch({ on, onChange, label = "Likely heard as · Experimental", ref = null }) {
   return (
     <button
+      ref={ref}
       type="button"
       role="switch"
       aria-checked={on}
@@ -231,9 +232,10 @@ function HeardAsAxis({ axis }) {
           // transition) instead of transitioning `left` (main thread). The
           // translated wrapper overhangs the axis, so it sits in a clip box
           // reaching 6 px past each end (the ring's half-width fits): the
-          // overhang must not widen the panel's scrollable area.
+          // overhang must not widen the panel's scrollable area. No transition
+          // under prefers-reduced-motion (review N-7).
           <span className="absolute -inset-x-1.5 inset-y-0 overflow-hidden">
-            <span className="absolute inset-y-0 left-1.5 right-1.5 transition-transform duration-300" style={{ transform: `translateX(${D}%)` }}>
+            <span className="absolute inset-y-0 left-1.5 right-1.5 motion-safe:transition-transform motion-safe:duration-300" style={{ transform: `translateX(${D}%)` }}>
               <span
                 className="absolute left-0 top-1/2 w-2.5 h-2.5 -ml-[5px] -translate-y-1/2 rounded-full border-2 border-neutral-200"
                 data-axis-dot-mark=""
@@ -268,6 +270,18 @@ export function HeardAsPanel({
   useEffect(() => { statusRef.current = modelStatus; });
   const shownRef = useRef(false);
   const computeRef = useRef(null);
+  // Turning the panel on or off here swaps the off row for the panel, so the
+  // pressed control unmounts: focus moves to the control that replaces it
+  // instead of dropping to <body> (2026-10-19 review S-4d). Only for a press
+  // in the panel (the state it asked for), not for the Settings switch.
+  const turnOnRef = useRef(null);
+  const switchRef = useRef(null);
+  const refocusFor = useRef(null);
+  const toggleHere = (on) => { refocusFor.current = on; onToggle(on); };
+  useEffect(() => {
+    if (refocusFor.current === enabled) (enabled ? switchRef : turnOnRef).current?.focus();
+    refocusFor.current = null;
+  }, [enabled]);
 
   useEffect(() => {
     if (!enabled) return undefined;
@@ -336,11 +350,13 @@ export function HeardAsPanel({
 
   if (!enabled) {
     return (
-      <div className="w-full flex items-center justify-between gap-2 min-h-8 px-3 rounded-xl border border-neutral-800 bg-neutral-900/40"
+      <div className="w-full flex items-center justify-between gap-2 min-h-8 px-3 py-1 rounded-xl border border-neutral-800 bg-neutral-900/40"
         data-heard-as="off" data-model-worker="off">
-        <span className="text-[11px] text-neutral-400 truncate">Likely heard as · Experimental — off</span>
-        <button type="button" onClick={() => onToggle(true)}
-          aria-label={`Turn on — downloads a voice model, a speech detector and its engine the first time, up to ${MODEL_DOWNLOAD_MB} MB`}
+        {/* Wraps rather than truncating: at 360 px the ellipsis ate "off" (review N-5). */}
+        <span className="min-w-0 text-[11px] leading-4 text-neutral-400">Likely heard as · <span className="whitespace-nowrap">Experimental — off</span></span>
+        {/* The accessible name starts with the visible text (WCAG 2.5.3, review N-9). */}
+        <button ref={turnOnRef} type="button" onClick={() => toggleHere(true)}
+          aria-label={`Turn on · up to ${MODEL_DOWNLOAD_MB} MB — the experimental "Likely heard as" estimate; the first time it downloads a voice model, a speech detector and their engine`}
           className="shrink-0 text-[11px] min-h-6 px-2.5 py-1 rounded-md bg-neutral-800 hover:bg-neutral-700 text-neutral-300 cursor-pointer transition-colors">
           Turn on · up to {MODEL_DOWNLOAD_MB} MB
         </button>
@@ -360,7 +376,7 @@ export function HeardAsPanel({
         <h3 className="text-[11px] font-medium text-neutral-300">
           Likely heard as <span className="text-amber-300/80">· Experimental</span>
         </h3>
-        <HeardAsSwitch on onChange={onToggle} />
+        <HeardAsSwitch ref={switchRef} on onChange={toggleHere} />
       </div>
       {reason ? (
         <p className="text-[11px] text-neutral-400 min-h-[18px] leading-[18px]" data-heard-as-reason="">{REASONS[reason](progress)}</p>

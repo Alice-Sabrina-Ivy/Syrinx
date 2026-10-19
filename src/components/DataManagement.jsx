@@ -230,7 +230,7 @@ export function DataManagement({ onClose, direction = null, onDirectionChange, h
           <>
             <div className="mb-4">
               <h3 className="text-sm text-neutral-300 mb-0.5">What are you trying to sound like?</h3>
-              <p className="text-[11px] text-neutral-500 mb-2">Sets your targets. Changes apply right away — close this panel to see them.</p>
+              <p className="text-[11px] text-neutral-400 mb-2">Sets your targets. Changes apply right away — close this panel to see them.</p>
               <DirectionOptions value={direction} onChange={onDirectionChange} compact name="training-direction-settings" />
             </div>
             <hr className="border-neutral-800 mb-4" />
@@ -244,7 +244,7 @@ export function DataManagement({ onClose, direction = null, onDirectionChange, h
               <span className="text-sm text-neutral-300">
                 Record audio with sessions
               </span>
-              <p className="text-[11px] text-neutral-500 mt-0.5">
+              <p className="text-[11px] text-neutral-400 mt-0.5">
                 Audio uses ~10MB per 30 minutes
               </p>
             </div>
@@ -277,7 +277,7 @@ export function DataManagement({ onClose, direction = null, onDirectionChange, h
                 <span className="text-sm text-neutral-300">
                   Show the experimental &lsquo;Likely heard as&rsquo; estimate
                 </span>
-                <p className="text-[11px] text-neutral-500 mt-0.5">
+                <p className="text-[11px] text-neutral-400 mt-0.5">
                   A rough, research-based guess shown as ranges, not a verdict. When first turned on it downloads a voice model, a speech detector and their engine (up to {HEARD_AS_DOWNLOAD_MB} MB).
                 </p>
               </div>

@@ -44,7 +44,9 @@ export const COLORS = {
   inTarget: "#4ade80",
   outOfTarget: "#f87171",
   targetBand: "rgba(74, 222, 128, 0.08)",
-  targetBandBorder: "rgba(74, 222, 128, 0.25)",
+  // Outline ≥ 3:1 against the dark strip / trace background (0.25 was
+  // ~2:1 — 2026-10-19 review N-6).
+  targetBandBorder: "rgba(74, 222, 128, 0.5)",
   // Neutral trace / cue-strip dot colour (no colour implies a gender).
   neutralTrace: "#c4b5fd",
   // Shared
