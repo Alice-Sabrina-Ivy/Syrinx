@@ -40,10 +40,12 @@
 //                                                (it runs every ML_CLASSIFY_HOP_MS;
 //                                                2026-10-07, measurements/
 //                                                heard-as-cpu-2026-10-07.md)
-//                  { type: "voice-state", state, ts }  on change — what the
-//                                                meter should say: "listening"
+//                  { type: "voice-state", state, ts }  on change — the
+//                                                gate's state: "listening"
 //                                                | "updating" | "scoring" |
-//                                                "pause" | "sustained"
+//                                                "pause" | "sustained" (the
+//                                                "Likely heard as" panel hides
+//                                                on "sustained"
 //                  { type: "inference-event", event: "timeout", durationMs, ts }
 //                  { type: "inference-event", event: "error", message, ts }
 //                                                a classifier run threw; after
@@ -169,7 +171,7 @@ const MAX_CONSECUTIVE_ERRORS = 3;
 // damage. Labels are id2label {0:male, 1:female} — opposite ordering
 // from prithivMLmods's {0:female, 1:male}; femaleScoreFromResult
 // parses by label name not index, so model swaps can't silently
-// invert the meter. Decision data: measurements/
+// invert the score. Decision data: measurements/
 // gender-model-latency-2026-07-19.md; v1 remains published for
 // reproducibility of results measured against it.
 const DEFAULT_MODEL_ID = "Alice-Sabrina-Ivy/voice-gender-classifier-onnx-q8-v2";
@@ -212,7 +214,7 @@ const silenceTracker = new SilenceTracker();
 // window, so its timing rules can't be upset by how the hints are
 // delivered (capture emits chunks in bursts, one burst per hardware
 // audio frame; on wall-clock decode times, frames >= 64 ms apart kept the
-// meter blank). No audio time yet = "stale" (amplitude fallback).
+// old meter blank). No audio time yet = "stale" (amplitude fallback).
 const gate = createUtteranceGate({ windowMs: WINDOW_SECONDS * 1000 });
 let audioNowMs = null;                  // contextTime (ms) of the newest chunk
 // Speech detector (speech-detector.js, low-voice-noise candidate
@@ -286,13 +288,15 @@ async function maybeInfer() {
   // The window's end on the audio clock (posted with its score).
   const windowAudioMs = audioNowMs;
 
-  // Which windows get scored. Normally the utterance gate decides from
-  // the relayed pitch voicing (noise-robust: the pitch worker's tonal
-  // notch + harmonic voicing guard sit in front of it). The absolute
+  // Which windows get scored. Normally the utterance gate decides: from
+  // the speech detector's hints while it is loaded (pitch voicing then
+  // only drives the held-note test), else from the relayed pitch voicing
+  // (noise-robust: the pitch worker's tonal notch + harmonic voicing
+  // guard sit in front of it). The absolute
   // silence floor always applies. If the pitch feed is dead ("stale" —
   // never in normal operation; the pitch worker is pure JS and ready at
   // once) fall back to the legacy peak-amplitude VAD with its silent-run
-  // EMA reset, so a broken pitch worker degrades the meter instead of
+  // EMA reset, so a broken pitch worker degrades the reading instead of
   // silencing it. Peak, not RMS: a speech-with-pauses window has a low
   // average but clearly speech-level peaks.
   // The decision itself lives in utterance-gate.js decideMlWindow (pure,
@@ -300,7 +304,7 @@ async function maybeInfer() {
   // it): which path (gated / fallback), whether to score, whether to start
   // a fresh EMA (a path switch — never carry a score across it —, an
   // utterance onset or the end of a held note, or the fallback's
-  // silent-run reset), and the meter-facing state.
+  // silent-run reset), and the voice state to post.
   const peak = windowPeak(windowCopy);
   const d = decideMlWindow({ gate, audioNowMs, peak, lastGateMode, silenceTracker });
   lastGateMode = d.mode;
@@ -406,7 +410,7 @@ async function loadModel(modelId) {
     // validation errors (Invalid BindGroupLayout / Concat) and limps —
     // exactly the failure mode a try/catch fallback can't catch. Same
     // ORT version, same machine, production path: WebGPU median 249 ms
-    // per inference (2.4 Hz effective meter cadence) vs WASM median
+    // per inference (2.4 Hz effective cadence) vs WASM median
     // ~50 ms — back inside the 150 ms hop budget at the design 6.7 Hz.
     // Quantized int8 ops are a poor fit for the WebGPU EP generally;
     // revisit only with a measured win on BOTH desktop and mobile.

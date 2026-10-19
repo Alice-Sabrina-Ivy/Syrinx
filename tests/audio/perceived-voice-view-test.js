@@ -1,5 +1,7 @@
-// perceived-voice-view-test.js — what the Perceived Voice meter shows
-// (src/components/perceivedVoiceView.js): a number only while the newest
+// perceived-voice-view-test.js — what the retired Perceived Voice meter
+// showed (src/components/perceivedVoiceView.js; no production consumer
+// since the 2026-10-07 cue strip, kept for the measurement replay
+// scripts/perceived-voice-gate/replay.mjs): a number only while the newest
 // score is fresh, "updating…" while an onset is being collected, "needs
 // running speech" on held phonation, nothing otherwise.
 //

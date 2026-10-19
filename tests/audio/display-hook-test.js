@@ -138,7 +138,7 @@ console.log("\nevery painted value is a real detection (random sequences)");
   check(`no painted value outside the posted detections (${paintedTotal} painted frames)`, bad === 0 && paintedTotal > 1000, example);
 }
 
-console.log("\ntrace notification (PitchTrace redraws on append; main-thread pass 2026-10-08)");
+console.log("\ntrace notification (the hook notifies PitchTrace's redraw scheduler on append / reset)");
 {
   M.refs = []; M.effects = []; M.state = null;
   const mod = await import(`${HOOK}?g=${++gen}`);

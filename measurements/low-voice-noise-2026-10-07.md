@@ -553,7 +553,9 @@ from pitch voicing. Pitch evidence only shapes the held-note tests.
   Silero, at its own default threshold of 0.5, was the round-1 benchmark's
   best speech separator: it removed 98 % of the false pitch line on real
   noise-only audio and kept all FDA and PTDB-TUG speech
-  (`measurements/voice-detector-benchmark-2026-10-06.md` on that branch). It failed there because it scores held notes and
+  (`measurements/voice-detector-benchmark-2026-10-06.md` on the `voice-detector`
+  branch, commit e90233664b47787ba8c45475587c7ed97ca73536 — not merged into
+  this branch). It failed there because it scores held notes and
   sustained vowels near 0. That is harmless here, because the meter does
   not score held phonation, and the pitch-based held-note test is kept. The
   gate takes a probability, so the custom detector can replace Silero in

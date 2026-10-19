@@ -238,9 +238,13 @@ export function useAudioPipeline() {
   // History buffers for canvas visualizations (read directly by rAF loops)
   const pitchTraceRef = useRef([]);
   const formantTrailRef = useRef([]);
-  // The pitch trace redraws when a point is appended, not on every display
-  // frame (main-thread pass 2026-10-08, measurements/main-thread-cpu-2026-10-08.md):
-  // PitchTrace subscribes; notifyTrace() runs after each append / reset.
+  // Append notification for the pitch trace: PitchTrace subscribes and
+  // notifyTrace() runs after each append / reset. PitchTrace's
+  // traceRedrawScheduler.js turns it into an animation-frame loop capped at
+  // ~60 Hz while points arrive, slowing to ~100 ms redraws once they stop
+  // (measurements/phone-cpu-2026-10-12.md; until then one redraw per
+  // appended point, main-thread pass 2026-10-08,
+  // measurements/main-thread-cpu-2026-10-08.md).
   // (A ref, not a second useState: tools that drive this hook in Node read
   // the hook's single state — scripts/session-oracle/lib/react-mock.mjs.)
   const traceListenersRef = useRef(new Set());
@@ -1052,8 +1056,10 @@ export function useAudioPipeline() {
     // (ml/utterance-gate.js) scores only recent, voiced running speech,
     // restarts the score at each utterance onset, and spots held
     // phonation from the pitch track — so noise-only windows stop
-    // feeding masculine-leaning scores into the meter
-    // (measurements/perceived-voice-gate-2026-10-07.md). Sent voiced or
+    // feeding masculine-leaning scores into the "Likely heard as" panel
+    // (measurements/perceived-voice-gate-2026-10-07.md; while the worker's
+    // speech detector is loaded it decides "is someone speaking" and pitch
+    // voicing only drives the held-note test). Sent voiced or
     // not, so utterances close promptly. contextTime (the frame's capture
     // time) puts the hint on the audio clock the gate runs on.
     const hint = {

@@ -20,13 +20,15 @@
 // (utils_vad.py OnnxWrapper): 16 kHz, 512-sample chunks, each prefixed
 // with the previous chunk's last 64 samples (zeros before the first),
 // LSTM state carried chunk to chunk. One speech probability per 32 ms.
-// Benchmarked on the voice-detector branch
-// (measurements/voice-detector-benchmark-2026-10-06.md): it separates
+// Benchmarked on the voice-detector branch, not merged here
+// (measurements/voice-detector-benchmark-2026-10-06.md as of commit
+// e90233664b47787ba8c45475587c7ed97ca73536, the last to touch it): it separates
 // running speech from machine noise well (at p >= 0.5 it removes 98 % of
 // the app's false pitch line on real noise-only audio and keeps all
 // FDA / PTDB-TUG speech) but scores held notes and sustained vowels near
-// 0 — which is why it failed as a pitch-display gate and why it suits this
-// meter, which scores running speech only.
+// 0 — which is why it failed as a pitch-display gate and why it suits the
+// "Likely heard as" panel's utterance gate, which scores running speech
+// only (held notes are caught by the gate's pitch-based held-note test).
 //
 // Pure framing logic here (Node-testable); the ONNX session is injected.
 

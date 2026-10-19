@@ -1,8 +1,10 @@
 // utterance-gate.js — which ML windows the perceived-voice classifier may
-// score, and what the meter should say when it may not (2026-10-07).
+// score, and the voice state the worker posts when it may not (2026-10-07).
 //
-// Pure, Node-testable; used by gender-worker.js and replayed bit-exactly
-// by the measurement harness (measurements/perceived-voice-gate-2026-10-07.md).
+// Pure, Node-testable; used by gender-worker.js (the "Likely heard as"
+// panel) and by the resonance worker (src/resonance/resonanceCue.js drops
+// held notes with its verdicts), and replayed bit-exactly by the
+// measurement harness (measurements/perceived-voice-gate-2026-10-07.md).
 //
 // Why: an audit of the deployed meter on public data found it showed a
 // number during noise-only audio 71 % of the time (leaning masculine),
@@ -14,8 +16,12 @@
 // noise blip opened half a second of scoring, and the first windows of
 // an utterance were mostly the silence or noise before it.
 //
-// The gate works only on the relayed pitch-voicing stream (one hint per
-// pitch-worker frame: { voiced, ts, pitch }). Every time is on ONE clock,
+// The gate works on the relayed pitch-voicing stream (one hint per
+// pitch-worker frame: { voiced, ts, pitch }) and, while the gender
+// worker's speech detector is loaded, on its noteSpeech hints (one per
+// 32 ms frame; see speechMinPostOnsetFrac and the options below), which
+// then decide "is someone speaking" — pitch voicing only drives the
+// held-note test. Every time is on ONE clock,
 // the AUDIO clock (gender-worker.js passes the capture contextTime, in
 // ms, of the frame a hint describes, and of the newest audio chunk as
 // "now"): hints are then exactly one capture chunk apart however bursty
@@ -41,8 +47,9 @@
 //              the voiced pitch's 10th-90th percentile spread
 //              <= sustainMaxSpreadSt semitones. Held single vowels / notes
 //              (about 1 s or longer) are not what the classifier reads (it
-//              puts women's held vowels near 50), so the meter shows
-//              "needs running speech" instead. While a young span has been
+//              puts women's held vowels near 50), so the worker posts
+//              "sustained" and the "Likely heard as" panel hides instead
+//              (the retired meter said "needs running speech"). While a young span has been
 //              steady since its start it is held at "warming" rather than
 //              scored, so a held note doesn't flash a number before the
 //              full-second test can fire. Running speech breaks voicing or
@@ -113,7 +120,7 @@ export const UTTERANCE_GATE_DEFAULTS = Object.freeze({
   // utterance whose span starts at the end of the note (so the note is
   // never scored: >= speechMinPostOnsetFrac of a scored window follows it). Pitch runs break
   // within a syllable; a speech detector's run does not, so without this a
-  // steady hum the pitch tracker calls a "held note" kept the meter shut
+  // steady hum the pitch tracker calls a "held note" kept the gate shut
   // for the rest of the sentence.
   speechReopenAfterHold: true,
   // Voicing requirement while speech hints decide (user decision
@@ -372,12 +379,15 @@ export function createUtteranceGate(options = {}) {
   };
 }
 
-// Meter-facing state for a verdict (posted by the worker on change):
-//   listening — nothing voice-like; no number
-//   updating  — a voice onset is being collected; no number yet
+// Voice state for a verdict (posted by the gender worker on change; the
+// "Likely heard as" panel hides on "sustained", the other states are
+// informational — the retired meter's wording in brackets):
+//   listening — nothing voice-like (no number)
+//   updating  — a voice onset is being collected (no number yet)
 //   scoring   — scores are arriving
 //   pause     — utterance open, scoring paused (a fresh score may still show)
-//   sustained — held phonation; "needs running speech"
+//   sustained — held phonation ("needs running speech")
+// The name is from the meter era.
 export function meterStateForVerdict(verdict) {
   switch (verdict) {
     case "score": return "scoring";
@@ -406,7 +416,7 @@ export function meterStateForVerdict(verdict) {
 //   resetEma   start a fresh EMA before using this window (a switch between
 //              the gated and fallback paths, an utterance onset, or the
 //              fallback's silent-run reset)
-//   voiceState the meter-facing state to post (meterStateForVerdict, or
+//   voiceState the voice state to post (meterStateForVerdict, or
 //              "pause" for a scoreable verdict below the silence floor;
 //              "scoring" / "listening" on the fallback path)
 export function decideMlWindow({ gate, audioNowMs, peak, lastGateMode, silenceTracker = null }) {

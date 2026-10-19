@@ -96,14 +96,16 @@ function processChunk(buffer, contextTime) {
       ? computeHNR(ringBuffer.subarray(ringLen - hnrSize, ringLen), sampleRate)
       : null;
   }
-  // CPP (only when enabled — see _cpp) runs every frame (not throttled like the others). Original
-  // 6th-frame cadence dropped during the WS2 methodology investigation
-  // (2026-05-10): per-frame CPP gave Praat-comparison correlation
-  // r=0.62 on PTDB-TUG / r=0.62 on FDA vs r=0.46/0.48 at 6th-frame
-  // cadence. Each aggregator emit now averages ~40 CPP samples per 1-s
-  // window instead of ~7 — quieter emits, better baseline σ. Cost:
-  // ~80 ms/s CPU on desktop vs ~13 ms/s previously, both well within
-  // budget. See measurements/cpp-praat-methodology-probe-2026-05-10.json.
+  // CPP is off in production since 2026-10-11 (see _cpp: only harnesses
+  // that send `cpp: true` turn it on; the vocal-weight aggregator and
+  // baseline it fed no longer run in the app). When on it runs every frame
+  // (not throttled like the others). Original 6th-frame cadence dropped
+  // during the WS2 methodology investigation (2026-05-10): per-frame CPP
+  // gave Praat-comparison correlation r=0.62 on PTDB-TUG / r=0.62 on FDA
+  // vs r=0.46/0.48 at 6th-frame cadence; the then-production aggregator
+  // averaged ~40 CPP samples per 1-s window instead of ~7. Cost: ~80 ms/s
+  // CPU on desktop vs ~13 ms/s at the 6th-frame cadence. See
+  // measurements/cpp-praat-methodology-probe-2026-05-10.json.
   // Maryn-style processing (Theil + exponential trend + smoothing)
   // adds ~0.17 ms/frame over legacy LSQ. Well within budget.
   let cppMs = null;

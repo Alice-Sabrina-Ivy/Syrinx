@@ -28,7 +28,9 @@ class CaptureProcessor extends AudioWorkletProcessor {
     // does NOT itself attach timing fields — see the time-source note above.
     this.diag = false;
 
-    // Direct MessagePorts to downstream consumer Workers (DSP + ML).
+    // Direct MessagePorts to downstream consumer Workers: DSP, pitch and
+    // resonance always; the gender worker while the "Likely heard as" panel
+    // is on and the resonance lab once its tab is opened (up to five).
     // Each consumer that wants audio sends a `{ type: "port", port }`
     // message; the worklet then broadcasts every chunk to all of them.
     this.workerPorts = [];

@@ -14,7 +14,7 @@
 // latched until the gate next says "score" or "pause" (a new utterance), so
 // the late-resolving tail of a held note never enters.
 //
-// The gate is the SAME module the perceived-voice meter uses
+// The gate is the SAME module the gender worker ("Likely heard as") uses
 // (src/ml/utterance-gate.js, its defaults), fed the same pitch hints on the
 // audio clock; decide(nowMs) runs once per capture chunk and its verdict
 // applies to the bins stamped while that chunk (or a pitch frame relayed
