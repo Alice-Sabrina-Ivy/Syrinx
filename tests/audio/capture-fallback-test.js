@@ -9,15 +9,18 @@
 // Part 1 drives src/audio/captureSource.js with fake MSTP / AudioContext /
 // AudioWorkletNode objects: the MSTP constructor throws, getReader() throws,
 // the reader errors, AudioData.copyTo rejects the first frame, no first frame
-// arrives — each must resolve as "audiocontext" on the same stream with
+// arrives, the stream closes before the first frame while the track is still
+// live — each must resolve as "audiocontext" on the same stream with
 // `fallbackFrom` set, the track not stopped, and onError never called. A
 // working MSTP stays "mstp"; ?capture=mstp (forceKind) still fails without
-// fallback; a track that ended does not fall back.
+// fallback; a track that ended does not fall back. A failed AudioContext
+// setup (addModule rejects, createMediaStreamSource throws) closes the context
+// it created.
 //
 // Part 2 drives the REAL useAudioPipeline hook (session-oracle module hooks,
 // as pipeline-worker-errors-test.js): an MSTP constructor that throws still
 // reaches "running" with one getUserMedia call; a real permission refusal
-// (NotAllowedError) still says "denied".
+// (NotAllowedError) still says "denied"; any other start failure does not.
 //
 // Usage: node tests/audio/capture-fallback-test.js
 
@@ -48,7 +51,7 @@ function goodFrame(over = {}) {
 
 // MSTP behaviour for the next construction.
 //   "ok" | "ctor-throws" | "getreader-throws" | "read-rejects" | "no-frame"
-//   | "copyto-throws" | "ends"
+//   | "copyto-throws" | "ends" | "closes-live" (done:true, track still live)
 let mstpMode = "ok";
 let readerCancelled = 0;
 globalThis.AudioData = class {};
@@ -64,6 +67,7 @@ globalThis.MediaStreamTrackProcessor = class {
           read: () => {
             if (mode === "read-rejects") return Promise.reject(new Error("read failed: source error"));
             if (mode === "ends") { track.readyState = "ended"; return Promise.resolve({ done: true }); }
+            if (mode === "closes-live") return Promise.resolve({ done: true });
             if (mode === "no-frame" || !first) return new Promise((r) => { pendingResolve = r; });
             first = false;
             return Promise.resolve({ done: false, value: goodFrame(mode === "copyto-throws" ? { copyTo() { throw new Error("unsupported format"); } } : {}) });
@@ -76,14 +80,21 @@ globalThis.MediaStreamTrackProcessor = class {
 };
 
 const audioContexts = [];
+// AudioContext setup failure for the next construction: null | "addmodule" | "source"
+let ctxFail = null;
 class FakeAudioContext {
   constructor(o) {
     this.opts = o; this.sampleRate = 44100; this.state = "running"; this.closed = false;
     this.baseLatency = 0.01; this.outputLatency = 0.02; this.destination = {}; this.sources = [];
-    this.audioWorklet = { addModule: () => Promise.resolve() };
+    const fail = ctxFail;
+    this.audioWorklet = { addModule: () => (fail === "addmodule" ? Promise.reject(new Error("addModule failed")) : Promise.resolve()) };
+    this.fail = fail;
     audioContexts.push(this);
   }
-  createMediaStreamSource(stream) { this.sources.push(stream); return { connect() {}, disconnect() {} }; }
+  createMediaStreamSource(stream) {
+    if (this.fail === "source") throw new Error("NotSupportedError: sample-rate mismatch");
+    this.sources.push(stream); return { connect() {}, disconnect() {} };
+  }
   createGain() { return { gain: { value: 1 }, connect() {} }; }
   resume() { return Promise.resolve(); }
   close() { this.closed = true; this.state = "closed"; return Promise.resolve(); }
@@ -117,7 +128,7 @@ async function attempt(mode, extra = {}) {
 }
 
 console.log("captureSource: MSTP runtime failures fall back to AudioContext");
-for (const mode of ["ctor-throws", "getreader-throws", "read-rejects", "copyto-throws", "no-frame"]) {
+for (const mode of ["ctor-throws", "getreader-throws", "read-rejects", "copyto-throws", "no-frame", "closes-live"]) {
   const r = await attempt(mode);
   check(`${mode}: resolves`, !r.thrown, r.thrown?.message);
   check(`${mode}: kind audiocontext`, r.src?.kind === "audiocontext", r.src?.kind);
@@ -160,6 +171,18 @@ console.log("captureSource: unchanged paths");
   const r = await attempt("ends");
   check("track ended before first frame: rejects with track-ended, no fallback",
     r.thrown && /microphone disconnected/.test(r.thrown.message) && r.fallbacks.length === 0, r.thrown?.message);
+}
+
+console.log("captureSource: a failed AudioContext setup closes its context");
+for (const fail of ["addmodule", "source"]) {
+  for (const [label, extra, mode] of [["fallback", {}, "ctor-throws"], ["audiocontext path", { forceKind: "audiocontext" }, "ok"]]) {
+    ctxFail = fail;
+    const r = await attempt(mode, extra);
+    ctxFail = null;
+    check(`${fail} fails (${label}): rejects`, r.thrown && !r.src, r.src?.kind);
+    check(`${fail} fails (${label}): context closed`, audioContexts.length === 1 && audioContexts[0].closed);
+    check(`${fail} fails (${label}): track not stopped by the factory`, !r.stream.track.stopped);
+  }
 }
 
 // ---- Part 2: the real hook ----
@@ -216,6 +239,14 @@ const warn = console.warn; console.warn = () => {};
   gumImpl = () => Promise.reject(Object.assign(new Error("Permission denied"), { name: "NotAllowedError" }));
   const st = await runHook();
   check("hook: NotAllowedError -> error that says denied", st?.status === "error" && /denied/i.test(st.error ?? ""), st?.error);
+  check("hook: NotAllowedError -> tells the user to allow the mic", /Allow the microphone/.test(st?.error ?? ""), st?.error);
+}
+{
+  // A message-less non-permission failure used to fall back to "Microphone access denied".
+  gumImpl = () => Promise.reject(Object.assign(new Error(""), { name: "NotReadableError" }));
+  const st = await runHook();
+  check("hook: message-less NotReadableError -> not 'denied'",
+    st?.status === "error" && !/denied/i.test(st.error ?? "") && /could not be started/.test(st.error ?? ""), st?.error);
 }
 {
   mstpMode = "ctor-throws";

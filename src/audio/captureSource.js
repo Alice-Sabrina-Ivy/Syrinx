@@ -149,6 +149,13 @@ function cancelQuietly(reader) {
   } catch { /* ignore */ }
 }
 
+function closeContextQuietly(audioCtx) {
+  try {
+    const p = audioCtx.close();
+    if (p && typeof p.catch === "function") p.catch(() => {});
+  } catch { /* ignore */ }
+}
+
 // ---------------------------------------------------------------------------
 //  AudioContext + AudioWorklet path (Firefox; MSTP start-failure fallback)
 // ---------------------------------------------------------------------------
@@ -159,8 +166,18 @@ async function _createAudioContextSource(stream, opts) {
   const audioCtx = new AudioContext(ctxOpts);
   const ctxCreatedAtEpochMs = performance.timeOrigin + performance.now();
 
-  await audioCtx.audioWorklet.addModule("capture-processor.js");
-  const workletNode = new AudioWorkletNode(audioCtx, "capture-processor");
+  // Setup failures (worklet fetch, node construction, a source/context
+  // sample-rate mismatch) must not leave the context running: the caller
+  // has no handle to it yet. close() rejects only on an already-closed
+  // context, so swallow that.
+  let workletNode, mediaSrc;
+  try {
+    await audioCtx.audioWorklet.addModule("capture-processor.js");
+    workletNode = new AudioWorkletNode(audioCtx, "capture-processor");
+  } catch (err) {
+    closeContextQuietly(audioCtx);
+    throw err;
+  }
   const portIds = new Map(); // port2 handed out -> id in the worklet (disconnectConsumer)
   let nextPortId = 1;
 
@@ -190,18 +207,25 @@ async function _createAudioContextSource(stream, opts) {
     ...(opts.chunkMs != null ? { chunkMs: opts.chunkMs } : {}),
   });
 
-  // Connect mic source to worklet.
-  const mediaSrc = audioCtx.createMediaStreamSource(stream);
-  mediaSrc.connect(workletNode);
+  try {
+    // Connect mic source to worklet.
+    mediaSrc = audioCtx.createMediaStreamSource(stream);
+    mediaSrc.connect(workletNode);
 
-  // Connect worklet to destination via a muted gain node. Without this,
-  // the browser may stop calling process() on the AudioWorklet because
-  // its output isn't consumed (no path to destination). Per spec, the
-  // UA may skip processing for nodes whose output isn't reachable.
-  const muteNode = audioCtx.createGain();
-  muteNode.gain.value = 0;
-  workletNode.connect(muteNode);
-  muteNode.connect(audioCtx.destination);
+    // Connect worklet to destination via a muted gain node. Without this,
+    // the browser may stop calling process() on the AudioWorklet because
+    // its output isn't consumed (no path to destination). Per spec, the
+    // UA may skip processing for nodes whose output isn't reachable.
+    const muteNode = audioCtx.createGain();
+    muteNode.gain.value = 0;
+    workletNode.connect(muteNode);
+    muteNode.connect(audioCtx.destination);
+  } catch (err) {
+    try { mediaSrc?.disconnect(); } catch { /* ignore */ }
+    try { workletNode.disconnect(); } catch { /* ignore */ }
+    closeContextQuietly(audioCtx);
+    throw err;
+  }
 
   // Mic track ending on its own (see TRACK_ENDED_MESSAGE). Reported once;
   // listeners removed in close().
@@ -369,7 +393,14 @@ async function _createMstpSource(stream, opts) {
         }
         if (done) {
           // close() cancels the reader with stopped=true (silent);
-          // otherwise the stream ended because the track did.
+          // otherwise the stream ended because the track did — unless the
+          // track is still live: a stream the browser closed on its own
+          // before the first frame is an MSTP failure, so reject with an
+          // ordinary error and let createCaptureSource fall back.
+          if (!isReady && track.readyState !== "ended") {
+            rejectReady(new Error("MSTP stream closed before the first frame"));
+            return;
+          }
           reportTrackEnded("mstp-track-ended");
           return;
         }
