@@ -276,3 +276,78 @@ Positive streams with < 10 s of voiced audio in total: 0.
 Detector cost: 4.9 ms CPU per second of audio (band energies incl. the lazy 16 kHz samples it reads; Node, desktop). Pitch frames dropped by the engine: 0.
 
 Re-run: `PY -I scripts/resonance-narrowband/build_streams.py --libri …`, `cut40.py`, `node upsample.mjs`, copy the study's final `rirs.json` into `build/resonance-narrowband/`, then `PY -I scripts/resonance-narrowband/conditions.py --cache <Syrinx-cache/resonance-robustness> --half dev` and `node scripts/resonance-narrowband/sweep.mjs --half=dev` (`--point=C,8,5,3,-21` for the table above).
+
+## Round 2 plan (pre-registered, 2026-10-19)
+
+Committed and pushed before any round 2 result exists. Round 1 above (plan,
+deviations, results) is not edited. Deviations found during round 2 go under
+"Round 2 deviations" below, dated.
+
+**Why a round 2.** User decision 2026-10-19, after round 1 failed: the
+detector targets audio that really went through an 8 kHz phone path. A plain
+4 kHz low-pass ("dull mic") overlaps dark wideband audio, so it is no longer
+a required positive. For such a mic the notice may stay off and the resonance
+reading may read darker (the robustness study's finding); that is a known,
+accepted limitation of this round.
+
+**What changes from round 1 (only this):**
+
+- **Positives (judged):** the five phone-path conditions — telephone band
+  (`tel`), AMR-NB 7.4 kbit/s (`amrnb`), G.711 µ-law (`g711u`),
+  narrowband-Bluetooth-like (`btnb`), Opus 8 kbit/s narrowband (`opus8nb`).
+- **4 kHz low-pass (`lp4k`):** reported descriptively (detection rate, time
+  to notice, dropouts, F at stream end), not judged and not used in
+  selection. It is neither a positive nor a negative.
+- In `scripts/resonance-narrowband/sweep.mjs` the judged positive set becomes
+  the five conditions above, with `lp4k` printed as a descriptive row; the
+  detector, the feature extraction and the grid code are unchanged.
+
+**What stays exactly as in round 1:** the user-facing notice and its text
+(§1); the detector and its candidate grid (§2: bands A / B / C, τ 4 / 8,
+V_min 3 / 5, H 3 / 6, T_on −60…−10 dB in 1 dB steps; 1224 points; not
+widened); the data and the streams (§3, every version k = 0.88–1.12 plus the
+clean original); the negatives (every wideband / clean / room / noise / level
+/ codec / combination condition in §3); the speaker split (§3 and round 1
+deviation 3); the metrics, the bar, the selection rule and its tie-breaks
+(§4 and round 1 deviation 3); §5.
+
+**The bar (unchanged):**
+
+- Negatives: notice-on share ≤ 1 % of voiced time for each sex in every
+  negative condition, AND the notice never shows on any clean-condition
+  stream (all versions and the originals).
+- Positives: ≥ 95 % of streams detected for each sex in each of the five
+  phone-path conditions, detected = the notice is on by the time 10 s of
+  voiced audio has passed (within the first 1000 voiced grid frames).
+
+**Selection and confirmation:**
+
+- Selection on the dev half only, with the round 1 rule. The dev half's
+  features are the round 1 extraction, reused as they are (same build, same
+  scripts; nothing re-extracted).
+- **Honest caveat:** the dev half was already looked at in round 1, including
+  per-condition F distributions for the phone paths and the wideband
+  negatives, and the decision to drop `lp4k` was made after seeing that it
+  overlaps. Selection on dev is therefore not blind, and a dev pass is not
+  evidence by itself. **The held-out confirmation is what counts.** Round 1
+  dev data also shows that a pass is not assured: with band C, Opus 8 kbit/s
+  narrowband reached −22.1 dB at stream end while the darkest wideband
+  stream was at −25.3 dB.
+- If no grid point passes on dev, the result is "no detector meets the bar",
+  nothing ships, and there is no held-out run.
+- **Held-out half: one look.** Its features are extracted once (round 1
+  started and stopped that extraction; no detector output on it was ever
+  computed or looked at — round 1 deviation 5), then the selected point —
+  only that point — is run once. Pass = both bars met on the held-out half,
+  for each sex, on the five phone-path conditions and every negative. A
+  held-out failure is reported as a failure; nothing is re-tuned on the
+  held-out half and there is no round 3 on it. `lp4k` on the held-out half is
+  reported descriptively at the selected point.
+
+**After the result:** as §5 — only on a held-out pass does the detector go
+into the resonance worker, with the row state, the notice and a bit-exact
+parity test against `scripts/resonance-narrowband/`.
+
+## Round 2 deviations
+
+None yet.
