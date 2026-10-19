@@ -8,7 +8,8 @@ unchanged; added the narrowband-Bluetooth-like condition "btnb", the dev /
 held-out speaker split, a version subset option, and extract.mjs instead of
 run_cue.mjs (one Node process per job, all versions in it). Lab venv, -I:
   PY -I scripts/resonance-narrowband/conditions.py --cache <Syrinx-cache/resonance-robustness>
-        --half dev|held [--conds all|clean,hp100,...] [--versions all|k088,k100,k112] [--workers 2]
+        --half dev|held [--conds all|clean,hp100,...] [--versions all|k088,k100,k112] [--workers 2] [--r3]
+--r3 (round 3): extract.mjs --subbands, output under build/resonance-narrowband/feat3/.
 
 Per (condition, speaker) job: the speaker's 5 WORLD versions (+ the clean
 original on "clean") are levelled to -26 dBFS active speech level, put through
@@ -42,6 +43,7 @@ import soundfile as sf  # noqa: E402
 OUT = os.path.join(REPO, "build", "resonance-narrowband")
 S48 = os.path.join(OUT, "streams48")
 FEAT = os.path.join(OUT, "feat")
+FEAT3 = os.path.join(OUT, "feat3")  # round 3: sub-band powers
 SR = 48000
 TARGET_DB = -26.0
 VERSIONS = ["k088", "k094", "k100", "k106", "k112"]
@@ -248,21 +250,23 @@ CONDS = {
 }
 
 
-def run_extract(items, sr, out_f64):
-    cmd = ["node", os.path.join(HERE, "extract.mjs"), out_f64, str(sr)] + [f"{n}={p}" for n, p in items]
+def run_extract(items, sr, out_f64, r3=False):
+    cmd = (["node", os.path.join(HERE, "extract.mjs"), out_f64, str(sr)] + (["--subbands"] if r3 else [])
+           + [f"{n}={p}" for n, p in items])
     r = subprocess.run(cmd, check=True, capture_output=True, text=True, cwd=REPO)
     return json.loads(r.stdout)
 
 
 def job(args):
-    cond, spk, sex, sex_index, versions = args
-    out = os.path.join(FEAT, cond, f"{spk}.json")
+    cond, spk, sex, sex_index, versions, r3 = args
+    feat = FEAT3 if r3 else FEAT
+    out = os.path.join(feat, cond, f"{spk}.json")
     if os.path.exists(out):
         return cond, spk, None
     cls, f = CONDS[cond]
     sr = 44100 if cond == "sr44k" else SR
     rec = dict(cond=cond, cls=cls, positive=cond in POSITIVE, spk=spk, sex=sex, sr=sr, versions={})
-    os.makedirs(os.path.join(FEAT, cond), exist_ok=True)
+    os.makedirs(os.path.join(feat, cond), exist_ok=True)
     t0 = time.time()
     with tempfile.TemporaryDirectory(dir=os.path.join(OUT, "tmp")) as tmp:
         ctx = dict(spk=spk, sex=sex, sex_index=sex_index, tmp=tmp)
@@ -279,7 +283,7 @@ def job(args):
             np.asarray(y, np.float32).tofile(p)
             items.append((ver, p))
             rec["versions"][ver] = dict(peak_limited=limited, out_peak=float(np.max(np.abs(y))))
-        res = run_extract(items, sr, os.path.join(FEAT, cond, f"{spk}.f64"))
+        res = run_extract(items, sr, os.path.join(feat, cond, f"{spk}.f64"), r3)
     for m in res["streams"]:
         rec["versions"][m["name"]].update(m)
     rec.update(order=[n for n, _ in items], py_cpu_s=round(py_cpu, 3), node_cpu_ms=res["cpuMs"],
@@ -307,6 +311,7 @@ def main():
     ap.add_argument("--conds", default="all")
     ap.add_argument("--versions", default="all")
     ap.add_argument("--workers", type=int, default=2)
+    ap.add_argument("--r3", action="store_true")
     a = ap.parse_args()
     CACHE = a.cache
     os.makedirs(os.path.join(OUT, "tmp"), exist_ok=True)
@@ -318,7 +323,7 @@ def main():
     half = split(streams)
     versions = VERSIONS if a.versions == "all" else a.versions.split(",")
     conds = list(CONDS) if a.conds == "all" else a.conds.split(",")
-    jobs = [(c, s["speaker"], s["sex"], idx[s["speaker"]], versions) for c in conds for s in streams
+    jobs = [(c, s["speaker"], s["sex"], idx[s["speaker"]], versions, a.r3) for c in conds for s in streams
             if half[s["speaker"]] == a.half]
     t0 = time.time()
     with Pool(a.workers, initializer=_init, initargs=(CACHE,)) as p:

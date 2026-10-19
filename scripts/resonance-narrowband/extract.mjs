@@ -17,22 +17,25 @@
 // or the grid (checked with --vtln, which loads the shipped vtln_warp.json /
 // reference.json as the worker does; the outputs must be identical).
 //
-//   node scripts/resonance-narrowband/extract.mjs <out.f64> <sampleRate> [--vtln] <name=stream.f32> ...
+//   node scripts/resonance-narrowband/extract.mjs <out.f64> <sampleRate> [--vtln] [--subbands] <name=stream.f32> ...
 // out.f64: per stream, header [nameIndex, gridFrames, voicedFrames] then
 // voicedFrames rows [j, e0, e1, e2, e3] (float64; j = grid index).
+// --subbands (round 3): rows [j, p0 ... p31] instead, detector.mjs
+// subbandPowers() of the same window.
 // stdout: JSON { streams: [{ name, gridFrames, voicedFrames, framesDropped,
 //          detMs, audioS }], cpuMs }.
 
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { bandEnergies, N } from "./detector.mjs";
+import { bandEnergies, subbandPowers, N, N_SUB } from "./detector.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.resolve(here, "../..");
 const args = process.argv.slice(2);
 const useVtln = args.includes("--vtln");
-const [outFile, srArg, ...items] = args.filter((a) => a !== "--vtln");
+const useSub = args.includes("--subbands");
+const [outFile, srArg, ...items] = args.filter((a) => a !== "--vtln" && a !== "--subbands");
 const sr = Number(srArg);
 if (!outFile || !(sr === 48000 || sr === 44100) || !items.length) {
   console.error("usage: extract.mjs <out.f64> <48000|44100> [--vtln] <name=stream.f32> ...");
@@ -72,7 +75,7 @@ async function runStream(file) {
   const y = new Float32Array(b.buffer, b.byteOffset, b.byteLength / 4);
   const rows = [];
   const win = new Float64Array(N);
-  const e = new Float64Array(4);
+  const e = new Float64Array(useSub ? N_SUB : 4);
   let done = 0, voiced = 0, detNs = 0n;
   function take(ng) {
     if (ng <= done) return;
@@ -85,9 +88,10 @@ async function runStream(file) {
       if (c > ring.end || c - N < ring.end - ring.capacity) throw new Error(`window ${c} outside ring (end ${ring.end})`);
       const t0 = process.hrtime.bigint();
       for (let i = 0; i < N; i++) win[i] = ring.at(c - N + i);
-      bandEnergies(win, e);
+      if (useSub) subbandPowers(win, e); else bandEnergies(win, e);
       detNs += process.hrtime.bigint() - t0;
-      rows.push(j, e[0], e[1], e[2], e[3]);
+      rows.push(j);
+      for (let q = 0; q < e.length; q++) rows.push(e[q]);
       voiced++;
     }
     done = ng;

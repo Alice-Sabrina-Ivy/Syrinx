@@ -111,3 +111,93 @@ export function createNarrowbandDetector(p) {
     get state() { return d.state; },
   };
 }
+
+// ---- Round 3 (measurements/resonance-narrowband-2026-10-19.md "Round 3 plan",
+// R3.1): edge sharpness of the long-term voiced spectrum. Same window, same FFT.
+//
+//   subbandPowers(win, out)   32 sub-bands of 125 Hz, sub-band j = bins
+//                             48 + 4j ... 51 + 4j (1500-5500 Hz)
+//   createEdgeDecision(p)     running averages + E1 / E2 + hysteresis
+//
+// Long-term spectrum: E_j <- E_j + a (e_j - E_j) per voiced frame, as above;
+// L_j = 10 log10(E_j + 1e-30). s = least-squares slope (dB/kHz) of L_j against
+// c_j = 1.5625 + 0.125 j kHz over j = 0..13. E1 = (V - U) - 0.9375 s with
+// U = mean L_14..17, V = mean L_21..25. E2 = min over j = 14..23 of
+// (L_{j+2} - L_{j-2}) - 0.5 s.
+export const N_SUB = 32;
+const SUB_BIN0 = 48;
+const SLOPE_J = 14; // j = 0..13
+let SLOPE_CBAR = 0, SLOPE_SXX = 0;
+for (let j = 0; j < SLOPE_J; j++) SLOPE_CBAR += (1.5625 + 0.125 * j) / SLOPE_J;
+for (let j = 0; j < SLOPE_J; j++) SLOPE_SXX += (1.5625 + 0.125 * j - SLOPE_CBAR) ** 2;
+
+function hannFft(win) {
+  for (let i = 0; i < N; i++) { re[BITREV[i]] = win[i] * HANN[i]; im[BITREV[i]] = 0; }
+  for (let size = 2; size <= N; size <<= 1) {
+    const half = size >> 1, step = N / size;
+    for (let s = 0; s < N; s += size) {
+      for (let k = 0; k < half; k++) {
+        const c = COS[k * step], sn = SIN[k * step];
+        const a = s + k, b = a + half;
+        const tr = re[b] * c + im[b] * sn;
+        const ti = im[b] * c - re[b] * sn;
+        re[b] = re[a] - tr; im[b] = im[a] - ti;
+        re[a] += tr; im[a] += ti;
+      }
+    }
+  }
+}
+
+/** 32 sub-band powers (125 Hz each, 1500-5500 Hz) of one 512-sample window. */
+export function subbandPowers(win, out = new Float64Array(N_SUB)) {
+  hannFft(win);
+  for (let j = 0; j < N_SUB; j++) {
+    let e = 0;
+    for (let k = SUB_BIN0 + 4 * j; k <= SUB_BIN0 + 4 * j + 3; k++) e += re[k] * re[k] + im[k] * im[k];
+    out[j] = e;
+  }
+  return out;
+}
+
+/** Base slope s, E1 and E2 (R3.1) from the 32 long-term levels L (dB). */
+export function edgeFeatures(L) {
+  let lbar = 0;
+  for (let j = 0; j < SLOPE_J; j++) lbar += L[j] / SLOPE_J;
+  let sxy = 0;
+  for (let j = 0; j < SLOPE_J; j++) sxy += (1.5625 + 0.125 * j - SLOPE_CBAR) * (L[j] - lbar);
+  const s = sxy / SLOPE_SXX;
+  const U = (L[14] + L[15] + L[16] + L[17]) / 4;
+  const V = (L[21] + L[22] + L[23] + L[24] + L[25]) / 5;
+  let dmin = Infinity;
+  for (let j = 14; j <= 23; j++) dmin = Math.min(dmin, L[j + 2] - L[j - 2]);
+  return { s, e1: V - U - 0.9375 * s, e2: dmin - 0.5 * s };
+}
+
+/**
+ * Round 3 decision. p: { feature: "E1"|"E2", tauS, vMinS, hystDb, tOnDb }.
+ * push(p32) per voiced frame (subbandPowers output); returns this decision's
+ * state object (reused): { n, decided, on, e } (e = the chosen feature, dB).
+ */
+export function createEdgeDecision({ feature, tauS, vMinS, hystDb, tOnDb }) {
+  if (feature !== "E1" && feature !== "E2") throw new Error(`feature ${feature}`);
+  const a = 1 - Math.exp(-FRAME_S / tauS);
+  const nMin = Math.round(vMinS / FRAME_S);
+  const tOff = tOnDb + hystDb;
+  const E = new Float64Array(N_SUB), L = new Float64Array(N_SUB);
+  const st = { n: 0, decided: false, on: false, e: null };
+  return {
+    push(p32) {
+      for (let j = 0; j < N_SUB; j++) { E[j] += a * (p32[j] - E[j]); L[j] = 10 * Math.log10(E[j] + TINY); }
+      st.n++;
+      const f = edgeFeatures(L);
+      st.e = feature === "E1" ? f.e1 : f.e2;
+      if (st.n >= nMin) {
+        st.decided = true;
+        if (!st.on && st.e < tOnDb) st.on = true;
+        else if (st.on && st.e > tOff) st.on = false;
+      }
+      return st;
+    },
+    get state() { return st; },
+  };
+}
