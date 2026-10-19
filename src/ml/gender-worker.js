@@ -22,7 +22,10 @@
 //                                                "ready" so the main thread
 //                                                can record which model + ORT
 //                                                backend (webgpu vs wasm) won
-//                  { type: "progress", loaded, total, file }
+//                  { type: "progress", loaded, total, file }  the classifier's
+//                                                download, summed over its files
+//                                                (heard-as-download.js
+//                                                createClassifierProgress)
 //                  { type: "score", score, confidence, ts, logit, audioMs, spanId, mode, inferMs? }
 //                                                logit: ln(p_female) - ln(p_male) of THIS
 //                                                window (unsmoothed; null if unusable);
@@ -42,6 +45,10 @@
 //                                                | "updating" | "scoring" |
 //                                                "pause" | "sustained"
 //                  { type: "inference-event", event: "timeout", durationMs, ts }
+//                  { type: "inference-event", event: "error", message, ts }
+//                                                a classifier run threw; after
+//                                                MAX_CONSECUTIVE_ERRORS in a row
+//                                                the worker posts status "error"
 //                  { type: "speech-detector", status: "ready"|"error", message? }
 //                                                the utterance gate's speech
 //                                                detector (speech-detector.js);
@@ -86,6 +93,7 @@ import {
 import { createUtteranceGate, decideMlWindow } from "./utterance-gate.js";
 import { SPEECH_DETECTOR, createSpeechFramer, createSileroRunner, loadVerifiedModel } from "./speech-detector.js";
 import { pointOrtAtAppRuntime } from "./ort-runtime-files.js";
+import { createClassifierProgress } from "./heard-as-download.js";
 
 // We don't ship the model in the bundle — fetch from the Hub at runtime.
 env.allowRemoteModels = true;
@@ -141,6 +149,12 @@ const EMA_ALPHA = 0.2;                     // score smoothing
 // maybeInfer call proceeds normally. No effect when classifier() resolves
 // before the timer fires.
 const INFERENCE_TIMEOUT_MS = 2500;
+// A classifier run that throws (not a timeout) used to latch the worker in
+// "error" for the rest of the session after ONE failure, and the panel then
+// said the model "didn't load" (2026-10-19 review S-2). Now a failed run is
+// skipped like a timeout; only this many failed runs in a row mean the
+// classifier is broken.
+const MAX_CONSECUTIVE_ERRORS = 3;
 // JaesungHuh's voice-gender-classifier (ECAPA-TDNN), q8-quantized
 // ONNX export hosted under the project's HF account. ~15.4 M params
 // (5-6× smaller than the previous wav2vec2-base prithivMLmods).
@@ -179,6 +193,7 @@ let _diag = false;                      // populated by init.diag, gates inferMs
 const ring = new RingWindow(WINDOW_SAMPLES);
 
 let inferenceInProgress = false;
+let consecutiveErrors = 0;
 let lastInferenceMs = 0;                // last window DECISION (gate tick)
 let lastClassifyMs = null;              // last classifier run (classifyDue)
 let smoothedFemale = null;              // EMA over recent inferences
@@ -339,6 +354,7 @@ async function maybeInfer() {
       ...(_diag ? { inferMs, vadMs: vadMsSinceInfer } : {}),
     });
     vadMsSinceInfer = 0;
+    consecutiveErrors = 0;
   } catch (err) {
     if (err instanceof InferenceTimeoutError) {
       // Classifier hung past INFERENCE_TIMEOUT_MS. Don't trip modelStatus —
@@ -352,9 +368,17 @@ async function maybeInfer() {
         durationMs: INFERENCE_TIMEOUT_MS,
         ts: performance.timeOrigin + performance.now(),
       });
+    } else if (++consecutiveErrors < MAX_CONSECUTIVE_ERRORS) {
+      // One failed run: skip this window, keep the model (see
+      // MAX_CONSECUTIVE_ERRORS).
+      self.postMessage({
+        type: "inference-event",
+        event: "error",
+        message: String(err?.message || err),
+        ts: performance.timeOrigin + performance.now(),
+      });
     } else {
-      self.postMessage({ type: "status", status: "error", message: String(err?.message || err) });
-      modelStatus = "error";
+      status("error", `the voice model stopped working: ${String(err?.message || err)}`);
     }
   } finally {
     // lastInferenceMs is NOT reset here — it was stamped at inference
@@ -366,14 +390,13 @@ async function maybeInfer() {
 async function loadModel(modelId) {
   if (modelStatus === "loading" || modelStatus === "ready") return;
   status("loading");
+  // Summed over the classifier's files against its known size, so the
+  // percentage neither flashes 100 % on the tiny config files nor drops back
+  // when the model file starts (2026-10-19 review N-3).
+  const progress = createClassifierProgress();
   const progressCallback = (info) => {
     if (info?.status === "progress") {
-      self.postMessage({
-        type: "progress",
-        loaded: info.loaded ?? 0,
-        total: info.total ?? 0,
-        file: info.file ?? "",
-      });
+      self.postMessage({ type: "progress", ...progress.update(info) });
     }
   };
   try {

@@ -396,6 +396,32 @@ export function useAudioPipeline() {
       audioCtxRef.current = captureSrc.audioCtx; // null on mstp path
       const myGen = pipelineGenRef.current;
       const genAlive = () => pipelineGenRef.current === myGen;
+      // Worker "error" events (2026-10-19 review S-1). A worker whose script
+      // fails to load (e.g. its hashed file 404s after a deploy while the
+      // tab was open) or throws at top level fires "error" on the Worker
+      // object and never posts a message; without a handler the UI waited
+      // forever ("Loading voice model… 0 %", "starting…"). Errors from a
+      // stopped session or a replaced worker are ignored.
+      const onWorkerError = (w, isCurrent, onFail) => {
+        w.onerror = (ev) => {
+          if (!genAlive() || !isCurrent()) return;
+          onFail(ev?.message || "the worker script failed to load");
+        };
+      };
+      // The DSP and pitch workers drive the whole display: if one fails
+      // before it has posted anything, the session ends with an error (as a
+      // capture failure does). A later uncaught exception inside a running
+      // worker does not stop it (the worker keeps handling messages), so
+      // that is only recorded.
+      const failSession = (name, message) => {
+        pushError({ source: name, where: "load", message });
+        stopRef.current?.();
+        setState((s) => ({
+          ...s,
+          status: "error",
+          error: `Audio analysis failed to start (${name}: ${message}). Reload the page and try again.`,
+        }));
+      };
 
       // Diagnostic snapshot — captured once at start. Path-specific
       // fields (baseLatency / outputLatency / ctxCreatedAtEpochMs)
@@ -426,6 +452,11 @@ export function useAudioPipeline() {
         { type: "module" },
       );
       workerRef.current = worker;
+      let dspHeard = false;
+      onWorkerError(worker, () => workerRef.current === worker, (message) => {
+        if (dspHeard) pushError({ source: "dsp-worker", where: "uncaught", message });
+        else failSession("dsp-worker", message);
+      });
 
       worker.postMessage({
         type: "init",
@@ -451,6 +482,15 @@ export function useAudioPipeline() {
         { type: "module" },
       );
       resonanceWorkerRef.current = resonanceWorker;
+      // The cue is not essential: a resonance worker that fails shows as
+      // "unavailable" in its row and the session goes on.
+      onWorkerError(resonanceWorker, () => resonanceWorkerRef.current === resonanceWorker, (message) => {
+        resonanceRef.current = null;
+        pitchOnlyRef.current.noteResonance(null);
+        setState((s) => ({ ...s, resonanceStatus: "error" }));
+        if (DIAG_ENABLED) setResonanceStatus({ status: "error", message });
+        pushError({ source: "resonance-worker", where: "load", message });
+      });
       resonanceWorker.onmessage = (e) => {
         if (!genAlive()) return;
         const msg = e.data;
@@ -462,11 +502,11 @@ export function useAudioPipeline() {
         } else if (msg.type === "status") {
           // "overloaded" is a back-off pause (the worker resumes with a
           // fresh engine and posts "ready"): drop the stale reading. On
-          // "error" too (2026-10-07 review): the worker keeps running after
-          // a caught error, and a frozen last snapshot must not keep driving
-          // the cue row or the pitch-only warning — a
-          // later state message brings the reading back (the warning's
-          // start reference waits for the next cue restart).
+          // "error" too: a frozen last snapshot must not keep driving the
+          // cue row or the pitch-only warning. After an exception while
+          // running, the worker restarts a fresh engine after a short
+          // back-off and posts "ready" again (a few times per session; a
+          // failed asset load stays "error") — resonance-worker.js.
           if (msg.status === "overloaded" || msg.status === "error") {
             resonanceRef.current = null;
             pitchOnlyRef.current.noteResonance(null);
@@ -502,6 +542,12 @@ export function useAudioPipeline() {
         heardAsRef.current.reset();
         genderStateRef.current = null;
         mlWorker.onmessage = (ev) => handleMlMessage(ev, mlWorker);
+        // A gender worker that fails shows as an error in the panel (the
+        // panel's switch off and on starts a new one).
+        onWorkerError(mlWorker, () => mlWorkerRef.current === mlWorker, (message) => {
+          pushError({ source: "mlWorker", where: "load", message });
+          setState((s) => ({ ...s, modelStatus: "error", modelError: message, modelProgress: null }));
+        });
         mlWorker.postMessage({
           type: "init",
           inputSampleRate: captureSrc.sampleRate,
@@ -525,6 +571,11 @@ export function useAudioPipeline() {
         { type: "module" },
       );
       pitchWorkerRef.current = pitchWorker;
+      let pitchHeard = false;
+      onWorkerError(pitchWorker, () => pitchWorkerRef.current === pitchWorker, (message) => {
+        if (pitchHeard) pushError({ source: "pitch-worker", where: "uncaught", message });
+        else failSession("pitch-worker", message);
+      });
       pitchWorker.postMessage({
         type: "init",
         inputSampleRate: captureSrc.sampleRate,
@@ -562,6 +613,7 @@ export function useAudioPipeline() {
 
       pitchWorker.onmessage = (e) => {
         if (!genAlive()) return; // late message after stop()
+        pitchHeard = true;
         const msg = e.data;
         if (!msg || !msg.type) return;
         if (msg.type === "pitch") {
@@ -646,7 +698,7 @@ export function useAudioPipeline() {
             pushError({
               source: "mlWorker",
               where: msg.event,
-              message: `${msg.event}: ${msg.durationMs}ms`,
+              message: msg.message ?? `${msg.event}: ${msg.durationMs}ms`,
               ts: msg.ts,
             });
           }
@@ -679,6 +731,7 @@ export function useAudioPipeline() {
 
       worker.onmessage = (e) => {
         if (!genAlive()) return; // late message after stop()
+        dspHeard = true;
         const msg = e.data;
         if (!msg || !msg.type) return;
 

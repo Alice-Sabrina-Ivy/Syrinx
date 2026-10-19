@@ -28,3 +28,25 @@ const total = Object.values(HEARD_AS_DOWNLOAD_BYTES).reduce((a, b) => a + b, 0);
 export const HEARD_AS_DOWNLOAD_TOTAL_BYTES = total;
 /** Whole MB (10^6 bytes): the size the switch and Settings show ("up to N MB"). */
 export const HEARD_AS_DOWNLOAD_MB = Math.round(total / 1e6);
+
+/**
+ * Download progress of the classifier, summed over its files (Transformers.js
+ * reports each file separately: two small configs, then the model). The
+ * total is never below the classifier's known size, so the share is close
+ * to monotone and only reaches 1 once every file is in. The ONNX Runtime
+ * engine and the speech detector report no progress: the panel says
+ * "starting" once the classifier is in (HeardAsPanel.jsx).
+ * update(info) -> { loaded, total, file }.
+ */
+export function createClassifierProgress(expectedBytes = HEARD_AS_DOWNLOAD_BYTES.classifier) {
+  const files = new Map();
+  return {
+    update(info) {
+      const file = info?.file ?? "";
+      files.set(file, { loaded: Math.max(0, info?.loaded ?? 0), total: Math.max(0, info?.total ?? 0) });
+      let loaded = 0, total = 0;
+      for (const f of files.values()) { loaded += Math.min(f.loaded, f.total || f.loaded); total += f.total; }
+      return { loaded, total: Math.max(total, expectedBytes), file };
+    },
+  };
+}

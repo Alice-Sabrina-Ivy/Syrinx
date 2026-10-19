@@ -16,7 +16,11 @@
 //                   { type: "pitch-hint", voiced, pitch, contextTime }
 //   worker -> main: { type: "status", status: "loading"|"ready"|"error"|"overloaded", message? }
 //                   ("overloaded" is a pause: after a back-off the worker posts
-//                    "ready" again with a fresh engine)
+//                    "ready" again with a fresh engine. "error" after an
+//                    exception while running is a pause too: after
+//                    ERROR_BACKOFF_S of audio a fresh engine + "ready", at most
+//                    MAX_ERROR_RESTARTS times per session; an asset-load
+//                    failure stays "error")
 //                   { type: "state", u, raw, n, fill, voicedS, clamp, verdict, startU,
 //                     startProgress, sinceResumeS, framesDropped, perf? }                every 200 ms of audio
 //
@@ -33,6 +37,11 @@ import { createResonanceCue } from "./resonanceCue.js";
 import { createOverloadGuard } from "./overloadGuard.js";
 
 const POST_EVERY_S = 0.2; // of audio (deterministic: the audio clock, not wall time)
+// Recovery after an exception while running (2026-10-19 review S-2: one
+// caught exception used to switch the cue off for the rest of the session).
+// Error handling only: the engine and cue code paths are unchanged.
+const ERROR_BACKOFF_S = 2; // of audio, then a fresh engine
+const MAX_ERROR_RESTARTS = 3; // per session; after that the error stays
 
 let engine = null;
 let cue = null;
@@ -49,6 +58,8 @@ let totalAudioS = 0;
 // vtln work runs there, when a frame resolves grid time); folded into the
 // next chunk's rate so the overload EMA sees all of it.
 let pendingFrameMs = 0;
+let errorRestarts = 0;
+let errorBackoffS = 0; // audio seconds since the last runtime error
 // Pitch hints that arrive before the assets have loaded are dropped; chunks
 // too (the engine starts with the first chunk it sees, and a frame whose
 // chunk it never saw is dropped and counted).
@@ -56,6 +67,15 @@ let pendingFrameMs = 0;
 function status(s, message) {
   state = s;
   self.postMessage({ type: "status", status: s, ...(message ? { message } : {}) });
+}
+
+// A caught exception while running: drop the engine's state and, unless it
+// keeps happening, start a fresh engine after ERROR_BACKOFF_S of audio.
+function runtimeError(err) {
+  const recover = errorRestarts < MAX_ERROR_RESTARTS;
+  errorBackoffS = 0;
+  status("error", String(err?.message || err));
+  if (!recover) engine = null; // stays off for this session
 }
 
 async function loadJson(base, name) {
@@ -109,7 +129,15 @@ function startEngine() {
 }
 
 function onChunk(msg) {
-  if (!engine || (state !== "ready" && state !== "overloaded") || !msg?.buffer) return;
+  if (!engine || !msg?.buffer) return;
+  if (state === "error") {
+    // Recovering from a runtime error (engine is null once it gave up).
+    const n = new Float32Array(msg.buffer).length;
+    errorBackoffS += n / sampleRate;
+    if (errorBackoffS >= ERROR_BACKOFF_S) { errorRestarts++; startEngine(); status("ready"); }
+    return;
+  }
+  if (state !== "ready" && state !== "overloaded") return;
   const x = new Float32Array(msg.buffer);
   if (!x.length) return;
   const audioS = x.length / sampleRate;
@@ -158,6 +186,8 @@ self.onmessage = async (e) => {
     totalMs = 0;
     totalAudioS = 0;
     pendingFrameMs = 0;
+    errorRestarts = 0;
+    errorBackoffS = 0;
     status("loading");
     try {
       const base = msg.assetBase ?? "/";
@@ -167,13 +197,14 @@ self.onmessage = async (e) => {
       startEngine();
       status("ready");
     } catch (err) {
+      engine = null; // assets missing: no recovery
       status("error", String(err?.message || err));
     }
   } else if (msg.type === "audioPort") {
     msg.port.onmessage = (ev) => {
-      try { onChunk(ev.data); } catch (err) { status("error", String(err?.message || err)); }
+      try { onChunk(ev.data); } catch (err) { runtimeError(err); }
     };
   } else if (msg.type === "pitch-hint") {
-    try { onPitchHint(msg); } catch (err) { status("error", String(err?.message || err)); }
+    try { onPitchHint(msg); } catch (err) { runtimeError(err); }
   }
 };

@@ -63,15 +63,20 @@ const ROOMY = { h: 58, menY: 8, bandH: 8, ax: 29, womenY: 42, fs: 12, r: 7, tr: 
 const PAD = 8; // px between an end word and the axis (room for a pinned dot + chevron)
 const HALO = "#141414"; // the strip's background: a halo keeps labels legible over the highlight
 
-// The resonance lab's assets (one source of truth): fetched once.
+// The resonance lab's assets (one source of truth): fetched once. A failed
+// fetch is not cached (it was cached as null until a page reload — 2026-10-19
+// review S-2): the strip asks again when the resonance worker's status
+// changes (it loads the same reference.json).
 let refPromise = null;
 function loadReference() {
   if (!refPromise) {
     const get = (name) => fetch(`${import.meta.env.BASE_URL}resonance-lab/${name}`)
       .then((r) => (r.ok ? r.json() : null))
       .catch(() => null);
-    refPromise = Promise.all([get("reference.json"), get("cue-bands.json")])
+    const p = Promise.all([get("reference.json"), get("cue-bands.json")])
       .then(([reference, cueBands]) => (reference ? { reference, cueBands } : null));
+    refPromise = p;
+    p.then((r) => { if (!r && refPromise === p) refPromise = null; });
   }
   return refPromise;
 }
@@ -367,10 +372,11 @@ export function CueStrip({
   }, []);
 
   useEffect(() => {
+    if (assets) return undefined;
     let alive = true;
-    loadReference().then((r) => { if (alive) setAssets(r); });
+    loadReference().then((r) => { if (alive && r) setAssets(r); });
     return () => { alive = false; };
-  }, []);
+  }, [assets, resonanceStatus]);
 
   const vtlnRef = useMemo(() => (assets?.reference?.vtln ? cueResonanceRef(assets.reference.vtln, assets.cueBands) : null), [assets]);
 
@@ -390,7 +396,9 @@ export function CueStrip({
       const inputs = { ...p, snap, workerStatus: p.resonanceStatus };
       const states = {
         pitch: pitchRowState(inputs),
-        resonance: ref ? resonanceRowState(inputs) : "starting",
+        // Without the reference only the worker's own state can show
+        // (unavailable / paused / starting): an error is never hidden.
+        resonance: resonanceRowState(ref ? inputs : { ...inputs, snap: null }),
       };
       if (n++ % 4 === 0) {
         sr = {
@@ -414,7 +422,7 @@ export function CueStrip({
   const snap = view.snap;
   const inputs = { voiced, holding, pitchLevel, snap, workerStatus: resonanceStatus };
   const pState = pitchRowState(inputs);
-  const rState = vtlnRef ? resonanceRowState(inputs) : "starting";
+  const rState = resonanceRowState(vtlnRef ? inputs : { ...inputs, snap: null });
   // The header number IS the dot: the 1.5 s level the target judges.
   const levelStatus = pitchLevel != null ? pitchStatus(pitchLevel, pitchTargetFor(direction)) : null;
   const rClamp = resonanceClamp(snap);

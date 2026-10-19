@@ -170,9 +170,15 @@ export const NOISE_TEXT =
 export const CANT_TELL_TEXT =
   "Some voices get \u201cCan't tell yet\u201d most of the time. In tests on 80 audiobook readers that happened more often for women's voices (about 13 in 100 readings) than for men's (about 7 in 100), mostly for a few voices.";
 
+// Loading: p = the classifier's download share (null before any progress
+// arrives); at 100 % it is still loading its engine (the ONNX Runtime files
+// report no progress) — 2026-10-19 review N-3.
+const loadingText = (p) => (p == null ? "Loading voice model…"
+  : p >= 100 ? "Starting voice model — the first time this also downloads its engine…"
+    : `Loading voice model… ${p} %`);
 const REASONS = {
-  loading: (p) => `Loading voice model… ${p} %`,
-  error: () => "Unavailable — the voice model didn't load",
+  loading: loadingText,
+  error: () => "Unavailable — the voice model couldn't run. Switch it off and on to try again, or reload the page",
   listening: () => "Waiting for running speech",
   sustained: () => "Needs running speech — held vowels and notes don't count",
   short: () => "Keep talking — needs a few seconds of running speech",
@@ -261,6 +267,7 @@ export function HeardAsPanel({
   const statusRef = useRef(modelStatus);
   useEffect(() => { statusRef.current = modelStatus; });
   const shownRef = useRef(false);
+  const computeRef = useRef(null);
 
   useEffect(() => {
     if (!enabled) return undefined;
@@ -293,6 +300,7 @@ export function HeardAsPanel({
         live: pitchOnly,
       });
     };
+    computeRef.current = compute;
     compute();
     const id = setInterval(compute, HEARD_AS_CALIBRATION.updateMs);
     // Hide promptly (not on the 2 s cadence) when a held note starts, so the
@@ -302,13 +310,21 @@ export function HeardAsPanel({
     }, HIDE_CHECK_MS);
     return () => {
       clearInterval(id); clearInterval(fast);
+      computeRef.current = null;
       // Switched off (or remounted): a later switch-on starts a fresh run.
       warning?.resetRun();
     };
   }, [enabled, heardAsRef, audioClockRef, genderStateRef, resonanceRef, pitchOnlyRef]);
 
+  // A model status change (ready, error) shows at once, not on the next 2 s
+  // tick: the last tick's "loading" view used to stay up to 2 s after ready
+  // (2026-10-19 review N-2). Runs after the effect above has set statusRef.
+  useEffect(() => { computeRef.current?.(); }, [modelStatus]);
+
   // Loading progress is shown as it arrives (not on the 2 s cadence).
-  const progress = modelProgress?.total ? Math.round((100 * modelProgress.loaded) / modelProgress.total) : 0;
+  const progress = modelProgress?.total
+    ? Math.min(100, Math.floor((100 * modelProgress.loaded) / modelProgress.total))
+    : null;
   const reason = !enabled ? null
     : modelStatus === "error" ? "error"
       : modelStatus !== "ready" ? "loading"
