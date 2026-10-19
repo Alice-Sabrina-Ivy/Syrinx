@@ -36,9 +36,9 @@ export const CUE_AXES = Object.freeze({
 export const HNR_RANGE = { min: 0, max: 35 };
 
 // Colors. Target colouring is the same for every training direction and
-// judges the pitch LEVEL (utils/pitchLevel.js): green on target, red off
-// target, neutral past the band in the direction of travel ("beyond") and
-// with no target ("Just exploring", or sessions recorded before
+// judges the pitch LEVEL (utils/pitchLevel.js): green on target (inside
+// the band), red off target (outside it on either side, since 2026-10-19),
+// neutral with no target ("Just exploring", or sessions recorded before
 // directions existed — no band drawn then either).
 export const COLORS = {
   inTarget: "#4ade80",
@@ -56,7 +56,7 @@ export const COLORS = {
 };
 
 // Trace colour / readout class for a pitchStatus() result
-// (utils/trainingDirection.js): "in" | "beyond" | "out" | null.
+// (utils/trainingDirection.js): "in" | "out" | null.
 export function statusColor(status) {
   return status === "in" ? COLORS.inTarget : status === "out" ? COLORS.outOfTarget : COLORS.neutralTrace;
 }

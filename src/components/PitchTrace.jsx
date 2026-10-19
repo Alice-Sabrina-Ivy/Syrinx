@@ -1,8 +1,8 @@
 // PitchTrace.jsx — Scrolling canvas pitch trace (last 15 seconds)
 // With a target (the user's training direction): band drawn, and the line
 // coloured by the pitch LEVEL at each point (utils/pitchLevel.js: median
-// of the last 1.5 s) — green on target, red off target, neutral past the
-// band in the direction of travel. The bands are ranges of average
+// of the last 1.5 s) — green on target (inside the band), red off target
+// (outside it on either side). The bands are ranges of average
 // speaking pitch, so intonation peaks and dips don't flip the colour.
 // With no target ("Just exploring" / not chosen yet): no band, neutral
 // line. Gaps during silence.

@@ -127,8 +127,9 @@ export function dotHollow(cue, { pitchLevel = null, direction = null } = {}) {
 }
 /**
  * The pitch row's status word (the same words in every direction):
- * "on target" | "↑ higher" | "↓ lower" | null (no target, no level, or past
- * the band in the direction of travel — shown neutrally).
+ * "on target" | "↑ higher" | "↓ lower" | null (no target or no level).
+ * Only the band is on target: past it in the direction of travel reads
+ * like any other level on that side (user decision 2026-10-19).
  */
 export function pitchCueWord(pitchLevel, direction) {
   const t = pitchTargetFor(direction);
@@ -263,7 +264,6 @@ export function cueSummary(cue, { state, direction = null, pitchLevel = null, sn
     const st = pitchStatus(pitchLevel, t);
     const range = `${t.low} to ${t.high} Hz`;
     if (st === "in") return `${hz}, on target (${range}).`;
-    if (st === "beyond") return `${hz}, past your target ${range} in your direction.`;
     return `${hz}, ${pitchLevel < t.low ? "below" : "above"} your target ${range}.`;
   }
   if (cue === "resonance") {

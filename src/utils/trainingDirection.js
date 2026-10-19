@@ -24,9 +24,12 @@
 //   These are ranges of speakers' AVERAGE speaking pitch, so the app judges
 //   the running pitch LEVEL (utils/pitchLevel.js: median of the last 1.5 s
 //   of voiced pitch), never a single frame — per-frame judgement mostly
-//   measured intonation. Beyond the band in the direction of travel (above
-//   255 Hz for feminine, below 85 Hz for masculine) is "beyond": shown
-//   neutrally, not as off target — a lower voice is not less masculine.
+//   measured intonation. Only the band itself is on target: a level past
+//   the band in the direction of travel (above 255 Hz for feminine, below
+//   85 Hz for masculine) is off target like any other level outside it
+//   (user decision 2026-10-19). **Historical (superseded 2026-10-19):**
+//   that was a separate "beyond" status, shown neutrally and counted as on
+//   target; sessions saved before then keep the figures computed that way.
 //   No resonance (F2) target: per-frame F2 is dominated by the vowel (the
 //   bands held near-chance shares of men's and women's vowels), so it is a
 //   neutral readout in every direction (2026-10-07 review); the F2 readout
@@ -54,6 +57,8 @@ export const TRAINING_DIRECTIONS = Object.freeze([
 const IDS = new Set(TRAINING_DIRECTIONS.map((d) => d.id));
 
 // toward: the direction of travel ("up" / "down"), or null for a zone.
+// Only the label of sessions saved before 2026-10-19 uses it
+// (formatOnTarget); the status itself is band-only.
 export const PITCH_TARGETS = Object.freeze({
   feminine: Object.freeze({ low: 165, high: 255, toward: "up" }),
   masculine: Object.freeze({ low: 85, high: 155, toward: "down" }),
@@ -73,22 +78,18 @@ export function pitchTargetFor(direction) {
 }
 
 // Where a pitch level sits relative to a target:
-//   "in"      inside the band (on target)
-//   "beyond"  past the band in the direction of travel (on target, shown
-//             neutrally: past the typical range, not short of it)
-//   "out"     short of the band, or outside a zone (off target)
-//   null      no target or no level — rendered neutrally
+//   "in"   inside the band (on target)
+//   "out"  outside the band, on either side (off target) — past the band
+//          in the direction of travel included (user decision 2026-10-19)
+//   null   no target or no level — rendered neutrally
 export function pitchStatus(level, target) {
   if (target == null || level == null || !Number.isFinite(level)) return null;
-  if (level >= target.low && level <= target.high) return "in";
-  if (target.toward === "up" && level > target.high) return "beyond";
-  if (target.toward === "down" && level < target.low) return "beyond";
-  return "out";
+  return level >= target.low && level <= target.high ? "in" : "out";
 }
 
-// Counts toward a session's "on target" time.
+// Counts toward a session's "on target" time: the band only.
 export function isOnTarget(status) {
-  return status === "in" || status === "beyond";
+  return status === "in";
 }
 
 // The band to draw for a target on an axis spanning displayRange
@@ -131,8 +132,10 @@ export function formatTarget(target) {
   return `${target.low}–${target.high} Hz`;
 }
 
-// What counts as on target, e.g. "≥ 165 Hz" (feminine), "≤ 155 Hz"
-// (masculine), "145–175 Hz" (androgynous).
+// What counted as on target before 2026-10-19, e.g. "≥ 165 Hz"
+// (feminine), "≤ 155 Hz" (masculine), "145–175 Hz" (androgynous) — the
+// label for sessions saved under that rule (SessionHistory). Since then
+// on target is the band (formatTarget).
 export function formatOnTarget(target) {
   if (target == null) return null;
   if (target.toward === "up") return `≥ ${target.low} Hz`;

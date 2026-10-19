@@ -15,15 +15,22 @@
 //     portions (set pv, orig), when --pvg has them.
 // Per speaker: the share of voiced frames whose value (per frame) or level
 // (running median over W ms) is in its own band (women: feminine, men:
-// masculine) or on target there (in, or beyond in the direction of
-// travel), and — recentred so the speaker's median sits at the band's
+// masculine) or on target there under the 2026-10-07 rule (in, or beyond
+// in the direction of travel — the app counts the band only since
+// 2026-10-19; the column keeps the old rule so the note's numbers
+// reproduce), and — recentred so the speaker's median sits at the band's
 // geometric centre — the share in each band. Then candidate androgynous
 // widths for equal coverage.
 import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { pitchLevels } from "../src/utils/pitchLevel.js";
-import { PITCH_TARGETS, pitchStatus, isOnTarget } from "../src/utils/trainingDirection.js";
+import { PITCH_TARGETS, pitchStatus } from "../src/utils/trainingDirection.js";
+
+// The 2026-10-07 note's "on target": in the band, or past it in the
+// direction of travel.
+const onTarget2026_10_07 = (x, t) => pitchStatus(x, t) === "in"
+  || (t.toward === "up" && x > t.high) || (t.toward === "down" && x < t.low);
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const arg = (k, d) => (process.argv.find((a) => a.startsWith(`--${k}=`)) ?? `=${d}`).split("=").slice(1).join("=");
@@ -78,7 +85,7 @@ for (const s of speakers) {
   for (const W of WINS) {
     const lv = (W === 0 ? s.frames.map((f) => f.hz) : pitchLevels(s.frames, (f) => f.t, (f) => f.hz, W)).filter((x) => x !== null);
     r[`own_${W}`] = lv.filter((x) => pitchStatus(x, own) === "in").length / lv.length;
-    r[`on_${W}`] = lv.filter((x) => isOnTarget(pitchStatus(x, own))).length / lv.length;
+    r[`on_${W}`] = lv.filter((x) => onTarget2026_10_07(x, own)).length / lv.length;
     for (const [name, t] of Object.entries(PITCH_TARGETS)) {
       const f = 2 ** (((st(t.low) + st(t.high)) / 2 - medSt) / 12);
       r[`ctr_${name}_${W}`] = lv.filter((x) => pitchStatus(x * f, t) === "in").length / lv.length;

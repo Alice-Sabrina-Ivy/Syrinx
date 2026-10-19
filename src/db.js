@@ -29,6 +29,9 @@ db.version(1).stores({
   //   pctTimeInPitchTarget, pctTimeInResonanceTarget,
   //   pctVoicedWithPitchTarget, directionLog: [{ atMs, direction }]
   //   (2026-10-07, non-indexed; see utils/sessionStats.js),
+  //   pitchTargetRule ("band" on rows saved since 2026-10-19: on target =
+  //   inside the band; absent on older rows, which counted past the band
+  //   in the direction of travel as on target; non-indexed),
   //   pitchRangeLow, pitchRangeHigh, pitchStdev,
   //   voicedDurationSeconds, notes }
   sessions: "++id, startedAt, sessionType",

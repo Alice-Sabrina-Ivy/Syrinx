@@ -476,8 +476,8 @@ await launch(WAV.speech);
   await sleep(6000);
   check("masculine: pitch band 85–155 Hz", (await pitchTarget(page)).includes("85-155"), JSON.stringify(await pitchTarget(page)));
   const mcls = await f0WhileVoiced(page);
-  check("masculine: a ~100 Hz voice is not marked off target (level in the band, or beyond it: neutral)",
-    /text-green-400|text-neutral-200/.test(mcls ?? ""), mcls);
+  check("masculine: a ~100 Hz voice is marked on target (level in the band)",
+    /text-green-400/.test(mcls ?? ""), mcls);
   const speechCounts = await sampleMeter(page, 10000);
   check("running speech: meter shows a number most of the time", share(speechCounts, "score") >= 0.6, JSON.stringify(speechCounts));
   check("speech detector model downloaded from the pinned URL (first visit)", vadFetchedOk(vadFetches), JSON.stringify(vadFetches));

@@ -62,7 +62,7 @@ const frame = (f0, extra = {}) => ({
   check("avgF0 unchanged (mean)", near(s.avgF0, mean));
   check("medianF0 unchanged", s.medianF0 === 200);
   check("pitchStdev unchanged (sample stdev)", near(s.pitchStdev, sd));
-  check("pctTimeInPitchTarget vs the feminine target (165–255 Hz in, above it beyond → 4 of 5)", s.pctTimeInPitchTarget === 80);
+  check("pctTimeInPitchTarget vs the feminine target (165–255 Hz only: 170 / 200 in, 260 / 300 past the band off → 2 of 5)", s.pctTimeInPitchTarget === 40);
   check("no resonance (F2) target any more", s.pctTimeInResonanceTarget === null);
   const noDir = computeSummaryStats(f0s.map((f) => frame(f)));
   check("no direction log → no time-in-target (never assumed)",

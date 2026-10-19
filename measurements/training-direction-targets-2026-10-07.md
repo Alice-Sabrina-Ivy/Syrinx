@@ -121,6 +121,12 @@ product decision (widen the zone, or a longer level window — 3 s gives
 
 ### "Beyond": past the band in the direction of travel
 
+**Superseded 2026-10-19 (user decision):** only the band is on target. A
+level past it in the direction of travel is off target like any other
+level outside the band (red, hollow dot, "↑ higher" / "↓ lower", counted
+off target in the session figure). Sessions saved before then keep their
+figures. The text below records the 2026-10-07 rule.
+
 A lower voice is not less masculine and a higher one is not less
 feminine. Levels past the band in the direction of travel (below 85 Hz for
 "More masculine", above 255 Hz for "More feminine") are **"beyond"**:

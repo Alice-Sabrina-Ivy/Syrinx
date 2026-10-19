@@ -28,8 +28,12 @@ export const PITCH_RANGE_HIGH_PCT = 0.95;
 // Time on target (pctTimeInPitchTarget) is the share of voiced frames
 // whose pitch LEVEL (utils/pitchLevel.js: running 1.5 s median — the
 // targets are ranges of average speaking pitch, so single frames would
-// mostly measure intonation) is on target — in the band, or beyond it in
-// the direction of travel — for the training direction in effect at that
+// mostly measure intonation) is on target — inside the band; a level past
+// it in either direction is off target (band-only since 2026-10-19, user
+// decision; `pitchTargetRule: "band"` marks rows computed this way — rows
+// saved before then counted "past the band in the direction of travel" as
+// on target and keep their saved figures, no migration) — for the
+// training direction in effect at that
 // frame (`directionLog`: [{ atMs, direction }] on the frames' timestampMs
 // clock — see utils/trainingDirection.js). Frames recorded while "Just
 // exploring" have no target and don't count either way;
@@ -102,6 +106,7 @@ export function computeSummaryStats(frames, { directionLog = null } = {}) {
     pctVoicedWithPitchTarget: hasLog && voicedFrames.length > 0
       ? Math.round((pitchWithTarget / voicedFrames.length) * 100)
       : null,
+    pitchTargetRule: hasLog ? "band" : null,
     pctTimeInResonanceTarget: null,
     voicedDurationSeconds,
   };

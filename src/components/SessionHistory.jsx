@@ -27,6 +27,7 @@ import {
   pitchStatus,
   bandForDisplay,
   formatOnTarget,
+  formatTarget,
 } from "../utils/trainingDirection";
 import { pitchLevels } from "../utils/pitchLevel";
 
@@ -46,14 +47,18 @@ function goalText(session) {
   return directionSequence(session.directionLog).map(directionLabel).join(" → ");
 }
 
-// Label for the pitch figure: "Pitch on target (≥ 165 Hz)" for a
-// single-direction session, "Pitch on target" when it changed, the fixed
-// range for legacy sessions.
+// Label for the pitch figure: "Pitch on target (165–255 Hz)" for a
+// single-direction session (on target = the band, since 2026-10-19),
+// "Pitch on target" when it changed, the fixed range for legacy sessions.
+// Rows saved before 2026-10-19 (no pitchTargetRule) keep their saved
+// figure, which counted past the band in the direction of travel as on
+// target, so their label keeps the old wording ("≥ 165 Hz").
 function pitchStatLabel(session) {
   if (!hasDirectionLog(session)) return `Pitch in ${LEGACY_PITCH_RANGE_LABEL}`;
   const seq = directionSequence(session.directionLog);
   const t = seq.length === 1 ? pitchTargetFor(seq[0]) : null;
-  return t ? `Pitch on target (${formatOnTarget(t)})` : "Pitch on target";
+  if (!t) return "Pitch on target";
+  return `Pitch on target (${session.pitchTargetRule === "band" ? formatTarget(t) : formatOnTarget(t)})`;
 }
 
 // Colour of a percentage: judged only for sessions with a direction log;
@@ -520,7 +525,8 @@ function drawTargetBands(ctx, log, targetFor, displayRange, totalMs, msToX, hzTo
 }
 
 // Line colour for a pitch level at a session time: that moment's target
-// status (on / off / beyond), neutral without one.
+// status (on / off target — band only, so older sessions' traces follow
+// the current rule too), neutral without one.
 function traceColor(log, atMs, level) {
   return log ? statusColor(pitchStatus(level, pitchTargetFor(directionAt(log, atMs)))) : COLORS.neutralTrace;
 }

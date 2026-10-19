@@ -127,20 +127,26 @@ console.log("\ndot colours: only pitch judges");
     }
   }
   check("pitch = statusColor(pitchStatus(level, target)); resonance always neutral", ok);
-  check("off target is also HOLLOW (not colour alone); in / beyond / no target are filled",
+  check("off target is also HOLLOW (not colour alone), past the band included; in / no target are filled",
     dotHollow("pitch", { pitchLevel: 120, direction: "feminine" }) && dotHollow("pitch", { pitchLevel: 200, direction: "masculine" })
-    && dotHollow("pitch", { pitchLevel: 200, direction: "androgynous" })
-    && !dotHollow("pitch", { pitchLevel: 200, direction: "feminine" }) && !dotHollow("pitch", { pitchLevel: 280, direction: "feminine" })
+    && dotHollow("pitch", { pitchLevel: 200, direction: "androgynous" }) && dotHollow("pitch", { pitchLevel: 280, direction: "feminine" })
+    && !dotHollow("pitch", { pitchLevel: 200, direction: "feminine" })
     && !dotHollow("pitch", { pitchLevel: 120, direction: null }) && !dotHollow("resonance", { pitchLevel: 120, direction: "feminine" }));
   check("pitch word: same words in every direction",
     pitchCueWord(120, "feminine") === "↑ higher" && pitchCueWord(200, "masculine") === "↓ lower"
     && pitchCueWord(200, "feminine") === "on target" && pitchCueWord(120, "masculine") === "on target"
     && pitchCueWord(130, "androgynous") === "↑ higher" && pitchCueWord(190, "androgynous") === "↓ lower"
-    && pitchCueWord(280, "feminine") === null && pitchCueWord(80, "masculine") === null
+    && pitchCueWord(280, "feminine") === "↓ lower" && pitchCueWord(80, "masculine") === "↑ higher"
     && pitchCueWord(150, "exploring") === null && pitchCueWord(null, "feminine") === null);
-  check("beyond the band in the direction of travel is neutral (not red)",
-    dotColor("pitch", { pitchLevel: 280, direction: "feminine" }) === COLORS.neutralTrace
-    && dotColor("pitch", { pitchLevel: 80, direction: "masculine" }) === COLORS.neutralTrace);
+  // User decision 2026-10-19: only the band is on target — past it in the
+  // direction of travel looks and reads like any other off-target level
+  // on that side. Fails on the old rule (neutral, filled, no word).
+  check("past the band in the direction of travel is off target (red, hollow, the side's word)",
+    dotColor("pitch", { pitchLevel: 280, direction: "feminine" }) === COLORS.outOfTarget
+    && dotColor("pitch", { pitchLevel: 80, direction: "masculine" }) === COLORS.outOfTarget
+    && dotHollow("pitch", { pitchLevel: 80, direction: "masculine" })
+    && pitchCueWord(280, "feminine") === pitchCueWord(200, "masculine")
+    && pitchCueWord(80, "masculine") === pitchCueWord(120, "feminine"));
 }
 
 console.log("\ntrail");
@@ -201,6 +207,8 @@ console.log("\nrow states");
   check("screen-reader summaries name the value and the target",
     cueSummary("pitch", { state: "live", direction: "feminine", pitchLevel: 168 }) === "Pitch level 168 Hz, on target (165 to 255 Hz)."
     && cueSummary("pitch", { state: "live", direction: "masculine", pitchLevel: 180 }) === "Pitch level 180 Hz, above your target 85 to 155 Hz."
+    && cueSummary("pitch", { state: "live", direction: "feminine", pitchLevel: 280 }) === "Pitch level 280 Hz, above your target 165 to 255 Hz."
+    && cueSummary("pitch", { state: "live", direction: "masculine", pitchLevel: 80 }) === "Pitch level 80 Hz, below your target 85 to 155 Hz."
     && cueSummary("pitch", { state: "live", direction: null, pitchLevel: 180 }) === "Pitch level 180 Hz."
     && cueSummary("pitch", { state: "idle" }) === "Pitch: no voice right now.");
   check("screen-reader: resonance position against the bands + change",
