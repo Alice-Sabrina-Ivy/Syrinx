@@ -9,7 +9,7 @@
 //              ranges — trainingDirection.js PITCH_TARGETS); the dot AND the
 //              header number are the 1.5 s pitch LEVEL the target is judged
 //              on. On / off target is shown by colour AND fill (hollow dot
-//              when off) AND a word ("in target" / "↑ higher" / "↓ lower").
+//              when off) AND a word ("on target" / "↑ higher" / "↓ lower").
 //   resonance  u (0 = typical LibriSpeech man, 1 = typical woman), −1.0…2.2;
 //              bands = 10th–90th percentile of individual 5 s readouts of
 //              20 + 20 LibriSpeech readers through the production path
@@ -127,13 +127,13 @@ export function dotHollow(cue, { pitchLevel = null, direction = null } = {}) {
 }
 /**
  * The pitch row's status word (the same words in every direction):
- * "in target" | "↑ higher" | "↓ lower" | null (no target, no level, or past
+ * "on target" | "↑ higher" | "↓ lower" | null (no target, no level, or past
  * the band in the direction of travel — shown neutrally).
  */
 export function pitchCueWord(pitchLevel, direction) {
   const t = pitchTargetFor(direction);
   const st = pitchStatus(pitchLevel, t);
-  if (st === "in") return "in target";
+  if (st === "in") return "on target";
   if (st === "out") return pitchLevel < t.low ? "↑ higher" : "↓ lower";
   return null;
 }
@@ -262,11 +262,13 @@ export function cueSummary(cue, { state, direction = null, pitchLevel = null, sn
     if (!t) return `${hz}.`;
     const st = pitchStatus(pitchLevel, t);
     const range = `${t.low} to ${t.high} Hz`;
-    if (st === "in") return `${hz}, inside your target ${range}.`;
+    if (st === "in") return `${hz}, on target (${range}).`;
     if (st === "beyond") return `${hz}, past your target ${range} in your direction.`;
     return `${hz}, ${pitchLevel < t.low ? "below" : "above"} your target ${range}.`;
   }
   if (cue === "resonance") {
+    // Idle: the header is a bare "—" on screen; read a phrase instead.
+    if (state === "idle") return "Resonance (approximate): no voice right now.";
     if (state !== "live" && state !== "holding") return `Resonance (approximate): ${resonanceHeader(state, snap)}`;
     const w = bandWords(snap?.u, vtlnRef);
     return sentence(`Resonance (approximate)${w ? `: ${w}` : ""}, ${resonanceHeader(state, snap)}`);

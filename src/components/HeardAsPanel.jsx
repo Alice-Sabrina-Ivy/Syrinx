@@ -422,7 +422,7 @@ export function HeardAsPanel({
           <li data-heard-as-pitch-only-false-alarms="">{PITCH_ONLY_FALSE_ALARM_TEXT}</li>
           <li>Typical voices are shown further from the ends than listeners put them: clearly feminine and clearly masculine voices look less clear-cut here than they are.</li>
           <li data-heard-as-cant-tell="">{CANT_TELL_TEXT}</li>
-          <li>Within clearly feminine or clearly masculine voices it does not track small changes — use the cue strip for those.</li>
+          <li>Within clearly feminine or clearly masculine voices it does not track small changes — use the pitch and resonance rows under the pitch trace for those.</li>
           <li>It uses only your pitch and a voice classifier; it ignores intonation, vocal weight and articulation.</li>
           <li>Singing, children&apos;s voices, held vowels and single words are not supported. Held notes and very high or low voices hide it; singing and children are not detected — don&apos;t use it for them.</li>
           <li>The shaded range is where about 8 in 10 published listener groups fell for clearly feminine or clearly masculine voices; less is known for in-between voices. The scale is listeners choosing between man and woman: those who might be unsure or say neither are counted half on each side. The &ldquo;unsure or neither&rdquo; line counts listeners who answered &ldquo;another gender&rdquo; as well as those who weren&apos;t sure, and depends on how listeners are asked.</li>

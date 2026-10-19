@@ -134,7 +134,7 @@ console.log("\ndot colours: only pitch judges");
     && !dotHollow("pitch", { pitchLevel: 120, direction: null }) && !dotHollow("resonance", { pitchLevel: 120, direction: "feminine" }));
   check("pitch word: same words in every direction",
     pitchCueWord(120, "feminine") === "↑ higher" && pitchCueWord(200, "masculine") === "↓ lower"
-    && pitchCueWord(200, "feminine") === "in target" && pitchCueWord(120, "masculine") === "in target"
+    && pitchCueWord(200, "feminine") === "on target" && pitchCueWord(120, "masculine") === "on target"
     && pitchCueWord(130, "androgynous") === "↑ higher" && pitchCueWord(190, "androgynous") === "↓ lower"
     && pitchCueWord(280, "feminine") === null && pitchCueWord(80, "masculine") === null
     && pitchCueWord(150, "exploring") === null && pitchCueWord(null, "feminine") === null);
@@ -199,13 +199,15 @@ console.log("\nrow states");
     && resonanceHeader("live", snap({ u: 0.3, startU: 0.7 })) === "darker than your start"
     && resonanceHeader("holding", snap({ u: 0.3, startU: 0.7 })) === "darker than your start");
   check("screen-reader summaries name the value and the target",
-    cueSummary("pitch", { state: "live", direction: "feminine", pitchLevel: 168 }) === "Pitch level 168 Hz, inside your target 165 to 255 Hz."
+    cueSummary("pitch", { state: "live", direction: "feminine", pitchLevel: 168 }) === "Pitch level 168 Hz, on target (165 to 255 Hz)."
     && cueSummary("pitch", { state: "live", direction: "masculine", pitchLevel: 180 }) === "Pitch level 180 Hz, above your target 85 to 155 Hz."
     && cueSummary("pitch", { state: "live", direction: null, pitchLevel: 180 }) === "Pitch level 180 Hz."
     && cueSummary("pitch", { state: "idle" }) === "Pitch: no voice right now.");
   check("screen-reader: resonance position against the bands + change",
     cueSummary("resonance", { state: "live", snap: snap({ u: 0.52, startU: 0.1 }), vtlnRef: REF }) === "Resonance (approximate): between the typical men's and women's bands, brighter than your start."
-    && cueSummary("resonance", { state: "warming", snap: snap({}) , vtlnRef: REF }) === "Resonance (approximate): keep talking…");
+    && cueSummary("resonance", { state: "warming", snap: snap({}) , vtlnRef: REF }) === "Resonance (approximate): keep talking…"
+    && cueSummary("resonance", { state: "idle", snap: snap({}), vtlnRef: REF }) === "Resonance (approximate): no voice right now."
+    && resonanceHeader("idle") === "—");
   check("row values: pitch level / resonance u; nothing for an unknown cue (no clarity row)",
     rowValue("pitch", { pitchLevel: 180 }) === 180 && rowValue("resonance", { snap: { u: 0.4 } }) === 0.4
     && rowValue("clarity", { vocalWeight: { sigmaLevel: 0.9 } }) === null);
