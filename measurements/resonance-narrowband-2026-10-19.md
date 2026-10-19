@@ -464,3 +464,130 @@ expected overlap with dark wideband audio.
 
 Held-out half: not run (dev failed). Detector cost: 4.9 ms CPU per second of
 audio (as round 1). Pitch frames dropped by the engine: 0.
+
+## Round 3 plan (pre-registered, 2026-10-19)
+
+Committed and pushed before any round 3 result exists: no edge-sharpness value
+has been computed on any stream before this commit. Rounds 1 and 2 above are
+not edited. Deviations found during round 3 go under "Round 3 deviations"
+below, dated.
+
+**Why a round 3.** User decision 2026-10-19, after round 2 failed (round 2
+said "there is no round 3"; the user decided to try one more detector of a
+different kind). Rounds 1 and 2 used a band-energy ratio. It separates the
+four true 8 kHz links from every wideband stream, but Opus 8 kbit/s
+narrowband overlaps dark wideband audio (the −6 dB/oct tilt, the headset
+combination, one male reader whose clean recording is dark above 4.5 kHz),
+because an energy ratio cannot tell a sharp codec cut-off from a gradual
+roll-off. Round 3 measures **edge sharpness** instead: how much more steeply
+the long-term voiced spectrum falls across ~3.3–4.75 kHz than it falls just
+below, where a dark but wideband voice keeps roughly its own slope.
+
+### R3.1 Detector
+
+Same input as rounds 1–2: on every voiced 10 ms grid frame, the 512-sample
+periodic-Hann window of the resonance engine's 16 kHz ring ending at the
+frame (round 1 deviation 3), 512-point power spectrum, bin width 31.25 Hz.
+
+- **Sub-bands:** 32 sub-bands of 125 Hz, sub-band j = bins 48 + 4j …
+  51 + 4j (j = 0…31, 1500–5500 Hz), centre c_j = 1.5625 + 0.125 j kHz.
+  Each sub-band's power is the sum of its 4 bins.
+- **Long-term spectrum:** an exponential average of each sub-band's power
+  over voiced frames only, the same rule and constant for every sub-band as
+  in rounds 1–2 (E ← E + a (e − E), a = 1 − exp(−0.01 / τ), E starts at 0;
+  unvoiced time does not age it; the start-up factor is common to all
+  sub-bands, so it cancels in every difference below).
+  L_j = 10·log10(E_j + 1e-30) dB.
+- **Base slope s** (dB/kHz): least-squares line of L_j against c_j over
+  j = 0…13 (1.5–3.25 kHz).
+- **Feature E1, drop beyond the extrapolated slope** (dB):
+  U = mean of L_j, j = 14…17 (3.25–3.75 kHz, mean centre 3.5 kHz);
+  V = mean of L_j, j = 21…25 (4.125–4.75 kHz, mean centre 4.4375 kHz);
+  E1 = (V − U) − 0.9375·s.
+- **Feature E2, steepest local fall beyond the slope** (dB per 500 Hz):
+  D_j = L_{j+2} − L_{j−2} (a centred difference over 500 Hz, which is the
+  smoothing) for j = 14…23 (centres 3.3125–4.4375 kHz); E2 = min_j D_j − 0.5·s.
+- Both are ≈ 0 for a spectrum that keeps its own slope, whatever that slope
+  is, and strongly negative for a sharp cut-off near 4 kHz. **Decision** as in
+  rounds 1–2, with E in place of F: undecided until V_min seconds of voiced
+  frames; then on when E < T_on, off when E > T_on + H.
+
+**Candidate grid (fixed now, 656 points):**
+
+| Parameter | Candidates |
+|---|---|
+| Feature | E1, E2 |
+| τ (voiced s) | 4, 8 |
+| V_min (voiced s) | 3, 5 |
+| H (dB) | 3, 6 |
+| T_on (dB) | −40 to 0 in 1 dB steps |
+
+Not widened during round 3 without a dated deviation; a widened grid would
+not count for this round.
+
+### R3.2 Positives, negatives, data, split (as round 2)
+
+- **Positives (judged):** the five phone-path conditions of round 2 —
+  `tel`, `amrnb`, `g711u`, `btnb`, `opus8nb`.
+- **4 kHz low-pass (`lp4k`):** descriptive only, as in round 2 (neither a
+  positive nor a negative, not used in selection).
+- **Negatives:** every wideband / clean / room / noise / level / codec /
+  combination condition of round 1 §3, unchanged.
+- **Data and split:** the same streams (every version k = 0.88–1.12 plus the
+  clean original, the same cached build) and the same dev / held-out speaker
+  split (round 1 §3 and deviation 3).
+
+### R3.3 Bar (unchanged)
+
+- Negatives: notice-on share ≤ 1 % of voiced time for each sex in every
+  negative condition, AND the notice never shows on any clean-condition
+  stream (all versions and the originals).
+- Positives: ≥ 95 % of streams detected for each sex in each of the five
+  phone-path conditions; detected = the notice is on within the first 1000
+  voiced grid frames (10 s of voiced audio).
+
+### R3.4 Harness
+
+The round 1–2 features hold only the four band energies, so the dev half is
+re-extracted once with the same harness (real pitch worker, real lab engine,
+same voiced grid frames) writing the 32 sub-band powers per voiced frame; the
+band-energy code paths of `detector.mjs`, `extract.mjs` and `sweep.mjs` stay
+as they are, and the round 3 detector and sweep are added beside them. Check
+before any detector output is computed: the re-extraction's voiced grid
+frames per stream equal round 1's exactly (not an accuracy measure — it only
+confirms the same frames are analysed). Reported, not judged: time to notice,
+dropouts, per-condition E at stream end, CPU per second of audio.
+
+### R3.5 Selection and confirmation
+
+- **Selection on the dev half only**, with the round 1 rule (§4): among
+  points passing both bars on dev, the lowest worst negative notice-on share,
+  then the largest worst-sex positive detection rate, then larger H, then
+  shorter V_min, then T_on at the middle of the passing T_on run. Tie-breaks
+  after V_min as round 1 deviation 3, with "band" read as "feature": the
+  (feature, τ) with the longest run of tied T_on values, then shorter τ, then
+  E1 before E2; T_on = lower middle of the run.
+- **Honest caveat: the dev half has now been looked at twice** (rounds 1 and
+  2), including its per-condition band-energy distributions, which streams
+  bind (male Opus 8k, the −6 dB/oct tilt, the headset combination, one dark
+  male reader), and the fact that the codec paths cut sharply while those
+  negatives roll off gradually. The edge-sharpness idea was chosen after
+  seeing that. Selection on dev is therefore not blind and **a dev pass is
+  not evidence. Only the held-out confirmation counts.**
+- If no grid point passes on dev: "no detector meets the bar", nothing ships,
+  no held-out run.
+- **Held-out half: one look.** No feature or detector output on it has been
+  computed or looked at in any round (round 1 deviation 5, round 2 deviation
+  2). On a dev pass its features are extracted once and only the selected
+  point is run, once. Pass = both bars met on the held-out half for each sex,
+  on the five phone paths and every negative. A held-out failure is reported
+  as a failure; nothing is re-tuned on it, and the held-out half is not used
+  for any later round. `lp4k` on the held-out half is reported descriptively
+  at the selected point.
+
+### R3.6 After the result
+
+As §5: only on a held-out pass does the detector go into the resonance
+worker, with the row state, the notice (§1, text unchanged) and a bit-exact
+parity test against `scripts/resonance-narrowband/`, plus the usual lint /
+unit / build / cue-strip smoke runs. Pitch stays untouched either way.
