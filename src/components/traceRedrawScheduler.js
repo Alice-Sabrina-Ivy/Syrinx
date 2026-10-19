@@ -1,30 +1,32 @@
 // traceRedrawScheduler.js — when the pitch trace redraws
-// (measurements/phone-cpu-2026-10-12.md §4; history in
+// (measurements/phone-cpu-2026-10-12.md §4, §7; history in
 // measurements/main-thread-cpu-2026-10-08.md §1 K2, §3 F1).
 //
 // While data is arriving (a notification within the last IDLE_AFTER_MS) the
-// trace runs an animation-frame loop and draws when at least MIN_DRAW_MS have
-// passed since its last draw, measured with now() (performance.now()) inside
-// the frame callback. A 60 Hz frame is 16.67 ms, so the gate has 0.67 ms of
-// slack: with a jitter-free clock it draws every frame at 60 Hz and every
-// other frame at 120 Hz, but when a callback runs late (jitter J) the next
-// frame can measure < 16 ms and skip, doubling that gap. On the phone
-// (measurements/phone-cpu-2026-10-12.md §3.1, §4) ~12 % of gaps were doubled,
-// ~53 draws/s, gap p99 34 ms. A 90 Hz display draws every other frame (45/s),
-// 144 Hz every third (48/s). Stall bound: a feed that stalls keeps the loop
-// running, so no freeze exceeds MIN_DRAW_MS + J + one frame (60 Hz, J < 1
-// frame: two frames, 33 ms; 120 Hz, J 2 ms: 25 ms), inside the 2026-10-08
-// review fix's 50 ms + one frame and guard 3c (gap <= 100 ms). After the feed
-// has stopped for IDLE_AFTER_MS the loop ends and an idle trace redraws every
-// IDLE_FALLBACK_MS.
+// trace runs an animation-frame loop and draws when the frame's timestamp
+// (the requestAnimationFrame argument: the same for every callback in a
+// frame, tied to the display frame, not to when the callback ran) is at least
+// MIN_DRAW_MS - DRAW_TOLERANCE_MS = 15 ms past the last draw's. Callback
+// jitter therefore no longer skips frames (gating on performance.now() inside
+// the callback, as before 2026-10-12 §7, left 0.67 ms of slack at 60 Hz and
+// doubled ~12 % of the phone's gaps: ~53 draws/s, gap p99 34 ms). With 15 ms:
+// 60 Hz draws every frame (1.67 ms of margin for frame-timestamp noise),
+// 120 Hz every other frame (60/s), 144 Hz every third (48/s), 180 Hz every
+// third (60/s), 90 Hz every other (45/s); no display exceeds 1000/15 = 66.7
+// draws/s. Stall bound: a feed that stalls keeps the loop running, so no
+// freeze exceeds 15 ms + one frame, inside the 2026-10-08 review fix's 50 ms
+// + one frame and guard 3c (gap <= 100 ms). After the feed has stopped for
+// IDLE_AFTER_MS the loop ends and an idle trace redraws every
+// IDLE_FALLBACK_MS. If a caller passes no timestamp, now() is used. A frame
+// timestamp below the last draw's (a clock that went backwards: a polyfill or
+// an injected requestFrame on another time base; conforming browsers pass
+// monotonic timestamps) draws and resyncs, so the trace never waits for the
+// clock to catch up (§7.5).
 //
-// Adopted 2026-10-12 by user decision over the data-driven redraw (one draw
-// per appended point, 2026-10-08): on a phone that delivers audio in 40 ms
-// frames that cadence is ~25 draws/s (guard 3c p99 52 ms); this loop draws
-// ~53/s there, at ~+27 % main-thread CPU on the phone. Gating on the frame
-// timestamp instead of now() would draw every 60 Hz frame (~60/s on the
-// phone, more draws than the user priced) — not adopted without a phone
-// re-measure.
+// draw(frameTs, skipped) receives the timestamp the gate compared and the
+// number of frame callbacks since the previous draw that drew nothing; the
+// diag records both (diag.noteTraceDraw: frame-timestamp gaps and the loop's
+// frame rate, §7.3 amendment). PitchTrace's draw ignores them otherwise.
 //
 // Pure scheduling logic with injected timers so tests/audio/trace-redraw-test.js
 // can drive it in Node (that test also holds the 50 ms stall bound as its
@@ -33,6 +35,7 @@
 export const IDLE_FALLBACK_MS = 100;
 export const IDLE_AFTER_MS = 1000;
 export const MIN_DRAW_MS = 16;
+export const DRAW_TOLERANCE_MS = 1;
 
 export function createTraceRedrawScheduler({
   draw,
@@ -47,17 +50,24 @@ export function createTraceRedrawScheduler({
   let frameId = null;
   let timer = null;
   let lastNotifyAt = -Infinity;
-  let lastDrawAt = -Infinity;
+  let lastDrawTs = -Infinity;
+  let skipped = 0;
   let stopped = false;
+  const gateMs = MIN_DRAW_MS - DRAW_TOLERANCE_MS;
 
-  function frame() {
+  function frame(frameTs) {
     frameId = null;
     if (stopped) return;
     const t = now();
+    const ts = typeof frameTs === "number" && Number.isFinite(frameTs) ? frameTs : t;
     const listening = t - lastNotifyAt < idleAfterMs;
-    if (!listening || t - lastDrawAt >= MIN_DRAW_MS) {
-      draw();
-      lastDrawAt = t;
+    const dt = ts - lastDrawTs;
+    if (!listening || dt >= gateMs || dt < 0) {
+      draw(ts, skipped);
+      lastDrawTs = ts;
+      skipped = 0;
+    } else {
+      skipped++;
     }
     if (timer !== null) clearTimer(timer);
     timer = null;

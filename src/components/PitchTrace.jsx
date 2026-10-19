@@ -58,10 +58,11 @@ export function PitchTrace({
   // computed once per size, not per point (canvas.width is a DOM read). With `subscribeTrace` (the hook's
   // append notification) the redraw is scheduled by traceRedrawScheduler.js:
   // while data arrives an animation-frame loop capped at ~60 Hz (at most one
-  // draw per 16 ms, so a stalled feed keeps scrolling), ~100 ms redraws once
-  // data has stopped for 1 s (measurements/phone-cpu-2026-10-12.md: adopted
-  // over one draw per appended point for smoother scrolling on 40 ms-buffer
-  // phones). Without a notifier, an uncapped rAF loop.
+  // draw per 15 ms of frame timestamp: every 60 Hz frame; a stalled feed
+  // keeps scrolling), ~100 ms redraws once data has stopped for 1 s
+  // (measurements/phone-cpu-2026-10-12.md §4, §7: adopted over one draw per
+  // appended point for smoother scrolling on 40 ms-buffer phones). Without a
+  // notifier, an uncapped rAF loop.
   useEffect(() => {
     const canvas = canvasRef.current;
     const container = containerRef.current;
@@ -71,7 +72,10 @@ export function PitchTrace({
     let lastTargetAttr = null;
     // Diag only: paint latency + redraw cadence (noteTraceDraw).
     let diagLastNow = null, diagLastPointTime = -Infinity;
-    const diagNote = (now, data, plotCssW) => {
+    // frameTs / skipped: the frame timestamp the redraw scheduler's gate
+    // compared and the frame callbacks since the previous draw that drew
+    // nothing (undefined without the scheduler).
+    const diagNote = (now, data, plotCssW, frameTs, skipped) => {
       let newest = null;
       for (let i = data.length - 1; i >= 0; i--) {
         if (data[i].voiced && data[i].pitch !== null) { newest = data[i].time; break; }
@@ -80,7 +84,8 @@ export function PitchTrace({
       if (fresh !== null) diagLastPointTime = fresh;
       const step = diagLastNow === null ? null : ((now - diagLastNow) * plotCssW) / (PITCH_TRACE_SECONDS * 1000);
       diagLastNow = now;
-      noteTraceDraw(performance.timeOrigin + performance.now(), fresh, step);
+      const frameEpoch = typeof frameTs === "number" ? performance.timeOrigin + frameTs : null;
+      noteTraceDraw(performance.timeOrigin + performance.now(), fresh, step, frameEpoch, typeof skipped === "number" ? skipped : null);
     };
     // Pitch level per trace point, computed once — when the point is first
     // drawn, from the points before it — so a point's colour never changes
@@ -201,7 +206,7 @@ export function PitchTrace({
       }
     }
 
-    function draw() {
+    function draw(frameTs, skipped) {
       if (!geo || geo.dpr !== (window.devicePixelRatio || 1)) measure();
       const { dpr, w, h, plotLeft, plotRight, plotTop, plotBottom } = geo;
       const now = Math.round(performance.timeOrigin + performance.now());
@@ -231,7 +236,7 @@ export function PitchTrace({
       // Pitch trace line
       const data = pitchTraceRef.current;
       if (data.length < 2) {
-        if (DIAG_ENABLED) diagNote(now, data, (plotRight - plotLeft) / dpr);
+        if (DIAG_ENABLED) diagNote(now, data, (plotRight - plotLeft) / dpr, frameTs, skipped);
         return;
       }
 
@@ -319,7 +324,7 @@ export function PitchTrace({
       }
 
       ctx.restore(); // end plot-rect clip
-      if (DIAG_ENABLED) diagNote(now, data, (plotRight - plotLeft) / dpr);
+      if (DIAG_ENABLED) diagNote(now, data, (plotRight - plotLeft) / dpr, frameTs, skipped);
     }
 
     function loop() {

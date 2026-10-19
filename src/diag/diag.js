@@ -569,11 +569,16 @@ export function snapshot() {
 }
 
 // One pitch-trace draw (PitchTrace, diag only): drawEndEpochMs, the time of
-// the newest voiced point this draw shows for the first time (or null) and
-// the scroll step in CSS px since the previous draw.
-export function noteTraceDraw(drawEndEpochMs, newPointTime, stepCssPx) {
+// the newest voiced point this draw shows for the first time (or null), the
+// scroll step in CSS px since the previous draw, and from the redraw
+// scheduler (null without it) the frame timestamp its gate compared, as an
+// epoch (`ft`: frame-timestamp gaps carry no callback jitter or draw-time
+// spread, measurements/phone-cpu-2026-10-12.md §7.3 amendment), and the frame
+// callbacks since the previous draw that drew nothing (`sk`; draws + skips
+// per second = the loop's frame rate while it runs).
+export function noteTraceDraw(drawEndEpochMs, newPointTime, stepCssPx, frameEpochMs = null, skippedFrames = null) {
   if (!diagState) return;
-  diagState.traceDraws.push({ t: drawEndEpochMs, step: stepCssPx });
+  diagState.traceDraws.push({ t: drawEndEpochMs, step: stepCssPx, ft: frameEpochMs, sk: skippedFrames });
   if (newPointTime == null) return;
   const cap = diagState._captureByPointTime.get(newPointTime);
   if (typeof cap === "number") diagState.paintLatency.push({ t: newPointTime, ms: drawEndEpochMs - cap });
