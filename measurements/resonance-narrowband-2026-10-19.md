@@ -591,3 +591,131 @@ As §5: only on a held-out pass does the detector go into the resonance
 worker, with the row state, the notice (§1, text unchanged) and a bit-exact
 parity test against `scripts/resonance-narrowband/`, plus the usual lint /
 unit / build / cue-strip smoke runs. Pitch stays untouched either way.
+
+## Round 3 deviations
+
+Recorded 2026-10-19, during the run.
+
+1. **Order.** The round 3 plan (4730e8e), the sub-band extraction and edge
+   detector (05e9729: `detector.mjs` `subbandPowers` / `edgeFeatures` /
+   `createEdgeDecision`, `extract.mjs --subbands`, `conditions.py --r3`) and
+   the round 3 sweep (62bf3cc: `sweep3.mjs`) were each committed and pushed
+   before any round 3 detector output was computed. Before that only a
+   synthetic sanity check was run (white noise, a gradual one-pole roll-off,
+   and the same roll-off with a sharp 3.6 kHz cut-off), no stream.
+2. **Held-out half.** No held-out feature file existed when round 3 started
+   (round 2 deviation 2 deleted the stopped round 1 extraction's leftovers
+   unread; `feat/` held the 20 dev readers only). Because dev failed (below),
+   the held-out half was not extracted under round 3 either: no held-out
+   feature or detector output exists in any round.
+3. **FFT.** `subbandPowers` uses `hannFft`, a copy of the FFT inside
+   `bandEnergies`; `bandEnergies` itself is unchanged (round 1–2 code paths
+   untouched, as R3.4 says).
+4. **Same-frames check (R3.4):** 3920 / 3920 dev streams have exactly round
+   1's voiced grid frames (same grid length, same voiced indices), checked by
+   `sweep3.mjs` before any detector output.
+5. **Closest point shown in detail** = the first point of the closest-points
+   list (same practice as rounds 1–2); descriptive only.
+
+## Round 3 results
+
+Run 2026-10-19 on the dev half (10 women, 10 men; 33 negative conditions, 5
+judged positives, `lp4k` descriptive; 3920 streams, 51.6 h of audio),
+re-extracted with `PY -I scripts/resonance-narrowband/conditions.py --cache
+<Syrinx-cache/resonance-robustness> --half dev --r3` (64 min at two
+processes), then `node scripts/resonance-narrowband/sweep3.mjs --half=dev`
+and `--point=E2,4,3,3,-17` for the table below.
+
+### Verdict: no detector meets the bar — nothing ships
+
+**None of the 656 grid points passes both bars on the dev half.** Per R3.5
+there is no selected point and no held-out run, and R3.6 does not happen.
+The grid was not widened. The held-out half has still never been extracted
+or looked at.
+
+Why: the edge measure fails on both sides, so it does worse than the round
+1–2 band ratio.
+
+- **Opus 8 kbit/s narrowband shows no sharp edge in 3.3–4.75 kHz** on this
+  measure. Its E2 at stream end has a median of −9.3 dB for both women and
+  men (E1 about −7 dB). The four true 8 kHz links are at −34 to −65 dB
+  (E2 median). At the closest points (below) at most 10 % of the Opus 8k
+  streams per sex are caught within 10 s of voiced audio; thresholds high
+  enough to catch more of them put the notice on wideband audio even more
+  often. All four 8 kHz links are caught on 100 % of streams within 3 s at
+  the closest points.
+- **Wideband streams produce local falls of a similar size.** The short room
+  is the worst case: the notice is on for 11 % of male voiced time at the
+  closest point. The laptop, phone, large and mid room and headset conditions
+  sit at 2–4 %, and 8 clean streams show the notice. The darkest wideband E2 at stream end is −21.2 dB.
+- So no threshold separates Opus 8k from the wideband negatives, and the
+  only thing the measure catches reliably (the four 8 kHz links) is what the
+  round 1–2 band ratio already caught.
+
+Closest grid points (worst negative share / clean streams with the notice /
+worst positive detection):
+
+- E2 τ4 V3 H3 T−17: neg 11.1 % (room_s|m), clean 8, pos 10.0 % (opus8nb|m)
+- E2 τ4 V3 H3 T−16: neg 15.0 % (room_s|m), clean 10, pos 10.0 % (opus8nb|f)
+- E2 τ4 V3 H6 T−17: neg 16.6 % (room_s|m), clean 8, pos 10.0 % (opus8nb|m)
+- E2 τ4 V5 H3 T−15: neg 16.4 % (room_s|m), clean 13, pos 10.0 % (opus8nb|f)
+- E2 τ8 V3 H3 T−16: neg 13.8 % (room_s|m), clean 8, pos 10.0 % (opus8nb|m)
+- E1 τ4 V3 H3 T−17: neg 12.6 % (room_s|m), clean 2, pos 6.0 % (opus8nb|f)
+
+### Closest point in detail (dev): feature E2, τ 4 s, V_min 3 s, H 3 dB, T_on -17 dB — FAIL
+
+Worst negative: 11.1 % (room_s|m); clean streams with the notice: 8; worst positive detection: 10.0 % (opus8nb|m).
+
+Negatives (wideband): notice-on share of voiced time (bar ≤ 1 %), streams with any notice, E at stream end (dB, min / median)
+
+| Condition | women share | women streams on | men share | men streams on | E end women min / med | E end men min / med |
+|---|---|---|---|---|---|---|
+| agcfast | 0.2 % | 2/50 | 0.5 % | 2/50 | -17.5 / -4.7 | -13.7 / -2.7 |
+| agcslow | 0.4 % | 3/50 | 1.4 % | 3/50 | -15.0 / -4.0 | -16.3 / -4.1 |
+| amrwb | 0.2 % | 2/50 | 0.8 % | 2/50 | -16.3 / -4.2 | -14.0 / -2.7 |
+| babble+10 | 0.075 % | 1/50 | 0.0 % | 0/50 | -10.9 / -2.2 | -12.1 / -0.7 |
+| babble+20 | 0.2 % | 2/50 | 0.6 % | 2/50 | -14.2 / -3.9 | -14.1 / -2.3 |
+| bt | 0.0 % | 0/50 | 0.0 % | 0/50 | -12.1 / -2.8 | -11.8 / -1.5 |
+| clean | 0.3 % | 3/60 | 1.4 % | 5/60 | -16.3 / -4.1 | -14.0 / -3.4 |
+| comp | 0.043 % | 1/50 | 0.0 % | 0/50 | -17.0 / -3.4 | -12.1 / -2.2 |
+| fan+10 | 0.4 % | 3/50 | 0.6 % | 2/50 | -15.3 / -3.9 | -12.8 / -3.6 |
+| fan+20 | 0.4 % | 3/50 | 0.8 % | 3/50 | -16.1 / -4.0 | -13.6 / -2.3 |
+| headset | 2.2 % | 8/50 | 2.8 % | 8/50 | -18.0 / -5.7 | -15.1 / -5.5 |
+| hp100 | 0.4 % | 3/50 | 1.5 % | 4/50 | -16.3 / -4.0 | -13.6 / -3.6 |
+| hp200 | 0.4 % | 3/50 | 1.5 % | 5/50 | -16.2 / -4.3 | -14.0 / -3.7 |
+| hp300 | 0.5 % | 3/50 | 1.5 % | 4/50 | -16.1 / -4.4 | -14.8 / -4.4 |
+| laptop | 2.4 % | 1/50 | 3.2 % | 4/50 | -19.9 / -6.5 | -21.0 / -7.0 |
+| lev+20clip | 0.0 % | 0/50 | 0.0 % | 0/50 | -11.7 / -2.2 | -11.8 / -1.7 |
+| lev-10 | 0.4 % | 3/50 | 1.4 % | 4/50 | -16.3 / -3.9 | -14.0 / -3.4 |
+| lev-20 | 0.4 % | 3/50 | 1.4 % | 4/50 | -16.3 / -3.9 | -14.0 / -3.4 |
+| lp7k | 0.4 % | 3/50 | 1.4 % | 4/50 | -16.3 / -4.0 | -14.0 / -3.5 |
+| msbc | 0.2 % | 2/50 | 0.9 % | 3/50 | -15.7 / -3.8 | -13.8 / -3.0 |
+| opus12wb | 0.4 % | 2/50 | 0.8 % | 2/50 | -14.7 / -3.9 | -14.6 / -3.2 |
+| opus24wb | 0.4 % | 3/50 | 1.5 % | 5/50 | -16.2 / -4.3 | -15.1 / -3.5 |
+| phone | 1.2 % | 5/50 | 2.1 % | 4/50 | -19.2 / -4.3 | -15.5 / -4.0 |
+| room_l | 1.4 % | 5/50 | 2.3 % | 4/50 | -20.2 / -4.3 | -15.0 / -3.7 |
+| room_m | 2.3 % | 2/50 | 3.6 % | 6/50 | -19.4 / -4.8 | -21.2 / -5.5 |
+| room_s | 4.8 % | 13/50 | 11.1 % | 13/50 | -18.2 / -7.9 | -19.8 / -5.7 |
+| sr44k | 0.4 % | 3/50 | 1.4 % | 4/50 | -16.3 / -4.0 | -13.7 / -3.4 |
+| street+10 | 0.2 % | 1/50 | 0.9 % | 2/50 | -12.9 / -4.2 | -13.6 / -3.6 |
+| street+20 | 0.3 % | 2/50 | 1.2 % | 3/50 | -15.5 / -4.0 | -13.9 / -3.8 |
+| tilt+6 | 1.6 % | 2/50 | 1.9 % | 3/50 | -16.0 / -5.5 | -15.6 / -6.7 |
+| tilt-6 | 0.2 % | 2/50 | 1.4 % | 4/50 | -15.6 / -2.8 | -11.9 / -2.0 |
+| videocall | 0.0 % | 0/50 | 0.4 % | 1/50 | -10.4 / -1.8 | -13.6 / -1.4 |
+| wb | 0.4 % | 3/50 | 1.3 % | 4/50 | -16.2 / -4.0 | -13.5 / -3.5 |
+
+Positives (the five phone paths, judged): detected by 10 s voiced (bar ≥ 95 %), time to notice (voiced s, median / q90), dropouts after first notice, E at stream end (dB, median / max)
+
+| Condition | women detected | men detected | women time med / q90 | men time med / q90 | women dropouts | men dropouts | E end women med / max | E end men med / max |
+|---|---|---|---|---|---|---|---|---|
+| amrnb | 50/50 (100.0 %) | 50/50 (100.0 %) | 3.00 / 3.00 | 3.00 / 3.00 | 0.0 % | 0.0 % | -34.2 / -25.8 | -35.2 / -25.2 |
+| btnb | 50/50 (100.0 %) | 50/50 (100.0 %) | 3.00 / 3.00 | 3.00 / 3.00 | 0.0 % | 0.0 % | -36.8 / -27.6 | -37.8 / -31.1 |
+| g711u | 50/50 (100.0 %) | 50/50 (100.0 %) | 3.00 / 3.00 | 3.00 / 3.00 | 0.0 % | 0.0 % | -40.3 / -32.4 | -40.4 / -28.3 |
+| opus8nb | 5/50 (10.0 %) | 5/50 (10.0 %) | 3.84 / 21.07 | 8.25 / 31.44 | 75.9 % | 39.1 % | -9.3 / -4.2 | -9.3 / -3.0 |
+| tel | 50/50 (100.0 %) | 50/50 (100.0 %) | 3.00 / 3.00 | 3.00 / 3.00 | 0.0 % | 0.0 % | -64.9 / -56.0 | -65.4 / -60.3 |
+| lp4k (descriptive, not judged) | 12/50 (24.0 %) | 7/50 (14.0 %) | 3.00 / 15.05 | 6.59 / 18.37 | 86.2 % | 34.3 % | -7.8 / -1.8 | -8.4 / -1.2 |
+
+Positive streams with < 10 s of voiced audio in total: 0.
+
+
+Held-out half: not extracted, not run (dev failed). Detector cost: 4.6 ms CPU per second of audio (32 sub-band powers incl. the 16 kHz samples they read; Node, desktop), about the same as rounds 1–2. Pitch frames dropped by the engine: 0.
