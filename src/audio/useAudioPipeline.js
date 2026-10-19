@@ -486,12 +486,13 @@ export function useAudioPipeline() {
         { type: "module" },
       );
       resonanceWorkerRef.current = resonanceWorker;
-      // The cue is not essential: a resonance worker that fails shows as
-      // "unavailable" in its row and the session goes on.
+      // The cue is not essential: a resonance worker whose script fails to
+      // load shows "unavailable — reload the page" in its row (a newer
+      // deploy replaced its file; a reload fetches it) and the session goes on.
       onWorkerError(resonanceWorker, () => resonanceWorkerRef.current === resonanceWorker, (message) => {
         resonanceRef.current = null;
         pitchOnlyRef.current.noteResonance(null);
-        setState((s) => ({ ...s, resonanceStatus: "error" }));
+        setState((s) => ({ ...s, resonanceStatus: "reload" }));
         if (DIAG_ENABLED) setResonanceStatus({ status: "error", message });
         pushError({ source: "resonance-worker", where: "load", message });
       });
@@ -510,12 +511,17 @@ export function useAudioPipeline() {
           // cue row or the pitch-only warning. After an exception while
           // running, the worker restarts a fresh engine after a short
           // back-off and posts "ready" again (a few times per session; a
-          // failed asset load stays "error") — resonance-worker.js.
+          // failed asset load stays "error") — resonance-worker.js. The row
+          // tells them apart (2026-10-19 review F2-1): "restarting" while
+          // it recovers, "reload" for a failed asset load, "error" once it
+          // has given up.
           if (msg.status === "overloaded" || msg.status === "error") {
             resonanceRef.current = null;
             pitchOnlyRef.current.noteResonance(null);
           }
-          setState((s) => ({ ...s, resonanceStatus: msg.status }));
+          const rs = msg.status !== "error" ? msg.status
+            : msg.recovering ? "restarting" : msg.reason === "load" ? "reload" : "error";
+          setState((s) => ({ ...s, resonanceStatus: rs }));
           if (DIAG_ENABLED) setResonanceStatus({ status: msg.status, message: msg.message ?? null });
           if (msg.status === "error") pushError({ source: "resonance-worker", where: "worker", message: msg.message });
         }
@@ -545,10 +551,15 @@ export function useAudioPipeline() {
         if (DIAG_ENABLED) setMlWorkerAlive(true);
         heardAsRef.current.reset();
         genderStateRef.current = null;
-        mlWorker.onmessage = (ev) => handleMlMessage(ev, mlWorker);
-        // A gender worker that fails shows as an error in the panel (the
-        // panel's switch off and on starts a new one).
+        let mlHeard = false;
+        mlWorker.onmessage = (ev) => { mlHeard = true; handleMlMessage(ev, mlWorker); };
+        // A gender worker that fails to load shows as an error in the panel
+        // (the panel's switch off and on starts a new one). As for the DSP
+        // and pitch workers, a later uncaught exception inside a running
+        // worker is only recorded: the worker keeps going, so the panel
+        // must not lock at "Unavailable" (2026-10-19 review F2-3).
         onWorkerError(mlWorker, () => mlWorkerRef.current === mlWorker, (message) => {
+          if (mlHeard) { pushError({ source: "mlWorker", where: "uncaught", message }); return; }
           pushError({ source: "mlWorker", where: "load", message });
           setState((s) => ({ ...s, modelStatus: "error", modelError: message, modelProgress: null }));
         });
@@ -1032,7 +1043,7 @@ export function useAudioPipeline() {
   }
 
   // Pitch-worker "pitch" message: latest-pitch ref for the DSP frames,
-  // pitch hints to the DSP + ML workers, the steadiness window, diag.
+  // pitch hints to the DSP, ML and resonance workers, the steadiness window, diag.
   // Reached from start()'s onmessage through handlePitchMessageRef.
   function handlePitchMessage(msg) {
     latestPitchRef.current = {

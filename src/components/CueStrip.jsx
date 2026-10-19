@@ -67,7 +67,12 @@ const HALO = "#141414"; // the strip's background: a halo keeps labels legible o
 // The resonance lab's assets (one source of truth): fetched once. A failed
 // fetch is not cached (it was cached as null until a page reload — 2026-10-19
 // review S-2): the strip asks again when the resonance worker's status
-// changes (it loads the same reference.json).
+// changes (it loads the same reference.json) and, while the worker is
+// ready but the strip still has no reference, on a timer that backs off
+// from 10 s to 80 s (review F2-2: a failure while the worker was already
+// ready otherwise left the row at "starting…" until a reload).
+const REF_RETRY_MS = 10000;
+const REF_RETRY_MAX_MS = 80000;
 let refPromise = null;
 function loadReference() {
   if (!refPromise) {
@@ -367,8 +372,19 @@ export function CueStrip({
   useEffect(() => {
     if (assets) return undefined;
     let alive = true;
-    loadReference().then((r) => { if (alive && r) setAssets(r); });
-    return () => { alive = false; };
+    let timer = null;
+    let wait = REF_RETRY_MS;
+    const attempt = () => {
+      loadReference().then((r) => {
+        if (!alive) return;
+        if (r) { setAssets(r); return; }
+        if (resonanceStatus !== "ready") return; // a status change retries
+        timer = setTimeout(attempt, wait);
+        wait = Math.min(wait * 2, REF_RETRY_MAX_MS);
+      });
+    };
+    attempt();
+    return () => { alive = false; clearTimeout(timer); };
   }, [assets, resonanceStatus]);
 
   const vtlnRef = useMemo(() => (assets?.reference?.vtln ? cueResonanceRef(assets.reference.vtln, assets.cueBands) : null), [assets]);

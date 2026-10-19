@@ -48,8 +48,9 @@
 //              <= sustainMaxSpreadSt semitones. Held single vowels / notes
 //              (about 1 s or longer) are not what the classifier reads (it
 //              puts women's held vowels near 50), so the worker posts
-//              "sustained" and the "Likely heard as" panel hides instead
-//              (the retired meter said "needs running speech"). While a young span has been
+//              "sustained" and the "Likely heard as" panel replaces its
+//              reading with "Needs running speech — held vowels and notes
+//              don't count". While a young span has been
 //              steady since its start it is held at "warming" rather than
 //              scored, so a held note doesn't flash a number before the
 //              full-second test can fire. Running speech breaks voicing or
@@ -380,8 +381,9 @@ export function createUtteranceGate(options = {}) {
 }
 
 // Voice state for a verdict (posted by the gender worker on change; the
-// "Likely heard as" panel hides on "sustained", the other states are
-// informational — the retired meter's wording in brackets):
+// "Likely heard as" panel replaces its reading with "Needs running
+// speech — held vowels and notes don't count" on "sustained", the other
+// states are informational — the retired meter's wording in parentheses):
 //   listening — nothing voice-like (no number)
 //   updating  — a voice onset is being collected (no number yet)
 //   scoring   — scores are arriving

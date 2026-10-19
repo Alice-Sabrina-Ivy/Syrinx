@@ -14,13 +14,16 @@
 //   main -> worker: { type: "init", sampleRate, assetBase, diag? }
 //                   { type: "audioPort", port }                    capture chunks
 //                   { type: "pitch-hint", voiced, pitch, contextTime }
-//   worker -> main: { type: "status", status: "loading"|"ready"|"error"|"overloaded", message? }
+//   worker -> main: { type: "status", status: "loading"|"ready"|"error"|"overloaded", message?,
+//                     recovering?, reason? }
 //                   ("overloaded" is a pause: after a back-off the worker posts
 //                    "ready" again with a fresh engine. "error" after an
 //                    exception while running is a pause too: after
 //                    ERROR_BACKOFF_S of audio a fresh engine + "ready", at most
-//                    MAX_ERROR_RESTARTS times per session; an asset-load
-//                    failure stays "error")
+//                    MAX_ERROR_RESTARTS times per session, and that "error"
+//                    carries recovering: true; an asset-load failure stays
+//                    "error" and carries reason: "load" — a page reload is
+//                    what fixes it)
 //                   { type: "state", u, raw, n, fill, voicedS, clamp, verdict, startU,
 //                     startProgress, sinceResumeS, framesDropped, perf? }                every 200 ms of audio
 //
@@ -64,9 +67,9 @@ let errorBackoffS = 0; // audio seconds since the last runtime error
 // too (the engine starts with the first chunk it sees, and a frame whose
 // chunk it never saw is dropped and counted).
 
-function status(s, message) {
+function status(s, message, extra = null) {
   state = s;
-  self.postMessage({ type: "status", status: s, ...(message ? { message } : {}) });
+  self.postMessage({ type: "status", status: s, ...(message ? { message } : {}), ...extra });
 }
 
 // A caught exception while running: drop the engine's state and, unless it
@@ -74,7 +77,7 @@ function status(s, message) {
 function runtimeError(err) {
   const recover = errorRestarts < MAX_ERROR_RESTARTS;
   errorBackoffS = 0;
-  status("error", String(err?.message || err));
+  status("error", String(err?.message || err), recover ? { recovering: true } : null);
   if (!recover) engine = null; // stays off for this session
 }
 
@@ -198,7 +201,7 @@ self.onmessage = async (e) => {
       status("ready");
     } catch (err) {
       engine = null; // assets missing: no recovery
-      status("error", String(err?.message || err));
+      status("error", String(err?.message || err), { reason: "load" });
     }
   } else if (msg.type === "audioPort") {
     msg.port.onmessage = (ev) => {

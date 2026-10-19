@@ -186,6 +186,10 @@ console.log("\nrow states");
   const R = (o) => resonanceRowState({ workerStatus: "ready", voiced: true, holding: false, snap: snap({}), ...o });
   check("resonance: starting (worker loading / no state yet)", resonanceRowState({ workerStatus: "loading" }) === "starting" && R({ snap: null }) === "starting");
   check("resonance: unavailable on error; paused while the worker backs off (overloaded)", R({ workerStatus: "error" }) === "unavailable" && R({ workerStatus: "overloaded" }) === "paused");
+  check("resonance: restarting while it recovers; reload after a failed load (not 'on this device')",
+    R({ workerStatus: "restarting" }) === "restarting" && R({ workerStatus: "reload" }) === "reload"
+    && resonanceRowState({ workerStatus: "reload", snap: null }) === "reload"
+    && resonanceHeader("restarting") === "restarting…" && resonanceHeader("reload") === "unavailable — reload the page");
   check("resonance: settling again after a long pause until 2 s of new speech", R({ snap: snap({ sinceResumeS: 0.8 }) }) === "settling" && R({ snap: snap({ sinceResumeS: 2.4 }) }) === "live");
   check("resonance: idle without voice", R({ voiced: false, holding: false }) === "idle");
   check("resonance: sustained on a held note", R({ snap: snap({ verdict: "sustained" }) }) === "sustained");

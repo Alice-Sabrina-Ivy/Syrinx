@@ -107,10 +107,29 @@ console.log("gender worker fails to load (panel switched on mid-session)");
   check("error from the replaced worker is ignored", M.state.modelStatus === "idle", M.state.modelStatus);
   ml2.send({ type: "status", status: "ready" });
   check("new worker reaches ready", M.state.modelStatus === "ready", M.state.modelStatus);
+  ml2.fireError();
+  check("an uncaught error in a running gender worker is only recorded (panel stays ready)", M.state.modelStatus === "ready", M.state.modelStatus);
   api.stop();
   ml2.fireError();
   check("error after stop() is ignored", M.state.modelStatus === "idle" && M.state.status === "idle", `${M.state.modelStatus} / ${M.state.status}`);
   api.setHeardAsEnabled(false);
+}
+
+console.log("resonance worker error statuses");
+{
+  const api = await fresh();
+  await api.start();
+  const res = find("resonance");
+  res.send({ type: "status", status: "ready" });
+  res.send({ type: "status", status: "error", message: "x", recovering: true });
+  check("a recoverable runtime error -> restarting (not 'on this device')", M.state.resonanceStatus === "restarting", M.state.resonanceStatus);
+  res.send({ type: "status", status: "ready" });
+  check("ready again after it recovers", M.state.resonanceStatus === "ready", M.state.resonanceStatus);
+  res.send({ type: "status", status: "error", message: "x", reason: "load" });
+  check("an asset-load failure -> reload", M.state.resonanceStatus === "reload", M.state.resonanceStatus);
+  res.send({ type: "status", status: "error", message: "x" });
+  check("given up after repeated errors -> error", M.state.resonanceStatus === "error", M.state.resonanceStatus);
+  api.stop();
 }
 
 console.log("resonance worker fails to load");
@@ -119,7 +138,7 @@ console.log("resonance worker fails to load");
   await api.start();
   const res = find("resonance");
   res.fireError();
-  check("resonanceStatus -> error (row says unavailable, not starting…)", M.state.resonanceStatus === "error", M.state.resonanceStatus);
+  check("resonanceStatus -> reload (row says unavailable — reload the page, not starting…)", M.state.resonanceStatus === "reload", M.state.resonanceStatus);
   check("session keeps running", M.state.status === "running", M.state.status);
   api.stop();
   res.fireError();

@@ -141,7 +141,7 @@ export function pitchCueWord(pitchLevel, direction) {
 
 // ---- row states (CueStrip data-state)
 // pitch:     idle | holding | live
-// resonance: starting | unavailable | paused | idle | sustained | warming | settling | holding | live
+// resonance: starting | restarting | reload | unavailable | paused | idle | sustained | warming | settling | holding | live
 export function pitchRowState({ voiced, holding, pitchLevel }) {
   if (voiced && pitchLevel != null) return "live";
   if (voiced || holding) return "holding";
@@ -150,6 +150,11 @@ export function pitchRowState({ voiced, holding, pitchLevel }) {
 export const RESONANCE_WARM_S = 2;
 export function resonanceRowState({ workerStatus, snap, voiced, holding }) {
   if (workerStatus === "error") return "unavailable";
+  // A runtime error the worker recovers from in ~2 s of audio, and a
+  // worker / asset file that failed to load (a newer deploy: a reload
+  // fixes it) — neither is about the device (2026-10-19 review F2-1).
+  if (workerStatus === "restarting") return "restarting";
+  if (workerStatus === "reload") return "reload";
   if (workerStatus === "overloaded") return "paused";
   if (workerStatus !== "ready" || !snap) return "starting";
   if (!voiced && !holding) return "idle";
@@ -221,6 +226,8 @@ export const RESONANCE_CHANGE_DEADBAND = 0.3;
 export function resonanceHeader(state, snap) {
   switch (state) {
     case "starting": return "starting…";
+    case "restarting": return "restarting…";
+    case "reload": return "unavailable — reload the page";
     case "unavailable": return "unavailable on this device";
     case "paused": return "paused — device busy";
     case "idle": return "—";

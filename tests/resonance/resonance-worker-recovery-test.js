@@ -86,6 +86,7 @@ check("posts state messages", states() > 0, `${states()}`);
 sink = [];
 boom();
 check("posts error", statuses().join() === "error", statuses().join());
+check("...marked recovering (the row says restarting…)", sink.find((m) => m.type === "status")?.recovering === true);
 chunk(40); // 1 s: still backing off
 check("no state while backing off", states() === 0 && statuses().join() === "error", `${states()} / ${statuses().join()}`);
 chunk(41); // past 2 s of audio
@@ -104,6 +105,7 @@ sink = [];
 boom();
 chunk(200);
 check("the fourth stays error (no endless restart loop)", statuses().join() === "error" && states() === 0, `${statuses().join()} / ${states()} states`);
+check("...not marked recovering", sink.find((m) => m.type === "status")?.recovering === undefined);
 
 console.log("a new session (init) resets the count");
 await init();
@@ -116,6 +118,7 @@ console.log("asset load failure");
 missing = "vtln_warp.json";
 await init();
 check("posts error", statuses().join() === "loading,error", statuses().join());
+check("...marked as a load failure (the row says reload the page)", sink.find((m) => m.status === "error")?.reason === "load");
 chunk(200);
 check("stays error, no state messages", statuses().join() === "loading,error" && states() === 0, `${statuses().join()} / ${states()}`);
 missing = null;

@@ -43,9 +43,12 @@
 //                  { type: "voice-state", state, ts }  on change — the
 //                                                gate's state: "listening"
 //                                                | "updating" | "scoring" |
-//                                                "pause" | "sustained" (the
-//                                                "Likely heard as" panel hides
-//                                                on "sustained"
+//                                                "pause" | "sustained" (on
+//                                                "sustained" the "Likely heard
+//                                                as" panel replaces its reading
+//                                                with "Needs running speech —
+//                                                held vowels and notes don't
+//                                                count")
 //                  { type: "inference-event", event: "timeout", durationMs, ts }
 //                  { type: "inference-event", event: "error", message, ts }
 //                                                a classifier run threw; after
