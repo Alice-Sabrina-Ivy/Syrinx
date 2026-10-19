@@ -4582,6 +4582,8 @@ Full dev table: `dev_table.md` / `dev_table.csv`.
 
 ## Appendix E. Men's false-alarm study, round 2: pre-registration (verbatim)
 
+Local path redacted 2026-10-19 for privacy; the committed copy no longer hashes to the logged value. Lines changed: the hash-log path in the copy's §9 (now `$SCRATCH/warning-male-fa-r2-hashes.log`) and the local Python environment folder in its §3 (now `$SYRINX_CACHE/resonance-lab/venv`).
+
 sha256 `c6fb5e3f908963b91616246439236005ecb68cf38efa02f43eaba3dd936c049a` (of the file below, written and hashed in
 scratch at 2026-10-12 01:55:18 −05:00 and logged outside the scratch folder at that time, before any chain session of
 round 2 and before any rule was evaluated on a round-2 speaker; see §8.5). Relative paths in it refer to the study's
@@ -4715,7 +4717,7 @@ Per split and sex (n = speakers of that sex in that split): the union of the top
 ## 3. Sessions (round 1's constructions, `build_jobs.py`; unchanged)
 
 The `nat` / `off` audio is plain utterance concatenation (system Python 3.14); the WORLD / PICKA transforms (`hcs`, `ehcs`,
-`picka`) run in `C:/Coding Projects/Syrinx-cache/resonance-lab/venv` (Python 3.14.3, pyworld 0.3.5; read-only use), the
+`picka`) run in `$SYRINX_CACHE/resonance-lab/venv` (Python 3.14.3, pyworld 0.3.5; read-only use), the
 environment with pyworld that round 1's construction needs.
 
 | Set | Construction |
@@ -4980,6 +4982,8 @@ Full dev table: `dev_table.md` / `dev_table.csv`.
 ````
 
 ## Appendix G. Late-panel fallback study: pre-registration (verbatim)
+
+Local path redacted 2026-10-19 for privacy; the committed copy no longer hashes to the logged value. Line changed: the hash-log path in the copy's §8 (now `$SCRATCH/warning-late-panel-hashes.log`).
 
 sha256 `9a09b4de49bc5a68081d61f051005f6c0586eba124dcd9a13890d02e4ccf985f` (of the file below, written and hashed in
 scratch and logged outside the scratch folder at 2026-10-12 10:38:18 −05:00, before any candidate or the shipped rule
@@ -5300,6 +5304,8 @@ Full dev table: `dev_table.md` / `dev_table.csv`.
 ````
 
 ## Appendix I. Late-panel study, round 2: pre-registration (verbatim)
+
+Local path redacted 2026-10-19 for privacy; the committed copy no longer hashes to the logged value. Line changed: the hash-log path in the copy's §10 (now `$SCRATCH/warning-late-panel-r2-hashes.log`).
 
 sha256 `dd3cf7bc6c211f1bf576e6e27f04d9942826e382f791752c55de77c50d279785` (of the file below, written and hashed in
 scratch and logged outside the scratch folder at 2026-10-12 21:14:16 −05:00, before any round-2 candidate was scored on
