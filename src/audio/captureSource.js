@@ -4,11 +4,11 @@
 // object presents a uniform interface regardless of which capture mechanism
 // was selected:
 //
-//   - "audiocontext" (default, current production):
+//   - "audiocontext" (fallback — Firefox, or MSTP failing at start):
 //       getUserMedia stream → MediaStreamAudioSourceNode → AudioWorkletNode
 //       → MessageChannel → consumer (DSP / ML worker)
 //
-//   - "mstp" (Stage 2 — Chrome main-thread only):
+//   - "mstp" (production default where main-thread MSTP exists):
 //       getUserMedia stream → MediaStreamTrackProcessor on main thread
 //       → ReadableStream of AudioData → Float32Array → MessageChannel
 //       → consumer (DSP / ML worker)
@@ -97,18 +97,60 @@ function pickKind(forceKind) {
  *   - onInitAck(ack): callback when capture source's init-ack arrives
  *   - onError(err): callback when capture source surfaces an error —
  *     including the mic track ending mid-session (unplug, Bluetooth
- *     drop, permission revoke): where "track-ended" / "mstp-track-ended"
+ *     drop, permission revoke): where "track-ended" / "mstp-track-ended".
+ *     Never called before the factory resolves: a failure during start
+ *     rejects the returned promise instead.
+ *   - onFallback({ kind, message }): called when the auto-routed MSTP path
+ *     failed at start and the AudioContext path is tried instead (the
+ *     returned source then carries `fallbackFrom` and its
+ *     audioInfoExtra() a `captureFallback` field)
+ *   - firstFrameTimeoutMs: MSTP first-frame timeout (default 5000; tests)
  */
 export async function createCaptureSource(stream, opts = {}) {
   const kind = pickKind(opts.forceKind);
-  if (kind === "mstp") {
+  if (kind !== "mstp") return await _createAudioContextSource(stream, opts);
+  // ?capture=mstp measures the MSTP path itself: no fallback, fail loudly.
+  if (opts.forceKind === "mstp") return await _createMstpSource(stream, opts);
+  try {
     return await _createMstpSource(stream, opts);
+  } catch (err) {
+    // A track that ended (unplugged / revoked) is dead on either path.
+    if (err?.message === TRACK_ENDED_MESSAGE) throw err;
+    // pickKind() only feature-detects MSTP. A browser can expose the
+    // constructor and still fail at runtime (constructor or getReader()
+    // throws, the reader errors, AudioData.copyTo rejects the format, or
+    // no frame arrives within the first-frame timeout) — that used to end
+    // the start with an error. The MSTP attempt has released its reader
+    // without stopping the track, so retry on the AudioContext path with
+    // the SAME stream (no second permission prompt).
+    const fallbackFrom = {
+      kind: "mstp",
+      message: String(err?.message || err),
+    };
+    opts.onFallback?.(fallbackFrom);
+    const src = await _createAudioContextSource(stream, opts);
+    const baseInfo = src.audioInfoExtra;
+    return {
+      ...src,
+      fallbackFrom,
+      audioInfoExtra() {
+        return { ...baseInfo(), captureFallback: fallbackFrom };
+      },
+    };
   }
-  return await _createAudioContextSource(stream, opts);
+}
+
+// reader.cancel() returns a promise that rejects if the stream already
+// errored — never let that surface as an unhandled rejection.
+function cancelQuietly(reader) {
+  try {
+    const p = reader.cancel();
+    if (p && typeof p.catch === "function") p.catch(() => {});
+  } catch { /* ignore */ }
 }
 
 // ---------------------------------------------------------------------------
-//  AudioContext + AudioWorklet path (current production)
+//  AudioContext + AudioWorklet path (Firefox; MSTP start-failure fallback)
 // ---------------------------------------------------------------------------
 
 async function _createAudioContextSource(stream, opts) {
@@ -280,6 +322,12 @@ async function _createMstpSource(stream, opts) {
   let lastFrameEndUs = 0;
   let lastFrameSampleRate = 0;
   let stopped = false;
+  // True once the first frame has been copied and readyPromise resolved.
+  // Until then every failure rejects readyPromise (the factory's caller —
+  // createCaptureSource — may still fall back to the AudioContext path)
+  // and onError is not called: the pipeline's onError tears the session
+  // down, stopping the very stream the fallback needs.
+  let isReady = false;
 
   // Resolved by the read loop on first frame, with the values the
   // factory needs (sampleRate, audioOriginEpochMs, etc.). The factory's
@@ -297,7 +345,7 @@ async function _createMstpSource(stream, opts) {
   const reportTrackEnded = (where) => {
     if (stopped || endedReported) return;
     endedReported = true;
-    if (trackStartedEpochMs === null) {
+    if (!isReady) {
       rejectReady(new Error(TRACK_ENDED_MESSAGE));
       return;
     }
@@ -313,6 +361,12 @@ async function _createMstpSource(stream, opts) {
     try {
       while (!stopped) {
         const { value: frame, done } = await reader.read();
+        // A read that resolves after a failed start (first-frame timeout)
+        // must not fire onInitAck for a path that is no longer in use.
+        if (stopped) {
+          try { frame?.close(); } catch { /* ignore */ }
+          return;
+        }
         if (done) {
           // close() cancels the reader with stopped=true (silent);
           // otherwise the stream ended because the track did.
@@ -332,7 +386,44 @@ async function _createMstpSource(stream, opts) {
           // larger than chunkSize (40 ms hw frame vs 25 ms chunk default).
           const headroom = Math.max(chunkSize * 3, frame.numberOfFrames * 2);
           pendingBuffer = new Float32Array(headroom);
+        }
 
+        // Copy plane 0 (channel 0) as f32-planar. AudioData converts
+        // formats on the fly; source could be s16/u8/etc.
+        const frames = frame.numberOfFrames;
+        if (pendingFill + frames > pendingBuffer.length) {
+          const newBuf = new Float32Array((pendingFill + frames) * 2);
+          newBuf.set(pendingBuffer.subarray(0, pendingFill));
+          pendingBuffer = newBuf;
+        }
+        try {
+          frame.copyTo(pendingBuffer.subarray(pendingFill, pendingFill + frames), {
+            planeIndex: 0,
+            format: "f32-planar",
+          });
+        } catch (err) {
+          try { frame.close(); } catch { /* ignore */ }
+          if (!isReady) {
+            // copyTo rejecting the first frame (e.g. a format this
+            // browser cannot convert) is a start failure.
+            rejectReady(err);
+            return;
+          }
+          opts.onError?.({
+            where: "audioData.copyTo",
+            message: err && err.message ? err.message : String(err),
+            stack: err && err.stack ? err.stack : null,
+          });
+          return;
+        }
+        pendingFill += frames;
+        lastFrameEndUs = frame.timestamp + frame.duration;
+        lastFrameSampleRate = frame.sampleRate;
+
+        if (!isReady) {
+          // Resolve only after the first frame copied cleanly, so a
+          // copyTo failure above still counts as a start failure.
+          isReady = true;
           resolveReady({
             sampleRate: frame.sampleRate,
             chunkSize,
@@ -354,32 +445,6 @@ async function _createMstpSource(stream, opts) {
             format: frame.format,
           });
         }
-
-        // Copy plane 0 (channel 0) as f32-planar. AudioData converts
-        // formats on the fly; source could be s16/u8/etc.
-        const frames = frame.numberOfFrames;
-        if (pendingFill + frames > pendingBuffer.length) {
-          const newBuf = new Float32Array((pendingFill + frames) * 2);
-          newBuf.set(pendingBuffer.subarray(0, pendingFill));
-          pendingBuffer = newBuf;
-        }
-        try {
-          frame.copyTo(pendingBuffer.subarray(pendingFill, pendingFill + frames), {
-            planeIndex: 0,
-            format: "f32-planar",
-          });
-        } catch (err) {
-          opts.onError?.({
-            where: "audioData.copyTo",
-            message: err && err.message ? err.message : String(err),
-            stack: err && err.stack ? err.stack : null,
-          });
-          try { frame.close(); } catch { /* ignore */ }
-          return;
-        }
-        pendingFill += frames;
-        lastFrameEndUs = frame.timestamp + frame.duration;
-        lastFrameSampleRate = frame.sampleRate;
         try { frame.close(); } catch { /* ignore */ }
 
         // Emit chunks while the buffer has at least chunkSize samples
@@ -412,12 +477,16 @@ async function _createMstpSource(stream, opts) {
         }
       }
     } catch (err) {
+      if (stopped) return;
+      if (!isReady) {
+        rejectReady(err);
+        return;
+      }
       opts.onError?.({
         where: "mstp-read-loop",
         message: err && err.message ? err.message : String(err),
         stack: err && err.stack ? err.stack : null,
       });
-      try { rejectReady(err); } catch { /* already-resolved is fine */ }
     }
   })();
 
@@ -426,18 +495,28 @@ async function _createMstpSource(stream, opts) {
   // (or any other readyPromise rejection) the read-loop IIFE above is still
   // running with stopped=false and has no caller-reachable handle — clean
   // it up here so a no-frames failure doesn't leak the reader.
+  // The track is NOT stopped here: createCaptureSource retries the same
+  // stream on the AudioContext path.
+  const timeoutMs = opts.firstFrameTimeoutMs ?? 5000;
+  let timer = null;
   let ready;
   try {
     ready = await Promise.race([
       readyPromise,
-      new Promise((_, rej) =>
-        setTimeout(() => rej(new Error("MSTP first-frame timeout (5s)")), 5000)),
+      new Promise((_, rej) => {
+        timer = setTimeout(
+          () => rej(new Error(`MSTP first-frame timeout (${timeoutMs / 1000}s)`)),
+          timeoutMs,
+        );
+      }),
     ]);
   } catch (err) {
     stopped = true;
     track.removeEventListener("ended", onTrackEnded);
-    try { reader.cancel(); } catch { /* ignore */ }
+    cancelQuietly(reader);
     throw err;
+  } finally {
+    clearTimeout(timer);
   }
 
   return {
@@ -480,7 +559,7 @@ async function _createMstpSource(stream, opts) {
     close() {
       stopped = true;
       track.removeEventListener("ended", onTrackEnded);
-      try { reader.cancel(); } catch { /* ignore */ }
+      cancelQuietly(reader);
       try { track.stop(); } catch { /* ignore */ }
       consumerPorts.length = 0;
     },

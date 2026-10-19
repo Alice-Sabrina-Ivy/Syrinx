@@ -332,6 +332,9 @@ export default function DiagnosticOverlay() {
         {audio ? (
           <div className="space-y-0.5 text-[10px] text-neutral-300 font-mono">
             <div>captureSource: <span className={audio.captureKind === "mstp" ? "text-cyan-400" : "text-neutral-200"}>{audio.captureKind ?? "—"}</span>{audio.captureKindOverride ? <span className="text-amber-400"> (forced)</span> : null}</div>
+            {audio.captureFallback && (
+              <div className="text-amber-400">fallback: {audio.captureFallback.kind} failed at start ({audio.captureFallback.message})</div>
+            )}
             <div>sampleRate: <span className={audio.sampleRate < 44100 ? "text-amber-400" : "text-neutral-200"}>{audio.sampleRate} Hz</span></div>
             <div>baseLatency: {audio.baseLatencySec != null ? fmtMs(audio.baseLatencySec * 1000) : "—"} · outputLatency: {audio.outputLatencySec != null ? fmtMs(audio.outputLatencySec * 1000) : "—"}</div>
             {audio.audioWorkletSupported !== undefined && (

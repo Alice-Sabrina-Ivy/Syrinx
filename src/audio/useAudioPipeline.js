@@ -353,9 +353,10 @@ export function useAudioPipeline() {
 
       // Capture-source factory. Returns either an audiocontext-based or
       // mstp-based source depending on factory routing (see
-      // captureSource.js). Production default is "audiocontext"; the
-      // ?capture=mstp / ?capture=audiocontext diag flags override for
-      // measurement.
+      // captureSource.js). Production default is MSTP where supported,
+      // falling back to "audiocontext" on the same stream if MSTP fails at
+      // start; the ?capture=mstp / ?capture=audiocontext diag flags
+      // override for measurement (a forced mstp never falls back).
       //
       // latencyHint = "balanced" (NOT "interactive"). On Pixel-class
       // Android Chrome, "interactive" allocates a tight ~5 ms output
@@ -370,6 +371,13 @@ export function useAudioPipeline() {
         sampleRate: DIAG_SR_OVERRIDE,
         forceKind: DIAG_CAPTURE_KIND,
         onInitAck: (ack) => setCaptureStatus(ack),
+        // MSTP was feature-detected but failed at start; the session goes
+        // on via AudioContext. Recorded for the diag overlay / snapshot
+        // (audioInfo.captureFallback too) and the console for bug reports.
+        onFallback: (info) => {
+          console.warn(`[capture] MSTP failed at start (${info.message}); using AudioContext`);
+          pushError({ source: "capture", where: "mstp-fallback", message: info.message });
+        },
         onError: (err) => {
           pushError({ source: "capture", ...err });
           // Mid-stream capture failures (MSTP copyTo throw, MSTP
@@ -886,10 +894,15 @@ export function useAudioPipeline() {
         clearInterval(ctxSamplerRef.current);
         ctxSamplerRef.current = null;
       }
+      // Only a real permission refusal says "denied" — a capture failure
+      // after access was granted used to read as one.
+      const denied = err?.name === "NotAllowedError";
       setState((s) => ({
         ...s,
         status: "error",
-        error: err.message || "Microphone access denied",
+        error: denied
+          ? "Microphone access denied. Allow the microphone for this site, then try again."
+          : err?.message || "The microphone could not be started.",
       }));
     } finally {
       startingRef.current = false;

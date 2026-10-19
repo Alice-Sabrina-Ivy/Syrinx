@@ -223,7 +223,7 @@ Audio capture goes through [src/audio/captureSource.js](src/audio/captureSource.
 - **`mstp`** (production default where the runtime supports main-thread `MediaStreamTrackProcessor` — Chrome desktop + Android, Safari ≥26): `getUserMedia` → MSTP on the main thread → `ReadableStream` of `AudioData` → `MessageChannel` → workers.
 - **`audiocontext`** (fallback — Firefox in particular): `getUserMedia` → `MediaStreamAudioSourceNode` → `AudioWorkletNode` → `MessageChannel` → workers.
 
-`pickKind()` returns `isMSTPSupported ? "mstp" : "audiocontext"` — feature detection on constructor presence, no UA gating. Decision basis: [measurements/capture-path-routing-2026-05-05.md](measurements/capture-path-routing-2026-05-05.md) (MSTP ~5× lower chunkArrival latency on desktop and mobile Chrome, no DSP-accuracy regression). `?capture=` URL flags remain as diag overrides.
+`pickKind()` returns `isMSTPSupported ? "mstp" : "audiocontext"` — feature detection on constructor presence, no UA gating; an MSTP path that fails at start falls back to AudioContext on the same stream (2026-10-19, §Known issues). Decision basis: [measurements/capture-path-routing-2026-05-05.md](measurements/capture-path-routing-2026-05-05.md) (MSTP ~5× lower chunkArrival latency on desktop and mobile Chrome, no DSP-accuracy regression). `?capture=` URL flags remain as diag overrides.
 
 **Worker-MSTP path is deferred.** Chrome 147 mobile doesn't expose MSTP in worker scope (verified empirically), so the spec-conformant Firefox/Safari worker pattern can't be tested there. **Firefox-mobile worker-MSTP is the next capture-architecture work item**; testable on the same Pixel under Firefox.
 
@@ -346,9 +346,9 @@ The user's practice-session recordings and their label files (per-session parque
 
 ## Known issues / future work
 
-### MSTP runtime fallback to AudioContext
+### MSTP runtime fallback to AudioContext — fixed 2026-10-19
 
-`pickKind()` is feature detection, not runtime validation — if a browser detects-as-supported but the MSTP path fails at runtime (constructor exists, `readable.getReader()` errors or first frame never arrives), the pipeline hard-fails: no fallback, and the 5 s first-frame timeout surfaces a misleading "microphone access denied". **Practical risk: low** (no wild reports; validated on Chrome desktop + Android 147). Candidate failure surfaces: future Chrome, Firefox-mobile when it gains main-thread MSTP, Safari (has MSTP, never validated here). **Approach when addressed:** try/catch around the MSTP first-frame await; on failure, close cleanly and re-attempt `_createAudioContextSource` on the same `MediaStream`; surface the fallback in the diag overlay. Origin: Codex review on PR #69.
+`pickKind()` is still feature detection only, but a runtime MSTP failure no longer ends the start. `createCaptureSource` ([src/audio/captureSource.js](src/audio/captureSource.js)) catches any MSTP start failure — constructor or `getReader()` throws, the reader errors, `AudioData.copyTo` rejects the first frame, or no frame within the 5 s first-frame timeout — releases the reader without stopping the track, and retries `_createAudioContextSource` on the **same** `MediaStream` (no second permission prompt). Before the first frame the MSTP path never calls `onError` (the hook's `onError` stops the stream); it rejects instead. The fallback is recorded: `fallbackFrom` on the source, `audioInfo.captureFallback` (diag overlay line + snapshot), a `capture / mstp-fallback` diag error and a console warning; no user-facing note (the session simply runs on AudioContext). Not a fallback: `?capture=mstp` (a forced path fails loudly, for measurement) and a track that ended before the first frame (dead on either path). A real permission refusal (`NotAllowedError`) shows "Microphone access denied…"; other start failures show their own message instead of a "denied" default. Test: `tests/audio/capture-fallback-test.js` (fake MSTP / AudioContext, plus the real hook). Origin: Codex review on PR #69.
 
 ### Pitch detection of periodic non-speech content (fan hum, mechanical rumble)
 
