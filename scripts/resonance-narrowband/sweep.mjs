@@ -1,15 +1,19 @@
 // sweep.mjs — grid search (dev half) and one-shot confirmation (held-out half)
-// for the narrowband detector (measurements/resonance-narrowband-2026-10-19.md §4).
+// for the narrowband detector (measurements/resonance-narrowband-2026-10-19.md §4,
+// "Round 2 plan": the judged positives are the five phone paths; the 4 kHz
+// low-pass is reported descriptively, neither positive nor negative).
 //
 //   node scripts/resonance-narrowband/sweep.mjs --half=dev                 grid, selection
 //   node scripts/resonance-narrowband/sweep.mjs --half=held --point=B,8,3,6,-31
 //        (band, tauS, vMinS, hystDb, tOnDb)                               confirmation
 //
+// Round 1 (lp4k judged as a positive) is this script at 654e449.
+//
 // Reads build/resonance-narrowband/feat/<cond>/<spk>.{json,f64} (extract.mjs).
 // The grid computes F once per (band pair, tau) with detector.mjs
 // createDecision and scans the hysteresis rule over it; the selected /
 // confirmed point is then run through createDecision itself, and the two
-// must agree exactly. Writes build/resonance-narrowband/sweep-<half>.json and
+// must agree exactly. Writes build/resonance-narrowband/sweep-r2-<half>.json and
 // prints Markdown.
 //
 // Metrics (plan §4), voiced time = voiced 10 ms grid frames of the engine:
@@ -42,7 +46,8 @@ const GRID = {
   hyst: [3, 6],
   ton: Array.from({ length: 51 }, (_, i) => -60 + i),
 };
-const POS = ["tel", "amrnb", "g711u", "opus8nb", "lp4k", "btnb"];
+const POS = ["tel", "amrnb", "g711u", "opus8nb", "btnb"]; // judged (round 2)
+const DESC = ["lp4k"]; // reported only: not judged, not used in selection
 const NEG_BAR = 0.01, POS_BAR = 0.95, DETECT_FRAMES = 1000;
 
 // ---- split (as conditions.py): within sex, numeric LibriSpeech id, even ranks = dev
@@ -71,16 +76,18 @@ for (const cond of conds) {
       for (let i = 0; i < nv; i++) for (let j = 0; j < 4; j++) e[4 * i + j] = a[o + 5 * i + 1 + j];
       o += 5 * nv;
       const m = rec.versions[ver];
-      streams.push({ cond, pos: POS.includes(cond), spk: rec.spk, sex: rec.sex, ver, n: nv, e,
+      streams.push({ cond, pos: POS.includes(cond), desc: DESC.includes(cond), spk: rec.spk, sex: rec.sex, ver, n: nv, e,
         audioS: m.audioS, detMs: m.detMs, gridFrames: m.gridFrames, framesDropped: m.framesDropped });
     }
     if (o !== a.length) throw new Error(`trailing data ${cond} ${rec.spk}`);
   }
 }
 const condList = [...new Set(streams.map((s) => s.cond))].sort();
-const negConds = condList.filter((c) => !POS.includes(c));
+const negConds = condList.filter((c) => !POS.includes(c) && !DESC.includes(c));
 const posConds = condList.filter((c) => POS.includes(c));
-console.error(`${HALF}: ${streams.length} streams, ${condList.length} conditions (${posConds.length} positive)`);
+const descConds = condList.filter((c) => DESC.includes(c));
+if (posConds.length !== POS.length) throw new Error(`missing positive conditions: ${POS.filter((c) => !posConds.includes(c))}`);
+console.error(`${HALF}: ${streams.length} streams, ${condList.length} conditions (${posConds.length} positive, ${descConds.length} descriptive)`);
 
 // ---- F trajectory for (band, tau) via the module (thresholds don't affect f)
 function fTrack(s, band, tau) {
@@ -114,17 +121,17 @@ function runModule(s, p) {
 
 // ---- metrics for one point from per-stream [onFrames, firstOn]
 function metrics(res) {
-  const neg = {}, pos = {};
+  const neg = {}, pos = {}, desc = {};
   let cleanAny = 0;
   for (let k = 0; k < streams.length; k++) {
     const s = streams[k], [onF, first] = res[k];
     const key = `${s.cond}|${s.sex}`;
-    if (!s.pos) {
+    if (!s.pos && !s.desc) {
       const c = (neg[key] ??= { on: 0, n: 0, streamsWithOn: 0, streams: 0 });
       c.on += onF; c.n += s.n; c.streams++; if (onF > 0) c.streamsWithOn++;
       if (s.cond === "clean" && onF > 0) cleanAny++;
     } else {
-      const c = (pos[key] ??= { det: 0, streams: 0, short: 0, tts: [], drop: 0, after: 0 });
+      const c = ((s.desc ? desc : pos)[key] ??= { det: 0, streams: 0, short: 0, tts: [], drop: 0, after: 0 });
       c.streams++;
       if (s.n < DETECT_FRAMES) c.short++;
       if (first >= 0 && first < DETECT_FRAMES) c.det++;
@@ -140,8 +147,9 @@ function metrics(res) {
     c.rate = c.det / c.streams;
     if (worstPosKey === null || c.rate < worstPos) { worstPos = c.rate; worstPosKey = k; }
   }
+  for (const c of Object.values(desc)) c.rate = c.det / c.streams;
   const pass = worstNeg <= NEG_BAR && cleanAny === 0 && worstPos >= POS_BAR;
-  return { neg, pos, cleanAny, worstNeg, worstNegKey, worstPos, worstPosKey, pass };
+  return { neg, pos, desc, cleanAny, worstNeg, worstNegKey, worstPos, worstPosKey, pass };
 }
 
 const q = (a, p) => { if (!a.length) return null; const b = [...a].sort((x, y) => x - y); return b[Math.min(b.length - 1, Math.floor(p * b.length))]; };
@@ -178,18 +186,19 @@ function report(p, m, label) {
     lines.push(`| ${c} | ${pct(w?.share)} | ${w?.streamsWithOn}/${w?.streams} | ${pct(mm?.share)} | ${mm?.streamsWithOn}/${mm?.streams} | ${mn(fw)} / ${md(fw)} | ${mn(fm)} / ${md(fm)} |`);
   }
   lines.push("");
-  lines.push("Positives (narrowband): detected by 10 s voiced (bar ≥ 95 %), time to notice (voiced s, median / q90), dropouts after first notice, F at stream end (dB, median / max)");
+  lines.push("Positives (the five phone paths, judged): detected by 10 s voiced (bar ≥ 95 %), time to notice (voiced s, median / q90), dropouts after first notice, F at stream end (dB, median / max)");
   lines.push("");
   lines.push("| Condition | women detected | men detected | women time med / q90 | men time med / q90 | women dropouts | men dropouts | F end women med / max | F end men med / max |");
   lines.push("|---|---|---|---|---|---|---|---|---|");
-  for (const c of posConds) {
-    const w = m.pos[`${c}|f`], mm = m.pos[`${c}|m`];
+  for (const c of [...posConds, ...descConds]) {
+    const src = DESC.includes(c) ? m.desc : m.pos;
+    const w = src[`${c}|f`], mm = src[`${c}|m`];
     const fw = fd[`${c}|f`]?.end ?? [], fm = fd[`${c}|m`]?.end ?? [];
     const tt = (x) => (x?.tts.length ? `${q(x.tts, 0.5).toFixed(2)} / ${q(x.tts, 0.9).toFixed(2)}` : "—");
     const dr = (x) => (x?.after ? pct(x.drop / x.after) : "—");
     const mx = (a) => (a.length ? Math.max(...a).toFixed(1) : "—");
     const md = (a) => (a.length ? q(a, 0.5).toFixed(1) : "—");
-    lines.push(`| ${c} | ${w?.det}/${w?.streams} (${pct(w?.rate)}) | ${mm?.det}/${mm?.streams} (${pct(mm?.rate)}) | ${tt(w)} | ${tt(mm)} | ${dr(w)} | ${dr(mm)} | ${md(fw)} / ${mx(fw)} | ${md(fm)} / ${mx(fm)} |`);
+    lines.push(`| ${DESC.includes(c) ? `${c} (descriptive, not judged)` : c} | ${w?.det}/${w?.streams} (${pct(w?.rate)}) | ${mm?.det}/${mm?.streams} (${pct(mm?.rate)}) | ${tt(w)} | ${tt(mm)} | ${dr(w)} | ${dr(mm)} | ${md(fw)} / ${mx(fw)} | ${md(fm)} / ${mx(fm)} |`);
   }
   const short = Object.values(m.pos).reduce((a, c) => a + c.short, 0);
   lines.push("");
@@ -293,4 +302,4 @@ if (POINT) {
   }
 }
 console.log(`\nDetector cost: ${cost.msPerAudioS.toFixed(3)} ms CPU per second of audio (band energies; ${cost.streams} streams, ${cost.audioMin.toFixed(0)} min); pitch frames dropped by the engine: ${cost.framesDropped}`);
-writeFileSync(path.join(OUT, `sweep-${HALF}${POINT ? "-point" : ""}.json`), JSON.stringify(out, (k, v) => (k === "tts" ? undefined : v)));
+writeFileSync(path.join(OUT, `sweep-r2-${HALF}${POINT ? "-point" : ""}.json`), JSON.stringify(out, (k, v) => (k === "tts" ? undefined : v)));
