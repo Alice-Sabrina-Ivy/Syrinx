@@ -28,4 +28,10 @@ outside the repository (`--out`).
 
 Order used: `make-trees` → `prep_libri` → `corpus-qf` (dev, every corpus,
 sharded) → `report-qf --tag=dev` → `file-qf` / `replay-qf` / `noise-qf` /
-`sessions-qf` → `tables-qf`.
+`sessions-qf` → `tables-qf`. FDA and Hillenbrand dev were re-run after the
+lost-hop counter was added (the note's Deviation 7).
+
+Never start a Vite dev server from a worktree whose `node_modules` is a link
+to the main checkout's: it rewrites the shared dependency cache. Use a
+production build (`vite build` + `vite preview`, as `chrome-level-check.mjs`
+does) or a separate `cacheDir` in the Vite config.

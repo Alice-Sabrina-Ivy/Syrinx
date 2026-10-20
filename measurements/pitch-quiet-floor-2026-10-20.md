@@ -4,16 +4,13 @@ Branch `quiet-floor` (from `cue-strip`). User decision 2026-10-20: measure a
 "too quiet to be a voice" floor — below an intensity that no real speech
 reaches, nothing is voiced or painted, whatever the pitch confidence.
 
-Background. In the user's silent room (PC fans and GPU coil whine, no speech)
-the live app paints roughly a third of the pitch trace, mostly near 240 Hz and
-always far below −50 dB; a probe through the real chain traced this to three
-things — the tonal notch never engages (the whine is too wide and wanders),
-the harmonic guard lets failing frames through until the 4th in a row, and the
-silence gate never acts because the posted confidence stays ≥ 0.5. An in-app
-`?diag=1` snapshot of the same room (Firefox, AudioWorklet capture, 48 kHz,
-AGC / noise suppression / echo cancellation off) shows the app sees the same
-levels as the room recording, within a few dB. Results on the private
-recordings are kept outside this repository.
+Background. In a silent room with PC fans and GPU coil whine, the live app was
+seen painting a pitch trace although nobody spoke. Three private sources were
+used: a recording of that room from the same microphone, an in-app `?diag=1`
+snapshot of the same room, and the user's session recordings. Each gets one
+aggregate sentence under "Private sources" below. Results on the private
+recordings are kept outside this repository. (Trimmed 2026-10-20 after review;
+the first version gave figures from the private sources — see "Review notes".)
 
 Hard rule 3 applies (`src/audio/pitchGate.js` and the pitch path): nothing
 under `src/` changes until this note has results, and only on PASS.
@@ -243,6 +240,13 @@ Recorded after the plan; none changes a decisive rule.
    "gap"), and a diagnostic count of lost hops in the last 150 ms of each
    reference-voiced run. The sweep's −60 … −75 dB rows reproduce the main run
    exactly (270 of 270 count tables identical).
+7. **Run order (added 2026-10-20 after review).** The dev outputs used for FDA
+   and Hillenbrand are a re-run made after the lost-hop counter of item 6 was
+   added to the harness; their first-run outputs were overwritten, not kept.
+   The change only added a counter, and their count tables match the sweep
+   (part of the 270 of 270 above). PTDB-TUG and vocadito are first runs;
+   LibriSpeech's outputs are the fixed run of item 4, which also carries the
+   counter.
 
 ## Results (2026-10-20)
 
@@ -366,25 +370,32 @@ painted frames of a word whenever the room behind the voice is quieter than the
 floor, which in a quiet room is always. The added G·F guard floor only adds
 loss (it also vetoes some failing quiet frames inside voiced runs).
 
-### Private session recordings
+### Private sources (one aggregate sentence each)
 
-On the private session recordings, at their recorded level, every candidate
-stayed far inside the 0.5 pp display-loss bound in every band for both voices,
-and painted false voicing hardly moved. Results on the private recordings are
-kept outside this repository.
+Rewritten 2026-10-20 after review: the first version gave figures and several
+sentences per private source.
+
+- **Room recording:** the frames the app paints there are below the −50 dB
+  silence threshold and get past the tonal notch, the harmonic guard's
+  debounce and the silence gate (their confidence stays ≥ 0.5), and only the
+  −60 dB floors (gate floor and G·F) reach the pre-registered 90 % cut.
+- **In-app snapshot replay:** only the −60 and −65 dB gate floors reach the
+  90 % cut, and, unlike the room recording, its quietest frames come in short
+  drops, often right after a sound, as if a gate in the device or driver
+  closed, so on this device a level floor would likely cut word endings at
+  almost any setting.
+- **Session recordings:** every candidate stays inside the 0.5 pp display-loss
+  bound in every band for both voices, but these recordings are much louder
+  than the current webcam setup and their quiet parts mostly lie above the
+  floors, so the floors almost never act there and this check says nothing
+  about soft speech on the current microphone and room.
+
+Results on the private recordings are kept outside this repository.
 
 ### Benefit
 
-- **Room recording (private):** only the −60 dB floors (gate floor and G·F) cut
-  the painted share by at least 90 %; −65 dB and lower did not, and the
-  dev-safe −95 dB floor (below) removes only a small part.
-- **In-app snapshot replay (private, Firefox AudioWorklet path):** the −60 and
-  −65 dB gate floors reached the 90 % cut; −70 and −75 dB did not, and the
-  dev-safe −95 dB floor removes well under half.
-- So only F = −60 dB passes both benefit checks — and it fails safety by the
-  widest margin.
-
-Results on the private recordings are kept outside this repository.
+The two decisive benefit checks are private; their outcome is the first two
+sentences under "Private sources" above.
 
 **Noise classes** (reported). Painted false voicing, % of display hops, 3 seeds
 × 30 s; classes where any tree paints ≥ 0.1 % at some scale:
@@ -444,19 +455,120 @@ last 150 ms of a reference-voiced run (−55 dB, all groups):
 
 - Most aggressive gate floor that passes the dev safety checks: **−95 dB**
   (−90 dB misses by 0.03 pp, FDA women at −55 dB).
-- Least aggressive floor that reaches the benefit: **−60 dB**.
+- Least aggressive floor that reaches the benefit: **−60 dB** (Private
+  sources).
 - **Gap: 35 dB.** No level-only floor on the current level reading can be both
   safe for soft speech and useful in this room.
+
+**Caveat (added 2026-10-20 after review): the safe end of this gap comes from
+silent pauses.** The corpora were turned down without added noise, so their
+pauses fall far below a real room's background. A −90 or −95 dB floor passes
+mostly because the cut word endings need a pause behind them that quiet: in a
+room with steady background noise such a floor would hardly ever act, on
+noise or on voice. It does not show that voices are safe at −95 dB, and on a
+device that gates its own silence (the in-app snapshot sentence above) the
+pauses behind words are that quiet again. The 35 dB figure is therefore a
+property of the scaled corpora, not of voices; the conclusion that no single
+level threshold works stands.
 
 ### What this suggests (not measured)
 
 The level reading and the displayed pitch are not aligned in time. A floor
 that judges the level of the audio the displayed pitch came from — for example
-the loudest DSP frame over the window behind the displayed pitch, or the
-decoded frame's own level inside the pitch worker, applied to every decoded
-frame rather than only to frames that fail the harmonic test — would not cut
-word endings just because the room behind them is silent. Fading voice that is
-itself below the floor would still be cut, so such a floor needs its own
-pre-registered measurement on the same data. A different route is to work on
-the other two causes the room probe found: the harmonic guard's 4-frame
-debounce, and a whine too wide and wandering for the tonal notch.
+the loudest DSP frame over the window behind the displayed pitch, or a level
+inside the pitch worker taken on a window **centred on the decoded frame**
+(the full 80 ms buffer, or the loudest of several short sub-windows of it),
+applied to every decoded frame rather than only to frames that fail the
+harmonic test — would not cut word endings just because the room behind them
+is silent. (The G·F level measured here was the last 50 ms of the 80 ms
+buffer, 40 ms of it after the frame centre, so it shared the gate's
+misalignment — see "Review notes".) Fading voice that is itself below the
+floor would still be cut, so such a floor needs its own pre-registered
+measurement on the same data, plus the items under "What a next attempt
+needs". A different route is to work on the other two links named in the
+room-recording sentence above: the harmonic guard's 4-frame debounce and the
+tonal notch.
+
+### What a next attempt needs (added 2026-10-20 after review)
+
+- **Device levels, measured:** private in-app `?diag=1` captures of the user
+  speaking normally and softly on the current webcam, in Firefox
+  (AudioWorklet) and in Chrome (MSTP) on the real device, as the decisive
+  private check. The Chrome level check above used Chrome's fake microphone,
+  which only proves the app's internal scale, not a device's levels.
+- **Level model 3 dB quieter** (see "Review notes"): −60 dB decisive and
+  −65 dB the stress level, or levels taken from the captures above.
+- **Gated or suppressed silence:** the public corpora also run with their
+  silence gated (an expander) or noise-suppressed (e.g. RNNoise), and with
+  OS / browser AGC and noise suppression on.
+- **Quieter and weaker voices:** soft and breathy phonation and fading held
+  notes per sex (e.g. VocalSet, CC BY 4.0), soft and whispered speech with
+  whisper-to-voice transitions (e.g. CHAINS), quiet singing beyond vocadito,
+  and corpora both attenuated and band-limited to 300–3400 Hz (a phone or
+  laptop microphone at arm's length).
+- **Hillenbrand:** voiced level measured on the vowel only, or Hillenbrand
+  kept out of the level-model decision.
+- **Harness hygiene:** production build (`vite build` / `vite preview`) or a
+  separate Vite cache folder per worktree, never a dev server on the shared
+  `node_modules`.
+
+## Review notes (2026-10-20)
+
+Two reviews (validity; voice safety) confirmed the FAIL: the plan was pushed
+before any result, the candidate trees change only the pre-registered lines,
+the tables recompute from the raw outputs, and held-out was correctly not run.
+Their findings and what was done:
+
+1. **Privacy (both reviews; applied).** The Background and Benefit text gave
+   figures and several sentences per private source, and the Background's
+   claim that the snapshot shows the room recording's levels "within a few dB"
+   held only at the loud end, not the quiet end. Both were replaced by one
+   aggregate sentence per source ("Private sources"). The earlier wording
+   remains in this branch's history; it named no paths, accounts or session
+   ids.
+2. **Level model 3 dB too loud (both; correction recorded, verdict
+   unchanged).** Microphone dBFS sensitivity is referenced to a full-scale
+   sine, which the app's intensity reads as −3 dB. The plan's "about −52 dB
+   normal, about −58 dB soft" (§3) are therefore about −55 and −61 dB on the
+   app's scale: the decisive −55 dB level is normal speech on the least-gain
+   setup with no margin, and soft speech there is below even the −60 dB
+   stress level. The error made the test easier, so the FAIL only gets
+   stronger: at −60 dB every candidate loses ≥ 6.2 pp for men and for women
+   (pooled). A next plan makes −60 dB decisive (above).
+3. **Session check cannot see this risk (both; applied).** Stated in the
+   session sentence under "Private sources"; a private soft-speech capture on
+   the current webcam is the first item a next attempt needs.
+4. **The −95 dB safe floor and the 35 dB gap come from silent pauses (both;
+   applied).** Caveat added to the gap section. The plan's "scaling without
+   added noise is conservative" (§3) holds only where steady room noise sits
+   behind the voice; on a device that gates its own silence, the pauses after
+   words are as quiet as in the scaled corpora, so it is not conservative
+   there.
+5. **G·F level window (voice-safety review; applied to the text).** The G·F
+   frame level was the last 50 ms of the 80 ms decoded buffer, whose frame
+   centre is 40 ms before its end, so 40 of the 50 ms lie after the frame: at
+   a word end it reads the silence after the voice, like the gate. The G·F
+   result stands (it only added loss); the "What this suggests" paragraph now
+   names a window centred on the frame.
+6. **Hillenbrand reference too wide (voice-safety review; checked, verdict
+   unchanged).** The corpus loader marks the central 70 % of each file voiced
+   at one F0, which includes /h/, /d/ and silence, so the voiced level is
+   averaged over quieter non-vowel samples (understates loss) and loss is also
+   counted on non-vowel frames (overstates it). With Hillenbrand left out every
+   candidate still fails for both sexes by −45 dB at the latest (worst group
+   at the first failing level — g75: men −45 dB, PTDB-TUG 0.52 pp; women
+   −40 dB, FDA 0.53 pp; g60: men −40 dB, LibriSpeech 2.59 pp; women natural
+   level, FDA 0.61 pp).
+7. **Scenarios not covered (voice-safety review; deferred).** Real soft or
+   breathy phonation, whisper-to-voice transitions, quiet singing and fading
+   held notes, a band-limited microphone at arm's length, AGC / noise
+   suppression on, and Chrome MSTP on a real device. Not needed to confirm a
+   FAIL; listed under "What a next attempt needs" as required before any PASS.
+8. **Run order not recorded (validity review; applied).** Deviation 7.
+9. **Shared Vite cache (both; process).** During the measure step a briefly
+   started Vite dev server rewrote the dependency cache in the main checkout's
+   `node_modules/.vite`, which other worktrees reach through their
+   `node_modules` links. No committed script does this (`chrome-level-check.mjs`
+   uses a production build and `vite preview`). A dev server in another
+   worktree that shows a dependency error after this needs a restart; future
+   harnesses use a production build or their own Vite cache folder (above).
