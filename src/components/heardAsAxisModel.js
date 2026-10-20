@@ -15,16 +15,20 @@
 // from the RIGHT. The solid left part is the low end of "would say man"
 // (A tenths), the solid right part the low end of "would say woman" (C
 // tenths), and the part between them (B − A tenths, the range's width) is
-// striped: it could go either way. `guess` is the single best guess s — where
-// the two would meet — unrounded, always inside the striped part. A range
-// spanning ≥ WIDE_SHARE_TENTHS (8) tenths is "can't tell yet" (mostly
-// stripes; the panel drops the best guess and the unsure line). The unsure /
+// striped: it could go either way. No best-guess mark is drawn (review
+// 2026-10-20: a mark at the split point s sat over the end word of the answer
+// FEWER listeners would give — "would say man" for a voice most would call a
+// woman — so it read backwards; the user had made it optional). `guess` (s,
+// unrounded, always inside the striped part) stays in the model for the
+// checks only (data-split-guess). A range spanning ≥ WIDE_SHARE_TENTHS (8)
+// tenths is "can't tell yet" (mostly stripes; no unsure line). The unsure /
 // neither share is a text line: the share at the best guess rounded to the
 // nearest tenth ("about N in 10", "fewer than 1 in 10"), left out while it is
 // "can't tell yet". (Until review round 2 it was the range's outward-rounded
 // min…peak, which read "about 0–5 in 10" on most readings of typical voices —
-// measurements/heard-as-panel-review-2-2026-10-07.md §4.) The words are the
-// 2026-10-07 axis's, unchanged (tests/ml/fixtures/heard-as-axis-words-golden.json).
+// measurements/heard-as-panel-review-2-2026-10-07.md §4.) The range and
+// unsure words are the 2026-10-07 axis's, unchanged
+// (tests/ml/fixtures/heard-as-axis-words-golden.json).
 
 import { formatShare, shareTenths, isWideShare } from "../ml/heard-as.js";
 
@@ -32,19 +36,6 @@ import { formatShare, shareTenths, isWideShare } from "../ml/heard-as.js";
 export function unsureWords(u) {
   const n = Math.round(10 * u);
   return n <= 0 ? "fewer than 1 in 10" : `about ${n} in 10`;
-}
-
-/**
- * The single best guess (two-way share "man" s) in words for screen readers,
- * worded like formatShare: never "0 in 10" or "10 in 10" ("fewer than 1 in 10"
- * / "nearly all" at the ends), so it is no sharper than the visible range
- * (2026-10-07 UX review). -> [man words, woman words]; mirrored for 1 − s.
- */
-export function bestGuessWords(s) {
-  if (s < 0.05) return ["fewer than 1 in 10", "nearly all"];
-  if (s > 0.95) return ["nearly all", "fewer than 1 in 10"];
-  const n = Math.min(9, Math.max(1, Math.round(10 * s)));
-  return [`about ${n} in 10`, `about ${10 - n} in 10`];
 }
 
 const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
@@ -73,7 +64,8 @@ export const AXIS_ENDS = Object.freeze({ left: "would say man", right: "would sa
  * -> { man, woman, guess, wide, manTenths, womanTenths, rangeText, unsureText, srText }
  *    man / woman: widths of the solid parts as fractions of the bar (man from
  *    the LEFT end, woman from the RIGHT end); the striped part is the rest.
- *    guess: the best guess s as a fraction from the LEFT end, 0…1.
+ *    guess: the best guess s as a fraction from the LEFT end, 0…1 (not
+ *    drawn; for the checks).
  *    unsureText is null while wide (the panel leaves the line out).
  */
 export function heardAsAxis(shares) {
@@ -88,11 +80,10 @@ export function heardAsAxis(shares) {
     ? "Can't tell yet — the range covers most of the scale"
     : `${cap(man)} would say man · ${woman} would say woman`;
   const unsureText = wide ? null : `${cap(unsureWords(shares.centre.unsure))} might be unsure or say neither`;
-  const [midMan, midWoman] = bestGuessWords(shares.s);
   const scale = "Bar of listeners in tenths: would say man fills from the left, would say woman from the right, and the striped part between could go either way.";
   const srText = wide
     ? `${scale} Can't tell yet: the range covers most of the scale — ${man} would say man, ${woman} would say woman.`
-    : `${scale} ${cap(man)} would say man, ${woman} would say woman. Best guess: ${midMan} would say man, ${midWoman} would say woman.`;
+    : `${scale} ${cap(man)} would say man, ${woman} would say woman.`;
   return {
     man: a / 10,
     woman: c / 10,

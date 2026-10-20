@@ -35,9 +35,11 @@
 //     model error, every hide reason (waiting, held note, "Keep talking",
 //     whisper, stale, outside the tested range) and estimates over the whole
 //     range (both "nearly all" ends, "can't tell yet", with and without the
-//     unsure line, fresh and "Older reading"): the bar is on screen in every
-//     state, and the panel's box, its buttons, Save Session, the notes box
-//     and the Stop Listening bar keep their boxes (<= 0.5 px).
+//     unsure line, fresh and "Older reading", each with and without the
+//     pitch-only note — its room is reserved from switch-on, review
+//     2026-10-20): the bar is on screen in every state, and the panel's box,
+//     its buttons, Save Session, the notes box and the Stop Listening bar keep
+//     their boxes (<= 0.5 px).
 // Screenshots of each part in both states go to <out>/<viewport>-<part>-<state>.png.
 //
 // Process hygiene (CLAUDE.md hard rule 2): Chrome is launched by puppeteer with a fresh
@@ -244,13 +246,14 @@ const LAB_STATE = `() => {
 const LAB_SCOPE = "[data-lab-root], [data-lab-phone]";
 // The Stop Listening bar (its voice status text changes with the voice).
 const BAR = "[data-listen-bar]";
-// The heard-as panel: shown (wide / narrow, older reading) or hidden (reason).
+// The heard-as panel: shown (wide / narrow, older reading, pitch-only note) or hidden (reason).
 const PANEL_STATE = `() => {
   const p = document.querySelector("[data-heard-as]");
   if (!p) return "none";
   if (p.dataset.heardAs !== "shown") return p.dataset.heardAs + ":" + (p.dataset.reason || "");
   return "shown:" + (document.querySelector("[data-heard-as-axis]")?.dataset.axisWide === "1" ? "wide" : "narrow")
-    + (document.querySelector("[data-heard-as-shares]")?.dataset.stale === "1" ? "+older" : "");
+    + (document.querySelector("[data-heard-as-shares]")?.dataset.stale === "1" ? "+older" : "")
+    + (p.querySelector("[data-pitch-only]") ? "+pitch-only" : "");
 }`;
 
 async function part(vp, page, name, scope, stateSrc) {
@@ -439,8 +442,9 @@ if (FORCED) {
     }
     const reasons = new Set(seen.filter((x) => x.startsWith("hidden:")).map((x) => x.slice(7)));
     const wantReasons = ["loading", "error", "listening", "sustained", "short", "unvoiced", "stale", "outside"];
-    check(vp, "forced: every hide reason, wide and narrow estimates, fresh and older were shown",
-      wantReasons.every((r) => reasons.has(r)) && ["shown:wide", "shown:narrow", "shown:narrow+older", "shown:wide+older"].every((k) => seen.includes(k)),
+    const wantShown = ["shown:wide", "shown:narrow", "shown:narrow+older", "shown:wide+older"];
+    check(vp, "forced: every hide reason, wide and narrow estimates, fresh and older, each with and without the pitch-only note, were shown",
+      wantReasons.every((r) => reasons.has(r)) && [...wantShown, ...wantShown.map((k) => `${k}+pitch-only`)].every((k) => seen.includes(k)),
       JSON.stringify([...new Set(seen)]));
     check(vp, "forced: the bar is on screen in every state (empty and greyed without an estimate)", noBar.length === 0, noBar.join(", "));
     const m = maxMove(samples);

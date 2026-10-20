@@ -17,29 +17,44 @@ body {
    --color-heard-man (deep): the solid left part, the low end of "would say
    man"; --color-heard-woman (light): the solid right part, the low end of
    "would say woman"; the striped part between them alternates the two, so it
-   leans neither way and reads as a pattern, not a third colour. Contrast on
-   the panel's background (#121212, the composite of the panel over the page):
-   deep 3.5:1, light 12:1, deep vs light 3.5:1 (>= 3:1, WCAG 1.4.11; checked
-   in scripts/cue-strip-smoke.mjs). The app has one dark palette in both OS
-   colour schemes (the light scheme renders the same page), so these values
-   hold in light and dark; a light theme would need its own pair here. */
+   leans neither way and reads as a pattern, not a third colour. The same
+   shades key the end words. Hue 252° for both (review 2026-10-20: the first
+   pair, 238° / 230°, sat on the blue side of indigo; scripts/cue-strip-smoke.mjs
+   now accepts 244-270°). Contrast on the panel's background (#121212, the
+   composite of the panel over the page): deep 3.8:1, light 13.6:1, deep vs
+   light 3.6:1 (>= 3:1, WCAG 1.4.11; checked in scripts/cue-strip-smoke.mjs).
+   With red-green colour blindness every violet / indigo pair reads as dark
+   and pale blue; the parts still differ (>= 3:1 lightness contrast, and the
+   stripes are a pattern). The app has one dark palette in both OS colour
+   schemes (the light scheme renders the same page), so these values hold in
+   light and dark; a light theme would need its own pair here. */
 :root {
-  --color-heard-man: #585dd4;
-  --color-heard-woman: #c7d0fe;
+  --color-heard-man: #745dd0;
+  --color-heard-woman: #dfd7fe;
 }
 .heard-man { background-color: var(--color-heard-man); }
 .heard-woman { background-color: var(--color-heard-woman); }
 .heard-either {
   background-image: repeating-linear-gradient(135deg, var(--color-heard-man) 0 3px, var(--color-heard-woman) 3px 6px);
 }
-.heard-guess { border-top-color: #e5e5e5; }
 /* Windows high contrast (forced colours): the parts keep three different
-   fills in the system colours — solid, striped, hollow. */
+   fills in the system colours — solid, striped, hollow — and so do the end
+   words' keys; the tenth ticks are drawn in CanvasText (GrayText on the empty
+   bar). The on / off switches (.hc-switch: the panel's, Settings' two) get a
+   ButtonText outline and thumb, the track filled with Highlight when on (with
+   forced colours the UA otherwise paints track and thumb in the background
+   colour, so only the focus ring showed). */
 @media (forced-colors: active) {
-  .heard-bar-wrap { forced-color-adjust: none; }
+  .heard-bar-wrap, .heard-key, .heard-tick, .heard-tick-grey, .hc-switch { forced-color-adjust: none; }
   .heard-man { background-color: CanvasText; }
   .heard-woman { background-color: Canvas; box-shadow: inset 0 0 0 2px CanvasText; }
   .heard-either { background-image: repeating-linear-gradient(135deg, CanvasText 0 2px, Canvas 2px 6px); }
-  .heard-guess { border-top-color: CanvasText; }
   .heard-empty { border-color: GrayText; background-color: Canvas; }
+  .heard-key-empty { border-color: GrayText; background-color: Canvas; }
+  .heard-tick { background-color: CanvasText; }
+  .heard-tick-grey { background-color: GrayText; }
+  .hc-switch { background-color: ButtonFace; box-shadow: inset 0 0 0 1px ButtonText; }
+  .hc-switch-thumb { background-color: ButtonText; }
+  .hc-switch[aria-checked="true"] { background-color: Highlight; box-shadow: none; }
+  .hc-switch[aria-checked="true"] .hc-switch-thumb { background-color: HighlightText; }
 }
