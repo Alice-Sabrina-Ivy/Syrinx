@@ -12,7 +12,7 @@ The Phase 0 spike (its timing pages, parity runners and listening tools) is on t
 | `lib/paths.mjs` | Where the SDK, the WORLD source and the build output live (`VP_CACHE`, default `build/voice-preview`) |
 | `make-spike-parity.mjs` | Expected renders for `tests/voice-preview/parity-test.js`, computed by the spike's own code (extracted from the spike commit) with the committed `.wasm`; posted tracks from the real pitch chain |
 | `bundle-budget.mjs` | The bundle budget (design note §11): builds the branch point and this tree with the same Vite settings; entry and LabView chunks grow ≤ 1 KB gzip, the card and worker chunks ≤ 15 KB gzip, no voice-preview strings in the entry or LabView chunks |
-| `../voice-preview-smoke-wavs.mjs`, `../voice-preview-smoke.mjs` | The card's headless smoke against the built app (layout at five viewports in light and dark, flow, keyboard, playback, session guard, hum / noise notices, Discard / Download, dev server) and, with `--parts=timing` and `$VP_CACHE`, the desktop timing in the spike's Chrome for Testing 154 |
+| `../voice-preview-smoke-wavs.mjs`, `../voice-preview-smoke.mjs` | The card's headless smoke against the built app (layout at five viewports in light and dark; per viewport, with touch or the mouse, both sliders to each end, every quick setting, the target row, each Play button, and Discard freeing the recording's memory; flow, keyboard, playback, session guard, hum / noise notices, Discard / Download; dev server, `vite preview`, the non-SIMD fallback) and, with `--parts=timing` and `$VP_CACHE`, the desktop timing in the spike's Chrome for Testing 154 |
 
 ```sh
 export VP_CACHE=<folder with emsdk/ and world-src/>   # build.mjs --install fetches both

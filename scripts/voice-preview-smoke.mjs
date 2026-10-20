@@ -4,8 +4,9 @@
 // measurements/voice-preview-phase1-2026-10-19.md §14 "Smoke".
 //
 //   npm run build && node scripts/voice-preview-smoke-wavs.mjs &&
-//   node scripts/voice-preview-smoke.mjs [--parts=layout,flow,checks,dev] [--out=<dir>]
+//   node scripts/voice-preview-smoke.mjs [--parts=layout,flow,checks,dev,preview,fallback] [--out=<dir>]
 //        [--viewports=p360,p402,phone,landscape,desktop] [--chrome=<exe>]
+//        [--port=4193] [--dev-port=5193] [--preview-port=4194]
 //
 // layout  (clean.wav) per viewport, one page: the lab opened on Resonance requests nothing
 //         of the voice preview (card chunk, worker, glue, .wasm); opening the view requests
@@ -17,6 +18,14 @@
 //         scrolling it and on top there; no clipped text; targets (Record / Play >= 44 x 44
 //         on phones, everything else >= 24 x 24, ranges 44 px tall); text >= 4.5:1 against
 //         the card; computed color-scheme dark. Screenshots per viewport and scheme.
+//         Then, with the viewport's own input (touch on the phone viewports, the mouse on
+//         desktop; verify step): both sliders dragged to each end, the release commits ONE
+//         render matching the slider (limits: pitch -12..0 .. +12, resonance -21 .. +26);
+//         every quick setting and the target row render; each Play button plays (the
+//         AudioContext running), Loop, Stop; Discard frees the recording's memory — the
+//         page's AudioBuffers and array-buffer backing store back to what they were before
+//         the recording (CDP queryObjects / getHeapUsage after a forced GC), the old worker
+//         gone and the fresh worker's WebAssembly memory at its initial size.
 // flow    (clean.wav, 1280 x 800, direction "More feminine" for the target prefill): a stop
 //         at 2 s -> too short; a full recording; keyboard order (Record, sliders, quick
 //         settings, Play group, Discard / Download), arrow keys -> aria-valuetext and ONE
@@ -30,6 +39,11 @@
 //         -> the noise notice; the layout part's clean runs show neither. Every run makes a
 //         preview.
 // dev     one run against `vite` (dev server): the ?url glue import works there too.
+// preview one run against `vite preview` of the same build: the .wasm is served as
+//         application/wasm, the SIMD build loads, record -> preview -> quick setting -> play.
+// fallback the static server hands out a SIMD .wasm that fails to compile: the worker loads
+//         the non-SIMD build (fetched once), which records, renders and plays.
+// Every part also fails on console errors, the workers' included.
 // timing  (not in the default parts; needs timing.wav, i.e. $VP_CACHE) desktop timing in the
 //         spike's browser (--chrome=<Chrome for Testing 154>, default $VP_CACHE/browsers/…),
 //         1280 x 800, ?diag=1&capture=audiocontext&sr=48000 (the fake microphone runs at 44.1 kHz;
@@ -37,7 +51,9 @@
 //         stop once 5 s are in) and of 8 s (auto-stop), each followed by one slider change (+2 st, +3 %).
 //         The worker's analysis + rebuild and render times (median / pooled p90) against the
 //         spike's A5 desktop values; end to end (stop -> "Preview ready", press -> "Preview
-//         updated") and the machine's busy share during each recording are reported.
+//         updated") and the machine's busy share during each recording are reported. The
+//         page and worker memory after the first and the last 8 s recording must not grow
+//         over the Record again cycles.
 //
 // Serving: the built app is served by a small static server inside this script (dist/
 // under /Syrinx/), which logs every request — worker and WebAssembly fetches included,
@@ -56,14 +72,16 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import puppeteer from "puppeteer-core";
 import { P } from "./voice-preview/lib/paths.mjs";
+import { applyPreset } from "../src/voice-preview/controls.js";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const arg = (k, d) => (process.argv.find((a) => a.startsWith(`--${k}=`)) ?? `=${d}`).split("=").slice(1).join("=");
-const PARTS = new Set(arg("parts", "layout,flow,checks,dev").split(",").filter(Boolean));
+const PARTS = new Set(arg("parts", "layout,flow,checks,dev,preview,fallback").split(",").filter(Boolean));
 const WAVDIR = arg("wavs", path.join(repo, "build", "voice-preview-smoke", "wavs"));
 const OUT = arg("out", path.join(repo, "build", "voice-preview-smoke", "shots"));
 const PORT = Number(arg("port", "4193"));
 const DEV_PORT = Number(arg("dev-port", "5193"));
+const PREVIEW_PORT = Number(arg("preview-port", "4194"));
 const CFT = path.join(P.browsers, "chrome", "win64-154.0.8037.57", "chrome-win64", "chrome.exe"); // the spike's timing browser
 const CHROME = arg("chrome", "") || (PARTS.has("timing") && existsSync(CFT) ? CFT : "") || ["C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
   "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe"].find(existsSync);
@@ -107,16 +125,23 @@ process.on("uncaughtException", (e) => { console.error(e); cleanup(); process.ex
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const log = (...a) => console.log(`[${new Date().toISOString().slice(11, 19)}]`, ...a);
 const results = [];
+const warns = [];
 let scope = "";
 const check = (name, ok, detail = "") => {
   results.push({ name: `[${scope}] ${name}`, ok: !!ok, detail });
   console.log(`${ok ? "PASS" : "FAIL"}  [${scope}] ${name}${detail ? `  (${detail})` : ""}`);
+};
+// a synthetic input that did not arrive and was repeated once (listed in the summary)
+const warn = (name, detail = "") => {
+  warns.push(`[${scope}] ${name}${detail ? `  (${detail})` : ""}`);
+  console.log(`WARN  [${scope}] ${name}${detail ? `  (${detail})` : ""}`);
 };
 
 // A static server for dist/ under /Syrinx/ that logs every request path.
 const MIME = { ".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript", ".css": "text/css", ".json": "application/json",
   ".wasm": "application/wasm", ".txt": "text/plain; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon", ".onnx": "application/octet-stream" };
 const served = [];
+let corruptSimd = false; // the fallback part: serve a SIMD .wasm that fails to compile
 function startStatic() {
   const root = path.join(repo, "dist");
   httpServer = createServer((req, res) => {
@@ -127,7 +152,9 @@ function startStatic() {
     if (!f.startsWith(root)) { res.writeHead(403); res.end(); return; }
     if (!existsSync(f) || statSync(f).isDirectory()) f = path.join(root, "index.html");
     res.writeHead(200, { "Content-Type": MIME[path.extname(f)] ?? "application/octet-stream", "Cache-Control": "no-store" });
-    res.end(readFileSync(f));
+    let body = readFileSync(f);
+    if (corruptSimd && path.basename(f) === simdWasm) { body = Buffer.from(body); body.fill(0xff, 8, 64); } // valid magic, broken sections
+    res.end(body);
   });
   return new Promise((r) => httpServer.listen(PORT, "127.0.0.1", r));
 }
@@ -155,12 +182,15 @@ async function open(viewport, base = `http://127.0.0.1:${PORT}/Syrinx/`) {
   const errors = [];
   page.on("pageerror", (e) => errors.push(String(e)));
   page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
+  // worker console errors: puppeteer reports worker exceptions as pageerror; console.error
+  // calls inside workers are collected here explicitly
+  page.on("workercreated", (w) => w.on("console", (m) => { if (m.type() === "error") errors.push(`[worker ${w.url().split("/").pop()}] ${m.text()}`); }));
   const cdp = await page.createCDPSession();
   await cdp.send("Emulation.setFocusEmulationEnabled", { enabled: true });
   await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "dark" }]);
   await page.goto(base, { waitUntil: "domcontentloaded", timeout: 180000 });
   await page.bringToFront();
-  return { page, errors };
+  return { page, errors, cdp };
 }
 
 const clickButton = (page, texts, sel = "button") => page.evaluate((ts, sel) => {
@@ -205,6 +235,40 @@ const vp = (page) => page.evaluate(() => {
 const waitVp = (page, pred, label, timeout = 30000) => page.waitForFunction(pred, { timeout, polling: 100 }).then(() => true, () => { log(`timeout: ${label}`); return false; });
 const phaseIs = (page, ph, timeout) => waitVp(page, `document.querySelector("[data-voice-preview]")?.dataset.vpPhase === ${JSON.stringify(ph)}`, `phase ${ph}`, timeout);
 const recordReady = (page, timeout = 20000) => waitVp(page, () => { const b = document.querySelector("[data-vp-record]"); return !!b && b.getAttribute("aria-disabled") !== "true" && b.textContent.trim() === "Record"; }, "record ready", timeout);
+
+// ---------------------------------------------------------------- memory census
+// What a JS context holds after a forced GC, so "Discard frees memory" is checked on what
+// the page and the worker actually keep:
+//   page:   AudioBuffer objects (the playback sources; CDP Runtime.queryObjects by
+//           prototype) and V8's heap and array-buffer backing store (Runtime.getHeapUsage;
+//           the controller's original / rebuild / preview Float32Arrays live there —
+//           queryObjects does not list typed arrays in Chrome 155, checked);
+//   worker: WebAssembly.Memory instances and their size (the WORLD heap; it never shrinks,
+//           so Discard terminates the worker and a fresh one starts at the initial size).
+async function census(session, protoExpr, fn) {
+  const { result: proto } = await session.send("Runtime.evaluate", { expression: protoExpr });
+  const { objects } = await session.send("Runtime.queryObjects", { prototypeObjectId: proto.objectId, objectGroup: "vp-census" });
+  const { result } = await session.send("Runtime.callFunctionOn", { objectId: objects.objectId, functionDeclaration: fn, returnByValue: true });
+  await session.send("Runtime.releaseObjectGroup", { objectGroup: "vp-census" });
+  await session.send("Runtime.releaseObject", { objectId: proto.objectId }).catch(() => {});
+  return result.value;
+}
+async function pageMem(cdp) {
+  await cdp.send("HeapProfiler.collectGarbage");
+  const audio = await census(cdp, "AudioBuffer.prototype", "function () { return { n: this.length, bytes: this.reduce((s, b) => s + b.length * b.numberOfChannels * 4, 0) }; }");
+  await cdp.send("HeapProfiler.collectGarbage");
+  const hu = await cdp.send("Runtime.getHeapUsage");
+  return { audio, heap: hu.usedSize, backing: hu.backingStorageSize ?? null };
+}
+const vpWorkers = (page) => page.workers().filter((w) => /vp-worker/.test(w.url()));
+async function workerMem(page) {
+  const ws = vpWorkers(page);
+  if (ws.length !== 1) return { workers: ws.length, n: null, bytes: null };
+  const r = await census(ws[0].client, "WebAssembly.Memory.prototype", "function () { return { n: this.length, bytes: this.reduce((s, m) => s + m.buffer.byteLength, 0) }; }");
+  return { workers: 1, ...r };
+}
+const MB = (b) => (b / 1048576).toFixed(1);
+const memLine = (m) => `AudioBuffers ${m.audio.n} (${MB(m.audio.bytes)} MB), V8 heap ${MB(m.heap)} MB, array-buffer backing ${m.backing != null ? `${MB(m.backing)} MB` : "n/a"}`;
 
 // Every live-region text, in order (installed per page).
 const watchLive = (page) => page.evaluate(() => {
@@ -371,7 +435,7 @@ async function partLayout() {
   await launch(WAV.clean);
   for (const v of LAYOUT_VIEWPORTS) {
     scope = `layout ${v}`;
-    const { page, errors } = await open(v);
+    const { page, errors, cdp } = await open(v);
     const before = served.length;
     await startListening(page);
     await openLab(page);
@@ -396,6 +460,8 @@ async function partLayout() {
     check("view opened: card chunk, worker, glue, exactly one .wasm (the SIMD build)", ready && req.some((p) => /VoicePreviewCard/.test(p)) && req.some((p) => /vp-worker/.test(p))
       && req.some((p) => /vp_world-.*\.mjs$/.test(p)) && wasm.length === 1 && wasmName(wasm[0]) === simdWasm && st0.vpBuild === "simd", `${req.map(wasmName).join(", ")}; build ${st0.vpBuild}`);
     await shot(page, `${v}-dark-ready`);
+    const memBase = await pageMem(cdp);
+    const wBase = await workerMem(page);
     const rec = await recordToPreview(page);
     check("recorded, auto-stopped at 8 s, preview ready", rec.ok && Math.abs(Number(rec.st.vpSeconds) - 8) < 0.01, `${rec.st.vpSeconds} s, ${rec.st.vpRate} Hz, stop -> preview ${rec.endToEndMs} ms`);
     check("clean recording: no hum or noise notice", rec.st.vpHum === "false" && rec.st.vpNoise === "false" && rec.st.notices.length === 0, `margin ${rec.st.vpMargin} dB`);
@@ -430,10 +496,170 @@ async function partLayout() {
     scope = `layout ${v}`;
     const text = (await vp(page)).text;
     check("no gender words in the card", !GENDER.test(text), (text.match(GENDER) ?? [""])[0]);
+    await interact(page, cdp, v, memBase, wBase);
     check("no console errors", errors.length === 0, errors.slice(0, 3).join(" | "));
     await page.close();
   }
 }
+
+// Per viewport, with the input the viewport has (touch on the phone viewports, the mouse on
+// desktop): both sliders dragged to their ends (the release commits ONE render, matching the
+// slider), every quick setting and the target row render, each playback button plays, then
+// Discard frees the recording's memory (page and worker census against before the recording).
+async function interact(page, cdp, v, memBase, wBase) {
+  const touch = !!VIEWPORTS[v].hasTouch;
+  const how = touch ? "tap" : "click";
+  await watchLive(page);
+  // what is under a point (for the WARN lines): the element and whether it is the target
+  const hitAt = (el, x, y) => el.evaluate((t, x, y) => {
+    const e = document.elementFromPoint(x, y);
+    return { onTarget: !!e && (e === t || t.contains(e)), what: e ? `${e.tagName.toLowerCase()} "${(e.textContent || "").trim().slice(0, 24)}"` : "nothing" };
+  }, x, y);
+  const press = async (sel) => {
+    const el = await page.$(sel);
+    if (!el) return { hit: null };
+    await el.evaluate((e) => e.scrollIntoView({ block: "center" }));
+    await sleep(150);
+    const b = await el.boundingBox();
+    const cx = b.x + b.width / 2, cy = b.y + b.height / 2;
+    const hit = await hitAt(el, cx, cy);
+    if (touch) await page.touchscreen.tap(cx, cy); else await page.mouse.click(cx, cy);
+    await el.dispose();
+    return { hit, at: [Math.round(cx), Math.round(cy)] };
+  };
+  const inputsAre = (st, pct, ms = 2000) => waitVp(page, `(() => { const q = (k) => document.querySelector('[data-vp-slider="' + k + '"] input'); return Number(q("pitch").value) === ${st} && Number(q("resonance").value) === ${pct}; })()`, `inputs ${st},${pct}`, ms);
+  const settled = (want) => waitVp(page, `(() => { const c = document.querySelector("[data-voice-preview]"); return c?.dataset.vpRendered === ${JSON.stringify(want)} && c.dataset.vpRendering === "0"; })()`, `render ${want}`, 15000);
+  const inputs = () => page.evaluate(() => {
+    const q = (k) => document.querySelector(`[data-vp-slider="${k}"] input`);
+    return { st: Number(q("pitch").value), pct: Number(q("resonance").value), stMin: Number(q("pitch").min), stMax: Number(q("pitch").max), pctMin: Number(q("resonance").min), pctMax: Number(q("resonance").max) };
+  });
+  const lim0 = await inputs();
+  const lim = { stMin: lim0.stMin, stMax: lim0.stMax, pctMin: lim0.pctMin, pctMax: lim0.pctMax };
+  check("slider limits: pitch min in [-12, 0] (low-contour rule), max +12; resonance -21 .. +26", lim.stMax === 12 && lim.stMin >= -12 && lim.stMin <= 0 && lim.pctMin === -21 && lim.pctMax === 26, JSON.stringify(lim));
+
+  // drag a slider from its thumb past an end: mouse down / move / up, or touch start / move / end
+  async function drag(which, toEnd) {
+    const el = await page.$(`[data-vp-slider="${which}"] input`);
+    await el.evaluate((e) => e.scrollIntoView({ block: "center" }));
+    await sleep(150);
+    const b = await el.boundingBox();
+    const cur = await el.evaluate((e) => (Number(e.value) - Number(e.min)) / (Number(e.max) - Number(e.min)));
+    const thumb = 8; // about half the thumb: the track's usable span is the width minus one thumb
+    const x0 = b.x + thumb + cur * (b.width - 2 * thumb);
+    const x1 = toEnd > 0 ? b.x + b.width + 20 : b.x - 20;
+    const y = b.y + b.height / 2;
+    await page.evaluate(() => { window.__vpLive.length = 0; });
+    const before = await inputs();
+    // drag, stop, lift: a release while still moving (a flick) starts a fling in Chrome, and
+    // the next tap then only stops the fling — at 890 x 360 that swallowed the first tap on
+    // a quick setting every time (verify step, 2026-10-19); a 250 ms hold removed it
+    const gesture = async () => {
+      if (touch) {
+        await page.touchscreen.touchStart(x0, y);
+        for (let i = 1; i <= 8; i++) { await page.touchscreen.touchMove(x0 + ((x1 - x0) * i) / 8, y); await sleep(16); }
+        await sleep(250);
+        await page.touchscreen.touchEnd();
+      } else {
+        await page.mouse.move(x0, y);
+        await page.mouse.down();
+        for (let i = 1; i <= 8; i++) { await page.mouse.move(x0 + ((x1 - x0) * i) / 8, y); await sleep(16); }
+        await sleep(250);
+        await page.mouse.up();
+      }
+      await sleep(150);
+    };
+    const hit = await hitAt(el, x0, y);
+    await gesture();
+    let after = await inputs();
+    if (after.st === before.st && after.pct === before.pct) {
+      warn(`${which} slider: the ${touch ? "touch" : "mouse"} drag did not move it; repeated once`, `start ${Math.round(x0)},${Math.round(y)} on ${hit.what}${hit.onTarget ? " (the slider)" : " (NOT the slider)"}`);
+      await gesture();
+      after = await inputs();
+    }
+    await el.dispose();
+    const want = `${after.st},${after.pct}`;
+    const ok = await settled(want);
+    await sleep(500); // a second render would show in the live log
+    const renders = (await liveLog(page)).filter((t) => t === "Updating the preview…").length;
+    return { ok, after, want, renders };
+  }
+  for (const [which, end, field, limKey] of [["pitch", 1, "st", "stMax"], ["resonance", -1, "pct", "pctMin"], ["pitch", -1, "st", "stMin"], ["resonance", 1, "pct", "pctMax"]]) {
+    const r = await drag(which, end);
+    check(`${which} slider ${touch ? "touch" : "mouse"}-dragged to its ${end > 0 ? "top" : "bottom"} end -> one render on release, matching the slider`,
+      r.ok && r.after[field] === lim[limKey] && r.renders === 1, `${r.want}; ${r.renders} render(s)`);
+  }
+
+  // quick settings, in an order where each one changes the setting
+  let cur = await inputs();
+  for (const k of ["higherBrighter", "pitchOnly", "lowerDarker", "resonanceOnly", "unchanged"]) {
+    const exp = applyPreset(k, { st: cur.st, pct: cur.pct }, lim);
+    const pr = await press(`[data-vp-preset="${k}"]`);
+    if (!(await inputsAre(exp.st, exp.pct))) {
+      warn(`quick setting ${k}: the ${how} did not arrive; repeated once`, `at ${pr.at} on ${pr.hit?.what}${pr.hit?.onTarget ? " (the button)" : " (NOT the button)"}`);
+      await press(`[data-vp-preset="${k}"]`);
+    }
+    const ok = await settled(`${exp.st},${exp.pct}`);
+    cur = await inputs();
+    check(`quick setting ${k} (${how}) -> ${exp.st},${exp.pct} rendered`, ok && cur.st === exp.st && cur.pct === exp.pct, `${cur.st},${cur.pct}`);
+  }
+  // the target row: type a pitch, Apply
+  await press('[data-vp-preset="target"]');
+  await sleep(250);
+  await page.evaluate(() => { const i = document.querySelector("[data-vp-target] input"); i.focus(); i.select(); });
+  await page.keyboard.type("240"); // about +5 st above the clean phrase's ~182 Hz median, so a render must follow
+  await press("[data-vp-apply]");
+  await sleep(300);
+  cur = await inputs();
+  const tr = await page.$eval("[data-vp-target-result]", (e) => e.textContent).catch(() => "");
+  check(`target row (${how} Apply, 240 Hz) -> a raised setting rendered`, (await settled(`${cur.st},${cur.pct}`)) && /^Set to /.test(tr) && cur.st > 0, `${tr}; ${cur.st},${cur.pct}`);
+  await press('[data-vp-preset="target"]'); // close the row
+
+  // playback: each version plays with the AudioContext running; loop; stop
+  for (const which of ["preview", "rebuild", "original"]) {
+    await press(`[data-vp-play-version="${which}"]`);
+    const ok = await waitVp(page, `(() => { const c = document.querySelector("[data-voice-preview]"); return c?.dataset.vpPlaying === ${JSON.stringify(which)} && c.dataset.vpAudio === "running"; })()`, `play ${which}`, 5000);
+    check(`Play ${which} (${how}) -> plays, AudioContext running`, ok);
+  }
+  await press("[data-vp-loop]");
+  await sleep(150);
+  check(`Loop (${how}) -> aria-pressed`, await page.$eval("[data-vp-loop]", (b) => b.getAttribute("aria-pressed") === "true"));
+  for (const scheme of ["dark", "light"]) {
+    await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: scheme }]);
+    await sleep(150);
+    await page.evaluate(() => document.querySelector("[data-vp-play]")?.scrollIntoView({ block: "center" }));
+    await shot(page, `${v}-${scheme}-playing`);
+  }
+  await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "dark" }]);
+  await press("[data-vp-stop]");
+  const stopped = await waitVp(page, () => { const c = document.querySelector("[data-voice-preview]"); return c?.dataset.vpPlaying === "" && c.dataset.vpAudio === "suspended"; }, "stopped", 5000);
+  check(`Stop (${how}) -> nothing plays, AudioContext suspended`, stopped);
+  await press("[data-vp-loop]");
+
+  // Discard frees the recording's memory
+  const memPeak = await pageMem(cdp);
+  const wPeak = await workerMem(page);
+  const oldWorker = vpWorkers(page)[0];
+  await press("[data-vp-discard]");
+  await phaseIs(page, "ready", 15000);
+  await sleep(800);
+  const memAfter = await pageMem(cdp);
+  const wAfter = await workerMem(page);
+  log(`memory ${v}: before recording: ${memLine(memBase)}; worker WebAssembly ${MB(wBase.bytes)} MB`);
+  log(`memory ${v}: preview + playback: ${memLine(memPeak)}; worker WebAssembly ${MB(wPeak.bytes)} MB`);
+  log(`memory ${v}: after Discard: ${memLine(memAfter)}; worker WebAssembly ${MB(wAfter.bytes)} MB`);
+  check("Discard: the old worker target is gone, one fresh worker", !vpWorkers(page).includes(oldWorker) && wAfter.workers === 1, `${vpWorkers(page).length} worker(s)`);
+  check("Discard: the fresh worker's WebAssembly memory is back at the initial size", wBase.bytes > 0 && wAfter.bytes === wBase.bytes && wPeak.bytes > wBase.bytes,
+    `${MB(wBase.bytes)} -> ${MB(wPeak.bytes)} -> ${MB(wAfter.bytes)} MB`);
+  // the recording's PCM (original + rebuild + preview Float32Arrays, 8 s each here) must go
+  check("Discard: the recording's PCM released (array-buffer backing back within 256 KB of before the recording)",
+    memBase.backing != null && memPeak.backing - memBase.backing > 3 * 3 * 44100 * 4 && memAfter.backing <= memBase.backing + 262144,
+    `${MB(memBase.backing)} -> ${MB(memPeak.backing)} -> ${MB(memAfter.backing)} MB`);
+  // the playback's AudioBuffers (one per version played) must go too
+  check("Discard: no AudioBuffer left on the page (playback sources released)", memPeak.audio.n >= 3 && memAfter.audio.n === memBase.audio.n,
+    `${memBase.audio.n} -> ${memPeak.audio.n} -> ${memAfter.audio.n}${memAfter.audio.n > memBase.audio.n ? `; ${MB(memAfter.audio.bytes)} MB still held` : ""}`);
+  await shot(page, `${v}-dark-after-discard`);
+}
+
 
 async function partFlow() {
   scope = "flow";
@@ -628,6 +854,14 @@ async function partFlow() {
     const b = file ? readFileSync(path.join(dl, file)) : null;
     const ok = b && b.toString("ascii", 0, 4) === "RIFF" && b.toString("ascii", 8, 12) === "WAVE" && b.readUInt16LE(20) === 1 && b.readUInt16LE(22) === 1 && b.readUInt16LE(34) === 16;
     const rate = b?.readUInt32LE(24), dur = b ? b.readUInt32LE(40) / 2 / rate : null;
+    let rms = 0, clipped = 0;
+    if (b) {
+      const n = b.readUInt32LE(40) / 2;
+      for (let i = 0; i < n; i++) { const x = b.readInt16LE(44 + 2 * i); rms += x * x; if (Math.abs(x) >= 32767) clipped++; }
+      rms = Math.sqrt(rms / n) / 32768;
+      clipped /= n;
+    }
+    check("Download: the samples carry sound (RMS >= 0.01, < 0.1 % at full scale)", rms >= 0.01 && clipped < 0.001, `rms ${rms.toFixed(4)}, clipped ${(clipped * 100).toFixed(3)} %`);
     const [rst, rpct] = st.vpRendered.split(",").map(Number);
     const name = `syrinx-voice-preview-${rst < 0 ? "minus" : "plus"}${Math.abs(rst)}st-${rpct < 0 ? "minus" : "plus"}${Math.abs(rpct)}pct.wav`;
     check("Download: RIFF/WAVE, 16-bit mono, engine rate, the recording's duration, the setting in the name", ok && rate === Number(st.vpRate) && Math.abs(dur - Number(st.vpSeconds)) < 0.002 && file === name,
@@ -701,18 +935,96 @@ async function partDev() {
   check("dev server up", up);
   await launch(WAV.clean);
   const { page, errors } = await open("desktop", `http://localhost:${DEV_PORT}/Syrinx/`);
+  // a page reload by the dev server (dependency re-optimisation) would reset the card:
+  // log the server's messages and every main-frame navigation after the first
+  const viteMsgs = [];
+  let navs = 0;
+  page.on("console", (m) => { if (/\[vite\]/.test(m.text())) viteMsgs.push(m.text().slice(0, 160)); });
+  page.on("framenavigated", (f) => { if (f === page.mainFrame()) navs++; });
+  const navs0 = navs;
   await startListening(page);
   await openLab(page);
   await openPreview(page);
   const ready = await waitVp(page, () => document.querySelector("[data-voice-preview]")?.dataset.vpPhase === "ready", "dev ready", 60000);
   const st = await vp(page);
-  check("dev server: the ?url glue import loads, worker ready", ready && st.vpBuild === "simd", st.vpBuild);
+  check("dev server: the ?url glue import loads, worker ready", ready && st?.vpBuild === "simd", st?.vpBuild);
   const rec = await recordToPreview(page, { stopAfterMs: 4000 });
-  check("dev server: record -> preview", rec.ok, `${rec.st.vpSeconds} s`);
+  check("dev server: record -> preview", rec.ok, `${rec.st?.vpSeconds ?? "card gone"} s; reloads ${navs - navs0}${viteMsgs.length ? `; vite: ${viteMsgs.join(" | ")}` : ""}`);
   check("no console errors", errors.length === 0, errors.slice(0, 3).join(" | "));
   await page.close();
   try { execFileSync("taskkill", ["/pid", String(devServer.pid), "/T", "/F"], { stdio: "ignore" }); } catch { /* gone */ }
   devServer = null;
+}
+
+// One run against `vite preview` of the same build (the task's serving path; the static
+// server above logs requests but sets its own MIME types): the .wasm comes with
+// application/wasm, the SIMD build loads, record -> preview -> a quick setting -> playback.
+async function partPreview() {
+  scope = "vite preview";
+  devServer = spawn(process.execPath, [path.join(repo, "node_modules/vite/bin/vite.js"), "preview", "--port", String(PREVIEW_PORT), "--strictPort"], { cwd: repo, stdio: "ignore" });
+  const base = `http://localhost:${PREVIEW_PORT}/Syrinx/`;
+  let up = false;
+  for (let i = 0; i < 300 && !up; i++) {
+    try { const r = await fetch(base); up = r.ok; } catch { /* not yet */ }
+    if (!up) await sleep(200);
+  }
+  check("vite preview up", up);
+  const wr = await fetch(`${base}assets/${simdWasm}`).catch(() => null);
+  check("vite preview serves the .wasm as application/wasm", wr?.ok && wr.headers.get("content-type") === "application/wasm", wr?.headers.get("content-type") ?? "no response");
+  await launch(WAV.clean);
+  const { page, errors } = await open("desktop", base);
+  await startListening(page);
+  await openLab(page);
+  await openPreview(page);
+  const ready = await waitVp(page, () => document.querySelector("[data-voice-preview]")?.dataset.vpPhase === "ready", "preview ready", 60000);
+  check("vite preview: worker ready with the SIMD build", ready && (await vp(page)).vpBuild === "simd");
+  const rec = await recordToPreview(page, { stopAfterMs: 4000 });
+  check("vite preview: record -> preview", rec.ok, `${rec.st.vpSeconds} s at ${rec.st.vpRate} Hz, stop -> preview ${rec.endToEndMs} ms`);
+  await clickSel(page, '[data-vp-preset="higherBrighter"]');
+  const r = await waitVp(page, () => { const c = document.querySelector("[data-voice-preview]"); return c?.dataset.vpRendered === "2,3" && c.dataset.vpRendering === "0"; }, "render 2,3", 15000);
+  check("vite preview: a quick setting renders", r);
+  await clickSel(page, '[data-vp-play-version="preview"]');
+  check("vite preview: Play preview runs the AudioContext", await waitVp(page, () => { const c = document.querySelector("[data-voice-preview]"); return c?.dataset.vpPlaying === "preview" && c.dataset.vpAudio === "running"; }, "play", 5000));
+  await clickSel(page, "[data-vp-stop]");
+  check("no console errors", errors.length === 0, errors.slice(0, 3).join(" | "));
+  await page.close();
+  try { execFileSync("taskkill", ["/pid", String(devServer.pid), "/T", "/F"], { stdio: "ignore" }); } catch { /* gone */ }
+  devServer = null;
+}
+
+// The non-SIMD fallback in a real browser: the static server hands out a SIMD .wasm that
+// fails to compile (valid magic, broken sections); the worker retries with the non-SIMD
+// build, which then records, renders and plays.
+async function partFallback() {
+  scope = "fallback";
+  corruptSimd = true;
+  try {
+    await launch(WAV.clean);
+    const { page, errors } = await open("desktop");
+    await startListening(page);
+    await openLab(page);
+    const mark = served.length;
+    await openPreview(page);
+    const ready = await waitVp(page, () => document.querySelector("[data-voice-preview]")?.dataset.vpPhase === "ready", "fallback ready", 30000);
+    await sleep(500);
+    const wasm = served.slice(mark).filter((x) => x.endsWith(".wasm")).map(wasmName);
+    const nosimd = distWasm.find((d) => d.f !== simdWasm)?.f;
+    const st = await vp(page);
+    check("a SIMD build that fails to compile -> the non-SIMD build loads (one fetch of it)", ready && st.vpBuild === "nosimd" && wasm.filter((f) => f === nosimd).length === 1 && wasm.includes(simdWasm),
+      `${wasm.join(", ")}; build ${st.vpBuild}`);
+    const rec = await recordToPreview(page, { stopAfterMs: 4000 });
+    check("non-SIMD: record -> preview", rec.ok, `${rec.st.vpSeconds} s, analysis + rebuild ${rec.st.vpAnalysisMs} ms`);
+    await clickSel(page, '[data-vp-preset="lowerDarker"]');
+    const r = await waitVp(page, () => { const c = document.querySelector("[data-voice-preview]"); return c?.dataset.vpRendered?.startsWith("-") && c.dataset.vpRendering === "0"; }, "render lower", 15000);
+    check("non-SIMD: a quick setting renders", r, `${(await vp(page)).vpRendered}, render ${(await vp(page)).vpRenderMs} ms`);
+    await clickSel(page, '[data-vp-play-version="preview"]');
+    check("non-SIMD: Play preview runs the AudioContext", await waitVp(page, () => { const c = document.querySelector("[data-voice-preview]"); return c?.dataset.vpPlaying === "preview" && c.dataset.vpAudio === "running"; }, "play", 5000));
+    await clickSel(page, "[data-vp-stop]");
+    check("no console errors", errors.length === 0, errors.slice(0, 3).join(" | "));
+    await page.close();
+  } finally {
+    corruptSimd = false;
+  }
 }
 
 // The spike's A5 desktop Chrome values at 48 kHz, speech-dense clips (design note §14).
@@ -727,7 +1039,8 @@ async function partTiming() {
   if (!existsSync(TIMING_WAV)) { check("timing.wav present (scripts/voice-preview-smoke-wavs.mjs with $VP_CACHE)", false); return; }
   await launch(TIMING_WAV);
   log(`browser ${await browser.version()}`);
-  const { page, errors } = await open("desktop", `http://127.0.0.1:${PORT}/Syrinx/?diag=1&capture=audiocontext&sr=48000`);
+  const { page, errors, cdp } = await open("desktop", `http://127.0.0.1:${PORT}/Syrinx/?diag=1&capture=audiocontext&sr=48000`);
+  const mems = [];
   await startListening(page);
   await openLab(page);
   await openPreview(page);
@@ -748,7 +1061,13 @@ async function partTiming() {
       }
       await phaseIs(page, "analysing", 15000);
       const tStop = Date.now();
-      await phaseIs(page, "preview", 30000);
+      if (!(await phaseIs(page, "preview", 30000))) {
+        // which state the card ended in instead (diag line included: ?diag=1)
+        const bad = await page.evaluate(() => { const c = document.querySelector("[data-voice-preview]"); return c ? { phase: c.dataset.vpPhase, status: c.querySelector("[data-vp-status]")?.textContent, diag: c.querySelector("[data-vp-diag]")?.textContent } : null; });
+        check(`${phrase} s #${i + 1}: preview ready`, false, JSON.stringify(bad));
+        await recordReady(page, 15000).catch(() => {});
+        continue;
+      }
       const e2eFirst = Date.now() - tStop;
       const st = await vp(page);
       const tPress = Date.now();
@@ -760,7 +1079,16 @@ async function partTiming() {
       rows.push({ phrase, i, seconds: Number(st.vpSeconds), rate: Number(st.vpRate), capture: Number(st.vpCaptureRate), build: st.vpBuild,
         analysis: Number(st.vpAnalysisMs), render: Number(st2.vpRenderMs), e2eFirst, e2eRender, busy: load });
       log(`${phrase} s #${i + 1}: ${Number(st.vpSeconds).toFixed(2)} s @ ${st.vpRate} Hz (${st.vpBuild}), analysis + rebuild ${st.vpAnalysisMs} ms, render ${st2.vpRenderMs} ms; end to end ${e2eFirst} / ${e2eRender} ms; busy ${(load * 100).toFixed(0)} %`);
+      // memory (outside the timed spans): after the first and the last 8 s recording
+      if (phrase === 8 && (i === 0 || i === TIMING_N - 1)) mems.push({ i, page: await pageMem(cdp), worker: await workerMem(page) });
     }
+  }
+  if (mems.length === 2) {
+    const [a, b] = mems;
+    log(`memory after 8 s #1: ${memLine(a.page)}; worker WebAssembly ${MB(a.worker.bytes)} MB`);
+    log(`memory after 8 s #${TIMING_N}: ${memLine(b.page)}; worker WebAssembly ${MB(b.worker.bytes)} MB`);
+    check(`no growth over ${2 * TIMING_N - 1} Record again cycles (AudioBuffers, array-buffer backing, worker memory)`, b.page.audio.n <= a.page.audio.n && b.page.backing <= a.page.backing + 262144 && b.worker.workers === 1 && b.worker.bytes <= a.worker.bytes,
+      `AudioBuffers ${a.page.audio.n} -> ${b.page.audio.n}; backing ${MB(a.page.backing)} -> ${MB(b.page.backing)} MB; worker ${MB(a.worker.bytes)} -> ${MB(b.worker.bytes)} MB`);
   }
   const f = (v) => v.toFixed(0);
   for (const phrase of [5, 8]) {
@@ -788,6 +1116,8 @@ try {
   if (PARTS.has("flow")) await partFlow();
   if (PARTS.has("checks")) await partChecks();
   if (PARTS.has("dev")) await partDev();
+  if (PARTS.has("preview")) await partPreview();
+  if (PARTS.has("fallback")) await partFallback();
   if (PARTS.has("timing")) await partTiming();
 } catch (e) {
   console.error(e);
@@ -795,7 +1125,8 @@ try {
 }
 if (browser) { await browser.close().catch(() => {}); closeBrowserHard(); }
 const failed = results.filter((r) => !r.ok);
-console.log(`\n${results.length - failed.length} passed, ${failed.length} failed; screenshots in ${OUT}`);
+console.log(`\n${results.length - failed.length} passed, ${failed.length} failed, ${warns.length} input(s) repeated; screenshots in ${OUT}`);
+for (const w of warns) console.log(`  WARN ${w}`);
 for (const f of failed) console.log(`  FAIL ${f.name}${f.detail ? `  (${f.detail})` : ""}`);
 cleanup();
 process.exit(failed.length ? 1 : 0);
