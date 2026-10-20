@@ -4,7 +4,7 @@
 // measurements/voice-preview-phase1-2026-10-19.md §14 "Smoke".
 //
 //   npm run build && node scripts/voice-preview-smoke-wavs.mjs &&
-//   node scripts/voice-preview-smoke.mjs [--parts=layout,flow,checks,dev,preview,fallback] [--out=<dir>]
+//   node scripts/voice-preview-smoke.mjs [--parts=layout,flow,checks,dev,preview,fallback,chunkfail] [--out=<dir>]
 //        [--viewports=p360,p402,phone,landscape,desktop] [--chrome=<exe>]
 //        [--port=4193] [--dev-port=5193] [--preview-port=4194]
 //
@@ -35,14 +35,27 @@
 //         16-bit mono, engine rate, the recording's duration); Discard (the worker target
 //         goes, a fresh one comes, back to ready, focus on Record); listening stopped during
 //         a recording -> cancelled. No gender words in the card, no console errors.
+//         Fix step: "Preview updated: …" announces the setting in words; the setting line beside
+//         Play (and linked to the Preview button); forced colors (Windows high contrast): every
+//         Play / Loop button keeps a border and the pressed ones differ from the others; with a
+//         preview on screen, listening restarted -> Record again waits (aria-disabled, the
+//         countdown) and a press does nothing, the preview is kept.
 // checks  hum.wav (10 s of fan hum first) -> the hum notice; noise.wav (pink, +10 dB SNR)
 //         -> the noise notice; the layout part's clean runs show neither. Every run makes a
-//         preview.
-// dev     one run against `vite` (dev server): the ?url glue import works there too.
+//         preview, and "Preview ready." is announced WITH the notice (fix step). The noise run
+//         (448 x 890, touch, direction "More feminine"): opening the target row with a prefilled
+//         field does not focus the field (no phone keyboard over the lab area).
+// dev     one run against `vite` (dev server): the ?url glue import works there too. The dev
+//         server runs in this process (Vite's createServer) with its own dependency cache in
+//         build/vp-smoke-vite/, so a worktree whose node_modules is a junction never writes
+//         Vite's cache into the checkout it links to (fix step).
 // preview one run against `vite preview` of the same build: the .wasm is served as
 //         application/wasm, the SIMD build loads, record -> preview -> quick setting -> play.
 // fallback the static server hands out a SIMD .wasm that fails to compile: the worker loads
 //         the non-SIMD build (fetched once), which records, renders and plays.
+// chunkfail the static server answers 404 for the card's chunk (as after a deploy while the tab
+//         stays open): opening the view shows "The voice preview could not load…" inside the
+//         lab; the app stays (tabs, Stop Listening), and the lab's other views still work.
 // Every part also fails on console errors, the workers' included.
 // timing  (not in the default parts; needs timing.wav, i.e. $VP_CACHE) desktop timing in the
 //         spike's browser (--chrome=<Chrome for Testing 154>, default $VP_CACHE/browsers/…),
@@ -61,8 +74,8 @@
 //
 // Process hygiene (CLAUDE.md hard rule 2): Chrome is launched by puppeteer with a fresh
 // temporary --user-data-dir per launch and closed with browser.close(), falling back to
-// taskkill of ITS pid only (/T /F); the dev server is this script's own child, killed only
-// by its PID. Cleanup runs on exit / SIGINT / SIGTERM / uncaughtException.
+// taskkill of ITS pid only (/T /F); the dev server runs inside this process; `vite preview`
+// is this script's own child, killed only by its PID. Cleanup runs on exit / SIGINT / SIGTERM / uncaughtException.
 
 import { spawn, execFileSync } from "node:child_process";
 import { createServer } from "node:http";
@@ -76,7 +89,7 @@ import { applyPreset } from "../src/voice-preview/controls.js";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const arg = (k, d) => (process.argv.find((a) => a.startsWith(`--${k}=`)) ?? `=${d}`).split("=").slice(1).join("=");
-const PARTS = new Set(arg("parts", "layout,flow,checks,dev,preview,fallback").split(",").filter(Boolean));
+const PARTS = new Set(arg("parts", "layout,flow,checks,dev,preview,fallback,chunkfail").split(",").filter(Boolean));
 const WAVDIR = arg("wavs", path.join(repo, "build", "voice-preview-smoke", "wavs"));
 const OUT = arg("out", path.join(repo, "build", "voice-preview-smoke", "shots"));
 const PORT = Number(arg("port", "4193"));
@@ -142,6 +155,7 @@ const MIME = { ".html": "text/html", ".js": "text/javascript", ".mjs": "text/jav
   ".wasm": "application/wasm", ".txt": "text/plain; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon", ".onnx": "application/octet-stream" };
 const served = [];
 let corruptSimd = false; // the fallback part: serve a SIMD .wasm that fails to compile
+let missingCard = false; // the chunkfail part: 404 for the card's chunk
 function startStatic() {
   const root = path.join(repo, "dist");
   httpServer = createServer((req, res) => {
@@ -150,6 +164,7 @@ function startStatic() {
     let p = decodeURIComponent(u.pathname.replace(/^\/Syrinx\/?/, "/"));
     let f = path.join(root, p);
     if (!f.startsWith(root)) { res.writeHead(403); res.end(); return; }
+    if (missingCard && /^VoicePreviewCard-.*\.js$/.test(path.basename(f))) { res.writeHead(404, { "Cache-Control": "no-store" }); res.end("not found"); return; }
     if (!existsSync(f) || statSync(f).isDirectory()) f = path.join(root, "index.html");
     res.writeHead(200, { "Content-Type": MIME[path.extname(f)] ?? "application/octet-stream", "Cache-Control": "no-store" });
     let body = readFileSync(f);
@@ -664,7 +679,7 @@ async function interact(page, cdp, v, memBase, wBase) {
 async function partFlow() {
   scope = "flow";
   await launch(WAV.clean);
-  const { page, errors } = await open("desktop");
+  const { page, errors, cdp } = await open("desktop");
   await startListening(page, "feminine");
   await openLab(page);
   await openPreview(page);
@@ -731,7 +746,8 @@ async function partFlow() {
   check("arrow keys: aria-valuetext follows, nothing rendered yet", /^2 semitones higher, about \d+ hertz$/.test(mid2.vt) && mid2.rendering === "0" && mid2.rendered === "", JSON.stringify(mid2));
   await waitVp(page, () => document.querySelector("[data-voice-preview]")?.dataset.vpRendered === "2,0", "render 2,0", 10000);
   const live1 = await liveLog(page);
-  check("one render 400 ms after the last key (Updating -> Preview updated, once)", live1.filter((t) => t === "Updating the preview…").length === 1 && live1.filter((t) => t === "Preview updated.").length === 1, live1.join(" | "));
+  check("one render 400 ms after the last key (Updating -> Preview updated, once)", live1.filter((t) => t === "Updating the preview…").length === 1 && live1.filter((t) => t.startsWith("Preview updated")).length === 1, live1.join(" | "));
+  check("\"Preview updated\" says the setting in words", live1.some((t) => /^Preview updated: pitch 2 semitones higher, about \d+ hertz; resonance unchanged\.$/.test(t)), live1.join(" | "));
   const vt2 = await page.$eval('[data-vp-slider="pitch"] input', (i) => i.getAttribute("aria-valuetext"));
   check("pitch label: the median times the ratio", vt2 === `2 semitones higher, about ${Math.round(median * 2 ** (2 / 12))} hertz` || Math.abs(Number(vt2.match(/about (\d+)/)[1]) - median * 2 ** (2 / 12)) <= 1, vt2);
   await page.keyboard.press("Home");
@@ -751,6 +767,18 @@ async function partFlow() {
     await clickSel(page, `[data-vp-preset="${k}"]`);
     const ok = await waitVp(page, `document.querySelector("[data-voice-preview]")?.dataset.vpRendered === ${JSON.stringify(want2)} && document.querySelector("[data-voice-preview]")?.dataset.vpRendering === "0"`, `preset ${k}`, 10000);
     check(`preset ${k} -> ${want2}`, ok);
+    if (k === "lowerDarker") {
+      // the setting beside the Play buttons, linked to the Preview button; the announcement in words
+      await sleep(300);
+      const sl = await page.evaluate(() => {
+        const e = document.querySelector("[data-vp-preview-setting]");
+        const b = document.querySelector('[data-vp-play-version="preview"]');
+        return { text: e?.textContent ?? null, linked: !!e && (b.getAttribute("aria-describedby") ?? "").split(" ").includes(e.id) };
+      });
+      check("setting line beside Play: \"Preview: −2 st, −3 % · may sound buzzier\", linked to the Preview button", sl.text === "Preview: −2 st, −3 % · may sound buzzier" && sl.linked, JSON.stringify(sl));
+      const lv = await liveLog(page);
+      check("the lowered quick setting is announced with \"may sound buzzier\"", lv.some((t) => /^Preview updated: pitch 2 semitones lower, about \d+ hertz, may sound buzzier; resonance 3 percent darker\.$/.test(t)), lv.slice(-3).join(" | "));
+    }
   }
   // the target row
   await clickSel(page, '[data-vp-preset="target"]');
@@ -761,7 +789,7 @@ async function partFlow() {
   await sleep(300);
   const result = await page.$eval("[data-vp-target-result]", (e) => e.textContent).catch(() => "");
   const wantSt = Math.max(-12, Math.min(12, Math.round(12 * Math.log2(205 / median))));
-  check("Apply -> \"Set to … st (about … Hz)\"", /^Set to [+\u22120-9]+ st \(about \d+ Hz\)(, the (highest|lowest) setting)?$/.test(result), `${result} (median ~${median} Hz, expected ~${wantSt} st)`);
+  check("Apply -> \"Set to … st (about … Hz)\"", /^Set to [+\u22120-9]+ st \(about \d+ Hz\)(, the (highest|lowest) setting)?( · may sound buzzier)?$/.test(result) && result.endsWith("buzzier") === wantSt < 0, `${result} (median ~${median} Hz, expected ~${wantSt} st)`);
   await page.focus("[data-vp-target] input");
   await page.keyboard.press("Escape");
   await sleep(150);
@@ -796,6 +824,20 @@ async function partFlow() {
   await sleep(200);
   check("Loop on (aria-pressed)", await page.$eval("[data-vp-loop]", (b) => b.getAttribute("aria-pressed") === "true"));
   await shot(page, "desktop-dark-playing");
+  // forced colors (Windows high contrast): backgrounds are replaced there, so the pressed
+  // state must show some other way (the system Highlight colours) and every button an outline
+  await cdp.send("Emulation.setEmulatedMedia", { features: [{ name: "forced-colors", value: "active" }, { name: "prefers-color-scheme", value: "dark" }] });
+  await sleep(300);
+  const fc = await page.evaluate(() => {
+    const st = (sel) => { const b = document.querySelector(sel); const cs = getComputedStyle(b); return { pressed: b.getAttribute("aria-pressed"), bg: cs.backgroundColor, fg: cs.color, border: parseFloat(cs.borderTopWidth) }; };
+    return { forced: matchMedia("(forced-colors: active)").matches, original: st('[data-vp-play-version="original"]'), rebuild: st('[data-vp-play-version="rebuild"]'), loop: st("[data-vp-loop]"), stop: st("[data-vp-stop]") };
+  });
+  await shot(page, "desktop-forced-colors-playing");
+  await cdp.send("Emulation.setEmulatedMedia", { features: [{ name: "forced-colors", value: "none" }, { name: "prefers-color-scheme", value: "dark" }] });
+  check("forced colors: the playing version and Loop differ from the unpressed buttons; every button has a border",
+    fc.forced && fc.original.pressed === "true" && fc.loop.pressed === "true" && fc.rebuild.pressed === "false"
+      && fc.original.bg !== fc.rebuild.bg && fc.loop.bg !== fc.rebuild.bg && fc.original.fg !== fc.rebuild.fg
+      && [fc.original, fc.rebuild, fc.loop, fc.stop].every((b) => b.border >= 1), JSON.stringify(fc));
   await clickSel(page, "[data-vp-stop]");
   await sleep(300);
   p = await vp(page);
@@ -868,6 +910,27 @@ async function partFlow() {
       `${file}, ${rate} Hz, ${dur?.toFixed(3)} s vs ${st.vpSeconds} s`);
   } finally { rmSync(dl, { recursive: true, force: true }); }
 
+  // listening restarted with a preview on screen: Record again waits like Record (fix step:
+  // a press during the wait used to discard the preview and record nothing)
+  {
+    const w0 = page.workers().filter((w) => /vp-worker/.test(w.url()));
+    await clickButton(page, ["Stop Listening"]);
+    await sleep(1000);
+    await clickButton(page, ["Start Listening"]);
+    await page.waitForFunction(() => document.body.innerText.includes("Stop Listening"), { timeout: 20000 });
+    await page.waitForSelector("[data-voice-preview]", { timeout: 20000 });
+    await sleep(500);
+    const a = await vp(page);
+    check("listening restarted: the preview is kept, Record again waits (aria-disabled, countdown)", a.vpPhase === "preview" && a.record === "Record again" && a.recordInactive && /Ready to record in \d s/.test(a.status), a.status);
+    await clickSel(page, "[data-vp-record]");
+    await sleep(700);
+    const b = await vp(page);
+    const w1 = page.workers().filter((w) => /vp-worker/.test(w.url()));
+    check("a press during the wait does nothing: same preview, same worker", b.vpPhase === "preview" && b.vpRendered === a.vpRendered && w1.length === 1 && w1[0] === w0[0], `${b.vpPhase}, ${w1.length} worker(s)`);
+    const back = await waitVp(page, () => { const r = document.querySelector("[data-vp-record]"); return r?.textContent === "Record again" && r.getAttribute("aria-disabled") !== "true"; }, "record again active", 10000);
+    check("after 6 s of listening Record again is active again", back);
+  }
+
   // discard: the worker goes, a fresh one comes
   const workersBefore = page.workers().filter((w) => /vp-worker/.test(w.url()));
   await page.evaluate(() => { window.__vpLive.length = 0; });
@@ -906,9 +969,10 @@ async function partChecks() {
     scope = `checks ${name}`;
     await launch(wav);
     const { page, errors } = await open("phone");
-    const t0 = await startListening(page);
+    const t0 = await startListening(page, name === "noise" ? "feminine" : "exploring");
     await openLab(page);
     await openPreview(page);
+    await watchLive(page);
     await recordReady(page);
     const wait = t0 + leadS * 1000 - Date.now();
     if (wait > 0) await sleep(wait);
@@ -916,8 +980,20 @@ async function partChecks() {
     const want = name;
     check(`${name}.wav: the ${name} notice, and a preview is still made`, rec.ok && rec.st.notices.includes(want) && rec.st.text.includes("A quieter spot gives a cleaner preview."),
       `hum ${rec.st.vpHum}, noise ${rec.st.vpNoise}, margin ${rec.st.vpMargin} dB`);
-    // (the hum 20 dB below the speech also lowers the level margin under 30 dB, so the noise
-    // notice may show too — as the design's numbers say: hum at -20 dB measured 26.8-28.9 dB)
+    const live = await liveLog(page);
+    const noticeText = name === "hum" ? "There's a steady hum in the background." : "There's a lot of background noise.";
+    check(`"Preview ready." is announced with the ${name} notice`, live.some((t) => t.startsWith("Preview ready. ") && t.includes(noticeText) && t.endsWith("A quieter spot gives a cleaner preview.")), live.join(" | "));
+    if (name === "noise") {
+      // a phone layout with a prefilled target field: opening the row must not focus the
+      // field (that would pop up the keyboard over the lab area)
+      await clickSel(page, '[data-vp-preset="target"]');
+      await sleep(300);
+      const tf = await page.evaluate(() => ({ open: !!document.querySelector("[data-vp-target]"), value: document.querySelector("[data-vp-target] input")?.value, activeIsField: document.activeElement?.type === "number" }));
+      check("phone: the prefilled target row opens without focusing its field", tf.open && tf.value === "205" && !tf.activeIsField, JSON.stringify(tf));
+      await clickSel(page, '[data-vp-preset="target"]');
+    }
+    // (the hum 20 dB below the speech also lowers the level margin under 28 dB, so the noise
+    // notice may show too: hum-check-test.js measures 24.4 dB for that case)
     await shot(page, `phone-dark-${name}-notice`);
     check("no console errors", errors.length === 0, errors.slice(0, 3).join(" | "));
     await page.close();
@@ -926,7 +1002,13 @@ async function partChecks() {
 
 async function partDev() {
   scope = "dev";
-  devServer = spawn(process.execPath, [path.join(repo, "node_modules/vite/bin/vite.js"), "--port", String(DEV_PORT), "--strictPort"], { cwd: repo, stdio: "ignore" });
+  const { createServer: createViteServer } = await import("vite");
+  const viteServer = await createViteServer({
+    root: repo, configFile: path.join(repo, "vite.config.js"), logLevel: "warn",
+    cacheDir: path.join(repo, "build", "vp-smoke-vite"), // not node_modules/.vite (shared through a junction)
+    server: { port: DEV_PORT, strictPort: true },
+  });
+  await viteServer.listen();
   let up = false;
   for (let i = 0; i < 300 && !up; i++) {
     try { const r = await fetch(`http://localhost:${DEV_PORT}/Syrinx/`); up = r.ok; } catch { /* not yet */ }
@@ -952,8 +1034,38 @@ async function partDev() {
   check("dev server: record -> preview", rec.ok, `${rec.st?.vpSeconds ?? "card gone"} s; reloads ${navs - navs0}${viteMsgs.length ? `; vite: ${viteMsgs.join(" | ")}` : ""}`);
   check("no console errors", errors.length === 0, errors.slice(0, 3).join(" | "));
   await page.close();
-  try { execFileSync("taskkill", ["/pid", String(devServer.pid), "/T", "/F"], { stdio: "ignore" }); } catch { /* gone */ }
-  devServer = null;
+  await viteServer.close();
+}
+
+// The card's chunk fails to download (a deploy replaced the hashed chunks while the tab stayed
+// open): the lab shows the load error in place of the card, the app stays usable (fix step;
+// without LabView's error boundary React removed the whole root).
+async function partChunkFail() {
+  scope = "chunkfail";
+  missingCard = true;
+  try {
+    await launch(WAV.clean);
+    const { page } = await open("p360");
+    await startListening(page);
+    await openLab(page);
+    await clickSel(page, '[data-lab-view="preview"]');
+    const shown = await waitVp(page, () => !!document.querySelector("[data-lab-vp-error]"), "load error shown", 20000);
+    const st = await page.evaluate(() => ({
+      text: document.querySelector("[data-lab-vp-error]")?.textContent ?? null,
+      root: document.getElementById("root")?.children.length ?? 0,
+      stop: [...document.querySelectorAll("button")].some((b) => b.textContent.includes("Stop Listening")),
+      tabs: ["Dashboard", "Resonance lab"].every((t) => [...document.querySelectorAll("button")].some((b) => b.textContent.includes(t))),
+    }));
+    check("card chunk 404: \"The voice preview could not load…\" inside the lab", shown && st.text === "The voice preview could not load. Reload the page to try again.", JSON.stringify(st));
+    check("…the app stays: tabs and Stop Listening still there", st.root > 0 && st.stop && st.tabs, JSON.stringify(st));
+    await shot(page, "p360-dark-chunk-fail");
+    await clickSel(page, '[data-lab-view="resonance"]');
+    await sleep(500);
+    check("…and the lab's Resonance view still opens", await page.evaluate(() => document.querySelector('[data-lab-view="resonance"]')?.getAttribute("aria-pressed") === "true" && !document.querySelector("[data-lab-vp-error]")));
+    await page.close();
+  } finally {
+    missingCard = false;
+  }
 }
 
 // One run against `vite preview` of the same build (the task's serving path; the static
@@ -1118,6 +1230,7 @@ try {
   if (PARTS.has("dev")) await partDev();
   if (PARTS.has("preview")) await partPreview();
   if (PARTS.has("fallback")) await partFallback();
+  if (PARTS.has("chunkfail")) await partChunkFail();
   if (PARTS.has("timing")) await partTiming();
 } catch (e) {
   console.error(e);

@@ -1,13 +1,16 @@
 // bundle-budget.mjs — the voice preview's bundle budget
-// (measurements/voice-preview-phase1-2026-10-19.md §11): builds the base (the branch point,
-// default cue-strip at 62bf3cc, extracted with `git archive` into build/vp-budget/) and this
-// tree with the same Vite settings, and compares gzip sizes.
+// (measurements/voice-preview-phase1-2026-10-19.md §11): builds the base (default: the
+// merge base of HEAD and origin/cue-strip, i.e. the cue-strip commit this branch last
+// merged, else cue-strip at 62bf3cc, the branch point; extracted with `git archive` into
+// build/vp-budget/) and this tree with the same Vite settings, and compares gzip sizes.
 //
 //   node scripts/voice-preview/bundle-budget.mjs [--base=<rev>] [--keep]
 //
 // Fails when
-//   - the entry chunk (the module script in index.html plus everything it imports
-//     statically) grows by more than 1.0 KB gzip;
+//   - what every page load fetches grows by more than 1.0 KB gzip: the entry chunk (the
+//     module script in index.html plus everything it imports statically) AND the
+//     stylesheets index.html links (the card's Tailwind classes land in the main stylesheet;
+//     counted since the fix step);
 //   - the LabView chunk grows by more than 1.0 KB gzip;
 //   - the card chunk (VoicePreviewCard plus any chunk only it pulls in) or the worker chunk
 //     (vp-worker) is over 15 KB gzip;
@@ -28,7 +31,12 @@ import { fileURLToPath } from "node:url";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const arg = (k, d) => (process.argv.find((a) => a.startsWith(`--${k}=`)) ?? `=${d}`).split("=").slice(1).join("=");
-const BASE_REV = arg("base", "62bf3cc");
+function defaultBase() {
+  try {
+    return execFileSync("git", ["merge-base", "HEAD", "origin/cue-strip"], { cwd: repo, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim().slice(0, 12);
+  } catch { return "62bf3cc"; }
+}
+const BASE_REV = arg("base", "") || defaultBase();
 const KEEP = process.argv.includes("--keep");
 const WORK = path.join(repo, "build", "vp-budget");
 const KB = 1024;
@@ -61,6 +69,9 @@ function analyse(outDir) {
   }
   const html = readFileSync(path.join(outDir, "index.html"), "utf8");
   const entry = html.match(/<script type="module"[^>]*src="[^"]*\/assets\/([\w.-]+\.js)"/)[1];
+  // the stylesheets every page load fetches with the entry
+  const css = [...html.matchAll(/<link rel="stylesheet"[^>]*href="[^"]*\/assets\/([\w.-]+\.css)"/g)].map((m) => m[1]);
+  const cssGzip = css.reduce((t, f) => t + gz(readFileSync(path.join(assets, f))), 0);
   const closure = (start) => {
     const seen = new Set();
     const walk = (f) => { if (seen.has(f) || !chunks[f]) return; seen.add(f); for (const i of chunks[f].imports) walk(i); };
@@ -68,7 +79,7 @@ function analyse(outDir) {
     return seen;
   };
   const find = (re) => Object.keys(chunks).find((f) => re.test(f)) ?? null;
-  return { chunks, entry, closure, find };
+  return { chunks, entry, css, cssGzip, closure, find };
 }
 
 function run(cmd, args, opts = {}) { return execFileSync(cmd, args, { cwd: repo, stdio: ["ignore", "pipe", "inherit"], maxBuffer: 1 << 30, ...opts }); }
@@ -77,7 +88,7 @@ mkdirSync(WORK, { recursive: true });
 const baseSrc = path.join(WORK, "base");
 rmSync(baseSrc, { recursive: true, force: true });
 mkdirSync(baseSrc, { recursive: true });
-console.log(`extracting ${BASE_REV} -> build/vp-budget/base`);
+console.log(`base ${BASE_REV}${arg("base", "") ? "" : " (default: merge base with origin/cue-strip)"}; extracting -> build/vp-budget/base`);
 const tar = run("git", ["archive", "--format=tar", BASE_REV, "index.html", "src", "public"]);
 execFileSync("tar", ["-x", "-f", "-"], { cwd: baseSrc, input: tar, maxBuffer: 1 << 30 }); // cwd, not -C: GNU tar reads "C:\\" as a host
 if (!existsSync(path.join(baseSrc, "src", "main.jsx"))) throw new Error("base extraction failed");
@@ -94,8 +105,12 @@ const check = (name, ok, detail) => { results.push(ok); console.log(`${ok ? "PAS
 const kb = (n) => `${(n / KB).toFixed(2)} KB`;
 
 const bEntry = B.closure(B.entry), hEntry = H.closure(H.entry);
-const dEntry = sum(H, hEntry) - sum(B, bEntry);
-check("entry chunk + static imports grow <= 1.0 KB gzip", dEntry <= LIMITS.entryGrowth, `${kb(sum(B, bEntry))} -> ${kb(sum(H, hEntry))}, ${dEntry >= 0 ? "+" : ""}${dEntry} B`);
+const dJs = sum(H, hEntry) - sum(B, bEntry);
+const dCss = H.cssGzip - B.cssGzip;
+const dEntry = dJs + dCss;
+const sgn = (n) => `${n >= 0 ? "+" : ""}${n} B`;
+check("entry chunk + static imports + entry stylesheet grow <= 1.0 KB gzip", dEntry <= LIMITS.entryGrowth,
+  `JS ${kb(sum(B, bEntry))} -> ${kb(sum(H, hEntry))}, ${sgn(dJs)}; CSS (${H.css.join(", ")}) ${B.cssGzip} -> ${H.cssGzip} B, ${sgn(dCss)}; together ${sgn(dEntry)}`);
 
 const bLab = B.find(/^LabView-.*\.js$/), hLab = H.find(/^LabView-.*\.js$/);
 const dLab = H.chunks[hLab].gzip - B.chunks[bLab].gzip;
