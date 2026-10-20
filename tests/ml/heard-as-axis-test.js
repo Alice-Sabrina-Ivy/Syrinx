@@ -1,10 +1,13 @@
 // heard-as-axis-test.js — src/components/heardAsAxisModel.js: the "Likely
 // heard as" panel's man <-> woman split bar (orientation, the solid parts =
-// the low ends of the range rounded outward to tenths, best guess, "can't
-// tell yet", words, screen-reader text), that its words are the 2026-10-07
-// axis's, unchanged (tests/ml/fixtures/heard-as-axis-words-golden.json, frozen
-// before the 2026-10-20 split bar), and its gender symmetry (a mirrored
-// estimate gives a mirrored bar and the same words with man / woman swapped).
+// the low ends of the range rounded outward to tenths, the best guess s kept
+// for the checks — not drawn since the 2026-10-20 review —, "can't tell yet",
+// words, screen-reader text), that its range / unsure words are the
+// 2026-10-07 axis's, unchanged (tests/ml/fixtures/heard-as-axis-words-golden.json,
+// frozen before the 2026-10-20 split bar; its last two columns, the old
+// screen-reader best-guess words, are no longer used), and its gender
+// symmetry (a mirrored estimate gives a mirrored bar and the same words with
+// man / woman swapped).
 //
 //   node tests/ml/heard-as-axis-test.js
 
@@ -12,7 +15,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { heardAsShares, shareTenths, formatShare } from "../../src/ml/heard-as.js";
 import { HEARD_AS_CALIBRATION as C } from "../../src/ml/heardAsCalibration.js";
-import { heardAsAxis, AXIS_ENDS, unsureWords, bestGuessWords, shortReason, UNVOICED_SHARE } from "../../src/components/heardAsAxisModel.js";
+import { heardAsAxis, AXIS_ENDS, unsureWords, shortReason, UNVOICED_SHARE } from "../../src/components/heardAsAxisModel.js";
 
 let passed = 0, failed = 0;
 function check(name, cond, detail = "") {
@@ -47,21 +50,21 @@ console.log("orientation and geometry (split bar)");
   check("solid parts = the low ends of the two-way range rounded outward to tenths (man from the left, woman from the right); striped = the range's width; guess = s inside the stripes", ok, detail);
   let mono = true, prev = -1;
   for (const e of [...ETAS].sort((x, y) => x - y)) { const g = heardAsAxis(sharesAt(e)).guess; if (g <= prev) mono = false; prev = g; }
-  check("best guess moves right as more would say man", mono);
+  check("best guess s (data-split-guess, not drawn) grows as more would say man", mono);
 }
 
 console.log("\nwords unchanged by the split bar (frozen at 550c959)");
 {
   const golden = JSON.parse(readFileSync(fileURLToPath(new URL("./fixtures/heard-as-axis-words-golden.json", import.meta.url)), "utf8"));
   let same = 0, detail = "";
-  for (const [eta, rangeText, unsureText, a, b, c, d, wide, bgMan, bgWoman] of golden.rows) {
-    const sh = sharesAt(eta), ax = heardAsAxis(sh), bg = bestGuessWords(sh.s);
-    const got = [ax.rangeText, ax.unsureText, ...ax.manTenths, ...ax.womanTenths, ax.wide ? 1 : 0, ...bg];
-    const want = [rangeText, unsureText, a, b, c, d, wide, bgMan, bgWoman];
+  for (const [eta, rangeText, unsureText, a, b, c, d, wide] of golden.rows) {
+    const sh = sharesAt(eta), ax = heardAsAxis(sh);
+    const got = [ax.rangeText, ax.unsureText, ...ax.manTenths, ...ax.womanTenths, ax.wide ? 1 : 0];
+    const want = [rangeText, unsureText, a, b, c, d, wide];
     if (got.every((v, i) => v === want[i])) same++;
     else if (!detail) detail = `eta ${eta}: ${JSON.stringify(got)} vs ${JSON.stringify(want)}`;
   }
-  check(`range line, unsure line, tenths, "can't tell yet" and best-guess words identical on all ${golden.rows.length} frozen estimates`, same === golden.rows.length && golden.rows.length === 281, detail);
+  check(`range line, unsure line, tenths and "can't tell yet" identical on all ${golden.rows.length} frozen estimates`, same === golden.rows.length && golden.rows.length === 281, detail);
 }
 
 console.log("\ncan't tell yet");
@@ -99,16 +102,11 @@ console.log("\nwords");
   }
   check("the old outward-rounded range is gone (it read 'About 0–5 in 10' on typical voices)", !/–/.test(heardAsAxis(sharesAt(2.6)).unsureText ?? ""), formatShare(sharesAt(2.6).unsure));
   const ax = heardAsAxis(sharesAt(2.6));
-  check("screen-reader text names the bar (man from the left, woman from the right, striped between), the range and the best guess",
-    ax.srText.startsWith("Bar of listeners in tenths: would say man fills from the left, would say woman from the right, and the striped part between could go either way.")
-    && ax.srText.includes(`${ax.rangeText.replace(" · ", ", ")}.`) && /Best guess: about \d in 10 would say man, about \d in 10 would say woman\./.test(ax.srText), ax.srText);
-  const ends = [0.995, 0.93, 0.07, 0.004].map((s) => bestGuessWords(s));
-  check("best guess never says 0 or 10 in 10 (nearly all / fewer than 1 in 10 at the ends; 1-9 otherwise)",
-    ends.every(([m, w]) => !/\b(0|10) in 10/.test(m + w)) && ends[0][0] === "nearly all" && ends[0][1] === "fewer than 1 in 10"
-    && ends[1][0] === "about 9 in 10" && ends[3][1] === "nearly all" && ends[2][1] === "about 9 in 10", JSON.stringify(ends));
+  check("screen-reader text names the bar (man from the left, woman from the right, striped between) and the range — no best guess (none is drawn)",
+    ax.srText === `Bar of listeners in tenths: would say man fills from the left, would say woman from the right, and the striped part between could go either way. ${ax.rangeText.replace(" · ", ", ")}.`, ax.srText);
   for (const e of [6, -6]) {
     const t = heardAsAxis(sharesAt(e)).srText;
-    check(`screen-reader best guess at eta ${e} uses the end words, no '0 in 10' / '10 in 10'`, !/\b(0|10) in 10/.test(t), t);
+    check(`screen-reader text at eta ${e} uses the end words, no '0 in 10' / '10 in 10'`, !/\b(0|10) in 10/.test(t), t);
   }
   const w = heardAsAxis(sharesAt(0));
   check("screen-reader text says can't tell yet when wide; no unsure line then", w.srText.includes("Can't tell yet") && !w.srText.includes("Best guess") && w.unsureText === null);
@@ -135,14 +133,9 @@ console.log("\ngender symmetry (mirrored estimate -> mirrored bar, same words)")
     const rA = reorder(A.rangeText).split("|"), rB = reorder(B.rangeText).split("|");
     const rangeMirror = A.wide ? A.rangeText === B.rangeText : (rA[0] === rB[1] && rA[1] === rB[0]);
     if (!rangeMirror || A.unsureText !== B.unsureText) { words = false; detail = `${A.rangeText} / ${B.rangeText}`; }
-    if (!A.wide) {
-      const bg = /Best guess: (.*?) would say man, (.*?) would say woman\./;
-      const midA = A.srText.match(bg), midB = B.srText.match(bg);
-      if (!(midA && midB && midA[1] === midB[2] && midA[2] === midB[1])) { words = false; detail = `${A.srText} / ${B.srText}`; }
-    }
   }
   check("deep and light parts swap, the best guess mirrors about the middle and 'can't tell' agrees", geo, detail);
-  check("range, unsure and best-guess words mirror (man <-> woman), identical template", words, detail);
+  check("range and unsure words mirror (man <-> woman), identical template", words, detail);
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

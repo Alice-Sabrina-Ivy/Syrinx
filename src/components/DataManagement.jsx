@@ -256,12 +256,12 @@ export function DataManagement({ onClose, direction = null, onDirectionChange, h
               aria-checked={recordAudio}
               aria-label="Record audio with sessions"
               onClick={toggleRecordAudio}
-              className={`relative w-10 h-5 rounded-full transition-colors cursor-pointer ${
+              className={`hc-switch relative w-10 h-5 rounded-full transition-colors cursor-pointer ${
                 recordAudio ? "bg-purple-600" : "bg-neutral-700"
               }`}
             >
               <span
-                className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform ${
+                className={`hc-switch-thumb absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform ${
                   recordAudio ? "translate-x-5" : ""
                 }`}
               />

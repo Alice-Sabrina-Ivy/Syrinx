@@ -600,9 +600,11 @@ The default practice mode — everything at a glance. **As built (Design A
   (colour, a hollow dot and "↑ higher" / "↓ lower" — never colour alone). The
   pitch level and steadiness sit in the pitch row, HNR in the strip's caption.
 - **"Likely heard as · Experimental"** — opt-in, off by default: listener
-  shares on one man ↔ woman axis (a shaded range in tenths with a small
-  ring for the single best guess, "can't tell yet" when the range covers most
-  of it; the unsure / neither share at the best guess as a text line), never
+  shares on one man ↔ woman split bar in tenths (deep indigo from the left =
+  the low end of "would say man", light indigo from the right = the low end
+  of "would say woman", striped between = could go either way; "can't tell
+  yet" when the range covers most of it; the unsure / neither share at the
+  best guess as a text line), never
   a verdict, with its known weaknesses stated (including that it was not
   tested on trans women or nonbinary speakers); hidden outside the range it
   was fitted on. A live note directly under the axis warns when the pitch has

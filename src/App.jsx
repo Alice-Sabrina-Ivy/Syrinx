@@ -297,15 +297,16 @@ function App() {
         {status === "idle" && activeTab !== "history" && (
           <div className="flex-1 flex flex-col w-full max-w-6xl min-h-0">
             {/* Tab navigation even when idle */}
-            <nav className="flex-shrink-0 flex justify-center gap-1 mb-3">
+            <nav className="flex-shrink-0 flex justify-center-safe gap-1 overflow-x-auto -mx-1 px-1 -mt-1 pt-1 pb-1 mb-2">
               {TABS.map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
+                  aria-current={activeTab === tab.id ? "page" : undefined}
                   className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
                     activeTab === tab.id
                       ? "bg-neutral-700 text-white"
-                      : "text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/50"
+                      : "text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/50"
                   }`}
                 >
                   {tab.label}
@@ -325,15 +326,16 @@ function App() {
 
         {status === "idle" && activeTab === "history" && (
           <div className="flex-1 flex flex-col w-full max-w-6xl min-h-0">
-            <nav className="flex-shrink-0 flex justify-center gap-1 mb-3">
+            <nav className="flex-shrink-0 flex justify-center-safe gap-1 overflow-x-auto -mx-1 px-1 -mt-1 pt-1 pb-1 mb-2">
               {TABS.map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
+                  aria-current={activeTab === tab.id ? "page" : undefined}
                   className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
                     activeTab === tab.id
                       ? "bg-neutral-700 text-white"
-                      : "text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/50"
+                      : "text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/50"
                   }`}
                 >
                   {tab.label}
@@ -369,15 +371,16 @@ function App() {
         {status === "running" && (
           <div className="flex-1 flex flex-col w-full max-w-6xl min-h-0">
             {/* Tab navigation */}
-            <nav className="flex-shrink-0 flex justify-center gap-1 mb-3">
+            <nav className="flex-shrink-0 flex justify-center-safe gap-1 overflow-x-auto -mx-1 px-1 -mt-1 pt-1 pb-1 mb-2">
               {TABS.map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
+                  aria-current={activeTab === tab.id ? "page" : undefined}
                   className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
                     activeTab === tab.id
                       ? "bg-neutral-700 text-white"
-                      : "text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/50"
+                      : "text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/50"
                   }`}
                 >
                   {tab.label}
