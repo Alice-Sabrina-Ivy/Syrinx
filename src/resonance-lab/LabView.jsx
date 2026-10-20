@@ -16,11 +16,16 @@
 //
 // A second view, "Weight × clarity" (WeightClarityView.jsx, experimental), is
 // one tap away in the header; its analysis starts only when it is first opened.
+// A third, "Voice preview" (src/voice-preview/VoicePreviewCard.jsx, experimental),
+// is a lazy chunk fetched only when that view is first opened; loading it starts
+// the voice preview's worker (measurements/voice-preview-phase1-2026-10-19.md).
 
-import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { lazy, Suspense, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { subscribe, resetReadings, downloadReadings } from "./labPipeline.js";
 import { requestResonanceLab } from "./labRequest.js";
 import WeightClarityView from "./WeightClarityView.jsx";
+
+const VoicePreviewCard = lazy(() => import("../voice-preview/VoicePreviewCard.jsx"));
 
 const U_MIN = -1.0;
 const U_MAX = 2.2;
@@ -232,11 +237,20 @@ function ViewSwitch({ view, setView, small = false }) {
     <span className="inline-flex gap-0.5 rounded border border-neutral-800 p-0.5">
       {opt("resonance", "Resonance")}
       {opt("weight", "Weight × clarity")}
+      {opt("preview", "Voice preview")}
     </span>
   );
 }
 
-export default function LabView() {
+// The voice preview view: its chunk loads on first open. voicePreview = { direction,
+// isSessionRecording } from App (the target prefill and the playback guard).
+const VoicePreview = ({ voicePreview, phone }) => (
+  <Suspense fallback={<p className="text-sm text-neutral-400">Loading the voice preview…</p>}>
+    <VoicePreviewCard direction={voicePreview?.direction ?? null} isSessionRecording={voicePreview?.isSessionRecording} phone={phone} />
+  </Suspense>
+);
+
+export default function LabView({ voicePreview }) {
   const [s, setS] = useState(null);
   const [view, setView] = useState(viewChoice);
   const phone = useSyncExternalStore(subscribePhone, isPhone, () => false);
@@ -244,10 +258,12 @@ export default function LabView() {
   // First open of the tab starts the lab (now if listening, else at the next start).
   useEffect(() => { requestResonanceLab(); }, []);
   if (!s) return null;
-  return phone ? <PhoneLab s={s} view={view} setView={setView} /> : <FullLab s={s} view={view} setView={setView} />;
+  return phone
+    ? <PhoneLab s={s} view={view} setView={setView} voicePreview={voicePreview} />
+    : <FullLab s={s} view={view} setView={setView} voicePreview={voicePreview} />;
 }
 
-function FullLab({ s, view, setView }) {
+function FullLab({ s, view, setView, voicePreview }) {
   const ref = s.reference;
   const snap = s.snapshot;
   return (
@@ -267,6 +283,7 @@ function FullLab({ s, view, setView }) {
         </div>
       </div>
       {view === "weight" && <WeightClarityView s={s} />}
+      {view === "preview" && <VoicePreview voicePreview={voicePreview} />}
       {view === "resonance" && !s.running && <p className="text-sm text-neutral-500">Start listening to see the readouts.</p>}
       {view === "resonance" && ref && FINALISTS.map((f) => {
         const fs = snap?.finalists?.[f.key];
@@ -401,7 +418,7 @@ function usePhoneFit(rootRef, contentRef) {
   return fit;
 }
 
-function PhoneLab({ s, view, setView }) {
+function PhoneLab({ s, view, setView, voicePreview }) {
   const ref = s.reference;
   const snap = s.snapshot;
   const rootRef = useRef(null);
@@ -430,6 +447,7 @@ function PhoneLab({ s, view, setView }) {
           </div>
         </div>
         {view === "weight" && <WeightClarityView s={s} phone />}
+        {view === "preview" && <VoicePreview voicePreview={voicePreview} phone />}
         {view === "resonance" && !s.running && <p className="text-sm text-neutral-500 mb-1.5">Start listening to see the readouts.</p>}
         {view === "resonance" && ref && (
           <div className="flex flex-col gap-1">

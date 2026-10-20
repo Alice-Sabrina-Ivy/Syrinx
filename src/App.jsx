@@ -442,7 +442,9 @@ function App() {
 
               {activeTab === "lab" && (
                 <Suspense fallback={null}>
-                  <LabView />
+                  {/* Voice preview (a lab view): the target prefill and the
+                      playback guard during a Dashboard session recording. */}
+                  <LabView voicePreview={{ direction, isSessionRecording: () => sessionRef.current.recording }} />
                 </Suspense>
               )}
             </div>
