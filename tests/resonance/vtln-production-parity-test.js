@@ -223,8 +223,14 @@ for (const name of fixtures) {
   check(`${name}: worker ready, posts state`, statuses[0] === "loading" && statuses.includes("ready") && states.length > 10,
     `${states.length} states`);
   // The worker gates; on running speech it must still read close to the ungated readout.
-  check(`${name}: worker u is a reading on running speech`, last && last.u !== null && Number.isFinite(last.u),
-    `u ${last?.u?.toFixed(3)} (ungated ${cs.u?.toFixed(3)}), admitted ${last?.perf?.binsAdmitted}, dropped ${last?.perf?.binsDropped}`);
+  // Until its narrowband detector has decided (3 voiced s; the two male 5 s
+  // clips end before that) the post withholds u (2026-10-19 review): then
+  // the gate must still admit the running speech.
+  const pb = last?.perf ?? {};
+  const admits = pb.binsAdmitted >= 0.9 * (pb.binsAdmitted + pb.binsDropped);
+  check(`${name}: worker u is a reading on running speech (withheld, bins admitted, while the narrowband detector is undecided)`,
+    last && (last.narrowband?.decided ? last.u !== null && Number.isFinite(last.u) : last.u === null && admits),
+    `decided ${last?.narrowband?.decided}, u ${last?.u?.toFixed(3)} (ungated ${cs.u?.toFixed(3)}), admitted ${pb.binsAdmitted}, dropped ${pb.binsDropped}`);
   check(`${name}: worker framesDropped 0`, last.framesDropped === 0);
 }
 

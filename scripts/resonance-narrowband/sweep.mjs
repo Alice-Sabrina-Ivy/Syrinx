@@ -1,19 +1,20 @@
 // sweep.mjs — grid search (dev half) and one-shot confirmation (held-out half)
 // for the narrowband detector (measurements/resonance-narrowband-2026-10-19.md §4,
-// "Round 2 plan": the judged positives are the five phone paths; the 4 kHz
-// low-pass is reported descriptively, neither positive nor negative).
+// "Round 4 plan": the judged positives are the four classic 8 kHz links; Opus
+// 8 kbit/s narrowband and the 4 kHz low-pass are reported descriptively, neither positive nor negative).
 //
 //   node scripts/resonance-narrowband/sweep.mjs --half=dev                 grid, selection
 //   node scripts/resonance-narrowband/sweep.mjs --half=held --point=B,8,3,6,-31
 //        (band, tauS, vMinS, hystDb, tOnDb)                               confirmation
 //
-// Round 1 (lp4k judged as a positive) is this script at 654e449.
+// Round 1 (lp4k judged as a positive) is this script at 654e449; round 2 (five
+// phone paths judged, opus8nb included) is this script at 50442a0.
 //
 // Reads build/resonance-narrowband/feat/<cond>/<spk>.{json,f64} (extract.mjs).
 // The grid computes F once per (band pair, tau) with detector.mjs
 // createDecision and scans the hysteresis rule over it; the selected /
 // confirmed point is then run through createDecision itself, and the two
-// must agree exactly. Writes build/resonance-narrowband/sweep-r2-<half>.json and
+// must agree exactly. Writes build/resonance-narrowband/sweep-r4-<half>.json and
 // prints Markdown.
 //
 // Metrics (plan §4), voiced time = voiced 10 ms grid frames of the engine:
@@ -46,8 +47,8 @@ const GRID = {
   hyst: [3, 6],
   ton: Array.from({ length: 51 }, (_, i) => -60 + i),
 };
-const POS = ["tel", "amrnb", "g711u", "opus8nb", "btnb"]; // judged (round 2)
-const DESC = ["lp4k"]; // reported only: not judged, not used in selection
+const POS = ["tel", "amrnb", "g711u", "btnb"]; // judged (round 4)
+const DESC = ["opus8nb", "lp4k"]; // reported only: not judged, not used in selection
 const NEG_BAR = 0.01, POS_BAR = 0.95, DETECT_FRAMES = 1000;
 
 // ---- split (as conditions.py): within sex, numeric LibriSpeech id, even ranks = dev
@@ -186,7 +187,7 @@ function report(p, m, label) {
     lines.push(`| ${c} | ${pct(w?.share)} | ${w?.streamsWithOn}/${w?.streams} | ${pct(mm?.share)} | ${mm?.streamsWithOn}/${mm?.streams} | ${mn(fw)} / ${md(fw)} | ${mn(fm)} / ${md(fm)} |`);
   }
   lines.push("");
-  lines.push("Positives (the five phone paths, judged): detected by 10 s voiced (bar ≥ 95 %), time to notice (voiced s, median / q90), dropouts after first notice, F at stream end (dB, median / max)");
+  lines.push("Positives (the four classic 8 kHz links, judged): detected by 10 s voiced (bar ≥ 95 %), time to notice (voiced s, median / q90), dropouts after first notice, F at stream end (dB, median / max)");
   lines.push("");
   lines.push("| Condition | women detected | men detected | women time med / q90 | men time med / q90 | women dropouts | men dropouts | F end women med / max | F end men med / max |");
   lines.push("|---|---|---|---|---|---|---|---|---|");
@@ -302,4 +303,4 @@ if (POINT) {
   }
 }
 console.log(`\nDetector cost: ${cost.msPerAudioS.toFixed(3)} ms CPU per second of audio (band energies; ${cost.streams} streams, ${cost.audioMin.toFixed(0)} min); pitch frames dropped by the engine: ${cost.framesDropped}`);
-writeFileSync(path.join(OUT, `sweep-r2-${HALF}${POINT ? "-point" : ""}.json`), JSON.stringify(out, (k, v) => (k === "tts" ? undefined : v)));
+writeFileSync(path.join(OUT, `sweep-r4-${HALF}${POINT ? "-point" : ""}.json`), JSON.stringify(out, (k, v) => (k === "tts" ? undefined : v)));

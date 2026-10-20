@@ -6,6 +6,12 @@
 //   held.wav          1 s silence + 6 s synthetic held vowel /a/ at 200 Hz
 //   noise.wav         20 s synthetic pink noise (-30 dBFS rms)
 //   silence.wav       20 s of digital silence
+//   narrowband.wav    speech-woman.wav low-passed at 3.4 kHz (Blackman
+//                     windowed sinc, 401 taps at 48 kHz, ~-74 dB above
+//                     ~4.1 kHz): a phone-band stand-in for the resonance
+//                     row's "Phone-quality audio" notice (2026-10-19). Made
+//                     from speech-woman.wav whenever that exists (no --r1
+//                     needed once it has been written).
 //
 //   pitch-only-man.wav / pitch-only-woman.wav  (with --pitch-only=<jobs_hcs.json>
 //                     of scripts/heard-as/pitch-only/build_jobs.py) one Hillenbrand
@@ -28,7 +34,7 @@
 //        [--woman=<speaker>] [--man=<speaker>] [--pitch-only=<jobs_hcs.json>]
 //        [--pitch-only-late=<jobs_test_hcsL.json> [--late-man=<key>] [--late-woman=<key>]]
 
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -134,3 +140,30 @@ const SR = 48000;
   writeWav("noise.wav", y.map((v) => v * g));
 }
 writeWav("silence.wav", new Float32Array(SR * 20));
+if (existsSync(path.join(OUT, "speech-woman.wav"))) {
+  const b = readFileSync(path.join(OUT, "speech-woman.wav"));
+  let off = 12, sr = 0, data = null;
+  while (off < b.length) {
+    const id = b.toString("ascii", off, off + 4), len = b.readUInt32LE(off + 4);
+    if (id === "fmt ") sr = b.readUInt32LE(off + 12);
+    if (id === "data") { data = b.subarray(off + 8, off + 8 + len); break; }
+    off += 8 + len + (len & 1);
+  }
+  const x = new Float32Array(data.length / 2);
+  for (let i = 0; i < x.length; i++) x[i] = data.readInt16LE(2 * i) / 32768;
+  const half = 200, fc = 3400 / sr, taps = new Float64Array(2 * half + 1);
+  let sum = 0;
+  for (let t = -half; t <= half; t++) {
+    const sinc = t === 0 ? 2 * fc : Math.sin(2 * Math.PI * fc * t) / (Math.PI * t);
+    taps[t + half] = sinc * (0.42 + 0.5 * Math.cos((Math.PI * t) / half) + 0.08 * Math.cos((2 * Math.PI * t) / half));
+    sum += taps[t + half];
+  }
+  const y = new Float32Array(x.length);
+  for (let i = 0; i < x.length; i++) {
+    let a = 0;
+    const lo = Math.max(-half, i - x.length + 1), hi = Math.min(half, i);
+    for (let t = lo; t <= hi; t++) a += taps[t + half] * x[i - t];
+    y[i] = a / sum;
+  }
+  writeWav("narrowband.wav", y, sr);
+}

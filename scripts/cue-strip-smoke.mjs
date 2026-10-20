@@ -52,6 +52,13 @@
 //                   its first second; the panel says "sustained", never ranges.
 //   4 noise / 5 silence  no dot on any row after the 5 s hold; the panel never
 //                   shows ranges.
+//   6 narrowband    speech-woman low-passed at 3.4 kHz (a phone link): the
+//                   resonance row shows "Phone-quality audio — paused"
+//                   (unclipped, at every viewport incl. p360) and
+//                   never a dot or trail, before the notice too (the worker
+//                   withholds the position until its detector has decided,
+//                   2026-10-19); the info popover leads with the notice's
+//                   explanation and fits; the pitch row still goes live.
 //   (--pitch-only=man,woman) pitch-only-<who>  ~50 s natural, then pitch moved
 //                   with the resonance kept (scripts/cue-strip-smoke-wavs.mjs
 //                   --pitch-only): the pitch-only warning is never shown before
@@ -85,11 +92,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import puppeteer from "puppeteer-core";
 import { PITCH_ONLY_TEXT } from "../src/ml/pitch-only-warning.js";
+import { NARROWBAND_NOTICE, NARROWBAND_INFO } from "../src/components/cueStripModel.js";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const arg = (k, d) => (process.argv.find((a) => a.startsWith(`--${k}=`)) ?? `=${d}`).split("=").slice(1).join("=");
 const WAVDIR = arg("wavs", path.join(repo, "build", "cue-strip-smoke"));
-const WAV = Object.fromEntries(["speech-woman", "speech-man", "held", "noise", "silence"].map((k) => [k, path.join(WAVDIR, `${k}.wav`)]));
+const WAV = Object.fromEntries(["speech-woman", "speech-man", "held", "noise", "silence", "narrowband"].map((k) => [k, path.join(WAVDIR, `${k}.wav`)]));
 const VIEWPORT = arg("viewport", "phone");
 const PITCH_ONLY = arg("pitch-only", "").split(",").filter(Boolean);
 for (const who of PITCH_ONLY) WAV[`pitch-only-${who}`] = path.join(WAVDIR, `pitch-only-${who}.wav`);
@@ -554,7 +562,10 @@ for (const label of ["About the pitch cue", "About the resonance cue", "What doe
   await page.evaluate(() => [...document.querySelectorAll("[data-heard-as] button")].find((b) => b.textContent.includes("Turn on"))?.click());
   await sleep(300);
 }
-const womanU = (await state(page)).rows.resonance?.value;
+// After the reload a fresh resonance engine withholds its position until the
+// narrowband detector has decided (3 voiced s; 2026-10-19): wait for it.
+let womanU = null;
+await sample(page, 15000, (st) => (womanU = st.rows.resonance?.value ?? null) !== null);
 check("no page errors (woman)", errors.length === 0, errors.slice(0, 3).join(" | "));
 
 // ============================================================ 2 speech-man
@@ -769,6 +780,47 @@ for (const kind of ["noise", "silence"]) {
   check(`${kind}: no dot on any row after the 5 s hold`, dots === 0, `${dots} dot-samples / ${n}`);
   check(`${kind}: the panel never shows ranges`, !shownEver);
   await shot(page, `07-${kind}`);
+}
+
+// ============================================================ 6 narrowband (phone-quality audio)
+{
+  log("narrowband");
+  await launch(WAV.narrowband);
+  ({ page, errors } = await open());
+  check("narrowband: listening", await continueAfterReload(page));
+  let tNotice = null, pitchLive = false, dotsBefore = 0, dotsDuring = 0, trailDuring = 0, badHeader = null, nDuring = 0;
+  await sample(page, 25000, (s, t) => {
+    const r = s.rows.resonance;
+    if (s.rows.pitch?.state === "live") pitchLive = true;
+    if (r?.state === "narrowband") {
+      if (tNotice === null) tNotice = t;
+      nDuring++;
+      if (r.dot) dotsDuring++;
+      if (r.trail > 0) trailDuring++;
+      if (r.header !== NARROWBAND_NOTICE) badHeader = r.header;
+    } else if (tNotice === null && r?.dot) dotsBefore++;
+  });
+  check("narrowband: the resonance row shows the notice", tNotice !== null && nDuring > 10, `from ${tNotice?.toFixed(1)} s, ${nDuring} samples`);
+  check("narrowband: no resonance dot before the notice (position withheld until the detector decides)", dotsBefore === 0, `${dotsBefore} dot-samples`);
+  check("narrowband: no dot or trail while the notice is on, header is the notice", dotsDuring === 0 && trailDuring === 0 && badHeader === null,
+    `${dotsDuring} dots, ${trailDuring} trails, header ${JSON.stringify(badHeader)}`);
+  check("narrowband: the pitch row still goes live", pitchLive);
+  const L = await layout(page);
+  check("narrowband: the notice header is not clipped; strip in the first screen, no horizontal scroll",
+    L.clipped.length === 0 && inView(L.strip, L) && L.scrollW <= L.vw, `${L.clipped.join(" | ")} ${JSON.stringify(L.strip)} vw ${L.vw}`);
+  await shot(page, "08-narrowband");
+  const r = await probePopover(page, "About the resonance cue");
+  check("narrowband: info popover opens, wraps, on top, inside the viewport", r.found && r.open && r.wraps && r.onTop && r.inViewport, JSON.stringify(r));
+  const first = await page.evaluate(async () => {
+    const btn = [...document.querySelectorAll("[data-cue-strip] button")].find((b) => b.getAttribute("aria-label") === "About the resonance cue");
+    btn?.click();
+    await new Promise((res) => setTimeout(res, 150));
+    const pop = document.getElementById(btn?.getAttribute("aria-controls") ?? "");
+    return pop?.innerText ?? "";
+  });
+  await shot(page, "08b-narrowband-info");
+  await page.evaluate(() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
+  check("narrowband: the info text comes first in the popover", first.trim().startsWith(NARROWBAND_INFO), first.slice(0, 80));
 }
 
 await browser.close().catch(() => {});

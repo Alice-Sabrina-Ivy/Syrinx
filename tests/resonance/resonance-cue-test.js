@@ -139,5 +139,39 @@ console.log("resonanceCue — back after a long pause (idle -> speech)");
   check("~2 s of new speech later sinceResumeS >= 2 (the strip goes live again)", cue.snapshot().sinceResumeS >= 2);
 }
 
+console.log("resonanceCue — phone-quality audio (noteNarrowband)");
+{
+  const cue = createResonanceCue({ reference, gate: false });
+  let te = 0, st = 0;
+  const run = (secs, v) => { for (const end = te + secs; te < end; te += 0.15) { st += 0.1; cue.onStamped(te, st, v); } };
+  run(30, 0.06); // ~20 s voiced: readout full, start found
+  const a = cue.snapshot();
+  check("before: a full readout and a start", a.fill === 1 && a.u !== null && a.startU !== null, JSON.stringify(a));
+  cue.noteNarrowband(true);
+  const b = cue.snapshot();
+  check("notice on: the readout is cleared (no position to show)", b.u === null && b.n === 0 && b.fill === 0, JSON.stringify(b));
+  const dropped0 = b.binsDropped;
+  run(10, -0.2); // phone-link audio reads darker
+  const c = cue.snapshot();
+  check("while on: every bin is dropped, the readout stays empty", c.u === null && c.binsDropped - dropped0 > 60 && c.binsAdmitted === a.binsAdmitted,
+    JSON.stringify(c));
+  check("while on: the start found before is kept", c.startU === a.startU);
+  cue.noteNarrowband(true);
+  check("repeated 'on' does not clear again or change anything", cue.snapshot().u === null && cue.snapshot().binsDropped === c.binsDropped);
+  cue.noteNarrowband(false);
+  run(1, 0.06);
+  const d = cue.snapshot();
+  check("notice off: refills from wideband bins only (warming → settling)", d.u !== null && Math.abs(d.raw - 0.06) < 0.02 && d.fill < 1,
+    JSON.stringify(d));
+  run(8, 0.06);
+  check("refilled: full again, reading the wideband voice", cue.snapshot().fill === 1 && Math.abs(cue.snapshot().raw - 0.06) < 0.02);
+  // A start still being collected when the notice comes on starts over.
+  const e = createResonanceCue({ reference, gate: false });
+  for (let t = 0, s = 0; t < 12; t += 0.15) { s += 0.1; e.onStamped(t, s, 0.06); }
+  check("start collection under way", e.snapshot().startU === null && e.snapshot().startProgress > 0);
+  e.noteNarrowband(true);
+  check("notice on mid-collection: start progress restarts", e.snapshot().startProgress === 0 && e.snapshot().startU === null);
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);

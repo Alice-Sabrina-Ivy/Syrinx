@@ -114,6 +114,10 @@ export function createLabEngine(opts) {
   const { sampleRate, models, reference, externalF0 = null, pnmlMaxPending = 2, horizonS = 5 } = opts;
   const onBinHook = opts.onBin ?? null;
   const onStampedHook = opts.onStamped ?? null;
+  // Optional: (j, f0, ring16) for every resolved 10 ms grid frame, in order,
+  // once ring16 holds its samples (the resonance worker's narrowband
+  // detector, src/resonance/narrowband.js). Reads only; outputs unchanged.
+  const onGridHook = opts.onGridFrame ?? null;
   const framesMode = opts.pitchSource === "frames";
   if (framesMode && externalF0) throw new Error("pitchSource 'frames' and externalF0 are exclusive");
   // 16 kHz analysis stream: a lazy ring — samples are filtered only when a
@@ -272,6 +276,7 @@ export function createLabEngine(opts) {
       cum[j & GRID_MASK] = (j > 0 ? cum[(j - 1) & GRID_MASK] : 0) + (voiced ? 1 : 0);
       nextGrid = j + 1;
       if (voiced) lastF0 = f0;
+      if (onGridHook) onGridHook(j, f0, ring16);
       if (le) { le.advance(tj); if (voiced && c < ring16.end) le.frame(ring16, c); }
       if (vtln) {
         vtln.advance(tj);
