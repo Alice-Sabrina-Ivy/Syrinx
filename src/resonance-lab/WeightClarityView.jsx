@@ -126,7 +126,13 @@ function Mapping({ snap, blocked }) {
           <div className="h-full bg-neutral-400" style={{ width: `${Math.min(100, (100 * p.have) / p.need)}%` }} />
         </div>
         <div className="flex flex-wrap gap-1.5">
-          <button className={btn} onClick={() => weightCommand("next")}>{p.index + 1 < p.of ? "Next" : "Done"}</button>
+          {/* One width for "Next" and "Done", so the buttons after it never move. */}
+          <button className={btn} onClick={() => weightCommand("next")}>
+            <span className="inline-grid">
+              {["Next", "Done"].map((t) => <span key={t} aria-hidden="true" className="invisible col-start-1 row-start-1">{t}</span>)}
+              <span className="col-start-1 row-start-1">{p.index + 1 < p.of ? "Next" : "Done"}</span>
+            </span>
+          </button>
           <button className={btn} onClick={() => weightCommand("finish")}>Finish now</button>
           <button className={btn} onClick={() => weightCommand("cancel")}>Cancel</button>
         </div>

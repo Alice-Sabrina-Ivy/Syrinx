@@ -65,6 +65,16 @@ const ROOMY = { h: 58, menY: 8, bandH: 8, ax: 29, womenY: 42, fs: 12, r: 7, tr: 
 const PAD = 8; // px between an end word and the axis (room for a pinned dot + chevron)
 const HALO = "#141414"; // the strip's background: a halo keeps labels legible over the highlight
 
+// A number that keeps one width whatever it shows ("—" or digits): the widest
+// text is laid out invisibly in the same grid cell, right-aligned, so nothing
+// beside it shifts as the voice comes and goes (2026-10-19).
+const Fixed = ({ widest, children, ...rest }) => (
+  <span className="inline-grid justify-items-end whitespace-nowrap tabular-nums" {...rest}>
+    {widest.map((t) => <span key={t} aria-hidden="true" className="invisible col-start-1 row-start-1">{t}</span>)}
+    <span className="col-start-1 row-start-1">{children}</span>
+  </span>
+);
+
 // The resonance lab's assets (one source of truth): fetched once. A failed
 // fetch is not cached (it was cached as null until a page reload — 2026-10-19
 // review S-2): the strip asks again when the resonance worker's status
@@ -231,9 +241,12 @@ const CueRow = memo(function CueRow({ cue, title, titleWord, info, headerRight, 
     >
       <div className="flex items-center justify-between gap-2 h-[18px] lg:h-6 text-[11px] lg:text-[13px] leading-[18px] lg:leading-6 whitespace-nowrap">
         <span className="inline-flex items-center text-neutral-300 font-medium min-w-0">
-          <span className="min-w-0 overflow-x-clip text-ellipsis" id={titleId} data-cue-title="">{title}</span>
+          {/* The title and its "i" never shrink, so the "i" stays put whatever
+              the value beside it says; the direction word after it, then the
+              text value, give way first. */}
+          <span className="shrink-0" id={titleId} data-cue-title="">{title}</span>
           <InfoToggle label={`About the ${cue} cue`}>{info}</InfoToggle>
-          {titleWord && <span className="ml-1.5 font-normal text-neutral-300" data-cue-word="">· {titleWord}</span>}
+          {titleWord && <span className="ml-1.5 min-w-0 overflow-x-clip text-ellipsis font-normal text-neutral-300" data-cue-word="">· {titleWord}</span>}
         </span>
         {/* Text values ellipsize; the pitch value (number + steadiness + its "i",
             whose enlarged hit area overhangs) is short and never clipped. */}
@@ -454,7 +467,7 @@ export function CueStrip({
   const pitchHeader = useMemo(() => (
     <span className="inline-flex items-baseline gap-2">
       <span className={`text-sm lg:text-base leading-[18px] lg:leading-6 font-light ${pitchLevel != null ? statusTextClass(levelStatus) : "text-neutral-400"}`} data-cue-f0="">
-        {pitchLevel != null ? Math.round(pitchLevel) : "—"}
+        <Fixed widest={["000"]}>{pitchLevel != null ? Math.round(pitchLevel) : "—"}</Fixed>
         <span className="text-[10px] lg:text-xs text-neutral-400 ml-0.5">Hz</span>
       </span>
       <SteadinessReadout value={steadiness} held={steadinessHeld} variant="compact" />
@@ -513,7 +526,9 @@ export function CueStrip({
           <span className="min-w-0">
             {view.everVoiced || voiced ? "Dots follow your recent speech · bands: typical adult speakers" : "Start speaking — the dots follow your recent speech"}
           </span>
-          <span className="tabular-nums shrink-0" data-cue-hnr="">HNR {hnr !== null && hnr !== undefined ? `${Math.round(hnr)} dB` : "—"}</span>
+          <span className="shrink-0" data-cue-hnr="">
+            <Fixed widest={["HNR -00 dB"]}>HNR {hnr !== null && hnr !== undefined ? `${Math.round(hnr)} dB` : "—"}</Fixed>
+          </span>
         </div>
       )}
     </div>

@@ -32,10 +32,21 @@ export function SteadinessReadout({
   const text = formatSteadiness(value);
 
   const dim = text === null ? "opacity-40" : held ? "opacity-50" : "";
-  const valueNode = (
+  const shown = text === null ? "—" : `±${text}`;
+  const unit = <span className="text-xs text-neutral-500 ml-0.5">st</span>;
+  // In the cue strip the value and its unit keep the width of the widest text
+  // ("±<0.1 st"), so the F0 number beside it and the "i" after it never shift
+  // (2026-10-19): a number sits at the right of that space, "— st" at its left,
+  // next to the Hz (2026-10-20 review: "201 Hz      — st" left a wide gap).
+  const valueNode = variant === "compact" ? (
+    <span className="tabular-nums text-neutral-300 inline-grid">
+      <span aria-hidden="true" className="invisible col-start-1 row-start-1">±&lt;0.1{unit}</span>
+      <span className={`col-start-1 row-start-1 ${text === null ? "justify-self-start" : "justify-self-end"}`}>{shown}{unit}</span>
+    </span>
+  ) : (
     <span className="tabular-nums text-neutral-300">
-      {text === null ? "—" : `±${text}`}
-      <span className="text-xs text-neutral-500 ml-0.5">st</span>
+      {shown}
+      {unit}
     </span>
   );
   const infoButton = (

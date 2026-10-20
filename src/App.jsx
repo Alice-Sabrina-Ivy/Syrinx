@@ -41,6 +41,9 @@ const WELCOME_KEY = "syrinx_welcomed";
 // the question from appearing.
 const DIRECTION_LOAD_TIMEOUT_MS = 1500;
 
+// The voice status beside Stop Listening (laid out at the widest one's width).
+const VOICE_STATUS_TEXTS = ["Voice detected", "Listening...", "Waiting for voice..."];
+
 // First visit only. A modal like the direction question (App makes the page
 // behind it inert): focus starts on Get Started, Escape also continues,
 // and the panel scrolls on short (landscape) viewports.
@@ -451,7 +454,7 @@ function App() {
 
             {/* Voice status + mic toggle (hidden on history tab) */}
             {activeTab !== "history" && (
-              <div className="flex-shrink-0 mt-3 flex items-center justify-center gap-4">
+              <div className="flex-shrink-0 mt-3 flex items-center justify-center gap-4" data-listen-bar="">
                 <div className="flex items-center gap-2">
                   {/* Three stacked dots cross-fading by opacity (composited)
                       instead of one dot transitioning colour + shadow, which
@@ -462,12 +465,18 @@ function App() {
                     <div className={`absolute inset-0 rounded-full bg-yellow-400/60 transition-opacity duration-300 ${!voiced && holding ? "opacity-100" : "opacity-0"}`} />
                     <div className={`absolute inset-0 rounded-full bg-neutral-600 transition-opacity duration-300 ${!voiced && !holding ? "opacity-100" : "opacity-0"}`} />
                   </div>
-                  <span className="text-[11px] text-neutral-500">
-                    {voiced
-                      ? "Voice detected"
-                      : holding
-                        ? "Listening..."
-                        : "Waiting for voice..."}
+                  {/* One width for all three texts, so the centred Stop
+                      Listening button beside it doesn't slide left and right
+                      as the voice comes and goes (2026-10-20). */}
+                  <span className="inline-grid text-[11px] text-neutral-500">
+                    {VOICE_STATUS_TEXTS.map((t) => <span key={t} aria-hidden="true" className="invisible col-start-1 row-start-1 whitespace-nowrap">{t}</span>)}
+                    <span className="col-start-1 row-start-1 whitespace-nowrap">
+                      {voiced
+                        ? "Voice detected"
+                        : holding
+                          ? "Listening..."
+                          : "Waiting for voice..."}
+                    </span>
                   </span>
                 </div>
 

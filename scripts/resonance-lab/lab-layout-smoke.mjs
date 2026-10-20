@@ -1,0 +1,382 @@
+// lab-layout-smoke.mjs — do any buttons move while the voice comes and goes?
+// Headless check against the BUILT app (dist/, served by `vite preview`), with
+// Chrome's fake mic playing speech with regular pauses, at 360 x 690 and
+// 448 x 890 (phone emulation) and 1280 x 800 (desktop).
+//
+//   npm run build && node scripts/resonance-lab/lab-layout-smoke.mjs [--wav=<48 kHz 16-bit mono speech>]
+//        [--seconds=20] [--panel-seconds=60] [--panel=0] [--out=build/lab-layout-smoke]
+//
+// The source WAV (default build/cue-strip-smoke/speech-woman.wav, from
+// scripts/cue-strip-smoke-wavs.mjs) is cut into 3 s of speech + 2.5 s of
+// silence, repeated, so every readout passes through its voiced and its
+// unvoiced text ("Pitch 276 Hz" in bright / grey, "— Hz", "—" st …).
+// Per viewport, every button's (and input's) box is sampled every 100 ms in:
+//   1 the Dashboard cue strip      (the row "i"s, the steadiness "i")
+//   2 the Resonance lab            (header buttons, view switch, card "i"s)
+//   3 the lab's Weight × clarity   (header buttons, view switch, map button)
+// each together with the Stop Listening bar under it (its voice status text
+// changes with the voice). PASS when both states were seen (voiced and
+// unvoiced pitch text) and no box moved by more than 0.5 px between any two
+// samples. In the weight view it then starts "Map your voice" and steps
+// Next … Done: the three mapping buttons must keep their boxes; then Cancel.
+//   4 the "Likely heard as" panel switched ON (unless --panel=0; downloads the
+//     voice model from Hugging Face): a second browser plays 9 s of speech +
+//     7 s of silence, so the panel cycles through "Keep talking", "Can't tell
+//     yet", a range with its "unsure" line and "Older reading"; for
+//     --panel-seconds the panel's own buttons, Save Session, the notes box and
+//     the Stop Listening bar must not move (one panel height in every state).
+// Screenshots of each part in both states go to <out>/<viewport>-<part>-<state>.png.
+//
+// Process hygiene (CLAUDE.md hard rule 2): Chrome is launched by puppeteer with a fresh
+// temporary --user-data-dir (one per browser) and closed via browser.close(), falling back
+// to taskkill of ITS pid only; the preview server is this script's own child, killed only by its PID.
+// Cleanup is registered on exit / SIGINT / SIGTERM / uncaughtException.
+
+import { spawn, execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import puppeteer from "puppeteer-core";
+
+const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+const arg = (k, d) => (process.argv.find((a) => a.startsWith(`--${k}=`)) ?? `=${d}`).split("=").slice(1).join("=");
+const SRC = arg("wav", path.join(repo, "build", "cue-strip-smoke", "speech-woman.wav"));
+const SECONDS = Number(arg("seconds", "20"));
+const OUT = arg("out", path.join(repo, "build", "lab-layout-smoke"));
+const PANEL = arg("panel", "1") !== "0";
+const PANEL_SECONDS = Number(arg("panel-seconds", "60"));
+const PORT = Number(arg("port", "4193"));
+const TOL = 0.5; // px
+const CHROME = ["C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+  "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe"].find(existsSync);
+if (!CHROME || !existsSync(SRC)) { console.error("need Chrome and a speech WAV (--wav, or scripts/cue-strip-smoke-wavs.mjs)"); process.exit(2); }
+mkdirSync(OUT, { recursive: true });
+
+const VIEWPORTS = {
+  p360: { width: 360, height: 690, deviceScaleFactor: 2, isMobile: true, hasTouch: true },
+  p448: { width: 448, height: 890, deviceScaleFactor: 2, isMobile: true, hasTouch: true },
+  desktop: { width: 1280, height: 800, deviceScaleFactor: 1 },
+};
+
+// speechS of speech / gapS of silence, repeated, from the source WAV (PCM 16-bit mono).
+function gappedWav(src, dst, speechS, gapS) {
+  const b = readFileSync(src);
+  let off = 12, fmt = null, data = null;
+  while (off + 8 <= b.length) {
+    const id = b.toString("ascii", off, off + 4), n = b.readUInt32LE(off + 4);
+    if (id === "fmt ") fmt = { ch: b.readUInt16LE(off + 10), sr: b.readUInt32LE(off + 12), bits: b.readUInt16LE(off + 22) };
+    if (id === "data") data = b.subarray(off + 8, off + 8 + n);
+    off += 8 + n + (n & 1);
+  }
+  if (!fmt || !data || fmt.ch !== 1 || fmt.bits !== 16) throw new Error("need a 16-bit mono WAV");
+  const sp = Math.round(speechS * fmt.sr) * 2, gap = Math.round(gapS * fmt.sr) * 2;
+  const parts = [];
+  for (let i = 0; i + sp <= data.length && parts.length < 16; i += sp) parts.push(data.subarray(i, i + sp), Buffer.alloc(gap));
+  const pcm = Buffer.concat(parts);
+  const h = Buffer.alloc(44);
+  h.write("RIFF", 0); h.writeUInt32LE(36 + pcm.length, 4); h.write("WAVE", 8);
+  h.write("fmt ", 12); h.writeUInt32LE(16, 16); h.writeUInt16LE(1, 20); h.writeUInt16LE(1, 22);
+  h.writeUInt32LE(fmt.sr, 24); h.writeUInt32LE(2 * fmt.sr, 28); h.writeUInt16LE(2, 32); h.writeUInt16LE(16, 34);
+  h.write("data", 36); h.writeUInt32LE(pcm.length, 40);
+  writeFileSync(dst, Buffer.concat([h, pcm]));
+}
+const WAV = path.join(OUT, "speech-gapped.wav");
+gappedWav(SRC, WAV, 3, 2.5);
+const PANEL_WAV = path.join(OUT, "speech-gapped-panel.wav");
+if (PANEL) gappedWav(SRC, PANEL_WAV, 9, 7);
+
+let server = null;
+let browser = null;
+const profiles = [];
+const newProfile = () => { const d = mkdtempSync(path.join(tmpdir(), "lab-layout-smoke-")); profiles.push(d); return d; };
+function killBrowser() {
+  const bp = browser?.process?.()?.pid;
+  if (bp) { try { execFileSync("taskkill", ["/pid", String(bp), "/T", "/F"], { stdio: "ignore" }); } catch { /* closed */ } }
+  browser = null;
+}
+function cleanup() {
+  if (server?.pid) { try { execFileSync("taskkill", ["/pid", String(server.pid), "/T", "/F"], { stdio: "ignore" }); } catch { /* gone */ } server = null; }
+  killBrowser();
+  for (const d of profiles.splice(0)) { try { rmSync(d, { recursive: true, force: true }); } catch { /* locked */ } }
+}
+process.on("exit", cleanup);
+for (const s of ["SIGINT", "SIGTERM"]) process.on(s, () => { cleanup(); process.exit(1); });
+process.on("uncaughtException", (e) => { console.error(e); cleanup(); process.exit(1); });
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const log = (...a) => console.log(`[${new Date().toISOString().slice(11, 19)}]`, ...a);
+const results = [];
+const check = (vp, name, ok, detail = "") => {
+  results.push({ vp, name, ok: !!ok });
+  console.log(`${ok ? "PASS" : "FAIL"}  [${vp}] ${name}${detail ? `  (${detail})` : ""}`);
+};
+
+async function startServer() {
+  server = spawn(process.execPath, [path.join(repo, "node_modules/vite/bin/vite.js"), "preview", "--port", String(PORT), "--strictPort"], { cwd: repo, stdio: "ignore" });
+  for (let i = 0; i < 300; i++) {
+    try { const r = await fetch(`http://localhost:${PORT}/Syrinx/`); if (r.ok) return; } catch { /* not yet */ }
+    await sleep(200);
+  }
+  throw new Error("preview server did not start");
+}
+
+const clickText = (page, texts, scope = "") => page.evaluate((ts, scope) => {
+  const root = scope ? document.querySelector(scope) : document;
+  const b = [...(root?.querySelectorAll("button") ?? [])].find((x) => ts.some((t) => x.textContent.trim().includes(t)));
+  if (b) b.click();
+  return !!b;
+}, texts, scope);
+
+// Welcome -> (direction question: "Just exploring") -> listening, whatever order they come in.
+async function startListening(page) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < 45000) {
+    const s = await page.evaluate(() => ({ text: document.body.innerText, dialog: !!document.querySelector("[role=dialog] input[data-direction]") }));
+    if (s.dialog) {
+      await page.evaluate(() => document.querySelector('[role=dialog] input[data-direction="exploring"]')?.closest("label")?.click());
+      await sleep(200);
+      await clickText(page, ["Continue"], "[role=dialog]");
+    } else if (s.text.includes("Stop Listening")) {
+      return true;
+    } else {
+      await clickText(page, ["Get Started", "Start Listening"]);
+    }
+    await sleep(700);
+  }
+  return false;
+}
+
+// In the page: every button / input under the roots `scope` matches, by a stable
+// key, sampled every 100 ms, with the state read by `stateFn` (source text,
+// evaluated per sample).
+const sampleButtons = (page, scope, stateSrc, ms) => page.evaluate(async (scope, stateSrc, ms) => {
+  const stateFn = new Function(`return (${stateSrc})();`);
+  const out = [];
+  const t0 = performance.now();
+  while (performance.now() - t0 < ms) {
+    const roots = [...document.querySelectorAll(scope)];
+    // (fallback for builds before data-lab-root: the full lab layout's outer box)
+    if (scope.includes("lab-root") && !roots.some((r) => r.matches("[data-lab-root], [data-lab-phone]"))) {
+      const r = [...document.querySelectorAll("h2")].find((h) => h.textContent.startsWith("Resonance lab"))?.parentElement?.parentElement;
+      if (r) roots.push(r);
+    }
+    const rects = {};
+    const seen = {};
+    for (const b of roots.flatMap((r) => [...r.querySelectorAll("button, input, textarea")])) {
+      const base = b.getAttribute("aria-label") || (b.dataset.labView ? `view:${b.dataset.labView}` : "") || b.getAttribute("placeholder") || b.textContent.trim();
+      const n = (seen[base] = (seen[base] ?? 0) + 1);
+      const r = b.getBoundingClientRect();
+      rects[n > 1 ? `${base}#${n}` : base] = [r.left, r.top, r.width, r.height].map((v) => Math.round(v * 100) / 100);
+    }
+    out.push({ t: Math.round(performance.now() - t0), state: stateFn(), rects });
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  return out;
+}, scope, stateSrc, ms);
+
+// Biggest move of any button between two samples, and which.
+function maxMove(samples) {
+  const keys = new Set(samples.flatMap((s) => Object.keys(s.rects)));
+  let worst = { d: 0, key: null, a: null, b: null };
+  const missing = [];
+  for (const k of keys) {
+    const have = samples.filter((s) => s.rects[k]);
+    if (have.length !== samples.length) missing.push(k);
+    for (const s of have) {
+      const r0 = have[0].rects[k], r = s.rects[k];
+      const d = Math.max(...r.map((v, i) => Math.abs(v - r0[i])));
+      if (d > worst.d) worst = { d, key: k, a: { state: have[0].state, r: r0 }, b: { state: s.state, r } };
+    }
+  }
+  return { worst, missing, n: keys.size };
+}
+
+// Screenshot of the current part in a given state (polls until the state shows).
+async function shotIn(page, stateSrc, want, file) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < 12000) {
+    const st = await page.evaluate((src) => new Function(`return (${src})();`)(), stateSrc);
+    if (st === want) { await page.screenshot({ path: file }); return true; }
+    await sleep(60);
+  }
+  return false;
+}
+
+// Voicing state of each part: "voiced" | "unvoiced" (anything else: in between).
+const CUE_STATE = `() => {
+  const f0 = document.querySelector('[data-cue="pitch"] [data-cue-f0]')?.innerText ?? ""; // visible text only
+  return /\\d/.test(f0) ? "voiced" : f0.includes("—") ? "unvoiced" : "other";
+}`;
+const LAB_STATE = `() => {
+  const p = document.querySelector("[data-lab-pitch]");
+  if (p) return p.dataset.labPitch === "live" ? "voiced" : p.dataset.labPitch === "last" ? "unvoiced" : "other";
+  const t = document.querySelector("[data-lab-header]")?.innerText ?? document.body.innerText;
+  return /Pitch \\d+ Hz/.test(t) ? "voiced" : /\\(last \\d+ Hz\\)/.test(t) ? "unvoiced" : "other";
+}`;
+// The lab root: both layouts carry data-lab-root (after this change); before it, the
+// phone layout had data-lab-phone and the full one only the header text.
+const LAB_SCOPE = "[data-lab-root], [data-lab-phone]";
+// The Stop Listening bar (its voice status text changes with the voice).
+const BAR = "[data-listen-bar]";
+// The heard-as panel: shown (wide / narrow, older reading) or hidden (reason).
+const PANEL_STATE = `() => {
+  const p = document.querySelector("[data-heard-as]");
+  if (!p) return "none";
+  if (p.dataset.heardAs !== "shown") return p.dataset.heardAs + ":" + (p.dataset.reason || "");
+  return "shown:" + (document.querySelector("[data-heard-as-axis]")?.dataset.axisWide === "1" ? "wide" : "narrow")
+    + (document.querySelector("[data-heard-as-shares]")?.dataset.stale === "1" ? "+older" : "");
+}`;
+
+async function part(vp, page, name, scope, stateSrc) {
+  const samples = await sampleButtons(page, scope, stateSrc, SECONDS * 1000);
+  const counts = samples.reduce((a, s) => ((a[s.state] = (a[s.state] ?? 0) + 1), a), {});
+  const both = (counts.voiced ?? 0) > 0 && (counts.unvoiced ?? 0) > 0;
+  const m = maxMove(samples);
+  check(vp, `${name}: voiced and unvoiced both seen`, both, JSON.stringify(counts));
+  check(vp, `${name}: ${m.n} buttons, none moved (max ${m.worst.d.toFixed(2)} px <= ${TOL})`, m.n > 0 && m.worst.d <= TOL && m.missing.length === 0,
+    m.worst.d > TOL ? `"${m.worst.key}" ${JSON.stringify(m.worst.a)} -> ${JSON.stringify(m.worst.b)}` : m.missing.length ? `appeared / disappeared: ${m.missing.join(", ")}` : "");
+  for (const st of ["voiced", "unvoiced"]) await shotIn(page, stateSrc, st, path.join(OUT, `${vp}-${name}-${st}.png`));
+}
+
+log("starting preview server");
+await startServer();
+const launch = (wav) => puppeteer.launch({
+  executablePath: CHROME,
+  headless: true,
+  userDataDir: newProfile(),
+  args: ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream",
+    `--use-file-for-fake-audio-capture=${wav}`, "--autoplay-policy=no-user-gesture-required"],
+});
+async function openPage(viewport, errors) {
+  const page = await browser.newPage();
+  await page.setViewport(viewport);
+  page.on("pageerror", (e) => errors.push(String(e)));
+  const cdp = await page.createCDPSession();
+  await cdp.send("Emulation.setFocusEmulationEnabled", { enabled: true });
+  await page.goto(`http://localhost:${PORT}/Syrinx/`, { waitUntil: "domcontentloaded", timeout: 180000 });
+  await page.bringToFront();
+  return page;
+}
+browser = await launch(WAV);
+
+for (const [vp, viewport] of Object.entries(VIEWPORTS)) {
+  const errors = [];
+  const page = await openPage(viewport, errors);
+  const listening = await startListening(page);
+  check(vp, "listening", listening);
+  if (!listening) { await page.close(); continue; }
+
+  // 1 Dashboard cue strip
+  await page.waitForSelector('[data-cue="pitch"]', { timeout: 20000 }).catch(() => {});
+  await sleep(4000);
+  await part(vp, page, "cue-strip", `[data-cue-strip], ${BAR}`, CUE_STATE);
+
+  // 2 Resonance lab
+  await clickText(page, ["Resonance lab"]);
+  await page.waitForFunction((scope) => {
+    const root = document.querySelector(scope) ?? document.querySelector("main") ?? document.body;
+    return !!root && !/Loading lab/.test(root.textContent) && /Voiced so far [1-9]/.test(root.textContent);
+  }, { timeout: 60000 }, LAB_SCOPE).catch(() => log("lab not ready in 60 s"));
+  await sleep(2000);
+  await part(vp, page, "lab-resonance", `${LAB_SCOPE}, ${BAR}`, LAB_STATE);
+
+  // 3 Weight × clarity view
+  await page.evaluate(() => document.querySelector('[data-lab-view="weight"]')?.click());
+  await page.waitForSelector("[data-weight-map-start]", { timeout: 30000 }).catch(() => log("weight view not ready in 30 s"));
+  await sleep(2500);
+  await part(vp, page, "lab-weight", `${LAB_SCOPE}, ${BAR}`, LAB_STATE);
+  // The whole plot (with its bottom axis word) must be in the first screen,
+  // above Stop Listening.
+  const fit = await page.evaluate(() => {
+    window.scrollTo(0, 0);
+    for (const el of document.querySelectorAll("[data-lab-phone]")) el.scrollTop = 0;
+    const plot = document.querySelector("[data-weight-plot]")?.getBoundingClientRect();
+    const axis = document.querySelector("[data-weight-axis-bottom]")?.getBoundingClientRect();
+    const stop = [...document.querySelectorAll("button")].find((b) => b.textContent.includes("Stop Listening"))?.getBoundingClientRect();
+    return plot ? { top: Math.round(plot.top), bottom: Math.round(Math.max(plot.bottom, axis?.bottom ?? 0)), floor: Math.round(Math.min(innerHeight, stop?.top ?? innerHeight)) } : null;
+  });
+  check(vp, "lab-weight: plot in the first screen", !!fit && fit.top >= 0 && fit.bottom <= fit.floor, JSON.stringify(fit));
+
+  // Mapping: "Next" ... "Done" keep one width, so "Finish now" and "Cancel" stay put.
+  const startable = await page.evaluate(() => { const b = document.querySelector("[data-weight-map-start]"); return !!b && !b.disabled; });
+  if (!startable) {
+    console.log(`SKIP  [${vp}] lab-weight mapping: the map button is missing or disabled`);
+  } else {
+    await page.evaluate(() => document.querySelector("[data-weight-map-start]")?.click());
+    await page.waitForSelector("[data-weight-mapping]", { timeout: 10000 }).catch(() => {});
+    const boxes = [];
+    for (let i = 0; i < 8; i++) {
+      const b = await page.evaluate(() => {
+        const m = document.querySelector("[data-weight-mapping]");
+        if (!m) return null;
+        const bs = [...m.querySelectorAll("button")];
+        return { label: bs[0]?.innerText.trim(), rects: bs.map((x) => { const r = x.getBoundingClientRect(); return [r.left, r.top, r.width, r.height].map((v) => Math.round(v * 100) / 100); }) };
+      });
+      if (!b) break;
+      boxes.push(b);
+      if (b.label === "Done") break;
+      await page.evaluate(() => document.querySelector("[data-weight-mapping] button")?.click());
+      await sleep(400);
+    }
+    const labels = boxes.map((b) => b.label);
+    let worst = 0;
+    for (const b of boxes) for (let k = 0; k < b.rects.length; k++) worst = Math.max(worst, ...b.rects[k].map((v, i) => Math.abs(v - boxes[0].rects[k][i])));
+    check(vp, `lab-weight mapping: Next … Done, the three buttons keep their boxes (max ${worst.toFixed(2)} px <= ${TOL})`,
+      labels.includes("Next") && labels.at(-1) === "Done" && boxes.every((b) => b.rects.length === 3) && worst <= TOL, labels.join(" > "));
+    await page.evaluate(() => [...document.querySelectorAll("[data-weight-mapping] button")].find((x) => x.textContent.trim() === "Cancel")?.click());
+    await sleep(300);
+  }
+
+  check(vp, "no page errors", errors.length === 0, errors.slice(0, 3).join(" | "));
+  await page.close();
+}
+
+await browser.close().catch(() => {});
+killBrowser();
+
+// 4 The "Likely heard as" panel switched on: one height in every state.
+if (PANEL) {
+  browser = await launch(PANEL_WAV);
+  for (const [vp, viewport] of Object.entries(VIEWPORTS)) {
+    const errors = [];
+    const page = await openPage(viewport, errors);
+    const listening = await startListening(page);
+    check(vp, "panel: listening", listening);
+    if (!listening) { await page.close(); continue; }
+    await page.waitForSelector("[data-heard-as]", { timeout: 20000 }).catch(() => {});
+    await page.evaluate(() => [...document.querySelectorAll("[data-heard-as] button")].find((b) => b.textContent.includes("Turn on"))?.click());
+    const t0 = Date.now();
+    const ready = await page.waitForFunction(() => document.querySelector("[data-heard-as]")?.dataset.modelWorker === "ready", { timeout: 300000 })
+      .then(() => true, () => false);
+    check(vp, "panel: voice model ready", ready, `${Math.round((Date.now() - t0) / 1000)} s`);
+    if (!ready) { await page.close(); continue; }
+    const shownOnce = await page.waitForFunction(() => document.querySelector("[data-heard-as]")?.dataset.heardAs === "shown", { timeout: 60000 })
+      .then(() => true, () => false);
+    if (!shownOnce) log("panel: no estimate shown within 60 s of the model being ready");
+    const scope = `[data-heard-as], [data-session-row], ${BAR}`;
+    const samples = await sampleButtons(page, scope, PANEL_STATE, PANEL_SECONDS * 1000);
+    const counts = samples.reduce((a, s) => ((a[s.state] = (a[s.state] ?? 0) + 1), a), {});
+    const shown = Object.keys(counts).some((k) => k.startsWith("shown:"));
+    const hidden = Object.keys(counts).some((k) => k.startsWith("hidden:"));
+    check(vp, "panel: shown and hidden states both seen", shown && hidden, JSON.stringify(counts));
+    const m = maxMove(samples);
+    check(vp, `panel: ${m.n} buttons / inputs, none moved (max ${m.worst.d.toFixed(2)} px <= ${TOL})`, m.n > 0 && m.worst.d <= TOL && m.missing.length === 0,
+      m.worst.d > TOL ? `"${m.worst.key}" ${JSON.stringify(m.worst.a)} -> ${JSON.stringify(m.worst.b)}` : m.missing.length ? `appeared / disappeared: ${m.missing.join(", ")}` : "");
+    const h = await page.evaluate(() => document.querySelector("[data-heard-as]")?.getBoundingClientRect().height ?? null);
+    log(`  [${vp}] panel height ${h?.toFixed(1)} px; states ${JSON.stringify(counts)}`);
+    for (const st of Object.keys(counts)) {
+      await page.evaluate(() => document.querySelector("[data-heard-as]")?.scrollIntoView({ block: "center" }));
+      await shotIn(page, PANEL_STATE, st, path.join(OUT, `${vp}-panel-${st.replace(/[:+]/g, "_")}.png`));
+    }
+    check(vp, "panel: no page errors", errors.length === 0, errors.slice(0, 3).join(" | "));
+    await page.close();
+  }
+  await browser.close().catch(() => {});
+  killBrowser();
+}
+
+const failed = results.filter((r) => !r.ok);
+console.log(`\n${results.length - failed.length}/${results.length} checks passed; screenshots in ${OUT}`);
+cleanup();
+process.exit(failed.length ? 1 : 0);
