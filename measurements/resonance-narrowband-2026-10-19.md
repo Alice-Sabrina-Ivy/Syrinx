@@ -1003,3 +1003,49 @@ with the notice off (F −3.9 dB) and a reading. Against the worker without the
 detector, 6 of its 13 checks fail. Row states, header, screen-reader text and
 trail: `tests/audio/cue-strip-model-test.js`; the readout clear / drop /
 refill: `tests/resonance/resonance-cue-test.js`.
+
+## Review fix: no resonance position before the detector has decided (2026-10-19)
+
+**Finding (pre-PR review, verified).** The resonance row shows a dot once the
+cue has 2 s of voiced readout (`RESONANCE_WARM_S`, state `settling`), but the
+detector cannot decide before V_min = 3 voiced s. On the 3.4 kHz low-passed
+copy of the three committed LibriSpeech lab fixtures (real pitch + resonance
+workers, each post through `resonanceRowState`), the row is `settling` at
+2.13 s cue-voiced with u = −1.63, a dot on the dark side, and the notice comes
+on only at detector n = 313. So the darker phone reading the notice exists to
+hide is shown for about a second first, and again after every fresh engine
+(overload or error back-off: fresh detector, fresh cue). This contradicts
+R4.6 ("the notice … resonance paused") in intent; §1's "before the detector
+has its minimum voiced time … the row behaves exactly as it does today" is
+what allowed it.
+
+**Change (deviation from §1, recorded here before the code).** The worker's
+state post withholds the position (`u` and `raw` null, `clamp` 0) while
+`narrowband.decided` is false, and the row model keeps the resonance row in
+`warming` ("keep talking…") while a post carries an undecided detector. The
+cue itself is unchanged (it keeps its readout, bins and start collection), so
+after the decision the posts are exactly what they were.
+
+**Cost on normal audio, measured.** The 40 `_orig` LibriSpeech reading
+streams of this study (`build/resonance-narrowband/streams48/`, 48 kHz, both
+halves, first 20 s each; wideband, unprocessed) through the REAL pitch and
+resonance workers; first post whose row state draws a dot, now vs with the
+position withheld until `decided` (same run: withholding changes no other
+worker state). Scratch harness `firstdot.mjs` (not committed; it reads the
+posts and applies `resonanceRowState` / `dotOpacity` / `rowValue`).
+
+| 40 streams | median | q10 | q90 | max |
+|---|---|---|---|---|
+| first dot, before (audio s) | 4.05 | 3.60 | 4.95 | 6.53 |
+| first dot, withheld until decided (audio s) | 5.40 | 4.50 | 6.53 | 8.32 |
+| delay (audio s) | 1.35 | 0.67 | 1.80 | 2.25 |
+| cue voiced time at first dot, before → after (s) | 2.08 → 2.83 | 2.00 → 2.55 | 2.25 → 2.93 | 2.29 → 3.03 |
+| first `live` (audio s), unchanged | 9.22 | 7.42 | 11.70 | 14.40 |
+
+Posts that drew a dot while the detector was undecided: median 6 per stream
+(q90 8, max 10); none after the change. `live` (fill 1, 5 s of readout) never
+came before the decision on any stream, so the time to live is unchanged.
+The notice never came on for these wideband streams. On the three 5 s
+fixtures alone (the test material) the first dot moves 3.15 → 4.05 s on the
+concatenation; the two male 5 s clips no longer show a dot within 5 s (their
+detector reaches 300 voiced frames only after the clip ends).
