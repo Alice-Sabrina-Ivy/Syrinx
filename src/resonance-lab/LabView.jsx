@@ -198,7 +198,7 @@ const ReadingNote = ({ s }) => (
 // A readout that keeps one width whatever it says: the widest of `widest`
 // (digits are tabular) is laid out invisibly in the same grid cell, so the
 // buttons after it on its row never move — the pitch readout switching
-// between "Pitch 276 Hz" and "Pitch — (last 276 Hz)" as voicing came and went
+// between "Pitch 276 Hz" and "Pitch — (last 276 Hz)" (its old unvoiced form) as voicing came and went
 // moved them left and right (desktop) or wrapped the view switch onto its
 // own line and back (phones), 2026-10-19 user report.
 const Fixed = ({ widest, children, ...rest }) => (
@@ -208,13 +208,20 @@ const Fixed = ({ widest, children, ...rest }) => (
   </span>
 );
 
-const PITCH_WIDEST = ["Pitch 000 Hz", "Pitch — (last 000 Hz)"];
+// Live pitch in bright text; with no voice, the last value in the same place in
+// grey ("Pitch 217 Hz", screen readers hear "last heard") — no longer "Pitch —
+// (last 217 Hz)", whose reserved width pushed the view switch onto a line of
+// its own at 360 px and left a wide gap after a live value (2026-10-20
+// review). Grey = neutral-400 (7.6:1 on the page; the old neutral-600 was
+// 2.45:1).
+const PITCH_WIDEST = ["Pitch 000 Hz"];
 const PitchStat = ({ snap }) => {
   const state = snap?.pitch ? "live" : snap?.lastPitch ? "last" : "none";
   return (
     <Fixed widest={PITCH_WIDEST} data-lab-pitch={state}>
-      Pitch {state === "live" ? `${Math.round(snap.pitch)} Hz` : "—"}
-      {state === "last" ? <span className="text-neutral-600"> (last {Math.round(snap.lastPitch)} Hz)</span> : null}
+      {state === "live" ? <span>Pitch <span className="text-neutral-200">{Math.round(snap.pitch)} Hz</span></span>
+        : state === "last" ? <span className="text-neutral-400">Pitch {Math.round(snap.lastPitch)} Hz<span className="sr-only"> (last heard)</span></span>
+          : "Pitch —"}
     </Fixed>
   );
 };

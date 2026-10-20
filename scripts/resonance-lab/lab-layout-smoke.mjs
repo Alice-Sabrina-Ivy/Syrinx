@@ -4,23 +4,32 @@
 // 448 x 890 (phone emulation) and 1280 x 800 (desktop).
 //
 //   npm run build && node scripts/resonance-lab/lab-layout-smoke.mjs [--wav=<48 kHz 16-bit mono speech>]
-//        [--seconds=20] [--out=build/lab-layout-smoke]
+//        [--seconds=20] [--panel-seconds=60] [--panel=0] [--out=build/lab-layout-smoke]
 //
 // The source WAV (default build/cue-strip-smoke/speech-woman.wav, from
 // scripts/cue-strip-smoke-wavs.mjs) is cut into 3 s of speech + 2.5 s of
 // silence, repeated, so every readout passes through its voiced and its
-// unvoiced text ("Pitch 276 Hz" / "Pitch — (last 276 Hz)", "— Hz", "—" st …).
-// Per viewport, every button's box is sampled every 100 ms in:
+// unvoiced text ("Pitch 276 Hz" in bright / grey, "— Hz", "—" st …).
+// Per viewport, every button's (and input's) box is sampled every 100 ms in:
 //   1 the Dashboard cue strip      (the row "i"s, the steadiness "i")
 //   2 the Resonance lab            (header buttons, view switch, card "i"s)
 //   3 the lab's Weight × clarity   (header buttons, view switch, map button)
-// PASS when both states were seen (voiced and unvoiced pitch text) and no
-// button's box moved by more than 0.5 px between any two samples.
+// each together with the Stop Listening bar under it (its voice status text
+// changes with the voice). PASS when both states were seen (voiced and
+// unvoiced pitch text) and no box moved by more than 0.5 px between any two
+// samples. In the weight view it then starts "Map your voice" and steps
+// Next … Done: the three mapping buttons must keep their boxes; then Cancel.
+//   4 the "Likely heard as" panel switched ON (unless --panel=0; downloads the
+//     voice model from Hugging Face): a second browser plays 9 s of speech +
+//     7 s of silence, so the panel cycles through "Keep talking", "Can't tell
+//     yet", a range with its "unsure" line and "Older reading"; for
+//     --panel-seconds the panel's own buttons, Save Session, the notes box and
+//     the Stop Listening bar must not move (one panel height in every state).
 // Screenshots of each part in both states go to <out>/<viewport>-<part>-<state>.png.
 //
 // Process hygiene (CLAUDE.md hard rule 2): Chrome is launched by puppeteer with a fresh
-// temporary --user-data-dir and closed via browser.close(), falling back to taskkill of
-// ITS pid only; the preview server is this script's own child, killed only by its PID.
+// temporary --user-data-dir (one per browser) and closed via browser.close(), falling back
+// to taskkill of ITS pid only; the preview server is this script's own child, killed only by its PID.
 // Cleanup is registered on exit / SIGINT / SIGTERM / uncaughtException.
 
 import { spawn, execFileSync } from "node:child_process";
@@ -35,6 +44,8 @@ const arg = (k, d) => (process.argv.find((a) => a.startsWith(`--${k}=`)) ?? `=${
 const SRC = arg("wav", path.join(repo, "build", "cue-strip-smoke", "speech-woman.wav"));
 const SECONDS = Number(arg("seconds", "20"));
 const OUT = arg("out", path.join(repo, "build", "lab-layout-smoke"));
+const PANEL = arg("panel", "1") !== "0";
+const PANEL_SECONDS = Number(arg("panel-seconds", "60"));
 const PORT = Number(arg("port", "4193"));
 const TOL = 0.5; // px
 const CHROME = ["C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
@@ -48,8 +59,8 @@ const VIEWPORTS = {
   desktop: { width: 1280, height: 800, deviceScaleFactor: 1 },
 };
 
-// 3 s speech / 2.5 s silence, from the source WAV (PCM 16-bit mono).
-function gappedWav(src, dst) {
+// speechS of speech / gapS of silence, repeated, from the source WAV (PCM 16-bit mono).
+function gappedWav(src, dst, speechS, gapS) {
   const b = readFileSync(src);
   let off = 12, fmt = null, data = null;
   while (off + 8 <= b.length) {
@@ -59,7 +70,7 @@ function gappedWav(src, dst) {
     off += 8 + n + (n & 1);
   }
   if (!fmt || !data || fmt.ch !== 1 || fmt.bits !== 16) throw new Error("need a 16-bit mono WAV");
-  const sp = 3 * fmt.sr * 2, gap = Math.round(2.5 * fmt.sr) * 2;
+  const sp = Math.round(speechS * fmt.sr) * 2, gap = Math.round(gapS * fmt.sr) * 2;
   const parts = [];
   for (let i = 0; i + sp <= data.length && parts.length < 16; i += sp) parts.push(data.subarray(i, i + sp), Buffer.alloc(gap));
   const pcm = Buffer.concat(parts);
@@ -71,17 +82,23 @@ function gappedWav(src, dst) {
   writeFileSync(dst, Buffer.concat([h, pcm]));
 }
 const WAV = path.join(OUT, "speech-gapped.wav");
-gappedWav(SRC, WAV);
+gappedWav(SRC, WAV, 3, 2.5);
+const PANEL_WAV = path.join(OUT, "speech-gapped-panel.wav");
+if (PANEL) gappedWav(SRC, PANEL_WAV, 9, 7);
 
 let server = null;
 let browser = null;
-const profile = mkdtempSync(path.join(tmpdir(), "lab-layout-smoke-"));
-function cleanup() {
-  if (server?.pid) { try { execFileSync("taskkill", ["/pid", String(server.pid), "/T", "/F"], { stdio: "ignore" }); } catch { /* gone */ } server = null; }
+const profiles = [];
+const newProfile = () => { const d = mkdtempSync(path.join(tmpdir(), "lab-layout-smoke-")); profiles.push(d); return d; };
+function killBrowser() {
   const bp = browser?.process?.()?.pid;
   if (bp) { try { execFileSync("taskkill", ["/pid", String(bp), "/T", "/F"], { stdio: "ignore" }); } catch { /* closed */ } }
   browser = null;
-  try { rmSync(profile, { recursive: true, force: true }); } catch { /* locked */ }
+}
+function cleanup() {
+  if (server?.pid) { try { execFileSync("taskkill", ["/pid", String(server.pid), "/T", "/F"], { stdio: "ignore" }); } catch { /* gone */ } server = null; }
+  killBrowser();
+  for (const d of profiles.splice(0)) { try { rmSync(d, { recursive: true, force: true }); } catch { /* locked */ } }
 }
 process.on("exit", cleanup);
 for (const s of ["SIGINT", "SIGTERM"]) process.on(s, () => { cleanup(); process.exit(1); });
@@ -130,20 +147,24 @@ async function startListening(page) {
   return false;
 }
 
-// In the page: every button under `scope`, by a stable key, sampled every 100 ms,
-// with the voicing state read by `stateFn` (source text, evaluated per sample).
+// In the page: every button / input under the roots `scope` matches, by a stable
+// key, sampled every 100 ms, with the state read by `stateFn` (source text,
+// evaluated per sample).
 const sampleButtons = (page, scope, stateSrc, ms) => page.evaluate(async (scope, stateSrc, ms) => {
   const stateFn = new Function(`return (${stateSrc})();`);
   const out = [];
   const t0 = performance.now();
   while (performance.now() - t0 < ms) {
+    const roots = [...document.querySelectorAll(scope)];
     // (fallback for builds before data-lab-root: the full lab layout's outer box)
-    const root = document.querySelector(scope)
-      ?? [...document.querySelectorAll("h2")].find((h) => scope.includes("lab") && h.textContent.startsWith("Resonance lab"))?.parentElement?.parentElement;
+    if (scope.includes("lab-root") && !roots.some((r) => r.matches("[data-lab-root], [data-lab-phone]"))) {
+      const r = [...document.querySelectorAll("h2")].find((h) => h.textContent.startsWith("Resonance lab"))?.parentElement?.parentElement;
+      if (r) roots.push(r);
+    }
     const rects = {};
     const seen = {};
-    for (const b of root ? root.querySelectorAll("button") : []) {
-      const base = b.getAttribute("aria-label") || (b.dataset.labView ? `view:${b.dataset.labView}` : "") || b.textContent.trim();
+    for (const b of roots.flatMap((r) => [...r.querySelectorAll("button, input, textarea")])) {
+      const base = b.getAttribute("aria-label") || (b.dataset.labView ? `view:${b.dataset.labView}` : "") || b.getAttribute("placeholder") || b.textContent.trim();
       const n = (seen[base] = (seen[base] ?? 0) + 1);
       const r = b.getBoundingClientRect();
       rects[n > 1 ? `${base}#${n}` : base] = [r.left, r.top, r.width, r.height].map((v) => Math.round(v * 100) / 100);
@@ -196,6 +217,16 @@ const LAB_STATE = `() => {
 // The lab root: both layouts carry data-lab-root (after this change); before it, the
 // phone layout had data-lab-phone and the full one only the header text.
 const LAB_SCOPE = "[data-lab-root], [data-lab-phone]";
+// The Stop Listening bar (its voice status text changes with the voice).
+const BAR = "[data-listen-bar]";
+// The heard-as panel: shown (wide / narrow, older reading) or hidden (reason).
+const PANEL_STATE = `() => {
+  const p = document.querySelector("[data-heard-as]");
+  if (!p) return "none";
+  if (p.dataset.heardAs !== "shown") return p.dataset.heardAs + ":" + (p.dataset.reason || "");
+  return "shown:" + (document.querySelector("[data-heard-as-axis]")?.dataset.axisWide === "1" ? "wide" : "narrow")
+    + (document.querySelector("[data-heard-as-shares]")?.dataset.stale === "1" ? "+older" : "");
+}`;
 
 async function part(vp, page, name, scope, stateSrc) {
   const samples = await sampleButtons(page, scope, stateSrc, SECONDS * 1000);
@@ -210,23 +241,28 @@ async function part(vp, page, name, scope, stateSrc) {
 
 log("starting preview server");
 await startServer();
-browser = await puppeteer.launch({
+const launch = (wav) => puppeteer.launch({
   executablePath: CHROME,
   headless: true,
-  userDataDir: profile,
+  userDataDir: newProfile(),
   args: ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream",
-    `--use-file-for-fake-audio-capture=${WAV}`, "--autoplay-policy=no-user-gesture-required"],
+    `--use-file-for-fake-audio-capture=${wav}`, "--autoplay-policy=no-user-gesture-required"],
 });
-
-for (const [vp, viewport] of Object.entries(VIEWPORTS)) {
+async function openPage(viewport, errors) {
   const page = await browser.newPage();
   await page.setViewport(viewport);
-  const errors = [];
   page.on("pageerror", (e) => errors.push(String(e)));
   const cdp = await page.createCDPSession();
   await cdp.send("Emulation.setFocusEmulationEnabled", { enabled: true });
   await page.goto(`http://localhost:${PORT}/Syrinx/`, { waitUntil: "domcontentloaded", timeout: 180000 });
   await page.bringToFront();
+  return page;
+}
+browser = await launch(WAV);
+
+for (const [vp, viewport] of Object.entries(VIEWPORTS)) {
+  const errors = [];
+  const page = await openPage(viewport, errors);
   const listening = await startListening(page);
   check(vp, "listening", listening);
   if (!listening) { await page.close(); continue; }
@@ -234,7 +270,7 @@ for (const [vp, viewport] of Object.entries(VIEWPORTS)) {
   // 1 Dashboard cue strip
   await page.waitForSelector('[data-cue="pitch"]', { timeout: 20000 }).catch(() => {});
   await sleep(4000);
-  await part(vp, page, "cue-strip", "[data-cue-strip]", CUE_STATE);
+  await part(vp, page, "cue-strip", `[data-cue-strip], ${BAR}`, CUE_STATE);
 
   // 2 Resonance lab
   await clickText(page, ["Resonance lab"]);
@@ -243,15 +279,15 @@ for (const [vp, viewport] of Object.entries(VIEWPORTS)) {
     return !!root && !/Loading lab/.test(root.textContent) && /Voiced so far [1-9]/.test(root.textContent);
   }, { timeout: 60000 }, LAB_SCOPE).catch(() => log("lab not ready in 60 s"));
   await sleep(2000);
-  await part(vp, page, "lab-resonance", LAB_SCOPE, LAB_STATE);
+  await part(vp, page, "lab-resonance", `${LAB_SCOPE}, ${BAR}`, LAB_STATE);
 
   // 3 Weight × clarity view
   await page.evaluate(() => document.querySelector('[data-lab-view="weight"]')?.click());
   await page.waitForSelector("[data-weight-map-start]", { timeout: 30000 }).catch(() => log("weight view not ready in 30 s"));
   await sleep(2500);
-  await part(vp, page, "lab-weight", LAB_SCOPE, LAB_STATE);
-  // The fixed-width header is three lines at 360 px: the whole plot (with its
-  // bottom axis word) must still be in the first screen, above Stop Listening.
+  await part(vp, page, "lab-weight", `${LAB_SCOPE}, ${BAR}`, LAB_STATE);
+  // The whole plot (with its bottom axis word) must be in the first screen,
+  // above Stop Listening.
   const fit = await page.evaluate(() => {
     window.scrollTo(0, 0);
     for (const el of document.querySelectorAll("[data-lab-phone]")) el.scrollTop = 0;
@@ -262,12 +298,84 @@ for (const [vp, viewport] of Object.entries(VIEWPORTS)) {
   });
   check(vp, "lab-weight: plot in the first screen", !!fit && fit.top >= 0 && fit.bottom <= fit.floor, JSON.stringify(fit));
 
+  // Mapping: "Next" ... "Done" keep one width, so "Finish now" and "Cancel" stay put.
+  const startable = await page.evaluate(() => { const b = document.querySelector("[data-weight-map-start]"); return !!b && !b.disabled; });
+  if (!startable) {
+    console.log(`SKIP  [${vp}] lab-weight mapping: the map button is missing or disabled`);
+  } else {
+    await page.evaluate(() => document.querySelector("[data-weight-map-start]")?.click());
+    await page.waitForSelector("[data-weight-mapping]", { timeout: 10000 }).catch(() => {});
+    const boxes = [];
+    for (let i = 0; i < 8; i++) {
+      const b = await page.evaluate(() => {
+        const m = document.querySelector("[data-weight-mapping]");
+        if (!m) return null;
+        const bs = [...m.querySelectorAll("button")];
+        return { label: bs[0]?.innerText.trim(), rects: bs.map((x) => { const r = x.getBoundingClientRect(); return [r.left, r.top, r.width, r.height].map((v) => Math.round(v * 100) / 100); }) };
+      });
+      if (!b) break;
+      boxes.push(b);
+      if (b.label === "Done") break;
+      await page.evaluate(() => document.querySelector("[data-weight-mapping] button")?.click());
+      await sleep(400);
+    }
+    const labels = boxes.map((b) => b.label);
+    let worst = 0;
+    for (const b of boxes) for (let k = 0; k < b.rects.length; k++) worst = Math.max(worst, ...b.rects[k].map((v, i) => Math.abs(v - boxes[0].rects[k][i])));
+    check(vp, `lab-weight mapping: Next … Done, the three buttons keep their boxes (max ${worst.toFixed(2)} px <= ${TOL})`,
+      labels.includes("Next") && labels.at(-1) === "Done" && boxes.every((b) => b.rects.length === 3) && worst <= TOL, labels.join(" > "));
+    await page.evaluate(() => [...document.querySelectorAll("[data-weight-mapping] button")].find((x) => x.textContent.trim() === "Cancel")?.click());
+    await sleep(300);
+  }
+
   check(vp, "no page errors", errors.length === 0, errors.slice(0, 3).join(" | "));
   await page.close();
 }
 
 await browser.close().catch(() => {});
-browser = null;
+killBrowser();
+
+// 4 The "Likely heard as" panel switched on: one height in every state.
+if (PANEL) {
+  browser = await launch(PANEL_WAV);
+  for (const [vp, viewport] of Object.entries(VIEWPORTS)) {
+    const errors = [];
+    const page = await openPage(viewport, errors);
+    const listening = await startListening(page);
+    check(vp, "panel: listening", listening);
+    if (!listening) { await page.close(); continue; }
+    await page.waitForSelector("[data-heard-as]", { timeout: 20000 }).catch(() => {});
+    await page.evaluate(() => [...document.querySelectorAll("[data-heard-as] button")].find((b) => b.textContent.includes("Turn on"))?.click());
+    const t0 = Date.now();
+    const ready = await page.waitForFunction(() => document.querySelector("[data-heard-as]")?.dataset.modelWorker === "ready", { timeout: 300000 })
+      .then(() => true, () => false);
+    check(vp, "panel: voice model ready", ready, `${Math.round((Date.now() - t0) / 1000)} s`);
+    if (!ready) { await page.close(); continue; }
+    const shownOnce = await page.waitForFunction(() => document.querySelector("[data-heard-as]")?.dataset.heardAs === "shown", { timeout: 60000 })
+      .then(() => true, () => false);
+    if (!shownOnce) log("panel: no estimate shown within 60 s of the model being ready");
+    const scope = `[data-heard-as], [data-session-row], ${BAR}`;
+    const samples = await sampleButtons(page, scope, PANEL_STATE, PANEL_SECONDS * 1000);
+    const counts = samples.reduce((a, s) => ((a[s.state] = (a[s.state] ?? 0) + 1), a), {});
+    const shown = Object.keys(counts).some((k) => k.startsWith("shown:"));
+    const hidden = Object.keys(counts).some((k) => k.startsWith("hidden:"));
+    check(vp, "panel: shown and hidden states both seen", shown && hidden, JSON.stringify(counts));
+    const m = maxMove(samples);
+    check(vp, `panel: ${m.n} buttons / inputs, none moved (max ${m.worst.d.toFixed(2)} px <= ${TOL})`, m.n > 0 && m.worst.d <= TOL && m.missing.length === 0,
+      m.worst.d > TOL ? `"${m.worst.key}" ${JSON.stringify(m.worst.a)} -> ${JSON.stringify(m.worst.b)}` : m.missing.length ? `appeared / disappeared: ${m.missing.join(", ")}` : "");
+    const h = await page.evaluate(() => document.querySelector("[data-heard-as]")?.getBoundingClientRect().height ?? null);
+    log(`  [${vp}] panel height ${h?.toFixed(1)} px; states ${JSON.stringify(counts)}`);
+    for (const st of Object.keys(counts)) {
+      await page.evaluate(() => document.querySelector("[data-heard-as]")?.scrollIntoView({ block: "center" }));
+      await shotIn(page, PANEL_STATE, st, path.join(OUT, `${vp}-panel-${st.replace(/[:+]/g, "_")}.png`));
+    }
+    check(vp, "panel: no page errors", errors.length === 0, errors.slice(0, 3).join(" | "));
+    await page.close();
+  }
+  await browser.close().catch(() => {});
+  killBrowser();
+}
+
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} checks passed; screenshots in ${OUT}`);
 cleanup();

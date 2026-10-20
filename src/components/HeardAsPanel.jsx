@@ -19,6 +19,19 @@
 // Constants, errors and the evidence for every caveat sentence:
 // measurements/heard-as-calibration-2026-10-07.md.
 //
+// One height in every state (2026-10-20 review: switching between "Keep
+// talking", "Can't tell yet" and a range with its "unsure" line moved More,
+// Save Session and the notes box by up to ~100 px several times a minute).
+// While it shows no estimate the panel keeps an empty, greyed axis with the
+// reason where the range line goes, and the text area under the axis is as
+// tall as its tallest state: invisible copies of the longest range, unsure,
+// legend and reason texts share its grid cell. Drawing only — no estimate or
+// word changes. The pitch-only note's room is added the first time the note
+// appears after switching on and then kept, so the panel grows once, with
+// the note, instead of carrying blank lines the whole time (extraNote, unused
+// by the app, is not reserved). scripts/resonance-lab/lab-layout-smoke.mjs
+// checks it with the panel on.
+//
 // Notes, shown only while the estimate is, and AT MOST ONE at a time
 // (review round 2): the pitch-only-change warning
 // (src/ml/pitch-only-warning.js, updated here on the panel's cadence from
@@ -187,6 +200,48 @@ const REASONS = {
   outside: () => "Outside the range it was tested on — no guess shown",
 };
 
+const legendText = (stale, wide) => `${stale ? "Older reading — waiting for more speech · " : ""}From your last ~8 s of speech · updates every 2 s · shaded = likely range${wide ? "" : ", ring = single best guess"}`;
+
+// The longest texts each line can show, from the same word functions the
+// panel uses (heardAsAxis on a grid of ranges; every reason), laid out
+// invisibly so the panel's height never depends on which one is showing.
+const RESERVE = (() => {
+  const ranges = new Map(), unsure = new Set();
+  const v = [0.001, 0.049, 0.051, 0.949, 0.951, 0.999];
+  for (let k = 0; k <= 40; k++) v.push(k / 40);
+  for (const lo of v) for (const hi of v) {
+    if (hi < lo) continue;
+    for (const u of [0, 1]) {
+      const a = heardAsAxis({ s: (lo + hi) / 2, sLow: lo, sHigh: hi, centre: { unsure: u } });
+      ranges.set(a.rangeText, a.wide);
+      if (a.unsureText) unsure.add(a.unsureText);
+    }
+  }
+  const longest = (xs, n) => [...xs].sort((a, b) => b.length - a.length || (a < b ? -1 : 1)).slice(0, n);
+  const range = longest(ranges.keys(), 12);
+  for (const [t, wide] of ranges) if (wide && !range.includes(t)) range.push(t);
+  return {
+    range: range.map((t) => ({ t, cls: ranges.get(t) ? "italic" : "" })),
+    unsure: longest(unsure, 3).map((t) => ({ t })),
+    legend: legendText(true, false),
+    note: PITCH_ONLY_TEXT,
+    reasons: [...new Set(Object.entries(REASONS).flatMap(([k, f]) => (k === "loading" ? [f(null), f(99), f(100)] : [f()])))].map((t) => ({ t })),
+  };
+})();
+
+// Several texts in one grid cell (invisible inside a reserve layer): as tall
+// as the tallest of them.
+const Reserve = ({ texts, className = "" }) => (
+  <div className={`grid grid-cols-1 ${className}`}>
+    {texts.map(({ t, cls }) => <div key={t} className={`col-start-1 row-start-1 ${cls ?? ""}`}>{t}</div>)}
+  </div>
+);
+const RANGE_CLS = "mt-1 text-[11px] leading-snug tabular-nums";
+const UNSURE_CLS = "text-[11px] leading-snug tabular-nums";
+const LEGEND_CLS = "mt-0.5 text-[11px]";
+const NOTE_CLS = "mt-1 text-[11px] leading-snug";
+const REASON_CLS = "mt-1 text-[11px] leading-snug";
+
 export function HeardAsSwitch({ on, onChange, label = "Likely heard as · Experimental", ref = null }) {
   return (
     <button
@@ -252,6 +307,28 @@ function HeardAsAxis({ axis }) {
   );
 }
 
+// The axis with no estimate on it (line, ticks and end words; line and ticks
+// greyed): kept on screen while the panel says why it shows none, so the
+// panel keeps its height. Same boxes as HeardAsAxis; hidden from screen
+// readers (the reason text says it all).
+function EmptyAxis() {
+  return (
+    <div aria-hidden="true" data-heard-as-axis-empty="">
+      <div className="relative h-5 mx-1.5">
+        <span className="absolute left-0 right-0 top-1/2 h-px -translate-y-1/2 bg-neutral-700" />
+        {Array.from({ length: 11 }, (_, i) => (
+          <span key={i} className={`absolute top-1/2 w-px -translate-y-1/2 bg-neutral-700 ${i === 5 ? "h-3.5" : "h-2"}`}
+            style={{ left: `${i * 10}%` }} />
+        ))}
+      </div>
+      <div className="flex justify-between gap-2 text-[11px] text-neutral-400 leading-4">
+        <span className="whitespace-nowrap">{AXIS_ENDS.left}</span>
+        <span className="whitespace-nowrap text-right">{AXIS_ENDS.right}</span>
+      </div>
+    </div>
+  );
+}
+
 export function HeardAsPanel({
   enabled,
   onToggle,
@@ -285,7 +362,10 @@ export function HeardAsPanel({
 
   useEffect(() => {
     if (!enabled) return undefined;
-    const show = (v) => { shownRef.current = !v.hidden; setView(v); };
+    // Room for the pitch-only note: from its first appearance in this
+    // switch-on, kept through every later state (one-height layout above).
+    let noteRoom = false;
+    const show = (v) => { shownRef.current = !v.hidden; if (v.pitchOnly) noteRoom = true; setView({ ...v, noteRoom }); };
     // Every update — hidden ones too — goes to the pitch-only warning: a
     // hidden-panel update (lnF0 null) shows nothing but keeps its run through
     // a brief hide (src/ml/pitch-only-warning.js). (The hook's warning object
@@ -378,31 +458,51 @@ export function HeardAsPanel({
         </h3>
         <HeardAsSwitch ref={switchRef} on onChange={toggleHere} />
       </div>
-      {reason ? (
-        <p className="text-[11px] text-neutral-400 min-h-[18px] leading-[18px]" data-heard-as-reason="">{REASONS[reason](progress)}</p>
-      ) : (
-        <div data-heard-as-shares="" data-stale={stale ? "1" : "0"}>
-          <HeardAsAxis axis={view.axis} />
-          {view.pitchOnly && (
-            <p className="mt-1 text-[11px] leading-snug text-amber-200/80" data-heard-as-note="pitch-only" data-pitch-only="1">
-              {PITCH_ONLY_TEXT}
-            </p>
-          )}
-          <p className={`mt-1 text-[11px] leading-snug tabular-nums ${view.axis.wide ? "text-neutral-400 italic" : "text-neutral-300"}`}
-            data-heard-as-range="" data-wide={view.axis.wide ? "1" : "0"}>
-            {view.axis.rangeText}
-          </p>
-          {view.axis.unsureText && (
-            <p className="text-[11px] leading-snug tabular-nums text-neutral-400" data-heard-as-unsure="">{view.axis.unsureText}</p>
-          )}
-          {!view.pitchOnly && extraNote != null && extraNote !== false && (
-            <div className="mt-1 text-[11px] leading-snug text-amber-200/80" data-heard-as-note="extra">{extraNote}</div>
-          )}
-          <p className="mt-0.5 text-[11px] text-neutral-400" data-heard-as-legend="">
-            {stale ? "Older reading — waiting for more speech · " : ""}From your last ~8 s of speech · updates every 2 s · shaded = likely range{view.axis.wide ? "" : ", ring = single best guess"}
-          </p>
+      {/* One grid cell: the tallest shown state and the tallest hidden state
+          (both invisible), and on top of them what is showing now. */}
+      <div className="grid grid-cols-1" data-heard-as-body="">
+        <div aria-hidden="true" className="invisible col-start-1 row-start-1">
+          <EmptyAxis />
+          {view.noteRoom && <div className={NOTE_CLS}>{RESERVE.note}</div>}
+          <Reserve className={RANGE_CLS} texts={RESERVE.range} />
+          <Reserve className={UNSURE_CLS} texts={RESERVE.unsure} />
+          <div className={LEGEND_CLS}>{RESERVE.legend}</div>
         </div>
-      )}
+        <div aria-hidden="true" className="invisible col-start-1 row-start-1">
+          <EmptyAxis />
+          <Reserve className={REASON_CLS} texts={RESERVE.reasons} />
+        </div>
+        <div className="col-start-1 row-start-1 self-start min-w-0">
+          {reason ? (
+            <>
+              <EmptyAxis />
+              <p className={`${REASON_CLS} text-neutral-400`} data-heard-as-reason="">{REASONS[reason](progress)}</p>
+            </>
+          ) : (
+            <div data-heard-as-shares="" data-stale={stale ? "1" : "0"}>
+              <HeardAsAxis axis={view.axis} />
+              {view.pitchOnly && (
+                <p className={`${NOTE_CLS} text-amber-200/80`} data-heard-as-note="pitch-only" data-pitch-only="1">
+                  {PITCH_ONLY_TEXT}
+                </p>
+              )}
+              <p className={`${RANGE_CLS} ${view.axis.wide ? "text-neutral-400 italic" : "text-neutral-300"}`}
+                data-heard-as-range="" data-wide={view.axis.wide ? "1" : "0"}>
+                {view.axis.rangeText}
+              </p>
+              {view.axis.unsureText && (
+                <p className={`${UNSURE_CLS} text-neutral-400`} data-heard-as-unsure="">{view.axis.unsureText}</p>
+              )}
+              {!view.pitchOnly && extraNote != null && extraNote !== false && (
+                <div className="mt-1 text-[11px] leading-snug text-amber-200/80" data-heard-as-note="extra">{extraNote}</div>
+              )}
+              <p className={`${LEGEND_CLS} text-neutral-400`} data-heard-as-legend="">
+                {legendText(stale, view.axis.wide)}
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
       <div className="sr-only" role="status" aria-live="polite" aria-atomic="true" data-heard-as-live="">
         {liveOn ? PITCH_ONLY_TEXT : ""}
       </div>

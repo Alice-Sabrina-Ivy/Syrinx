@@ -44,7 +44,7 @@ const CAVEATS = [
 const fmt = (v, d = 1) => (v === null || v === undefined || !Number.isFinite(v) ? "—" : `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v).toFixed(d)}`);
 const clamp = (v) => Math.max(-RANGE, Math.min(RANGE, v));
 
-function DotPlot({ snap, size, className = "" }) {
+function DotPlot({ snap, size }) {
   const S = 100;
   const px = (u) => ((clamp(u) + RANGE) / (2 * RANGE)) * S;
   const py = (u) => S - ((clamp(u) + RANGE) / (2 * RANGE)) * S;
@@ -52,7 +52,7 @@ function DotPlot({ snap, size, className = "" }) {
   const trail = snap?.trail ?? [];
   const band = [px(-NOISE_BOX), py(NOISE_BOX), px(NOISE_BOX) - px(-NOISE_BOX), py(-NOISE_BOX) - py(NOISE_BOX)];
   return (
-    <svg viewBox={`-2 -2 ${S + 4} ${S + 4}`} width={size} height={size} className={`block shrink-0 ${className}`} data-weight-plot="" role="img"
+    <svg viewBox={`-2 -2 ${S + 4} ${S + 4}`} width={size} height={size} className="block shrink-0" data-weight-plot="" role="img"
       aria-label={r ? `Light to heavy sound ${fmt(r.rw)}, breathy to clear ${fmt(r.rc)}, in units of your own variation from your usual` : "No reading"}>
       <rect x="0" y="0" width={S} height={S} className="fill-neutral-900 stroke-neutral-700" strokeWidth="0.4" />
       {[-3, -1, 1, 3].map((g) => (
@@ -188,11 +188,7 @@ export default function WeightClarityView({ s, phone = false }) {
       <div className="text-[10px] leading-3 uppercase tracking-wide text-neutral-500">clearer</div>
       <div className="flex items-center gap-1">
         <div className="text-[10px] leading-3 uppercase tracking-wide text-neutral-500 [writing-mode:vertical-rl] rotate-180">lighter</div>
-        {/* Phones up to 720 px tall: 200 px, so the whole plot stays in the
-            first screen under the lab header (three lines at 360 px wide since
-            its readouts keep fixed widths, 2026-10-19). */}
-        <DotPlot snap={snap} size={short ? 116 : phone ? 220 : 240}
-          className={phone && !short ? "[@media(max-height:45rem)]:w-[200px] [@media(max-height:45rem)]:h-[200px]" : ""} />
+        <DotPlot snap={snap} size={short ? 116 : phone ? 220 : 240} />
         <div className="text-[10px] leading-3 uppercase tracking-wide text-neutral-500 [writing-mode:vertical-rl]">heavier</div>
       </div>
       <div className="text-[10px] leading-3 uppercase tracking-wide text-neutral-500" data-weight-axis-bottom="">breathier</div>
