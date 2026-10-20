@@ -1,26 +1,30 @@
-// heardAsAxisModel.js — the "Likely heard as" panel's single man <-> woman
-// axis (2026-10-07 user decision: one axis with a shaded range, replacing the
-// three bracket rows). Pure, so the layout numbers and every word the panel
-// shows are unit-tested (tests/ml/heard-as-axis-test.js) — including that a
-// mirrored estimate gives a mirrored axis and the same words with "man" and
-// "woman" swapped (gender symmetry).
+// heardAsAxisModel.js — the "Likely heard as" panel's man <-> woman bar.
+// Pure, so the layout numbers and every word the panel shows are unit-tested
+// (tests/ml/heard-as-axis-test.js) — including that a mirrored estimate gives
+// a mirrored bar and the same words with "man" and "woman" swapped (gender
+// symmetry).
 //
-// The axis is the TWO-WAY share (src/ml/heard-as.js `s`: listeners who would
+// The scale is the TWO-WAY share (src/ml/heard-as.js `s`: listeners who would
 // answer "man" if they had to choose, unsure listeners counted half each
-// way). Orientation as the cue strip: the typically-men end on the LEFT —
-// position x = 1 − s (0 = all would say man, 1 = all would say woman), ticks
-// in tenths. The shaded range is the calibration's ~80 % range
-// [sLow, sHigh] rounded OUTWARD to tenths (the same rounding as the text, so
-// band and words agree); the ring is the single best guess s, unrounded (the
-// range is symmetric in logit, so on this scale the best guess often sits
-// near one end of the band — it is drawn small and hollow so the range reads
-// first; review round 2). A range spanning ≥ WIDE_SHARE_TENTHS (8) tenths is
-// "can't tell yet": the panel draws the band dashed and drops the ring. The
-// unsure / neither share is a text line, not a third bar: the share at the
-// best guess rounded to the nearest tenth ("about N in 10", "fewer than 1 in
-// 10"), left out while it is "can't tell yet". (Until review round 2 it was
-// the range's outward-rounded min…peak, which read "about 0–5 in 10" on most
-// readings of typical voices — measurements/heard-as-panel-review-2-2026-10-07.md §4.)
+// way), in tenths, rounded OUTWARD to tenths like the words ("about A–B in 10
+// would say man · about C–D in 10 would say woman", C = 10 − B, D = 10 − A).
+//
+// SPLIT BAR (user decision 2026-10-20; it replaced the 2026-10-07 axis with a
+// shaded range and a ring): one bar of ten tenths of listeners, "would say
+// man" filling from the LEFT (the cue strip's orientation), "would say woman"
+// from the RIGHT. The solid left part is the low end of "would say man"
+// (A tenths), the solid right part the low end of "would say woman" (C
+// tenths), and the part between them (B − A tenths, the range's width) is
+// striped: it could go either way. `guess` is the single best guess s — where
+// the two would meet — unrounded, always inside the striped part. A range
+// spanning ≥ WIDE_SHARE_TENTHS (8) tenths is "can't tell yet" (mostly
+// stripes; the panel drops the best guess and the unsure line). The unsure /
+// neither share is a text line: the share at the best guess rounded to the
+// nearest tenth ("about N in 10", "fewer than 1 in 10"), left out while it is
+// "can't tell yet". (Until review round 2 it was the range's outward-rounded
+// min…peak, which read "about 0–5 in 10" on most readings of typical voices —
+// measurements/heard-as-panel-review-2-2026-10-07.md §4.) The words are the
+// 2026-10-07 axis's, unchanged (tests/ml/fixtures/heard-as-axis-words-golden.json).
 
 import { formatShare, shareTenths, isWideShare } from "../ml/heard-as.js";
 
@@ -66,9 +70,11 @@ export const AXIS_ENDS = Object.freeze({ left: "would say man", right: "would sa
 
 /**
  * shares: the object heardAsShares() returns (uses s, sLow, sHigh, unsure).
- * -> { lo, hi, dot, wide, manTenths, womanTenths, rangeText, unsureText, srText }
+ * -> { man, woman, guess, wide, manTenths, womanTenths, rangeText, unsureText, srText }
+ *    man / woman: widths of the solid parts as fractions of the bar (man from
+ *    the LEFT end, woman from the RIGHT end); the striped part is the rest.
+ *    guess: the best guess s as a fraction from the LEFT end, 0…1.
  *    unsureText is null while wide (the panel leaves the line out).
- *    lo / hi / dot are axis fractions from the LEFT (man) end, 0…1.
  */
 export function heardAsAxis(shares) {
   const manRange = [shares.sLow, shares.sHigh];
@@ -76,21 +82,21 @@ export function heardAsAxis(shares) {
   const [a, b] = shareTenths(manRange);      // "a–b in 10 would say man"
   const [c, d] = shareTenths(womanRange);    // "c–d in 10 would say woman" (= 10−b … 10−a)
   const wide = isWideShare(manRange);
-  const dot = Math.min(1, Math.max(0, 1 - shares.s));
+  const guess = Math.min(1, Math.max(0, shares.s));
   const man = formatShare(manRange), woman = formatShare(womanRange);
   const rangeText = wide
     ? "Can't tell yet — the range covers most of the scale"
     : `${cap(man)} would say man · ${woman} would say woman`;
   const unsureText = wide ? null : `${cap(unsureWords(shares.centre.unsure))} might be unsure or say neither`;
   const [midMan, midWoman] = bestGuessWords(shares.s);
-  const scale = "Scale from would say man, on the left, to would say woman, on the right, in tenths of listeners.";
+  const scale = "Bar of listeners in tenths: would say man fills from the left, would say woman from the right, and the striped part between could go either way.";
   const srText = wide
     ? `${scale} Can't tell yet: the range covers most of the scale — ${man} would say man, ${woman} would say woman.`
-    : `${scale} Shaded range: ${man} would say man, ${woman} would say woman. Best guess: ${midMan} would say man, ${midWoman} would say woman.`;
+    : `${scale} ${cap(man)} would say man, ${woman} would say woman. Best guess: ${midMan} would say man, ${midWoman} would say woman.`;
   return {
-    lo: c / 10,
-    hi: d / 10,
-    dot,
+    man: a / 10,
+    woman: c / 10,
+    guess,
     wide,
     manTenths: [a, b],
     womanTenths: [c, d],
