@@ -296,14 +296,24 @@ function App() {
       <div className="flex-1 flex flex-col items-center min-h-0" inert={blocked}>
         {status === "idle" && activeTab !== "history" && (
           <div className="flex-1 flex flex-col w-full max-w-6xl min-h-0">
-            {/* Tab navigation even when idle */}
-            <nav className="flex-shrink-0 flex justify-center-safe gap-1 overflow-x-auto -mx-1 px-1 -mt-1 pt-1 pb-1 mb-2">
+            {/* Tab navigation even when idle. The three tab rows: with larger
+                text a row wider than the screen starts at its first tab and
+                scrolls sideways (justify-center-safe + overflow-x-auto; centred,
+                both end tabs were cut off with nothing to scroll — review
+                2026-10-20); under 360 px it reaches into the 16 px gutters, as
+                the centred row did, with narrower tabs (px-2), so the four fit
+                there on one line without scrolling; the padding keeps the focus
+                ring inside the scroll box and the negative margins cancel it,
+                so from 360 px up the tabs keep their boxes. Inactive labels
+                neutral-400 (about 7:1; neutral-500 was about 4:1 at 12 px),
+                aria-current on the active tab. */}
+            <nav className="flex-shrink-0 flex justify-center-safe gap-1 overflow-x-auto -mx-1 max-[360px]:-mx-4 px-1 -mt-1 pt-1 pb-1 mb-2">
               {TABS.map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
                   aria-current={activeTab === tab.id ? "page" : undefined}
-                  className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+                  className={`px-4 max-[360px]:px-2 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
                     activeTab === tab.id
                       ? "bg-neutral-700 text-white"
                       : "text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/50"
@@ -326,13 +336,13 @@ function App() {
 
         {status === "idle" && activeTab === "history" && (
           <div className="flex-1 flex flex-col w-full max-w-6xl min-h-0">
-            <nav className="flex-shrink-0 flex justify-center-safe gap-1 overflow-x-auto -mx-1 px-1 -mt-1 pt-1 pb-1 mb-2">
+            <nav className="flex-shrink-0 flex justify-center-safe gap-1 overflow-x-auto -mx-1 max-[360px]:-mx-4 px-1 -mt-1 pt-1 pb-1 mb-2">
               {TABS.map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
                   aria-current={activeTab === tab.id ? "page" : undefined}
-                  className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+                  className={`px-4 max-[360px]:px-2 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
                     activeTab === tab.id
                       ? "bg-neutral-700 text-white"
                       : "text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/50"
@@ -371,13 +381,13 @@ function App() {
         {status === "running" && (
           <div className="flex-1 flex flex-col w-full max-w-6xl min-h-0">
             {/* Tab navigation */}
-            <nav className="flex-shrink-0 flex justify-center-safe gap-1 overflow-x-auto -mx-1 px-1 -mt-1 pt-1 pb-1 mb-2">
+            <nav className="flex-shrink-0 flex justify-center-safe gap-1 overflow-x-auto -mx-1 max-[360px]:-mx-4 px-1 -mt-1 pt-1 pb-1 mb-2">
               {TABS.map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
                   aria-current={activeTab === tab.id ? "page" : undefined}
-                  className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+                  className={`px-4 max-[360px]:px-2 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
                     activeTab === tab.id
                       ? "bg-neutral-700 text-white"
                       : "text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/50"
