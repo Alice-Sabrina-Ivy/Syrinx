@@ -683,4 +683,51 @@ outside the lab; a clipping check.
 
 ## Deviations
 
-None yet.
+**2026-10-19, core step** (engine, worker, recorder, check, bridge, notices; no card UI yet):
+
+1. **Parity render orders (§5, §14 item 2).** Every input × cell × build is checked, but not
+   every input × build × order: the two builds take the cells in opposite orders (forward /
+   reversed), swapped from one input to the next, so each build runs both orders across the
+   inputs; the forward order skips (0, 0), which the analysis has just rendered as the
+   rebuild, and the reversed order ends with it. The spike's expected value for a cell comes
+   from a fresh analysis with that cell rendered first, so an order dependence would still
+   fail. Reason: the full matrix took about 80 s on the development machine, over the 60 s
+   budget for the voice-preview unit tests; as built, parity takes 40–48 s and all
+   voice-preview tests together about 55–60 s (machine under other load).
+2. **Fixture chunking (§5).** The parity inputs are cut to whole capture chunks of the app's
+   size, floor(0.025 × rate) (1102 samples at 44.1 kHz), and their posted tracks come from
+   `runWorkers` with that chunk, so the worker test can feed the same input through the
+   recorder. (`runWorkers`' default chunk is round(0.025 × rate), 1103 at 44.1 kHz.)
+3. **Controller (§2).** `controller.js` is a factory, `createVoicePreviewController({ createWorker,
+   glueUrl, wasmUrls })`, so Node tests can run it with the real worker in a `worker_threads`
+   thread. The card creates one instance at module level (it then survives view and tab
+   switches, as planned). It holds the worker lifecycle, the recording (capture port + pitch
+   tap), the 6 s listening wait and the render queue; playback and download stay for the card
+   step.
+4. **Worker messages (§4), additions only.** `ready` also carries `memBytes`; `analysed` and
+   `no-voice` carry `hops { recorded, received }` (and `no-voice` the `check`); `record` takes
+   an optional `trackTimeoutMs` (default 500, shortened in a test). A second `record` in a worker
+   that has analysed a recording is refused (`error { stage: "record" }`): the app starts a
+   fresh worker for every new recording after a preview (Discard / Record again), as designed.
+   Error kind "memory" = a failed WebAssembly `malloc`, a JS `RangeError`, or a WebAssembly
+   abort during analysis or rendering (in this build only a failed `operator new` aborts); a
+   module that fails to load is always "other".
+5. **`controls.js` in the worker chunk too.** The worker computes median, 5th percentile, limits
+   and the formant scale with the same pure module the card will use (a few hundred bytes in
+   each chunk).
+6. **More unit tests than §14 lists:** `controller-test.js` (lifecycle with the real worker:
+   discard / record again terminate the worker thread, a fresh worker reports the initial
+   WebAssembly memory), `warp-test.js` (the warp against its definition; aperiodicity bit-exact,
+   envelope within 1e-12), `hum-check-test.js` (the check end to end with the real pitch
+   worker's notch after a 10 s lead-in). `strings-test.js` and `wav-test.js` come with the card.
+7. **A finding for the 30 dB noise threshold (§7, §15 step 6).** The committed LibriSpeech
+   excerpt `ls_man_low` (an audiobook recording whose own noise floor sits about 19 dB below the
+   speech) measures an 18.2 dB margin and gets the noise notice; the other two excerpts measure
+   39.8 and 40.0 dB. That is the notice doing its job on a genuinely noisy recording, but it is
+   one more data point that ordinary recordings can fall under 30 dB.
+8. **Notices (§12).** `licenses/emscripten/dlmalloc-NOTICE.txt` is the public-domain notice
+   excerpted from `system/lib/dlmalloc.c`; `licenses/world/README.md` and
+   `licenses/emscripten/README.md` record sources and sha256. `build.mjs` runs nothing when
+   imported (the wasm-files test reads its `PINS`). `lib/paths.mjs` is the spike's file except
+   one comment, which named the local cache folder (a comment only; the build is unchanged and
+   `--check-shipped` reproduces the committed bytes from this checkout).
