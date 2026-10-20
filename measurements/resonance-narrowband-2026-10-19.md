@@ -719,3 +719,105 @@ Positive streams with < 10 s of voiced audio in total: 0.
 
 
 Held-out half: not extracted, not run (dev failed). Detector cost: 4.6 ms CPU per second of audio (32 sub-band powers incl. the 16 kHz samples they read; Node, desktop), about the same as rounds 1–2. Pitch frames dropped by the engine: 0.
+
+## Round 4 plan (pre-registered, final, 2026-10-19)
+
+Committed and pushed before any round 4 result exists. Rounds 1–3 above are
+not edited. Deviations found during round 4 go under "Round 4 deviations"
+below, dated. **This is the last round of this detector work:** whatever the
+outcome, there is no round 5.
+
+**Why a round 4.** User decision 2026-10-19, after round 3 failed. In every
+round the four classic 8 kHz phone links — telephone band (`tel`), AMR-NB
+7.4 kbit/s (`amrnb`), G.711 µ-law (`g711u`), narrowband-Bluetooth-like
+(`btnb`) — were caught on 100 % of dev streams for each sex, and with round
+2's band-energy ratio they were separated from every dev wideband stream
+(stream-end F ≤ −39.7 dB vs ≥ −25.4 dB). Every failure came from Opus
+8 kbit/s narrowband (round 2: men 94 %; round 3: 10 %) and, in round 1, the
+4 kHz low-pass. Round 4 therefore judges the four classic links only, with
+round 2's detector.
+
+### R4.1 Detector and grid (round 2, unchanged)
+
+The band-energy-ratio detector of §2 with round 1 deviation 3: bands A / B /
+C, τ 4 / 8 voiced s, V_min 3 / 5 voiced s, H 3 / 6 dB, T_on −60…−10 dB in
+1 dB steps — 1224 points. Same code paths in `detector.mjs` and `extract.mjs`
+as rounds 1–2. Not widened during round 4.
+
+### R4.2 Positives, descriptive rows, negatives, data, split
+
+- **Positives (judged):** `tel`, `amrnb`, `g711u`, `btnb` — only these four.
+- **Descriptive only** (detection rate, time to notice, dropouts, F at
+  stream end; not judged, not used in selection, neither positive nor
+  negative): Opus 8 kbit/s narrowband (`opus8nb`) and the 4 kHz low-pass
+  (`lp4k`).
+- **Negatives:** every wideband / clean / room / noise / level / codec /
+  combination condition of §3 (33 conditions), unchanged.
+- **Data and split:** the same streams (every version k = 0.88–1.12 plus the
+  clean original, the same cached build) and the same dev / held-out speaker
+  split (§3 and round 1 deviation 3). The dev half uses the round 1 feature
+  files as they are (as round 2 did); nothing is re-extracted.
+
+### R4.3 Bar (unchanged)
+
+- Negatives: notice-on share ≤ 1 % of voiced time for each sex in every
+  negative condition, AND the notice never shows on any clean-condition
+  stream (all versions and the originals).
+- Positives: ≥ 95 % of streams detected for each sex in each of the four
+  classic links; detected = the notice is on within the first 1000 voiced
+  grid frames (10 s of voiced audio).
+
+### R4.4 Harness
+
+`sweep.mjs` gets one change, committed and pushed before any round 4 output
+is computed: the judged positive set becomes the four links, `opus8nb` moves
+to the descriptive rows beside `lp4k`, and output files are named
+`sweep-r4-*`. The detector, the features and the grid code do not change.
+
+### R4.5 Selection and confirmation
+
+- **Selection on the dev half only,** with the round 1 rule (§4) and the
+  round 1 deviation 3 tie-breaks: among points passing both bars on dev, the
+  lowest worst negative notice-on share, then the largest worst-sex positive
+  detection rate, then larger H, then shorter V_min, then the (band, τ) with
+  the longest run of tied T_on values, then shorter τ, band A < B < C;
+  T_on = lower middle of the run.
+- **Honest caveat.** The dev half has been looked at three times (rounds
+  1–3), including its per-condition F distributions, and **the positive set
+  was narrowed after seeing dev results**: Opus 8k was dropped because it
+  failed there. Round 2's dev numbers already show many points that pass the
+  negative bar and catch the four links, so a dev pass is close to certain
+  and is **not evidence. Only the held-out confirmation counts.**
+- If no grid point passes on dev: "no detector meets the bar", nothing ships,
+  no held-out run.
+- **Held-out half: one look.** No feature or detector output on it has been
+  computed or looked at in any round (round 1 deviation 5, round 2 deviation
+  2, round 3 deviation 2); round 3's "not used for any later round" applied
+  to a held-out failure, which never happened. On a dev pass its band-energy
+  features are extracted once with the round 1 harness, and only the
+  selected point is run, once. Pass = both bars met on the held-out half for
+  each sex, on the four links and every negative. A held-out failure is
+  reported as a failure and is final: nothing is re-tuned on it, and the
+  detector does not ship. `opus8nb` and `lp4k` on the held-out half are
+  reported descriptively at the selected point.
+
+### R4.6 What the user sees, and what is not covered
+
+- The notice is §1's, text unchanged: **"Phone-quality audio — resonance
+  paused"**, info text "Your microphone sound is cut off above about 4 kHz,
+  as on a phone call or a narrowband Bluetooth headset. Resonance readings
+  need the fuller sound, so they are paused. Pitch still works. A wired or
+  wideband microphone fixes this." Pitch and every other row are untouched;
+  the notice clears by itself when the audio stops looking narrowband.
+- **Not covered:** calls and links that use Opus at 8 kbit/s narrowband, and
+  a plain 4 kHz low-pass ("dull") microphone. For these the notice may stay
+  off and the resonance reading may read darker (0.6–2.5 G in the robustness
+  study). If the detector ships, this is stated as a known limitation in the
+  shipped documentation.
+
+### R4.7 After the result
+
+As §5: only on a held-out pass does the detector go into the resonance
+worker, with the row state, the notice (§1, text unchanged) and a bit-exact
+parity test against `scripts/resonance-narrowband/`, plus the usual lint /
+unit / build / cue-strip smoke runs. Pitch stays untouched either way.
