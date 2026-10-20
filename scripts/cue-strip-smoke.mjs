@@ -229,7 +229,7 @@ const state = (page) => page.evaluate(() => {
         const a = p.querySelector("[data-heard-as-axis]");
         if (!a) return null;
         const pr = p.getBoundingClientRect();
-        const ends = [...a.querySelectorAll("[data-axis-ends] span")].map((e) => e.getBoundingClientRect());
+        const ends = [...a.querySelectorAll("[data-axis-ends] > span")].map((e) => e.getBoundingClientRect());
         const bar = a.querySelector("[data-split-bar]")?.getBoundingClientRect();
         const parts = Object.fromEntries([...a.querySelectorAll("[data-split-part]")].map((e) => {
           const r = e.getBoundingClientRect();
@@ -401,7 +401,7 @@ async function contrastCheck(page, who) {
     const p = document.querySelector("[data-heard-as]");
     if (!p) return null;
     let minText = Infinity, worst = "";
-    for (const el of p.querySelectorAll("h3, h3 span, p, li, button, [data-axis-ends] span, [data-heard-as-range] span")) {
+    for (const el of p.querySelectorAll("h3, h3 span, p, li, button, [data-axis-ends] > span, [data-heard-as-range] span")) {
       if (el.closest(".sr-only")) continue;
       const t = [...el.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join("").trim();
       if (!t) continue;
