@@ -1,36 +1,48 @@
 // HeardAsPanel.jsx — "Likely heard as · Experimental" (opt-in, OFF by
 // default; the user chose to ship it as a clearly labelled experiment with
 // its known weaknesses disclosed). Shows how listeners in published studies
-// might hear the voice on ONE horizontal axis, "would say man" (left, the
-// cue strip's orientation) <-> "would say woman" (right), ticks in tenths:
-// the two-way estimate as a small hollow ring (single best guess) inside a
-// shaded ~80 % range, the range in words ("about A–B in 10 would say man ·
-// about C–D in 10 would say woman") and the unsure / neither share as one
-// text line — never a single verdict, no percent signs, the same words and
-// colours in every direction (user decision 2026-10-07; it replaced three
-// bracket rows). When the range spans 8 tenths or more the band is dashed,
-// the ring and the unsure line dropped and it says "Can't tell yet". An
-// estimate older than 2 s says "Older reading" in its legend line (nothing is
-// dimmed: dimming took text and the band outline below WCAG contrast).
-// Layout numbers and words:
-// heardAsAxisModel.js (unit-tested). Updates every 2 s from the last ~8 s of
-// running speech (src/ml/heard-as.js); hides with a reason otherwise —
-// within 250 ms when a held note starts.
+// might hear the voice on ONE SPLIT BAR (user decision 2026-10-20; it
+// replaced the 2026-10-07 axis with a shaded range and a ring): ten tenths of
+// listeners, "would say man" filling from the left (the cue strip's
+// orientation) in deep indigo, "would say woman" from the right in light
+// indigo — each solid part the LOW end of its range — and the part between
+// them striped (could go either way; a pattern, so it never relies on colour
+// alone), with a small best-guess marker above it. Under it, in larger text,
+// the both-sides sentence ("About A–B in 10 would say man · about C–D in 10
+// would say woman") and the unsure / neither share as one text line — never a
+// single verdict, no percent signs, the same words and colours in every
+// direction. Two shades of ONE colour: never the app's green / red (on / off
+// target) or amber (experimental / warning), never pink / blue; the shades
+// are theme tokens in src/index.css (--color-heard-man / --color-heard-woman,
+// >= 3:1 against the panel and each other; Windows high-contrast mode:
+// solid / striped / hollow in system colours). When the range spans 8
+// tenths or more it is mostly stripes, the marker and the unsure line are
+// dropped and it says "Can't tell yet". An estimate older than 2 s says
+// "Older reading" in its legend line (nothing is dimmed: dimming took text
+// below WCAG contrast). The first caveat sentence stays on screen; the rest
+// of it and the long explanation are behind "More". Layout numbers and words:
+// heardAsAxisModel.js (unit-tested; the words are the 2026-10-07 axis's,
+// unchanged). Updates every 2 s from the last ~8 s of running speech
+// (src/ml/heard-as.js); hides with a reason otherwise — within 250 ms when a
+// held note starts.
 // Constants, errors and the evidence for every caveat sentence:
 // measurements/heard-as-calibration-2026-10-07.md.
 //
 // One height in every state (2026-10-20 review: switching between "Keep
 // talking", "Can't tell yet" and a range with its "unsure" line moved More,
-// Save Session and the notes box by up to ~100 px several times a minute).
-// While it shows no estimate the panel keeps an empty, greyed axis with the
-// reason where the range line goes, and the text area under the axis is as
-// tall as its tallest state: invisible copies of the longest range, unsure,
-// legend and reason texts share its grid cell. Drawing only — no estimate or
-// word changes. The pitch-only note's room is added the first time the note
-// appears after switching on and then kept, so the panel grows once, with
-// the note, instead of carrying blank lines the whole time (extraNote, unused
-// by the app, is not reserved). scripts/resonance-lab/lab-layout-smoke.mjs
-// checks it with the panel on.
+// Save Session and the notes box by up to ~100 px several times a minute;
+// user decision 2026-10-20 (2)). While it shows no estimate (loading, model
+// error, "Keep talking", …) the panel keeps the bar on screen, empty and
+// greyed, with the reason in the summary sentence's slot, and the text area
+// under the bar is as tall as its tallest state: invisible copies of every
+// summary sentence, unsure line, the longest legend and every reason share
+// its grid cell. Drawing only — no estimate or word changes. The pitch-only
+// note's room is added the first time the note appears after switching on and
+// then kept, so the panel grows once, with the note, instead of carrying
+// blank lines the whole time (extraNote, unused by the app, is not reserved).
+// scripts/resonance-lab/lab-layout-smoke.mjs checks it with the panel on, in
+// live speech and in every forced state (scripts/heard-as/panel-force.mjs);
+// scripts/heard-as/panel-shots.mjs takes screenshots of the states.
 //
 // Notes, shown only while the estimate is, and AT MOST ONE at a time
 // (review round 2): the pitch-only-change warning
@@ -73,12 +85,16 @@ const HIDE_CHECK_MS = 250;
 // upper bound — GitHub Pages compresses the engine).
 export const MODEL_DOWNLOAD_MB = HEARD_AS_DOWNLOAD_MB;
 
-export const HEARD_AS_CAVEAT =
-  "Experimental guess at how listeners in published studies might hear you — not a verdict. " +
+// The caveat: its first sentence stays on screen, the rest opens with "More"
+// (user decision 2026-10-20: the long explanation behind "More"). Words
+// unchanged; HEARD_AS_CAVEAT is the whole of it.
+export const HEARD_AS_CAVEAT_SHORT = "Experimental guess at how listeners in published studies might hear you — not a verdict.";
+export const HEARD_AS_CAVEAT_MORE =
   "Fitted on trans and cis men's voices, women's voices and computer-altered voices; not tested on trans " +
   "women or nonbinary speakers. It follows pitch more than listeners do: change your pitch without changing " +
   "resonance and it usually shows a bigger change than listeners would hear — sometimes by more than half of " +
   "them — in either direction. Listener groups disagree a lot. Adults' speaking voice only.";
+export const HEARD_AS_CAVEAT = `${HEARD_AS_CAVEAT_SHORT} ${HEARD_AS_CAVEAT_MORE}`;
 
 // User decision B (2026-10-07): disclose, in neutral words, that it can't
 // tell the user's voice from another voice nearby. The speech detector and
@@ -200,11 +216,13 @@ const REASONS = {
   outside: () => "Outside the range it was tested on — no guess shown",
 };
 
-const legendText = (stale, wide) => `${stale ? "Older reading — waiting for more speech · " : ""}From your last ~8 s of speech · updates every 2 s · shaded = likely range${wide ? "" : ", ring = single best guess"}`;
+const legendText = (stale, wide) => `${stale ? "Older reading — waiting for more speech · " : ""}From your last ~8 s of speech · updates every 2 s · striped = could go either way${wide ? "" : ", marker = single best guess"}`;
 
-// The longest texts each line can show, from the same word functions the
-// panel uses (heardAsAxis on a grid of ranges; every reason), laid out
-// invisibly so the panel's height never depends on which one is showing.
+// Every text each line can show, from the same word functions the panel uses
+// (heardAsAxis on a grid of ranges; every reason), laid out invisibly so the
+// panel's height never depends on which one is showing. All of them, not just
+// the longest: the summary sentence breaks between its two halves, so the
+// longest string is not always the tallest.
 const RESERVE = (() => {
   const ranges = new Map(), unsure = new Set();
   const v = [0.001, 0.049, 0.051, 0.949, 0.951, 0.999];
@@ -217,12 +235,10 @@ const RESERVE = (() => {
       if (a.unsureText) unsure.add(a.unsureText);
     }
   }
-  const longest = (xs, n) => [...xs].sort((a, b) => b.length - a.length || (a < b ? -1 : 1)).slice(0, n);
-  const range = longest(ranges.keys(), 12);
-  for (const [t, wide] of ranges) if (wide && !range.includes(t)) range.push(t);
+  for (let n = 1; n <= 9; n++) unsure.add(`About ${n} in 10 might be unsure or say neither`);
   return {
-    range: range.map((t) => ({ t, cls: ranges.get(t) ? "italic" : "" })),
-    unsure: longest(unsure, 3).map((t) => ({ t })),
+    range: [...ranges].map(([t, wide]) => ({ t, wide })),
+    unsure: [...unsure].map((t) => ({ t })),
     legend: legendText(true, false),
     note: PITCH_ONLY_TEXT,
     reasons: [...new Set(Object.entries(REASONS).flatMap(([k, f]) => (k === "loading" ? [f(null), f(99), f(100)] : [f()])))].map((t) => ({ t })),
@@ -230,17 +246,30 @@ const RESERVE = (() => {
 })();
 
 // Several texts in one grid cell (invisible inside a reserve layer): as tall
-// as the tallest of them.
-const Reserve = ({ texts, className = "" }) => (
+// as the tallest of them. `render` draws one text the way the panel does.
+const Reserve = ({ texts, className = "", render = (x) => x.t }) => (
   <div className={`grid grid-cols-1 ${className}`}>
-    {texts.map(({ t, cls }) => <div key={t} className={`col-start-1 row-start-1 ${cls ?? ""}`}>{t}</div>)}
+    {texts.map((x) => <div key={x.t} className="col-start-1 row-start-1">{render(x)}</div>)}
   </div>
 );
-const RANGE_CLS = "mt-1 text-[11px] leading-snug tabular-nums";
-const UNSURE_CLS = "text-[11px] leading-snug tabular-nums";
-const LEGEND_CLS = "mt-0.5 text-[11px]";
-const NOTE_CLS = "mt-1 text-[11px] leading-snug";
-const REASON_CLS = "mt-1 text-[11px] leading-snug";
+// The summary sentence, in larger text: its two halves ("… would say man ·" /
+// "about … would say woman") each kept on one line, so a narrow panel breaks
+// it between them.
+function Summary({ text }) {
+  const i = text.indexOf(" · ");
+  if (i < 0) return text;
+  return (
+    <>
+      <span className="inline-block">{text.slice(0, i)} ·</span>{" "}
+      <span className="inline-block">{text.slice(i + 3)}</span>
+    </>
+  );
+}
+const SUMMARY_CLS = "mt-1.5 text-sm leading-snug tabular-nums";
+const UNSURE_CLS = "mt-0.5 text-[11px] leading-snug tabular-nums";
+const LEGEND_CLS = "mt-0.5 text-[11px] leading-snug";
+const NOTE_CLS = "mt-1.5 text-[11px] leading-snug";
+const REASON_CLS = "mt-1.5 text-sm leading-snug";
 
 export function HeardAsSwitch({ on, onChange, label = "Likely heard as · Experimental", ref = null }) {
   return (
@@ -258,73 +287,85 @@ export function HeardAsSwitch({ on, onChange, label = "Likely heard as · Experi
   );
 }
 
-// The man <-> woman axis: a line with ticks in tenths (the middle one
-// taller), the shaded range (rounded outward to tenths, outlined; dashed when
-// it is "can't tell yet"), the best-guess ring (small and hollow, so the
-// range reads first), end words below the ends. Purely visual (role img with
-// the full sentence as its label); the visible text lines follow it.
-function HeardAsAxis({ axis }) {
-  const L = axis.lo * 100, R = axis.hi * 100, D = axis.dot * 100;
+// The split bar's parts from the left, [kind, from, to] as fractions, empty
+// ones left out: "man" (deep, the low end of would say man), "either"
+// (striped), "woman" (light, the low end of would say woman). Each part stops
+// 1 px short of a boundary with the next, so 2 px of the panel show between
+// two parts.
+function barParts(axis) {
+  const m = axis.man, w = 1 - axis.woman;
+  return [["man", 0, m], ["either", m, w], ["woman", w, 1]].filter(([, a, b]) => b - a > 1e-9);
+}
+const inset = (f) => (f <= 1e-9 ? "0px" : `calc(${(f * 100).toFixed(1)}% + 1px)`);
+
+// Ticks in tenths under the bar (the middle one taller) and the end words.
+function BarScale({ grey = false }) {
   return (
-    <div data-heard-as-axis="" data-axis-wide={axis.wide ? "1" : "0"} data-axis-dot={axis.dot.toFixed(3)}
-      data-axis-lo={axis.lo.toFixed(1)} data-axis-hi={axis.hi.toFixed(1)}>
-      <div className="relative h-5 mx-1.5" role="img" aria-label={axis.srText}>
-        <span className="absolute left-0 right-0 top-1/2 h-px -translate-y-1/2 bg-neutral-500" />
+    <>
+      <div className="relative h-1.5" aria-hidden="true">
         {Array.from({ length: 11 }, (_, i) => (
-          <span key={i} className={`absolute top-1/2 w-px -translate-y-1/2 bg-neutral-500 ${i === 5 ? "h-3.5" : "h-2"}`}
+          <span key={i} className={`absolute top-0 w-px ${grey ? "bg-neutral-700" : "bg-neutral-500"} ${i === 5 ? "h-1.5" : "h-1"} ${i === 10 ? "-ml-px" : ""}`}
             style={{ left: `${i * 10}%` }} />
         ))}
-        {/* The range jumps between tenths, no transition: a left / width
-            transition re-ran style + layout every frame on the main thread
-            (−8.9 ms/s pooled with the panel on; main-thread-cpu-2026-10-08.md §3 F6). */}
-        <span
-          className={`absolute top-1/2 h-3 -translate-y-1/2 rounded-sm border border-neutral-400 ${axis.wide ? "border-dashed bg-neutral-400/15" : "bg-neutral-400/30"}`}
-          style={{ left: `${L}%`, width: `${Math.max(0, R - L)}%` }}
-          data-axis-range=""
-        />
-        {!axis.wide && (
-          // Moved by a transform on an axis-wide wrapper (a composited
-          // transition) instead of transitioning `left` (main thread). The
-          // translated wrapper overhangs the axis, so it sits in a clip box
-          // reaching 6 px past each end (the ring's half-width fits): the
-          // overhang must not widen the panel's scrollable area. No transition
-          // under prefers-reduced-motion (review N-7).
-          <span className="absolute -inset-x-1.5 inset-y-0 overflow-hidden">
-            <span className="absolute inset-y-0 left-1.5 right-1.5 motion-safe:transition-transform motion-safe:duration-300" style={{ transform: `translateX(${D}%)` }}>
-              <span
-                className="absolute left-0 top-1/2 w-2.5 h-2.5 -ml-[5px] -translate-y-1/2 rounded-full border-2 border-neutral-200"
-                data-axis-dot-mark=""
-              />
-            </span>
-          </span>
-        )}
       </div>
       <div className="flex justify-between gap-2 text-[11px] text-neutral-400 leading-4" aria-hidden="true" data-axis-ends="">
         <span className="whitespace-nowrap">{AXIS_ENDS.left}</span>
         <span className="whitespace-nowrap text-right">{AXIS_ENDS.right}</span>
       </div>
+    </>
+  );
+}
+
+// The man <-> woman split bar (user decision 2026-10-20): a thick bar of ten
+// tenths of listeners — deep indigo from the left (the low end of "would say
+// man"), light indigo from the right (the low end of "would say woman"),
+// striped between them (could go either way); the best-guess marker, a small
+// triangle above the bar, unless it is "can't tell yet"; ticks in tenths and
+// the end words under it. Colours: src/index.css (.heard-*). Purely visual
+// (role img with the full sentence as its label); the visible text lines
+// follow it. The parts jump between tenths, no transition: a left / width
+// transition re-ran style + layout every frame on the main thread (−8.9 ms/s
+// pooled with the panel on; main-thread-cpu-2026-10-08.md §3 F6).
+function HeardAsAxis({ axis }) {
+  return (
+    <div data-heard-as-axis="" data-axis-wide={axis.wide ? "1" : "0"} data-split-man={axis.man.toFixed(1)}
+      data-split-woman={axis.woman.toFixed(1)} data-split-guess={axis.guess.toFixed(3)}>
+      <div className="heard-bar-wrap relative pt-1.5" role="img" aria-label={axis.srText}>
+        {!axis.wide && (
+          // Moved by a transform on a bar-wide wrapper (a composited
+          // transition) instead of transitioning `left` (main thread). The
+          // translated wrapper overhangs the bar, so it sits in a clip box
+          // reaching 4 px past each end (the marker's half-width fits): the
+          // overhang must not widen the panel's scrollable area. No transition
+          // under prefers-reduced-motion (review N-7).
+          <span className="absolute -inset-x-1 top-0 h-1.5 overflow-hidden">
+            <span className="absolute inset-y-0 left-1 right-1 motion-safe:transition-transform motion-safe:duration-300" style={{ transform: `translateX(${(axis.guess * 100).toFixed(2)}%)` }}>
+              <span className="heard-guess absolute left-0 top-0 -ml-1 h-0 w-0 border-x-4 border-t-[6px] border-x-transparent" data-split-guess-mark="" />
+            </span>
+          </span>
+        )}
+        <div className="relative h-[18px] rounded overflow-hidden" data-split-bar="">
+          {barParts(axis).map(([kind, a, b]) => (
+            <span key={kind} className={`heard-${kind} absolute inset-y-0`} style={{ left: inset(a), right: inset(1 - b) }} data-split-part={kind} />
+          ))}
+        </div>
+      </div>
+      <BarScale />
     </div>
   );
 }
 
-// The axis with no estimate on it (line, ticks and end words; line and ticks
-// greyed): kept on screen while the panel says why it shows none, so the
-// panel keeps its height. Same boxes as HeardAsAxis; hidden from screen
+// The bar with no estimate on it (an empty, greyed outline, greyed ticks and
+// the end words): kept on screen while the panel says why it shows none, so
+// the panel keeps its height. Same boxes as HeardAsAxis; hidden from screen
 // readers (the reason text says it all).
 function EmptyAxis() {
   return (
     <div aria-hidden="true" data-heard-as-axis-empty="">
-      <div className="relative h-5 mx-1.5">
-        <span className="absolute left-0 right-0 top-1/2 h-px -translate-y-1/2 bg-neutral-700" />
-        {Array.from({ length: 11 }, (_, i) => (
-          <span key={i} className={`absolute top-1/2 w-px -translate-y-1/2 bg-neutral-700 ${i === 5 ? "h-3.5" : "h-2"}`}
-            style={{ left: `${i * 10}%` }} />
-        ))}
+      <div className="heard-bar-wrap relative pt-1.5">
+        <div className="heard-empty relative h-[18px] rounded border border-neutral-700 bg-neutral-800/30" />
       </div>
-      <div className="flex justify-between gap-2 text-[11px] text-neutral-400 leading-4">
-        <span className="whitespace-nowrap">{AXIS_ENDS.left}</span>
-        <span className="whitespace-nowrap text-right">{AXIS_ENDS.right}</span>
-      </div>
+      <BarScale grey />
     </div>
   );
 }
@@ -464,7 +505,8 @@ export function HeardAsPanel({
         <div aria-hidden="true" className="invisible col-start-1 row-start-1">
           <EmptyAxis />
           {view.noteRoom && <div className={NOTE_CLS}>{RESERVE.note}</div>}
-          <Reserve className={RANGE_CLS} texts={RESERVE.range} />
+          <Reserve className={SUMMARY_CLS} texts={RESERVE.range}
+            render={(x) => <span className={x.wide ? "italic" : "font-medium"}><Summary text={x.t} /></span>} />
           <Reserve className={UNSURE_CLS} texts={RESERVE.unsure} />
           <div className={LEGEND_CLS}>{RESERVE.legend}</div>
         </div>
@@ -486,9 +528,9 @@ export function HeardAsPanel({
                   {PITCH_ONLY_TEXT}
                 </p>
               )}
-              <p className={`${RANGE_CLS} ${view.axis.wide ? "text-neutral-400 italic" : "text-neutral-300"}`}
+              <p className={`${SUMMARY_CLS} ${view.axis.wide ? "text-neutral-300 italic" : "text-neutral-100 font-medium"}`}
                 data-heard-as-range="" data-wide={view.axis.wide ? "1" : "0"}>
-                {view.axis.rangeText}
+                <Summary text={view.axis.rangeText} />
               </p>
               {view.axis.unsureText && (
                 <p className={`${UNSURE_CLS} text-neutral-400`} data-heard-as-unsure="">{view.axis.unsureText}</p>
@@ -506,8 +548,8 @@ export function HeardAsPanel({
       <div className="sr-only" role="status" aria-live="polite" aria-atomic="true" data-heard-as-live="">
         {liveOn ? PITCH_ONLY_TEXT : ""}
       </div>
-      <p className="mt-1 text-[11px] leading-snug text-neutral-400" data-heard-as-caveat="">
-        {HEARD_AS_CAVEAT}{" "}
+      <p className="mt-1.5 text-[11px] leading-snug text-neutral-400" data-heard-as-caveat="">
+        {HEARD_AS_CAVEAT_SHORT}{" "}
         <button type="button" onClick={() => setMore((m) => !m)} aria-expanded={more}
           className="relative text-neutral-300 underline underline-offset-2 hover:text-neutral-100 cursor-pointer before:absolute before:-inset-x-2 before:-inset-y-2.5 before:content-['']">
           {more ? "Less" : "More"}
@@ -515,6 +557,7 @@ export function HeardAsPanel({
       </p>
       {more && (
         <ul className="mt-1 text-[11px] leading-snug text-neutral-400 list-disc pl-4 space-y-0.5" data-heard-as-more="">
+          <li data-heard-as-caveat-more="">{HEARD_AS_CAVEAT_MORE}</li>
           <li data-heard-as-one-talker="">{ONE_TALKER_TEXT}</li>
           <li data-heard-as-whisper="">{WHISPER_TEXT}</li>
           <li data-heard-as-pitch-only-misses="">{PITCH_ONLY_MISSES_TEXT}</li>
@@ -525,7 +568,7 @@ export function HeardAsPanel({
           <li>Within clearly feminine or clearly masculine voices it does not track small changes — use the pitch and resonance rows under the pitch trace for those.</li>
           <li>It uses only your pitch and a voice classifier; it ignores intonation, vocal weight and articulation.</li>
           <li>Singing, children&apos;s voices, held vowels and single words are not supported. Held notes and very high or low voices hide it; singing and children are not detected — don&apos;t use it for them.</li>
-          <li>The shaded range is where about 8 in 10 published listener groups fell for clearly feminine or clearly masculine voices; less is known for in-between voices. The scale is listeners choosing between man and woman: those who might be unsure or say neither are counted half on each side. The &ldquo;unsure or neither&rdquo; line counts listeners who answered &ldquo;another gender&rdquo; as well as those who weren&apos;t sure, and depends on how listeners are asked.</li>
+          <li>The striped part of the bar is the range where about 8 in 10 published listener groups fell for clearly feminine or clearly masculine voices; less is known for in-between voices. The scale is listeners choosing between man and woman: those who might be unsure or say neither are counted half on each side. The &ldquo;unsure or neither&rdquo; line counts listeners who answered &ldquo;another gender&rdquo; as well as those who weren&apos;t sure, and depends on how listeners are asked.</li>
           <li data-heard-as-noise="">{NOISE_TEXT}</li>
           <li>Nothing is stored or sent anywhere; it is computed on this device and forgotten when you stop.</li>
         </ul>

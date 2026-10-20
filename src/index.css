@@ -10,3 +10,36 @@ body {
 /* Phones held sideways (short landscape): the Dashboard puts the pitch trace
    and the cue strip side by side (CombinedDashboard). */
 @custom-variant shortland (@media (max-height: 480px) and (min-width: 640px));
+
+/* "Likely heard as" split bar (HeardAsPanel.jsx, user decision 2026-10-20):
+   two shades of ONE colour, indigo — never the app's green / red (on / off
+   target) or amber (experimental / warning), never pink / blue.
+   --color-heard-man (deep): the solid left part, the low end of "would say
+   man"; --color-heard-woman (light): the solid right part, the low end of
+   "would say woman"; the striped part between them alternates the two, so it
+   leans neither way and reads as a pattern, not a third colour. Contrast on
+   the panel's background (#121212, the composite of the panel over the page):
+   deep 3.5:1, light 12:1, deep vs light 3.5:1 (>= 3:1, WCAG 1.4.11; checked
+   in scripts/cue-strip-smoke.mjs). The app has one dark palette in both OS
+   colour schemes (the light scheme renders the same page), so these values
+   hold in light and dark; a light theme would need its own pair here. */
+:root {
+  --color-heard-man: #585dd4;
+  --color-heard-woman: #c7d0fe;
+}
+.heard-man { background-color: var(--color-heard-man); }
+.heard-woman { background-color: var(--color-heard-woman); }
+.heard-either {
+  background-image: repeating-linear-gradient(135deg, var(--color-heard-man) 0 3px, var(--color-heard-woman) 3px 6px);
+}
+.heard-guess { border-top-color: #e5e5e5; }
+/* Windows high contrast (forced colours): the parts keep three different
+   fills in the system colours — solid, striped, hollow. */
+@media (forced-colors: active) {
+  .heard-bar-wrap { forced-color-adjust: none; }
+  .heard-man { background-color: CanvasText; }
+  .heard-woman { background-color: Canvas; box-shadow: inset 0 0 0 2px CanvasText; }
+  .heard-either { background-image: repeating-linear-gradient(135deg, CanvasText 0 2px, Canvas 2px 6px); }
+  .heard-guess { border-top-color: CanvasText; }
+  .heard-empty { border-color: GrayText; background-color: Canvas; }
+}

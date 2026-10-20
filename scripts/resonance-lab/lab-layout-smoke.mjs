@@ -4,7 +4,8 @@
 // 448 x 890 (phone emulation) and 1280 x 800 (desktop).
 //
 //   npm run build && node scripts/resonance-lab/lab-layout-smoke.mjs [--wav=<48 kHz 16-bit mono speech>]
-//        [--seconds=20] [--panel-seconds=60] [--panel=0] [--out=build/lab-layout-smoke]
+//        [--seconds=20] [--panel-seconds=60] [--layout=0] [--panel=0] [--forced=0] [--out=build/lab-layout-smoke]
+//   (--layout=0 skips parts 1-3, --panel=0 part 4, --forced=0 part 5)
 //
 // The source WAV (default build/cue-strip-smoke/speech-woman.wav, from
 // scripts/cue-strip-smoke-wavs.mjs) is cut into 3 s of speech + 2.5 s of
@@ -24,7 +25,19 @@
 //     7 s of silence, so the panel cycles through "Keep talking", "Can't tell
 //     yet", a range with its "unsure" line and "Older reading"; for
 //     --panel-seconds the panel's own buttons, Save Session, the notes box and
-//     the Stop Listening bar must not move (one panel height in every state).
+//     the Stop Listening bar must not move (one panel height in every state),
+//     and neither may the boxes of the panel itself (its bottom edge), the
+//     Save Session row and the Stop Listening bar (user decision 2026-10-20 (2):
+//     nothing below the panel moves more than 0.5 px).
+//   5 the same panel in EVERY state, forced (unless --forced=0; no network —
+//     the voice-model hosts are unreachable and the states are set with
+//     scripts/heard-as/panel-force.mjs): loading (no progress / 7 % / 100 %),
+//     model error, every hide reason (waiting, held note, "Keep talking",
+//     whisper, stale, outside the tested range) and estimates over the whole
+//     range (both "nearly all" ends, "can't tell yet", with and without the
+//     unsure line, fresh and "Older reading"): the bar is on screen in every
+//     state, and the panel's box, its buttons, Save Session, the notes box
+//     and the Stop Listening bar keep their boxes (<= 0.5 px).
 // Screenshots of each part in both states go to <out>/<viewport>-<part>-<state>.png.
 //
 // Process hygiene (CLAUDE.md hard rule 2): Chrome is launched by puppeteer with a fresh
@@ -38,6 +51,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import puppeteer from "puppeteer-core";
+import { CHROME_BLOCK_MODEL_ARGS, allPanelStates, installPanelForce, forcePanel } from "../heard-as/panel-force.mjs";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const arg = (k, d) => (process.argv.find((a) => a.startsWith(`--${k}=`)) ?? `=${d}`).split("=").slice(1).join("=");
@@ -46,6 +60,8 @@ const SECONDS = Number(arg("seconds", "20"));
 const OUT = arg("out", path.join(repo, "build", "lab-layout-smoke"));
 const PANEL = arg("panel", "1") !== "0";
 const PANEL_SECONDS = Number(arg("panel-seconds", "60"));
+const FORCED = arg("forced", "1") !== "0";
+const LAYOUT = arg("layout", "1") !== "0"; // parts 1-3
 const PORT = Number(arg("port", "4193"));
 const TOL = 0.5; // px
 const CHROME = ["C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
@@ -149,8 +165,10 @@ async function startListening(page) {
 
 // In the page: every button / input under the roots `scope` matches, by a stable
 // key, sampled every 100 ms, with the state read by `stateFn` (source text,
-// evaluated per sample).
-const sampleButtons = (page, scope, stateSrc, ms) => page.evaluate(async (scope, stateSrc, ms) => {
+// evaluated per sample). With `roots`, the roots' own boxes too (keyed
+// "box:" + the first data-* attribute name), so a box that grows or moves is
+// caught even where no button moves.
+const sampleButtons = (page, scope, stateSrc, ms, roots = false) => page.evaluate(async (scope, stateSrc, ms, withRoots) => {
   const stateFn = new Function(`return (${stateSrc})();`);
   const out = [];
   const t0 = performance.now();
@@ -163,6 +181,13 @@ const sampleButtons = (page, scope, stateSrc, ms) => page.evaluate(async (scope,
     }
     const rects = {};
     const seen = {};
+    if (withRoots) {
+      for (const r of roots) {
+        const name = [...r.attributes].map((a) => a.name).find((n) => n.startsWith("data-")) ?? r.tagName;
+        const b = r.getBoundingClientRect();
+        rects[`box:${name}`] = [b.left, b.top, b.width, b.height].map((v) => Math.round(v * 100) / 100);
+      }
+    }
     for (const b of roots.flatMap((r) => [...r.querySelectorAll("button, input, textarea")])) {
       const base = b.getAttribute("aria-label") || (b.dataset.labView ? `view:${b.dataset.labView}` : "") || b.getAttribute("placeholder") || b.textContent.trim();
       const n = (seen[base] = (seen[base] ?? 0) + 1);
@@ -173,7 +198,7 @@ const sampleButtons = (page, scope, stateSrc, ms) => page.evaluate(async (scope,
     await new Promise((r) => setTimeout(r, 100));
   }
   return out;
-}, scope, stateSrc, ms);
+}, scope, stateSrc, ms, roots);
 
 // Biggest move of any button between two samples, and which.
 function maxMove(samples) {
@@ -258,9 +283,9 @@ async function openPage(viewport, errors) {
   await page.bringToFront();
   return page;
 }
-browser = await launch(WAV);
+if (LAYOUT) browser = await launch(WAV);
 
-for (const [vp, viewport] of Object.entries(VIEWPORTS)) {
+for (const [vp, viewport] of Object.entries(LAYOUT ? VIEWPORTS : {})) {
   const errors = [];
   const page = await openPage(viewport, errors);
   const listening = await startListening(page);
@@ -332,7 +357,7 @@ for (const [vp, viewport] of Object.entries(VIEWPORTS)) {
   await page.close();
 }
 
-await browser.close().catch(() => {});
+await browser?.close().catch(() => {});
 killBrowser();
 
 // 4 The "Likely heard as" panel switched on: one height in every state.
@@ -355,13 +380,13 @@ if (PANEL) {
       .then(() => true, () => false);
     if (!shownOnce) log("panel: no estimate shown within 60 s of the model being ready");
     const scope = `[data-heard-as], [data-session-row], ${BAR}`;
-    const samples = await sampleButtons(page, scope, PANEL_STATE, PANEL_SECONDS * 1000);
+    const samples = await sampleButtons(page, scope, PANEL_STATE, PANEL_SECONDS * 1000, true);
     const counts = samples.reduce((a, s) => ((a[s.state] = (a[s.state] ?? 0) + 1), a), {});
     const shown = Object.keys(counts).some((k) => k.startsWith("shown:"));
     const hidden = Object.keys(counts).some((k) => k.startsWith("hidden:"));
     check(vp, "panel: shown and hidden states both seen", shown && hidden, JSON.stringify(counts));
     const m = maxMove(samples);
-    check(vp, `panel: ${m.n} buttons / inputs, none moved (max ${m.worst.d.toFixed(2)} px <= ${TOL})`, m.n > 0 && m.worst.d <= TOL && m.missing.length === 0,
+    check(vp, `panel: ${m.n} buttons / inputs / boxes (panel, Save Session row, Stop Listening bar), none moved (max ${m.worst.d.toFixed(2)} px <= ${TOL})`, m.n > 0 && m.worst.d <= TOL && m.missing.length === 0,
       m.worst.d > TOL ? `"${m.worst.key}" ${JSON.stringify(m.worst.a)} -> ${JSON.stringify(m.worst.b)}` : m.missing.length ? `appeared / disappeared: ${m.missing.join(", ")}` : "");
     const h = await page.evaluate(() => document.querySelector("[data-heard-as]")?.getBoundingClientRect().height ?? null);
     log(`  [${vp}] panel height ${h?.toFixed(1)} px; states ${JSON.stringify(counts)}`);
@@ -370,6 +395,61 @@ if (PANEL) {
       await shotIn(page, PANEL_STATE, st, path.join(OUT, `${vp}-panel-${st.replace(/[:+]/g, "_")}.png`));
     }
     check(vp, "panel: no page errors", errors.length === 0, errors.slice(0, 3).join(" | "));
+    await page.close();
+  }
+  await browser.close().catch(() => {});
+  killBrowser();
+}
+
+// 5 The panel in every state, forced: one height whatever it shows.
+if (FORCED) {
+  browser = await puppeteer.launch({
+    executablePath: CHROME,
+    headless: true,
+    userDataDir: newProfile(),
+    args: ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream", "--autoplay-policy=no-user-gesture-required", ...CHROME_BLOCK_MODEL_ARGS],
+  });
+  const STATES = allPanelStates();
+  for (const [vp, viewport] of Object.entries(VIEWPORTS)) {
+    const errors = [];
+    const page = await openPage(viewport, errors);
+    const listening = await startListening(page);
+    check(vp, "forced: listening", listening);
+    if (!listening) { await page.close(); continue; }
+    await page.waitForSelector("[data-heard-as]", { timeout: 20000 }).catch(() => {});
+    await page.evaluate(() => [...document.querySelectorAll("[data-heard-as] button")].find((b) => b.textContent.includes("Turn on"))?.click());
+    await page.waitForFunction(() => ["error", "ready"].includes(document.querySelector("[data-heard-as]")?.dataset.modelWorker), { timeout: 60000 }).catch(() => {});
+    const inst = await installPanelForce(page);
+    check(vp, "forced: panel states can be set", inst.ok, inst.why ?? "");
+    if (!inst.ok) { await page.close(); continue; }
+    const scope = `[data-heard-as], [data-session-row], ${BAR}`;
+    const samples = [], seen = [], noBar = [];
+    for (const st of STATES) {
+      await forcePanel(page, st);
+      await sleep(120);
+      const [one] = await sampleButtons(page, scope, PANEL_STATE, 1, true);
+      const bar = await page.evaluate(() => {
+        const a = document.querySelector("[data-heard-as] [data-heard-as-axis], [data-heard-as] [data-heard-as-axis-empty]:not(.invisible *)");
+        const r = a?.getBoundingClientRect();
+        return !!r && r.width > 0 && r.height > 0;
+      });
+      if (!bar) noBar.push(st.name);
+      samples.push({ ...one, state: `${st.name} -> ${one.state}` });
+      seen.push(one.state);
+    }
+    const reasons = new Set(seen.filter((x) => x.startsWith("hidden:")).map((x) => x.slice(7)));
+    const wantReasons = ["loading", "error", "listening", "sustained", "short", "unvoiced", "stale", "outside"];
+    check(vp, "forced: every hide reason, wide and narrow estimates, fresh and older were shown",
+      wantReasons.every((r) => reasons.has(r)) && ["shown:wide", "shown:narrow", "shown:narrow+older", "shown:wide+older"].every((k) => seen.includes(k)),
+      JSON.stringify([...new Set(seen)]));
+    check(vp, "forced: the bar is on screen in every state (empty and greyed without an estimate)", noBar.length === 0, noBar.join(", "));
+    const m = maxMove(samples);
+    check(vp, `forced: ${STATES.length} states, ${m.n} buttons / inputs / boxes (panel, Save Session row, Stop Listening bar), none moved (max ${m.worst.d.toFixed(2)} px <= ${TOL})`,
+      m.n > 0 && m.worst.d <= TOL && m.missing.length === 0,
+      m.worst.d > TOL ? `"${m.worst.key}" ${JSON.stringify(m.worst.a)} -> ${JSON.stringify(m.worst.b)}` : m.missing.length ? `appeared / disappeared: ${m.missing.join(", ")}` : "");
+    const h = samples[0]?.rects["box:data-heard-as"]?.[3];
+    log(`  [${vp}] forced: panel height ${h} px over ${STATES.length} states`);
+    check(vp, "forced: no page errors", errors.length === 0, errors.slice(0, 3).join(" | "));
     await page.close();
   }
   await browser.close().catch(() => {});

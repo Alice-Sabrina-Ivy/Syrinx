@@ -32,7 +32,7 @@
 //      into gate skips vs frames the browser never ran
 //      (measurements/phone-cpu-2026-10-12.md §7.3 amendment).
 //   (--panel=on) changes per second of the heard-as axis range and ring
-//      (data-axis-lo / -hi, data-axis-dot) during the CPU window.
+//      (data-split-man / -woman, data-split-guess; data-axis-lo / -hi / -dot on builds before the 2026-10-20 split bar) during the CPU window.
 //   4. (--profile) a 15 s main-thread JS sampling profile after the trace.
 //
 // Process hygiene (CLAUDE.md hard rule 2): puppeteer with a temporary
@@ -142,11 +142,11 @@ if (PANEL) {
     window.__mtAxis = c;
     window.__mtAxisObs = new MutationObserver((list) => {
       for (const m of list) {
-        if (m.attributeName === "data-axis-dot") c.dot++;
+        if (m.attributeName === "data-split-guess" || m.attributeName === "data-axis-dot") c.dot++;
         else c.range++;
       }
     });
-    window.__mtAxisObs.observe(document.body, { subtree: true, attributes: true, attributeFilter: ["data-axis-lo", "data-axis-hi", "data-axis-dot"] });
+    window.__mtAxisObs.observe(document.body, { subtree: true, attributes: true, attributeFilter: ["data-split-man", "data-split-woman", "data-split-guess", "data-axis-lo", "data-axis-hi", "data-axis-dot"] });
   });
 }
 const w0 = Date.now();

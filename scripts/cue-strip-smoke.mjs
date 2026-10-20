@@ -34,14 +34,22 @@
 //                   panel -> the worker starts, Settings' switch agrees, three
 //                   ranges appear with no "%" in the panel; reload -> still on;
 //                   switched off in Settings -> the panel agrees, the worker is
-//                   gone. The panel is ONE man <-> woman axis (no bracket
-//                   rows): shaded range, a best-guess ring unless "can't tell
-//                   yet", the range line and (unless "can't tell yet") the
-//                   unsure line, end words and range inside the panel,
-//                   screen-reader label present.
+//                   gone. The panel is ONE man <-> woman SPLIT BAR (user
+//                   decision 2026-10-20; no bracket rows, no ring axis): the
+//                   deep part from the left = the low end of "would say man",
+//                   the light part from the right = the low end of "would
+//                   say woman", striped between (the parts' widths match the
+//                   range line's tenths), a best-guess marker unless "can't
+//                   tell yet", the range line and (unless "can't tell yet")
+//                   the unsure line, end words and bar inside the panel,
+//                   screen-reader label present; contrast: text >= 4.5:1,
+//                   both shades >= 3:1 against the panel and each other, the
+//                   marker >= 3:1, no green / red / amber / pink / blue hue in
+//                   the bar.
 //   2 speech-man    (heard-as back on) pitch / resonance live, resonance reads
-//                   lower than the woman's; the axis is shown and the man's
-//                   best guess sits left of the woman's (orientation). The
+//                   lower than the woman's; the bar is shown and the man's
+//                   best guess sits right of the woman's (more of the bar
+//                   would say man, which fills from the left). The
 //                   panel's "More" list opens and carries the pitch-only
 //                   late-switch-on line and false-alarm line (no "turn it on
 //                   before you start talking" line; measurement note §8.9,
@@ -220,12 +228,17 @@ const state = (page) => page.evaluate(() => {
         if (!a) return null;
         const pr = p.getBoundingClientRect();
         const ends = [...a.querySelectorAll("[data-axis-ends] span")].map((e) => e.getBoundingClientRect());
-        const range = a.querySelector("[data-axis-range]")?.getBoundingClientRect();
-        return { wide: a.dataset.axisWide === "1", dot: Number(a.dataset.axisDot), lo: Number(a.dataset.axisLo), hi: Number(a.dataset.axisHi),
-          dotShown: !!a.querySelector("[data-axis-dot-mark]"), sr: a.querySelector("[role=img]")?.getAttribute("aria-label") ?? "",
+        const bar = a.querySelector("[data-split-bar]")?.getBoundingClientRect();
+        const parts = Object.fromEntries([...a.querySelectorAll("[data-split-part]")].map((e) => {
+          const r = e.getBoundingClientRect();
+          return [e.dataset.splitPart, bar ? Math.round(((r.width + (r.left > bar.left + 0.5 ? 1 : 0) + (r.right < bar.right - 0.5 ? 1 : 0)) / bar.width) * 1000) / 1000 : null];
+        }));
+        return { wide: a.dataset.axisWide === "1", man: Number(a.dataset.splitMan), woman: Number(a.dataset.splitWoman), guess: Number(a.dataset.splitGuess),
+          parts, barH: bar ? Math.round(bar.height * 10) / 10 : null,
+          dotShown: !!a.querySelector("[data-split-guess-mark]"), sr: a.querySelector("[role=img]")?.getAttribute("aria-label") ?? "",
           range: p.querySelector("[data-heard-as-range]")?.textContent ?? "", unsure: p.querySelector("[data-heard-as-unsure]")?.textContent ?? "",
           fits: p.scrollWidth <= p.clientWidth + 1 && ends.length === 2 && ends.every((e) => e.left >= pr.left - 0.5 && e.right <= pr.right + 0.5)
-            && ends[0].right <= ends[1].left && !!range && range.left >= pr.left - 0.5 && range.right <= pr.right + 0.5 };
+            && ends[0].right <= ends[1].left && !!bar && bar.left >= pr.left - 0.5 && bar.right <= pr.right + 0.5 };
       })(),
       pitchOnly: (() => {
         const n = p.querySelector("[data-pitch-only]");
@@ -335,22 +348,35 @@ async function sample(page, ms, fn) {
   return false;
 }
 
-// The heard-as axis, whenever it is shown.
-let womanDot = null;
+// The heard-as split bar, whenever it is shown.
+let womanGuess = null;
 function axisChecks(who, s) {
   const a = s.heardAs?.axis;
-  check(`${who}: axis range shaded, dot shown exactly when not "can't tell yet"`, !!a && a.hi > a.lo && a.dotShown === !a.wide, JSON.stringify(a));
-  check(`${who}: axis words — range line ("can't tell yet" when wide) and unsure line (one tenth value; none when wide)`, !!a
+  // The words' tenths: "About A–B in 10 would say man · about C–D in 10 would say woman"
+  // ("fewer than 1" = 0–1, "nearly all" = 9–10); the deep part is A tenths, the light part C.
+  const tenths = (t) => (/^fewer than 1/i.test(t) ? 0 : /^nearly all/i.test(t) ? 9 : Number((t.match(/(\d+)(?:–\d+)? in 10/) ?? [])[1]));
+  const [mw, ww] = (a?.range ?? "").split(" · ");
+  const want = a && !a.wide && ww ? { man: tenths(mw) / 10, woman: tenths(ww) / 10 } : null;
+  check(`${who}: split bar parts match the range line (deep = low end of man, light = low end of woman, striped between), marker shown exactly when not "can't tell yet"`,
+    !!a && a.dotShown === !a.wide && a.barH >= 16 && a.barH <= 20
+    && Math.abs((a.parts.man ?? 0) - a.man) < 0.02 && Math.abs((a.parts.woman ?? 0) - a.woman) < 0.02
+    && Math.abs((a.parts.either ?? 0) - (1 - a.man - a.woman)) < 0.02
+    && (!want || (Math.abs(want.man - a.man) < 1e-6 && Math.abs(want.woman - a.woman) < 1e-6))
+    && a.guess >= a.man - 1e-6 && a.guess <= 1 - a.woman + 1e-6, JSON.stringify(a));
+  check(`${who}: bar words — range line ("can't tell yet" when wide) and unsure line (one tenth value; none when wide)`, !!a
     && (a.wide ? /^Can't tell yet/.test(a.range) && a.unsure === ""
       : /would say man · .* would say woman$/.test(a.range) && /^(About \d+|Fewer than 1) in 10 might be unsure or say neither$/.test(a.unsure)), `${a?.range} | ${a?.unsure}`);
-  check(`${who}: axis screen-reader label`, !!a && a.sr.startsWith("Scale from would say man"), a?.sr);
-  check(`${who}: axis, end words and range fit inside the panel`, !!a && a.fits);
+  check(`${who}: bar screen-reader label`, !!a && a.sr.startsWith("Bar of listeners in tenths: would say man fills from the left"), a?.sr);
+  check(`${who}: bar, end words and parts fit inside the panel`, !!a && a.fits);
 }
 
 // WCAG contrast inside the heard-as panel (adapted from the review round 2
-// probe): every text node >= 4.5:1, the range outline and the best-guess ring
-// >= 3:1 (1.4.11), all against the composited background and with every
-// ancestor's opacity applied.
+// probe): every text node >= 4.5:1; the bar's two shades >= 3:1 against the
+// panel background and against each other, the best-guess marker >= 3:1
+// (1.4.11), all against the composited background and with every ancestor's
+// opacity applied. And the user's colour rule (decision 2026-10-20): the bar
+// is two shades of one colour — indigo, hue 225–265° — never green / red /
+// amber (the app's on / off target / experimental) or pink / blue.
 async function contrastCheck(page, who) {
   const r = await page.evaluate(() => {
     const cv = document.createElement("canvas"); cv.width = cv.height = 1;
@@ -364,12 +390,14 @@ async function contrastCheck(page, who) {
     const over = (t, b) => ({ r: t.r * t.a + b.r * (1 - t.a), g: t.g * t.a + b.g * (1 - t.a), b: t.b * t.a + b.b * (1 - t.a), a: 1 });
     const lum = (c) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b); };
     const ratio = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+    const hue = (c) => { const r = c.r / 255, g = c.g / 255, b = c.b / 255, mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+      if (d === 0) return null; const h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; return (h * 60 + 360) % 360; };
     const bgOf = (el) => { const ch = []; for (let e = el; e; e = e.parentElement) ch.push(e); let bg = { r: 255, g: 255, b: 255, a: 1 }; for (const e of ch.reverse()) { const c = rgba(getComputedStyle(e).backgroundColor); if (c.a > 0) bg = over(c, bg); } return bg; };
     const opOf = (el) => { let o = 1; for (let e = el; e; e = e.parentElement) o *= Number(getComputedStyle(e).opacity); return o; };
     const p = document.querySelector("[data-heard-as]");
     if (!p) return null;
     let minText = Infinity, worst = "";
-    for (const el of p.querySelectorAll("h3, h3 span, p, li, button, [data-axis-ends] span")) {
+    for (const el of p.querySelectorAll("h3, h3 span, p, li, button, [data-axis-ends] span, [data-heard-as-range] span")) {
       if (el.closest(".sr-only")) continue;
       const t = [...el.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join("").trim();
       if (!t) continue;
@@ -377,17 +405,23 @@ async function contrastCheck(page, who) {
       const q = ratio(fg, bg);
       if (q < minText) { minText = q; worst = t.slice(0, 40); }
     }
-    const g = {};
-    for (const sel of ["[data-axis-range]", "[data-axis-dot-mark]"]) {
-      const el = p.querySelector(sel); if (!el) continue;
-      const bg = bgOf(el.parentElement), c = rgba(getComputedStyle(el).borderTopColor);
-      g[sel] = ratio(over({ ...c, a: c.a * opOf(el) }, bg), bg);
-    }
-    return { minText, worst, range: g["[data-axis-range]"] ?? null, ring: g["[data-axis-dot-mark]"] ?? null };
+    // The two shades as tokens (they are drawn solid or, both, in the stripes).
+    const bar = p.querySelector("[data-split-bar]");
+    const panelBg = bar ? bgOf(bar.parentElement) : null;
+    const tok = (n) => { const c = rgba(getComputedStyle(document.documentElement).getPropertyValue(n).trim()); return over({ ...c, a: c.a * (bar ? opOf(bar) : 1) }, panelBg ?? { r: 0, g: 0, b: 0, a: 1 }); };
+    const man = tok("--color-heard-man"), woman = tok("--color-heard-woman");
+    const mark = p.querySelector("[data-split-guess-mark]");
+    const markC = mark ? rgba(getComputedStyle(mark).borderTopColor) : null;
+    return { minText, worst,
+      man: panelBg ? ratio(man, panelBg) : null, woman: panelBg ? ratio(woman, panelBg) : null, manWoman: ratio(man, woman),
+      marker: mark && panelBg ? ratio(over({ ...markC, a: markC.a * opOf(mark) }, panelBg), panelBg) : null,
+      hues: [hue(man), hue(woman)].map((h) => (h === null ? null : Math.round(h))) };
   });
   log(`  contrast (${who}): ${JSON.stringify(r)}`);
-  check(`${who}: heard-as panel text >= 4.5:1, range outline and best-guess ring >= 3:1`,
-    !!r && r.minText >= 4.5 && (r.range === null || r.range >= 3) && (r.ring === null || r.ring >= 3), JSON.stringify(r));
+  check(`${who}: heard-as panel text >= 4.5:1; bar shades >= 3:1 against the panel and each other; marker >= 3:1`,
+    !!r && r.minText >= 4.5 && r.man >= 3 && r.woman >= 3 && r.manWoman >= 3 && (r.marker === null || r.marker >= 3), JSON.stringify(r));
+  check(`${who}: the bar is two shades of one colour (indigo, hue 225–265°), no green / red / amber / pink / blue`,
+    !!r && r.hues.every((h) => h !== null && h >= 225 && h <= 265) && Math.abs(r.hues[0] - r.hues[1]) <= 15, JSON.stringify(r?.hues));
 }
 
 const SPEC_HL = {
@@ -523,10 +557,10 @@ for (const label of ["About the pitch cue", "About the resonance cue", "What doe
   await closeSettings(page);
   const shown = await sample(page, 120000, (st) => st.heardAs?.mode === "shown");
   s = await state(page);
-  check("heard-as: one man <-> woman axis appears on speech (no bracket rows)", shown && s.heardAs.axes === 1 && s.heardAs.legacyRows === 0, `${s.heardAs?.mode}/${s.heardAs?.reason}`);
+  check("heard-as: one man <-> woman bar appears on speech (no bracket rows)", shown && s.heardAs.axes === 1 && s.heardAs.legacyRows === 0, `${s.heardAs?.mode}/${s.heardAs?.reason}`);
   axisChecks("woman", s);
   await contrastCheck(page, "woman");
-  womanDot = s.heardAs?.axis?.dot ?? null;
+  womanGuess = s.heardAs?.axis?.guess ?? null;
   check("heard-as: no '%' in the panel while it shows ranges", shown && !s.heardAs.text.includes("%"));
   check("heard-as: no verdict word", shown && !/likely (a )?(man|woman)|likely heard as a/i.test(s.heardAs.text.replace("Likely heard as", "")));
   await shot(page, "04-heard-as-woman");
@@ -583,11 +617,12 @@ check("man: listening", await continueAfterReload(page));
   const s = await state(page);
   check("man: pitch and resonance live", pitchLive && resLive);
   check("man: resonance reads lower than the woman's", manU !== null && womanU !== null && manU < womanU, `man ${manU} vs woman ${womanU}`);
-  check("man: one man <-> woman axis, no '%'", s.heardAs?.mode === "shown" && s.heardAs.axes === 1 && s.heardAs.legacyRows === 0 && !s.heardAs.text.includes("%"), `${s.heardAs?.mode}/${s.heardAs?.reason}`);
+  check("man: one man <-> woman bar, no '%'", s.heardAs?.mode === "shown" && s.heardAs.axes === 1 && s.heardAs.legacyRows === 0 && !s.heardAs.text.includes("%"), `${s.heardAs?.mode}/${s.heardAs?.reason}`);
   axisChecks("man", s);
   await contrastCheck(page, "man");
-  const manDot = s.heardAs?.axis?.dot ?? null;
-  check("orientation: the man's best guess sits left of the woman's", manDot !== null && womanDot !== null && manDot < womanDot, `man ${manDot} vs woman ${womanDot}`);
+  const manGuess = s.heardAs?.axis?.guess ?? null;
+  check("orientation: more of the bar would say man (from the left) for the man than for the woman — his best guess sits right of hers",
+    manGuess !== null && womanGuess !== null && manGuess > womanGuess, `man ${manGuess} vs woman ${womanGuess}`);
   await shot(page, "05-man-live");
   // the panel itself (below the first screen on short / narrow viewports)
   await page.evaluate(() => document.querySelector("[data-heard-as]")?.scrollIntoView({ block: "center" }));
