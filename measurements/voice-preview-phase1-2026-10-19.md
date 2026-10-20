@@ -818,18 +818,108 @@ cue-strip smoke; results in "Verify step" below):
     clientWidth). Holding 250 ms before lifting removed it (2 of 2). The drags now hold
     250 ms, as a person stopping the thumb at the end does.
 
+**2026-10-19, fix step** (the three reviews of the verify step's branch — correctness;
+accessibility and wording; privacy, licence and docs — and the verify step's own problems 1–3;
+results and the review notes in "Fix step" below):
+
+25. **Discard closes the playback AudioContext (§8, §13; verify problem 1).** `playback.clear()`
+    (Discard, Record again) closes the context instead of suspending it; the next Play press
+    makes a new one. The smoke's Discard census passes at all five viewports (AudioBuffers
+    0 → 3 → 0), so the About text's promise ("deleted when you press Discard, record again or
+    close the tab") holds for the last-played version too.
+26. **Watchdogs; Discard while analysing (§4, §9).** Loading longer than 30 s goes to the
+    load-error state; `recorded` → `analysed` longer than 20 s terminates the worker (its
+    memory goes) and goes to the error state (Record again / Discard). Discard is shown while
+    analysing too. Listening stopping during the analysis still does not cancel it: the analysis
+    takes ≤ ~3 s, and a cancel would race the worker's reply.
+27. **Record again waits for 6 s of listening (§3, §9).** In the preview, error and memory
+    phases "Record again" is aria-disabled, with the countdown line, while Record would have to
+    wait (listening restarted with a preview on screen), and `recordAgain()` refuses. It used to
+    discard the preview, start a fresh worker and then record nothing.
+28. **Render queue after a render error (§4).** The setting that waited behind a failed render
+    is sent at once (it used to wait for the next render and then override it), and a
+    successful render clears the error notice.
+29. **Leaving the preview (§8, §10).** When the phase leaves "preview" (a render out of memory,
+    the watchdog), playback stops — the Play group and its Stop button are gone — and focus moves
+    to Record again if it fell to the page.
+30. **Announcements (§10).** "Preview ready." carries the hum / noise notice text as shown;
+    after every render the live region says the setting in words ("Preview updated: pitch 2
+    semitones lower, about 159 hertz, may sound buzzier; resonance 3 percent darker."); the target
+    row's result line adds " · may sound buzzier" for a lowered setting.
+31. **The setting beside the Play buttons (§6, §8).** "Preview: −2 st, −3 % · may sound
+    buzzier" on the Play group's label line, linked to the Preview button (`aria-describedby`):
+    the scoping's "distance next to every preview". In landscape (890 × 360) the setting and the
+    buzz label were never on screen together with the Play buttons.
+32. **Forced colors (§10).** Every button carries a transparent border, which forced-colors mode
+    (Windows high contrast) draws; the pressed Play / Loop buttons use the system Highlight /
+    HighlightText colours there. Before, pressed and unpressed looked the same in that mode.
+33. **Target field on phones (§6, §10).** On the phone layout a prefilled field is not focused
+    when its row opens (a tap-driven focus pops up the keyboard over the lab area); on desktop,
+    or with an empty field, it is focused as before.
+34. **A card chunk that fails to download (§11).** LabView wraps the lazy card in an error
+    boundary that shows the load-error text inside the lab. Without it React removed the whole
+    root — tabs, Stop Listening and a running Dashboard session recording — e.g. after a deploy
+    while the tab stayed open. The same gap around LabView itself (`App.jsx`) predates this
+    branch and is left as it is (review notes).
+35. **Background-noise check (§7).** The level margin's floor moved from the 10th to the 5th
+    percentile of the 20 ms frame energies and the threshold from 30 to 28 dB. With the 10th
+    percentile, continuous speech with few pauses could get the notice in a quiet room (the 10th
+    percentile was speech, not room noise). `scripts/voice-preview/noise-margin-eval.mjs` on the
+    public corpora (PTDB-TUG, FDA; speech resampled to 16 kHz; noise from `scripts/noise-synth.js`,
+    SNR against the speech's active RMS; "trimmed" = cut to the speech, the worst case):
+
+    | Set | n | 95th − 10th, min / median / max dB | 95th − 5th, min / median / max dB | flagged, 10th < 30 dB (before) | flagged, 5th < 28 dB (now) |
+    |---|---|---|---|---|---|
+    | PTDB-TUG whole, clean | 180 | 44.4 / 53.9 / 60.0 | 45.1 / 54.8 / 61.1 | 0 | 0 |
+    | PTDB-TUG trimmed, clean | 28 | 25.4 / 42.4 / 59.4 | 29.7 / 48.3 / 60.0 | **2** | **0** |
+    | FDA whole, clean | 81 | 42.6 / 53.0 / 57.6 | 45.9 / 54.3 / 57.9 | 0 | 0 |
+    | FDA trimmed, clean | 41 | 44.8 / 48.8 / 55.3 | 48.2 / 53.6 / 57.0 | 0 | 0 |
+    | PTDB-TUG whole / trimmed, pink +20 dB | 180 / 28 | max 25.2 / 25.8 | max 25.8 / 26.9 | all | all |
+    | FDA whole / trimmed, pink +20 dB | 81 / 41 | max 26.5 / 25.9 | max 27.0 / 26.4 | all | all |
+    | every set, pink +10 dB | 330 | max 16.7 | max 17.3 | all | all |
+    | PTDB-TUG / FDA trimmed, fan hum 20 dB down | 28 / 41 | max 24.9 / 24.5 | max 25.4 / 24.9 | all | all |
+
+    The 5th percentile separates the clean and the noisy sets by 2.7 dB (29.7 vs 27.0), where the
+    10th percentile overlapped them (25.4 vs 26.5). The design's own anchors move with it: the
+    clean LibriSpeech excerpts measure 42.3 / 42.5 dB (were 39.8 / 40.0), `ls_man_low` 18.6 dB
+    (still flagged), the smoke's fan-hum run 24.6 dB and pink-noise run 15.9 dB (still flagged).
+    Real rooms and phone microphones are still unmeasured: the phone check (§15 step 6) feeds
+    this threshold, as planned.
+36. **Bundle budget (§11; verify problem 2).** `bundle-budget.mjs` counts the stylesheets
+    `index.html` links together with the entry chunk against the 1 KB budget, and its default base
+    is the merge base with `origin/cue-strip` (the cue-strip commit this branch last merged), so
+    cue-strip's own growth is not charged to the voice preview.
+37. **Smoke (§14; verify problem 3).** New checks for 25–34 (the Discard census, "Preview updated"
+    in words, the setting line, forced colors, Record again during the wait, the notices in the
+    announcement, the phone target focus) and a new part `chunkfail` (a 404 for the card's chunk).
+    The dev part runs Vite's dev server in the smoke's own process with its own dependency cache
+    (`build/vp-smoke-vite/`): through the worktree's `node_modules` junction it used to write
+    Vite's cache into the linked checkout, the likely cause of verify problem 3.
+38. **Docs (§12).** The spike's note is on this branch now
+    ([voice-preview-spike-2026-10-12.md](voice-preview-spike-2026-10-12.md), as on
+    `voice-preview-spike` at ac4e7ca, the local cache folder written `$VP_CACHE`), so the links
+    to it resolve after a merge. WORLD's `fft.cpp` includes T. Ooura's FFT routines, now
+    credited in THIRD_PARTY_NOTICES.md, `licenses/world/README.md` and the built notices.
+    `build.mjs`, `BUILD.json` and the README say that byte-identity has been shown on Windows x64
+    only (the emsdk archive hashes are pinned for Windows). A comment in `vp_world.cpp` named the
+    spike-only `lib/world-engine.mjs`; it names `src/voice-preview/engine/world.js` (same line;
+    `--check-shipped` still byte-identical, "Fix step" below).
+39. **`data-vp-hops` on the card**: hops received / recorded of the last analysis, so the phone
+    check logs it for every recording (a main thread lagging more than 500 ms after Stop would
+    leave the last hops unvoiced).
+
 ## Implementation status (2026-10-19)
 
 Built on branch `voice-preview` (no PR). The card, the engine and the checks are complete
-for the lab version; the phone check (§15) is still to do.
+for the lab version; the phone check (§15) is still to do. Updated after the fix step.
 
 | Acceptance (§14, §15) | Status |
 |---|---|
-| Unit tests 1–10 (`tests/voice-preview/`: wasm-files, parity, recorder, controls, checks, worker, controller, warp, hum-check, bridge-hook, strings, wav, playback) and the existing display-hook, notices and no-local-paths tests; lint, `npm run test:unit`, build, `npm run test:resonance-lab` | pass |
-| Bundle (`bundle-budget.mjs`) | pass: entry + static imports +0.20 KB gzip, LabView +0.24 KB, card chunk 10.1 KB, worker chunk 5.3 KB; no voice-preview strings in the entry or LabView chunks; WebAssembly 52.2 KB (SIMD) / 50.3 KB gzip. Verify step: the main stylesheet also grows +0.33 KB gzip, which the script does not count (Verify step, problem 2) |
-| Smoke (`voice-preview-smoke.mjs`, layout / flow / checks / dev / preview / fallback) | card step: pass, 152 checks. Verify step (extended, Deviation 22): 260 pass, **5 fail** — at every viewport one AudioBuffer (the last-played version) stays in memory after Discard (Verify step, problem 1; tested fix not committed). Sliders to each end, every quick setting, the target row and every Play button pass with touch on the phone viewports and the mouse on desktop; Discard frees the worker's WebAssembly memory and the PCM; `vite preview` and the non-SIMD fallback pass |
-| Desktop timing (Chrome for Testing 154, 48 kHz, listening on) | **pass (verify step, machine 34 % busy):** analysis + rebuild 841 / 895 ms (5 s) and 1272 / 1344 ms (8 s); slider change 214 / 252 ms and 341 / 384 ms — all within the spike's values. The card step's run (47 % busy) had the slider-change medians over (239, 436 ms). In Chrome 155 the slider-change medians sit at the limit (214–236 ms against 220, 359–376 ms against 360), p90 within; one of 100 timed recordings never reached the preview (Verify step, problem 4) |
-| Phone check (§15, Pixel 11 Pro XL) | not done yet; includes the first 8 s phone timing and the 30 dB noise threshold in ordinary rooms |
+| Unit tests 1–10 (`tests/voice-preview/`: wasm-files, parity, recorder, controls, checks, worker, controller, controller-guards, warp, hum-check, bridge-hook, strings, wav, playback) and the existing display-hook, notices and no-local-paths tests; lint, `npm run test:unit`, build, `npm run test:resonance-lab` | pass (fix step: 60 / 60 scripts after the cue-strip merge) |
+| Bundle (`bundle-budget.mjs`) | pass. Fix step (counts the stylesheet, Deviation 36; base the merged cue-strip tip): entry JS +243 B and main stylesheet +419 B gzip, together +662 B against 1 KB; LabView +399 B; card chunk 10.68 KB, worker chunk 5.31 KB; no voice-preview strings in the entry or LabView chunks; WebAssembly 52.2 KB (SIMD) / 50.3 KB gzip |
+| Smoke (`voice-preview-smoke.mjs`, layout / flow / checks / dev / preview / fallback / chunkfail) | card step: pass, 152 checks. Verify step (extended, Deviation 22): 260 pass, 5 fail (the AudioBuffer kept after Discard). **Fix step: 278 pass, 0 fail** — Discard frees every AudioBuffer, the PCM and the worker's WebAssembly memory at all five viewports; the fix step's checks (Deviation 37) pass |
+| Desktop timing (Chrome for Testing 154, 48 kHz, listening on) | Fix step (after the cue-strip merge, 27–29 % busy, two runs): within the spike's values except the 5 s slider-change median, 222 ms against 220 (p90 232–259 against 350); end to end far under the gate ("Fix step" below). **Verify step, pass (machine 34 % busy):** analysis + rebuild 841 / 895 ms (5 s) and 1272 / 1344 ms (8 s); slider change 214 / 252 ms and 341 / 384 ms — all within the spike's values. The card step's run (47 % busy) had the slider-change medians over (239, 436 ms). In Chrome 155 the slider-change medians sit at the limit (214–236 ms against 220, 359–376 ms against 360), p90 within; one of 100 timed recordings never reached the preview (Verify step, problem 4) |
+| Phone check (§15, Pixel 11 Pro XL) | not done yet; includes the first 8 s phone timing and the noise threshold (28 dB since the fix step) in ordinary rooms. A kit outside the repository automates its timing, hum and Discard steps ("Fix step") |
 
 ## Verify step (2026-10-19)
 
@@ -963,3 +1053,66 @@ checks are not on this branch.)
    phone: flick a slider, then tap a quick setting at once.
 6. The 30 dB noise notice also fires on the hum run (24.4 dB margin), as recorded in Deviation 18
    and the card step's notes; nothing new.
+
+## Fix step (2026-10-19)
+
+The three reviews' findings applied (Deviations 25–39), the latest `cue-strip` (b60eec3: the
+narrowband detector for the resonance row, the frame-timestamp trace gate) merged first, then
+every check re-run on the merged tree. Headless Chrome 155 unless named; the same shared desktop,
+27–41 % busy.
+
+**Results:**
+
+| Check | Result |
+|---|---|
+| `npm run lint`, `npm run test:unit` (60 scripts, incl. the new `controller-guards-test.js`: render queue after an error, Record again during the wait, both watchdogs, Discard while analysing, render out of memory), `npm run build` | pass |
+| `voice-preview-smoke.mjs` (layout at five viewports, flow, checks, dev, `vite preview`, fallback, chunkfail) | **278 pass, 0 fail**, no input repeated. Discard frees everything at all five viewports: AudioBuffers 0 → 3 → 0, array-buffer backing 0.5 → 4.6 → 0.5 MB, worker WebAssembly 16.1 → 76.3 → 16.1 MB (verify problem 1 fixed). Clean phrase: no notice, level margin 44.5–45.2 dB; fan hum: both notices (24.6 dB); pink noise +10 dB: the noise notice (15.9 dB); each announced with "Preview ready."; the dev part with no reload and no write to the linked checkout's Vite cache |
+| `cue-strip-smoke.mjs` (the merged cue-strip's own smoke, its WAVs regenerated) | 81 / 81 at each of 448 × 890, 402 × 750, 360 × 690, 890 × 360, 1280 × 800 |
+| `bundle-budget.mjs` (base: the merged cue-strip tip b60eec3) | pass: what every page load fetches +662 B gzip (entry JS +243 B, main stylesheet +419 B) against 1 KB; LabView +399 B (the error boundary included); card chunk 10.68 KB; worker chunk 5.31 KB; no voice-preview strings in the entry or LabView chunks; WebAssembly 52.2 KB (SIMD) / 50.3 KB gzip, fetched one at a time |
+| `build.mjs --check-shipped` | simd / nosimd `.wasm` and the glue byte-identical to the committed files (fa3a29cf…, 09cf5e8a…, 5e7a7a20…) after the `vp_world.cpp` comment change |
+| Desktop timing (`--parts=timing`, Chrome for Testing 154, 48 kHz, listening on, 10 + 10 recordings, twice; median / pooled p90, spike A5 limits in brackets) | 5 s analysis + rebuild 811 / 971 and 789 / 896 ms [1130 / 1420]; **5 s slider change 222 / 259 and 222 / 232 ms [220 / 350]: median 2 ms over**; 8 s analysis + rebuild 1284 / 1344 and 1257 / 1335 ms [1690 / 2220]; 8 s slider change 326 / 390 and 329 / 382 ms [360 / 550]. End to end: stop → "Preview ready" 0.90–0.91 s (5 s) and 1.30–1.31 s (8 s), press → rendered 0.31 / 0.40–0.41 s, far under the 3 s / 1 s gate. No growth over 19 Record again cycles (AudioBuffers 0 → 0, backing 4.9 → 4.9 MB, worker 92.1 → 92.1 MB). The renders are bit-identical to the spike's (`parity-test.js`); the verify step measured 214 ms on the branch before the merge, and the merged cue-strip adds the narrowband detector to the resonance worker that runs alongside — a plausible cause, not measured. The phone check is the gate |
+
+**Phone check kit (scratch, outside the repository).** A kit for §15 was prepared outside the
+repo (the Pixel stays the gate phone): a launcher that saves the phone settings, reads them back
+on restore, runs the site server and stops it by its own PID, and stops cleanly on a lock screen
+or a hidden page; the built app of this branch is fed from public / synthetic WAVs that the kit
+plays into the page in place of the microphone (the phone's microphone is never opened), at the
+device's own capture rate; it times 5 × 5 s and 5 × 8 s recordings with one slider change each,
+logs hops received / recorded for every recording, checks playback, the hum notice and Discard.
+Dry runs against a mock adb and a headless Chrome passed (the whole check in 2 min; a lock
+screen before the second recording; a Ctrl-C; no phone). It uses adb, unlike §15's "no adb"
+plan; §15's manual steps (audibility through the speaker and headphones, TalkBack) stay manual.
+
+**Review notes** (what was applied is Deviations 25–39; what was not, and why):
+
+- **An error boundary around LabView itself** (`App.jsx`; the accessibility review's "consider"):
+  not added. The gap predates this branch (a failed LabView chunk blanks the app on `main` too),
+  and the boundary would land in the entry chunk; a change for `main` on its own.
+- **The view switch is about 16 px tall on phones** (optional): not changed. The pattern predates
+  this branch and serves all three lab views; a taller switch takes height from the phone lab's
+  four-card fit, which the cue-strip and lab smokes check. WCAG 2.5.8's spacing exception likely
+  applies.
+- **Cancel the analysis when listening stops during it** (privacy review): not done. The analysis
+  runs ≤ ~3 s on the gate phone, a cancel would race the worker's reply, and Discard (shown while
+  analysing) plus the 20 s watchdog cover a hang.
+- **Skip the hum notice when the notched line lies in the recording's own F0 range** (correctness
+  review, unverified risk): rejected — that is exactly the in-range hum the notice exists for
+  (it moves with the pitch slider). Recorded as a known limit below instead.
+- **Run the unit tests on Linux before the PR** (privacy review): not done here (no Linux
+  environment on this machine was used). The tests read only committed files, and the WebAssembly
+  is deterministic (SIMD128, musl's libm inside the module), so a match is expected; the first PR
+  CI run on ubuntu-24.04 is the check.
+
+**Known limits added by the reviews** (§16 is not edited):
+
+- **A hum notice after repeated same-pitch holds** (not verified): the notch's documented
+  held-note gap (repeated same-pitch holds with breaths are notched once the series passes 20 s)
+  could raise the hum notice for a singer who records right after such practice, and its vetoed
+  frames would be unvoiced in the F-S track.
+- **iOS Safari** (untested, no device): Web Audio output may be quieter or routed differently
+  while `getUserMedia` is active, and playback is only reachable while listening.
+- **Trailing hops**: the posted track is finalised 500 ms after Stop; a main thread lagging more
+  than that leaves the last hops unvoiced. The card now exposes hops received / recorded
+  (`data-vp-hops`, Deviation 39) and the phone kit logs it per recording.
+- **aria-valuetext under TalkBack** could not be confirmed in headless Chrome (the CDP
+  accessibility tree shows no valuetext even for plain ARIA sliders); §15 step 5 checks it.
