@@ -48,7 +48,7 @@ export const COMMITTED_LICENSES = {
 export const NON_NPM_COMPONENTS = Object.freeze([
   {
     name: "WORLD",
-    title: "WORLD (M. Morise; mmorise/World 8d79b88b7dd92e8a132996cf74080b2d6f881b98) — compiled into the voice preview's WebAssembly module",
+    title: "WORLD (M. Morise; mmorise/World 8d79b88b7dd92e8a132996cf74080b2d6f881b98; its fft.cpp includes T. Ooura's FFT routines) — compiled into the voice preview's WebAssembly module",
     idPattern: /\/src\/voice-preview\/wasm\//,
     files: ["licenses/world/LICENSE.txt"],
   },

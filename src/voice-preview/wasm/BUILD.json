@@ -1,5 +1,5 @@
 {
- "note": "Built by scripts/voice-preview/build.mjs --ship; rebuild and compare with --check-shipped. WORLD source and emsdk live outside the repository ($VP_CACHE).",
+ "note": "Built by scripts/voice-preview/build.mjs --ship; rebuild and compare with --check-shipped. WORLD source and emsdk live outside the repository ($VP_CACHE). Byte-identity shown on Windows x64 (the emsdk archive hashes are pinned for Windows only).",
  "pins": {
   "world": {
    "repo": "https://github.com/mmorise/World.git",

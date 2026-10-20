@@ -8,7 +8,7 @@
 // doubles in WebAssembly memory; the caller allocates them with malloc/free
 // (exported) so that analysis results can stay in WebAssembly memory between
 // renders. Defaults follow pyworld 0.3.5 — the caller passes them explicitly
-// (see ../lib/world-engine.mjs), so nothing here hides a parameter.
+// (see src/voice-preview/engine/world.js), so nothing here hides a parameter.
 //
 // vp_warp is the formant envelope warp of the scratch prototype
 // (world_render.py World._warp), written out in C:

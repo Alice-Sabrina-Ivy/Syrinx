@@ -27,6 +27,9 @@
 // (sha256, raw / gzip -9 / brotli q11 sizes, WebAssembly feature list, exact command lines).
 // Without --ship nothing is written inside the repository. CI does not build: the committed
 // files are checked against BUILD.json by tests/voice-preview/wasm-files-test.js.
+// Platforms: byte-identity has been shown on Windows x64 only. PINS.emsdk.winArchives pins the
+// Windows SDK archives; on Linux / macOS --install fetches that platform's archives, whose
+// sha256 is recorded in build-info.json but not checked against a pin.
 //
 // Importing this file (PINS, EXPORTS, emccArgs) runs nothing; the build runs only when it is
 // the script Node was started with.
@@ -148,7 +151,7 @@ export function emccArgs(variant, outFile) {
     "-O3", ...VARIANTS[variant],
     "-fno-exceptions",
     `-I${path.join(P.world, "src")}`,
-    // keep absolute paths out of the output (reproducible from any checkout)
+    // keep absolute paths out of the output (the same bytes wherever the checkout and VP_CACHE are)
     `-ffile-prefix-map=${P.world}=world`, `-ffile-prefix-map=${VP_DIR}=vp`,
     "-sMODULARIZE=1", "-sEXPORT_ES6=1", "-sEXPORT_NAME=createVpWorld",
     "-sENVIRONMENT=web,worker,node",
@@ -249,7 +252,8 @@ function ship(builds, pins, emver) {
   }
   const info = {
     note: "Built by scripts/voice-preview/build.mjs --ship; rebuild and compare with --check-shipped. " +
-      "WORLD source and emsdk live outside the repository ($VP_CACHE).",
+      "WORLD source and emsdk live outside the repository ($VP_CACHE). Byte-identity shown on Windows x64 " +
+      "(the emsdk archive hashes are pinned for Windows only).",
     pins: PINS,
     checked: pins,
     emcc: emver,
