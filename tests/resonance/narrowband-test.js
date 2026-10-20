@@ -23,6 +23,11 @@
 //      low-passed stream ends with the notice on and no resonance reading
 //      (the cue drops its bins), the wideband stream with the notice off and
 //      a reading.
+//      No post carries a position (u / raw / clamp) while its detector is
+//      undecided, and none makes the row draw a dot — on both streams and
+//      after a fresh engine (a forced runtime error at 6 s; 2026-10-19
+//      review: the row showed a dot from 2 s cue-voiced, before the
+//      detector could decide at 3 s).
 //
 //   node tests/resonance/narrowband-test.js
 
@@ -195,7 +200,13 @@ try {
 
 // real workers
 let sink = [];
-globalThis.self = { postMessage: (m) => sink.push(m) };
+let throwOnState = false; // one-shot: the next "state" post throws (forces a fresh engine)
+globalThis.self = {
+  postMessage: (m) => {
+    if (throwOnState && m.type === "state") { throwOnState = false; throw new TypeError("forced"); }
+    sink.push(m);
+  },
+};
 globalThis.fetch = async (url) => {
   const name = String(url).split("/").pop();
   try {
@@ -207,9 +218,24 @@ globalThis.fetch = async (url) => {
 };
 await imp("src/resonance/resonance-worker.js");
 const resOnMessage = self.onmessage;
+const M = await imp("src/components/cueStripModel.js");
 let inst = 0;
 
-for (const [name, y] of Object.entries(streams)) {
+// No post may carry a position while its detector is undecided, and no
+// such post may make the row draw a dot (2026-10-19 review: the row showed
+// a dot from 2 s cue-voiced, the detector decides at 3 s). `bites`: some
+// undecided post is past RESONANCE_WARM_S of cue voiced time, i.e. the old
+// worker would have shown a dot there.
+function positionWithheld(states) {
+  const und = states.filter((s) => s.narrowband && s.narrowband.decided === false);
+  const leaks = und.filter((s) => {
+    const rs = M.resonanceRowState({ workerStatus: "ready", snap: s, voiced: true, holding: false });
+    return s.u !== null || s.raw !== null || s.clamp !== 0 || (M.dotOpacity(rs) !== null && M.rowValue("resonance", { snap: s }) !== null);
+  });
+  return { ok: und.length > 0 && leaks.length === 0, bites: und.some((s) => (s.voicedS ?? 0) >= M.RESONANCE_WARM_S), und: und.length, leaks: leaks.length };
+}
+
+async function runWorkers(y, { throwAtS = null } = {}) {
   // a fresh pitch worker module per stream, as extract.mjs runs it
   await import(pathToFileURL(path.join(repo, "src/dsp/pitch-worker.js")).href + `?nb=${inst++}`);
   const pitchOnMessage = self.onmessage;
@@ -220,18 +246,29 @@ for (const [name, y] of Object.entries(streams)) {
   await resOnMessage({ data: { type: "init", sampleRate: 48000, assetBase: "/" } });
   const rport = {};
   resOnMessage({ data: { type: "audioPort", port: rport } });
-  const states = [];
+  const states = [], statuses = [];
+  let engineNo = 1; // init posted the first "ready"
   for (let s = 0; s < y.length; s += 1200) {
     const x = y.slice(s, Math.min(y.length, s + 1200));
     const contextTime = Math.min(y.length, s + 1200) / 48000;
+    if (throwAtS !== null && contextTime >= throwAtS) { throwOnState = true; throwAtS = null; }
     sink = [];
     pport.onmessage({ data: { buffer: x.slice().buffer, contextTime } });
     const posts = sink.filter((m) => m.type === "pitch");
     sink = [];
     rport.onmessage({ data: { buffer: x.slice().buffer, contextTime } });
     for (const m of posts) resOnMessage({ data: { type: "pitch-hint", voiced: m.voiced, pitch: m.pitch, contextTime: m.contextTime } });
-    states.push(...sink.filter((m) => m.type === "state"));
+    for (const m of sink) {
+      if (m.type === "status") { statuses.push(m.status); if (m.status === "ready") engineNo++; }
+      if (m.type === "state") states.push({ ...m, engineNo });
+    }
   }
+  throwOnState = false;
+  return { states, statuses };
+}
+
+for (const [name, y] of Object.entries(streams)) {
+  const { states } = await runWorkers(y);
   const ref = harness[name];
   const hasField = states.length > 0 && states.every((s) => s.narrowband && typeof s.narrowband.n === "number");
   check(`${name}: every state post carries the detector state`, hasField, `${states.length} posts`);
@@ -245,6 +282,9 @@ for (const [name, y] of Object.entries(streams)) {
   const last = states[states.length - 1];
   check(`${name}: posted { n, decided, on, f } === measured harness`, exact && compared > 10,
     `${compared} posts compared, harness ${ref.length - 1} voiced frames`);
+  const w = positionWithheld(states);
+  check(`${name}: no post shows a position while the detector is undecided`, w.ok && w.bites,
+    `${w.und} undecided posts, ${w.leaks} with a position; one past ${M.RESONANCE_WARM_S} s cue-voiced: ${w.bites}`);
   if (name === "wideband") {
     check("wideband: decided, notice off, resonance reading present",
       last?.narrowband?.decided === true && last.narrowband.on === false && last.u !== null,
@@ -254,6 +294,21 @@ for (const [name, y] of Object.entries(streams)) {
       last?.narrowband?.on === true && last.u === null,
       `F ${last?.narrowband?.f?.toFixed(1)} dB, first on at post ${states.findIndex((s) => s.narrowband?.on)}`);
   }
+}
+
+// A fresh engine (here after a runtime error at 6 s; an overload back-off
+// takes the same startEngine path) starts a fresh detector: undecided again,
+// so again no position until it has decided.
+{
+  const { states, statuses } = await runWorkers(streams.wideband, { throwAtS: 6 });
+  const after = states.filter((s) => s.engineNo === 2);
+  check("fresh engine after an error: restarted (error, ready), detector undecided again",
+    statuses.join() === "error,ready" && after.length > 10 && after[0].narrowband.decided === false
+    && states.some((s) => s.engineNo === 1 && s.narrowband.decided), `${statuses.join()}, ${after.length} posts after`);
+  const w = positionWithheld(after);
+  check("fresh engine: no post shows a position until its detector has decided", w.ok && w.bites,
+    `${w.und} undecided posts, ${w.leaks} with a position`);
+  check("fresh engine: the reading comes back once decided", after.some((s) => s.narrowband.decided && s.u !== null));
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

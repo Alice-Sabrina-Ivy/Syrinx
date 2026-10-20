@@ -1049,3 +1049,15 @@ The notice never came on for these wideband streams. On the three 5 s
 fixtures alone (the test material) the first dot moves 3.15 → 4.05 s on the
 concatenation; the two male 5 s clips no longer show a dot within 5 s (their
 detector reaches 300 voiced frames only after the clip ends).
+
+**Notice in a browser (pre-PR review, low finding).** The cue-strip smoke
+(`scripts/cue-strip-smoke.mjs`, built app, headless Chrome with a fake mic)
+gained a run on `narrowband.wav` — its speech-woman reader low-passed at
+3.4 kHz (`scripts/cue-strip-smoke-wavs.mjs`). At p360 (360 × 690) the plan's
+header "Phone-quality audio — resonance paused" was clipped to "…resonance
+pa…" and pushed the row title to "Resonance · app…". The header is now
+**"Phone-quality audio — paused"** (the reviewer's suggestion; the row title
+already says Resonance, and the info text and screen-reader sentence keep
+"resonance … paused"). A wording change only: the detector, its decision and
+the row states are unchanged. Results of the re-run are in the commit message
+of this change.

@@ -152,7 +152,7 @@ export function pitchRowState({ voiced, holding, pitchLevel }) {
   return "idle";
 }
 export const RESONANCE_WARM_S = 2;
-export const NARROWBAND_NOTICE = "Phone-quality audio — resonance paused";
+export const NARROWBAND_NOTICE = "Phone-quality audio — paused";
 export const NARROWBAND_INFO =
   "Your microphone sound is cut off above about 4 kHz, as on a phone call or a narrowband Bluetooth headset. " +
   "Resonance readings need the fuller sound, so they are paused. Pitch still works. A wired or wideband " +
@@ -171,7 +171,9 @@ export function resonanceRowState({ workerStatus, snap, voiced, holding }) {
   if (snap.narrowband?.on === true) return "narrowband";
   if (!voiced && !holding) return "idle";
   if (snap.verdict === "sustained") return "sustained";
-  if ((snap.voicedS ?? 0) < RESONANCE_WARM_S || snap.u == null) return "warming";
+  // The worker withholds u until its narrowband detector has decided; keep
+  // warming on the detector state too, so no position shows before it can.
+  if ((snap.voicedS ?? 0) < RESONANCE_WARM_S || snap.u == null || snap.narrowband?.decided === false) return "warming";
   if ((snap.fill ?? 0) < 1) return "settling";
   // Back after a long pause (resonanceCue IDLE_RESET_S): the readout still
   // holds the earlier speech until ~2 s of new voiced speech is in.

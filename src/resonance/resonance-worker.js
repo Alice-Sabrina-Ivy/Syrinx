@@ -28,7 +28,9 @@
 //                     startProgress, sinceResumeS, framesDropped, narrowband, perf? }    every 200 ms of audio
 //                   narrowband = { on, decided, f, n }: the phone-quality audio
 //                   detector (narrowband.js, run on every voiced 10 ms grid
-//                   frame of this engine's 16 kHz ring). While on, the cue
+//                   frame of this engine's 16 kHz ring). Until it has decided
+//                   (3 voiced s) the post withholds the position (u, raw
+//                   null, clamp 0). While on, the cue
 //                   strip pauses the resonance row and the cue drops its bins
 //                   (resonanceCue.js noteNarrowband). A fresh engine (after an
 //                   overload or error back-off) starts a fresh detector.
@@ -101,14 +103,18 @@ function post(force = false) {
   sinceLastPostS = 0;
   const s = cue.snapshot();
   const e = engine.snapshot();
+  // No position before the detector has decided (3 voiced s of this
+  // engine): the row would show a phone link's darker reading before the
+  // notice can come on. The cue keeps its state; only the post withholds it.
+  const pos = narrowband.state.decided;
   self.postMessage({
     type: "state",
-    u: s.u,
-    raw: s.raw,
+    u: pos ? s.u : null,
+    raw: pos ? s.raw : null,
     n: s.n,
     fill: s.fill,
     voicedS: s.voicedS,
-    clamp: s.clamp,
+    clamp: pos ? s.clamp : 0,
     verdict: s.verdict,
     startU: s.startU,
     startProgress: s.startProgress,

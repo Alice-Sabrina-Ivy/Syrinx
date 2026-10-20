@@ -211,15 +211,21 @@ console.log("\nrow states");
     R({ snap: nb(true) }) === "narrowband" && R({ snap: nb(true), voiced: false, holding: false }) === "narrowband"
     && R({ snap: nb(true), voiced: false, holding: true }) === "narrowband"
     && R({ snap: { ...nb(true), verdict: "sustained" } }) === "narrowband");
-  check("resonance: detector off / undecided / absent leaves the states as they were",
-    R({ snap: nb(false) }) === "live" && R({ snap: nb(false, false) }) === "live" && R({ snap: snap({ narrowband: null }) }) === "live"
+  check("resonance: detector off / absent leaves the states as they were",
+    R({ snap: nb(false) }) === "live" && R({ snap: snap({ narrowband: null }) }) === "live"
     && R({ snap: { ...nb(false), voicedS: 1.2, fill: 0.24 } }) === "warming");
+  // 2026-10-19 review: no position before the detector can decide (the
+  // worker also withholds u; this keeps the row from drawing one regardless).
+  check("resonance: warming (no dot) while the detector is undecided, even with a readout",
+    R({ snap: nb(false, false) }) === "warming" && R({ snap: { ...nb(false, false), voicedS: 2.5, fill: 0.5 } }) === "warming"
+    && dotOpacity("warming") === null
+    && R({ snap: nb(false, false), voiced: false, holding: false }) === "idle");
   check("resonance: worker errors / back-off / start-up still win over narrowband",
     R({ workerStatus: "error", snap: nb(true) }) === "unavailable" && R({ workerStatus: "overloaded", snap: nb(true) }) === "paused"
     && R({ workerStatus: "restarting", snap: nb(true) }) === "restarting" && R({ workerStatus: "loading", snap: nb(true) }) === "starting");
   check("narrowband: no dot, the plan's notice and info text, screen-reader sentence; pitch row unaffected",
     dotOpacity("narrowband") === null
-    && NARROWBAND_NOTICE === "Phone-quality audio — resonance paused" && resonanceHeader("narrowband", nb(true)) === NARROWBAND_NOTICE
+    && NARROWBAND_NOTICE === "Phone-quality audio — paused" && resonanceHeader("narrowband", nb(true)) === NARROWBAND_NOTICE
     && NARROWBAND_INFO === "Your microphone sound is cut off above about 4 kHz, as on a phone call or a narrowband Bluetooth headset. Resonance readings need the fuller sound, so they are paused. Pitch still works. A wired or wideband microphone fixes this."
     && cueSummary("resonance", { state: "narrowband", snap: nb(true), vtlnRef: REF }) === "Resonance (approximate): paused, phone-quality audio — the sound is cut off above about 4 kHz. Pitch still works."
     && pitchRowState({ voiced: true, pitchLevel: 180, snap: nb(true) }) === "live");
