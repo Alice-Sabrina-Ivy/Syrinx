@@ -40,6 +40,7 @@ import {
   dotColor,
   dotHollow,
   dotOpacity,
+  NARROWBAND_INFO,
   highlightFor,
   pitchCueWord,
   pitchRowState,
@@ -447,7 +448,9 @@ export function CueStrip({
   const pitchHighlight = useMemo(() => highlightFor("pitch", direction), [direction]);
   const resonanceHighlight = useMemo(() => (vtlnRef ? highlightFor("resonance", direction, vtlnRef) : null), [direction, vtlnRef]);
   const pitchInfo = useMemo(() => <><p>{PITCH_INFO}</p>{directionNote("pitch", direction) && <p>{directionNote("pitch", direction)}</p>}</>, [direction]);
-  const resonanceInfo = useMemo(() => <><p>{RESONANCE_INFO}</p>{directionNote("resonance", direction) && <p>{directionNote("resonance", direction)}</p>}</>, [direction]);
+  // Phone-quality audio: the reason the row is paused comes first.
+  const rNarrow = rState === "narrowband";
+  const resonanceInfo = useMemo(() => <>{rNarrow && <p data-cue-narrowband-info="">{NARROWBAND_INFO}</p>}<p>{RESONANCE_INFO}</p>{directionNote("resonance", direction) && <p>{directionNote("resonance", direction)}</p>}</>, [direction, rNarrow]);
   const pitchHeader = useMemo(() => (
     <span className="inline-flex items-baseline gap-2">
       <span className={`text-sm lg:text-base leading-[18px] lg:leading-6 font-light ${pitchLevel != null ? statusTextClass(levelStatus) : "text-neutral-400"}`} data-cue-f0="">
@@ -499,7 +502,7 @@ export function CueStrip({
         bands={resonanceBands}
         dashed
         highlight={resonanceHighlight}
-        startX={snap?.startU != null ? axisPos("resonance", snap.startU)?.x : null}
+        startX={!rNarrow && snap?.startU != null ? axisPos("resonance", snap.startU)?.x : null}
         ends={ENDS.resonance}
         g={g}
         W={W}

@@ -28,6 +28,10 @@
 //              (measurements/vocal-weight-pipeline-retire-2026-10-11.md).
 //              Its model code (clarityRowState / clarityHeader) is in git
 //              history (cue-strip 31ffe58).
+// Phone-quality audio (2026-10-19): while the resonance worker's narrowband
+// detector is on (snap.narrowband.on), the resonance row is "narrowband": no
+// dot, no trail, no start ring, only the notice NARROWBAND_NOTICE; pitch is
+// untouched. measurements/resonance-narrowband-2026-10-19.md
 // Direction highlight: the same element and style for every direction,
 // only { low, high } changes; none for "Just exploring" / unanswered.
 // Only the pitch dot is coloured on / off target (statusColor(pitchStatus(...)),
@@ -141,13 +145,18 @@ export function pitchCueWord(pitchLevel, direction) {
 
 // ---- row states (CueStrip data-state)
 // pitch:     idle | holding | live
-// resonance: starting | restarting | reload | unavailable | paused | idle | sustained | warming | settling | holding | live
+// resonance: starting | restarting | reload | unavailable | paused | narrowband | idle | sustained | warming | settling | holding | live
 export function pitchRowState({ voiced, holding, pitchLevel }) {
   if (voiced && pitchLevel != null) return "live";
   if (voiced || holding) return "holding";
   return "idle";
 }
 export const RESONANCE_WARM_S = 2;
+export const NARROWBAND_NOTICE = "Phone-quality audio — resonance paused";
+export const NARROWBAND_INFO =
+  "Your microphone sound is cut off above about 4 kHz, as on a phone call or a narrowband Bluetooth headset. " +
+  "Resonance readings need the fuller sound, so they are paused. Pitch still works. A wired or wideband " +
+  "microphone fixes this.";
 export function resonanceRowState({ workerStatus, snap, voiced, holding }) {
   if (workerStatus === "error") return "unavailable";
   // A runtime error the worker recovers from in ~2 s of audio, and a
@@ -157,6 +166,9 @@ export function resonanceRowState({ workerStatus, snap, voiced, holding }) {
   if (workerStatus === "reload") return "reload";
   if (workerStatus === "overloaded") return "paused";
   if (workerStatus !== "ready" || !snap) return "starting";
+  // Phone-quality audio: shown through pauses too (the detector's state does
+  // not age without voice); clears when the worker's detector turns off.
+  if (snap.narrowband?.on === true) return "narrowband";
   if (!voiced && !holding) return "idle";
   if (snap.verdict === "sustained") return "sustained";
   if ((snap.voicedS ?? 0) < RESONANCE_WARM_S || snap.u == null) return "warming";
@@ -190,7 +202,7 @@ export function dotOpacity(state) {
 
 // ---- trail: the last n samples, one every `everyTicks` 250 ms ticks while
 // LIVE. Frozen (no samples) in any other state; cleared when the row goes
-// idle and on any change into or out of "sustained".
+// idle and on any change into or out of "sustained" or "narrowband".
 export function createTrail(n = TRAIL_LEN, everyTicks = 1) {
   let pts = [];
   let lastState = null;
@@ -198,7 +210,8 @@ export function createTrail(n = TRAIL_LEN, everyTicks = 1) {
   return {
     /** One 250 ms tick. Returns the current points (oldest first). */
     tick(state, value) {
-      const intoOut = lastState !== null && (state === "sustained") !== (lastState === "sustained");
+      const intoOut = lastState !== null && ((state === "sustained") !== (lastState === "sustained")
+        || (state === "narrowband") !== (lastState === "narrowband"));
       if (state === "idle" || intoOut) { pts = []; ticks = 0; }
       lastState = state;
       if (state === "live" && value != null && Number.isFinite(value)) {
@@ -230,6 +243,7 @@ export function resonanceHeader(state, snap) {
     case "reload": return "unavailable — reload the page";
     case "unavailable": return "unavailable on this device";
     case "paused": return "paused — device busy";
+    case "narrowband": return NARROWBAND_NOTICE;
     case "idle": return "—";
     case "sustained": return "needs running speech";
     case "warming": return "keep talking…";
@@ -276,6 +290,7 @@ export function cueSummary(cue, { state, direction = null, pitchLevel = null, sn
   if (cue === "resonance") {
     // Idle: the header is a bare "—" on screen; read a phrase instead.
     if (state === "idle") return "Resonance (approximate): no voice right now.";
+    if (state === "narrowband") return "Resonance (approximate): paused, phone-quality audio — the sound is cut off above about 4 kHz. Pitch still works.";
     if (state !== "live" && state !== "holding") return `Resonance (approximate): ${resonanceHeader(state, snap)}`;
     const w = bandWords(snap?.u, vtlnRef);
     return sentence(`Resonance (approximate)${w ? `: ${w}` : ""}, ${resonanceHeader(state, snap)}`);

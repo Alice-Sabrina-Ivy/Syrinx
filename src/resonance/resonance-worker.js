@@ -25,7 +25,14 @@
 //                    "error" and carries reason: "load" — a page reload is
 //                    what fixes it)
 //                   { type: "state", u, raw, n, fill, voicedS, clamp, verdict, startU,
-//                     startProgress, sinceResumeS, framesDropped, perf? }                every 200 ms of audio
+//                     startProgress, sinceResumeS, framesDropped, narrowband, perf? }    every 200 ms of audio
+//                   narrowband = { on, decided, f, n }: the phone-quality audio
+//                   detector (narrowband.js, run on every voiced 10 ms grid
+//                   frame of this engine's 16 kHz ring). While on, the cue
+//                   strip pauses the resonance row and the cue drops its bins
+//                   (resonanceCue.js noteNarrowband). A fresh engine (after an
+//                   overload or error back-off) starts a fresh detector.
+//                   measurements/resonance-narrowband-2026-10-19.md
 //
 // Overload guard (overloadGuard.js): the worker's busy ms per audio second
 // over a trailing 10 s of audio, not counting the first 3 s (start-up JIT);
@@ -38,6 +45,7 @@
 import { createLabEngine } from "../resonance-lab/lab-engine.js";
 import { createResonanceCue } from "./resonanceCue.js";
 import { createOverloadGuard } from "./overloadGuard.js";
+import { createNarrowbandDetector } from "./narrowband.js";
 
 const POST_EVERY_S = 0.2; // of audio (deterministic: the audio clock, not wall time)
 // Recovery after an exception while running (2026-10-19 review S-2: one
@@ -48,6 +56,7 @@ const MAX_ERROR_RESTARTS = 3; // per session; after that the error stays
 
 let engine = null;
 let cue = null;
+let narrowband = null;
 let sampleRate = 48000;
 let diag = false;
 let state = "idle"; // idle | loading | ready | error | overloaded
@@ -105,6 +114,7 @@ function post(force = false) {
     startProgress: s.startProgress,
     sinceResumeS: s.sinceResumeS,
     framesDropped: e.framesDropped,
+    narrowband: { ...narrowband.state },
     ...(diag ? {
       perf: {
         msPerAudioS: guard?.rate() ?? null,
@@ -121,12 +131,22 @@ function post(force = false) {
 
 function startEngine() {
   cue = createResonanceCue({ reference: referenceJson });
+  const nb = createNarrowbandDetector();
+  narrowband = nb;
+  const c16 = cue;
   engine = createLabEngine({
     sampleRate,
     models: { vtln: vtlnModel },
     reference: referenceJson,
     pitchSource: "frames",
     onStamped: (name, te, stampS, value) => { if (name === "vtln") cue.onStamped(te, stampS, value); },
+    // Voiced grid frames only (the measured harness's input); the cue hears
+    // the decision before the bins of the same step are stamped.
+    onGridFrame: (j, f0, ring16) => {
+      if (!(f0 > 0)) return;
+      const st = nb.frame((i) => ring16.at(i), Math.round((0.005 + 0.01 * j) * 16000));
+      c16.noteNarrowband(st.on);
+    },
   });
   pendingFrameMs = 0;
 }

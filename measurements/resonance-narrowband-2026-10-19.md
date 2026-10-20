@@ -944,3 +944,62 @@ Positive streams with < 10 s of voiced audio in total: 0.
 Detector cost: 4.274 ms CPU per second of audio (band energies; 3920 streams, 2986 min); pitch frames dropped by the engine: 0
 
 Dev numbers at the selected point: `build/resonance-narrowband/sweep-r4-dev.md` (rerun with the command above); same shape as this table, every negative 0.0 %, every link 50 / 50.
+
+## Implementation (2026-10-19, after the round 4 held-out pass)
+
+Per R4.7 the selected point ships. Nothing in the detector was changed or
+re-tuned; the grid, threshold and hysteresis are the measured ones.
+
+- **Shipped module:** `src/resonance/narrowband.js`, git blob
+  `ceb2f64afa0628334b29b1a89a862dfd0f6de83f`. A copy of
+  `scripts/resonance-narrowband/detector.mjs` `bandEnergies` +
+  `createDecision`, restricted to band pair C (4.5–6.5 kHz over
+  2.5–3.5 kHz), with `NARROWBAND = { band: "C", tauS: 8, vMinS: 3,
+  hystDb: 6, tOnDb: -34 }`.
+- **Where it runs:** in the resonance worker, on every voiced 10 ms grid
+  frame of the lab engine, through a new optional `onGridFrame(j, f0,
+  ring16)` hook in `src/resonance-lab/lab-engine.js` (it only reads; with
+  no hook the engine is unchanged — the lab parity, vtln production parity
+  and CPU exactness tests pass unchanged). The window is the same
+  `ring16` samples `[c − 512, c)` `extract.mjs` reads. Causal: the
+  decision after a frame uses only audio up to that frame. A fresh engine
+  (after an overload or error back-off) starts a fresh detector.
+- **What the user sees:** every state post carries `narrowband: { n,
+  decided, on, f }`. While `on`, the cue strip's resonance row is in state
+  `narrowband`: no dot, no trail, no start ring, header **"Phone-quality
+  audio — resonance paused"**, the §1 info text first in the row's info
+  popover, and the screen-reader sentence "Resonance (approximate): paused,
+  phone-quality audio — the sound is cut off above about 4 kHz. Pitch still
+  works." Worker errors, back-off and start-up still take precedence. Pitch
+  and every other row are untouched.
+- **Readout while the notice is on** (an implementation choice §1 left
+  open): when the notice comes on, the cue clears its 5 s readout (and a
+  start reference still being collected); while it is on every vtln bin is
+  dropped, its voiced time taken out of the readout clock as for a held
+  note. So no phone-link reading (0.6–2.5 G darker) is shown after the
+  notice clears, and the pitch-only warning has no resonance value to
+  compare while it is on. A start reference found before is kept. When the
+  notice clears (F > −28 dB; a few voiced frames of wideband speech) the
+  row refills: warming → settling → live. Since the notice was never on for
+  wideband audio in either half (0.0 %), this changes nothing there.
+- **Known limitations** (in CLAUDE.md): Opus 8 kbit/s narrowband and a
+  plain 4 kHz low-pass mic are not caught (R4.6). The time constant is in
+  voiced seconds and the study measured streams from their start only: a
+  switch from wideband to a phone link in the middle of a session takes
+  about a minute of voiced audio to show (synthetic check: 60 s); restarting
+  listening starts a fresh detector.
+
+**Tests.** `tests/resonance/narrowband-test.js` (in `npm run test:unit`):
+(A) synthetic 16 kHz fixtures — wideband noise decides off at 3 voiced s;
+3.4 kHz low-passed noise turns on at exactly 3 voiced s; the notice holds
+while F settles at −30.5 dB (between T_on and T_on + H) and clears 2 frames
+after wideband noise returns; every frame `===` `detector.mjs`. (B) parity —
+the three committed 5 s LibriSpeech lab fixtures concatenated at 48 kHz,
+wideband and 3.4 kHz low-passed: the REAL resonance worker's posted `{ n,
+decided, on, f }` equal (`===`) the measured harness (`extract.mjs` as a
+subprocess + `detector.mjs`) on all 65 compared posts per stream; the
+low-passed stream ends with the notice on and no reading, the wideband one
+with the notice off (F −3.9 dB) and a reading. Against the worker without the
+detector, 6 of its 13 checks fail. Row states, header, screen-reader text and
+trail: `tests/audio/cue-strip-model-test.js`; the readout clear / drop /
+refill: `tests/resonance/resonance-cue-test.js`.

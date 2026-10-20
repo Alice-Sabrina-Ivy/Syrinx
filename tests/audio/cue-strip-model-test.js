@@ -30,6 +30,8 @@ import {
   TRAIL_EVERY_MS,
   RESONANCE_TRAIL,
   CUES,
+  NARROWBAND_NOTICE,
+  NARROWBAND_INFO,
 } from "../../src/components/cueStripModel.js";
 import { COLORS, CUE_AXES, statusColor } from "../../src/utils/constants.js";
 import { PITCH_TARGETS, pitchStatus, pitchTargetFor, resonanceU } from "../../src/utils/trainingDirection.js";
@@ -169,6 +171,13 @@ console.log("\ntrail");
   check("cleared on a change out of 'sustained', then samples again", JSON.stringify(t.points()) === "[7]");
   t.tick("live", null);
   check("null values are not sampled", t.points().length === 1);
+  const nt = createTrail();
+  for (let i = 0; i < 5; i++) nt.tick("live", i);
+  nt.tick("narrowband", 3);
+  check("cleared on a change into 'narrowband' (no trail while paused)", nt.points().length === 0);
+  nt.tick("narrowband", 3);
+  nt.tick("warming", null); nt.tick("live", 6);
+  check("cleared on the way out of 'narrowband', then samples again", JSON.stringify(nt.points()) === "[6]");
   check("trail opacity 0.12 (oldest) -> 0.45 (newest)", near(trailOpacity(0, 8), 0.12) && near(trailOpacity(7, 8), 0.45));
   check("resonance trail: 15 samples, one every 8 ticks (2 s, ~30 s)", RESONANCE_TRAIL.n === 15 && RESONANCE_TRAIL.everyTicks === 8);
   const rt = createTrail(RESONANCE_TRAIL.n, RESONANCE_TRAIL.everyTicks);
@@ -197,6 +206,23 @@ console.log("\nrow states");
   check("resonance: settling 2–5 s", R({ snap: snap({ voicedS: 3, fill: 0.6 }) }) === "settling");
   check("resonance: holding after voice", R({ voiced: false, holding: true }) === "holding");
   check("resonance: live", R({}) === "live");
+  const nb = (on, decided = true) => snap({ narrowband: { n: 400, decided, on, f: on ? -45 : -6 } });
+  check("resonance: narrowband while the detector is on (live, idle, holding, held note alike)",
+    R({ snap: nb(true) }) === "narrowband" && R({ snap: nb(true), voiced: false, holding: false }) === "narrowband"
+    && R({ snap: nb(true), voiced: false, holding: true }) === "narrowband"
+    && R({ snap: { ...nb(true), verdict: "sustained" } }) === "narrowband");
+  check("resonance: detector off / undecided / absent leaves the states as they were",
+    R({ snap: nb(false) }) === "live" && R({ snap: nb(false, false) }) === "live" && R({ snap: snap({ narrowband: null }) }) === "live"
+    && R({ snap: { ...nb(false), voicedS: 1.2, fill: 0.24 } }) === "warming");
+  check("resonance: worker errors / back-off / start-up still win over narrowband",
+    R({ workerStatus: "error", snap: nb(true) }) === "unavailable" && R({ workerStatus: "overloaded", snap: nb(true) }) === "paused"
+    && R({ workerStatus: "restarting", snap: nb(true) }) === "restarting" && R({ workerStatus: "loading", snap: nb(true) }) === "starting");
+  check("narrowband: no dot, the plan's notice and info text, screen-reader sentence; pitch row unaffected",
+    dotOpacity("narrowband") === null
+    && NARROWBAND_NOTICE === "Phone-quality audio — resonance paused" && resonanceHeader("narrowband", nb(true)) === NARROWBAND_NOTICE
+    && NARROWBAND_INFO === "Your microphone sound is cut off above about 4 kHz, as on a phone call or a narrowband Bluetooth headset. Resonance readings need the fuller sound, so they are paused. Pitch still works. A wired or wideband microphone fixes this."
+    && cueSummary("resonance", { state: "narrowband", snap: nb(true), vtlnRef: REF }) === "Resonance (approximate): paused, phone-quality audio — the sound is cut off above about 4 kHz. Pitch still works."
+    && pitchRowState({ voiced: true, pitchLevel: 180, snap: nb(true) }) === "live");
   check("dot opacity per state", dotOpacity("live") === 1 && dotOpacity("holding") === 0.5 && dotOpacity("settling") === 0.45
     && dotOpacity("idle") === null && dotOpacity("warming") === null && dotOpacity("starting") === null);
   check("resonance header words", resonanceHeader("sustained") === "needs running speech" && resonanceHeader("warming") === "keep talking…"

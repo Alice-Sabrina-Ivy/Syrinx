@@ -45,6 +45,16 @@
 // (or a different speaker) never gets the old value as a confident live
 // dot. The readout's values are not reset.
 //
+// Phone-quality audio (noteNarrowband, from the worker's narrowband
+// detector, src/resonance/narrowband.js; 2026-10-19): when the detector turns
+// on, the readout and any unfinished start collection are cleared (a phone
+// link reads 0.6–2.5 G darker — measurements/resonance-narrowband-2026-10-19.md),
+// and while it is on every bin is dropped, its voiced time taken out like a
+// held note's. When it turns off the readout refills from wideband speech
+// only (the strip goes warming → settling → live). A start already found is
+// kept. On wideband audio the detector never turns on (0.0 % of voiced time
+// measured), so nothing here changes there.
+//
 // Units: u = (readout − LibriSpeech men's median) / (women's − men's
 // median) (reference.json "vtln"): 0 = typical adult man in that corpus,
 // 1 = typical adult woman. The vtln estimator clamps ln α at ±0.24; a
@@ -79,6 +89,7 @@ export function createResonanceCue({ reference, horizonS = 5, gate = true } = {}
   let lastAdmitTe = null;
   let sinceResumeS = 0;
   let resumes = 0;
+  let narrowband = false;
 
   return {
     /** One relayed pitch frame (the hook's pitch-hint message). */
@@ -94,11 +105,19 @@ export function createResonanceCue({ reference, horizonS = 5, gate = true } = {}
       else if (verdict === "score" || verdict === "pause") afterSustained = false;
       return verdict;
     },
+    /** The narrowband detector's decision after each voiced grid frame. */
+    noteNarrowband(on) {
+      if (on && !narrowband) {
+        readout.reset();
+        if (startU === null) { startSamples = []; startVoicedS = 0; }
+      }
+      narrowband = !!on;
+    },
     /** lab-engine onStamped for the vtln finalist. */
     onStamped(te, stampS, value) {
       const delta = lastStampSeen === null ? 0 : Math.max(0, stampS - lastStampSeen);
       lastStampSeen = stampS;
-      if (DROP_VERDICTS.has(verdict) || afterSustained) {
+      if (narrowband || DROP_VERDICTS.has(verdict) || afterSustained) {
         droppedVoicedS += delta;
         binsDropped++;
         return false;
