@@ -821,3 +821,126 @@ As §5: only on a held-out pass does the detector go into the resonance
 worker, with the row state, the notice (§1, text unchanged) and a bit-exact
 parity test against `scripts/resonance-narrowband/`, plus the usual lint /
 unit / build / cue-strip smoke runs. Pitch stays untouched either way.
+
+## Round 4 deviations
+
+Recorded 2026-10-19, during the run.
+
+1. **Order.** The round 4 plan (6e7ec57) and the `sweep.mjs` change (7bf2e80:
+   judged positives = `tel`, `amrnb`, `g711u`, `btnb`; `opus8nb` and `lp4k`
+   descriptive; output files `sweep-r4-*`) were both committed and pushed
+   before any round 4 output was computed.
+2. **Held-out half: nothing to regenerate.** When round 4 started,
+   `feat/` held only the 20 dev readers' files (1560 files, 0 held-out) and
+   `feat3/` none for held-out readers, so no held-out output existed in any
+   form. After the dev pass the held-out half was extracted once:
+   `PY -I scripts/resonance-narrowband/conditions.py --cache
+   <Syrinx-cache/resonance-robustness> --half held --workers 2` (780 jobs,
+   54 min at two processes, no job skipped). Then only the selected point was
+   run, once.
+3. **Tie-break.** 39 dev points tie on worst negative (0.0 %), worst positive
+   (100 %), H 6 and V_min 3. Longest tied T_on run: C / τ 8, −40 … −27 dB
+   (14 values; C / τ 4 has 13, B 6). T_on = lower middle = −34 dB. The scan
+   and `createDecision` agree exactly at that point.
+4. **Time-to-notice columns** include streams whose notice came on after
+   10 s of voiced audio (not detected under the bar). That is why `lp4k` shows
+   a time with 0 / 50 detected.
+
+## Round 4 results
+
+Run 2026-10-19. Dev: the round 1 feature files as they were (10 women,
+10 men; 3920 streams), `node scripts/resonance-narrowband/sweep.mjs
+--half=dev`. Held-out: the other 10 women and 10 men (3920 streams, 49.8 h),
+extracted once (deviation 2), `node scripts/resonance-narrowband/sweep.mjs
+--half=held --point=C,8,3,6,-34`, run once.
+
+### Verdict: PASS on the held-out half
+
+**Selected on dev: band C, τ 8 s, V_min 3 s, H 6 dB, T_on −34 dB** (188 of the
+1224 points pass both bars on dev). As R4.5 says, the dev pass is not
+evidence. **The one held-out run passes both bars for each sex:** the notice
+is on for 0.0 % of voiced time in all 33 negative conditions for women and men,
+never on a clean stream, and it catches 100 % of streams (50 / 50 per sex) in
+each of the four classic 8 kHz links (median and 90th-percentile time to
+notice 3.0 voiced s, the V_min floor), with no dropouts.
+
+| | dev women | dev men | held-out women | held-out men |
+|---|---|---|---|---|
+| Worst negative notice-on share (bar ≤ 1 %) | 0.0 % | 0.0 % | 0.0 % | 0.0 % |
+| Clean streams with the notice (bar 0) | 0 / 60 | 0 / 60 | 0 / 60 | 0 / 60 |
+| Worst of the four links, detected (bar ≥ 95 %) | 100 % | 100 % | 100 % | 100 % |
+| Opus 8k narrowband, detected (descriptive) | 10 % | 4 % | 6 % | 0 % |
+| 4 kHz low-pass, detected (descriptive) | 0 % | 0 % | 0 % | 0 % |
+
+Margins at the selected point: the darkest wideband stream ends at F
+−25.3 dB (dev) / −23.7 dB (held-out), 8–10 dB above T_on; the brightest
+phone-link stream ends at −39.6 dB (dev) / −40.5 dB (held-out), 5.6–6.5 dB
+below it.
+
+**Not covered (R4.6):** Opus 8 kbit/s narrowband and the plain 4 kHz low-pass
+are almost never caught (table above). For them the notice stays off and the
+resonance reading may read darker. This goes into the shipped documentation as
+a known limitation.
+
+Per R4.7 the detector may now go into the resonance worker with the notice
+and a bit-exact parity test. That is separate work and is not part of this
+measurement. Pitch is untouched.
+
+### Held-out confirmation in detail: band C, τ 8 s, V_min 3 s, H 6 dB, T_on −34 dB — PASS
+
+Worst negative: 0.0 % (agcfast|m); clean streams with the notice: 0; worst positive detection: 100.0 % (amrnb|m).
+
+Negatives (wideband): notice-on share of voiced time (bar ≤ 1 %), streams with any notice, F at stream end (dB, min / median)
+
+| Condition | women share | women streams on | men share | men streams on | F end women min / med | F end men min / med |
+|---|---|---|---|---|---|---|
+| agcfast | 0.0 % | 0/50 | 0.0 % | 0/50 | -19.0 / -4.8 | -13.6 / -6.8 |
+| agcslow | 0.0 % | 0/50 | 0.0 % | 0/50 | -19.5 / -5.1 | -14.9 / -7.2 |
+| amrwb | 0.0 % | 0/50 | 0.0 % | 0/50 | -19.9 / -6.8 | -15.6 / -8.5 |
+| babble+10 | 0.0 % | 0/50 | 0.0 % | 0/50 | -12.6 / -3.1 | -6.9 / -1.6 |
+| babble+20 | 0.0 % | 0/50 | 0.0 % | 0/50 | -17.7 / -4.6 | -13.1 / -6.6 |
+| bt | 0.0 % | 0/50 | 0.0 % | 0/50 | -9.8 / -2.7 | -9.1 / -3.5 |
+| clean | 0.0 % | 0/60 | 0.0 % | 0/60 | -19.7 / -5.1 | -16.0 / -7.2 |
+| comp | 0.0 % | 0/50 | 0.0 % | 0/50 | -12.3 / -2.1 | -10.8 / -4.2 |
+| fan+10 | 0.0 % | 0/50 | 0.0 % | 0/50 | -18.8 / -5.2 | -12.9 / -4.0 |
+| fan+20 | 0.0 % | 0/50 | 0.0 % | 0/50 | -19.2 / -5.1 | -12.1 / -5.5 |
+| headset | 0.0 % | 0/50 | 0.0 % | 0/50 | -21.7 / -10.0 | -18.2 / -9.9 |
+| hp100 | 0.0 % | 0/50 | 0.0 % | 0/50 | -19.3 / -4.9 | -14.5 / -6.2 |
+| hp200 | 0.0 % | 0/50 | 0.0 % | 0/50 | -20.0 / -5.0 | -16.1 / -7.6 |
+| hp300 | 0.0 % | 0/50 | 0.0 % | 0/50 | -20.0 / -5.4 | -16.9 / -7.6 |
+| laptop | 0.0 % | 0/50 | 0.0 % | 0/50 | -12.4 / -2.2 | -14.3 / -0.9 |
+| lev+20clip | 0.0 % | 0/50 | 0.0 % | 0/50 | -10.1 / -3.7 | -10.1 / -5.8 |
+| lev-10 | 0.0 % | 0/50 | 0.0 % | 0/50 | -19.7 / -5.1 | -14.6 / -6.9 |
+| lev-20 | 0.0 % | 0/50 | 0.0 % | 0/50 | -19.7 / -5.1 | -14.6 / -6.9 |
+| lp7k | 0.0 % | 0/50 | 0.0 % | 0/50 | -18.9 / -5.0 | -14.6 / -7.1 |
+| msbc | 0.0 % | 0/50 | 0.0 % | 0/50 | -19.8 / -4.9 | -14.7 / -6.7 |
+| opus12wb | 0.0 % | 0/50 | 0.0 % | 0/50 | -20.4 / -6.0 | -15.5 / -7.1 |
+| opus24wb | 0.0 % | 0/50 | 0.0 % | 0/50 | -21.6 / -6.4 | -16.8 / -8.9 |
+| phone | 0.0 % | 0/50 | 0.0 % | 0/50 | -17.3 / -2.1 | -15.2 / -4.7 |
+| room_l | 0.0 % | 0/50 | 0.0 % | 0/50 | -18.2 / -2.0 | -15.5 / -4.1 |
+| room_m | 0.0 % | 0/50 | 0.0 % | 0/50 | -10.2 / -4.1 | -13.5 / 3.8 |
+| room_s | 0.0 % | 0/50 | 0.0 % | 0/50 | -18.8 / -6.6 | -14.6 / -7.8 |
+| sr44k | 0.0 % | 0/50 | 0.0 % | 0/50 | -18.9 / -4.9 | -14.5 / -6.8 |
+| street+10 | 0.0 % | 0/50 | 0.0 % | 0/50 | -17.9 / -5.7 | -15.8 / -7.2 |
+| street+20 | 0.0 % | 0/50 | 0.0 % | 0/50 | -18.6 / -5.4 | -14.5 / -7.1 |
+| tilt+6 | 0.0 % | 0/50 | 0.0 % | 0/50 | -15.9 / -3.6 | -15.7 / -6.0 |
+| tilt-6 | 0.0 % | 0/50 | 0.0 % | 0/50 | -23.7 / -9.1 | -18.4 / -10.6 |
+| videocall | 0.0 % | 0/50 | 0.0 % | 0/50 | -9.6 / -2.1 | -8.3 / 2.9 |
+| wb | 0.0 % | 0/50 | 0.0 % | 0/50 | -18.8 / -5.0 | -14.5 / -6.0 |
+
+Positives (the four classic 8 kHz links, judged): detected by 10 s voiced (bar ≥ 95 %), time to notice (voiced s, median / q90), dropouts after first notice, F at stream end (dB, median / max)
+
+| Condition | women detected | men detected | women time med / q90 | men time med / q90 | women dropouts | men dropouts | F end women med / max | F end men med / max |
+|---|---|---|---|---|---|---|---|---|
+| amrnb | 50/50 (100.0 %) | 50/50 (100.0 %) | 3.00 / 3.00 | 3.00 / 3.00 | 0.0 % | 0.0 % | -56.1 / -49.4 | -55.9 / -47.7 |
+| btnb | 50/50 (100.0 %) | 50/50 (100.0 %) | 3.00 / 3.00 | 3.00 / 3.00 | 0.0 % | 0.0 % | -44.8 / -40.5 | -44.7 / -41.1 |
+| g711u | 50/50 (100.0 %) | 50/50 (100.0 %) | 3.00 / 3.00 | 3.00 / 3.00 | 0.0 % | 0.0 % | -53.7 / -47.4 | -53.8 / -48.5 |
+| tel | 50/50 (100.0 %) | 50/50 (100.0 %) | 3.00 / 3.00 | 3.00 / 3.00 | 0.0 % | 0.0 % | -51.2 / -45.6 | -51.4 / -46.2 |
+| lp4k (descriptive, not judged) | 0/50 (0.0 %) | 0/50 (0.0 %) | 23.93 / 26.21 | — | 0.0 % | — | -20.4 / -13.5 | -22.2 / -13.3 |
+| opus8nb (descriptive, not judged) | 3/50 (6.0 %) | 0/50 (0.0 %) | 8.30 / 24.53 | 12.39 / 12.39 | 0.0 % | 0.0 % | -27.8 / -22.4 | -27.8 / -22.9 |
+
+Positive streams with < 10 s of voiced audio in total: 0.
+
+Detector cost: 4.274 ms CPU per second of audio (band energies; 3920 streams, 2986 min); pitch frames dropped by the engine: 0
+
+Dev numbers at the selected point: `build/resonance-narrowband/sweep-r4-dev.md` (rerun with the command above); same shape as this table, every negative 0.0 %, every link 50 / 50.
