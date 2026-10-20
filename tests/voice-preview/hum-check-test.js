@@ -23,7 +23,7 @@ const path = await import("node:path");
 const T = makeChecker();
 const S = await loadSrc(path.join(REPO, "src"));
 const LEAD_S = 10;
-const speech = makeInput({ clip: "ls_woman_high", rate: SR }).pcm; // clean: level margin 39.8 dB
+const speech = makeInput({ clip: "ls_woman_high", rate: SR }).pcm; // clean: level margin 42.3 dB
 
 /** The pitch chain over lead-in + recording; the recorder and the check over the recording. */
 function run(x) {

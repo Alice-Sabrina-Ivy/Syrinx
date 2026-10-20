@@ -4,7 +4,7 @@
 //
 //   clean.wav  two committed LibriSpeech test-clean excerpts (CC BY 4.0,
 //              tests/resonance-lab/fixtures/ls_woman_high.wav and ls_man_hi8_f105.wav;
-//              level margins 39.8 / 40.0 dB), each followed by 0.3 s of silence, ~10.6 s.
+//              level margins 42.3 / 42.5 dB, 95th - 5th percentile), each followed by 0.3 s of silence, ~10.6 s.
 //              (ls_man_low is left out: its own recording's noise floor gets the noise
 //              notice, measurements/voice-preview-phase1-2026-10-19.md Deviations 7.)
 //   hum.wav    10 s of a synthetic fan hum alone (scripts/noise-synth.js fanHum, 120 Hz),

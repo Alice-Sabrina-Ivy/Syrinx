@@ -7,17 +7,26 @@
 //   recorded chunk carried at least one active notch line. A hum must be stable for about
 //   5 s to promote, so the seconds before the recording count through the notch's own
 //   memory (Record waits until listening has run 6 s).
-// Background noise: the spike's level check d2 (scripts/voice-preview/hum/hum-run.mjs
-//   levelMargin, copied as is) — margin = 95th - 10th percentile of the energies of
-//   non-overlapping 20 ms frames, 10 log10(mean x^2 + 1e-20), linear-interpolated
-//   percentiles — flagged below NOISE_MARGIN_DB.
+// Background noise: the spike's level check d2 (levelMargin in the spike's
+//   scripts/voice-preview/hum/hum-run.mjs, branch voice-preview-spike) with its floor moved
+//   from the 10th to the 5th percentile (fix step) — margin = 95th - 5th percentile of the
+//   energies of non-overlapping 20 ms frames, 10 log10(mean x^2 + 1e-20),
+//   linear-interpolated percentiles — flagged below NOISE_MARGIN_DB (28 dB). With the 10th
+//   percentile and 30 dB, continuous speech with few pauses could be flagged in a quiet
+//   room (the 10th percentile was speech, not room noise): on public studio recordings
+//   trimmed to speech 2 of 69 clips were flagged (clean margins down to 25.4 dB). With the
+//   5th percentile and 28 dB: 0 of 69 (lowest 29.7 dB), 0 of 261 whole files, and every
+//   clip with pink noise at +10 or +20 dB SNR or fan hum 20 dB down still flagged (highest
+//   27.0 dB). scripts/voice-preview/noise-margin-eval.mjs; the note's fix step.
 // Enough voice: at least MIN_VOICED_HOPS voiced posted hops (1.0 s).
 
-export const NOISE_MARGIN_DB = 30;
+export const NOISE_MARGIN_DB = 28;
+/** The percentile of the 20 ms frame energies taken as the noise floor. */
+export const FLOOR_PERCENTILE = 0.05;
 export const MIN_VOICED_HOPS = 40;
 export const HOP_S = 0.025;
 
-/** The spike's level check d2, unchanged. */
+/** The spike's level check d2 with the floor at FLOOR_PERCENTILE. Returns { p95, floor, margin }. */
 export function levelMargin(x, sr) {
   const n = Math.round(sr * 0.02), m = Math.floor(x.length / n);
   const e = [];
@@ -28,7 +37,7 @@ export function levelMargin(x, sr) {
   }
   e.sort((a, b) => a - b);
   const q = (p) => { const h = (e.length - 1) * p, lo = Math.floor(h), hi = Math.ceil(h); return e[lo] + (e[hi] - e[lo]) * (h - lo); };
-  return { p95: q(0.95), p10: q(0.1), margin: q(0.95) - q(0.1) };
+  return { p95: q(0.95), floor: q(FLOOR_PERCENTILE), margin: q(0.95) - q(FLOOR_PERCENTILE) };
 }
 
 export const noiseFlag = (marginDb) => !(marginDb >= NOISE_MARGIN_DB);

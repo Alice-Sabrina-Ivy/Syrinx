@@ -1,12 +1,14 @@
 // checks-test.js — the voice preview's recording check (src/voice-preview/checks.js):
 // hum flag from the forwarded notch flags (recorded chunks only), the background-noise
 // level margin on synthetic signals (clean voice with digital silence: no flag; with
-// pink noise at +10 dB SNR: flag; the 30 dB boundary), and voice sufficiency at 39 / 40
+// pink noise at +10 dB SNR: flag; the 28 dB boundary; the floor at the 5th percentile, so
+// a recording with pauses in only 6 % of its frames is judged on its pauses — fix step),
+// and voice sufficiency at 39 / 40
 // voiced hops. measurements/voice-preview-phase1-2026-10-19.md §7, §14 item 5.
 //
 //   node tests/voice-preview/checks-test.js
 import {
-  levelMargin, noiseFlag, humFlag, voicedHops, recordingCheck, NOISE_MARGIN_DB, MIN_VOICED_HOPS,
+  levelMargin, noiseFlag, humFlag, voicedHops, recordingCheck, NOISE_MARGIN_DB, FLOOR_PERCENTILE, MIN_VOICED_HOPS,
 } from "../../src/voice-preview/checks.js";
 import { createRecorder } from "../../src/voice-preview/recorder.js";
 import { makeChecker, makeInput, chunkFor } from "./vp-test-lib.js";
@@ -49,8 +51,8 @@ function voice(seconds) {
 }
 const rms = (x) => Math.sqrt(x.reduce((s, v) => s + v * v, 0) / x.length);
 
-console.log("background noise: level margin (95th - 10th percentile of 20 ms frame energies)");
-T.check("threshold 30 dB", NOISE_MARGIN_DB === 30);
+console.log("background noise: level margin (95th - 5th percentile of 20 ms frame energies)");
+T.check("threshold 28 dB, floor at the 5th percentile", NOISE_MARGIN_DB === 28 && FLOOR_PERCENTILE === 0.05);
 {
   const v = voice(4);
   const clean = levelMargin(v, SR);
@@ -80,9 +82,20 @@ T.check("threshold 30 dB", NOISE_MARGIN_DB === 30);
     for (let f = 0; f < 100; f++) for (let i = 0; i < frame; i++) x[f * frame + i] = (f % 2 ? hi : lo) * (i % 2 ? 1 : -1);
     return levelMargin(x, SR).margin;
   };
-  const a = twoLevel(30.5), b = twoLevel(29.5);
-  T.check("margin 30.5 dB: not flagged; 29.5 dB: flagged", !noiseFlag(a) && noiseFlag(b), `${a.toFixed(3)} / ${b.toFixed(3)} dB`);
-  T.check("exact boundary: 30 dB is not flagged, just below is", !noiseFlag(30) && noiseFlag(29.999999) && noiseFlag(NaN));
+  const a = twoLevel(28.5), b = twoLevel(27.5);
+  T.check("margin 28.5 dB: not flagged; 27.5 dB: flagged", !noiseFlag(a) && noiseFlag(b), `${a.toFixed(3)} / ${b.toFixed(3)} dB`);
+  T.check("exact boundary: 28 dB is not flagged, just below is", !noiseFlag(28) && noiseFlag(27.999999) && noiseFlag(NaN));
+  // continuous speech with short gaps: 94 % of the frames loud (spread over 18 dB), 6 % quiet
+  // gaps at the room floor 43 dB below the loudest: the floor comes from the gaps
+  const sixPct = (() => {
+    const x = new Float32Array(frame * 100);
+    for (let f = 0; f < 100; f++) {
+      const amp = f % 17 === 0 ? 0.001 * Math.pow(10, 0 / 20) : 0.001 * Math.pow(10, (25 + (f % 10) * 2) / 20);
+      for (let i = 0; i < frame; i++) x[f * frame + i] = amp * (i % 2 ? 1 : -1);
+    }
+    return levelMargin(x, SR);
+  })();
+  T.check("gaps in 6 % of the frames set the floor (5th percentile): no flag", !noiseFlag(sixPct.margin) && sixPct.margin > 40, `${sixPct.margin.toFixed(1)} dB`);
 }
 
 console.log("\nhum: any posted message for a recorded chunk with an active notch line");
