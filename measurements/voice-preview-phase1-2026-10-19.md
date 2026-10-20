@@ -791,6 +791,33 @@ outside the lab; a clipping check.
     checked this is the headless fake devices, not the preview; the phone and Firefox checks
     should watch for it.
 
+**2026-10-19, verify step** (the smoke extended and re-run; bundle; desktop timing; the
+cue-strip smoke; results in "Verify step" below):
+
+22. **Smoke additions (§14).** Per viewport, with that viewport's own input (touch on the four
+    phone viewports, the mouse on desktop): both sliders dragged to each end (the release
+    commits one render, matching the slider), every quick setting, the target row (240 Hz, a
+    raised setting), each Play button, Loop, Stop, then Discard with a memory census. New
+    parts: `preview` (one run against `vite preview` of the same build, which §14 named as the
+    server: the `.wasm` comes as `application/wasm`, record → preview → quick setting → play;
+    the static server stays for the request log) and `fallback` (the static server hands out
+    a SIMD `.wasm` that fails to compile; the worker must load the non-SIMD build). Console
+    errors from the workers are collected too; Download also checks that the samples carry
+    sound; the timing part checks memory after the first and last 8 s recording and logs the
+    card's state when a preview does not arrive. A synthetic input that does not arrive is
+    repeated once and listed as WARN (none in the final runs).
+23. **Memory census method.** After a forced GC: the page's `AudioBuffer` objects by CDP
+    `Runtime.queryObjects`; the recording's PCM (the controller's Float32Arrays) as the V8
+    array-buffer backing store (`Runtime.getHeapUsage`), because `queryObjects` does not list
+    typed arrays or ArrayBuffers in Chrome 155 (checked on a blank page); the worker's
+    `WebAssembly.Memory` by `queryObjects` in the worker's own CDP session.
+24. **Slider drags stop before release.** A touch release while still moving (a flick) starts
+    a fling in Chrome, and the next tap then only stops the fling: at 890 × 360 the first tap
+    on a quick setting after the last drag was swallowed in 3 of 3 runs, although the button
+    was on top at the tap point and the lab area cannot scroll sideways (scrollWidth =
+    clientWidth). Holding 250 ms before lifting removed it (2 of 2). The drags now hold
+    250 ms, as a person stopping the thumb at the end does.
+
 ## Implementation status (2026-10-19)
 
 Built on branch `voice-preview` (no PR). The card, the engine and the checks are complete
@@ -799,7 +826,140 @@ for the lab version; the phone check (§15) is still to do.
 | Acceptance (§14, §15) | Status |
 |---|---|
 | Unit tests 1–10 (`tests/voice-preview/`: wasm-files, parity, recorder, controls, checks, worker, controller, warp, hum-check, bridge-hook, strings, wav, playback) and the existing display-hook, notices and no-local-paths tests; lint, `npm run test:unit`, build, `npm run test:resonance-lab` | pass |
-| Bundle (`bundle-budget.mjs`) | pass: entry + static imports +0.20 KB gzip, LabView +0.24 KB, card chunk 10.1 KB, worker chunk 5.3 KB; no voice-preview strings in the entry or LabView chunks; WebAssembly 52.2 KB (SIMD) / 50.3 KB gzip |
-| Smoke (`voice-preview-smoke.mjs`, layout / flow / checks / dev) | pass, 152 checks: five viewports × light and dark; nothing requested before the view opens, then exactly one `.wasm` (SIMD); the lab's four cards still fit at 360 × 690 and 402 × 750; full flow, keyboard, playback, session guard, hum and noise notices, Discard (worker target replaced), Download (16-bit mono WAV at the engine rate, the recording's length); dev server |
-| Desktop timing (Chrome for Testing 154, 48 kHz, listening on) | **partly.** Analysis + rebuild within the spike's values: 5 s 863 / 980 ms (median / pooled p90; limit 1130 / 1420), 8 s 1480 / 1625 ms (limit 1690 / 2220). Slider-change render: p90 within (291 / 450 ms; limits 350 / 550), **medians over** (239 ms against 220 at 5 s, 436 ms against 360 at 8 s). End to end far under the gate: stop → "Preview ready" 1.0 / 1.1 s (5 s) and 1.6 / 1.7 s (8 s); press → "Preview updated" 0.31 / 0.32 s and 0.51 / 0.51 s. The machine was 47 % busy (median) with other jobs, and listening and the lab ran alongside, where the spike timed an isolated page; the renders are the spike's bytes (parity), so the code path is the spike's and load is the likely cause. Not yet repeated on a quieter machine |
+| Bundle (`bundle-budget.mjs`) | pass: entry + static imports +0.20 KB gzip, LabView +0.24 KB, card chunk 10.1 KB, worker chunk 5.3 KB; no voice-preview strings in the entry or LabView chunks; WebAssembly 52.2 KB (SIMD) / 50.3 KB gzip. Verify step: the main stylesheet also grows +0.33 KB gzip, which the script does not count (Verify step, problem 2) |
+| Smoke (`voice-preview-smoke.mjs`, layout / flow / checks / dev / preview / fallback) | card step: pass, 152 checks. Verify step (extended, Deviation 22): 260 pass, **5 fail** — at every viewport one AudioBuffer (the last-played version) stays in memory after Discard (Verify step, problem 1; tested fix not committed). Sliders to each end, every quick setting, the target row and every Play button pass with touch on the phone viewports and the mouse on desktop; Discard frees the worker's WebAssembly memory and the PCM; `vite preview` and the non-SIMD fallback pass |
+| Desktop timing (Chrome for Testing 154, 48 kHz, listening on) | **pass (verify step, machine 34 % busy):** analysis + rebuild 841 / 895 ms (5 s) and 1272 / 1344 ms (8 s); slider change 214 / 252 ms and 341 / 384 ms — all within the spike's values. The card step's run (47 % busy) had the slider-change medians over (239, 436 ms). In Chrome 155 the slider-change medians sit at the limit (214–236 ms against 220, 359–376 ms against 360), p90 within; one of 100 timed recordings never reached the preview (Verify step, problem 4) |
 | Phone check (§15, Pixel 11 Pro XL) | not done yet; includes the first 8 s phone timing and the 30 dB noise threshold in ordinary rooms |
+
+## Verify step (2026-10-19)
+
+The smoke extended (Deviations 22–24) and re-run on the built app, the bundle measured against
+the base, the desktop timing repeated, and the cue-strip smoke run on this branch. Headless
+Chrome 155.0.8059.85 (the installed Chrome) unless named; Chrome's fake microphone at 44.1 kHz
+(the engine ran at 44.1 kHz in the smoke parts, 48 kHz in the timing part). Machine: the same
+shared desktop, 30–45 % busy during the runs. Screenshots (five viewports × light and dark: ready,
+the whole card scrolled through, playing, after Discard; the about panel, target row, notices,
+recording, session guard, cancelled) are kept outside the repository.
+
+**Smoke, per viewport** (`voice-preview-smoke.mjs`, part `layout`; 8 s auto-stopped recording of
+the clean phrase, then the checks in both colour schemes, then the interactions with the
+viewport's own input):
+
+| Viewport | Checks | Lazy load | Layout, light and dark | Sliders, quick settings, target, playback | Discard |
+|---|---|---|---|---|---|
+| 360 × 690 (touch) | 40 / 41 | pass | pass; the lab's four cards still fit | pass (touch) | worker and PCM freed; **1 AudioBuffer kept** |
+| 402 × 750 (touch) | 40 / 41 | pass | pass; the lab's four cards still fit | pass (touch) | as 360 × 690 |
+| 448 × 890 (touch) | 39 / 40 | pass | pass | pass (touch) | as 360 × 690 |
+| 890 × 360 (touch) | 39 / 40 | pass | pass | pass (touch) | as 360 × 690 |
+| 1280 × 800 (mouse) | 39 / 40 | pass | pass | pass (mouse) | as 360 × 690 |
+
+- Every viewport: the lab opened on Resonance requests nothing of the voice preview; opening the
+  view requests the card chunk, the worker, the glue and exactly one `.wasm` (SIMD); the recording
+  stops itself at 8.00 s; stop → "Preview ready" 1.41–1.51 s; the clean phrase shows no notice
+  (level margin 40.6–41.5 dB); no horizontal scroll, first screen, reach, no clipped text, targets,
+  `color-scheme: dark`, contrast ≥ 6.94:1 in both schemes; no gender words; no console errors
+  (page and workers).
+- Slider limits on this phrase: pitch −9 … +12 st (the low-contour rule binds at −9), resonance
+  −21 … +26 %. Each slider dragged to each end commits exactly one render, matching the slider;
+  the five quick settings give their `applyPreset` values; the target row (240 Hz) gives
+  +5 st (about 238–240 Hz); Preview, Unchanged (rebuilt) and Original each play with the
+  AudioContext running; Loop and Stop work.
+- Memory (MB = 2^20 bytes): the worker's WebAssembly memory 16.1 MB fresh → 76.3 MB after the
+  analysis and the renders → 16.1 MB in the fresh worker after Discard (the old worker target is
+  gone). The page's array-buffer backing store 0.5 → 4.6 → 0.5 MB (the original, rebuild and
+  preview PCM are freed). AudioBuffers 0 → 3 (4.0 MB) → **1 (1.3 MB)**: problem 1 below.
+
+**Other parts:** `flow` (desktop: Record waits 6 s, too short, a 5.2 s recording, keyboard order
+and keys, one render 400 ms after the last key, presets, target row, About, playback and the
+live region, the session guard, Download — a 16-bit mono WAV at 44.1 kHz of the recording's
+length whose samples carry sound, RMS 0.065, nothing at full scale — Discard, cancelled) 43 / 43;
+`checks` 4 / 4 (fan hum: the hum notice and, at a 24.4 dB margin, the noise notice; pink noise at
++10 dB SNR: the noise notice, 15.2 dB; a preview in both); `dev` 4 / 4; `preview` (`vite preview`:
+the `.wasm` as `application/wasm`, SIMD, record → preview, a quick setting, play) 7 / 7;
+`fallback` (a SIMD `.wasm` that fails to compile: the glue tries it twice, streaming then
+ArrayBuffer, then the worker loads the non-SIMD build once; it records, analyses in 0.77 s,
+renders in 0.18 s and plays; no console error) 5 / 5. In all, 260 checks pass and 5 fail, the
+five being problem 1. No synthetic input had to be repeated in the final runs.
+
+**Bundle** (`bundle-budget.mjs`, gzip level 9; WebAssembly and glue raw / gzip):
+
+| | vs the branch point (cue-strip 62bf3cc) | vs the current cue-strip tip (7bf2e80) |
+|---|---|---|
+| Entry chunk + static imports (JS) | 136.26 → 136.46 KB, **+202 B** | 136.31 → 136.46 KB, +149 B |
+| Main stylesheet (`index-*.css`, loaded with the entry) | 7 703 → 8 043 B, **+340 B** (raw +2 742 B) | the same |
+| LabView chunk | 9.19 → 9.43 KB, +249 B | 9.18 → 9.43 KB, +250 B |
+| Card chunk (`VoicePreviewCard`, lazy) | 10.12 KB (28 583 B raw) | |
+| Worker chunk (`vp-worker`, lazy) | 5.30 KB (12 574 B raw) | |
+| Glue (`vp_world.mjs`, lazy) | 7 747 B raw, 2.6 KB gzip | |
+| SIMD `.wasm` (lazy, the one Chrome fetches) | 115 874 B raw, 52.2 KB gzip | |
+| Non-SIMD `.wasm` (lazy, fallback only) | 111 276 B raw, 50.3 KB gzip | |
+
+The tip's own trace changes (not on this branch) account for the 53 B difference in the entry
+row. The script passes (5 / 5) but checks JavaScript only: problem 2.
+
+**Desktop timing** (`--parts=timing`: 48 kHz through the AudioContext capture path, SIMD,
+listening on, the spike's four speech-dense clips; worker times; median / pooled p90; spike A5
+limits in brackets):
+
+| Browser, run (machine busy) | 5 s: analysis + rebuild [1130 / 1420 ms] | 5 s: slider change [220 / 350] | 8 s: analysis + rebuild [1690 / 2220] | 8 s: slider change [360 / 550] |
+|---|---|---|---|---|
+| **Chrome for Testing 154 (the spike's), 10 + 10 (34 %)** | **841 / 895** | **214 / 252** | **1272 / 1344** | **341 / 384** |
+| Chrome 155, 10 + 10 (34–41 %) | 785 / 957 | 214 / 240 | 1277 / 1454 | 376 / 429 |
+| Chrome 155, 10 + 10 (39–41 %) | 845 / 962 | 225 / 245 | 1306 / 1473 | 359 / 382 |
+| Chrome 155, 20 + 20 (35–37 %) | 845 / 991 | 236 / 261 | 1312 / 1380 | 360 / 426 |
+
+- In the spike's browser every number is within the spike's values (the card step's run, at
+  47 % busy, had the slider-change medians over). In Chrome 155 the analysis is well within, and
+  the slider-change medians sit at the limit (214–236 ms against 220; 359–376 ms against 360);
+  every p90 is within.
+- End to end (Chrome for Testing 154): stop → "Preview ready" 0.96 / 1.01 s (5 s) and
+  1.31 / 1.44 s (8 s); press → "Preview updated" 0.31 / 0.31 s and 0.41 / 0.41 s. Far under the
+  3 s / 1 s gate. (The spike's G1 included a render at +2 st, ×1.03; the app's first render is
+  the unchanged rebuild.)
+- No growth over 19 and 39 Record again cycles: AudioBuffers, array-buffer backing (4.9 MB) and
+  the worker's WebAssembly memory (92.1 MB after an 8 s analysis at 48 kHz) the same after the
+  last recording as after the first.
+- One of the 100 timed recordings (Chrome 155, first run, 5 s #8) never reached "Preview ready"
+  within 30 s; the next Record again worked: problem 4.
+
+**Cue-strip smoke** (`cue-strip-smoke.mjs` on this branch's build, its standard WAVs):
+73 / 73 at each of the five viewports (448 × 890, 402 × 750, 360 × 690, 890 × 360,
+1280 × 800): layout, popovers, cues, the heard-as panel, held, noise and silence all pass —
+no regression from the voice preview. (The smoke as of the branch point; cue-strip's newer
+checks are not on this branch.)
+
+**Problems found:**
+
+1. **One AudioBuffer is kept after Discard** (all five viewports): the version that played last
+   (1.3 MB here, 8 s at 44.1 kHz; the original recording when that was played last) stays in
+   memory until the next Play press or page close. Cause: `playback.js` stops and disconnects
+   the source node and then suspends the AudioContext at once (`stopNode` + `suspendIfIdle`);
+   Chrome keeps a stopped source node, and its buffer, alive until the audio thread has run past
+   the stop, which a suspended context never does. A blank-page check shows the same (stop +
+   suspend keeps the buffer; stop alone, or a later resume, frees it). The controller and the
+   playback module do drop their references (the PCM and two of the three AudioBuffers go), so
+   the page's code cannot reach it; but §13 says the audio goes on Discard. **Tested fix (not
+   committed):** `clear()` closes the AudioContext instead of suspending it (the next Play press,
+   a user gesture, makes a new one): the smoke's Discard checks then pass (AudioBuffers 0 → 3 → 0).
+   `playback-test.js` "after close a press makes a new context" fails with that change as written
+   and needs updating with it.
+2. **The card's styles load with the main page.** Tailwind writes the card's classes into the
+   main stylesheet: +340 B gzip (+2.7 KB raw) on every page load, on top of the entry's +202 B
+   (together +542 B, under the 1 KB budget if the two are counted together). `bundle-budget.mjs`
+   measures JavaScript only; adding the stylesheet to its entry figure would cover it.
+3. **Dev server, once:** in one of three `dev` runs the card disappeared during the analysis (the
+   page reloaded or the card unmounted) and the run timed out; the two other runs passed with no
+   reload. Likely Vite's dependency re-optimisation reloading the page (`node_modules`, and with
+   it Vite's cache, is shared with other worktrees through the junction). The built app is not
+   affected (static server, `vite preview`, the timing runs). The part now logs reloads and
+   Vite's messages.
+4. **One preview that never arrived** (1 of 100 timed recordings, Chrome 155, AudioContext
+   capture forced to 48 kHz in headless Chrome): after Stop at 5 s the card stayed out of
+   "Preview ready" for 30 s; the next Record again worked; no console error. The card's state was
+   not logged then (it is now); 40 more recordings did not repeat it. Possibly the headless
+   capture slowdown of Deviation 21; the phone check should watch for a preview that never comes.
+5. **A fast flick on a slider swallows the next tap** (emulated touch, 890 × 360; Deviation 24):
+   Chrome behaviour, not the card's, and only after a release while moving. Worth one try on the
+   phone: flick a slider, then tap a quick setting at once.
+6. The 30 dB noise notice also fires on the hum run (24.4 dB margin), as recorded in Deviation 18
+   and the card step's notes; nothing new.
