@@ -45,18 +45,29 @@ const TABS = [
 // The tab bar (the same in every state). Below Tailwind's sm breakpoint the tabs
 // are narrower (px-2, gap-0.5) so the five fit on one row at 360 px, the two-word
 // labels wrapping onto two lines there; from sm up, px-4 / gap-1 as before the
-// Voice Shaper tab (2026-10-20).
+// Voice Shaper tab (2026-10-20). With larger text (125 % at 360 px) the row is
+// wider than the screen: `justify-center-safe` starts it at its first tab and it
+// scrolls sideways, instead of centring and cutting off "Dashboard" and
+// "Resonance lab" where nothing could scroll to them (review 2026-10-20). Under
+// 360 px the row reaches into the page's 16 px gutters (-mx-4), as the centred
+// tabs already did at 320 px (5-315 px), so they still fit there without
+// scrolling; px-1 / pt-1 / pb-1 keep the focus ring inside the scroll box, and
+// -mx-1 / -mt-1 / mb-2 cancel them, so at the default text size nothing moves
+// from 360 px up. Inactive labels
+// neutral-400 (about 7:1; neutral-500 was about 4:1 at 12 px), aria-current on
+// the active tab.
 function TabNav({ activeTab, setActiveTab }) {
   return (
-    <nav className="flex-shrink-0 flex justify-center gap-0.5 sm:gap-1 mb-3">
+    <nav className="flex-shrink-0 flex justify-center-safe gap-0.5 sm:gap-1 overflow-x-auto -mx-1 max-[360px]:-mx-4 px-1 -mt-1 pt-1 pb-1 mb-2">
       {TABS.map((tab) => (
         <button
           key={tab.id}
           onClick={() => setActiveTab(tab.id)}
+          aria-current={activeTab === tab.id ? "page" : undefined}
           className={`px-2 sm:px-4 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
             activeTab === tab.id
               ? "bg-neutral-700 text-white"
-              : "text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/50"
+              : "text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/50"
           }`}
         >
           {tab.label}

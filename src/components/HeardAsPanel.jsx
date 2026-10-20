@@ -149,9 +149,9 @@ export const PITCH_ONLY_MISSES_TEXT =
 // the cue filled (about 5 s of voiced speech, whenever that comes; about 10 s
 // into a session on the recorded streams: "on before you start talking") but
 // that showed no estimate in the start window — its model still downloading,
-// or the user on another of the app's tabs (Pitch, History, Resonance lab:
-// off the practice view the panel makes no updates; a different browser tab
-// did not stop it in §8.9's round-3 test). The text names only the download
+// or the user on another of the app's tabs (Pitch, History, Voice Shaper,
+// Resonance lab: off the practice view the panel makes no updates; a
+// different browser tab did not stop it in §8.9's round-3 test). The text names only the download
 // (user decisions 2026-10-18, §8.9: assume the user uses Syrinx in one tab;
 // "on before you start talking … of talking", round 3's suggested wording).
 // (Until the decisions of 2026-10-13: "… within 10 seconds — about as many
