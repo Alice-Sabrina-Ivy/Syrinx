@@ -1116,3 +1116,30 @@ plan; §15's manual steps (audibility through the speaker and headphones, TalkBa
   (`data-vp-hops`, Deviation 39) and the phone kit logs it per recording.
 - **aria-valuetext under TalkBack** could not be confirmed in headless Chrome (the CDP
   accessibility tree shows no valuetext even for plain ARIA sliders); §15 step 5 checks it.
+
+## Phone check 2026-10-20
+
+§15's timing, playback, hum and Discard steps on the gate phone, run with the phone check kit
+described under "Fix step" (it uses adb; the phone's microphone is never opened, the kit plays
+public / synthetic WAVs into the page in place of it). Pixel 11 Pro XL (Tensor G6, Android 17),
+Chrome 155, the built app of this branch at bd92ac5 (before the cue-strip merge that follows it).
+Only timings and pass / fail are written down; the raw run log stays outside the repository.
+
+| Check | Result | Limit |
+|---|---|---|
+| Card | ready in 359 ms (module load 18 ms); capture 48 kHz, engine 48 kHz, SIMD build | ready ≤ 1 s |
+| 5 s phrases, 5 of 5 runs | analysis + first render: median 969 ms, max 1144 ms; slider change: median 262 ms, max 308 ms | 3000 / 1000 ms |
+| 8 s phrases (auto-stop), 5 of 5 runs | analysis + first render: median 1656 ms, max 1826 ms; slider change: median 464 ms, max 506 ms | 3000 / 1000 ms |
+| End to end, from the same runs | stop → "Preview ready": 5 s median 1098 ms (max 1203), 8 s median 1649 ms (max 1866); slider press → rendered: 5 s median 334 ms (max 342), 8 s median 543 ms (max 561) | 3000 / 1000 ms |
+| Hops | every recording received all its hops (200–204 for 5 s, 320 / 320 for 8 s) | — |
+| Playback | Preview, Rebuild, Original, Loop and Stop each played or stopped. Whether they are audible through the speaker and headphones is the user's own check (§15 step 4), not part of this run | — |
+| Hum check (fan-hum file) | the hum notice shows; the noise notice too (level margin 24.8 dB) | — |
+| Discard | a fresh worker in 117 ms | — |
+| **VP1 gate** | **PASS** | |
+
+The 8 s cap, never timed on a phone in the spike, fits with room: the slowest analysis + first
+render took 1.83 s of the 3 s allowed and the slowest slider change 0.51 s of 1 s, so §15 step 3
+needs no decision about a shorter cap. For 5 s phrases the analysis came in below §15's
+expectation (about 1.2 s) and the slider change close to it (about 0.25 s). Not part of this
+run: TalkBack (§15 step 5), the quiet-room and ordinary-room noise notes (step 6), and a
+44.1 kHz or Bluetooth device.
