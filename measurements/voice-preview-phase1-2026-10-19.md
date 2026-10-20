@@ -731,3 +731,75 @@ outside the lab; a clipping check.
    imported (the wasm-files test reads its `PINS`). `lib/paths.mjs` is the spike's file except
    one comment, which named the local cache folder (a comment only; the build is unchanged and
    `--check-shipped` reproduces the committed bytes from this checkout).
+
+**2026-10-19, card step** (the card UI, playback, strings, WAV, smoke, bundle budget):
+
+9. **Value labels in `strings.js`, not `controls.js` (§2, §6).** The pitch and resonance labels,
+   their `aria-valuetext`, the target result line and the download name are built in
+   `strings.js` (on `controls.js`'s `shiftedHz`), so every user-facing string sits in the one
+   file `strings-test.js` checks. `controls.js` is unchanged.
+10. **Controls that cannot act stay focusable (§10).** They carry `aria-disabled`, not
+    `disabled`, and their reason in visible text linked with `aria-describedby` (Record while
+    waiting: the status line; Preview before a change: the first-preview hint; Play during a
+    session recording: the guard line). With `disabled`, focus fell to the page when the
+    Record / Stop button became inactive during analysis.
+11. **Playback Stop is always shown and always active (§8).** "A button while anything plays"
+    would appear and vanish under the user's finger and take focus with it; pressing it with
+    nothing playing does nothing.
+12. **Preview button before the first change (§1, §8).** Inactive until a setting has been
+    rendered (reason: the first-preview hint), since the first render is the unchanged
+    rebuild. Download before any change saves the unchanged rebuild, named
+    `…-plus0st-plus0pct.wav`.
+13. **Playback stops when it cannot be seen (§4, §8).** Leaving the view or the tab, listening
+    stopping, or a Dashboard session recording starting stops playback (silently; the
+    recording, the preview and the slider settings are kept). The design kept "everything" on
+    a view switch; playback running behind a hidden card could not be stopped and would feed
+    the meters.
+14. **About as an inline disclosure (§9, §10).** Seven paragraphs do not fit the lab's
+    popover on a phone, so the "i" button expands a panel inside the card (`aria-expanded` /
+    `aria-controls`); Escape closes it and returns focus to the button.
+15. **"Updating the preview…"** shows on the Play group's label line (no empty line reserved
+    under the buttons).
+16. **WAV rounding (§13).** Halves away from zero (symmetric), clipped to ±32767.
+17. **The card's background is opaque** (`neutral-900`; the lab's cards use `neutral-900/60`),
+    so contrast is measured against one colour; the app stays dark only, the card sets
+    `color-scheme: dark` (§10).
+18. **Smoke (§14).** `scripts/voice-preview-smoke.mjs` serves `dist/` from a small static
+    server inside the script instead of `vite preview`, because page-level request events miss
+    the worker's and the WebAssembly fetches; the server logs every request. Headless Chrome's
+    fake microphone runs at 44.1 kHz, so the layout, flow and check runs exercised the 44.1 kHz
+    engine rate (48 kHz is covered by `parity-test.js`); the timing run forces 48 kHz with
+    `?capture=audiocontext&sr=48000`. In the hum run (fan hum 20 dB below the speech) the
+    noise notice shows too (level margin 24.1 dB), as the spike's −20 dB hum figures predict
+    (26.8–28.9 dB); the smoke requires only the hum notice there. The clean phrase leaves out
+    `ls_man_low` (its own noise floor gets the noise notice, Deviation 7).
+19. **Bundle budget (§11).** `scripts/voice-preview/bundle-budget.mjs` builds the base and this
+    tree with the same inline Vite config, without the notices plugins (they emit a text asset
+    only and need a `node_modules` beside the extracted base; the base resolves its packages
+    through this checkout's).
+20. **One more unit test:** `playback-test.js` (the playback module against a fake
+    AudioContext: A/B keeps the position, a new preview takes over at the same position, loop
+    on / off mid-play, suspend when idle, close).
+21. **Desktop timing harness (§14).** `voice-preview-smoke.mjs --parts=timing` (Chrome for
+    Testing 154.0.8037.57 from `$VP_CACHE`, `?diag=1&capture=audiocontext&sr=48000`, the
+    spike's four speech-dense 8 s clips joined as `timing.wav`): 10 recordings of 5 s and 10
+    of 8 s, each followed by one quick setting (+2 st, +3 %). A 5 s recording is stopped once
+    5 s of audio are in (the status line), not after 5 s of wall time: in headless Chrome the
+    AudioContext capture path delivered audio at about two thirds of real time after a few
+    recordings (3.35 s recorded in 5 s of wall time; every consumer got the same chunks; not
+    seen on the MSTP path, nor on a first recording after 36 s of listening). As far as
+    checked this is the headless fake devices, not the preview; the phone and Firefox checks
+    should watch for it.
+
+## Implementation status (2026-10-19)
+
+Built on branch `voice-preview` (no PR). The card, the engine and the checks are complete
+for the lab version; the phone check (§15) is still to do.
+
+| Acceptance (§14, §15) | Status |
+|---|---|
+| Unit tests 1–10 (`tests/voice-preview/`: wasm-files, parity, recorder, controls, checks, worker, controller, warp, hum-check, bridge-hook, strings, wav, playback) and the existing display-hook, notices and no-local-paths tests; lint, `npm run test:unit`, build, `npm run test:resonance-lab` | pass |
+| Bundle (`bundle-budget.mjs`) | pass: entry + static imports +0.20 KB gzip, LabView +0.24 KB, card chunk 10.1 KB, worker chunk 5.3 KB; no voice-preview strings in the entry or LabView chunks; WebAssembly 52.2 KB (SIMD) / 50.3 KB gzip |
+| Smoke (`voice-preview-smoke.mjs`, layout / flow / checks / dev) | pass, 152 checks: five viewports × light and dark; nothing requested before the view opens, then exactly one `.wasm` (SIMD); the lab's four cards still fit at 360 × 690 and 402 × 750; full flow, keyboard, playback, session guard, hum and noise notices, Discard (worker target replaced), Download (16-bit mono WAV at the engine rate, the recording's length); dev server |
+| Desktop timing (Chrome for Testing 154, 48 kHz, listening on) | **partly.** Analysis + rebuild within the spike's values: 5 s 863 / 980 ms (median / pooled p90; limit 1130 / 1420), 8 s 1480 / 1625 ms (limit 1690 / 2220). Slider-change render: p90 within (291 / 450 ms; limits 350 / 550), **medians over** (239 ms against 220 at 5 s, 436 ms against 360 at 8 s). End to end far under the gate: stop → "Preview ready" 1.0 / 1.1 s (5 s) and 1.6 / 1.7 s (8 s); press → "Preview updated" 0.31 / 0.32 s and 0.51 / 0.51 s. The machine was 47 % busy (median) with other jobs, and listening and the lab ran alongside, where the spike timed an isolated page; the renders are the spike's bytes (parity), so the code path is the spike's and load is the likely cause. Not yet repeated on a quieter machine |
+| Phone check (§15, Pixel 11 Pro XL) | not done yet; includes the first 8 s phone timing and the 30 dB noise threshold in ordinary rooms |
