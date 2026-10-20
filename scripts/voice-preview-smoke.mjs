@@ -244,12 +244,15 @@ const openShaper = async (page) => {
   await clickButton(page, ["Voice Shaper"], "nav button");
   await page.waitForSelector("[data-voice-preview]", { timeout: 30000 });
 };
-// The tab bar: labels in order, one row, inside the viewport, no overflow; the active tab.
+// The tab bar: labels in order, one row, inside the viewport, no overflow; the active tab
+// (its look) and the tabs marked aria-current="page" (review 2026-10-20: the active tab
+// was shown by its look only).
 const tabBar = (page) => page.evaluate(() => {
   const nav = document.querySelector("nav");
   const bs = [...nav.querySelectorAll("button")];
   const r = bs.map((b) => b.getBoundingClientRect());
   return { labels: bs.map((b) => b.textContent.trim()), active: bs.find((b) => b.className.includes("bg-neutral-700"))?.textContent.trim() ?? null,
+    current: bs.filter((b) => b.getAttribute("aria-current") === "page").map((b) => b.textContent.trim()),
     oneRow: r.every((x) => Math.abs(x.top - r[0].top) < 0.5), left: +Math.min(...r.map((x) => x.left)).toFixed(1), right: +Math.max(...r.map((x) => x.right)).toFixed(1),
     minW: +Math.min(...r.map((x) => x.width)).toFixed(1), minH: +Math.min(...r.map((x) => x.height)).toFixed(1),
     navOverflow: nav.scrollWidth > nav.clientWidth + 0.5, innerW: innerWidth, docW: document.documentElement.scrollWidth,
@@ -479,7 +482,8 @@ async function partLayout() {
     check("listening on the Dashboard: nothing of Voice Shaper requested", vpDash.length === 0, vpDash.join(", "));
     // the tab bar: five tabs in order, one row, inside the viewport
     const tb = await tabBar(page);
-    check("tab bar: Dashboard, Pitch, History, Voice Shaper, Resonance lab", JSON.stringify(tb.labels) === JSON.stringify(TAB_ORDER), tb.labels.join(" | "));
+    check("tab bar: Dashboard, Pitch, History, Voice Shaper, Resonance lab; Dashboard is aria-current=\"page\"", JSON.stringify(tb.labels) === JSON.stringify(TAB_ORDER)
+      && JSON.stringify(tb.current) === JSON.stringify(["Dashboard"]), `${tb.labels.join(" | ")}; current ${tb.current.join(", ")}`);
     check("tab bar: one row, inside the viewport, no overflow, no horizontal page scroll; tabs >= 24 x 24",
       tb.oneRow && tb.left >= -0.5 && tb.right <= tb.innerW + 0.5 && !tb.navOverflow && tb.docW <= tb.innerW && tb.minW >= 24 && tb.minH >= 24, JSON.stringify({ ...tb, clip: undefined }));
     await page.screenshot({ path: path.join(OUT, `${v}-dark-tabs.png`), clip: tb.clip });
@@ -509,7 +513,8 @@ async function partLayout() {
       && req.some((p) => /vp_world-.*\.mjs$/.test(p)) && wasm.length === 1 && wasmName(wasm[0]) === simdWasm && st0.vpBuild === "simd", `${req.map(wasmName).join(", ")}; build ${st0.vpBuild}`);
     const tb2 = await tabBar(page);
     const head = await page.evaluate(() => document.querySelector("[data-voice-preview] h2")?.textContent ?? null);
-    check("Voice Shaper is the active tab; the card's heading is an h2 \"Voice Shaper experimental\"", tb2.active === "Voice Shaper" && head === "Voice Shaper experimental", `${tb2.active}; ${head}`);
+    check("Voice Shaper is the active tab (and the only one with aria-current=\"page\"); the card's heading is an h2 \"Voice Shaper experimental\"",
+      tb2.active === "Voice Shaper" && JSON.stringify(tb2.current) === JSON.stringify(["Voice Shaper"]) && head === "Voice Shaper experimental", `${tb2.active}; current ${tb2.current.join(", ")}; ${head}`);
     await shot(page, `${v}-dark-ready`);
     const memBase = await pageMem(cdp);
     const wBase = await workerMem(page);
