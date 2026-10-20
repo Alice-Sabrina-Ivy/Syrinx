@@ -22,6 +22,15 @@
 // ThirdPartyNotices.txt of microsoft/onnxruntime at the commit the shipped
 // runtime was built from (node_modules/onnxruntime-web/__commit.txt).
 //
+// Code that is not an npm package (NON_NPM_COMPONENTS, 2026-10-19): the voice
+// preview's WebAssembly module (src/voice-preview/wasm/) contains compiled WORLD
+// (modified BSD, which requires its text with binary copies) and Emscripten's
+// JavaScript runtime and system libraries (musl, dlmalloc, LLVM compiler-rt /
+// libc++ / libc++abi). When the build's module graph contains a module under
+// src/voice-preview/wasm/, their texts (licenses/world/, licenses/emscripten/) are
+// appended to THIRD_PARTY_NOTICES.txt like the npm packages'; the dev server's
+// notices always include them. measurements/voice-preview-phase1-2026-10-19.md §12.
+//
 // tests/site/third-party-notices-test.js covers the assembly.
 
 import { existsSync, readFileSync, readdirSync } from "node:fs";
@@ -35,6 +44,29 @@ export const COMMITTED_LICENSES = {
   "onnxruntime-web": ["licenses/onnxruntime-web/LICENSE"],
   "onnxruntime-common": ["licenses/onnxruntime-web/LICENSE"],
 };
+// Shipped code that is not an npm package: which module ids carry it, and its licence files.
+export const NON_NPM_COMPONENTS = Object.freeze([
+  {
+    name: "WORLD",
+    title: "WORLD (M. Morise; mmorise/World 8d79b88b7dd92e8a132996cf74080b2d6f881b98) — compiled into the voice preview's WebAssembly module",
+    idPattern: /\/src\/voice-preview\/wasm\//,
+    files: ["licenses/world/LICENSE.txt"],
+  },
+  {
+    name: "Emscripten",
+    title: "Emscripten 6.0.10 runtime and system libraries (musl, dlmalloc, LLVM compiler-rt, libc++, libc++abi) — in the voice preview's WebAssembly module and its JavaScript glue",
+    idPattern: /\/src\/voice-preview\/wasm\//,
+    files: [
+      "licenses/emscripten/LICENSE",
+      "licenses/emscripten/musl-COPYRIGHT",
+      "licenses/emscripten/dlmalloc-NOTICE.txt",
+      "licenses/emscripten/compiler-rt-LICENSE.TXT",
+      "licenses/emscripten/libcxx-LICENSE.TXT",
+      "licenses/emscripten/libcxxabi-LICENSE.TXT",
+    ],
+  },
+]);
+
 export const ORT_THIRD_PARTY_NOTICES = "licenses/onnxruntime-web/ThirdPartyNotices.txt";
 export const NOTICES_FILE = "THIRD_PARTY_NOTICES.txt";
 export const ORT_NOTICES_FILE = "licenses/onnxruntime-ThirdPartyNotices.txt";
@@ -47,6 +79,12 @@ export function packageOfModuleId(id) {
   const rest = p.slice(i + "/node_modules/".length).split("/");
   if (!rest[0] || rest[0].startsWith(".")) return null;
   return rest[0].startsWith("@") ? (rest[1] ? `${rest[0]}/${rest[1]}` : null) : rest[0];
+}
+
+/** Names of the NON_NPM_COMPONENTS a module id belongs to ("…/src/voice-preview/wasm/vp_world.mjs?url" -> ["WORLD", "Emscripten"]). */
+export function componentsOfModuleId(id) {
+  const p = String(id).replace(/\\/g, "/").split("?")[0];
+  return NON_NPM_COMPONENTS.filter((c) => c.idPattern.test(p)).map((c) => c.name);
 }
 
 /** Licence text(s) of one package: its LICENSE / LICENCE / COPYING / NOTICE files, else the committed copy. */
@@ -67,8 +105,8 @@ export function licenseTextOf(name, { repo = REPO } = {}) {
   return { name, version, text: files.map((f) => readFileSync(f, "utf8").trimEnd()).join("\n\n") };
 }
 
-/** The THIRD_PARTY_NOTICES.txt body for these bundled packages. */
-export function buildNoticesText(packages, { repo = REPO } = {}) {
+/** The THIRD_PARTY_NOTICES.txt body for these bundled packages (and NON_NPM_COMPONENTS names). */
+export function buildNoticesText(packages, { repo = REPO, components = [] } = {}) {
   const names = [...new Set(packages)].sort();
   const rule = "=".repeat(78);
   const parts = [
@@ -87,6 +125,14 @@ export function buildNoticesText(packages, { repo = REPO } = {}) {
     parts.push("", rule, "onnxruntime-web — the WebAssembly runtime's third-party components",
       rule, `See ${ORT_NOTICES_FILE} (ONNX Runtime's ThirdPartyNotices.txt at the commit the runtime was built from).`);
   }
+  const wanted = new Set(components);
+  for (const c of NON_NPM_COMPONENTS) {
+    if (!wanted.has(c.name)) continue;
+    const missing = c.files.filter((f) => !existsSync(path.join(repo, f)));
+    if (missing.length) throw new Error(`third-party notices: ${c.name}: missing ${missing.join(", ")} (scripts/third-party-notices.mjs)`);
+    const text = c.files.map((f) => readFileSync(path.join(repo, f), "utf8").trimEnd()).join(`\n\n${"-".repeat(78)}\n\n`);
+    parts.push("", rule, c.title, rule, text);
+  }
   return parts.join("\n") + "\n";
 }
 
@@ -98,14 +144,17 @@ export function buildNoticesText(packages, { repo = REPO } = {}) {
  */
 export function thirdPartyNotices({ repo = REPO } = {}) {
   const packages = new Set();
+  const components = new Set();
+  const record = (id) => {
+    const n = packageOfModuleId(id);
+    if (n) packages.add(n);
+    for (const c of componentsOfModuleId(id)) components.add(c);
+  };
   const collect = () => ({
     name: "syrinx-third-party-notices-collect",
     apply: "build",
     generateBundle() {
-      for (const id of this.getModuleIds()) {
-        const n = packageOfModuleId(id);
-        if (n) packages.add(n);
-      }
+      for (const id of this.getModuleIds()) record(id);
     },
   });
   const emit = {
@@ -113,18 +162,16 @@ export function thirdPartyNotices({ repo = REPO } = {}) {
     apply: "build",
     enforce: "post",
     generateBundle() {
-      for (const id of this.getModuleIds()) {
-        const n = packageOfModuleId(id);
-        if (n) packages.add(n);
-      }
-      this.emitFile({ type: "asset", fileName: NOTICES_FILE, source: buildNoticesText(packages, { repo }) });
+      for (const id of this.getModuleIds()) record(id);
+      this.emitFile({ type: "asset", fileName: NOTICES_FILE, source: buildNoticesText(packages, { repo, components }) });
       if (packages.has("onnxruntime-web")) {
         this.emitFile({ type: "asset", fileName: ORT_NOTICES_FILE, source: readFileSync(path.join(repo, ORT_THIRD_PARTY_NOTICES), "utf8") });
       }
     },
   };
   // Dev server: no module graph to read, so the notices list the direct
-  // dependencies plus ONNX Runtime (the build's list is the authoritative one).
+  // dependencies plus ONNX Runtime and every non-npm component (the build's
+  // list is the authoritative one).
   const serve = {
     name: "syrinx-third-party-notices-serve",
     apply: "serve",
@@ -134,7 +181,7 @@ export function thirdPartyNotices({ repo = REPO } = {}) {
         let body = null;
         if (url.endsWith(`/${NOTICES_FILE}`)) {
           const deps = Object.keys(JSON.parse(readFileSync(path.join(repo, "package.json"), "utf8")).dependencies ?? {});
-          body = buildNoticesText([...deps, "onnxruntime-web", "onnxruntime-common"], { repo });
+          body = buildNoticesText([...deps, "onnxruntime-web", "onnxruntime-common"], { repo, components: NON_NPM_COMPONENTS.map((c) => c.name) });
         } else if (url.endsWith(`/${ORT_NOTICES_FILE}`)) {
           body = readFileSync(path.join(repo, ORT_THIRD_PARTY_NOTICES), "utf8");
         }
@@ -144,5 +191,5 @@ export function thirdPartyNotices({ repo = REPO } = {}) {
       });
     },
   };
-  return { collect, emit, serve, packages };
+  return { collect, emit, serve, packages, components };
 }

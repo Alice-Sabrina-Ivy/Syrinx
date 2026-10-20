@@ -11,7 +11,9 @@ export default defineConfig([
   // 'build' is the gitignored local scratch dir (measurement probes,
   // prototype .mjs harnesses) — not project code; linting it made
   // `npm run lint` fail on whatever scratch happened to be on disk.
-  globalIgnores(['dist', 'docs', 'build']),
+  // 'src/voice-preview/wasm' is the voice preview's generated Emscripten build
+  // (committed byte for byte, checked by hash; scripts/voice-preview/build.mjs).
+  globalIgnores(['dist', 'docs', 'build', 'src/voice-preview/wasm']),
   {
     files: ['**/*.{js,jsx}'],
     extends: [

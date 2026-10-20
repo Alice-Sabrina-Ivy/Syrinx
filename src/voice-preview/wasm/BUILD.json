@@ -1,0 +1,113 @@
+{
+ "note": "Built by scripts/voice-preview/build.mjs --ship; rebuild and compare with --check-shipped. WORLD source and emsdk live outside the repository ($VP_CACHE).",
+ "pins": {
+  "world": {
+   "repo": "https://github.com/mmorise/World.git",
+   "commit": "8d79b88b7dd92e8a132996cf74080b2d6f881b98",
+   "licenseSha256": "cb19c28611fcee6ce200c075a0e5bc91f0dcb0637985797b830990d2fe2fcffe"
+  },
+  "emsdk": {
+   "repo": "https://github.com/emscripten-core/emsdk.git",
+   "commit": "a2b92777574c2feda07994cd4f1079a3dfc151f8",
+   "version": "6.0.10",
+   "winArchives": {
+    "666337b525e673e769121856d175f6f52b8ead64-wasm-binaries.zip": "6de0bf6bad8214a89dedafb5db3cdcfbdf8c395e421ba257e83cb21b77030931",
+    "node-v24.19.0-win-x64.zip": "57f71ab3652e797d84acddc79c81cc9ff1c6ddb2a1974cdb83f00fee9bff4c73",
+    "python-3.13.3-0-win-amd64.zip": "6fe7a540c6b8b185780467cf7495e884ee62316ec4abb19e1c735b8a77c62465"
+   }
+  }
+ },
+ "checked": {
+  "emsdk": {
+   "commit": "a2b92777574c2feda07994cd4f1079a3dfc151f8",
+   "version": "6.0.10",
+   "archives": {
+    "666337b525e673e769121856d175f6f52b8ead64-wasm-binaries.zip": "6de0bf6bad8214a89dedafb5db3cdcfbdf8c395e421ba257e83cb21b77030931",
+    "node-v24.19.0-win-x64.zip": "57f71ab3652e797d84acddc79c81cc9ff1c6ddb2a1974cdb83f00fee9bff4c73",
+    "python-3.13.3-0-win-amd64.zip": "6fe7a540c6b8b185780467cf7495e884ee62316ec4abb19e1c735b8a77c62465"
+   }
+  },
+  "world": {
+   "commit": "8d79b88b7dd92e8a132996cf74080b2d6f881b98",
+   "licenseSha256": "cb19c28611fcee6ce200c075a0e5bc91f0dcb0637985797b830990d2fe2fcffe"
+  }
+ },
+ "emcc": "emcc (Emscripten gcc/clang-like replacement + linker emulating GNU ld) 6.0.10 (d6c521a7f05449857c76bd99e396895583cf2083)",
+ "exports": [
+  "_malloc",
+  "_free",
+  "_vp_version",
+  "_vp_dio_frames",
+  "_vp_harvest_frames",
+  "_vp_dio",
+  "_vp_harvest",
+  "_vp_stonemask",
+  "_vp_cheaptrick_fft_size",
+  "_vp_cheaptrick",
+  "_vp_d4c",
+  "_vp_warp",
+  "_vp_synthesis_length",
+  "_vp_synthesize"
+ ],
+ "files": {
+  "simd/vp_world.wasm": {
+   "sha256": "fa3a29cf0ef75145ebe7fa6ab2b5dfa526ce9d1e5eb1a6409f291e863a7d3a25",
+   "raw": 115874,
+   "gzip9": 53415,
+   "brotli11": 46038
+  },
+  "nosimd/vp_world.wasm": {
+   "sha256": "09cf5e8ae0bb2d4ae1fb11eb2e11a32fddd3a94f767365bad47c84b40e33598d",
+   "raw": 111276,
+   "gzip9": 51502,
+   "brotli11": 43736
+  },
+  "vp_world.mjs": {
+   "sha256": "5e7a7a209e4a88ceb765a8d5c64cf2af33ad5abe8700cd38071d2ed117d988c5",
+   "raw": 7747,
+   "gzip9": 2675,
+   "brotli11": 2405
+  }
+ },
+ "builds": {
+  "simd": {
+   "command": "em++ -O3 -msimd128 -fno-exceptions -I$VP_CACHE/world-src/src -ffile-prefix-map=$VP_CACHE/world-src=world -ffile-prefix-map=<repo>/scripts/voice-preview=vp -sMODULARIZE=1 -sEXPORT_ES6=1 -sEXPORT_NAME=createVpWorld -sENVIRONMENT=web,worker,node -sFILESYSTEM=0 -sALLOW_MEMORY_GROWTH=1 -sEXPORTED_FUNCTIONS=_malloc,_free,_vp_version,_vp_dio_frames,_vp_harvest_frames,_vp_dio,_vp_harvest,_vp_stonemask,_vp_cheaptrick_fft_size,_vp_cheaptrick,_vp_d4c,_vp_warp,_vp_synthesis_length,_vp_synthesize -sEXPORTED_RUNTIME_METHODS=HEAPF64 <repo>/scripts/voice-preview/wasm/vp_world.cpp $VP_CACHE/world-src/src/cheaptrick.cpp $VP_CACHE/world-src/src/common.cpp $VP_CACHE/world-src/src/d4c.cpp $VP_CACHE/world-src/src/dio.cpp $VP_CACHE/world-src/src/fft.cpp $VP_CACHE/world-src/src/harvest.cpp $VP_CACHE/world-src/src/matlabfunctions.cpp $VP_CACHE/world-src/src/stonemask.cpp $VP_CACHE/world-src/src/synthesis.cpp -o $VP_CACHE/wasm/simd/vp_world.mjs",
+   "wasm": {
+    "sha256": "fa3a29cf0ef75145ebe7fa6ab2b5dfa526ce9d1e5eb1a6409f291e863a7d3a25",
+    "raw": 115874,
+    "gzip9": 53415,
+    "brotli11": 46038
+   },
+   "glue": {
+    "sha256": "5e7a7a209e4a88ceb765a8d5c64cf2af33ad5abe8700cd38071d2ed117d988c5",
+    "raw": 7747,
+    "gzip9": 2675,
+    "brotli11": 2405
+   },
+   "features": [
+    "bulk-memory-opt",
+    "nontrapping-float-to-int",
+    "simd"
+   ]
+  },
+  "nosimd": {
+   "command": "em++ -O3 -fno-exceptions -I$VP_CACHE/world-src/src -ffile-prefix-map=$VP_CACHE/world-src=world -ffile-prefix-map=<repo>/scripts/voice-preview=vp -sMODULARIZE=1 -sEXPORT_ES6=1 -sEXPORT_NAME=createVpWorld -sENVIRONMENT=web,worker,node -sFILESYSTEM=0 -sALLOW_MEMORY_GROWTH=1 -sEXPORTED_FUNCTIONS=_malloc,_free,_vp_version,_vp_dio_frames,_vp_harvest_frames,_vp_dio,_vp_harvest,_vp_stonemask,_vp_cheaptrick_fft_size,_vp_cheaptrick,_vp_d4c,_vp_warp,_vp_synthesis_length,_vp_synthesize -sEXPORTED_RUNTIME_METHODS=HEAPF64 <repo>/scripts/voice-preview/wasm/vp_world.cpp $VP_CACHE/world-src/src/cheaptrick.cpp $VP_CACHE/world-src/src/common.cpp $VP_CACHE/world-src/src/d4c.cpp $VP_CACHE/world-src/src/dio.cpp $VP_CACHE/world-src/src/fft.cpp $VP_CACHE/world-src/src/harvest.cpp $VP_CACHE/world-src/src/matlabfunctions.cpp $VP_CACHE/world-src/src/stonemask.cpp $VP_CACHE/world-src/src/synthesis.cpp -o $VP_CACHE/wasm/nosimd/vp_world.mjs",
+   "wasm": {
+    "sha256": "09cf5e8ae0bb2d4ae1fb11eb2e11a32fddd3a94f767365bad47c84b40e33598d",
+    "raw": 111276,
+    "gzip9": 51502,
+    "brotli11": 43736
+   },
+   "glue": {
+    "sha256": "5e7a7a209e4a88ceb765a8d5c64cf2af33ad5abe8700cd38071d2ed117d988c5",
+    "raw": 7747,
+    "gzip9": 2675,
+    "brotli11": 2405
+   },
+   "features": [
+    "bulk-memory-opt",
+    "nontrapping-float-to-int"
+   ]
+  }
+ }
+}
