@@ -1143,3 +1143,105 @@ needs no decision about a shorter cap. For 5 s phrases the analysis came in belo
 expectation (about 1.2 s) and the slider change close to it (about 0.25 s). Not part of this
 run: TalkBack (§15 step 5), the quiet-room and ordinary-room noise notes (step 6), and a
 44.1 kHz or Bluetooth device.
+
+## Renamed and moved 2026-10-20
+
+**User decision (2026-10-20):** the feature is called **Voice Shaper** everywhere the user sees
+it, and it leaves the Resonance lab for a top-level tab of its own between History and
+Resonance lab (tab order: Dashboard, Pitch, History, Voice Shaper, Resonance lab). It stays
+lazily loaded and keeps its listening and recording behaviour; the lab goes back to its two
+views (Resonance, Weight × clarity). The text above this section still says "Voice preview" and
+"the lab's third view"; where it disagrees with this section, this section wins. The latest
+`cue-strip` (c41838c: the split-bar "Likely heard as" panel, the quiet-floor notes) was merged
+first, without conflicts.
+
+**What the user sees now**
+
+| Where | Before | Now |
+|---|---|---|
+| How it is reached | Resonance lab tab, then the view switch's "Voice preview" | The "Voice Shaper" tab |
+| Card heading (`h3` → `h2`, the tab's top heading) | "Voice preview" | "Voice Shaper" |
+| Info toggle label | "About voice preview" | "About Voice Shaper" |
+| Loading line | "Loading the voice preview…" | "Loading Voice Shaper…" |
+| Load error | "The voice preview could not load. Reload the page to try again." | "Voice Shaper could not load. Reload the page to try again." |
+| No WebAssembly | "This browser can't run the voice preview (it needs WebAssembly)." | "This browser can't run Voice Shaper (it needs WebAssembly)." |
+| Download name | `syrinx-voice-preview-plus2st-plus3pct.wav` | `syrinx-voice-shaper-plus2st-plus3pct.wav` |
+| Third-party notices | "…the voice preview's WebAssembly module" | "…Voice Shaper's WebAssembly module" |
+
+"Preview" stays where it names the rendered audio, not the feature: the "Preview" play button,
+"Preparing the preview…", "Preview ready.", "Updating the preview…", "Download preview (WAV)" and
+the About text's "Compare the preview with …". Every other string of §9 is unchanged.
+
+**Tab bar.** With five tabs at the old padding the bar no longer fit 360 px (Dashboard and Resonance lab ran off
+both edges). Below Tailwind's sm breakpoint the tabs now have `px-2` and `gap-0.5` instead of
+`px-4` / `gap-1`; at 360 px "Voice Shaper" and "Resonance lab" wrap onto two lines, so the bar is
+44 px tall there, as it already was with four tabs ("Resonance lab" wrapped). At 448 px and wider
+the labels sit on one line and the bar is 28 px tall, as before. The three copies of the bar in
+`App.jsx` (idle, History while idle, listening) are now one `TabNav`. Below about 350 px the five
+tabs would overflow; 360 px is the narrowest width the project tests.
+
+**Code.** File names and identifiers keep the old name (`src/voice-preview/`,
+`VoicePreviewCard`, `vp-worker`, `data-voice-preview`, `data-vp-*`), so the tests, the parity
+fixtures and the WebAssembly build are untouched; comments that describe the feature say Voice
+Shaper.
+
+- `App.jsx`: a `TABS` entry `{ id: "shaper", label: "Voice Shaper" }`; a lazy import of the new
+  [VoiceShaperView.jsx](../src/voice-preview/VoiceShaperView.jsx); a small error boundary and the
+  loading line around it (moved here from `LabView.jsx`; their texts equal `strings.js`, which
+  the main bundle must not import). The fix step's review note left an error boundary for
+  LabView out of the entry chunk; this one has to be in it, because nothing else between the
+  entry and the tab's chunk could catch a failed download. `App` passes `direction` and
+  `isSessionRecording` to the tab (the target prefill and the playback guard, as before).
+- `VoiceShaperView.jsx` (in the tab's chunk, with the card): the tab's own scroll area (the
+  app's content area does not scroll at lg) and the lab's phone query, which sets the card's
+  compact padding and keeps a prefilled target field from popping up the phone keyboard.
+- `LabView.jsx`: back to the `cue-strip` version byte for byte (two views, no lazy card, no
+  boundary).
+- `useAudioPipeline.js`, `bridge.js`, the controller, worker, engine and WebAssembly: comments
+  only.
+
+**Unchanged behaviour.** Nothing of Voice Shaper is fetched before its tab is opened; opening it
+fetches the tab chunk, the worker, the glue and exactly one `.wasm`. While not listening the tab
+shows Start Listening, as the lab tab did, so Voice Shaper is still reachable only while
+listening. Record waits for 6 s of listening; stopping listening cancels a recording; playback is
+off during a Dashboard session recording and stops when the tab is left; the recording and the
+preview survive tab switches for the page visit. **One difference:** opening Voice Shaper no
+longer starts the Resonance lab. Before, reaching the view meant opening the lab tab, which
+started the lab's capture consumer, worker and model.
+
+**Bundle budget (§11, updated).** The card's chunk is now the tab's chunk: `VoiceShaperView`
+with the card (`bundle-budget.mjs` looks for `VoiceShaperView-*.js`), ≤ 15 KB gzip. A new check
+requires that chunk to stay outside the entry's static imports and that LabView never refers to
+it. The default base is still the merge base with `origin/cue-strip`, now c41838c, which has no
+Voice Shaper at all.
+
+**Tests and smokes changed.** `strings-test.js`: the renamed strings and download name, App's own
+copies (tab label, loading line, load error), the tab order, the lazy import, and a LabView
+without any Voice Shaper. `third-party-notices-test.js`: labels only.
+`voice-preview-smoke.mjs`: opens the tab instead of the lab view; checks the tab bar at every
+viewport (the five labels in order, one row inside the viewport, no overflow, tabs ≥ 24 × 24;
+screenshot `<viewport>-dark-tabs.png`), that the Dashboard and the lab fetch nothing of Voice
+Shaper, that the lab offers its two views only, that Voice Shaper is the active tab with an `h2`
+heading, and (flow part, the tab opened straight after Start Listening) that nothing of the lab
+is fetched while only Voice Shaper is used; the chunk-failure part now fails the tab's chunk and
+expects the new text in the tab, all five tabs and Stop Listening still there, and the lab still
+opening. One fix to the smoke itself: the per-viewport target-row check typed a fixed 240 Hz,
++5 st over the clean phrase's usual ~182 Hz median. With the tab opened later in the looping
+fake-microphone file, the 360 px recording caught mostly the higher voice (median ~240 Hz), the
+target came out at 0 st and nothing rendered. It now types +5 st over the recording's own
+median.
+
+**Results** (headless Chrome, the shared desktop):
+
+| Check | Result |
+|---|---|
+| `npm run lint`, `npm run build` | pass |
+| `npm run test:unit` | 60 / 60 scripts (incl. `no-local-paths-test.js`, `strings-test.js` 30 / 30, `parity-test.js`) |
+| `bundle-budget.mjs` (base c41838c) | pass: what every page load fetches +870 B gzip against 1 KB (entry JS +448 B, main stylesheet +422 B; the fix step measured +662 B against that day's cue-strip tip, a different base, so the move's own cost is not separated out). LabView −3 B (back to the base). Tab chunk 10.84 KB, worker chunk 5.31 KB; the tab chunk is only a lazy import; no voice-preview strings in the entry or LabView chunks |
+| `voice-preview-smoke.mjs` (layout at five viewports, flow, checks, dev, `vite preview`, fallback, chunkfail) | **304 pass, 0 fail**, no input repeated (the first run: 303 / 304, the target-row check at 360 px described above, then fixed). The tab bar is one row inside the viewport at all five viewports (360 px: 16–344 px, tabs 43–76 px wide, 44 px tall); Discard frees everything at all five viewports, as before; nothing of the lab is fetched while only Voice Shaper is used; the chunk failure shows the load error in the tab with all five tabs and Stop Listening still there |
+| `cue-strip-smoke.mjs --pitch-only=man,woman` (448 × 890) | 107 / 107 |
+| `lab-layout-smoke.mjs` (360, 448, 1280 px; nothing moves as the voice comes and goes, the "Likely heard as" panel in every state) | partly. The forced part (all 44 panel states, no network): **18 / 18** at 360, 448 and 1280 px; the panel is 233 / 218 / 218 px in every state and nothing below it moved (max 0.00 px). The live parts (cue strip, lab Resonance, lab Weight × clarity with the mapping buttons): every check passed at 360 px (10 / 10) and at 448 px as far as they ran (cue strip, lab Resonance), no box moved; the runs did not finish, because a resource governor on this machine suspended the browser while other work held the CPU above 90 %, and the page call timed out. The live-panel part (it downloads the voice model) was not run |
+
+Screenshots of the tab bar and the Voice Shaper tab at 360 × 690, 448 × 890 and 1280 × 800 were
+kept outside the repository. Not repeated: the phone check (the engine, worker and card are
+unchanged; only where the card sits moved) and the desktop timing run.
