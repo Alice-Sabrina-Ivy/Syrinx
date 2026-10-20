@@ -1,11 +1,11 @@
-// noise-margin-eval.mjs — the voice preview's background-noise check (src/voice-preview/checks.js
+// noise-margin-eval.mjs — Voice Shaper's background-noise check (src/voice-preview/checks.js
 // levelMargin) on public corpora: how often clean speech gets the notice and how often noisy
 // speech does, for the floor at the 10th and the 5th percentile and several thresholds.
 // measurements/voice-preview-phase1-2026-10-19.md, fix step (the review's "the noise notice can
 // fire on clean continuous speech").
 //
 // Speech: PTDB-TUG (48 kHz) and FDA (20 kHz) from the gitignored tests/dsp/data corpora,
-// resampled to 16 kHz with the voice preview's own resampleClip (noise-synth's rate):
+// resampled to 16 kHz with Voice Shaper's own resampleClip (noise-synth's rate):
 //   whole     the corpus file as recorded (pauses before / after the sentence), first 8 s
 //   trimmed   cut to the speech (first to last 20 ms frame within 30 dB of the loudest), first
 //             8 s, kept when at least 3 s long: continuous speech, the worst case for the floor

@@ -1,4 +1,4 @@
-// bridge-hook-test.js — the voice preview's bridge in the REAL useAudioPipeline hook
+// bridge-hook-test.js — Voice Shaper's bridge in the REAL useAudioPipeline hook
 // (driven in Node as tests/audio/pipeline-worker-errors-test.js does: fake MSTP capture
 // and Workers, the session oracle's module hooks, import.meta.env.BASE_URL supplied).
 //   - The capture handle is registered when listening starts (sample rate, a working

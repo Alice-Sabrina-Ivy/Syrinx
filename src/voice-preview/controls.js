@@ -1,4 +1,4 @@
-// controls.js — the voice preview's slider maths (pure; no imports). Used by the
+// controls.js — Voice Shaper's slider maths (pure; no imports). Used by the
 // worker (median, 5th percentile, limits, the formant scale) and by the card.
 // measurements/voice-preview-phase1-2026-10-19.md §6.
 //

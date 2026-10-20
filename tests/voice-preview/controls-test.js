@@ -1,4 +1,4 @@
-// controls-test.js — the voice preview's slider maths (src/voice-preview/controls.js):
+// controls-test.js — Voice Shaper's slider maths (src/voice-preview/controls.js):
 // median and 5th percentile (numpy linear), the pitch limits (+12 st; the low-contour
 // rule: the shifted 5th percentile stays >= 75 Hz, never below -12), percent -> formant
 // scale (3 % -> exactly 1.03), the label's Hz, presets with and without clamping, the

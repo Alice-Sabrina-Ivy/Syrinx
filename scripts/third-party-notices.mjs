@@ -22,8 +22,8 @@
 // ThirdPartyNotices.txt of microsoft/onnxruntime at the commit the shipped
 // runtime was built from (node_modules/onnxruntime-web/__commit.txt).
 //
-// Code that is not an npm package (NON_NPM_COMPONENTS, 2026-10-19): the voice
-// preview's WebAssembly module (src/voice-preview/wasm/) contains compiled WORLD
+// Code that is not an npm package (NON_NPM_COMPONENTS, 2026-10-19): Voice
+// Shaper's WebAssembly module (src/voice-preview/wasm/) contains compiled WORLD
 // (modified BSD, which requires its text with binary copies) and Emscripten's
 // JavaScript runtime and system libraries (musl, dlmalloc, LLVM compiler-rt /
 // libc++ / libc++abi). When the build's module graph contains a module under
@@ -48,13 +48,13 @@ export const COMMITTED_LICENSES = {
 export const NON_NPM_COMPONENTS = Object.freeze([
   {
     name: "WORLD",
-    title: "WORLD (M. Morise; mmorise/World 8d79b88b7dd92e8a132996cf74080b2d6f881b98; its fft.cpp includes T. Ooura's FFT routines) — compiled into the voice preview's WebAssembly module",
+    title: "WORLD (M. Morise; mmorise/World 8d79b88b7dd92e8a132996cf74080b2d6f881b98; its fft.cpp includes T. Ooura's FFT routines) — compiled into Voice Shaper's WebAssembly module",
     idPattern: /\/src\/voice-preview\/wasm\//,
     files: ["licenses/world/LICENSE.txt"],
   },
   {
     name: "Emscripten",
-    title: "Emscripten 6.0.10 runtime and system libraries (musl, dlmalloc, LLVM compiler-rt, libc++, libc++abi) — in the voice preview's WebAssembly module and its JavaScript glue",
+    title: "Emscripten 6.0.10 runtime and system libraries (musl, dlmalloc, LLVM compiler-rt, libc++, libc++abi) — in Voice Shaper's WebAssembly module and its JavaScript glue",
     idPattern: /\/src\/voice-preview\/wasm\//,
     files: [
       "licenses/emscripten/LICENSE",

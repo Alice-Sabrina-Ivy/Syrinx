@@ -1,6 +1,7 @@
-# Voice preview: build and parity scripts
+# Voice Shaper: build and parity scripts
 
-The app code is in `src/voice-preview/`; the design and acceptance list in
+Voice Shaper (called "Voice preview", a Resonance lab view, until 2026-10-20; now its own tab;
+files and identifiers keep the old name). The app code is in `src/voice-preview/`; the design and acceptance list in
 [measurements/voice-preview-phase1-2026-10-19.md](../../measurements/voice-preview-phase1-2026-10-19.md).
 The Phase 0 spike (its timing pages, parity runners and listening tools) is on the
 `voice-preview-spike` branch.
@@ -12,8 +13,8 @@ The Phase 0 spike (its timing pages, parity runners and listening tools) is on t
 | `lib/paths.mjs` | Where the SDK, the WORLD source and the build output live (`VP_CACHE`, default `build/voice-preview`) |
 | `noise-margin-eval.mjs` | The background-noise check (`checks.js` `levelMargin`) on public corpora (PTDB-TUG, FDA; gitignored), clean and with synthetic pink noise / fan hum: notice rates for the floor at the 10th and the 5th percentile (the fix step's change) |
 | `make-spike-parity.mjs` | Expected renders for `tests/voice-preview/parity-test.js`, computed by the spike's own code (extracted from the spike commit) with the committed `.wasm`; posted tracks from the real pitch chain |
-| `bundle-budget.mjs` | The bundle budget (design note §11): builds the branch point and this tree with the same Vite settings; entry and LabView chunks grow ≤ 1 KB gzip, the card and worker chunks ≤ 15 KB gzip, no voice-preview strings in the entry or LabView chunks |
-| `../voice-preview-smoke-wavs.mjs`, `../voice-preview-smoke.mjs` | The card's headless smoke against the built app (layout at five viewports in light and dark; per viewport, with touch or the mouse, both sliders to each end, every quick setting, the target row, each Play button, and Discard freeing the recording's memory; flow, keyboard, playback, session guard, hum / noise notices, Discard / Download; dev server, `vite preview`, the non-SIMD fallback) and, with `--parts=timing` and `$VP_CACHE`, the desktop timing in the spike's Chrome for Testing 154 |
+| `bundle-budget.mjs` | The bundle budget (design note §11, "Renamed and moved 2026-10-20"): builds the merge base with `origin/cue-strip` (no Voice Shaper) and this tree with the same Vite settings; what every page load fetches (entry JS + main stylesheet) and the LabView chunk grow ≤ 1 KB gzip, the tab chunk (`VoiceShaperView` with the card) and the worker chunk ≤ 15 KB gzip, the tab chunk is only a lazy import, no voice-preview strings in the entry or LabView chunks |
+| `../voice-preview-smoke-wavs.mjs`, `../voice-preview-smoke.mjs` | Voice Shaper's headless smoke against the built app (the tab bar, the lab's two views and what each tab fetches; layout at five viewports in light and dark; per viewport, with touch or the mouse, both sliders to each end, every quick setting, the target row, each Play button, and Discard freeing the recording's memory; flow, keyboard, playback, session guard, hum / noise notices, Discard / Download; dev server, `vite preview`, the non-SIMD fallback, a tab chunk that fails to download) and, with `--parts=timing` and `$VP_CACHE`, the desktop timing in the spike's Chrome for Testing 154 |
 
 ```sh
 export VP_CACHE=<folder with emsdk/ and world-src/>   # build.mjs --install fetches both

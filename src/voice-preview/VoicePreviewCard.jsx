@@ -1,13 +1,15 @@
-// VoicePreviewCard.jsx — the "Voice preview" card (experimental; the Resonance lab's
-// third view). A lazy chunk: React loads it when the view is first opened, and loading it
-// starts the voice-preview worker (which fetches exactly one .wasm). Record a 3–8 s
+// VoicePreviewCard.jsx — the "Voice Shaper" card (experimental; the Voice Shaper tab's
+// content, VoiceShaperView.jsx — called "Voice preview" and shown as the Resonance lab's
+// third view until 2026-10-20). In the tab's lazy chunk: React loads it when the tab is
+// first opened, and loading it starts the voice-preview worker (which fetches exactly one
+// .wasm). Record a 3–8 s
 // phrase, then hear it with a different pitch or resonance: record -> analyse once in the
 // worker -> re-render on slider release -> three-way playback (preview / unchanged
 // rebuild / original) with loop. Record, then play only; never live.
 // measurements/voice-preview-phase1-2026-10-19.md §6–§10, §13.
 //
-// State lives outside React, for the page visit (it survives view and tab switches, like
-// the lab): the controller (worker lifecycle, recording, render queue), the playback
+// State lives outside React, for the page visit (it survives tab switches, like the lab):
+// the controller (worker lifecycle, recording, render queue), the playback
 // (one AudioContext) and a small UI store (slider values, the target row, the live-region
 // text). Page hide terminates the worker and closes the AudioContext; nothing is ever
 // written to storage. Every user-facing string comes from strings.js.
@@ -132,7 +134,7 @@ function makeSession() {
 let session = null;
 const sessionListeners = new Set();
 function openSession() {
-  try { session = makeSession(); } catch (err) { console.error("voice preview", err); session = { failed: true }; }
+  try { session = makeSession(); } catch (err) { console.error("Voice Shaper", err); session = { failed: true }; }
 }
 openSession();
 const notifySession = () => { for (const f of sessionListeners) f(); };
@@ -271,7 +273,7 @@ function Card({ sess, direction = null, isSessionRecording, phone = false }) {
   const isRecRef = useRef(isSessionRecording);
   useEffect(() => { isRecRef.current = isSessionRecording; });
   useEffect(() => startTicker(ctl, playback, isRecRef, silently), [ctl, playback, silently]);
-  // Leaving the view or the tab stops playback (the card is not there to stop it).
+  // Leaving the tab stops playback (the card is not there to stop it).
   useEffect(() => () => silently(() => playback.stop()), [playback, silently]);
 
   const recordRef = useRef(null);
@@ -279,7 +281,7 @@ function Card({ sess, direction = null, isSessionRecording, phone = false }) {
   const targetInputRef = useRef(null);
   const aboutBtnRef = useRef(null);
   // Opening the target row focuses its field, except on a phone when the field is already
-  // prefilled: there a focus() pops up the keyboard over the lab area, and Apply is enough.
+  // prefilled: there a focus() pops up the keyboard over the tab's area, and Apply is enough.
   const focusTargetRef = useRef(true);
   useEffect(() => { if (u.targetOpen && focusTargetRef.current) targetInputRef.current?.focus(); }, [u.targetOpen]);
 
@@ -429,9 +431,9 @@ function Card({ sess, direction = null, isSessionRecording, phone = false }) {
     >
       {/* heading + about toggle */}
       <div className="flex items-center gap-2">
-        <h3 id={id("h")} className="text-sm font-medium text-neutral-100">
+        <h2 id={id("h")} className="text-sm font-medium text-neutral-100">
           {S.heading} <span className="ml-1 text-xs font-normal text-neutral-400">{S.tag}</span>
-        </h3>
+        </h2>
         <button
           ref={aboutBtnRef}
           type="button"

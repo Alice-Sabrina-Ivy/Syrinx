@@ -1,7 +1,7 @@
-// wasm-files.js — the voice preview's WebAssembly files as content-hashed build assets
+// wasm-files.js — Voice Shaper's WebAssembly files as content-hashed build assets
 // (the src/ml/ort-runtime-files.js pattern): the explicit `?url` imports make Vite emit
 // the committed glue and both .wasm builds unmodified into dist/assets/ and hand back
-// their URLs. Imported only by the voice preview's lazily loaded card, which passes the
+// their URLs. Imported only by Voice Shaper's lazily loaded card, which passes the
 // URLs to the worker (`init`); the worker fetches exactly one .wasm (SIMD or not).
 // A module id under src/voice-preview/wasm/ in the build also brings WORLD's and
 // Emscripten's licence texts into THIRD_PARTY_NOTICES.txt (scripts/third-party-notices.mjs).

@@ -1,4 +1,4 @@
-// vp-worker.js — the voice preview's module Worker: records, analyses once, renders on
+// vp-worker.js — Voice Shaper's module Worker: records, analyses once, renders on
 // demand. measurements/voice-preview-phase1-2026-10-19.md §3–§5, §7.
 //
 // One worker per card session. All audio stays here and in the main thread's memory;

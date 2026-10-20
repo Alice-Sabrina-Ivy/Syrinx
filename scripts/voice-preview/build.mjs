@@ -1,5 +1,5 @@
 // build.mjs — reproducible WebAssembly build of WORLD + Syrinx's C API
-// (wasm/vp_world.cpp) for the voice preview. Written for the Phase 0 spike
+// (wasm/vp_world.cpp) for Voice Shaper (then "Voice preview"). Written for the Phase 0 spike
 // (measurements/voice-preview-spike-2026-10-12.md §P2a); the shipped modules in
 // src/voice-preview/wasm/ are exactly its output (measurements/voice-preview-phase1-2026-10-19.md §12).
 //

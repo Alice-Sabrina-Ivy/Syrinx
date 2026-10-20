@@ -1,4 +1,4 @@
-// recorder.js — the voice preview's recording, inside the voice-preview worker
+// recorder.js — Voice Shaper's recording, inside the voice-preview worker
 // (pure; tests/voice-preview/recorder-test.js). measurements/voice-preview-phase1-2026-10-19.md §3.
 //
 // Raw audio: whole capture chunks ({ buffer, contextTime }, ~25 ms each, broadcast to

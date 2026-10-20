@@ -1,4 +1,4 @@
-// recorder-test.js — the voice preview's recorder (src/voice-preview/recorder.js):
+// recorder-test.js — Voice Shaper's recorder (src/voice-preview/recorder.js):
 // the 8 s cap by whole capture chunks at 16 / 44.1 / 48 / 96 kHz, under 3 s = too short,
 // level reports, and matching posted pitch to recorded chunks by contextTime (exact,
 // nearest within half a chunk, late, missing, duplicates, outside the recording),

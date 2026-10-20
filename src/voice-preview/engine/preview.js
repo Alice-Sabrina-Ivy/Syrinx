@@ -1,4 +1,4 @@
-// preview.js — the voice preview's analyse-once / render-on-demand engine (WORLD,
+// preview.js — Voice Shaper's analyse-once / render-on-demand engine (WORLD,
 // F0 front end F-S), run inside the voice-preview worker (../vp-worker.js) and in
 // Node by the tests.
 //

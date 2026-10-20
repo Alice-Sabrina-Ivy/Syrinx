@@ -1,4 +1,4 @@
-// playback-test.js — the voice preview's three-way playback (src/voice-preview/playback.js)
+// playback-test.js — Voice Shaper's three-way playback (src/voice-preview/playback.js)
 // against a fake AudioContext with a hand-moved clock: the context is created on the first
 // play, each version plays at its own rate, A/B switching keeps the position, pressing the
 // playing version stops it, a new preview takes over at the same position, the loop wraps

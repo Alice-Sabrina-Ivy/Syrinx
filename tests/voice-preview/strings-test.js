@@ -1,12 +1,14 @@
-// strings-test.js — the voice preview card's user-facing strings (src/voice-preview/strings.js):
+// strings-test.js — the Voice Shaper card's user-facing strings (src/voice-preview/strings.js):
 // every string and every value label is free of gender words and score words; the
 // strings match the design note's list word for word (the caveat and "may sound
 // buzzier" included); value labels, aria-valuetext, the target result line, the download
 // name and the minus sign (U+2212); the fix step's additions (the setting line beside Play,
 // the announcements with the notices and the setting in words, "may sound buzzier" on a
-// lowered target result). The three strings LabView carries itself (the view option, the
-// loading fallback and the load-error fallback) equal strings.js.
-// measurements/voice-preview-phase1-2026-10-19.md §6, §9, §10, §13, §14 item 7; fix step.
+// lowered target result). The three strings App.jsx carries itself (the tab, the loading
+// fallback and the load-error fallback) equal strings.js, the tab sits between History and
+// Resonance lab, and the Resonance lab is back to its two views (no Voice Shaper in it).
+// measurements/voice-preview-phase1-2026-10-19.md §6, §9, §10, §13, §14 item 7; fix step;
+// "Renamed and moved 2026-10-20" (the feature's user-facing name is Voice Shaper).
 //
 //   node tests/voice-preview/strings-test.js
 import { readFileSync } from "node:fs";
@@ -51,17 +53,17 @@ T.check("no gender words", g.length === 0, g.slice(0, 3).join(" | "));
 T.check("no score words", sc.length === 0, sc.slice(0, 3).join(" | "));
 T.check("the check itself catches them", GENDER.test("More feminine") && GENDER.test("a man's voice") && SCORE.test("Your score") && !GENDER.test("manner, many, formant"));
 
-// ---- word for word (the design note, §9)
-console.log("\nwording (design note §9)");
+// ---- word for word (the design note, §9; the names as renamed 2026-10-20)
+console.log("\nwording (design note §9, renamed 2026-10-20)");
 const DESIGN = {
-  viewOption: "Voice preview",
-  heading: "Voice preview",
+  tab: "Voice Shaper",
+  heading: "Voice Shaper",
   tag: "experimental",
-  aboutLabel: "About voice preview",
+  aboutLabel: "About Voice Shaper",
   intro: "Record a short phrase, then hear it with a different pitch or resonance.",
-  loading: "Loading the voice preview…",
-  loadError: "The voice preview could not load. Reload the page to try again.",
-  unsupported: "This browser can't run the voice preview (it needs WebAssembly).",
+  loading: "Loading Voice Shaper…",
+  loadError: "Voice Shaper could not load. Reload the page to try again.",
+  unsupported: "This browser can't run Voice Shaper (it needs WebAssembly).",
   readyToRecord: "Say a short phrase, 3 to 8 seconds.",
   tooShort: "That was under 3 seconds. Please record at least 3 seconds.",
   cancelled: "Recording stopped because listening was turned off.",
@@ -139,15 +141,23 @@ T.check("\"Preview updated:\" with the setting in words, buzzier when lowered",
   previewUpdatedAnnouncement(-2, -3, 178.6) === "Preview updated: pitch 2 semitones lower, about 159 hertz, may sound buzzier; resonance 3 percent darker."
   && previewUpdatedAnnouncement(2, 0, 148) === "Preview updated: pitch 2 semitones higher, about 166 hertz; resonance unchanged.",
   previewUpdatedAnnouncement(-2, -3, 178.6));
-T.check("download name (no date, no name)", downloadName(2, 3) === "syrinx-voice-preview-plus2st-plus3pct.wav"
-  && downloadName(-12, -21) === "syrinx-voice-preview-minus12st-minus21pct.wav" && downloadName(0, 0) === "syrinx-voice-preview-plus0st-plus0pct.wav");
+T.check("download name (no date, no name)", downloadName(2, 3) === "syrinx-voice-shaper-plus2st-plus3pct.wav"
+  && downloadName(-12, -21) === "syrinx-voice-shaper-minus12st-minus21pct.wav" && downloadName(0, 0) === "syrinx-voice-shaper-plus0st-plus0pct.wav");
 
-// ---- LabView's own copies
-console.log("\nLabView");
+// ---- App.jsx's own copies (the tab, its loading line and its error boundary are in the
+// main bundle, which must not import strings.js)
+console.log("\nApp.jsx");
+const app = readFileSync(path.join(REPO, "src/App.jsx"), "utf8");
+const tabsAt = app.indexOf("const TABS = [");
+const tabs = [...app.slice(tabsAt, app.indexOf("];", tabsAt)).matchAll(/label: "([^"]+)"/g)].map((m) => m[1]);
+T.check("tab \"Voice Shaper\" = S.tab, between History and Resonance lab", tabs.join(" | ") === `Dashboard | Pitch | History | ${S.tab} | Resonance lab`, tabs.join(" | "));
+T.check("loading fallback = S.loading", app.includes(`>${S.loading}</p>`));
+T.check("load-error fallback (the tab's chunk failed to download) = S.loadError", app.includes(`>${S.loadError}</p>`));
+T.check("the tab's module is a lazy import, never a static one", /lazy\(\(\) => import\("\.\/voice-preview\/VoiceShaperView\.jsx"\)\)/.test(app)
+  && !/^import [^\n]*voice-preview\/(VoiceShaperView|VoicePreviewCard|strings)/m.test(app));
 const lab = readFileSync(path.join(REPO, "src/resonance-lab/LabView.jsx"), "utf8");
-T.check("view option \"Voice preview\"", lab.includes(`opt("preview", "${S.viewOption}")`));
-T.check("loading fallback = S.loading", lab.includes(`>${S.loading}</p>`));
-T.check("load-error fallback (the card's chunk failed to download) = S.loadError", lab.includes(`>${S.loadError}</p>`));
+T.check("the Resonance lab is back to its two views (no Voice Shaper / voice preview in LabView.jsx)",
+  !/voice-preview|VoicePreview|Voice Shaper|"preview"/i.test(lab) && lab.includes('opt("resonance", "Resonance")') && lab.includes('opt("weight", "Weight × clarity")'));
 const card = readFileSync(path.join(REPO, "src/voice-preview/VoicePreviewCard.jsx"), "utf8");
 const jsxText = [...card.matchAll(/>([^<>{}\n]*[A-Za-z]{3,}[^<>{}\n]*)</g)].map((m) => m[1].trim()).filter(Boolean);
 T.check("the card renders no literal text of its own (all from strings.js)", jsxText.length === 0, jsxText.slice(0, 3).join(" | "));

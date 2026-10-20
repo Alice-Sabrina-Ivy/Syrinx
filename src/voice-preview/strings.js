@@ -1,5 +1,7 @@
-// strings.js — every user-facing string of the voice preview card, word for word as
-// measurements/voice-preview-phase1-2026-10-19.md §9 / §10 lists them, plus the value
+// strings.js — every user-facing string of the Voice Shaper card (the feature was called
+// "Voice preview" until 2026-10-20; the files keep that name), word for word as
+// measurements/voice-preview-phase1-2026-10-19.md §9 / §10 lists them (the names as renamed
+// in its "Renamed and moved 2026-10-20" section), plus the value
 // labels built from them (pure; tests/voice-preview/strings-test.js checks every string
 // for gender words and score words, and the caveat and "may sound buzzier" verbatim).
 // Negative values use the minus sign U+2212.
@@ -9,16 +11,17 @@ const MINUS = "−";
 const signed = (n) => (n > 0 ? `+${n}` : n < 0 ? `${MINUS}${Math.abs(n)}` : "0");
 
 export const S = Object.freeze({
-  viewOption: "Voice preview",
-  heading: "Voice preview",
+  // the app's tab (App.jsx carries its own copy; tests/voice-preview/strings-test.js checks it)
+  tab: "Voice Shaper",
+  heading: "Voice Shaper",
   tag: "experimental",
-  aboutLabel: "About voice preview",
+  aboutLabel: "About Voice Shaper",
   intro: "Record a short phrase, then hear it with a different pitch or resonance.",
 
   // states
-  loading: "Loading the voice preview…",
-  loadError: "The voice preview could not load. Reload the page to try again.",
-  unsupported: "This browser can't run the voice preview (it needs WebAssembly).",
+  loading: "Loading Voice Shaper…",
+  loadError: "Voice Shaper could not load. Reload the page to try again.",
+  unsupported: "This browser can't run Voice Shaper (it needs WebAssembly).",
   readyToRecord: "Say a short phrase, 3 to 8 seconds.",
   tooShort: "That was under 3 seconds. Please record at least 3 seconds.",
   cancelled: "Recording stopped because listening was turned off.",
@@ -170,6 +173,6 @@ export function previewUpdatedAnnouncement(st, pct, medianHz) {
   return `Preview updated: pitch ${pitchValueText(st, medianHz)}; resonance ${resonanceValueText(pct)}.`;
 }
 
-/** Download name: syrinx-voice-preview-{plus|minus}{n}st-{plus|minus}{m}pct.wav (no date, no name). */
+/** Download name: syrinx-voice-shaper-{plus|minus}{n}st-{plus|minus}{m}pct.wav (no date, no name). */
 export const downloadName = (st, pct) =>
-  `syrinx-voice-preview-${st < 0 ? "minus" : "plus"}${Math.abs(st)}st-${pct < 0 ? "minus" : "plus"}${Math.abs(pct)}pct.wav`;
+  `syrinx-voice-shaper-${st < 0 ? "minus" : "plus"}${Math.abs(st)}st-${pct < 0 ? "minus" : "plus"}${Math.abs(pct)}pct.wav`;

@@ -1,4 +1,4 @@
-// checks-test.js — the voice preview's recording check (src/voice-preview/checks.js):
+// checks-test.js — Voice Shaper's recording check (src/voice-preview/checks.js):
 // hum flag from the forwarded notch flags (recorded chunks only), the background-noise
 // level margin on synthetic signals (clean voice with digital silence: no flag; with
 // pink noise at +10 dB SNR: flag; the 28 dB boundary; the floor at the 5th percentile, so

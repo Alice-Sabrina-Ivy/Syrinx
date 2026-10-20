@@ -1,4 +1,4 @@
-// controller-guards-test.js — the voice preview controller's guards added in the fix step
+// controller-guards-test.js — the Voice Shaper controller's guards added in the fix step
 // (src/voice-preview/controller.js), against a scripted fake worker and fake timers (no
 // WebAssembly): a render error sends the setting that waited behind it at once and a later
 // successful render clears the error (it used to replay the stale setting after a newer

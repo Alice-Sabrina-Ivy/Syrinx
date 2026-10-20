@@ -1,20 +1,24 @@
-// voice-preview-smoke.mjs — headless check of the "Voice preview" card (the Resonance lab's
-// third view) against the BUILT app, with Chrome's fake microphone playing public /
+// voice-preview-smoke.mjs — headless check of Voice Shaper (called "Voice preview" and shown
+// as the Resonance lab's third view until 2026-10-20; now its own tab between History and
+// Resonance lab) against the BUILT app, with Chrome's fake microphone playing public /
 // synthetic WAVs (scripts/voice-preview-smoke-wavs.mjs -> build/voice-preview-smoke/wavs/).
-// measurements/voice-preview-phase1-2026-10-19.md §14 "Smoke".
+// measurements/voice-preview-phase1-2026-10-19.md §14 "Smoke", "Renamed and moved 2026-10-20".
 //
 //   npm run build && node scripts/voice-preview-smoke-wavs.mjs &&
 //   node scripts/voice-preview-smoke.mjs [--parts=layout,flow,checks,dev,preview,fallback,chunkfail] [--out=<dir>]
 //        [--viewports=p360,p402,phone,landscape,desktop] [--chrome=<exe>]
 //        [--port=4193] [--dev-port=5193] [--preview-port=4194]
 //
-// layout  (clean.wav) per viewport, one page: the lab opened on Resonance requests nothing
-//         of the voice preview (card chunk, worker, glue, .wasm); opening the view requests
+// layout  (clean.wav) per viewport, one page: listening on the Dashboard and then the lab
+//         opened on Resonance request nothing of Voice Shaper (tab chunk, worker, glue,
+//         .wasm); the tab bar reads Dashboard, Pitch, History, Voice Shaper, Resonance lab on
+//         one row inside the viewport (screenshot <viewport>-dark-tabs); the lab offers its
+//         two views only (Resonance, Weight × clarity); opening the Voice Shaper tab requests
 //         exactly one .wasm and the card gets ready (SIMD in Chrome); at 360 x 690 the lab's
 //         Resonance view still fits its four cards (the lab smoke's check). Record waits for
 //         6 s of listening, the recording auto-stops at 8 s, then "Preview ready". Then, in
 //         prefers-color-scheme dark AND light: no horizontal page scroll; heading, status
-//         line and Record inside the lab area at scrollTop 0; every control reachable by
+//         line and Record inside the tab's area at scrollTop 0; every control reachable by
 //         scrolling it and on top there; no clipped text; targets (Record / Play >= 44 x 44
 //         on phones, everything else >= 24 x 24, ranges 44 px tall); text >= 4.5:1 against
 //         the card; computed color-scheme dark. Screenshots per viewport and scheme.
@@ -26,7 +30,9 @@
 //         page's AudioBuffers and array-buffer backing store back to what they were before
 //         the recording (CDP queryObjects / getHeapUsage after a forced GC), the old worker
 //         gone and the fresh worker's WebAssembly memory at its initial size.
-// flow    (clean.wav, 1280 x 800, direction "More feminine" for the target prefill): a stop
+// flow    (clean.wav, 1280 x 800, direction "More feminine" for the target prefill): the
+//         Voice Shaper tab opened straight after Start Listening; nothing of the Resonance lab
+//         is requested during the whole part (the tab does not start the lab); a stop
 //         at 2 s -> too short; a full recording; keyboard order (Record, sliders, quick
 //         settings, Play group, Discard / Download), arrow keys -> aria-valuetext and ONE
 //         render 400 ms after the last key; presets; the target row (prefill 205 Hz, focus,
@@ -44,7 +50,7 @@
 //         -> the noise notice; the layout part's clean runs show neither. Every run makes a
 //         preview, and "Preview ready." is announced WITH the notice (fix step). The noise run
 //         (448 x 890, touch, direction "More feminine"): opening the target row with a prefilled
-//         field does not focus the field (no phone keyboard over the lab area).
+//         field does not focus the field (no phone keyboard over the tab's area).
 // dev     one run against `vite` (dev server): the ?url glue import works there too. The dev
 //         server runs in this process (Vite's createServer) with its own dependency cache in
 //         build/vp-smoke-vite/, so a worktree whose node_modules is a junction never writes
@@ -53,9 +59,9 @@
 //         application/wasm, the SIMD build loads, record -> preview -> quick setting -> play.
 // fallback the static server hands out a SIMD .wasm that fails to compile: the worker loads
 //         the non-SIMD build (fetched once), which records, renders and plays.
-// chunkfail the static server answers 404 for the card's chunk (as after a deploy while the tab
-//         stays open): opening the view shows "The voice preview could not load…" inside the
-//         lab; the app stays (tabs, Stop Listening), and the lab's other views still work.
+// chunkfail the static server answers 404 for the Voice Shaper tab's chunk (as after a deploy
+//         while the page stays open): opening the tab shows "Voice Shaper could not load…" in
+//         the tab; the app stays (tabs, Stop Listening), and the Resonance lab still opens.
 // Every part also fails on console errors, the workers' included.
 // timing  (not in the default parts; needs timing.wav, i.e. $VP_CACHE) desktop timing in the
 //         spike's browser (--chrome=<Chrome for Testing 154>, default $VP_CACHE/browsers/…),
@@ -155,7 +161,7 @@ const MIME = { ".html": "text/html", ".js": "text/javascript", ".mjs": "text/jav
   ".wasm": "application/wasm", ".txt": "text/plain; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon", ".onnx": "application/octet-stream" };
 const served = [];
 let corruptSimd = false; // the fallback part: serve a SIMD .wasm that fails to compile
-let missingCard = false; // the chunkfail part: 404 for the card's chunk
+let missingCard = false; // the chunkfail part: 404 for the Voice Shaper tab's chunk (the card is in it)
 function startStatic() {
   const root = path.join(repo, "dist");
   httpServer = createServer((req, res) => {
@@ -164,7 +170,7 @@ function startStatic() {
     let p = decodeURIComponent(u.pathname.replace(/^\/Syrinx\/?/, "/"));
     let f = path.join(root, p);
     if (!f.startsWith(root)) { res.writeHead(403); res.end(); return; }
-    if (missingCard && /^VoicePreviewCard-.*\.js$/.test(path.basename(f))) { res.writeHead(404, { "Cache-Control": "no-store" }); res.end("not found"); return; }
+    if (missingCard && /^VoiceShaperView-.*\.js$/.test(path.basename(f))) { res.writeHead(404, { "Cache-Control": "no-store" }); res.end("not found"); return; }
     if (!existsSync(f) || statSync(f).isDirectory()) f = path.join(root, "index.html");
     res.writeHead(200, { "Content-Type": MIME[path.extname(f)] ?? "application/octet-stream", "Cache-Control": "no-store" });
     let body = readFileSync(f);
@@ -173,7 +179,9 @@ function startStatic() {
   });
   return new Promise((r) => httpServer.listen(PORT, "127.0.0.1", r));
 }
-const isVp = (p) => /VoicePreviewCard|vp-worker|vp_world/.test(p);
+const isVp = (p) => /VoiceShaperView|VoicePreviewCard|vp-worker|vp_world/.test(p);
+// the Resonance lab's own files (its view chunk, pipeline, worker): opening Voice Shaper must not start the lab
+const isLab = (p) => /LabView|labPipeline|lab-worker/.test(p);
 const wasmName = (p) => p.split("/").pop();
 const distWasm = readdirSync(path.join(repo, "dist", "assets")).filter((f) => /^vp_world-.*\.wasm$/.test(f))
   .map((f) => ({ f, size: statSync(path.join(repo, "dist", "assets", f)).size }));
@@ -228,13 +236,26 @@ async function startListening(page, direction = "exploring") {
   return Date.now();
 }
 const openLab = async (page) => {
-  await clickButton(page, ["Resonance lab"]);
+  await clickButton(page, ["Resonance lab"], "nav button");
   await page.waitForSelector("[data-lab-view]", { timeout: 30000 });
 };
-const openPreview = async (page) => {
-  await clickSel(page, '[data-lab-view="preview"]');
+// the Voice Shaper tab (its own tab since 2026-10-20)
+const openShaper = async (page) => {
+  await clickButton(page, ["Voice Shaper"], "nav button");
   await page.waitForSelector("[data-voice-preview]", { timeout: 30000 });
 };
+// The tab bar: labels in order, one row, inside the viewport, no overflow; the active tab.
+const tabBar = (page) => page.evaluate(() => {
+  const nav = document.querySelector("nav");
+  const bs = [...nav.querySelectorAll("button")];
+  const r = bs.map((b) => b.getBoundingClientRect());
+  return { labels: bs.map((b) => b.textContent.trim()), active: bs.find((b) => b.className.includes("bg-neutral-700"))?.textContent.trim() ?? null,
+    oneRow: r.every((x) => Math.abs(x.top - r[0].top) < 0.5), left: +Math.min(...r.map((x) => x.left)).toFixed(1), right: +Math.max(...r.map((x) => x.right)).toFixed(1),
+    minW: +Math.min(...r.map((x) => x.width)).toFixed(1), minH: +Math.min(...r.map((x) => x.height)).toFixed(1),
+    navOverflow: nav.scrollWidth > nav.clientWidth + 0.5, innerW: innerWidth, docW: document.documentElement.scrollWidth,
+    clip: (() => { const h = document.querySelector("header").getBoundingClientRect(); const n = nav.getBoundingClientRect(); return { x: 0, y: Math.max(0, h.top - 4), width: innerWidth, height: n.bottom + 8 - Math.max(0, h.top - 4) }; })() };
+});
+const TAB_ORDER = ["Dashboard", "Pitch", "History", "Voice Shaper", "Resonance lab"];
 const vp = (page) => page.evaluate(() => {
   const c = document.querySelector("[data-voice-preview]");
   if (!c) return null;
@@ -309,8 +330,8 @@ function measureLayout() {
   window.scrollTo(0, 0);
   const area = sc ? sc.getBoundingClientRect() : { top: 0, bottom: innerHeight, left: 0, right: innerWidth };
   const vis = (el) => { if (!el) return false; const b = el.getBoundingClientRect(); return b.height > 0 && b.top >= Math.max(0, area.top) - 0.5 && b.bottom <= Math.min(innerHeight, area.bottom) + 0.5 && b.left >= -0.5 && b.right <= innerWidth + 0.5; };
-  out.firstScreen = { heading: vis(card.querySelector("h3")), status: vis(card.querySelector("[data-vp-status]")), record: vis(card.querySelector("[data-vp-record]")) };
-  // every control reachable by scrolling the lab area, and on top there
+  out.firstScreen = { heading: vis(card.querySelector("h2")), status: vis(card.querySelector("[data-vp-status]")), record: vis(card.querySelector("[data-vp-record]")) };
+  // every control reachable by scrolling the tab's area, and on top there
   const controls = [...card.querySelectorAll("button, input")];
   const unreachable = [];
   for (const el of controls) {
@@ -383,7 +404,7 @@ function measureA11y() {
   const card = document.querySelector("[data-voice-preview]");
   const out = {};
   const h = document.getElementById(card.getAttribute("aria-labelledby"));
-  out.section = card.tagName === "SECTION" && !!h && h.textContent.startsWith("Voice preview");
+  out.section = card.tagName === "SECTION" && !!h && h.tagName === "H2" && h.textContent.startsWith("Voice Shaper");
   out.sliders = [...card.querySelectorAll("input[type=range]")].map((i) => ({
     label: document.querySelector(`label[for="${CSS.escape(i.id)}"]`)?.textContent ?? null, valuetext: i.getAttribute("aria-valuetext"),
     described: (i.getAttribute("aria-describedby") ?? "").split(" ").filter(Boolean).map((id) => document.getElementById(id)?.textContent ?? null) }));
@@ -403,7 +424,7 @@ async function shot(page, name) {
   await page.screenshot({ path: path.join(OUT, `${name}.png`) });
 }
 async function shotCard(page, name) {
-  // the whole card, scrolled through: one screenshot per screenful of the lab area
+  // the whole card, scrolled through: one screenshot per screenful of the tab's area
   const steps = await page.evaluate(() => {
     const card = document.querySelector("[data-voice-preview]");
     let sc = card.parentElement;
@@ -453,10 +474,22 @@ async function partLayout() {
     const { page, errors, cdp } = await open(v);
     const before = served.length;
     await startListening(page);
+    await sleep(2500);
+    const vpDash = served.slice(before).filter(isVp);
+    check("listening on the Dashboard: nothing of Voice Shaper requested", vpDash.length === 0, vpDash.join(", "));
+    // the tab bar: five tabs in order, one row, inside the viewport
+    const tb = await tabBar(page);
+    check("tab bar: Dashboard, Pitch, History, Voice Shaper, Resonance lab", JSON.stringify(tb.labels) === JSON.stringify(TAB_ORDER), tb.labels.join(" | "));
+    check("tab bar: one row, inside the viewport, no overflow, no horizontal page scroll; tabs >= 24 x 24",
+      tb.oneRow && tb.left >= -0.5 && tb.right <= tb.innerW + 0.5 && !tb.navOverflow && tb.docW <= tb.innerW && tb.minW >= 24 && tb.minH >= 24, JSON.stringify({ ...tb, clip: undefined }));
+    await page.screenshot({ path: path.join(OUT, `${v}-dark-tabs.png`), clip: tb.clip });
     await openLab(page);
     await sleep(2500);
     const vpBefore = served.slice(before).filter(isVp);
-    check("lab open on Resonance: nothing of the voice preview requested", vpBefore.length === 0, vpBefore.join(", "));
+    check("lab open on Resonance: nothing of Voice Shaper requested", vpBefore.length === 0, vpBefore.join(", "));
+    const views = await page.evaluate(() => [...document.querySelectorAll("[data-lab-view]")].map((b) => b.dataset.labView));
+    check("the lab offers its two views only (Resonance, Weight × clarity), no Voice Shaper in it", JSON.stringify(views) === JSON.stringify(["resonance", "weight"])
+      && !(await page.evaluate(() => /Voice Shaper|Voice preview/.test(document.querySelector("[data-lab-root]")?.innerText ?? ""))), views.join(", "));
     if (v === "p360" || v === "p402") {
       await page.waitForFunction(() => document.querySelectorAll("[data-lab-phone] section").length === 4, { timeout: 30000 }).catch(() => {});
       await sleep(1000);
@@ -466,14 +499,17 @@ async function partLayout() {
       await shot(page, `${v}-dark-lab-resonance`);
     }
     const mark = served.length;
-    await openPreview(page);
+    await openShaper(page);
     const ready = await waitVp(page, () => ["ready"].includes(document.querySelector("[data-voice-preview]")?.dataset.vpPhase), "card ready", 20000);
     await sleep(500);
     const req = served.slice(mark).filter(isVp);
     const wasm = req.filter((p) => p.endsWith(".wasm"));
     const st0 = await vp(page);
-    check("view opened: card chunk, worker, glue, exactly one .wasm (the SIMD build)", ready && req.some((p) => /VoicePreviewCard/.test(p)) && req.some((p) => /vp-worker/.test(p))
+    check("Voice Shaper tab opened: tab chunk, worker, glue, exactly one .wasm (the SIMD build)", ready && req.some((p) => /VoiceShaperView/.test(p)) && req.some((p) => /vp-worker/.test(p))
       && req.some((p) => /vp_world-.*\.mjs$/.test(p)) && wasm.length === 1 && wasmName(wasm[0]) === simdWasm && st0.vpBuild === "simd", `${req.map(wasmName).join(", ")}; build ${st0.vpBuild}`);
+    const tb2 = await tabBar(page);
+    const head = await page.evaluate(() => document.querySelector("[data-voice-preview] h2")?.textContent ?? null);
+    check("Voice Shaper is the active tab; the card's heading is an h2 \"Voice Shaper experimental\"", tb2.active === "Voice Shaper" && head === "Voice Shaper experimental", `${tb2.active}; ${head}`);
     await shot(page, `${v}-dark-ready`);
     const memBase = await pageMem(cdp);
     const wBase = await workerMem(page);
@@ -621,12 +657,18 @@ async function interact(page, cdp, v, memBase, wBase) {
   await press('[data-vp-preset="target"]');
   await sleep(250);
   await page.evaluate(() => { const i = document.querySelector("[data-vp-target] input"); i.focus(); i.select(); });
-  await page.keyboard.type("240"); // about +5 st above the clean phrase's ~182 Hz median, so a render must follow
+  // about +5 st above THIS recording's median, so a render must follow (a fixed 240 Hz was +5 st
+  // over the clean phrase's ~182 Hz median, but which part of the looping file an 8 s
+  // recording catches depends on when Record is pressed: one that caught mostly the higher
+  // voice had a ~240 Hz median, 0 st, and nothing to render; 2026-10-20)
+  const med = Number((await page.$eval("[data-vp-median]", (e) => e.textContent)).match(/about (\d+) Hz/)[1]);
+  const targetHz = Math.min(400, Math.round(med * 2 ** (5 / 12)));
+  await page.keyboard.type(String(targetHz));
   await press("[data-vp-apply]");
   await sleep(300);
   cur = await inputs();
   const tr = await page.$eval("[data-vp-target-result]", (e) => e.textContent).catch(() => "");
-  check(`target row (${how} Apply, 240 Hz) -> a raised setting rendered`, (await settled(`${cur.st},${cur.pct}`)) && /^Set to /.test(tr) && cur.st > 0, `${tr}; ${cur.st},${cur.pct}`);
+  check(`target row (${how} Apply, ${targetHz} Hz, median ~${med} Hz) -> a raised setting rendered`, (await settled(`${cur.st},${cur.pct}`)) && /^Set to /.test(tr) && cur.st > 0, `${tr}; ${cur.st},${cur.pct}`);
   await press('[data-vp-preset="target"]'); // close the row
 
   // playback: each version plays with the AudioContext running; loop; stop
@@ -679,10 +721,10 @@ async function interact(page, cdp, v, memBase, wBase) {
 async function partFlow() {
   scope = "flow";
   await launch(WAV.clean);
+  const flowMark = served.length;
   const { page, errors, cdp } = await open("desktop");
   await startListening(page, "feminine");
-  await openLab(page);
-  await openPreview(page);
+  await openShaper(page);
   await watchLive(page);
   // Record waits for 6 s of listening
   await phaseIs(page, "ready", 20000);
@@ -856,8 +898,7 @@ async function partFlow() {
   await sleep(800);
   check("Dashboard session recording started", await clickButton(page, ["Save Session"]));
   await sleep(1500);
-  await openLab(page);
-  await page.waitForSelector("[data-voice-preview]", { timeout: 10000 });
+  await openShaper(page);
   await sleep(1500);
   const guard = await page.evaluate(() => {
     const c = document.querySelector("[data-voice-preview]");
@@ -874,10 +915,11 @@ async function partFlow() {
   await sleep(500);
   await clickButton(page, ["Stop & Save"]);
   await sleep(2500);
-  await openLab(page);
-  await page.waitForSelector("[data-voice-preview]", { timeout: 10000 });
+  await openShaper(page);
   await sleep(1500);
   check("Play available again after the session", await page.$eval('[data-vp-play-version="rebuild"]', (b) => b.getAttribute("aria-disabled") !== "true"));
+  const labReq = served.slice(flowMark).filter(isLab);
+  check("Voice Shaper used without opening the lab: nothing of the Resonance lab requested", labReq.length === 0, labReq.join(", "));
 
   // a11y wiring
   const A = await page.evaluate(measureA11y);
@@ -905,7 +947,7 @@ async function partFlow() {
     }
     check("Download: the samples carry sound (RMS >= 0.01, < 0.1 % at full scale)", rms >= 0.01 && clipped < 0.001, `rms ${rms.toFixed(4)}, clipped ${(clipped * 100).toFixed(3)} %`);
     const [rst, rpct] = st.vpRendered.split(",").map(Number);
-    const name = `syrinx-voice-preview-${rst < 0 ? "minus" : "plus"}${Math.abs(rst)}st-${rpct < 0 ? "minus" : "plus"}${Math.abs(rpct)}pct.wav`;
+    const name = `syrinx-voice-shaper-${rst < 0 ? "minus" : "plus"}${Math.abs(rst)}st-${rpct < 0 ? "minus" : "plus"}${Math.abs(rpct)}pct.wav`;
     check("Download: RIFF/WAVE, 16-bit mono, engine rate, the recording's duration, the setting in the name", ok && rate === Number(st.vpRate) && Math.abs(dur - Number(st.vpSeconds)) < 0.002 && file === name,
       `${file}, ${rate} Hz, ${dur?.toFixed(3)} s vs ${st.vpSeconds} s`);
   } finally { rmSync(dl, { recursive: true, force: true }); }
@@ -970,8 +1012,7 @@ async function partChecks() {
     await launch(wav);
     const { page, errors } = await open("phone");
     const t0 = await startListening(page, name === "noise" ? "feminine" : "exploring");
-    await openLab(page);
-    await openPreview(page);
+    await openShaper(page);
     await watchLive(page);
     await recordReady(page);
     const wait = t0 + leadS * 1000 - Date.now();
@@ -985,7 +1026,7 @@ async function partChecks() {
     check(`"Preview ready." is announced with the ${name} notice`, live.some((t) => t.startsWith("Preview ready. ") && t.includes(noticeText) && t.endsWith("A quieter spot gives a cleaner preview.")), live.join(" | "));
     if (name === "noise") {
       // a phone layout with a prefilled target field: opening the row must not focus the
-      // field (that would pop up the keyboard over the lab area)
+      // field (that would pop up the keyboard over the tab's area)
       await clickSel(page, '[data-vp-preset="target"]');
       await sleep(300);
       const tf = await page.evaluate(() => ({ open: !!document.querySelector("[data-vp-target]"), value: document.querySelector("[data-vp-target] input")?.value, activeIsField: document.activeElement?.type === "number" }));
@@ -1025,8 +1066,7 @@ async function partDev() {
   page.on("framenavigated", (f) => { if (f === page.mainFrame()) navs++; });
   const navs0 = navs;
   await startListening(page);
-  await openLab(page);
-  await openPreview(page);
+  await openShaper(page);
   const ready = await waitVp(page, () => document.querySelector("[data-voice-preview]")?.dataset.vpPhase === "ready", "dev ready", 60000);
   const st = await vp(page);
   check("dev server: the ?url glue import loads, worker ready", ready && st?.vpBuild === "simd", st?.vpBuild);
@@ -1037,9 +1077,10 @@ async function partDev() {
   await viteServer.close();
 }
 
-// The card's chunk fails to download (a deploy replaced the hashed chunks while the tab stayed
-// open): the lab shows the load error in place of the card, the app stays usable (fix step;
-// without LabView's error boundary React removed the whole root).
+// The Voice Shaper tab's chunk fails to download (a deploy replaced the hashed chunks while the
+// page stayed open): the tab shows the load error in place of the card, the app stays usable
+// (fix step; without the error boundary — LabView's then, App.jsx's since the move to its own
+// tab — React removed the whole root).
 async function partChunkFail() {
   scope = "chunkfail";
   missingCard = true;
@@ -1047,21 +1088,20 @@ async function partChunkFail() {
     await launch(WAV.clean);
     const { page } = await open("p360");
     await startListening(page);
-    await openLab(page);
-    await clickSel(page, '[data-lab-view="preview"]');
-    const shown = await waitVp(page, () => !!document.querySelector("[data-lab-vp-error]"), "load error shown", 20000);
+    await clickButton(page, ["Voice Shaper"], "nav button");
+    const shown = await waitVp(page, () => !!document.querySelector("[data-vp-load-error]"), "load error shown", 20000);
     const st = await page.evaluate(() => ({
-      text: document.querySelector("[data-lab-vp-error]")?.textContent ?? null,
+      text: document.querySelector("[data-vp-load-error]")?.textContent ?? null,
       root: document.getElementById("root")?.children.length ?? 0,
       stop: [...document.querySelectorAll("button")].some((b) => b.textContent.includes("Stop Listening")),
-      tabs: ["Dashboard", "Resonance lab"].every((t) => [...document.querySelectorAll("button")].some((b) => b.textContent.includes(t))),
+      tabs: [...document.querySelectorAll("nav button")].map((b) => b.textContent.trim()),
     }));
-    check("card chunk 404: \"The voice preview could not load…\" inside the lab", shown && st.text === "The voice preview could not load. Reload the page to try again.", JSON.stringify(st));
-    check("…the app stays: tabs and Stop Listening still there", st.root > 0 && st.stop && st.tabs, JSON.stringify(st));
+    check("tab chunk 404: \"Voice Shaper could not load…\" in the tab", shown && st.text === "Voice Shaper could not load. Reload the page to try again.", JSON.stringify(st));
+    check("…the app stays: all five tabs and Stop Listening still there", st.root > 0 && st.stop && JSON.stringify(st.tabs) === JSON.stringify(TAB_ORDER), JSON.stringify(st));
     await shot(page, "p360-dark-chunk-fail");
-    await clickSel(page, '[data-lab-view="resonance"]');
+    await openLab(page);
     await sleep(500);
-    check("…and the lab's Resonance view still opens", await page.evaluate(() => document.querySelector('[data-lab-view="resonance"]')?.getAttribute("aria-pressed") === "true" && !document.querySelector("[data-lab-vp-error]")));
+    check("…and the Resonance lab still opens", await page.evaluate(() => document.querySelector('[data-lab-view="resonance"]')?.getAttribute("aria-pressed") === "true" && !document.querySelector("[data-vp-load-error]")));
     await page.close();
   } finally {
     missingCard = false;
@@ -1086,8 +1126,7 @@ async function partPreview() {
   await launch(WAV.clean);
   const { page, errors } = await open("desktop", base);
   await startListening(page);
-  await openLab(page);
-  await openPreview(page);
+  await openShaper(page);
   const ready = await waitVp(page, () => document.querySelector("[data-voice-preview]")?.dataset.vpPhase === "ready", "preview ready", 60000);
   check("vite preview: worker ready with the SIMD build", ready && (await vp(page)).vpBuild === "simd");
   const rec = await recordToPreview(page, { stopAfterMs: 4000 });
@@ -1114,9 +1153,8 @@ async function partFallback() {
     await launch(WAV.clean);
     const { page, errors } = await open("desktop");
     await startListening(page);
-    await openLab(page);
     const mark = served.length;
-    await openPreview(page);
+    await openShaper(page);
     const ready = await waitVp(page, () => document.querySelector("[data-voice-preview]")?.dataset.vpPhase === "ready", "fallback ready", 30000);
     await sleep(500);
     const wasm = served.slice(mark).filter((x) => x.endsWith(".wasm")).map(wasmName);
@@ -1154,8 +1192,7 @@ async function partTiming() {
   const { page, errors, cdp } = await open("desktop", `http://127.0.0.1:${PORT}/Syrinx/?diag=1&capture=audiocontext&sr=48000`);
   const mems = [];
   await startListening(page);
-  await openLab(page);
-  await openPreview(page);
+  await openShaper(page);
   await recordReady(page, 30000);
   const rows = [];
   for (const phrase of [5, 8]) {

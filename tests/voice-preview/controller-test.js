@@ -1,4 +1,4 @@
-// controller-test.js — the voice preview's main-thread controller with the REAL worker
+// controller-test.js — Voice Shaper's main-thread controller with the REAL worker
 // (src/voice-preview/vp-worker.js in a Node worker_threads thread, tests/voice-preview/
 // fixtures/node-worker-shim.mjs) and the REAL bridge: the capture handle hands out a
 // MessagePort per recording, the posted pitch arrives through voicePreviewPitchTap as

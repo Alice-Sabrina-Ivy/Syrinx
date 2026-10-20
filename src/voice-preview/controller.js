@@ -1,4 +1,4 @@
-// controller.js — main-thread side of the voice preview: worker lifecycle, recording
+// controller.js — main-thread side of Voice Shaper: worker lifecycle, recording
 // control (capture consumer + posted-pitch tap through bridge.js), render queue.
 // A small observable store, like resonance-lab/labPipeline.js, created once by the card
 // and kept for the page visit (it survives view and tab switches).
@@ -84,7 +84,7 @@ export function createVoicePreviewController({
       watchdog = null;
       if (gen !== workerGen || state.phase !== inPhase) return;
       terminate();
-      set({ phase, rendering: null, level: null, error: { stage, kind: "timeout", message: `voice preview worker did not answer within ${ms} ms (${inPhase})` } });
+      set({ phase, rendering: null, level: null, error: { stage, kind: "timeout", message: `Voice Shaper worker did not answer within ${ms} ms (${inPhase})` } });
     }, ms);
   }
 
@@ -110,7 +110,7 @@ export function createVoicePreviewController({
       unwatch();
       removeTap();
       releaseCapture();
-      set({ phase: state.phase === "loading" ? "load-error" : "error", error: { stage: "worker", kind: "other", message: e?.message || "voice preview worker failed" } });
+      set({ phase: state.phase === "loading" ? "load-error" : "error", error: { stage: "worker", kind: "other", message: e?.message || "Voice Shaper worker failed" } });
     };
     w.postMessage({ type: "init", glueUrl, wasmUrls });
     watch(loadTimeoutMs, "loading", "load-error", "load");

@@ -1,5 +1,7 @@
-// bundle-budget.mjs — the voice preview's bundle budget
-// (measurements/voice-preview-phase1-2026-10-19.md §11): builds the base (default: the
+// bundle-budget.mjs — Voice Shaper's bundle budget (the feature was "Voice preview", a
+// Resonance lab view, until 2026-10-20; now its own lazily loaded tab)
+// (measurements/voice-preview-phase1-2026-10-19.md §11 and "Renamed and moved
+// 2026-10-20"): builds the base (default: the
 // merge base of HEAD and origin/cue-strip, i.e. the cue-strip commit this branch last
 // merged, else cue-strip at 62bf3cc, the branch point; extracted with `git archive` into
 // build/vp-budget/) and this tree with the same Vite settings, and compares gzip sizes.
@@ -11,9 +13,11 @@
 //     module script in index.html plus everything it imports statically) AND the
 //     stylesheets index.html links (the card's Tailwind classes land in the main stylesheet;
 //     counted since the fix step);
-//   - the LabView chunk grows by more than 1.0 KB gzip;
-//   - the card chunk (VoicePreviewCard plus any chunk only it pulls in) or the worker chunk
-//     (vp-worker) is over 15 KB gzip;
+//   - the LabView chunk grows by more than 1.0 KB gzip (since the move it should not grow
+//     at all: the lab no longer carries Voice Shaper);
+//   - the Voice Shaper tab's chunk (VoiceShaperView with the card, plus any chunk only it
+//     pulls in) or the worker chunk (vp-worker) is over 15 KB gzip;
+//   - the tab's chunk is in the entry's static closure, or the LabView chunk refers to it;
 //   - "createVpWorld", "vp_world" or "voice-preview" appears in the entry or LabView chunks.
 // Both trees are built with an inline config equal to vite.config.js minus the notices
 // plugins (they emit a text asset only, no code, and need a node_modules beside the tree).
@@ -116,10 +120,13 @@ const bLab = B.find(/^LabView-.*\.js$/), hLab = H.find(/^LabView-.*\.js$/);
 const dLab = H.chunks[hLab].gzip - B.chunks[bLab].gzip;
 check("LabView chunk grows <= 1.0 KB gzip", dLab <= LIMITS.labGrowth, `${kb(B.chunks[bLab].gzip)} -> ${kb(H.chunks[hLab].gzip)}, ${dLab >= 0 ? "+" : ""}${dLab} B`);
 
-const card = H.find(/^VoicePreviewCard-.*\.js$/);
+const card = H.find(/^VoiceShaperView-.*\.js$/);
+if (!card) throw new Error("no VoiceShaperView chunk in the head build");
 const cardOnly = [...H.closure(card)].filter((f) => !hEntry.has(f) && f !== hLab);
 const cardSize = sum(H, cardOnly);
-check("card chunk (+ chunks only it pulls in) <= 15 KB gzip", cardSize <= LIMITS.card, `${cardOnly.join(", ")}: ${kb(cardSize)}`);
+check("Voice Shaper tab chunk (VoiceShaperView + card, + chunks only it pulls in) <= 15 KB gzip", cardSize <= LIMITS.card, `${cardOnly.join(", ")}: ${kb(cardSize)}`);
+check("the tab's chunk loads lazily: not in the entry's static closure, not referred to by LabView",
+  !hEntry.has(card) && !H.chunks[hLab].code.includes(card) && H.chunks[H.entry].code.includes(card), `${card}; LabView refers to it: ${H.chunks[hLab].code.includes(card)}`);
 
 const worker = H.find(/^vp-worker-.*\.js$/);
 const workerSet = H.closure(worker);

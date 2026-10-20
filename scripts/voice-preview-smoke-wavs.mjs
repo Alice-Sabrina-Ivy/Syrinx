@@ -17,7 +17,7 @@
 //              (voice-preview-smoke.mjs --parts=timing)
 //
 // Built at 16 kHz (the fixtures' rate and noise-synth's), then upsampled to 48 kHz with
-// the voice preview's own resampleClip (the resonance lab's sinc resampler), peak 0.5.
+// Voice Shaper's own resampleClip (the resonance lab's sinc resampler), peak 0.5.
 //
 //   node scripts/voice-preview-smoke-wavs.mjs [--out=<dir>]
 

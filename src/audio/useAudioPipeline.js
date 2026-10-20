@@ -863,7 +863,7 @@ export function useAudioPipeline() {
         }, 1000);
       }
 
-      // Voice preview (experimental, Resonance lab): the capture handle its
+      // Voice Shaper (experimental, its own tab): the capture handle its
       // recorder uses while listening (one extra capture consumer, only
       // during a recording). Cleared in stop(). voice-preview/bridge.js.
       setVoicePreviewCapture({
@@ -1139,7 +1139,7 @@ export function useAudioPipeline() {
       msg.pitch,
       typeof msg.contextTime === "number" ? msg.contextTime : msg.ts / 1000,
     );
-    // Voice preview: the posted value for its recording's F0 track (only
+    // Voice Shaper: the posted value for its recording's F0 track (only
     // while it records; changes no state here). voice-preview/bridge.js.
     voicePreviewPitchTap(msg);
   }

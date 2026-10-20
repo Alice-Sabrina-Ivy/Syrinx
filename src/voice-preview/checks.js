@@ -1,4 +1,4 @@
-// checks.js — the voice preview's recording check (pure; tests/voice-preview/checks-test.js).
+// checks.js — Voice Shaper's recording check (pure; tests/voice-preview/checks-test.js).
 // measurements/voice-preview-phase1-2026-10-19.md §7. A flag only adds a notice; the
 // preview is still made. Not enough voice means no preview.
 //

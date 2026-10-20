@@ -1,4 +1,4 @@
-// hum-check-test.js — the voice preview's recording check end to end with Syrinx's own
+// hum-check-test.js — Voice Shaper's recording check end to end with Syrinx's own
 // tonal-noise detector: the REAL pitch worker (src/dsp/pitch-worker.js, its noise notch;
 // driven by the session oracle's chain, scripts/session-oracle/lib/chain.mjs) hears a
 // 10 s lead-in and then the recording; its posted messages (contextTime, pitch,

@@ -1,4 +1,4 @@
-# Emscripten runtime and system libraries in the voice preview's WebAssembly module
+# Emscripten runtime and system libraries in Voice Shaper's WebAssembly module
 
 `src/voice-preview/wasm/vp_world.mjs` (the JavaScript glue) and the two `vp_world.wasm`
 builds were produced by Emscripten 6.0.10 (emsdk commit
@@ -18,4 +18,4 @@ emsdk release:
 | `libcxxabi-LICENSE.TXT` | `system/lib/libcxxabi/LICENSE.TXT` | Apache-2.0 WITH LLVM-exception | `e2b35be49f7284a45b7baca8fc7b3ab7440e7902392b2528a457816b5bb2a15c` |
 
 `scripts/third-party-notices.mjs` appends these texts to the built site's
-`THIRD_PARTY_NOTICES.txt` whenever the build contains the voice preview's WebAssembly module.
+`THIRD_PARTY_NOTICES.txt` whenever the build contains Voice Shaper's WebAssembly module.

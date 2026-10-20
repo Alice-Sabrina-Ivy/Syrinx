@@ -1,4 +1,5 @@
-// bridge.js — the voice preview's only code in the main bundle: the capture handle
+// bridge.js — Voice Shaper's only module in the main bundle (App.jsx adds the tab, its
+// lazy import and error boundary): the capture handle
 // useAudioPipeline registers while listening, and the posted-pitch tap it calls at the
 // end of handlePitchMessage. No imports; nothing happens while no tap is installed.
 // The lazily loaded voice-preview controller uses both during a recording
@@ -17,7 +18,7 @@ let tap = null;
 export function setVoicePreviewCapture(handle) {
   capture = handle;
   for (const fn of captureListeners) {
-    try { fn(handle); } catch (err) { console.error("voice preview capture listener", err); }
+    try { fn(handle); } catch (err) { console.error("Voice Shaper capture listener", err); }
   }
 }
 
@@ -37,5 +38,5 @@ export function setVoicePreviewPitchTap(fn) {
 /** useAudioPipeline.handlePitchMessage, last: hands the posted message to the tap, if any. */
 export function voicePreviewPitchTap(msg) {
   if (!tap) return;
-  try { tap(msg); } catch (err) { console.error("voice preview pitch tap", err); }
+  try { tap(msg); } catch (err) { console.error("Voice Shaper pitch tap", err); }
 }

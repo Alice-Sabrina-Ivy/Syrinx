@@ -1,4 +1,4 @@
-// world.js — JavaScript binding for the voice preview's WORLD WebAssembly
+// world.js — JavaScript binding for Voice Shaper's WORLD WebAssembly
 // module (src/voice-preview/wasm/, built from scripts/voice-preview/wasm/vp_world.cpp
 // by scripts/voice-preview/build.mjs). Runs unchanged in a module Worker and Node 24.
 //

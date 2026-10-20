@@ -1,4 +1,4 @@
-// frontend.js — F0 front end F-S for the voice preview: Syrinx's own posted
+// frontend.js — F0 front end F-S for Voice Shaper: Syrinx's own posted
 // pitch track (one value per 25 ms capture chunk, 0 = unvoiced) mapped onto
 // WORLD's 5 ms frames, then refined by StoneMask (engine/world.js).
 //

@@ -2,7 +2,7 @@
 // site (scripts/third-party-notices.mjs): every npm package bundled into
 // the app has a licence text, ONNX Runtime's (whose npm package ships none)
 // comes from licenses/onnxruntime-web/, and an unknown package without one
-// fails instead of shipping without its notice. The voice preview's WebAssembly
+// fails instead of shipping without its notice. Voice Shaper's WebAssembly
 // module (not an npm package) brings WORLD's and Emscripten's texts exactly when
 // a module under src/voice-preview/wasm/ is in the build.
 //
@@ -55,7 +55,7 @@ check("includes the ORT MIT notice", txt.includes("Copyright (c) Microsoft Corpo
 check("points at ORT's ThirdPartyNotices", txt.includes("licenses/onnxruntime-ThirdPartyNotices.txt"));
 check("each package once", (txt.match(/— bundled into this site/g) ?? []).length === 2);
 
-console.log("\nnon-npm components (voice preview: WORLD + Emscripten)");
+console.log("\nnon-npm components (Voice Shaper: WORLD + Emscripten)");
 const vpIds = ["C:\\r\\src\\voice-preview\\wasm\\vp_world.mjs?url", "/r/src/voice-preview/wasm/simd/vp_world.wasm?url"];
 check("voice-preview wasm module ids -> WORLD + Emscripten", vpIds.every((id) => componentsOfModuleId(id).join() === "WORLD,Emscripten"));
 check("other modules -> none", componentsOfModuleId("/r/src/voice-preview/vp-worker.js").length === 0
@@ -81,10 +81,10 @@ const worldStr = worldText.toString("utf8").trimEnd();
 const emsLicence = readFileSync(path.join(repo, "licenses/emscripten/LICENSE"), "utf8").trimEnd();
 const musl = readFileSync(path.join(repo, "licenses/emscripten/musl-COPYRIGHT"), "utf8").trimEnd();
 const llvm = readFileSync(path.join(repo, "licenses/emscripten/libcxx-LICENSE.TXT"), "utf8").trimEnd();
-check("with the voice preview: WORLD's full text", withVp.includes(worldStr));
-check("with the voice preview: Emscripten, musl, dlmalloc and LLVM texts", withVp.includes(emsLicence) && withVp.includes(musl)
+check("with Voice Shaper: WORLD's full text", withVp.includes(worldStr));
+check("with Voice Shaper: Emscripten, musl, dlmalloc and LLVM texts", withVp.includes(emsLicence) && withVp.includes(musl)
   && withVp.includes(llvm) && withVp.includes("Doug Lea and released to the public domain"));
-check("without the voice preview: none of them", !withoutVp.includes(worldStr) && !withoutVp.includes(emsLicence) && !withoutVp.includes(musl));
+check("without Voice Shaper: none of them", !withoutVp.includes(worldStr) && !withoutVp.includes(emsLicence) && !withoutVp.includes(musl));
 const md = readFileSync(path.join(repo, "THIRD_PARTY_NOTICES.md"), "utf8");
 check("THIRD_PARTY_NOTICES.md lists WORLD and the Emscripten runtime", md.includes("| WORLD (M. Morise)") && md.includes("| Emscripten 6.0.10 runtime"));
 

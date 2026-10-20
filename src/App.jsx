@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, lazy, Suspense } from "react";
+import { Component, useState, useRef, useEffect, lazy, Suspense } from "react";
 import { useAudioPipeline } from "./audio/useAudioPipeline";
 import { PitchTrace } from "./components/PitchTrace";
 import { CombinedDashboard } from "./components/CombinedDashboard";
@@ -27,12 +27,59 @@ const DiagnosticOverlay = DIAG_ENABLED
 // opened; opening it is also what starts the lab (resonance-lab/labRequest.js).
 const LabView = lazy(() => import("./resonance-lab/LabView.jsx"));
 
+// Experimental Voice Shaper (record a phrase, hear it with another pitch or
+// resonance; src/voice-preview/, measurements/voice-preview-phase1-2026-10-19.md):
+// its own tab since 2026-10-20 (a Resonance lab view before). A lazy chunk fetched
+// only when the tab is first opened; loading it starts its worker. Opening it does
+// not start the lab.
+const VoiceShaperView = lazy(() => import("./voice-preview/VoiceShaperView.jsx"));
+
 const TABS = [
   { id: "dashboard", label: "Dashboard" },
   { id: "pitch", label: "Pitch" },
   { id: "history", label: "History" },
+  { id: "shaper", label: "Voice Shaper" },
   { id: "lab", label: "Resonance lab" },
 ];
+
+// The tab bar (the same in every state). Below Tailwind's sm breakpoint the tabs
+// are narrower (px-2, gap-0.5) so the five fit on one row at 360 px, the two-word
+// labels wrapping onto two lines there; from sm up, px-4 / gap-1 as before the
+// Voice Shaper tab (2026-10-20).
+function TabNav({ activeTab, setActiveTab }) {
+  return (
+    <nav className="flex-shrink-0 flex justify-center gap-0.5 sm:gap-1 mb-3">
+      {TABS.map((tab) => (
+        <button
+          key={tab.id}
+          onClick={() => setActiveTab(tab.id)}
+          className={`px-2 sm:px-4 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+            activeTab === tab.id
+              ? "bg-neutral-700 text-white"
+              : "text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/50"
+          }`}
+        >
+          {tab.label}
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+// A Voice Shaper chunk that fails to download (a deploy replaced the hashed chunks
+// while the page stayed open, a flaky phone connection) must not take the app down:
+// without a boundary React removes the whole root (tabs, Stop Listening, a running
+// session recording). The texts equal strings.js S.loading / S.loadError
+// (tests/voice-preview/strings-test.js checks them).
+class ShaperBoundary extends Component {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  render() {
+    return this.state.failed
+      ? <p className="text-sm text-neutral-300" data-vp-load-error="">Voice Shaper could not load. Reload the page to try again.</p>
+      : this.props.children;
+  }
+}
 
 const WELCOME_KEY = "syrinx_welcomed";
 
@@ -297,21 +344,7 @@ function App() {
         {status === "idle" && activeTab !== "history" && (
           <div className="flex-1 flex flex-col w-full max-w-6xl min-h-0">
             {/* Tab navigation even when idle */}
-            <nav className="flex-shrink-0 flex justify-center gap-1 mb-3">
-              {TABS.map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
-                    activeTab === tab.id
-                      ? "bg-neutral-700 text-white"
-                      : "text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/50"
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </nav>
+            <TabNav activeTab={activeTab} setActiveTab={setActiveTab} />
             <div className="flex-1 flex items-center justify-center">
               <button
                 onClick={start}
@@ -325,21 +358,7 @@ function App() {
 
         {status === "idle" && activeTab === "history" && (
           <div className="flex-1 flex flex-col w-full max-w-6xl min-h-0">
-            <nav className="flex-shrink-0 flex justify-center gap-1 mb-3">
-              {TABS.map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
-                    activeTab === tab.id
-                      ? "bg-neutral-700 text-white"
-                      : "text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/50"
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </nav>
+            <TabNav activeTab={activeTab} setActiveTab={setActiveTab} />
             <SessionHistory />
           </div>
         )}
@@ -369,21 +388,7 @@ function App() {
         {status === "running" && (
           <div className="flex-1 flex flex-col w-full max-w-6xl min-h-0">
             {/* Tab navigation */}
-            <nav className="flex-shrink-0 flex justify-center gap-1 mb-3">
-              {TABS.map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
-                    activeTab === tab.id
-                      ? "bg-neutral-700 text-white"
-                      : "text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/50"
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </nav>
+            <TabNav activeTab={activeTab} setActiveTab={setActiveTab} />
 
             {/* Tab content. Scrolls below lg: on a phone the trace and the
                 cue strip fit the first screen, the experimental panel and
@@ -443,11 +448,19 @@ function App() {
 
               {activeTab === "history" && <SessionHistory />}
 
+              {activeTab === "shaper" && (
+                <ShaperBoundary>
+                  <Suspense fallback={<p className="text-sm text-neutral-400">Loading Voice Shaper…</p>}>
+                    {/* the target prefill and the playback guard during a
+                        Dashboard session recording */}
+                    <VoiceShaperView direction={direction} isSessionRecording={() => sessionRef.current.recording} />
+                  </Suspense>
+                </ShaperBoundary>
+              )}
+
               {activeTab === "lab" && (
                 <Suspense fallback={null}>
-                  {/* Voice preview (a lab view): the target prefill and the
-                      playback guard during a Dashboard session recording. */}
-                  <LabView voicePreview={{ direction, isSessionRecording: () => sessionRef.current.recording }} />
+                  <LabView />
                 </Suspense>
               )}
             </div>

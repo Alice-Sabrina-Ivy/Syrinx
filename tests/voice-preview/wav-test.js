@@ -1,4 +1,4 @@
-// wav-test.js — the voice preview's download format (src/voice-preview/wav.js): RIFF/WAVE
+// wav-test.js — Voice Shaper's download format (src/voice-preview/wav.js): RIFF/WAVE
 // header fields, 16-bit PCM mono, length, rounding and clipping, round trip.
 // measurements/voice-preview-phase1-2026-10-19.md §13, §14 item 8.
 //

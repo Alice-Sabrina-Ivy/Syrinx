@@ -1,4 +1,4 @@
-// playback.js — the voice preview's three-way playback (preview / unchanged rebuild /
+// playback.js — Voice Shaper's three-way playback (preview / unchanged rebuild /
 // original) with loop. measurements/voice-preview-phase1-2026-10-19.md §8.
 //
 // One AudioContext, created on the first Play press (a user gesture, as autoplay rules

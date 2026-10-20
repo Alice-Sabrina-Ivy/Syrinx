@@ -1,4 +1,4 @@
-// wav.js — the voice preview's download format: 16-bit PCM mono WAV (pure;
+// wav.js — Voice Shaper's download format: 16-bit PCM mono WAV (pure;
 // tests/voice-preview/wav-test.js). measurements/voice-preview-phase1-2026-10-19.md §13.
 // Samples are clipped to [-1, 1] and rounded to the nearest of -32767..32767, halves away
 // from zero (symmetric, so a full-scale sine stays symmetric); NaN is written as 0.
