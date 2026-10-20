@@ -195,12 +195,39 @@ const ReadingNote = ({ s }) => (
   </>
 );
 
-const PitchStat = ({ snap }) => (
-  <span>
-    Pitch {snap?.pitch ? `${Math.round(snap.pitch)} Hz` : "—"}
-    {!snap?.pitch && snap?.lastPitch ? <span className="text-neutral-600"> (last {Math.round(snap.lastPitch)} Hz)</span> : null}
+// A readout that keeps one width whatever it says: the widest of `widest`
+// (digits are tabular) is laid out invisibly in the same grid cell, so the
+// buttons after it on its row never move — the pitch readout switching
+// between "Pitch 276 Hz" and "Pitch — (last 276 Hz)" as voicing came and went
+// moved them left and right (desktop) or wrapped the view switch onto its
+// own line and back (phones), 2026-10-19 user report.
+const Fixed = ({ widest, children, ...rest }) => (
+  <span className="inline-grid whitespace-nowrap tabular-nums" {...rest}>
+    {widest.map((t) => <span key={t} aria-hidden="true" className="invisible col-start-1 row-start-1">{t}</span>)}
+    <span className="col-start-1 row-start-1">{children}</span>
   </span>
 );
+
+const PITCH_WIDEST = ["Pitch 000 Hz", "Pitch — (last 000 Hz)"];
+const PitchStat = ({ snap }) => {
+  const state = snap?.pitch ? "live" : snap?.lastPitch ? "last" : "none";
+  return (
+    <Fixed widest={PITCH_WIDEST} data-lab-pitch={state}>
+      Pitch {state === "live" ? `${Math.round(snap.pitch)} Hz` : "—"}
+      {state === "last" ? <span className="text-neutral-600"> (last {Math.round(snap.lastPitch)} Hz)</span> : null}
+    </Fixed>
+  );
+};
+
+const VoicedStat = ({ snap }) => (
+  <Fixed widest={["Voiced so far 0000 s"]}>Voiced so far {snap ? `${snap.voicedS.toFixed(0)} s` : "—"}</Fixed>
+);
+
+// The lab's own loading / error line: on a line of its own under the header
+// row, so its coming and going moves no button.
+const LabStatus = ({ s, className }) => (s.dsp !== "ready"
+  ? <p className={className} data-lab-status-line="">{s.dsp === "error" ? `Lab error: ${s.error}` : "Loading lab…"}</p>
+  : null);
 
 // The phone layout, as a live boolean: below Tailwind's sm breakpoint (40rem
 // wide; phones in portrait), or shorter than 30rem (phones in landscape, where
@@ -251,20 +278,20 @@ function FullLab({ s, view, setView }) {
   const ref = s.reference;
   const snap = s.snapshot;
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto w-full max-w-3xl mx-auto px-1 pb-6">
-      <div className="mb-3">
+    <div data-lab-root="" className="flex-1 min-h-0 overflow-y-auto w-full max-w-3xl mx-auto px-1 pb-6">
+      <div className="mb-3" data-lab-header="">
         <h2 className="text-base text-neutral-200 font-medium">Resonance lab <span className="text-neutral-500 font-normal text-xs">experimental</span></h2>
         <p className="text-xs text-neutral-500 leading-relaxed mt-1">
           <Intro />
         </p>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-xs text-neutral-400">
           <PitchStat snap={snap} />
-          <span>Voiced so far {snap ? `${snap.voicedS.toFixed(0)} s` : "—"}</span>
-          {s.dsp !== "ready" && <span>{s.dsp === "error" ? `Lab error: ${s.error}` : "Loading lab…"}</span>}
+          <VoicedStat snap={snap} />
           <button onClick={resetReadings} className="px-2 py-0.5 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-300 cursor-pointer">Reset readings</button>
           <button onClick={downloadReadings} className="px-2 py-0.5 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-300 cursor-pointer">Save readings (JSON)</button>
           <ViewSwitch view={view} setView={setView} />
         </div>
+        <LabStatus s={s} className="mt-1 text-xs text-neutral-400" />
       </div>
       {view === "weight" && <WeightClarityView s={s} />}
       {view === "resonance" && !s.running && <p className="text-sm text-neutral-500">Start listening to see the readouts.</p>}
@@ -408,9 +435,9 @@ function PhoneLab({ s, view, setView }) {
   const contentRef = useRef(null);
   const { roomy, traceH } = usePhoneFit(rootRef, contentRef);
   return (
-    <div ref={rootRef} data-lab-phone="" className="flex-1 min-h-0 overflow-y-auto w-full max-w-3xl mx-auto pb-0.5">
+    <div ref={rootRef} data-lab-phone="" data-lab-root="" className="flex-1 min-h-0 overflow-y-auto w-full max-w-3xl mx-auto pb-0.5">
       <div ref={contentRef}>
-        <div className="mb-1.5">
+        <div className="mb-1.5" data-lab-header="">
           <div className="relative flex items-center gap-2">
             <h2 className="text-sm leading-5 text-neutral-200 font-medium">Resonance lab <span className="text-neutral-500 font-normal text-xs">experimental</span></h2>
             <InfoToggle label="About the resonance lab" boundsRef={rootRef}>
@@ -424,10 +451,13 @@ function PhoneLab({ s, view, setView }) {
           </div>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] leading-4 text-neutral-400">
             <PitchStat snap={snap} />
-            <span>Voiced so far {snap ? `${snap.voicedS.toFixed(0)} s` : "—"}</span>
-            {s.dsp !== "ready" && <span>{s.dsp === "error" ? `Lab error: ${s.error}` : "Loading lab…"}</span>}
+            <VoicedStat snap={snap} />
+            {/* With both readouts at fixed widths, whether the switch fits on
+                this line (448 px) or wraps to the next (360 px) depends on the
+                screen width only, never on the live values. */}
             <span className="ml-auto"><ViewSwitch view={view} setView={setView} small /></span>
           </div>
+          <LabStatus s={s} className="text-[11px] leading-4 text-neutral-400" />
         </div>
         {view === "weight" && <WeightClarityView s={s} phone />}
         {view === "resonance" && !s.running && <p className="text-sm text-neutral-500 mb-1.5">Start listening to see the readouts.</p>}

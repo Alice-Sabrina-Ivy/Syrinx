@@ -252,7 +252,7 @@ const layout = (page) => page.evaluate(() => {
   window.scrollTo(0, 0);
   const r = (sel) => { const e = document.querySelector(sel); if (!e) return null; const b = e.getBoundingClientRect(); return { top: Math.round(b.top), bottom: Math.round(b.bottom), left: Math.round(b.left), right: Math.round(b.right) }; };
   const trace = r("[data-pitch-trace-box]"), strip = r("[data-cue-strip]");
-  const clipped = [...document.querySelectorAll("[data-cue-strip] [data-cue-title], [data-cue-strip] [data-cue-value]")]
+  const clipped = [...document.querySelectorAll("[data-cue-strip] [data-cue-title], [data-cue-strip] [data-cue-word], [data-cue-strip] [data-cue-value]")]
     // vertically only where the box clips vertically (overflow-x: clip leaves y visible)
     // only boxes that clip can cut text off: overflow-x: clip (titles, text
     // values) horizontally, and vertically only where overflow-y clips too

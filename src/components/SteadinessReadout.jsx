@@ -32,9 +32,17 @@ export function SteadinessReadout({
   const text = formatSteadiness(value);
 
   const dim = text === null ? "opacity-40" : held ? "opacity-50" : "";
+  const shown = text === null ? "—" : `±${text}`;
+  // In the cue strip the value keeps the width of its widest text ("±<0.1"),
+  // right-aligned, so the F0 number beside it never shifts (2026-10-19).
   const valueNode = (
     <span className="tabular-nums text-neutral-300">
-      {text === null ? "—" : `±${text}`}
+      {variant === "compact" ? (
+        <span className="inline-grid justify-items-end">
+          <span aria-hidden="true" className="invisible col-start-1 row-start-1">±&lt;0.1</span>
+          <span className="col-start-1 row-start-1">{shown}</span>
+        </span>
+      ) : shown}
       <span className="text-xs text-neutral-500 ml-0.5">st</span>
     </span>
   );
