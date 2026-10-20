@@ -30,11 +30,14 @@ import { encodeWav } from "./wav.js";
 import {
   S, readyIn, recordingFor, medianLine, pitchValueLabel, pitchValueText,
   resonanceValueLabel, resonanceValueText, targetResult, downloadName,
+  previewReadyAnnouncement, previewUpdatedAnnouncement, previewSettingLine,
 } from "./strings.js";
 import { pitchTargetFor } from "../utils/trainingDirection.js";
 import { DIAG_ENABLED } from "../diag/diag.js";
 
 const RECORDABLE = new Set(["ready", "too-short", "no-voice", "cancelled"]);
+/** Phases whose one button is "Record again" (it waits, like Record, for 6 s of listening). */
+const AGAIN = new Set(["preview", "error", "memory"]);
 const KEY_COMMIT_MS = 400;
 const TARGET_MIN_HZ = 75;
 const TARGET_MAX_HZ = 400;
@@ -57,6 +60,9 @@ function makeSession() {
   const ui = createStore(UI_INITIAL);
   const say = (text) => ui.set({ say: text, saySeq: ui.get().saySeq + 1 });
   const playback = createPlayback();
+  // playback changes made by the card itself (not a user press) are not announced
+  let quiet = false;
+  const silently = (fn) => { quiet = true; try { fn(); } finally { quiet = false; } };
   const ctl = createVoicePreviewController({
     createWorker: () => new Worker(new URL("./vp-worker.js", import.meta.url), { type: "module" }),
     glueUrl: VP_GLUE_URL,
@@ -75,11 +81,15 @@ function makeSession() {
     }
     if (s.rebuild !== p.rebuild) playback.setSource("rebuild", s.rebuild ? { pcm: s.rebuild, rate: s.analysis.rate } : null);
     if (s.preview !== p.preview) playback.setSource("preview", s.preview ? { pcm: s.preview.pcm, rate: s.preview.rate } : null);
+    // Leaving the preview (a render out of memory, a watchdog error) hides the Play group:
+    // nothing may keep playing without its Stop button.
+    if (p.phase === "preview" && s.phase !== "preview") silently(() => playback.stop());
     if (s.phase !== p.phase) {
       const msg = {
         recording: S.announce.recording,
         analysing: S.announce.recordingStopped,
-        preview: S.announce.previewReady,
+        // with the hum / noise notice, if any (screen-reader users hear it too)
+        preview: s.analysis ? previewReadyAnnouncement(s.analysis.check) : S.announce.previewReady,
         "too-short": S.tooShort,
         cancelled: S.cancelled,
         "no-voice": S.noVoice,
@@ -90,14 +100,14 @@ function makeSession() {
       if (msg) say(msg);
     } else if (s.phase === "preview") {
       if (s.rendering && !p.rendering) say(S.announce.updating);
-      else if (s.preview !== p.preview && s.preview) say(S.announce.updated);
+      // the new setting, in words, with "may sound buzzier" when the pitch is lowered
+      else if (s.preview !== p.preview && s.preview) say(previewUpdatedAnnouncement(s.preview.st, s.preview.pct, s.analysis?.pitch?.medianHz ?? 0));
       else if (s.error && !p.error) say(S.error);
     }
   });
 
   // Playback -> announcements (user presses, a version ending, the loop).
   let pb = playback.getState();
-  let quiet = false;
   playback.subscribe((st) => {
     const p = pb;
     pb = st;
@@ -109,7 +119,6 @@ function makeSession() {
       else say(S.announce.stopped);
     } else if (st.loop !== p.loop) say(st.loop ? S.announce.loopOn : S.announce.loopOff);
   });
-  const silently = (fn) => { quiet = true; try { fn(); } finally { quiet = false; } };
 
   // Listening stopped: nothing may keep playing behind a hidden card.
   const unsubCapture = onVoicePreviewCapture((h) => { if (!h) silently(() => playback.stop()); });
@@ -145,7 +154,9 @@ if (typeof window !== "undefined") {
 
 // ---------------------------------------------------------------- small parts
 
-const BTN = "inline-flex items-center justify-center rounded-lg text-sm transition-colors cursor-pointer aria-disabled:cursor-not-allowed aria-disabled:opacity-45 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-300";
+// A transparent border: forced-colors mode (Windows high contrast) draws it, so every button
+// keeps its outline there (backgrounds are replaced in that mode).
+const BTN = "inline-flex items-center justify-center rounded-lg border border-transparent text-sm transition-colors cursor-pointer aria-disabled:cursor-not-allowed aria-disabled:opacity-45 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-300";
 const BTN_SOFT = `${BTN} bg-neutral-800 text-neutral-100 hover:bg-neutral-700 aria-disabled:hover:bg-neutral-800`;
 
 function Btn({ inactive = false, onClick, className = BTN_SOFT, children, ...rest }) {
@@ -267,9 +278,20 @@ function Card({ sess, direction = null, isSessionRecording, phone = false }) {
   const targetBtnRef = useRef(null);
   const targetInputRef = useRef(null);
   const aboutBtnRef = useRef(null);
-  useEffect(() => { if (u.targetOpen) targetInputRef.current?.focus(); }, [u.targetOpen]);
+  // Opening the target row focuses its field, except on a phone when the field is already
+  // prefilled: there a focus() pops up the keyboard over the lab area, and Apply is enough.
+  const focusTargetRef = useRef(true);
+  useEffect(() => { if (u.targetOpen && focusTargetRef.current) targetInputRef.current?.focus(); }, [u.targetOpen]);
 
   const phase = s.phase;
+  // When the preview block unmounts under the focus (a render out of memory, a watchdog
+  // error), focus goes to the Record / Record again button instead of falling to the page.
+  const prevPhaseRef = useRef(phase);
+  useEffect(() => {
+    const was = prevPhaseRef.current;
+    prevPhaseRef.current = phase;
+    if (was === "preview" && phase !== "preview" && (!document.activeElement || document.activeElement === document.body)) recordRef.current?.focus();
+  }, [phase]);
   const a = s.analysis;
   const lim = a?.limits;
   const listening = tick.readyMs !== null;
@@ -281,10 +303,13 @@ function Card({ sess, direction = null, isSessionRecording, phone = false }) {
   let recAction = () => ctl.record();
   let recInactive = !RECORDABLE.has(phase) || waiting;
   if (phase === "recording") { recLabel = S.stop; recAction = () => ctl.stop(); recInactive = false; }
-  else if (phase === "preview" || phase === "error" || phase === "memory") {
+  else if (AGAIN.has(phase)) {
+    // Record again waits, like Record, until listening has run 6 s (after listening
+    // restarts with a preview on screen): pressing it then would discard the preview and
+    // record nothing. The wait line under the status says how long.
     recLabel = S.recordAgain;
-    recAction = () => { silently(() => playback.clear()); ctl.recordAgain(); };
-    recInactive = false;
+    recAction = () => { if (ctl.readyInMs() !== 0) return; silently(() => playback.clear()); ctl.recordAgain(); };
+    recInactive = waiting;
   }
   const recPrimary = phase !== "recording" && phase !== "preview";
 
@@ -303,7 +328,7 @@ function Card({ sess, direction = null, isSessionRecording, phone = false }) {
     preview: S.recordAgainHint,
     ready: waiting ? readyIn(tick.readyMs ?? 6000) : S.readyToRecord,
   }[phase];
-  const waitLine = phase !== "ready" && RECORDABLE.has(phase) && waiting ? readyIn(tick.readyMs ?? 6000) : null;
+  const waitLine = phase !== "ready" && (RECORDABLE.has(phase) || AGAIN.has(phase)) && waiting ? readyIn(tick.readyMs ?? 6000) : null;
 
   // ---- sliders
   const commit = (st, pct) => { ctl.render(st, pct); };
@@ -318,6 +343,7 @@ function Card({ sess, direction = null, isSessionRecording, phone = false }) {
   const openTarget = () => {
     if (u.targetOpen) { ui.set({ targetOpen: false }); return; }
     const pre = u.targetHz === "" ? targetPrefillHz(pitchTargetFor(direction)) : null;
+    focusTargetRef.current = !phone || (!pre && u.targetHz === "");
     ui.set({ targetOpen: true, ...(pre ? { targetHz: String(pre) } : {}) });
   };
   const applyTarget = () => {
@@ -372,8 +398,11 @@ function Card({ sess, direction = null, isSessionRecording, phone = false }) {
   const check = a?.check;
   const playReason = sessionRec ? id("guard") : null;
   const previewReason = !s.preview ? id("first") : null;
+  const settingLine = s.preview && !s.rendering ? previewSettingLine(s.preview.st, s.preview.pct) : null;
   const describe = (...xs) => xs.filter(Boolean).join(" ") || undefined;
-  const PLAY_BTN = `${BTN_SOFT} min-h-11 px-3 aria-pressed:bg-neutral-200 aria-pressed:text-neutral-900 aria-pressed:hover:bg-neutral-100`;
+  // Pressed: light background; in forced colors (where backgrounds are replaced) the system
+  // Highlight colours, so the playing version and Loop stay visible there too.
+  const PLAY_BTN = `${BTN_SOFT} min-h-11 px-3 aria-pressed:bg-neutral-200 aria-pressed:text-neutral-900 aria-pressed:hover:bg-neutral-100 forced-colors:aria-pressed:bg-[Highlight] forced-colors:aria-pressed:text-[HighlightText] forced-colors:aria-pressed:border-[Highlight]`;
   const pad = phone ? "px-2.5 py-2" : "px-3 py-3";
 
   return (
@@ -391,6 +420,7 @@ function Card({ sess, direction = null, isSessionRecording, phone = false }) {
       data-vp-noise={check ? String(check.noise) : ""}
       data-vp-margin={check ? check.marginDb.toFixed(1) : ""}
       data-vp-analysis-ms={a?.ms?.total != null ? a.ms.total.toFixed(1) : ""}
+      data-vp-hops={a?.hops ? `${a.hops.received}/${a.hops.recorded}` : ""}
       data-vp-render-ms={s.preview?.ms?.render != null ? s.preview.ms.render.toFixed(1) : ""}
       data-vp-rendered={s.preview ? `${s.preview.st},${s.preview.pct}` : ""}
       data-vp-rendering={s.rendering ? "1" : "0"}
@@ -543,11 +573,14 @@ function Card({ sess, direction = null, isSessionRecording, phone = false }) {
           <div role="group" aria-labelledby={id("play")} data-vp-play="">
             <div className="mb-1 flex items-baseline justify-between gap-2">
               <p id={id("play")} className="text-xs text-neutral-300">{S.play}</p>
-              <p className="text-xs text-neutral-200 text-right" data-vp-updating="">{s.rendering ? S.updating : ""}</p>
+              {/* the setting the Preview button plays (st and %), beside the buttons in every layout */}
+              {s.rendering
+                ? <p className="text-xs text-neutral-200 text-right" data-vp-updating="">{S.updating}</p>
+                : settingLine && <p id={id("setting")} className="text-xs text-neutral-200 text-right" data-vp-preview-setting="">{settingLine}</p>}
             </div>
             <div className="flex flex-wrap gap-1.5">
               <Btn className={PLAY_BTN} inactive={sessionRec} aria-pressed={pb.playing === "rebuild"} aria-describedby={describe(playReason)} onClick={() => onPlay("rebuild")} data-vp-play-version="rebuild">{S.playRebuild}</Btn>
-              <Btn className={PLAY_BTN} inactive={sessionRec || !s.preview} aria-pressed={pb.playing === "preview"} aria-describedby={describe(playReason, previewReason)} onClick={() => onPlay("preview")} data-vp-play-version="preview">{S.playPreview}</Btn>
+              <Btn className={PLAY_BTN} inactive={sessionRec || !s.preview} aria-pressed={pb.playing === "preview"} aria-describedby={describe(playReason, previewReason, settingLine ? id("setting") : null)} onClick={() => onPlay("preview")} data-vp-play-version="preview">{S.playPreview}</Btn>
               <Btn className={PLAY_BTN} inactive={sessionRec} aria-pressed={pb.playing === "original"} aria-describedby={describe(playReason)} onClick={() => onPlay("original")} data-vp-play-version="original">{S.playOriginal}</Btn>
               <Btn className={PLAY_BTN} aria-pressed={pb.loop} onClick={() => playback.setLoop(!pb.loop)} data-vp-loop="">{S.loop}</Btn>
               <Btn className={`${BTN_SOFT} min-h-11 px-3`} onClick={() => playback.stop()} data-vp-stop="">{S.stopPlayback}</Btn>
@@ -568,7 +601,8 @@ function Card({ sess, direction = null, isSessionRecording, phone = false }) {
         </div>
       )}
 
-      {(phase === "error" || phase === "memory") && (
+      {/* Discard also while analysing: the recording can always be dropped */}
+      {(phase === "error" || phase === "memory" || phase === "analysing") && (
         <div className="mt-2">
           <Btn className={`${BTN_SOFT} min-h-11 px-4`} onClick={discard} data-vp-discard="">{S.discard}</Btn>
         </div>

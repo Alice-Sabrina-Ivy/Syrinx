@@ -137,10 +137,37 @@ export function resonanceValueText(pct) {
   return pct > 0 ? `${pct} percent brighter` : `${Math.abs(pct)} percent darker`;
 }
 
-/** The target row's result: "Set to +5 st (about 204 Hz)", ", the highest setting" when clamped. */
+/**
+ * The target row's result: "Set to +5 st (about 204 Hz)", ", the highest setting" when clamped;
+ * a lowered setting adds " · may sound buzzier" (fix step).
+ */
 export function targetResult({ st, hz, clamped }) {
   const end = clamped === "high" ? ", the highest setting" : clamped === "low" ? ", the lowest setting" : "";
-  return `Set to ${signed(st)} st (about ${hz} Hz)${end}`;
+  return `Set to ${signed(st)} st (about ${hz} Hz)${end}${st < 0 ? ` · ${S.buzzier}` : ""}`;
+}
+
+/** Beside the Play buttons: the setting the Preview button plays, "Preview: −2 st, −3 % · may sound buzzier". */
+export function previewSettingLine(st, pct) {
+  const base = `Preview: ${signed(st)} st, ${signed(pct)} %`;
+  return st < 0 ? `${base} · ${S.buzzier}` : base;
+}
+
+/** "Preview ready." plus the recording check's notices, as shown (fix step: they were not announced). */
+export function previewReadyAnnouncement(check) {
+  const parts = [S.announce.previewReady];
+  if (check?.hum) parts.push(S.humNotice);
+  if (check?.noise) parts.push(S.noiseNotice);
+  if (check?.hum || check?.noise) parts.push(S.quieterSpot);
+  return parts.join(" ");
+}
+
+/**
+ * After a render: "Preview updated: pitch 2 semitones lower, about 159 hertz, may sound
+ * buzzier; resonance 3 percent darker." (the setting in words, so a quick setting or the
+ * target row tells a screen-reader user what changed).
+ */
+export function previewUpdatedAnnouncement(st, pct, medianHz) {
+  return `Preview updated: pitch ${pitchValueText(st, medianHz)}; resonance ${resonanceValueText(pct)}.`;
 }
 
 /** Download name: syrinx-voice-preview-{plus|minus}{n}st-{plus|minus}{m}pct.wav (no date, no name). */

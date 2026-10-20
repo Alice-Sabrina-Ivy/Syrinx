@@ -13,12 +13,22 @@
 //    worker; load-error | error | memory need a fresh worker: discard / record again).
 // Memory: WebAssembly memory never shrinks, so discard() and recordAgain() terminate the
 // worker (all of its memory goes back) and start a fresh idle one.
+// Watchdogs (fix step): a worker that has not answered LOAD_TIMEOUT_MS after it was started
+// (a stalled .wasm fetch) goes to load-error, and one that has not finished the analysis
+// ANALYSE_TIMEOUT_MS after `recorded` (a hang, a worker that died without an error event) is
+// terminated and goes to error, so Record again / Discard always come back. recordAgain()
+// does nothing while Record would have to wait (the 6 s listening wait after listening
+// restarts): it used to discard the preview and then not record.
 import { getVoicePreviewCapture, onVoicePreviewCapture, setVoicePreviewPitchTap } from "./bridge.js";
 
 export const RECORD_MAX_S = 8;
 export const RECORD_MIN_S = 3;
 /** Record waits until listening has run this long, so the tonal-noise notch can flag a hum (§1, §7). */
 export const LISTEN_BEFORE_RECORD_MS = 6000;
+/** Loading (worker start -> ready) longer than this is a load error. */
+export const LOAD_TIMEOUT_MS = 30000;
+/** `recorded` -> `analysed` longer than this (500 ms track wait + analysis, ~2.3 s for 8 s on the gate phone) is an error. */
+export const ANALYSE_TIMEOUT_MS = 20000;
 
 const RECORDABLE = new Set(["ready", "too-short", "no-voice", "cancelled"]);
 
@@ -40,7 +50,11 @@ function initialState() {
   };
 }
 
-export function createVoicePreviewController({ createWorker, glueUrl, wasmUrls, now = () => performance.now() }) {
+export function createVoicePreviewController({
+  createWorker, glueUrl, wasmUrls, now = () => performance.now(),
+  loadTimeoutMs = LOAD_TIMEOUT_MS, analyseTimeoutMs = ANALYSE_TIMEOUT_MS,
+  setTimer = (fn, ms) => setTimeout(fn, ms), clearTimer = (t) => clearTimeout(t),
+}) {
   let state = initialState();
   const listeners = new Set();
   let worker = null;
@@ -50,6 +64,7 @@ export function createVoicePreviewController({ createWorker, glueUrl, wasmUrls, 
   let pendingRecord = false;
   let waitingRender = null;
   let renderSeq = 0;
+  let watchdog = null;
 
   function set(patch) {
     state = { ...state, ...patch };
@@ -57,6 +72,21 @@ export function createVoicePreviewController({ createWorker, glueUrl, wasmUrls, 
   }
 
   function removeTap() { setVoicePreviewPitchTap(null); }
+
+  function unwatch() {
+    if (watchdog !== null) { clearTimer(watchdog); watchdog = null; }
+  }
+  /** One watchdog at a time: after ms, if the worker generation is unchanged, terminate it and go to `phase`. */
+  function watch(ms, inPhase, phase, stage) {
+    unwatch();
+    const gen = workerGen;
+    watchdog = setTimer(() => {
+      watchdog = null;
+      if (gen !== workerGen || state.phase !== inPhase) return;
+      terminate();
+      set({ phase, rendering: null, level: null, error: { stage, kind: "timeout", message: `voice preview worker did not answer within ${ms} ms (${inPhase})` } });
+    }, ms);
+  }
 
   function releaseCapture() {
     if (recPort && recHandle) {
@@ -77,15 +107,18 @@ export function createVoicePreviewController({ createWorker, glueUrl, wasmUrls, 
     w.onmessage = (e) => { if (gen === workerGen) onWorkerMessage(e.data); };
     w.onerror = (e) => {
       if (gen !== workerGen) return;
+      unwatch();
       removeTap();
       releaseCapture();
       set({ phase: state.phase === "loading" ? "load-error" : "error", error: { stage: "worker", kind: "other", message: e?.message || "voice preview worker failed" } });
     };
     w.postMessage({ type: "init", glueUrl, wasmUrls });
+    watch(loadTimeoutMs, "loading", "load-error", "load");
   }
 
   function terminate() {
     workerGen++;
+    unwatch();
     removeTap();
     releaseCapture();
     pendingRecord = false;
@@ -104,6 +137,7 @@ export function createVoicePreviewController({ createWorker, glueUrl, wasmUrls, 
   function onWorkerMessage(m) {
     switch (m.type) {
       case "ready": {
+        unwatch();
         set({ phase: "ready", build: m.build, loadMs: m.ms, memBytes: m.memBytes });
         if (pendingRecord) { pendingRecord = false; record(); }
         break;
@@ -112,19 +146,22 @@ export function createVoicePreviewController({ createWorker, glueUrl, wasmUrls, 
       case "recorded": {
         releaseCapture(); // the tap stays until the posted track is complete
         set({ phase: "analysing", recordedSeconds: m.seconds, level: null });
+        watch(analyseTimeoutMs, "analysing", "error", "analyse");
         break;
       }
       case "too-short": removeTap(); releaseCapture(); set({ phase: "too-short", recordedSeconds: m.seconds, level: null }); break;
       case "cancelled": removeTap(); releaseCapture(); set({ phase: "cancelled", level: null }); break;
-      case "no-voice": removeTap(); set({ phase: "no-voice", voicedS: m.voicedS }); break;
+      case "no-voice": unwatch(); removeTap(); set({ phase: "no-voice", voicedS: m.voicedS }); break;
       case "analysed": {
+        unwatch();
         removeTap();
         const { original, rebuild, type: _t, ...analysis } = m;
         set({ phase: "preview", analysis, original, rebuild, preview: null, rendering: null });
         break;
       }
       case "rendered": {
-        set({ preview: { st: m.st, pct: m.pct, pcm: m.pcm, rate: m.rate, ms: m.ms }, rendering: null });
+        // a successful render clears an earlier render error's notice
+        set({ preview: { st: m.st, pct: m.pct, pcm: m.pcm, rate: m.rate, ms: m.ms }, rendering: null, error: null });
         if (waitingRender) { const r = waitingRender; waitingRender = null; render(r.st, r.pct); }
         break;
       }
@@ -132,10 +169,13 @@ export function createVoicePreviewController({ createWorker, glueUrl, wasmUrls, 
         removeTap();
         releaseCapture();
         if (m.stage === "render" && state.phase === "preview" && m.kind !== "memory") {
-          // the previous preview stays playable
+          // the previous preview stays playable; a setting that waited behind the failed
+          // render is sent now (it used to wait until the next render and then override it)
           set({ rendering: null, error: { stage: m.stage, kind: m.kind, message: m.message } });
+          if (waitingRender) { const r = waitingRender; waitingRender = null; render(r.st, r.pct); }
           break;
         }
+        unwatch();
         const phase = m.stage === "load" ? "load-error" : m.kind === "memory" ? "memory" : "error";
         set({ phase, rendering: null, error: { stage: m.stage, kind: m.kind, message: m.message } });
         break;
@@ -214,10 +254,15 @@ export function createVoicePreviewController({ createWorker, glueUrl, wasmUrls, 
     spawn();
   }
 
-  /** Discard, then record as soon as the fresh worker is ready. */
+  /**
+   * Discard, then record as soon as the fresh worker is ready. Refused (nothing discarded,
+   * returns false) while Record would have to wait or listening is off.
+   */
   function recordAgain() {
+    if (readyInMs() !== 0) return false;
     discard();
     pendingRecord = true;
+    return true;
   }
 
   /** Page hide / teardown: terminate the worker and stop listening to the bridge. */

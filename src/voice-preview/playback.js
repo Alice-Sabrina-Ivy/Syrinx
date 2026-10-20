@@ -2,7 +2,12 @@
 // original) with loop. measurements/voice-preview-phase1-2026-10-19.md §8.
 //
 // One AudioContext, created on the first Play press (a user gesture, as autoplay rules
-// require), suspended whenever nothing plays, closed by close() (page hide). Each version
+// require), suspended whenever nothing plays, closed by clear() (Discard / Record again) and
+// close() (page hide); the next Play press makes a new one. Closing, not suspending, on
+// clear(): Chrome keeps a stopped source node and its AudioBuffer alive until the audio
+// thread has run past the stop, which a suspended context never does, so the last-played
+// version (possibly the original recording) stayed in memory after Discard (verify step,
+// problem 1). Each version
 // is an AudioBuffer at its own rate (original: capture rate; rebuild and preview: engine
 // rate) played through an AudioBufferSourceNode; the versions have the same duration and
 // RMS (the engine's finish step), so switching keeps the position and the loudness.
@@ -12,7 +17,7 @@
 //                                          preview plays takes over at the same position
 //   play(which)   start it (from the current position if another version plays; from the
 //                 start otherwise); pressing the playing version again stops it
-//   stop(), setLoop(on), clear() (stop + drop every version), close()
+//   stop(), setLoop(on), clear() (stop + drop every version + close the context), close()
 //   subscribe(fn) -> unsubscribe; state { playing, loop, audio (context state | null) }
 
 export const VERSIONS = Object.freeze(["preview", "rebuild", "original"]);
@@ -135,14 +140,7 @@ export function createPlayback({ createContext = () => new AudioContext() } = {}
     emit();
   }
 
-  function clear() {
-    stopNode();
-    playing = null;
-    for (const k of VERSIONS) sources[k] = null;
-    suspendIfIdle();
-    emit();
-  }
-
+  /** Stop, drop every version and close the context (its audio thread and buffers go). */
   function close() {
     stopNode();
     playing = null;
@@ -155,6 +153,9 @@ export function createPlayback({ createContext = () => new AudioContext() } = {}
     }
     emit();
   }
+
+  /** Discard / Record again: the same as close(), so nothing of the recording stays in memory. */
+  const clear = close;
 
   return {
     subscribe(fn) { listeners.add(fn); fn(state); return () => listeners.delete(fn); },

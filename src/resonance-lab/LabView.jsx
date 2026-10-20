@@ -20,7 +20,7 @@
 // is a lazy chunk fetched only when that view is first opened; loading it starts
 // the voice preview's worker (measurements/voice-preview-phase1-2026-10-19.md).
 
-import { lazy, Suspense, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { Component, lazy, Suspense, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { subscribe, resetReadings, downloadReadings } from "./labPipeline.js";
 import { requestResonanceLab } from "./labRequest.js";
 import WeightClarityView from "./WeightClarityView.jsx";
@@ -242,12 +242,30 @@ function ViewSwitch({ view, setView, small = false }) {
   );
 }
 
+// A card chunk that fails to download (a deploy replaced the hashed chunks while the tab
+// stayed open, a flaky phone connection) must not take the app down: without a boundary
+// React removes the whole root (tabs, Stop Listening, a running session recording). The
+// text equals strings.js S.loadError (tests/voice-preview/strings-test.js checks it).
+class VoicePreviewBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { failed: false };
+  }
+  static getDerivedStateFromError() { return { failed: true }; }
+  render() {
+    if (this.state.failed) return <p className="text-sm text-neutral-300" data-lab-vp-error="">The voice preview could not load. Reload the page to try again.</p>;
+    return this.props.children;
+  }
+}
+
 // The voice preview view: its chunk loads on first open. voicePreview = { direction,
 // isSessionRecording } from App (the target prefill and the playback guard).
 const VoicePreview = ({ voicePreview, phone }) => (
-  <Suspense fallback={<p className="text-sm text-neutral-400">Loading the voice preview…</p>}>
-    <VoicePreviewCard direction={voicePreview?.direction ?? null} isSessionRecording={voicePreview?.isSessionRecording} phone={phone} />
-  </Suspense>
+  <VoicePreviewBoundary>
+    <Suspense fallback={<p className="text-sm text-neutral-400">Loading the voice preview…</p>}>
+      <VoicePreviewCard direction={voicePreview?.direction ?? null} isSessionRecording={voicePreview?.isSessionRecording} phone={phone} />
+    </Suspense>
+  </VoicePreviewBoundary>
 );
 
 export default function LabView({ voicePreview }) {

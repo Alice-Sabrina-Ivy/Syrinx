@@ -2,9 +2,11 @@
 // every string and every value label is free of gender words and score words; the
 // strings match the design note's list word for word (the caveat and "may sound
 // buzzier" included); value labels, aria-valuetext, the target result line, the download
-// name and the minus sign (U+2212). The two strings LabView carries itself (the view
-// option and the loading fallback) equal strings.js.
-// measurements/voice-preview-phase1-2026-10-19.md §6, §9, §10, §13, §14 item 7.
+// name and the minus sign (U+2212); the fix step's additions (the setting line beside Play,
+// the announcements with the notices and the setting in words, "may sound buzzier" on a
+// lowered target result). The three strings LabView carries itself (the view option, the
+// loading fallback and the load-error fallback) equal strings.js.
+// measurements/voice-preview-phase1-2026-10-19.md §6, §9, §10, §13, §14 item 7; fix step.
 //
 //   node tests/voice-preview/strings-test.js
 import { readFileSync } from "node:fs";
@@ -12,6 +14,7 @@ import path from "node:path";
 import {
   S, readyIn, recordingFor, medianLine, pitchValueLabel, pitchValueText,
   resonanceValueLabel, resonanceValueText, targetResult, downloadName,
+  previewSettingLine, previewReadyAnnouncement, previewUpdatedAnnouncement,
 } from "../../src/voice-preview/strings.js";
 import { pitchLimits, targetSetting } from "../../src/voice-preview/controls.js";
 import { REPO, makeChecker } from "./vp-test-lib.js";
@@ -38,6 +41,8 @@ for (const m of [75, 98.4, 147.6, 210, 399]) {
 }
 for (let pct = -21; pct <= 26; pct++) all.push(resonanceValueLabel(pct), resonanceValueText(pct));
 all.push(downloadName(2, 3), downloadName(-12, -21), downloadName(0, 0));
+for (const st of [-12, -2, 0, 2, 12]) for (const pct of [-21, -3, 0, 3, 26]) all.push(previewSettingLine(st, pct), previewUpdatedAnnouncement(st, pct, 147.6));
+for (const hum of [false, true]) for (const noise of [false, true]) all.push(previewReadyAnnouncement({ hum, noise }));
 
 console.log(`no gender words, no score words (${all.length} strings)`);
 const g = all.filter((t) => GENDER.test(t));
@@ -116,12 +121,24 @@ T.check("ready / recording lines", readyIn(5400) === "Ready to record in 6 s" &&
 console.log("\ntarget result and download name");
 T.check("target result", targetResult({ st: 5, hz: 204, clamped: null }) === "Set to +5 st (about 204 Hz)"
   && targetResult({ st: 12, hz: 400, clamped: "high" }) === "Set to +12 st (about 400 Hz), the highest setting"
-  && targetResult({ st: -3, hz: 90, clamped: "low" }) === `Set to ${M}3 st (about 90 Hz), the lowest setting`);
+  && targetResult({ st: -3, hz: 90, clamped: "low" }) === `Set to ${M}3 st (about 90 Hz), the lowest setting · may sound buzzier`
+  && targetResult({ st: -5, hz: 132, clamped: null }) === `Set to ${M}5 st (about 132 Hz) · may sound buzzier`);
 {
   const lim = pitchLimits(80); // min -1
   const r = targetSetting(60, 100, lim);
-  T.check("target below the low-contour limit -> the lowest setting", targetResult(r) === `Set to ${M}1 st (about 94 Hz), the lowest setting`, targetResult(r));
+  T.check("target below the low-contour limit -> the lowest setting", targetResult(r) === `Set to ${M}1 st (about 94 Hz), the lowest setting · may sound buzzier`, targetResult(r));
 }
+
+console.log("\nfix step: the setting beside Play, announcements");
+T.check("setting line beside Play", previewSettingLine(2, 3) === "Preview: +2 st, +3 %" && previewSettingLine(0, -3) === `Preview: 0 st, ${M}3 %`
+  && previewSettingLine(-2, -3) === `Preview: ${M}2 st, ${M}3 % · may sound buzzier`, previewSettingLine(-2, -3));
+T.check("\"Preview ready.\" alone without a notice", previewReadyAnnouncement({ hum: false, noise: false }) === "Preview ready.");
+T.check("…with the hum and noise notices as shown", previewReadyAnnouncement({ hum: true, noise: true }) === `Preview ready. ${S.humNotice} ${S.noiseNotice} ${S.quieterSpot}`
+  && previewReadyAnnouncement({ hum: true, noise: false }) === `Preview ready. ${S.humNotice} ${S.quieterSpot}`);
+T.check("\"Preview updated:\" with the setting in words, buzzier when lowered",
+  previewUpdatedAnnouncement(-2, -3, 178.6) === "Preview updated: pitch 2 semitones lower, about 159 hertz, may sound buzzier; resonance 3 percent darker."
+  && previewUpdatedAnnouncement(2, 0, 148) === "Preview updated: pitch 2 semitones higher, about 166 hertz; resonance unchanged.",
+  previewUpdatedAnnouncement(-2, -3, 178.6));
 T.check("download name (no date, no name)", downloadName(2, 3) === "syrinx-voice-preview-plus2st-plus3pct.wav"
   && downloadName(-12, -21) === "syrinx-voice-preview-minus12st-minus21pct.wav" && downloadName(0, 0) === "syrinx-voice-preview-plus0st-plus0pct.wav");
 
@@ -130,6 +147,7 @@ console.log("\nLabView");
 const lab = readFileSync(path.join(REPO, "src/resonance-lab/LabView.jsx"), "utf8");
 T.check("view option \"Voice preview\"", lab.includes(`opt("preview", "${S.viewOption}")`));
 T.check("loading fallback = S.loading", lab.includes(`>${S.loading}</p>`));
+T.check("load-error fallback (the card's chunk failed to download) = S.loadError", lab.includes(`>${S.loadError}</p>`));
 const card = readFileSync(path.join(REPO, "src/voice-preview/VoicePreviewCard.jsx"), "utf8");
 const jsxText = [...card.matchAll(/>([^<>{}\n]*[A-Za-z]{3,}[^<>{}\n]*)</g)].map((m) => m[1].trim()).filter(Boolean);
 T.check("the card renders no literal text of its own (all from strings.js)", jsxText.length === 0, jsxText.slice(0, 3).join(" | "));

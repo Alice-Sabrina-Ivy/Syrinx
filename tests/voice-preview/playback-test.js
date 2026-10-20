@@ -3,7 +3,9 @@
 // play, each version plays at its own rate, A/B switching keeps the position, pressing the
 // playing version stops it, a new preview takes over at the same position, the loop wraps
 // and can be toggled mid-play, a version ending by itself stops, the context is suspended
-// whenever nothing plays and closed by close(). measurements/voice-preview-phase1-2026-10-19.md §8.
+// whenever nothing plays and closed by clear() (Discard / Record again: a suspended context
+// kept the last-played AudioBuffer alive in Chrome) and close(); the next press makes a new
+// context. measurements/voice-preview-phase1-2026-10-19.md §8, fix step.
 //
 //   node tests/voice-preview/playback-test.js
 import { createPlayback } from "../../src/voice-preview/playback.js";
@@ -97,15 +99,19 @@ pb.play("preview");
 pb.stop();
 T.check("stop()", live().length === 0 && pb.getState().playing === null);
 pb.play("rebuild");
+const ctx1 = ctx;
 pb.clear();
-T.check("clear(): stopped, every version dropped", live().length === 0 && !pb.has("preview") && !pb.has("rebuild") && !pb.has("original") && pb.play("rebuild") === false);
+T.check("clear(): stopped, every version dropped", ctx1.nodes.every((n) => n.stopped) && !pb.has("preview") && !pb.has("rebuild") && !pb.has("original") && pb.play("rebuild") === false);
+T.check("clear(): the context is closed, not suspended (nothing of the recording stays alive)", ctx1.closed && ctx1.state === "closed" && pb.getState().audio === null && pb.getState().playing === null);
+T.check("clear(): no new context until the next press", created === 1);
 pb.setSource("rebuild", { pcm: tone(engRate), rate: engRate });
 pb.play("rebuild");
+T.check("after clear a press makes a new context", created === 2 && ctx !== ctx1 && ctx.state === "running" && live().length === 1);
 pb.close();
 T.check("close(): node stopped, context closed, state cleared", live().length === 0 && ctx.closed && pb.getState().audio === null && pb.getState().playing === null);
 pb.setSource("rebuild", { pcm: tone(engRate), rate: engRate });
 pb.play("rebuild");
-T.check("after close a press makes a new context", created === 2 && ctx.state === "running");
+T.check("after close a press makes a new context", created === 3 && ctx.state === "running");
 T.check("subscribers saw every change", states.length > 10);
 
 T.done();
