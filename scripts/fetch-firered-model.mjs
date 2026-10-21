@@ -1,6 +1,10 @@
 // fetch-firered-model.mjs — downloads the FireRedVAD streaming model used by
-// the try-out "Hide pitch when no voice is heard" gate (src/dsp/firered-vad.js)
+// the voice gate ("Hide pitch when no voice is heard", src/dsp/firered-vad.js)
 // into public/models/firered/ (gitignored: the model files are not committed).
+// The app loads them from there while FIRERED_MODEL.mirrorCommit is null; once
+// the Hugging Face mirror's commit is pinned it loads them from the mirror,
+// and this script is only needed for the parity test and the browser smoke
+// (scripts/voice-gate-smoke.mjs) — a developer tool, never a user step.
 //
 // Source: the official files of github.com/FireRedTeam/FireRedVAD at a pinned
 // commit (Apache-2.0; licence text in licenses/fireredvad/LICENSE, attribution

@@ -348,7 +348,7 @@ export function CueStrip({
   direction = null,
   voiced,
   holding,
-  // The pitch row's voiced flags (the try-out voice gate's mask); the
+  // The pitch row's voiced flags (the voice gate's mask); the
   // resonance row keeps voiced / holding.
   pitchVoiced = voiced,
   pitchHolding = holding,

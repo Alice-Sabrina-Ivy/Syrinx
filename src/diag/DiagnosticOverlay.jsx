@@ -24,7 +24,7 @@ import {
   p95,
 } from "./diag";
 
-// Try-out voice gate row (branch noise-detector-tryout): detector status,
+// Voice gate row (FireRedVAD): detector status,
 // the setting, the latest smoothed score and decision, whether the pitch is
 // hidden, and the detector's worker time per 25 ms hop (front end + model)
 // over the pitch inference ring, median / p95 (the first hop after the model
@@ -38,7 +38,7 @@ function VoiceGateRows() {
   const state = g.status !== "ready" ? "off (no detector)" : g.enabled === false ? "off (setting)" : g.hiding ? "HIDING pitch" : "showing";
   return (
     <div className="mb-3" data-diag-voice-gate="">
-      <div className="text-[10px] uppercase text-neutral-500 mb-1 tracking-wider">Voice gate (try-out)</div>
+      <div className="text-[10px] uppercase text-neutral-500 mb-1 tracking-wider">Voice gate</div>
       <div className="space-y-0.5 text-[10px] font-mono">
         <div className="flex justify-between"><span className="text-neutral-400">detector:</span>
           <span className={g.status === "ready" ? "text-green-400" : "text-amber-400"} data-diag-vad-status={g.status ?? ""}>{g.status ?? "—"}{g.message ? ` (${g.message})` : ""}</span></div>
@@ -181,7 +181,7 @@ function Sparkline({ frames }) {
     };
     drawSeries("confidence", "#22d3ee");
     drawSeries("inputRms", "#fb923c", 4); // ×4 so quiet speech is visible
-    drawSeries("vadP", "#c084fc"); // try-out voice detector score (violet)
+    drawSeries("vadP", "#c084fc"); // voice detector score (violet)
 
     // Baseline + 0.5 gridline for the bottom panel
     ctx.strokeStyle = "rgba(255,255,255,0.08)";

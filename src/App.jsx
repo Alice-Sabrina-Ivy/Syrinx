@@ -176,8 +176,8 @@ function App() {
   // Experimental "Likely heard as" panel: OFF by default (missing / blocked
   // storage = off); the panel's switch and Settings' row share this state.
   const [heardAsEnabled, setHeardAsEnabledState] = useState(false);
-  // Try-out "Hide pitch when no voice is heard (experimental)": ON by default
-  // in this try-out (utils/voiceGateSetting.js).
+  // "Hide pitch when no voice is heard (experimental)" — the voice gate: ON
+  // by default (utils/voiceGateSetting.js).
   const [voiceGateEnabled, setVoiceGateEnabledState] = useState(VOICE_GATE_DEFAULT);
   // Settings returns focus to the gear when it closes.
   const gearRef = useRef(null);
@@ -198,7 +198,6 @@ function App() {
     steadinessHeld,
     hnr,
     voiceGateStatus,
-    voiceGateMessage,
     modelStatus,
     modelProgress,
     resonanceStatus,
@@ -253,7 +252,7 @@ function App() {
     saveHeardAsEnabled(db.settings, on);
   }
 
-  // The try-out voice gate switch: same load pattern (a hung IndexedDB keeps
+  // The voice gate switch: same load pattern (a hung IndexedDB keeps
   // the default, on); a toggle before the load resolves wins.
   const voiceGateTouchedRef = useRef(false);
   useEffect(() => {
@@ -359,7 +358,6 @@ function App() {
           voiceGateEnabled={voiceGateEnabled}
           onVoiceGateChange={changeVoiceGate}
           voiceGateStatus={voiceGateStatus}
-          voiceGateMessage={voiceGateMessage}
         />
       )}
 
@@ -522,7 +520,7 @@ function App() {
                       ran on the main thread every display frame
                       (measurements/main-thread-cpu-2026-10-08.md). */}
                   {/* pitchVoiced / pitchHolding: the pitch display's flags (=
-                      voiced / holding unless the try-out voice gate hides
+                      voiced / holding unless the voice gate hides
                       the pitch). */}
                   <div className="relative w-2 h-2" data-voice-status={pitchVoiced ? "voiced" : pitchHolding ? "holding" : "waiting"}>
                     <div className={`absolute inset-0 rounded-full bg-green-400 shadow-[0_0_6px_rgba(74,222,128,0.5)] transition-opacity duration-300 ${pitchVoiced ? "opacity-100" : "opacity-0"}`} />

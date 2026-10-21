@@ -11,7 +11,9 @@
 // off / switched off as too slow) or the setting off: the hint exactly as
 // before. The DSP and ML hints never change.
 //
-// Also: the detector's status reaches the hook's state.
+// Also: the init message carries the model source (the app's own
+// models/firered/ while FIRERED_MODEL.mirrorCommit is null), and the
+// detector's "unavailable" status reaches the hook's state.
 //
 //   node tests/audio/voice-gate-resonance-hint-test.js
 
@@ -30,6 +32,7 @@ export async function load(url, ctx, next) {
 }`));
 const { M } = await import(new URL("../../scripts/session-oracle/lib/react-mock.mjs", import.meta.url).href);
 const HOOK = new URL("../../src/audio/useAudioPipeline.js", import.meta.url).href;
+const { FIRERED_MODEL } = await import("../../src/dsp/firered-vad.js");
 
 let passed = 0, failed = 0;
 function check(name, cond, detail = "") {
@@ -108,9 +111,17 @@ async function drive({ gateOn = true, statusFirst = null } = {}) {
   return out;
 }
 
-console.log("detector status");
+console.log("init: the model source");
 {
   const api = await fresh();
+  const init = find("pitch").sent.find((m) => m && m.type === "init");
+  if (FIRERED_MODEL.mirrorCommit) {
+    check("mirror pinned: init names the Hugging Face mirror", init?.vad?.source === "mirror" &&
+      init.vad.modelBase === `https://huggingface.co/${FIRERED_MODEL.mirror}/resolve/${FIRERED_MODEL.mirrorCommit}/`, JSON.stringify(init?.vad));
+  } else {
+    check("mirrorCommit null: init names the app's own models/firered/", init?.vad?.source === "app" &&
+      init.vad.modelBase === "https://example.test/Syrinx/models/firered/", JSON.stringify(init?.vad));
+  }
   find("pitch").send({ type: "vad-status", status: "unavailable", message: "cmvn.ark: HTTP 404" });
   check("vad-status unavailable reaches the state (Settings reads it)", M.state.voiceGateStatus === "unavailable", M.state.voiceGateStatus);
   api.stop();

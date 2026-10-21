@@ -219,7 +219,7 @@ function _createState() {
     //   pitch,       // Hz or null
     //   confidence,  // 0..1
     //   voiced,      // confidence >= threshold (0.5)
-    //   vadP, vadVoice, vadMs  // try-out voice detector: smoothed score,
+    //   vadP, vadVoice, vadMs  // voice detector (voice gate): smoothed score,
     //                // decision and worker time (fbank + model) of the hop
     // }
     pitchInferences: new RingBuffer(PITCH_INFERENCES_CAP),
@@ -246,8 +246,8 @@ function _createState() {
     // mlModel for the pitch-worker — currently always SwiftF0 ONNX on
     // wasm, but recorded for snapshot reproducibility.
     pitchModel: { modelUrl: null, device: null, threshold: null },
-    // Try-out voice gate (branch noise-detector-tryout): the pitch worker's
-    // FireRedVAD status (loading | ready | missing | error | slow), the
+    // Voice gate (FireRedVAD): the pitch worker's
+    // FireRedVAD status (loading | ready | unavailable | error | slow), the
     // "Hide pitch when no voice is heard" setting, and the latest hop's
     // smoothed score p, decision (voice) and whether the display is hidden.
     voiceGate: { status: null, message: null, enabled: null, p: null, voice: null, hiding: null },
@@ -435,7 +435,7 @@ export function setPitchModel(info) {
   diagState.pitchModel = { ...diagState.pitchModel, ...info };
 }
 
-// Try-out voice gate (useAudioPipeline.js): merges status / setting / the
+// Voice gate (useAudioPipeline.js): merges status / setting / the
 // latest decision. No-op without diag.
 export function setVoiceGate(info) {
   if (!diagState) return;

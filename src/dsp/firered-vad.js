@@ -1,22 +1,25 @@
-// firered-vad.js — TRY-OUT (branch noise-detector-tryout, 2026-10-20): a
-// FireRedVAD voice detector on the pitch worker's 16 kHz stream, and the gate
-// that hides the pitch display while it hears no voice.
+// firered-vad.js — the voice gate: a FireRedVAD voice detector on the pitch
+// worker's 16 kHz stream, and the gate that hides the pitch display (and the
+// resonance position and HNR readout) while it hears no voice.
 //
 // Why: the pitch line paints on machine noise (fans, hums) that the notch
 // and the harmonic guard let through. The 2026-10-20 off-the-shelf screen
-// (measurements/offtheshelf-screen-2026-10-20.md on branch voice-detector,
-// "Addendum: relaxed rules") found that FireRedVAD at the "R1 h" point —
-// smoothing w5, p >= 0.55, 2 s hangover — removes 79.8 % of the false pitch
-// line on the tuning-194 noise clips, at a cost on held notes / sustained
-// vowels the user accepted for a try-out (user decision 2026-10-20). It is a
-// best-of-grid number on selection data; a confirmation run is pending.
-// Design note: measurements/noise-detector-tryout-2026-10-20.md.
+// (measurements/offtheshelf-screen-2026-10-20.md, "Addendum: relaxed rules")
+// picked FireRedVAD at the "R1 h" point — smoothing w5, p >= 0.55, 2 s
+// hangover — at a cost on held notes / sustained vowels the user accepted
+// (user decision 2026-10-20). The pre-registered confirmation on fresh public
+// data passed (measurements/firered-confirmation-2026-10-21.md). Built as a
+// PC try-out on branch noise-detector-tryout, merged into cue-strip on
+// 2026-10-21 (user decision). Design note:
+// measurements/noise-detector-tryout-2026-10-20.md.
 //
 // Model: FireRedVAD Stream-VAD, the official streaming ONNX with cache I/O
-// (github.com/FireRedTeam/FireRedVAD @ c30ec49, Apache-2.0), fetched by
-// scripts/fetch-firered-model.mjs into public/models/firered/ (not
-// committed). Inputs: `feat` [1, T, 80] (CMVN'd log-mel fbank) and
-// `caches_in` [8, 1, 128, 19]; outputs `probs` [1, T, 1] and `caches_out`.
+// (github.com/FireRedTeam/FireRedVAD @ c30ec49, Apache-2.0). Loaded at runtime
+// from the project's Hugging Face mirror once its commit is pinned below
+// (`mirrorCommit`), else from the app's own models/firered/ (filled by
+// scripts/fetch-firered-model.mjs; not committed). Inputs: `feat` [1, T, 80]
+// (CMVN'd log-mel fbank) and `caches_in` [8, 1, 128, 19]; outputs `probs`
+// [1, T, 1] and `caches_out`.
 // The DFSMN looks back 19 frames per layer and never ahead, so frame i
 // depends on 16 kHz samples [0, 160 i + 400) only.
 //
@@ -26,13 +29,27 @@
 //                                 scored it (see createVoiceGate)
 //   createFireRedRunner(ort, s)   the ONNX session with its cache carried
 //   createVoiceDetector(...)      the three, per pitch-worker hop
+//   fireredModelSource(...)       where the model files come from
+//   loadFireRedFiles(source)      both files, size + sha256 checked
 //   loadVerified(url, spec)       fetch one model file, size + sha256 checked
+
+import { loadVerifiedModel } from "../ml/speech-detector.js";
 
 export const FIRERED_MODEL = Object.freeze({
   repo: "https://github.com/FireRedTeam/FireRedVAD",
   commit: "c30ec49e8cc69642b0ee65362eba11b9d11c6e54",
   license: "Apache-2.0",
-  // Under the app's base URL (public/models/firered/ in the source tree).
+  // Hosting (user decision 2026-10-21), as the Silero speech detector
+  // (src/ml/speech-detector.js SPEECH_DETECTOR): the project's Hugging Face
+  // mirror of the two official files (plus LICENSE and README.md there),
+  // pinned to the mirror's commit and checked against the sha256 below, with
+  // a Cache Storage copy (loadVerifiedModel). The mirror is uploaded by the
+  // repo owner; until its commit is filled in here, `mirrorCommit` stays null
+  // and the files load from the app's own `dir` instead.
+  mirror: "Alice-Sabrina-Ivy/fireredvad-stream-vad-onnx",
+  mirrorCommit: null,
+  // Under the app's base URL (public/models/firered/ in the source tree,
+  // filled by scripts/fetch-firered-model.mjs): used while mirrorCommit is null.
   dir: "models/firered/",
   files: Object.freeze([
     Object.freeze({
@@ -83,34 +100,85 @@ export const CACHE_DIMS = Object.freeze([8, 1, 128, 19]);
 const FLT_EPSILON = 1.1920928955078125e-7; // float32 machine epsilon (Kaldi's log floor)
 
 // ------------------------------------------------------------------ files
+// A load failure of a model file (not there, not the pinned file, network
+// error) carries code "unavailable": the gate then stays off, pitch is shown
+// as before, and Settings says the detector could not load.
+function unavailable(message) {
+  return Object.assign(new Error(message), { code: "unavailable" });
+}
+
 // Fetches one model file and checks its size and sha256 (WebCrypto, where the
-// context has it). Throws an Error with code "missing" when the file is not
-// there or is not the pinned file (e.g. a dev server's HTML fallback page),
-// so the gate stays off and Settings can say why.
+// context has it). Throws code "unavailable" when the file is not there or is
+// not the pinned file (e.g. a dev server's HTML fallback page).
 export async function loadVerified(url, spec, { fetchFn = globalThis.fetch } = {}) {
   let res;
-  try { res = await fetchFn(url); } catch (err) { throw Object.assign(new Error(`${spec.name}: ${err?.message || err}`), { code: "missing" }); }
-  if (!res.ok) throw Object.assign(new Error(`${spec.name}: HTTP ${res.status}`), { code: "missing" });
+  try { res = await fetchFn(url); } catch (err) { throw unavailable(`${spec.name}: ${err?.message || err}`); }
+  if (!res.ok) throw unavailable(`${spec.name}: HTTP ${res.status}`);
   const bytes = new Uint8Array(await res.arrayBuffer());
-  if (bytes.length !== spec.bytes) throw Object.assign(new Error(`${spec.name}: ${bytes.length} bytes, expected ${spec.bytes}`), { code: "missing" });
+  if (bytes.length !== spec.bytes) throw unavailable(`${spec.name}: ${bytes.length} bytes, expected ${spec.bytes}`);
   const subtle = globalThis.crypto?.subtle;
   if (subtle) {
     const d = new Uint8Array(await subtle.digest("SHA-256", bytes));
     const hex = Array.from(d, (b) => b.toString(16).padStart(2, "0")).join("");
-    if (hex !== spec.sha256) throw Object.assign(new Error(`${spec.name}: sha256 mismatch`), { code: "missing" });
+    if (hex !== spec.sha256) throw unavailable(`${spec.name}: sha256 mismatch`);
   }
   return bytes;
 }
 
-// Are the model files there? cmvn.ark fetched and checked; the ONNX file by a
-// HEAD request (its size when the server sends one). Throws like loadVerified.
+// Where the model files come from:
+//   { kind: "mirror", base }  the Hugging Face mirror at the pinned commit
+//                             (when model.mirrorCommit is set)
+//   { kind: "app", base }     the app's own models/firered/ (appBaseUrl: that
+//                             folder's absolute URL), while mirrorCommit is null
+//   null                      no source (no mirror and no app URL, e.g. the
+//                             Node harnesses that drive the hook)
+export function fireredModelSource({ appBaseUrl = null, model = FIRERED_MODEL } = {}) {
+  if (model.mirrorCommit) {
+    return { kind: "mirror", base: `https://huggingface.co/${model.mirror}/resolve/${model.mirrorCommit}/` };
+  }
+  return appBaseUrl ? { kind: "app", base: appBaseUrl } : null;
+}
+
+// Cache Storage name of the mirrored files: one cache per file, because
+// loadVerifiedModel drops every other entry of its cache (older versions).
+export const FIRERED_CACHE_PREFIX = "syrinx-voice-detector-";
+
+// Both model files from `source` -> { onnx: Uint8Array, cmvn: Uint8Array },
+// each checked against its pinned size and sha256. Mirror: through
+// loadVerifiedModel (a good Cache Storage copy first, else the network, then
+// stored). App: a plain fetch of the app's own static files, as before the
+// mirror. Any failure throws code "unavailable". fetchFn / cachesApi / model
+// are injectable for tests.
+export async function loadFireRedFiles(source, { fetchFn = globalThis.fetch, cachesApi = globalThis.caches, model = FIRERED_MODEL } = {}) {
+  if (!source || typeof source.base !== "string") throw unavailable("no model source");
+  const spec = (k) => model.files.find((f) => f.key === k);
+  const one = async (f) => {
+    if (source.kind !== "mirror") return loadVerified(source.base + f.name, f, { fetchFn });
+    let got;
+    try {
+      got = await loadVerifiedModel({ url: source.base + f.name, sha256: f.sha256, fetchFn, cachesApi, cacheName: FIRERED_CACHE_PREFIX + f.key });
+    } catch (err) {
+      // (loadVerifiedModel words its errors for the Silero model it was written for)
+      throw unavailable(`${f.name}: ${String(err?.message || err).replace(/^speech detector model /, "")}`);
+    }
+    const bytes = new Uint8Array(got.bytes);
+    if (bytes.length !== f.bytes) throw unavailable(`${f.name}: ${bytes.length} bytes, expected ${f.bytes}`);
+    return bytes;
+  };
+  const [onnx, cmvn] = await Promise.all([one(spec("onnx")), one(spec("cmvn"))]);
+  return { onnx, cmvn };
+}
+
+// Are the app's own model files there (source kind "app")? cmvn.ark fetched
+// and checked; the ONNX file by a HEAD request (its size when the server
+// sends one). Throws like loadVerified.
 export async function probeModel(base, { fetchFn = globalThis.fetch } = {}) {
   const [onnxSpec, cmvnSpec] = ["onnx", "cmvn"].map((k) => FIRERED_MODEL.files.find((f) => f.key === k));
   await loadVerified(base + cmvnSpec.name, cmvnSpec, { fetchFn });
   let res;
-  try { res = await fetchFn(base + onnxSpec.name, { method: "HEAD" }); } catch (err) { throw Object.assign(new Error(String(err?.message || err)), { code: "missing" }); }
+  try { res = await fetchFn(base + onnxSpec.name, { method: "HEAD" }); } catch (err) { throw unavailable(String(err?.message || err)); }
   const len = res.headers?.get?.("content-length");
-  if (!res.ok || (len && Number(len) !== onnxSpec.bytes)) throw Object.assign(new Error(`${onnxSpec.name}: not found`), { code: "missing" });
+  if (!res.ok || (len && Number(len) !== onnxSpec.bytes)) throw unavailable(`${onnxSpec.name}: not found`);
   return true;
 }
 

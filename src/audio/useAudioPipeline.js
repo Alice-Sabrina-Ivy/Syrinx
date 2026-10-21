@@ -47,7 +47,7 @@ import {
 } from "../diag/diag";
 import { isResonanceLabRequested, onResonanceLabRequested } from "../resonance-lab/labRequest";
 import { setVoicePreviewCapture, voicePreviewPitchTap } from "../voice-preview/bridge";
-import { FIRERED_MODEL } from "../dsp/firered-vad";
+import { FIRERED_MODEL, fireredModelSource } from "../dsp/firered-vad";
 
 // Silence-gate thresholds (SILENCE_THRESHOLD_DB, CONFIDENCE_THRESHOLD,
 // SILENCE_DEBOUNCE_FRAMES), pitch staleness, and the bounded pitch-hold
@@ -80,36 +80,46 @@ const VOICED_FALL_FRAMES = 16;
 // Steadiness readout when there is no reading (see steadiness.js).
 const NO_STEADINESS = { value: null, held: false };
 
-// TRY-OUT voice gate (branch noise-detector-tryout, 2026-10-20;
-// measurements/noise-detector-tryout-2026-10-20.md). The pitch worker runs
-// FireRedVAD on its 16 kHz stream and tags each pitch message with
-// `vad: { p, voice }` (src/dsp/firered-vad.js). While the setting is on and
-// the detector says "no voice", the pitch DISPLAY shows nothing: the trace
-// gets a gap instead of its point, the Hz / note readout and the steadiness
-// readout show "—", and the pitch-display voiced flags (pitchVoiced /
-// pitchHolding: the trace header, the cue strip's pitch row, the listening
-// status) read as unvoiced. It is a mask on the unchanged chain — the
-// smoothing, paint gate, silence gate and hold run exactly as without it,
-// which is the veto the 2026-10-20 screen scored ("a painted hop the
-// detector calls no-voice is vetoed"). On those hops the resonance worker's
-// pitch hint also says unvoiced (pitch / contextTime unchanged; measured in
-// measurements/noise-detector-tryout-resonance-2026-10-21.md, built at 73 %
-// against an 80 % bar by user decision 2026-10-21). Everything else keeps the
-// raw values: the DSP / ML pitch hints, the "Likely heard as" panel, the
-// pitch-only warning, formants, the resonance row (voiced / holding stay
-// raw), and the recorded voiced / f0 / hnr that session stats use. The HNR
-// readout shows "—" on those frames too (display only; user decision
-// 2026-10-21). Recorded
-// frames carry the decision in `voiceGate` ("voice" | "hidden" | "novoice",
-// absent without a decision) and `painted` is what the live trace drew.
-// The model files' absolute URL (null where there is no page location, e.g.
-// the Node harnesses that drive this hook: no detector there).
-function voiceModelBase() {
+// Voice gate (FireRedVAD; noise-detector try-out 2026-10-20, merged into
+// cue-strip 2026-10-21; measurements/noise-detector-tryout-2026-10-20.md).
+// The pitch worker runs FireRedVAD on its 16 kHz stream and tags each pitch
+// message with `vad: { p, voice }` (src/dsp/firered-vad.js). While the
+// setting is on and the detector says "no voice":
+//   - the pitch DISPLAY shows nothing: the trace gets a gap instead of its
+//     point, the Hz / note readout and the steadiness readout show "—", and
+//     the pitch-display voiced flags (pitchVoiced / pitchHolding: the trace
+//     header, the cue strip's pitch row, the listening status) read as
+//     unvoiced. A mask on the unchanged chain — the smoothing, paint gate,
+//     silence gate and hold run exactly as without it, which is the veto the
+//     2026-10-20 screen scored ("a painted hop the detector calls no-voice is
+//     vetoed");
+//   - the HNR readout shows "—" (display only: the DSP worker computes HNR as
+//     before and recorded frames keep it; user decision 2026-10-21);
+//   - the resonance worker's pitch hint says unvoiced (pitch / contextTime
+//     unchanged), so noise the pitch worker voices does not become resonance
+//     readings (the measured variant of
+//     measurements/noise-detector-tryout-resonance-2026-10-21.md: 73 % less
+//     noise-only position time, speech unchanged; built at 73 % against an
+//     80 % bar by user decision 2026-10-21).
+// Everything else keeps the raw values: the DSP / ML pitch hints, the
+// "Likely heard as" panel, the pitch-only warning, formants, the resonance
+// row's voiced / holding flags, and the recorded voiced / f0 / hnr that
+// session stats use. Without a decision (detector loading / unavailable /
+// off / switched off as too slow) nothing is gated. Recorded frames carry
+// the decision in `voiceGate` ("voice" | "hidden" | "novoice", absent without
+// a decision) and `painted` is what the live trace drew.
+// Where the model files come from (firered-vad.js fireredModelSource: the
+// Hugging Face mirror once pinned, else the app's own models/firered/); null
+// where there is no page location, e.g. the Node harnesses that drive this
+// hook: no detector there.
+function voiceModelSource() {
+  let appBaseUrl;
   try {
-    return new URL(`${import.meta.env.BASE_URL}${FIRERED_MODEL.dir}`, globalThis.location?.href).href;
+    appBaseUrl = new URL(`${import.meta.env.BASE_URL}${FIRERED_MODEL.dir}`, globalThis.location?.href).href;
   } catch {
     return null;
   }
+  return fireredModelSource({ appBaseUrl });
 }
 
 function voiceGateCode(vadVoice, enabled) {
@@ -153,9 +163,9 @@ export function useAudioPipeline() {
     // idle | loading | ready | error | overloaded (a back-off pause). Its readings are in
     // resonanceRef (read by the cue strip's 4 Hz tick).
     resonanceStatus: "idle",
-    // Try-out voice gate: the pitch display's own voiced flags (= voiced /
+    // Voice gate: the pitch display's own voiced flags (= voiced /
     // holding except while the gate hides the pitch), and the detector's
-    // status: idle (never started) | loading | ready | missing | error | slow.
+    // status: idle (never started) | loading | ready | unavailable | error | slow.
     // Kept after stop() so Settings can still say why the gate was off.
     pitchVoiced: false,
     pitchHolding: false,
@@ -223,8 +233,8 @@ export function useAudioPipeline() {
     voiced: false,
     ts: 0,
   });
-  // Try-out voice gate: the setting (App owns it; on by default in this
-  // try-out) — see voiceGateCode above.
+  // Voice gate: the setting (App owns it; on by default) — see voiceGateCode
+  // above.
   const voiceGateEnabledRef = useRef(true);
   // Diag only: what the last DSP frame's pitch display did — painted (the
   // chain's decision), shown (after the voice gate's mask), hidden (masked).
@@ -281,7 +291,7 @@ export function useAudioPipeline() {
   // switch, is the OTHER register (the "readout an octave low" report).
   // Cleared by the next painted frame.
   const heldReadoutStaleRef = useRef(false);
-  // Try-out voice gate: set when the gate hides a frame the chain painted,
+  // Voice gate: set when the gate hides a frame the chain painted,
   // cleared by the next frame it shows. The 5 s silence hold below shows the
   // last shown pitch dimmed, as without the gate, unless this is set: then
   // the chain painted something after that value which the gate hid (a noise
@@ -661,13 +671,13 @@ export function useAudioPipeline() {
         if (pitchHeard) pushError({ source: "pitch-worker", where: "uncaught", message });
         else failSession("pitch-worker", message);
       });
+      const voiceSource = voiceModelSource();
       pitchWorker.postMessage({
         type: "init",
         inputSampleRate: captureSrc.sampleRate,
         ...(DIAG_ENABLED ? { diag: true } : {}),
-        // Try-out voice detector: the model files under the app's base URL
-        // (public/models/firered/, fetched by scripts/fetch-firered-model.mjs).
-        ...(voiceModelBase() ? { vad: { modelBase: voiceModelBase() } } : {}),
+        // Voice detector: where its model files come from (voiceModelSource).
+        ...(voiceSource ? { vad: { modelBase: voiceSource.base, source: voiceSource.kind } } : {}),
       });
 
       const pitchPort = captureSrc.connectConsumer();
@@ -707,7 +717,7 @@ export function useAudioPipeline() {
         if (msg.type === "pitch") {
           handlePitchMessageRef.current?.(msg);
         } else if (msg.type === "vad-status") {
-          // Try-out voice detector: loading | ready | missing | error | slow.
+          // Voice detector: loading | ready | unavailable | error | slow.
           // Not ready = no decisions = the pitch display is not gated.
           setState((s) => ({ ...s, voiceGateStatus: msg.status, voiceGateMessage: msg.message ?? null }));
           setVoiceGate({ status: msg.status, message: msg.message ?? null });
@@ -893,7 +903,7 @@ export function useAudioPipeline() {
             intensity: data.intensity,
             inputRms: data.diag.inputRms,
             confidence: latest.confidence,
-            // try-out voice detector (null without a decision) and what
+            // voice detector (null without a decision) and what
             // the pitch display did on this frame
             vadP: latest.vadP ?? null,
             vadVoice: latest.vadVoice ?? null,
@@ -1097,7 +1107,7 @@ export function useAudioPipeline() {
     }));
   }, []);
 
-  // The try-out "Hide pitch when no voice is heard" setting (App owns the
+  // The "Hide pitch when no voice is heard" setting (App owns the
   // persisted value). Applies from the next frame; the detector itself runs
   // either way while listening, so switching it back on is immediate.
   const setVoiceGateEnabled = useCallback((on) => {
@@ -1162,7 +1172,7 @@ export function useAudioPipeline() {
   // pitch hints to the DSP, ML and resonance workers, the steadiness window, diag.
   // Reached from start()'s onmessage through handlePitchMessageRef.
   function handlePitchMessage(msg) {
-    // Try-out voice detector decision for this hop (null: no decision —
+    // Voice detector decision for this hop (null: no decision —
     // detector loading / missing / off; the display is then not gated).
     const vad = msg.vad && typeof msg.vad.voice === "boolean" ? msg.vad : null;
     latestPitchRef.current = {
@@ -1232,7 +1242,7 @@ export function useAudioPipeline() {
         pitch: msg.pitch,
         confidence: msg.confidence,
         voiced: msg.voiced,
-        // try-out voice detector: smoothed score, decision, worker time
+        // voice detector: smoothed score, decision, worker time
         // for this hop (fbank + model), null without a decision
         vadP: vad ? vad.p : null,
         vadVoice: vad ? vad.voice : null,
@@ -1242,8 +1252,8 @@ export function useAudioPipeline() {
     if (DIAG_ENABLED && vad) setVoiceGate({ p: vad.p, voice: vad.voice, hiding: voiceGateEnabledRef.current && !vad.voice });
     // Steadiness window: every posted value (null = unvoiced) on the
     // audio clock. Lazily created so the oracle chain, which drives the
-    // hook without start(), exercises the same path. A hop the try-out
-    // voice gate hides enters as unvoiced.
+    // hook without start(), exercises the same path. A hop the voice
+    // gate hides enters as unvoiced.
     if (!steadinessRef.current) steadinessRef.current = createSteadinessTracker();
     steadinessRef.current.push(
       voiceGateEnabledRef.current && vad && vad.voice === false ? null : msg.pitch,
@@ -1273,7 +1283,7 @@ export function useAudioPipeline() {
     // stall/death must not freeze the gate's voicedness arm), and the
     // bounded hold window for bridging brief SwiftF0 null gaps.
     const latestPitch = latestPitchRef.current;
-    // Try-out voice gate (see voiceGateCode): hide the pitch display on this
+    // Voice gate (see voiceGateCode): hide the pitch display on this
     // frame when the setting is on and the latest hop's decision is "no
     // voice". A mask only — nothing below changes its state because of it.
     const gateOn = voiceGateEnabledRef.current;
@@ -1331,7 +1341,7 @@ export function useAudioPipeline() {
 
       if (silenceDuration < SILENCE_HOLD_MS) {
         // Hold last voiced values (display goes to reduced opacity). The
-        // try-out voice gate does not cut this hold short (the detector says
+        // voice gate does not cut this hold short (the detector says
         // "no voice" 2 s into a silence): the held pitch is the last one it
         // let through — unless it hid painted frames after it
         // (gateHidPaintRef), and then the readout shows "—".
@@ -1504,7 +1514,7 @@ export function useAudioPipeline() {
     // heldReadoutStaleRef): never show the other register's last value
     // while a fresh off-level pitch is suppressed.
     const showHeldReadout = displayHolding && !heldReadoutStaleRef.current && !vadHide;
-    // What the display actually shows (the try-out voice gate's mask).
+    // What the display actually shows (the voice gate's mask).
     const shown = displayPitched && !vadHide;
     if (shown) gateHidPaintRef.current = false;
     else if (displayPitched) gateHidPaintRef.current = true;
@@ -1581,8 +1591,8 @@ export function useAudioPipeline() {
         // gate-suppressed excursions are gaps there too; hold-bridged
         // frames (painted live, recorded voiced:false above) are also gaps
         // in history — it is not an exact replica of the live trace
-        // (2026-10-04). Stats keep using voiced/f0. A frame the try-out
-        // voice gate hid is not painted; voiceGate records the decision.
+        // (2026-10-04). Stats keep using voiced/f0. A frame the voice
+        // gate hid is not painted; voiceGate records the decision.
         painted: shown,
         ...(voiceGate ? { voiceGate } : {}),
         f1: f1,

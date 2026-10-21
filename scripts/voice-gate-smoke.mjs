@@ -1,8 +1,10 @@
-// voice-gate-smoke.mjs — headless browser check of the TRY-OUT voice gate
-// ("Hide pitch when no voice is heard", branch noise-detector-tryout,
-// 2026-10-20; measurements/noise-detector-tryout-2026-10-20.md) against the
-// BUILT app (dist/, served by `vite preview`), with Chrome's fake microphone
-// playing public clips.
+// voice-gate-smoke.mjs — headless browser check of the voice gate ("Hide
+// pitch when no voice is heard"; noise-detector try-out 2026-10-20, merged
+// into cue-strip 2026-10-21; measurements/noise-detector-tryout-2026-10-20.md)
+// against the BUILT app (dist/, served by `vite preview`), with Chrome's fake
+// microphone playing public clips. Needs the model in dist/ while
+// FIRERED_MODEL.mirrorCommit is null (node scripts/fetch-firered-model.mjs,
+// then npm run build).
 //
 //   npm run build && node scripts/voice-gate-smoke.mjs [--noise=<16 kHz noise-only wav>] [--json=<out>]
 //
@@ -24,16 +26,28 @@
 //
 // Runs (each a fresh Chrome on its WAV, ?diag=1 so the page exposes its
 // per-frame display decisions through window.__syrinxDiag):
-//   noise   gate on 12 s -> switched off in Settings 12 s -> on again 8 s:
+//   noise   gate on 20 s -> switched off in Settings 12 s -> on again 8 s:
 //           on hides the pitch line (shown <= 20 % of what the chain painted,
 //           after the first 3 s, whose cold start the 2 s hangover keeps
 //           open); off shows exactly what the chain paints; the switch flips.
+//           The cue strip, sampled every 250 ms: with the gate on from the
+//           start the resonance row never gets a position (the resonance
+//           worker's pitch hint is gated; user decision 2026-10-21) and the
+//           HNR readout shows "—" on >= 80 % of the samples after the first
+//           3 s; with the gate off it shows a number again (information:
+//           whether the resonance row gets a position there — once it has
+//           one it keeps it, so the last "on" part is not judged for it).
+//   noise-off  a fresh start with the gate off for 20 s: the ungated
+//           resonance row gets a position on this clip (the case is real; on
+//           the committed air-conditioner clip the first one came after
+//           ~10 s in the 2026-10-21 run).
 //   speech  gate on 16 s: speech is kept (shown >= 97 % of painted frames).
 //   held    gate on 20 s: information (share of the held notes' painted
 //           frames the gate hides; the screen's known cost).
-//   missing the model files hidden from the server: Settings says the model
-//           is not installed, the detector reports "missing", nothing is
-//           hidden.
+//   unavailable the model files hidden from the server: Settings says the
+//           voice detector could not load and pitch is shown as before (no
+//           developer command), the detector reports "unavailable", nothing
+//           is hidden.
 // Every run: no page errors or console errors. CPU: the pitch worker's own
 // time per 25 ms hop for the detector (front end + model call), median / p95,
 // from the diag ring, over the hops with a decision after the first one. The
@@ -214,6 +228,25 @@ async function setGate(page, on) {
   return { before, after };
 }
 const now = (page) => page.evaluate(() => performance.timeOrigin + performance.now());
+// The cue strip every 250 ms for `ms`: the resonance row's position (its
+// data-value; "" = no position) and the HNR readout's text.
+async function sampleStrip(page, ms) {
+  const out = [];
+  const t0 = Date.now();
+  while (Date.now() - t0 < ms) {
+    out.push(await page.evaluate(() => ({
+      t: performance.timeOrigin + performance.now(),
+      res: document.querySelector('[data-cue="resonance"]')?.dataset.value ?? null,
+      resState: document.querySelector('[data-cue="resonance"]')?.dataset.state ?? null,
+      // the visible text (Fixed also lays out "HNR -00 dB" invisibly for its width)
+      hnr: document.querySelector("[data-cue-hnr] span > span:not([aria-hidden])")?.textContent?.trim() ?? null,
+    })));
+    await sleep(250);
+  }
+  return out;
+}
+const hasPos = (x) => x.res !== null && x.res !== "";
+const hnrNumber = (x) => /HNR\s*-?\d+\s*dB/.test(x.hnr ?? "");
 // Per-frame display decisions in [t0, t1] (epoch ms) from the diag ring.
 async function frames(page, t0, t1) {
   return page.evaluate((a, b) => window.__syrinxDiag.state.frames.toArray()
@@ -282,12 +315,12 @@ console.log(`preview on :${PORT}`);
   check("noise: detector ready", await waitReady(page), JSON.stringify((await gateStatus(page)).diag));
   await noteCatchup(page, "noise");
   const s0 = await now(page);
-  await sleep(12000);
+  const strip1 = await sampleStrip(page, 20000);
   const s1 = await now(page);
   const on1 = summary(await frames(page, s0 + 3000, s1));
   const sw1 = await setGate(page, false);
   const s2 = await now(page);
-  await sleep(12000);
+  const stripOff = await sampleStrip(page, 12000);
   const s3 = await now(page);
   const off = summary(await frames(page, s2 + 500, s3));
   const sw2 = await setGate(page, true);
@@ -303,10 +336,40 @@ console.log(`preview on :${PORT}`);
   check("noise, gate off: shows exactly what the chain paints", off.n > 300 && off.mismatch === 0, `${off.mismatch} of ${off.n} frames differ; painted ${off.painted}`);
   check("noise: switch on again hides again", sw2.after === "true" && (on2.painted === 0 || on2.shownOfPainted <= 0.2),
     `shown ${on2.shown} of ${on2.painted} (${pct(on2.shownOfPainted)})`);
+  // Resonance row and HNR readout (user decisions 2026-10-21).
+  const posOn = strip1.filter(hasPos).length;
+  check("noise, gate on from the start: the resonance row never gets a position", strip1.length > 30 && posOn === 0,
+    `${posOn} of ${strip1.length} samples with a position; states ${[...new Set(strip1.map((x) => x.resState))].join(",")}`);
+  const late1 = strip1.filter((x) => x.t >= s0 + 3000);
+  const hnrOn = late1.filter(hnrNumber).length;
+  const hnrOff = stripOff.filter((x) => x.t >= s2 + 500).filter(hnrNumber).length;
+  check("noise, gate on: the HNR readout shows \"—\" (a number on <= 20 % of the samples after 3 s)", late1.length > 20 && hnrOn <= 0.2 * late1.length,
+    `a number on ${hnrOn} of ${late1.length} samples; gate off: ${hnrOff} of ${stripOff.length}`);
+  check("noise, gate off: the HNR readout shows numbers again (the case is real)", hnrOff > 0.3 * stripOff.length, `${hnrOff} of ${stripOff.length}`);
+  const posOff = stripOff.filter(hasPos).length;
+  console.log(`INFO  noise, gate off for 12 s after 12 s on: resonance position on ${posOff} of ${stripOff.length} samples`);
   const t = await vadTimes(page);
   cpu.vad.push(...t.vad); cpu.pitch.push(...t.pitch);
   check("noise: no page or console errors", errors.length === 0, errors.slice(0, 3).join(" | "));
-  report.runs.noise = { on1, off, on2, switch: [sw1, sw2], errors };
+  report.runs.noise = { on1, off, on2, switch: [sw1, sw2], errors,
+    strip: { posOn, n: strip1.length, hnrOn, nLate: late1.length, hnrOff, posOff, nOff: stripOff.length } };
+  await page.close();
+}
+
+// ------------------------------------------------- noise, gate off (information)
+{
+  console.log("\n== noise-only, gate off from the start (is the resonance case real on this clip?)");
+  const { page, errors } = await launch(WAV.noise);
+  await startListening(page, { start: false });
+  await setGate(page, false);
+  await clickButton(page, ["Start Listening"]);
+  await page.waitForFunction(() => document.body.innerText.includes("Stop Listening"), { timeout: 30000 });
+  const st = await sampleStrip(page, 20000);
+  const pos = st.filter(hasPos).length;
+  check("noise, gate off from the start: the ungated resonance row gets a position on this clip (the case is real)", pos > 0,
+    `position on ${pos} of ${st.length} samples, first at ${st.findIndex(hasPos) >= 0 ? (st.findIndex(hasPos) * 0.25).toFixed(1) + " s" : "—"}; HNR a number on ${st.filter(hnrNumber).length}`);
+  check("noise-off: no page or console errors", errors.length === 0, errors.slice(0, 3).join(" | "));
+  report.runs.noiseOff = { pos, n: st.length, hnr: st.filter(hnrNumber).length, errors };
   await page.close();
 }
 
@@ -349,32 +412,33 @@ console.log(`preview on :${PORT}`);
   await page.close();
 }
 
-// ---------------------------------------------------------------- model missing
+// ---------------------------------------------------------------- model unavailable
 {
-  console.log("\n== model files missing");
+  console.log("\n== model files unavailable");
   renameSync(DIST_MODEL, DIST_MODEL_AWAY);
   try {
     const { page, errors } = await launch(WAV.noise);
     await startListening(page, { start: false });
     await openSettings(page);
-    await page.waitForFunction(() => /not installed|found/.test(document.querySelector("[data-voice-gate-status-text]")?.textContent ?? ""), { timeout: 15000 }).catch(() => {});
+    await page.waitForFunction(() => /could not load|starts when/.test(document.querySelector("[data-voice-gate-status-text]")?.textContent ?? ""), { timeout: 15000 }).catch(() => {});
     const before = await gateStatus(page);
-    check("missing: Settings says so before listening", /not installed/.test(before.text ?? ""), before.text);
+    const plain = (t) => /could not load/.test(t ?? "") && /pitch is shown as before/.test(t ?? "") && !/node |scripts\/|npm /.test(t ?? "");
+    check("unavailable: Settings says so in plain words before listening", plain(before.text), before.text);
     await closeSettings(page);
     await clickButton(page, ["Start Listening"]);
     await page.waitForFunction(() => document.body.innerText.includes("Stop Listening"), { timeout: 30000 });
-    check("missing: detector reports missing", await waitReady(page, "missing"), JSON.stringify((await gateStatus(page)).diag));
+    check("unavailable: detector reports unavailable", await waitReady(page, "unavailable"), JSON.stringify((await gateStatus(page)).diag));
     const s0 = await now(page);
     await sleep(8000);
     const s1 = await now(page);
     const mm = summary(await frames(page, s0, s1));
-    check("missing: nothing hidden (gate stays off)", mm.n > 200 && mm.mismatch === 0 && mm.decided === 0, `${mm.mismatch} differ, ${mm.decided} decided of ${mm.n}`);
+    check("unavailable: nothing hidden (gate stays off)", mm.n > 200 && mm.mismatch === 0 && mm.decided === 0, `${mm.mismatch} differ, ${mm.decided} decided of ${mm.n}`);
     await openSettings(page);
     const during = await gateStatus(page);
-    check("missing: Settings says the model is not installed while listening", /not installed/.test(during.text ?? ""), during.text);
+    check("unavailable: Settings says so in plain words while listening", plain(during.text), during.text);
     await closeSettings(page);
-    check("missing: no page or console errors", errors.length === 0, errors.slice(0, 3).join(" | "));
-    report.runs.missing = { mm, before: before.text, during: during.text, errors };
+    check("unavailable: no page or console errors", errors.length === 0, errors.slice(0, 3).join(" | "));
+    report.runs.unavailable = { mm, before: before.text, during: during.text, errors };
     await page.close();
   } finally {
     renameSync(DIST_MODEL_AWAY, DIST_MODEL);

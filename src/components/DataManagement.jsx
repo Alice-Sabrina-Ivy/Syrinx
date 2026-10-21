@@ -1,8 +1,8 @@
 // DataManagement.jsx — Settings/data panel: training direction, audio
 // recording toggle, the experimental "Likely heard as" switch (the same
-// setting as the panel's own switch; App owns it), the try-out "Hide pitch
-// when no voice is heard" switch with its detector's status, export, import,
-// delete all.
+// setting as the panel's own switch; App owns it), the "Hide pitch when no
+// voice is heard" switch (the voice gate) with its detector's status, export,
+// import, delete all.
 //
 // A modal dialog (App makes the page behind it inert): focus moves to the
 // panel when it opens and back to the gear when it closes (App), Escape
@@ -20,24 +20,8 @@ import {
 import { DirectionOptions } from "./DirectionPrompt";
 import { HeardAsSwitch } from "./HeardAsPanel";
 import { HEARD_AS_DOWNLOAD_MB } from "../ml/heard-as-download";
-import { FIRERED_MODEL, probeModel } from "../dsp/firered-vad";
-
-// The try-out voice gate's status line (the pitch worker reports the
-// detector's state while listening; before that, Settings checks that the
-// model files are there).
-function voiceGateStatusText(status, message, probe) {
-  switch (status) {
-    case "ready": return "Voice detector running.";
-    case "loading": return "Loading the voice detector…";
-    case "missing": return "Off: the voice detector's model files are not installed (run node scripts/fetch-firered-model.mjs, then reload).";
-    case "error": return `Off: the voice detector failed to start${message ? ` (${message})` : ""}.`;
-    case "slow": return "Off for this session: the voice detector could not keep up on this device.";
-    default:
-      if (probe === "ok") return "Model files found; the detector starts when you start listening.";
-      if (probe === "missing") return "Off: the voice detector's model files are not installed (run node scripts/fetch-firered-model.mjs, then reload).";
-      return "Checking for the voice detector's model files…";
-  }
-}
+import { FIRERED_MODEL, fireredModelSource, probeModel } from "../dsp/firered-vad";
+import { voiceGateStatusText } from "../utils/voiceGateSetting";
 
 // Export assembly: frame lines are concatenated into ~1 MB strings, and
 // every ~32 MB of those are folded into a Blob (the browser's blob store,
@@ -55,7 +39,7 @@ function announceDataChanged() {
 
 export function DataManagement({
   onClose, direction = null, onDirectionChange, heardAsEnabled = false, onHeardAsChange,
-  voiceGateEnabled = true, onVoiceGateChange, voiceGateStatus = "idle", voiceGateMessage = null,
+  voiceGateEnabled = true, onVoiceGateChange, voiceGateStatus = "idle",
 }) {
   const [recordAudio, setRecordAudio] = useState(false);
   // Before the first listening session: are the model files there?
@@ -76,10 +60,16 @@ export function DataManagement({
   const hasVoiceGate = !!onVoiceGateChange;
   useEffect(() => {
     if (!hasVoiceGate || voiceGateStatus !== "idle") return undefined;
+    const source = fireredModelSource({
+      appBaseUrl: new URL(`${import.meta.env.BASE_URL}${FIRERED_MODEL.dir}`, window.location.href).href,
+    });
+    // The mirror is fetched (and cached) when listening starts; probing it
+    // here would download from it on every Settings visit.
+    if (source.kind === "mirror") { setVoiceGateProbe("mirror"); return undefined; }
     let alive = true;
-    probeModel(new URL(`${import.meta.env.BASE_URL}${FIRERED_MODEL.dir}`, window.location.href).href)
+    probeModel(source.base)
       .then(() => alive && setVoiceGateProbe("ok"))
-      .catch(() => alive && setVoiceGateProbe("missing"));
+      .catch(() => alive && setVoiceGateProbe("unavailable"));
     return () => { alive = false; };
   }, [hasVoiceGate, voiceGateStatus]);
 
@@ -235,7 +225,7 @@ export function DataManagement({
     // experimental panel (default off).
     setRecordAudio(false);
     if (heardAsEnabled) onHeardAsChange?.(false);
-    if (!voiceGateEnabled) onVoiceGateChange?.(true); // the try-out's default
+    if (!voiceGateEnabled) onVoiceGateChange?.(true); // the default (on)
     setStatus("All data deleted");
     setTimeout(() => setStatus(null), 2000);
   }
@@ -322,7 +312,7 @@ export function DataManagement({
           </div>
         )}
 
-        {/* Try-out voice gate (branch noise-detector-tryout, on by default) */}
+        {/* Voice gate (FireRedVAD; on by default) */}
         {onVoiceGateChange && (
           <div className="mb-4" data-settings-voice-gate="" data-voice-gate-status={voiceGateStatus}>
             <div className="flex items-center justify-between gap-3">
@@ -331,10 +321,10 @@ export function DataManagement({
                   Hide pitch when no voice is heard (experimental)
                 </span>
                 <p className="text-[11px] text-neutral-400 mt-0.5">
-                  A try-out: a voice detector hides the pitch line, Hz / note and steadiness while it hears no voice, such as a fan or hum alone. It can also blank parts of long held notes and vowels. Resonance and the other readings are not affected.
+                  A voice detector hides the pitch line, Hz / note, steadiness and HNR while it hears no voice, such as a fan or hum alone, and keeps that noise out of the resonance reading. It can blank parts of held notes in loud noise, and noise can still show for about 2 s after you stop speaking.
                 </p>
                 <p className="text-[11px] text-neutral-500 mt-0.5" data-voice-gate-status-text="">
-                  {voiceGateStatusText(voiceGateStatus, voiceGateMessage, voiceGateProbe)}
+                  {voiceGateStatusText(voiceGateStatus, voiceGateProbe)}
                 </p>
               </div>
               <button

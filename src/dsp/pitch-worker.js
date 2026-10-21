@@ -29,21 +29,25 @@
 //                  { type: "audioPort", port }       MessagePort from captureSource
 //   worker → main: { type: "status", status, message? }     "ready"|"error"
 //                  { type: "pitch", pitch, confidence, voiced, ts, contextTime, inferMs?, vad?, vadMs? }
-//                  { type: "vad-status", status, message? } (try-out detector, below)
+//                  { type: "vad-status", status, message? } (voice detector, below)
 //
-// TRY-OUT voice detector (branch noise-detector-tryout, 2026-10-20;
-// src/dsp/firered-vad.js, measurements/noise-detector-tryout-2026-10-20.md).
-// Only when init carries `vad: { modelBase }` (the app does; the Node
+// Voice detector (the voice gate: noise-detector try-out 2026-10-20, merged
+// into cue-strip 2026-10-21; src/dsp/firered-vad.js,
+// measurements/noise-detector-tryout-2026-10-20.md).
+// Only when init carries `vad: { modelBase, source? }` (the app does: the
+// Hugging Face mirror, source "mirror", once firered-vad.js pins its commit,
+// else the app's own models/firered/, source "app"; the Node
 // harnesses that drive this worker do not, and then nothing below runs and
 // the worker is exactly as before). FireRedVAD runs on this worker's own
 // 16 kHz stream (the resampler's output, before the notch), hop by hop, so
 // the decision for the pitch message of chunk k is computed from the audio up
 // to the end of chunk k — the alignment the 2026-10-20 screen scored. Each
 // pitch message then carries `vad: { p, voice }` (p = smoothed score at the
-// hop; voice = the R1 h decision). The main thread hides the pitch display
-// when voice is false and the user's setting is on; every other consumer
-// (DSP / ML / resonance hints, heard-as, pitch-only warning) gets the
-// posted pitch unchanged. While the model loads, or if it is missing,
+// hop; voice = the R1 h decision). The main thread hides the pitch display,
+// the HNR readout and (through its pitch hint) the resonance position when
+// voice is false and the user's setting is on; every other consumer (DSP / ML
+// hints, heard-as, pitch-only warning) gets the posted pitch unchanged. While
+// the model loads, or if it is unavailable,
 // messages carry no `vad` (not gated); when it arrives, the audio that waited
 // for it (the last 4 s at most) is scored a little per hop, and messages carry
 // no `vad` until that has caught up (createVoiceDetector). The model runs
@@ -94,7 +98,7 @@ import {
 import { createNoiseNotch, isNearNotch } from "./noise-notch.js";
 import { createStreamingResampler } from "../ml/audio-utils.js";
 import { PITCH_DISPLAY_RANGE } from "../utils/constants.js";
-import { FIRERED_MODEL, createVoiceDetector, createFireRedRunner, parseKaldiCmvn, loadVerified } from "./firered-vad.js";
+import { createVoiceDetector, createFireRedRunner, parseKaldiCmvn, loadFireRedFiles } from "./firered-vad.js";
 
 const TARGET_SAMPLE_RATE = 16000;
 const FRAME_LENGTH = BOERSMA_FRAME_LENGTH_16K; // 1280 = 80 ms
@@ -134,9 +138,9 @@ let buffer16kFill = 0;
 // strength data (not the just-arrived chunk's). Length lookback+1.
 let frameMeta = [];
 
-// Try-out voice detector state (see the header). vadDetector exists from init
+// Voice detector state (see the header). vadDetector exists from init
 // (its front end runs from the first sample) until the model is found to be
-// missing / broken / too slow; vadQueue is the in-order chain used once the
+// unavailable / broken / too slow; vadQueue is the in-order chain used once the
 // model is ready.
 let vadDetector = null;
 let vadQueue = null;
@@ -163,9 +167,10 @@ function vadStatus(s, message) {
 // The app's loader: the two model files (size + sha256 checked) and an
 // onnxruntime-web WASM session -> { runner, cmvn }.
 async function loadVadModel(cfg) {
-  const base = String(cfg.modelBase);
-  const [onnxSpec, cmvnSpec] = ["onnx", "cmvn"].map((k) => FIRERED_MODEL.files.find((f) => f.key === k));
-  const [onnxBytes, cmvnBytes] = await Promise.all([loadVerified(base + onnxSpec.name, onnxSpec), loadVerified(base + cmvnSpec.name, cmvnSpec)]);
+  const { onnx: onnxBytes, cmvn: cmvnBytes } = await loadFireRedFiles({
+    kind: cfg.source === "mirror" ? "mirror" : "app",
+    base: String(cfg.modelBase),
+  });
   const cmvn = parseKaldiCmvn(cmvnBytes);
   // onnxruntime-web's WASM build and the app's own copy of its plain
   // runtime file (shipped since 2026-10-07 for Safari; src/ml/
@@ -192,7 +197,7 @@ async function loadVad(cfg, gen) {
   } catch (err) {
     if (gen !== vadGen) return;
     vadDetector = null;
-    vadStatus(err?.code === "missing" ? "missing" : "error", String(err?.message || err));
+    vadStatus(err?.code === "unavailable" ? "unavailable" : "error", String(err?.message || err));
   }
 }
 
