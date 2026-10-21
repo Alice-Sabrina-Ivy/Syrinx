@@ -42,10 +42,13 @@ review:
   the resonance note's wording (the 73 % was the worker's stored position,
   not the drawn dot: drawn dot −68.8 %). The strip's caption ("Start
   speaking — …") follows the same flag.
-- **HNR readout** (user decision): in the 5 s silence hold it keeps its last
-  value, like the dim pitch readout, also once the detector says "no voice"
-  ~2 s into the silence; "—" there only when the gate hid painted pitch after
-  that value (`gateHidPaintRef`, the pitch readout's own exception).
+- **HNR readout** (user decision): in the 5 s silence hold it keeps the last
+  value it showed, like the dim pitch readout, also once the detector says
+  "no voice" ~2 s into the silence; "—" there only when the gate hid painted
+  pitch after that value (`gateHidPaintRef`, the pitch readout's own
+  exception). Review fix 2026-10-21: the held value is `shownHnr`, the last
+  HNR the readout showed; before, noise the gate hid with an HNR but no
+  painted pitch line could leave its HNR to show in the hold.
   Elsewhere unchanged: "—" on frames the gate hides; recorded frames keep the
   measured value.
 - **Model hosting: the mirror is pinned.** `FIRERED_MODEL.mirrorCommit` =
@@ -111,8 +114,9 @@ hangover: only 14–28 % of it is removed in the first 2 s).
   as before. Exactly the measured variant of
   [noise-detector-tryout-resonance-2026-10-21.md](noise-detector-tryout-resonance-2026-10-21.md):
   73 % less noise-only position time (the pre-set bar was 80 % — built
-  anyway), speech unchanged, held vowels still excluded. A position the row
-  already has stays (the readout freezes; it does not clear).
+  anyway), speech unchanged, held vowels still excluded. The worker keeps a
+  position it already has (it freezes; it does not clear); the row draws it
+  only while the pitch display is voiced or holding.
   **Historical (superseded 2026-10-21, follow-up):** The row's own
   voiced / holding flags stay raw (the DSP gate), so on noise the detector
   hides the row reads "keep talking…" with no position (the smoke's
@@ -157,7 +161,7 @@ hangover: only 14–28 % of it is removed in the first 2 s).
   keeps most of that noise out of the resonance reading. It can blank parts
   of long held notes and vowels, more in loud noise, and noise can still show
   for about 2 s after you stop speaking." (Review 2026-10-21: "most of" —
-  73 % less noise-only position time, and a position already shown stays;
+  73 % less noise-only position time, and the worker keeps a position once it has one;
   "long held notes and vowels" — the long-hold cost below was not
   re-measured.) The switch keeps its label "Hide pitch when no voice is heard
   (experimental)", on by default; the text under it lists what it also hides.
