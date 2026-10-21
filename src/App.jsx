@@ -14,6 +14,8 @@ import {
 } from "./utils/trainingDirection";
 import { loadHeardAsEnabled, saveHeardAsEnabled } from "./utils/heardAsSetting";
 import { loadVoiceGateEnabled, saveVoiceGateEnabled, VOICE_GATE_DEFAULT } from "./utils/voiceGateSetting";
+import { loadLabEnabled, saveLabEnabled } from "./utils/labSetting";
+import { withdrawResonanceLab } from "./resonance-lab/labRequest";
 import db from "./db";
 
 // Diagnostic overlay is dynamically imported and only rendered when the
@@ -26,6 +28,9 @@ const DiagnosticOverlay = DIAG_ENABLED
 
 // Experimental resonance lab view — a lazy chunk fetched only when the tab is
 // opened; opening it is also what starts the lab (resonance-lab/labRequest.js).
+// The tab is shown only when Settings' "Show the Resonance lab (experimental)"
+// is on (off by default since 2026-10-21, utils/labSetting.js); turning it off
+// leaves the tab (to the Dashboard) and stops the running lab.
 const LabView = lazy(() => import("./resonance-lab/LabView.jsx"));
 
 // Experimental Voice Shaper (record a phrase, hear it with another pitch or
@@ -42,6 +47,8 @@ const TABS = [
   { id: "shaper", label: "Voice Shaper" },
   { id: "lab", label: "Resonance lab" },
 ];
+// Without the lab setting: the first four.
+const TABS_NO_LAB = TABS.filter((t) => t.id !== "lab");
 
 // The tab bar (the same in every state). Below Tailwind's sm breakpoint the tabs
 // are narrower (px-2, gap-0.5) so the five fit on one row at 360 px, the two-word
@@ -56,11 +63,12 @@ const TABS = [
 // -mx-1 / -mt-1 / mb-2 cancel them, so at the default text size nothing moves
 // from 360 px up. Inactive labels
 // neutral-400 (about 7:1; neutral-500 was about 4:1 at 12 px), aria-current on
-// the active tab.
-function TabNav({ activeTab, setActiveTab }) {
+// the active tab. Four tabs (the lab setting off, the default) use the same
+// classes: they fit with room to spare.
+function TabNav({ activeTab, setActiveTab, tabs = TABS }) {
   return (
     <nav className="flex-shrink-0 flex justify-center-safe gap-0.5 sm:gap-1 overflow-x-auto -mx-1 max-[360px]:-mx-4 px-1 -mt-1 pt-1 pb-1 mb-2">
-      {TABS.map((tab) => (
+      {tabs.map((tab) => (
         <button
           key={tab.id}
           onClick={() => setActiveTab(tab.id)}
@@ -179,6 +187,9 @@ function App() {
   // "Hide pitch when no voice is heard (experimental)" — the voice gate: ON
   // by default (utils/voiceGateSetting.js).
   const [voiceGateEnabled, setVoiceGateEnabledState] = useState(VOICE_GATE_DEFAULT);
+  // "Show the Resonance lab (experimental)": OFF by default (missing /
+  // blocked storage = off); the tab is shown only while it is on.
+  const [labEnabled, setLabEnabledState] = useState(false);
   // Settings returns focus to the gear when it closes.
   const gearRef = useRef(null);
   const settingsOpenedRef = useRef(false);
@@ -274,6 +285,34 @@ function App() {
     saveVoiceGateEnabled(db.settings, on);
   }
 
+  // The lab switch: same load pattern (a hung IndexedDB keeps it off); a
+  // toggle before the load resolves wins.
+  const labTouchedRef = useRef(false);
+  useEffect(() => {
+    let done = false;
+    loadLabEnabled(db.settings).then((on) => {
+      if (done || labTouchedRef.current) return;
+      done = true;
+      setLabEnabledState(on);
+    });
+    const timer = setTimeout(() => { done = true; }, DIRECTION_LOAD_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Turning it off while the lab tab is open goes to the Dashboard, and the
+  // running lab (its worker and capture consumer) stops; it starts again only
+  // when the tab is opened again (resonance-lab/labRequest.js).
+  function changeLab(on) {
+    labTouchedRef.current = true;
+    setLabEnabledState(on);
+    saveLabEnabled(db.settings, on);
+    if (!on) {
+      setActiveTab((t) => (t === "lab" ? "dashboard" : t));
+      withdrawResonanceLab();
+    }
+  }
+  const tabs = labEnabled ? TABS : TABS_NO_LAB;
+
   // The load-time question. Continue confirms AND starts listening (one
   // tap per load, as Start Listening alone was before the question
   // existed); Escape only confirms.
@@ -358,6 +397,8 @@ function App() {
           voiceGateEnabled={voiceGateEnabled}
           onVoiceGateChange={changeVoiceGate}
           voiceGateStatus={voiceGateStatus}
+          labEnabled={labEnabled}
+          onLabChange={changeLab}
         />
       )}
 
@@ -388,7 +429,7 @@ function App() {
         {status === "idle" && activeTab !== "history" && (
           <div className="flex-1 flex flex-col w-full max-w-6xl min-h-0">
             {/* Tab navigation even when idle */}
-            <TabNav activeTab={activeTab} setActiveTab={setActiveTab} />
+            <TabNav activeTab={activeTab} setActiveTab={setActiveTab} tabs={tabs} />
             <div className="flex-1 flex items-center justify-center">
               <button
                 onClick={start}
@@ -402,7 +443,7 @@ function App() {
 
         {status === "idle" && activeTab === "history" && (
           <div className="flex-1 flex flex-col w-full max-w-6xl min-h-0">
-            <TabNav activeTab={activeTab} setActiveTab={setActiveTab} />
+            <TabNav activeTab={activeTab} setActiveTab={setActiveTab} tabs={tabs} />
             <SessionHistory />
           </div>
         )}
@@ -432,7 +473,7 @@ function App() {
         {status === "running" && (
           <div className="flex-1 flex flex-col w-full max-w-6xl min-h-0">
             {/* Tab navigation */}
-            <TabNav activeTab={activeTab} setActiveTab={setActiveTab} />
+            <TabNav activeTab={activeTab} setActiveTab={setActiveTab} tabs={tabs} />
 
             {/* Tab content. Scrolls below lg: on a phone the trace and the
                 cue strip fit the first screen, the experimental panel and
@@ -504,7 +545,7 @@ function App() {
                 </ShaperBoundary>
               )}
 
-              {activeTab === "lab" && (
+              {activeTab === "lab" && labEnabled && (
                 <Suspense fallback={null}>
                   <LabView />
                 </Suspense>

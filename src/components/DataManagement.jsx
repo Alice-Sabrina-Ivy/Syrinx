@@ -40,6 +40,7 @@ function announceDataChanged() {
 export function DataManagement({
   onClose, direction = null, onDirectionChange, heardAsEnabled = false, onHeardAsChange,
   voiceGateEnabled = true, onVoiceGateChange, voiceGateStatus = "idle",
+  labEnabled = false, onLabChange,
 }) {
   const [recordAudio, setRecordAudio] = useState(false);
   // Before the first listening session: are the model files there?
@@ -226,6 +227,7 @@ export function DataManagement({
     setRecordAudio(false);
     if (heardAsEnabled) onHeardAsChange?.(false);
     if (!voiceGateEnabled) onVoiceGateChange?.(true); // the default (on)
+    if (labEnabled) onLabChange?.(false); // the default (off)
     setStatus("All data deleted");
     setTimeout(() => setStatus(null), 2000);
   }
@@ -341,6 +343,39 @@ export function DataManagement({
                 <span
                   className={`hc-switch-thumb absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform ${
                     voiceGateEnabled ? "translate-x-5" : ""
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Resonance lab tab (off by default, 2026-10-21) */}
+        {onLabChange && (
+          <div className="mb-4" data-settings-lab="">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <span className="text-sm text-neutral-300">
+                  Show the Resonance lab (experimental)
+                </span>
+                <p className="text-[11px] text-neutral-400 mt-0.5">
+                  Adds the Resonance lab tab: research readouts of resonance and vocal weight. Opening it loads extra analysis and uses more of your device while you listen.
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={labEnabled}
+                aria-label="Show the Resonance lab (experimental)"
+                onClick={() => onLabChange(!labEnabled)}
+                data-settings-lab-switch=""
+                className={`hc-switch relative w-10 h-5 shrink-0 rounded-full transition-colors cursor-pointer ${
+                  labEnabled ? "bg-purple-600" : "bg-neutral-700"
+                }`}
+              >
+                <span
+                  className={`hc-switch-thumb absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform ${
+                    labEnabled ? "translate-x-5" : ""
                   }`}
                 />
               </button>

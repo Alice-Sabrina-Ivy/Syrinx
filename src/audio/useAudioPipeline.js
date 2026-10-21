@@ -700,14 +700,20 @@ export function useAudioPipeline() {
       // Experimental resonance lab: one EXTRA capture consumer + lab worker,
       // loaded on demand once the user has opened the lab tab (now, or later
       // in this listening session). Until then nothing lab-related is
-      // fetched or run (see resonance-lab/labRequest.js).
+      // fetched or run (see resonance-lab/labRequest.js). Turning the
+      // Settings switch off withdraws the request and stops it here.
       let labStarting = false;
       const startLabIfRequested = () => {
-        if (labStarting || labRef.current || !isResonanceLabRequested()) return;
+        // Withdrawn (Settings' lab switch turned off, labRequest.js): stop it.
+        if (!isResonanceLabRequested()) {
+          if (labRef.current) { labRef.current.stop(); labRef.current = null; }
+          return;
+        }
+        if (labStarting || labRef.current) return;
         labStarting = true;
         import("../resonance-lab/labPipeline.js")
           .then((lab) => {
-            if (!genAlive() || captureSrcRef.current !== captureSrc || labRef.current) return;
+            if (!genAlive() || captureSrcRef.current !== captureSrc || labRef.current || !isResonanceLabRequested()) return;
             // The weight x clarity lab view needs the granted capture settings
             // (gain control, microphone id + label) to know whether loudness can be matched.
             const track = streamRef.current?.getAudioTracks?.()[0];

@@ -254,9 +254,9 @@ export function isImportableSettingsRow(row) {
 // value — and never imports recordAudio (whether THIS device records mic
 // audio is decided on this device) or heardAsEnabled (an imported file never
 // switches the experimental "Likely heard as" panel on) or voiceGateEnabled
-// (nor the voice gate). Returns the row to
-// write, or null when there is nothing new.
-const NEVER_IMPORTED_SETTINGS = new Set(["recordAudio", "heardAsEnabled", "voiceGateEnabled"]);
+// (nor the voice gate) or labEnabled (nor the Resonance lab tab). Returns the
+// row to write, or null when there is nothing new.
+const NEVER_IMPORTED_SETTINGS = new Set(["recordAudio", "heardAsEnabled", "voiceGateEnabled", "labEnabled"]);
 export function mergeImportedSettings(local, imported) {
   const merged = { ...(local ?? {}) };
   let changed = !local;
