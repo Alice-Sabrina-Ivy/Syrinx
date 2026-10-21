@@ -30,6 +30,9 @@
 //     ro     readout Hz in the hook's state (0 = "—")
 //     style  0 inactive, 1 holding (dim), 2 voiced
 //     rec    session-recorded f0 (frame callback; 0 = unvoiced)
+//   --voice-gate runs (lib/voice-gate.mjs) add:
+//     vadv   the voice detector's decision the display hop consumed
+//            (1 voice, 0 no voice, -1 none — always -1 without the option)
 import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
 import { M } from "./react-mock.mjs";
@@ -164,12 +167,15 @@ export async function driveHook(hookPath, frames, n) {
   const latest = M.refs.find((r) => r.current && typeof r.current === "object" && "pitch" in r.current && "ts" in r.current && "confidence" in r.current && "voiced" in r.current);
   const har = M.refs.find((r) => typeof r.current === "function" && r.current.name === "handleAnalysisResult");
   if (!latest || !har) throw new Error("could not locate latestPitchRef / handleAnalysisResultRef");
-  const out = { msg: new Float32Array(n), paint: new Float32Array(n), brk: new Uint8Array(n), ro: new Float32Array(n), style: new Uint8Array(n), rec: new Float32Array(n) };
+  const out = { msg: new Float32Array(n), paint: new Float32Array(n), brk: new Uint8Array(n), ro: new Float32Array(n), style: new Uint8Array(n), rec: new Float32Array(n), vadv: new Int8Array(n).fill(-1) };
   let rec = null;
   api.frameCallbackRef.current = (f) => { rec = f; };
   const tr = api.pitchTraceRef;
   for (const f of frames) {
-    latest.current = { pitch: f.pitch, confidence: f.confidence, voiced: f.pitch !== null, ts: f.ts };
+    // vadVoice: the voice detector's decision (lib/voice-gate.mjs frames;
+    // null = none, as handlePitchMessage stores a message without one).
+    const vadVoice = typeof f.vadVoice === "boolean" ? f.vadVoice : null;
+    latest.current = { pitch: f.pitch, confidence: f.confidence, voiced: f.pitch !== null, ts: f.ts, vadVoice, vadP: null };
     rec = null;
     har.current({ intensity: f.intensity, formants: null, spectralTilt: null, hnr: null, cpp: null, absoluteTime: f.now });
     const T = tr.current; const lastE = T[T.length - 1]; const now = Math.round(f.now);
@@ -182,6 +188,7 @@ export async function driveHook(hookPath, frames, n) {
     out.ro[f.k] = s.pitch ?? 0;
     out.style[f.k] = s.voiced ? 2 : s.holding ? 1 : 0;
     out.rec[f.k] = rec && rec.voiced && rec.f0 !== null ? rec.f0 : 0;
+    out.vadv[f.k] = vadVoice === null ? -1 : vadVoice ? 1 : 0;
   }
   return out;
 }
