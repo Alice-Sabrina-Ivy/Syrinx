@@ -235,6 +235,17 @@ taken:
 6. **The cue-strip smoke only logged the held-vowel cost** (info): now a
    check (above).
 
+## Known issue: the resonance row in noise (2026-10-21)
+
+User report: with only PC fans and coil whine, the pitch line is hidden but
+the Dashboard's resonance row moves and can show "beyond the scale" — its
+pitch hints are not gated (above, "Display mask"). Gating that hint was
+measured (`measurements/noise-detector-tryout-resonance-2026-10-21.md`,
+branch `noise-detector-tryout-res`): speech and held vowels unchanged, but
+noise-only time with a resonance position fell 73 %, short of the 80 % bar,
+so it was not built. Most of the rest is the readout keeping a position
+once a little noise gets through, plus noise the detector hears as voice.
+
 ## Before any merge to main
 
 Fine for this PC try-out, not for the live site:
