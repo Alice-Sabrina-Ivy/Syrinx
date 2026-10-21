@@ -213,8 +213,8 @@ export const NOISE_TEXT =
 // frames below 75 Hz, so the pooled pitch (median of the posted frames) reads
 // ~1.14x too high and the range rule does not fire; at the voice's own pitch
 // the reading would sit ~0.47 logit further toward "man" (men's readings stay
-// "would say man"; a woman's voice lowered to 75 Hz changes "Can't tell yet" /
-// side in about a third of its readings).
+// "would say man"; a woman's voice lowered to 75 Hz changes "Could go either
+// way" ("Can't tell yet" when measured) / side in about a third of its readings).
 export const RANGE_LIMITS_TEXT =
   "Singing, children's voices, held vowels and single words are not supported. Held notes and very high voices hide it. Very low voices (below about 80 Hz) can get a reading, but it is less reliable: their pitch is hard to pick out, and the reading leans toward “would say woman”. Singing and children are not detected — don't use it for them.";
 
