@@ -2,7 +2,8 @@
 
 Branch `resonance-asymmetry` (from `cue-strip` c0d031f). Public data only
 (LibriSpeech dev-clean for this pass; test-clean is held out for the plan
-below). No candidate has been run yet.
+below). Dev candidate results and the pick: §Dev results (committed before
+any held-out run).
 
 ## Why
 
@@ -259,6 +260,65 @@ goes to held-out and the result is "no candidate".
 **Not in scope:** the start collection (header), which is a separate
 question; this plan only reports it.
 
+## Dev results (2026-10-21, before any held-out run)
+
+`scripts/resonance/switch-candidates.mjs` (the candidates as a display
+readout next to the cue's 5 s readout) and `switch-cand.mjs` (scoring).
+
+**How a candidate was run on dev.** Replayed over the tapped vtln bins of
+the dev runs (admitted flag and voiced stamps as the cue saw them). Checks:
+
+- the BASE display readout equals `readout.js` on 144 000 / 144 000 bin
+  prefixes;
+- a bin is in the post of the chunk ending ≥ its te + 0.1 s: this gives
+  the worker's posted value on 85 135 of 86 168 posts; 393 more need a
+  1–3 bin shift (used for every candidate), 640 (0.7 %) are left unmatched;
+- the same candidate run through the real chain on 3 streams (driver
+  `--cand`) equals the replay on 99.4 % of chunks (within 0.0006 u, the
+  bins' rounding).
+
+**Positions.** A candidate changes only the shown value. fill, voicedS,
+the drop rules, narrowband, sinceResumeS and startU stay the 5 s
+readout's, so the row draws a dot exactly when BASE does (bar 3 holds by
+construction; on held-out it is also checked chunk for chunk).
+
+**Definitions used for the bar** (fixed here, before held-out):
+
+- jitter p90: |Δu| between consecutive posts that both draw a dot;
+- 5 s spread: per non-overlapping 5 s window with ≥ 2.5 s drawn, q90 − q10
+  of the drawn u; median over windows;
+- "about where you started": share of live / holding chunks with a start;
+- dev selection "away Tdb": all join-1 events (every pattern, a + b, arm on).
+
+### Candidates on dev (arm on, drawn; medians, s of audio)
+
+| cand | up Tdb | down Tdb | away Tdb | 30/36 dark-first T50 away / back | jitter p90 (all / m / f) | 5 s spread (all / m / f) | med \|Δu\| vs BASE, steady | "about where you started" | restarts / min, steady | (ii) | (iv) |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| BASE | 5.9 | 6.0 | 6.0 | 6.0 / 0.0 | 0.029 / 0.028 / 0.031 | 0.102 / 0.083 / 0.120 | — | 0.90 | — | | |
+| c1 s1.5 j0.4 n4 | 3.5 | 3.5 | 3.5 | 3.3 / 2.9 | 0.032 / 0.031 / 0.033 | 0.108 / 0.095 / 0.121 | 0.000 | 0.88 | 1.42 | FAIL | FAIL |
+| c1 s1.5 j0.4 n7 | 3.6 | 3.6 | 3.8 | 4.0 / 3.6 | 0.031 / 0.030 / 0.032 | 0.111 / 0.091 / 0.124 | 0.000 | 0.89 | 0.78 | pass | pass |
+| **c1 s1.5 j0.6 n4** | **3.5** | **3.4** | **3.5** | **3.5 / 3.4** | 0.030 / 0.028 / 0.031 | 0.103 / 0.087 / 0.120 | 0.000 | 0.90 | 0.13 | pass | pass |
+| c1 s1.5 j0.6 n7 | 3.9 | 4.0 | 4.0 | 4.2 / 3.6 | 0.030 / 0.028 / 0.031 | 0.102 / 0.085 / 0.120 | 0.000 | 0.90 | 0.11 | pass | pass |
+| c1 s2.0 j0.4 n4 | 3.8 | 3.9 | 3.7 | 3.7 / 3.4 | 0.030 / 0.028 / 0.031 | 0.103 / 0.083 / 0.120 | 0.000 | 0.90 | 0.36 | pass | pass |
+| c1 s2.0 j0.4 n7 | 4.0 | 4.0 | 4.2 | 4.2 / 4.0 | 0.030 / 0.028 / 0.031 | 0.103 / 0.083 / 0.120 | 0.000 | 0.90 | 0.20 | pass | pass |
+| c1 s2.0 j0.6 n4 | 3.9 | 4.0 | 4.0 | 4.0 / 3.6 | 0.029 / 0.028 / 0.031 | 0.102 / 0.083 / 0.120 | 0.000 | 0.90 | 0.04 | pass | pass |
+| c1 s2.0 j0.6 n7 | 4.3 | 4.2 | 4.4 | 4.6 / 4.0 | 0.029 / 0.028 / 0.031 | 0.102 / 0.083 / 0.120 | 0.000 | 0.90 | 0.02 | pass | pass |
+| c2 3.0 s | 4.3 | 4.2 | 4.2 | 4.0 / 3.6 | 0.043 / 0.041 / 0.046 | 0.160 / 0.151 / 0.167 | 0.054 | 0.87 | — | FAIL | FAIL |
+| c2 2.5 s | 3.9 | 3.7 | 3.7 | 3.7 / 3.1 | 0.052 / 0.047 / 0.056 | 0.185 / 0.176 / 0.193 | 0.066 | 0.86 | — | FAIL | FAIL |
+
+BASE's 30/36 "back" T50 is 0.0 because the dot never got halfway away.
+
+**Pick: C1 `shortS` 1.5 s, `jumpU` 0.6 u, `confirmN` 4**
+(`c1-s1.5-j0.6-n4`): the lowest away Tdb (3.5 s) among the cells that pass
+(ii) and (iv); the only other cell at 3.5 s (j0.4 n4) fails both. C2 fails
+the jitter bar as expected (1.5–1.8 × BASE). On dev the pick also meets
+bar 1, narrowly on (a): up Tdb 3.5 vs 5.9 s (−41 %, bar −40 %), up/down
+1.03; (b) T50 away 3.5 vs 6.0 s, away/back 1.04. Per reader sex and
+direction (Tdb up / down): men 3.4 / 3.4, women 3.4 / 3.3, pairs 3.7 / 3.5.
+
+Held-out: run once, `switch-asymmetry.mjs --split=held --patterns=,x6,x10
+--cand=c1-s1.5-j0.6-n4` (BASE = the real worker's posts in the same run).
+
 ## Reproduce
 
 ```
@@ -270,4 +330,5 @@ SO_TAP=0 node --import ./scripts/session-oracle/lib/register.mjs scripts/resonan
 SO_TAP=0 node --import ./scripts/session-oracle/lib/register.mjs scripts/resonance/switch-asymmetry.mjs \
     --split=dev --patterns=x6,x10 --no-controls --shard=i/2 --out=build/resonance-switch/dwell-dev-<i>of2.jsonl
 node scripts/resonance/switch-report.mjs --runs=<the four jsonl files>
+node scripts/resonance/switch-cand.mjs --mode=replay --runs=<the four jsonl files>
 ```

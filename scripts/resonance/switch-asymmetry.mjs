@@ -26,8 +26,11 @@
 // state / drawn dot / header (cueStripModel.js). Workers run with a frozen
 // performance.now (no overload switch-off); the hook with +1 s per call.
 //
-// Candidate replays (--cand=<name>): see switch-candidates.mjs; the replica
-// then uses the candidate cue and the parity check is skipped for that arm.
+// Candidate (--cand=<name>, switch-candidates.mjs): the replica's cue is the
+// candidate (only its shown value differs); the worker's posts are BASE. Per
+// arm the record then also carries .cand: the replica's posts (same 0.2 s
+// cadence, same fields as the worker's) through the same row logic. Parity
+// is then checked on verdict and startU only.
 import { readFileSync, mkdirSync, appendFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -68,6 +71,11 @@ const CS = await imp("src/components/cueStripModel.js");
 const { createLabEngine } = await imp("src/resonance-lab/lab-engine.js");
 const { createResonanceCue } = await imp("src/resonance/resonanceCue.js");
 const { createNarrowbandDetector } = await imp("src/resonance/narrowband.js");
+const { CANDIDATES, wrapCue } = await imp("scripts/resonance/switch-candidates.mjs");
+const { VTLN_CLAMP_EDGE } = await imp("src/resonance/resonanceCue.js");
+const CAND_NAME = process.argv.find((a) => a.startsWith("--cand="))?.slice(7) ?? null;
+if (CAND_NAME && !CANDIDATES[CAND_NAME]) throw new Error(`unknown --cand=${CAND_NAME}`);
+const CAND = CAND_NAME ? CANDIDATES[CAND_NAME] : null;
 const VTLN = readPublic("vtln_warp.json"), REF = readPublic("reference.json");
 let M;
 try { ({ M } = await imp("scripts/session-oracle/lib/react-mock.mjs")); } catch (err) {
@@ -169,7 +177,7 @@ async function hookPass(byChunk, inten) {
 
 // 4. resonance: the REAL worker + the tapped replica, one arm
 function replica() {
-  const cue = createResonanceCue({ reference: REF });
+  const cue = wrapCue(createResonanceCue({ reference: REF }), CAND, REF.vtln, VTLN_CLAMP_EDGE);
   const nb = createNarrowbandDetector();
   const bins = [];
   const engine = createLabEngine({
@@ -198,7 +206,8 @@ async function resonancePass(y, byChunk, gated) {
   resOn({ data: { type: "audioPort", port } });
   const R = replica();
   const n = byChunk.length;
-  const snaps = new Array(n);
+  const snaps = new Array(n), candSnaps = new Array(n);
+  let candSnap = null, restarts = 0;
   let snap = null, parityN = 0, parityBad = 0, sincePost = 0;
   const hint = []; // per chunk: last hint pitch relayed (0 = unvoiced), -1 none
   for (let k = 0; k < n; k++) {
@@ -211,7 +220,15 @@ async function resonancePass(y, byChunk, gated) {
     R.engine.pushChunk(x, null, ct);
     sincePost += x.length / SR;
     let rep = null;
-    if (sincePost >= 0.2) { sincePost = 0; const s = R.cue.snapshot(); const pos = R.nb.state.decided; rep = { u: pos ? s.u : null, verdict: s.verdict, startU: s.startU }; }
+    if (sincePost >= 0.2) {
+      sincePost = 0; const s = R.cue.snapshot(); const pos = R.nb.state.decided;
+      rep = { u: pos ? s.u : null, verdict: s.verdict, startU: s.startU };
+      if (CAND) {
+        candSnap = { type: "state", u: pos ? s.u : null, raw: pos ? s.raw : null, n: s.n, fill: s.fill, voicedS: s.voicedS, clamp: pos ? s.clamp : 0,
+          verdict: s.verdict, startU: s.startU, startProgress: s.startProgress, sinceResumeS: s.sinceResumeS, narrowband: { ...R.nb.state } };
+        restarts = s.restarts ?? 0;
+      }
+    }
     let h = -1;
     for (const m of byChunk[k]) {
       const hide = gated && m.vad && m.vad.voice === false;
@@ -230,11 +247,12 @@ async function resonancePass(y, byChunk, gated) {
       if (m.type !== "state") continue;
       snap = m;
       parityN++;
-      if (!rep || rep.u !== m.u || rep.verdict !== m.verdict || rep.startU !== m.startU) parityBad++;
+      if (!rep || (!CAND && rep.u !== m.u) || rep.verdict !== m.verdict || rep.startU !== m.startU) parityBad++;
     }
     snaps[k] = snap;
+    candSnaps[k] = candSnap;
   }
-  return { snaps, bins: R.bins, parityN, parityBad, hint };
+  return { snaps, candSnaps, restarts, bins: R.bins, parityN, parityBad, hint };
 }
 
 function rowArm(snaps, flags, gatedFlags) {
@@ -256,6 +274,12 @@ function rowArm(snaps, flags, gatedFlags) {
     out.fill.push(s ? +(s.fill ?? 0).toFixed(3) : 0);
   }
   return out;
+}
+
+function candArm(res, flags, gated) {
+  if (!CAND) return {};
+  const { u, state, dot, hdr } = rowArm(res.candSnaps, flags, gated);
+  return { cand: { u, state, dot, hdr, restarts: res.restarts } };
 }
 
 // ---- streams
@@ -339,8 +363,9 @@ for (const it of items) {
   const rec = {
     ...Object.fromEntries(Object.entries(it).filter(([k]) => k !== "load")),
     dur: y.length / SR, n, pitch, vad, flags: Array.from(flags),
-    off: { ...rowArm(off.snaps, flags, false), bins: off.bins, hint: off.hint, parityN: off.parityN, parityBad: off.parityBad },
-    on: { ...rowArm(on.snaps, flags, true), bins: on.bins, hint: on.hint, parityN: on.parityN, parityBad: on.parityBad },
+    off: { ...rowArm(off.snaps, flags, false), bins: off.bins, hint: off.hint, parityN: off.parityN, parityBad: off.parityBad, ...candArm(off, flags, false) },
+    on: { ...rowArm(on.snaps, flags, true), bins: on.bins, hint: on.hint, parityN: on.parityN, parityBad: on.parityBad, ...candArm(on, flags, true) },
+    ...(CAND ? { cand: CAND_NAME } : {}),
     hdrs: HDRS,
   };
   appendFileSync(out, JSON.stringify(rec) + "\n");
