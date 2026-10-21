@@ -41,7 +41,7 @@
 //                   say woman", striped between (the parts' widths match the
 //                   range line's tenths), no best-guess mark (review
 //                   2026-10-20), a deep / light key beside each end word,
-//                   the range line and (unless "can't tell yet") the unsure
+//                   the range line and (unless "could go either way") the unsure
 //                   line, end words and bar inside the panel, screen-reader
 //                   label present; contrast: text >= 4.5:1, both shades >=
 //                   3:1 against the panel and each other, no green / red /
@@ -374,7 +374,7 @@ function axisChecks(who, s) {
     && Math.abs((a.parts.either ?? 0) - (1 - a.man - a.woman)) < 0.02
     && (!want || (Math.abs(want.man - a.man) < 1e-6 && Math.abs(want.woman - a.woman) < 1e-6))
     && a.guess >= a.man - 1e-6 && a.guess <= 1 - a.woman + 1e-6, JSON.stringify(a));
-  check(`${who}: bar words — range line ("can't tell yet" when wide) and unsure line (one tenth value; none when wide)`, !!a
+  check(`${who}: bar words — range line ("could go either way" when wide) and unsure line (one tenth value; none when wide)`, !!a
     && (a.wide ? /^Could go either way/.test(a.range) && a.unsure === ""
       : /would say man · .* would say woman$/.test(a.range) && /^(About \d+|Fewer than 1) in 10 might be unsure or say neither$/.test(a.unsure)), `${a?.range} | ${a?.unsure}`);
   check(`${who}: bar screen-reader label`, !!a && a.sr.startsWith("Bar of listeners in tenths: would say man fills from the left"), a?.sr);

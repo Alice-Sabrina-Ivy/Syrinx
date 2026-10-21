@@ -1083,3 +1083,12 @@ get a reading that is less reliable and leans toward "would say woman" (the
 that hides most low readings at the cost of the ~90 Hz voices (e.g. L2 M100
 V0.40: −81 to −85 % of low readings, −12 to −13 points for 90 Hz voices; it would still
 need its held-out look), or wait for P1.
+
+**Checks (2026-10-21, with the "Could go either way" wording; no hide rule):**
+`npm run lint` clean; `npm run test:unit` 68 / 68 scripts
+(`tests/ml/heard-as-axis-test.js` 32 / 32 — its new wording checks fail on
+the old words); `npm run build` ok; `scripts/cue-strip-smoke.mjs
+--pitch-only=man,woman` (phone viewport, built app, fake mic) 109 / 109 — the
+live panel showed "Could go either way — listeners would be split" with the
+matching screen-reader label, and the pitch-only warning appeared 6.3 s (man)
+and 7.7 s (woman) after the shift.
