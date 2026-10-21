@@ -6,8 +6,18 @@
 //
 // The scale is the TWO-WAY share (src/ml/heard-as.js `s`: listeners who would
 // answer "man" if they had to choose, unsure listeners counted half each
-// way), in tenths, rounded OUTWARD to tenths like the words ("about A–B in 10
-// would say man · about C–D in 10 would say woman", C = 10 − B, D = 10 − A).
+// way), in tenths: the range [sLow, sHigh] rounded OUTWARD to tenths, A–B
+// "would say man" (and C–D = 10 − B … 10 − A "would say woman").
+//
+// THE SENTENCE (user decision 2026-10-21: the both-sides form "About A–B in
+// 10 would say man · about C–D in 10 would say woman" read as confusing): ONE
+// side, the MIDDLE of that range — "About N in 10 listeners would say man",
+// N = (A + B) / 2 rounded to a whole tenth (middleTenths), the side whose
+// middle is above 5 in 10. The middle of the tenths the bar draws, so N is the
+// middle of its striped part. "Could go either way — listeners would be
+// split" when the range is wide (as before) OR its middle rounds to 5 (never
+// happens inside the tested range today: there every such reading is wide).
+// Words only: heardAsShares, the calibration and the bar are unchanged.
 //
 // SPLIT BAR (user decision 2026-10-20; it replaced the 2026-10-07 axis with a
 // shaded range and a ring): one bar of ten tenths of listeners, "would say
@@ -29,11 +39,11 @@
 // nearest tenth ("about N in 10", "fewer than 1 in 10"), left out while it is
 // "could go either way". (Until review round 2 it was the range's outward-rounded
 // min…peak, which read "about 0–5 in 10" on most readings of typical voices —
-// measurements/heard-as-panel-review-2-2026-10-07.md §4.) The range and
-// unsure words are the 2026-10-07 axis's, unchanged except the wide line
-// (tests/ml/fixtures/heard-as-axis-words-golden.json).
+// measurements/heard-as-panel-review-2-2026-10-07.md §4.) The unsure words and
+// the tenths are the 2026-10-07 axis's, unchanged; the range line is the
+// 2026-10-21 one-side sentence (tests/ml/fixtures/heard-as-axis-words-golden.json).
 
-import { formatShare, shareTenths, isWideShare } from "../ml/heard-as.js";
+import { shareTenths, isWideShare } from "../ml/heard-as.js";
 
 /** The unsure / neither share at the best guess, rounded to the nearest tenth. */
 export function unsureWords(u) {
@@ -41,8 +51,29 @@ export function unsureWords(u) {
   return n <= 0 ? "fewer than 1 in 10" : `about ${n} in 10`;
 }
 
-/** The range line of a shown reading that spans most of the scale (wide). */
+/** The range line of a shown reading that spans most of the scale (wide), or
+ * whose middle rounds to 5 in 10. */
 export const WIDE_TEXT = "Could go either way — listeners would be split";
+
+/**
+ * The middle of a range of a…b tenths (integers), rounded to a whole tenth.
+ * Rounding rule: an exact .5 rounds TOWARD 5 — the less extreme value — so
+ * the sentence never overstates (7.5 -> 7, 8.5 -> 8, 9.5 -> 9; 2.5 -> 3).
+ * Mirror-symmetric: middleTenths(10 − b, 10 − a) = 10 − middleTenths(a, b).
+ */
+export function middleTenths(a, b) {
+  const twice = a + b;
+  if (twice % 2 === 0) return twice / 2;
+  return twice > 10 ? (twice - 1) / 2 : (twice + 1) / 2;
+}
+
+/** The one-side sentence for a range of a…b tenths "would say man". */
+export function sayText(a, b, wide) {
+  const n = middleTenths(a, b);
+  if (wide || n === 5) return WIDE_TEXT;
+  const side = n > 5 ? "man" : "woman", k = n > 5 ? n : 10 - n;
+  return `${k >= 10 ? "Nearly all" : `About ${k} in 10`} listeners would say ${side}`;
+}
 
 const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
 
@@ -77,12 +108,15 @@ export const AXIS_ENDS = Object.freeze({ left: "would say man", right: "would sa
 
 /**
  * shares: the object heardAsShares() returns (uses s, sLow, sHigh, unsure).
- * -> { man, woman, guess, wide, manTenths, womanTenths, rangeText, unsureText, srText }
+ * -> { man, woman, guess, wide, split, manTenths, womanTenths, rangeText, unsureText, srText }
  *    man / woman: widths of the solid parts as fractions of the bar (man from
  *    the LEFT end, woman from the RIGHT end); the striped part is the rest.
  *    guess: the best guess s as a fraction from the LEFT end, 0…1 (not
  *    drawn; for the checks).
- *    unsureText is null while wide (the panel leaves the line out).
+ *    split: the range line says "Could go either way" (wide, or the middle
+ *    rounds to 5 in 10).
+ *    unsureText is null while wide (the panel leaves the line out); a reading
+ *    that is split but not wide keeps it.
  */
 export function heardAsAxis(shares) {
   const manRange = [shares.sLow, shares.sHigh];
@@ -91,20 +125,17 @@ export function heardAsAxis(shares) {
   const [c, d] = shareTenths(womanRange);    // "c–d in 10 would say woman" (= 10−b … 10−a)
   const wide = isWideShare(manRange);
   const guess = Math.min(1, Math.max(0, shares.s));
-  const man = formatShare(manRange), woman = formatShare(womanRange);
-  const rangeText = wide
-    ? WIDE_TEXT
-    : `${cap(man)} would say man · ${woman} would say woman`;
+  const rangeText = sayText(a, b, wide);
+  const split = rangeText === WIDE_TEXT;
   const unsureText = wide ? null : `${cap(unsureWords(shares.centre.unsure))} might be unsure or say neither`;
   const scale = "Bar of listeners in tenths: would say man fills from the left, would say woman from the right, and the striped part between could go either way.";
-  const srText = wide
-    ? `${scale} Could go either way: listeners would be split — ${man} would say man, ${woman} would say woman.`
-    : `${scale} ${cap(man)} would say man, ${woman} would say woman.`;
+  const srText = `${scale} ${rangeText}.`; // the visible sentence, word for word
   return {
     man: a / 10,
     woman: c / 10,
     guess,
     wide,
+    split,
     manTenths: [a, b],
     womanTenths: [c, d],
     rangeText,

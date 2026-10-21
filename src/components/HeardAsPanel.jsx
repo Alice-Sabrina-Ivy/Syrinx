@@ -11,10 +11,12 @@
 // / "would say woman"; no best-guess mark (review 2026-10-20: a mark at the
 // split point sat over the end word of the answer FEWER listeners would give,
 // so it read backwards). Under it, in larger text,
-// the both-sides sentence ("About A–B in 10 would say man · about C–D in 10
-// would say woman") and the unsure / neither share as one text line — never a
-// single verdict, no percent signs, the same words and colours in every
-// direction. Two shades of ONE colour: never the app's green / red (on / off
+// one sentence for the side above 5 in 10, the middle of the range ("About 8
+// in 10 listeners would say man"; user decision 2026-10-21 — until then both
+// sides as ranges, "About 5–10 in 10 would say man · about 0–5 in 10 would say
+// woman", which read as confusing) and the unsure / neither share as one text
+// line — never a single verdict, no percent signs, the same words and colours
+// in every direction. Two shades of ONE colour: never the app's green / red (on / off
 // target) or amber (experimental / warning), never pink / blue; the shades
 // are theme tokens in src/index.css (--color-heard-man / --color-heard-woman,
 // >= 3:1 against the panel and each other; Windows high-contrast mode:
@@ -22,12 +24,14 @@
 // tenths or more it is mostly stripes, the unsure line is dropped and it says
 // "Could go either way — listeners would be split" (user decision 2026-10-21
 // (1): it said "Can't tell yet", which promised that waiting helps; "Can't
-// tell yet" is now only in the "short" reason — no reading yet). An estimate older than 2 s says
+// tell yet" is now only in the "short" reason — no reading yet); it says the
+// same, keeping the unsure line, when the range is not wide but its middle
+// rounds to 5 in 10 (none inside the tested range today). An estimate older than 2 s says
 // "Older reading" in its legend line (nothing is dimmed: dimming took text
 // below WCAG contrast). The first caveat sentence stays on screen; the rest
 // of it and the long explanation are behind "More". Layout numbers and words:
-// heardAsAxisModel.js (unit-tested; the words are the 2026-10-07 axis's,
-// unchanged). Updates every 2 s from the last ~8 s of running speech
+// heardAsAxisModel.js (unit-tested; the unsure words are the 2026-10-07
+// axis's, unchanged; the range sentence is the 2026-10-21 one-side form). Updates every 2 s from the last ~8 s of running speech
 // (src/ml/heard-as.js); hides with a reason otherwise — within 250 ms when a
 // held note starts. While it shows no reading, the 250 ms check also asks for
 // one and shows it as soon as it is ready (2026-10-21, H3 of
@@ -247,8 +251,8 @@ const legendText = (stale) => `${stale ? "Older reading — waiting for more spe
 // Every text each line can show, from the same word functions the panel uses
 // (heardAsAxis on a grid of ranges; every reason), laid out invisibly so the
 // panel's height never depends on which one is showing. All of them, not just
-// the longest: the summary sentence breaks between its two halves, so the
-// longest string is not always the tallest.
+// the longest: italic and medium text differ in width, so the longest string
+// is not always the tallest.
 const RESERVE = (() => {
   const ranges = new Map(), unsure = new Set();
   const v = [0.001, 0.049, 0.051, 0.949, 0.951, 0.999];
@@ -257,13 +261,13 @@ const RESERVE = (() => {
     if (hi < lo) continue;
     for (const u of [0, 1]) {
       const a = heardAsAxis({ s: (lo + hi) / 2, sLow: lo, sHigh: hi, centre: { unsure: u } });
-      ranges.set(a.rangeText, a.wide);
+      ranges.set(a.rangeText, a.split);
       if (a.unsureText) unsure.add(a.unsureText);
     }
   }
   for (let n = 1; n <= 9; n++) unsure.add(`About ${n} in 10 might be unsure or say neither`);
   return {
-    range: [...ranges].map(([t, wide]) => ({ t, wide })),
+    range: [...ranges].map(([t, split]) => ({ t, split })),
     unsure: [...unsure].map((t) => ({ t })),
     legend: legendText(true),
     note: PITCH_ONLY_TEXT,
@@ -278,19 +282,6 @@ const Reserve = ({ texts, className = "", render = (x) => x.t }) => (
     {texts.map((x) => <div key={x.t} className="col-start-1 row-start-1">{render(x)}</div>)}
   </div>
 );
-// The summary sentence, in larger text: its two halves ("… would say man ·" /
-// "about … would say woman") each kept on one line, so a narrow panel breaks
-// it between them.
-function Summary({ text }) {
-  const i = text.indexOf(" · ");
-  if (i < 0) return text;
-  return (
-    <>
-      <span className="inline-block">{text.slice(0, i)} ·</span>{" "}
-      <span className="inline-block">{text.slice(i + 3)}</span>
-    </>
-  );
-}
 const SUMMARY_CLS = "mt-1.5 text-sm leading-snug tabular-nums";
 const UNSURE_CLS = "mt-0.5 text-[11px] leading-snug tabular-nums";
 const LEGEND_CLS = "mt-0.5 text-[11px] leading-snug";
@@ -545,7 +536,7 @@ export function HeardAsPanel({
           <EmptyAxis />
           <div className={NOTE_CLS}>{RESERVE.note}</div>
           <Reserve className={SUMMARY_CLS} texts={RESERVE.range}
-            render={(x) => <span className={x.wide ? "italic" : "font-medium"}><Summary text={x.t} /></span>} />
+            render={(x) => <span className={x.split ? "italic" : "font-medium"}>{x.t}</span>} />
           <Reserve className={UNSURE_CLS} texts={RESERVE.unsure} />
           <div className={LEGEND_CLS}>{RESERVE.legend}</div>
         </div>
@@ -567,9 +558,9 @@ export function HeardAsPanel({
                   {PITCH_ONLY_TEXT}
                 </p>
               )}
-              <p className={`${SUMMARY_CLS} ${view.axis.wide ? "text-neutral-300 italic" : "text-neutral-100 font-medium"}`}
-                data-heard-as-range="" data-wide={view.axis.wide ? "1" : "0"}>
-                <Summary text={view.axis.rangeText} />
+              <p className={`${SUMMARY_CLS} ${view.axis.split ? "text-neutral-300 italic" : "text-neutral-100 font-medium"}`}
+                data-heard-as-range="" data-wide={view.axis.wide ? "1" : "0"} data-split={view.axis.split ? "1" : "0"}>
+                {view.axis.rangeText}
               </p>
               {view.axis.unsureText && (
                 <p className={`${UNSURE_CLS} text-neutral-400`} data-heard-as-unsure="">{view.axis.unsureText}</p>
@@ -607,7 +598,7 @@ export function HeardAsPanel({
           <li>Within clearly feminine or clearly masculine voices it does not track small changes — use the pitch and resonance rows under the pitch trace for those.</li>
           <li>It uses only your pitch and a voice classifier; it ignores intonation, vocal weight and articulation.</li>
           <li data-heard-as-range-limits="">{RANGE_LIMITS_TEXT}</li>
-          <li>The striped part of the bar is the range where about 8 in 10 published listener groups fell for clearly feminine or clearly masculine voices; less is known for in-between voices. The scale is listeners choosing between man and woman: those who might be unsure or say neither are counted half on each side. The &ldquo;unsure or neither&rdquo; line counts listeners who answered &ldquo;another gender&rdquo; as well as those who weren&apos;t sure, and depends on how listeners are asked.</li>
+          <li>The striped part of the bar is the range where about 8 in 10 published listener groups fell for clearly feminine or clearly masculine voices; less is known for in-between voices. The sentence under the bar gives the middle of that range, rounded to a whole tenth (halfway values toward 5 in 10), for the side more listeners would choose. The scale is listeners choosing between man and woman: those who might be unsure or say neither are counted half on each side. The &ldquo;unsure or neither&rdquo; line counts listeners who answered &ldquo;another gender&rdquo; as well as those who weren&apos;t sure, and depends on how listeners are asked.</li>
           <li data-heard-as-noise="">{NOISE_TEXT}</li>
           <li>Nothing is stored or sent anywhere; it is computed on this device and forgotten when you stop.</li>
         </ul>
