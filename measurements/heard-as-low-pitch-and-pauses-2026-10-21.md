@@ -712,8 +712,8 @@ its timestamp differs).
 - **Feminine pitch with male-typical resonance: an early reading can lean
   the wrong way** (review, 2026-10-21; the kind of voice in the user's
   screenshot — a feminine pitch whose settled reading is "Can't tell yet"). On
-  the held-out WORLD 185 Hz men, 3.74 % of the readings that only H1+H3
-  shows (64 of 1,712 samples over the four phases) are informative on the
+  the held-out WORLD 185 Hz men (`review_checks.mjs` "newonly"), 3.74 % of the
+  readings that only H1+H3 shows (64 of 1,712 samples over the four phases) are informative on the
   side opposite the stream's settled reading; the panel before 2026-10-21
   shows none (0 %). All 64 are one voice (6295, the natural-pause and the
   continuous stream): about 2 s of an informative "would say woman" reading
