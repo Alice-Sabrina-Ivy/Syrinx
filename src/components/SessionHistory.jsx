@@ -24,7 +24,7 @@ import {
   directionSequence,
   directionLabel,
   pitchTargetFor,
-  pitchStatus,
+  pitchStatusForRule,
   bandForDisplay,
   formatOnTarget,
   formatTarget,
@@ -328,7 +328,7 @@ function SessionCard({ session, expanded, onToggle, onDelete }) {
           )}
 
           {/* Static traces */}
-          <SessionTraces sessionId={session.id} directionLog={hasDirectionLog(session) ? session.directionLog : null} />
+          <SessionTraces sessionId={session.id} directionLog={hasDirectionLog(session) ? session.directionLog : null} pitchTargetRule={session.pitchTargetRule} />
 
           {/* Audio playback */}
           {session.audioBlob && <AudioPlayer blob={session.audioBlob} />}
@@ -377,7 +377,7 @@ function AudioPlayer({ blob }) {
 }
 
 // Static pitch + resonance traces for a completed session
-function SessionTraces({ sessionId, directionLog }) {
+function SessionTraces({ sessionId, directionLog, pitchTargetRule }) {
   const [frames, setFrames] = useState(null);
   const pitchCanvasRef = useRef(null);
   const resCanvasRef = useRef(null);
@@ -424,8 +424,8 @@ function SessionTraces({ sessionId, directionLog }) {
     canvas.width = rect.width * dpr;
     canvas.height = rect.height * dpr;
 
-    drawStaticPitchTrace(canvas, frames, dpr, directionLog);
-  }, [frames, resizeTick, directionLog]);
+    drawStaticPitchTrace(canvas, frames, dpr, directionLog, pitchTargetRule);
+  }, [frames, resizeTick, directionLog, pitchTargetRule]);
 
   // Draw resonance trace
   useEffect(() => {
@@ -525,13 +525,13 @@ function drawTargetBands(ctx, log, targetFor, displayRange, totalMs, msToX, hzTo
 }
 
 // Line colour for a pitch level at a session time: that moment's target
-// status (on / off target — band only, so older sessions' traces follow
-// the current rule too), neutral without one.
-function traceColor(log, atMs, level) {
-  return log ? statusColor(pitchStatus(level, pitchTargetFor(directionAt(log, atMs)))) : COLORS.neutralTrace;
+// status under the session's own rule (band only since 2026-10-19; older
+// rows keep their stored figure's rule), neutral without one.
+function traceColor(log, atMs, level, rule) {
+  return log ? statusColor(pitchStatusForRule(level, pitchTargetFor(directionAt(log, atMs)), rule)) : COLORS.neutralTrace;
 }
 
-function drawStaticPitchTrace(canvas, frames, dpr, log) {
+function drawStaticPitchTrace(canvas, frames, dpr, log, rule) {
   const ctx = canvas.getContext("2d");
   const w = canvas.width;
   const h = canvas.height;
@@ -628,7 +628,7 @@ function drawStaticPitchTrace(canvas, frames, dpr, log) {
     }
     const x = msToX(f.timestampMs);
     const y = hzToY(f.f0);
-    const color = traceColor(log, f.timestampMs, levels[i]);
+    const color = traceColor(log, f.timestampMs, levels[i], rule);
     // Octave-class step: start a new segment rather than stroking a
     // near-vertical connecting line (same rule as the live trace).
     if (inSegment && lastDrawnF0 !== null &&
@@ -645,7 +645,7 @@ function drawStaticPitchTrace(canvas, frames, dpr, log) {
       inSegment = true;
     } else {
       const prev = frames[i - 1];
-      const prevColor = prev?.voiced && prev.f0 != null ? traceColor(log, prev.timestampMs, levels[i - 1]) : null;
+      const prevColor = prev?.voiced && prev.f0 != null ? traceColor(log, prev.timestampMs, levels[i - 1], rule) : null;
       if (color !== prevColor) {
         ctx.lineTo(x, y);
         ctx.stroke();

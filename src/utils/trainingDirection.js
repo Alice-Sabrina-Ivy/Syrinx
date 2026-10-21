@@ -87,6 +87,18 @@ export function pitchStatus(level, target) {
   return level >= target.low && level <= target.high ? "in" : "out";
 }
 
+// pitchStatus under a saved session's own rule: rows without
+// pitchTargetRule "band" (saved before 2026-10-19) counted a level past the
+// band in the direction of travel as on target, and keep their stored
+// figure, so their chart follows that rule too.
+export function pitchStatusForRule(level, target, rule) {
+  const status = pitchStatus(level, target);
+  if (status !== "out" || rule === "band") return status;
+  if (target.toward === "up" && level > target.high) return "in";
+  if (target.toward === "down" && level < target.low) return "in";
+  return status;
+}
+
 // Counts toward a session's "on target" time: the band only.
 export function isOnTarget(status) {
   return status === "in";
