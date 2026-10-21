@@ -348,6 +348,10 @@ export function CueStrip({
   direction = null,
   voiced,
   holding,
+  // The pitch row's voiced flags (the try-out voice gate's mask); the
+  // resonance row keeps voiced / holding.
+  pitchVoiced = voiced,
+  pitchHolding = holding,
   pitch,
   pitchLevel,
   steadiness,
@@ -367,7 +371,7 @@ export function CueStrip({
   // this, never the refs.
   const [view, setView] = useState({ snap: null, trails: { pitch: [], resonance: [] }, everVoiced: false, sr: {} });
   const latest = useRef(null);
-  useEffect(() => { latest.current = { voiced, holding, pitchLevel, resonanceStatus, direction }; });
+  useEffect(() => { latest.current = { voiced, holding, pitchVoiced, pitchHolding, pitchLevel, resonanceStatus, direction }; });
 
   useLayoutEffect(() => {
     const el = wrapRef.current;
@@ -418,7 +422,7 @@ export function CueStrip({
       if (p.voiced) ever = true;
       const inputs = { ...p, snap, workerStatus: p.resonanceStatus };
       const states = {
-        pitch: pitchRowState(inputs),
+        pitch: pitchRowState({ ...inputs, voiced: p.pitchVoiced, holding: p.pitchHolding }),
         // Without the reference only the worker's own state can show
         // (unavailable / paused / starting): an error is never hidden.
         resonance: resonanceRowState(ref ? inputs : { ...inputs, snap: null }),
@@ -444,7 +448,7 @@ export function CueStrip({
 
   const snap = view.snap;
   const inputs = { voiced, holding, pitchLevel, snap, workerStatus: resonanceStatus };
-  const pState = pitchRowState(inputs);
+  const pState = pitchRowState({ ...inputs, voiced: pitchVoiced, holding: pitchHolding });
   const rState = resonanceRowState(vtlnRef ? inputs : { ...inputs, snap: null });
   // The header number IS the dot: the 1.5 s level the target judges.
   const levelStatus = pitchLevel != null ? pitchStatus(pitchLevel, pitchTargetFor(direction)) : null;

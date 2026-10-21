@@ -50,6 +50,24 @@ the texts in `licenses/world/` and `licenses/emscripten/`.
   model card that credits the upstream project), checked against that
   sha256 before use, and kept in the browser's Cache Storage
   (`src/ml/speech-detector.js`).
+- **Voice detector for the try-out "Hide pitch when no voice is heard"
+  setting** (branch `noise-detector-tryout`; `src/dsp/firered-vad.js`).
+  [FireRedVAD](https://github.com/FireRedTeam/FireRedVAD) by FireRedTeam,
+  Stream-VAD streaming model: `fireredvad_stream_vad_with_cache.onnx`
+  (2,306,042 bytes, sha256
+  `b3c97836130dc34fc32d56fab551e88cf9454511de2b3c250a5e6578dee74b93`) and
+  `cmvn.ark` (sha256
+  `c87f6f13edf0f0ec7535ddfc9cc3387d9268cb234b70182d566c5e2edf3ca473`) from
+  `pretrained_models/onnx_models/` at commit
+  `c30ec49e8cc69642b0ee65362eba11b9d11c6e54` — Apache License 2.0 (the stock
+  text, no NOTICE file; full text in `licenses/fireredvad/LICENSE` and in the
+  shipped `THIRD_PARTY_NOTICES.txt`). The unmodified files are not in this
+  repository: `scripts/fetch-firered-model.mjs` downloads them from that
+  commit, checks their sha256 and puts them in `public/models/firered/`,
+  from where a local build serves them; the app checks size and sha256 again
+  before use. The Kaldi-style filterbank front end in `firered-vad.js` is
+  this project's own JavaScript, written to match the official Python front
+  end's settings.
 - **Resonance lab models** (`public/resonance-lab/`: `vtln_warp.json`,
   `le_ens_h64.json`, `pnml_head.json`, `fv_model.json`) were trained or fitted
   on LibriSpeech dev-clean, and the reference bands in `reference.json` come

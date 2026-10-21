@@ -58,6 +58,10 @@ export function CombinedDashboard({
   active = true,
   voiced,
   holding,
+  // The pitch display's voiced flags (= voiced / holding unless the try-out
+  // voice gate hides the pitch); the resonance row keeps voiced / holding.
+  pitchVoiced = voiced,
+  pitchHolding = holding,
   pitch,
   pitchLevel = null,
   steadiness,
@@ -221,6 +225,9 @@ export function CombinedDashboard({
           // Live-trace paint decision (non-indexed field: no Dexie schema
           // bump). SessionHistory draws its trace from painted frames.
           painted: frame.painted,
+          // Try-out voice gate's decision ("voice" | "hidden" | "novoice";
+          // non-indexed, absent without a decision). Stats do not read it.
+          ...(frame.voiceGate ? { voiceGate: frame.voiceGate } : {}),
           f1: frame.f1,
           f2: frame.f2,
           f3: frame.f3,
@@ -518,8 +525,8 @@ export function CombinedDashboard({
           <PitchTrace
             pitchTraceRef={pitchTraceRef}
             subscribeTrace={subscribeTrace}
-            voiced={voiced}
-            holding={holding}
+            voiced={pitchVoiced}
+            holding={pitchHolding}
             pitch={pitch}
             pitchLevel={pitchLevel}
             target={pitchTarget}
@@ -533,6 +540,8 @@ export function CombinedDashboard({
             direction={direction}
             voiced={voiced}
             holding={holding}
+            pitchVoiced={pitchVoiced}
+            pitchHolding={pitchHolding}
             pitch={pitch}
             pitchLevel={pitchLevel}
             steadiness={steadiness}

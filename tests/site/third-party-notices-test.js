@@ -14,7 +14,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   packageOfModuleId, licenseTextOf, buildNoticesText, COMMITTED_LICENSES, ORT_THIRD_PARTY_NOTICES,
-  componentsOfModuleId, NON_NPM_COMPONENTS,
+  componentsOfModuleId, NON_NPM_COMPONENTS, MODEL_LICENSES,
 } from "../../scripts/third-party-notices.mjs";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -54,6 +54,10 @@ check("includes Syrinx's LICENSE", txt.includes(readFileSync(path.join(repo, "LI
 check("includes the ORT MIT notice", txt.includes("Copyright (c) Microsoft Corporation"));
 check("points at ORT's ThirdPartyNotices", txt.includes("licenses/onnxruntime-ThirdPartyNotices.txt"));
 check("each package once", (txt.match(/— bundled into this site/g) ?? []).length === 2);
+check("FireRedVAD's Apache-2.0 text ships (voice gate model)",
+  MODEL_LICENSES.some((m) => /FireRedVAD/.test(m.title)) && txt.includes("FireRedVAD") &&
+  txt.includes(readFileSync(path.join(repo, "licenses/fireredvad/LICENSE"), "utf8").trimEnd()) &&
+  /Apache License\s+Version 2\.0, January 2004/.test(readFileSync(path.join(repo, "licenses/fireredvad/LICENSE"), "utf8")));
 
 console.log("\nnon-npm components (Voice Shaper: WORLD + Emscripten)");
 const vpIds = ["C:\\r\\src\\voice-preview\\wasm\\vp_world.mjs?url", "/r/src/voice-preview/wasm/simd/vp_world.wasm?url"];

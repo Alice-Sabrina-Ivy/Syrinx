@@ -13,6 +13,7 @@ import {
   pitchTargetFor,
 } from "./utils/trainingDirection";
 import { loadHeardAsEnabled, saveHeardAsEnabled } from "./utils/heardAsSetting";
+import { loadVoiceGateEnabled, saveVoiceGateEnabled, VOICE_GATE_DEFAULT } from "./utils/voiceGateSetting";
 import db from "./db";
 
 // Diagnostic overlay is dynamically imported and only rendered when the
@@ -175,6 +176,9 @@ function App() {
   // Experimental "Likely heard as" panel: OFF by default (missing / blocked
   // storage = off); the panel's switch and Settings' row share this state.
   const [heardAsEnabled, setHeardAsEnabledState] = useState(false);
+  // Try-out "Hide pitch when no voice is heard (experimental)": ON by default
+  // in this try-out (utils/voiceGateSetting.js).
+  const [voiceGateEnabled, setVoiceGateEnabledState] = useState(VOICE_GATE_DEFAULT);
   // Settings returns focus to the gear when it closes.
   const gearRef = useRef(null);
   const settingsOpenedRef = useRef(false);
@@ -186,11 +190,15 @@ function App() {
     error,
     voiced,
     holding,
+    pitchVoiced,
+    pitchHolding,
     pitch,
     pitchLevel,
     steadiness,
     steadinessHeld,
     hnr,
+    voiceGateStatus,
+    voiceGateMessage,
     modelStatus,
     modelProgress,
     resonanceStatus,
@@ -204,6 +212,7 @@ function App() {
     pitchOnlyRef,
     audioClockRef,
     setHeardAsEnabled,
+    setVoiceGateEnabled,
     frameCallbackRef,
     streamRef,
   } = useAudioPipeline();
@@ -242,6 +251,28 @@ function App() {
     setHeardAsEnabledState(on);
     setHeardAsEnabled(on);
     saveHeardAsEnabled(db.settings, on);
+  }
+
+  // The try-out voice gate switch: same load pattern (a hung IndexedDB keeps
+  // the default, on); a toggle before the load resolves wins.
+  const voiceGateTouchedRef = useRef(false);
+  useEffect(() => {
+    let done = false;
+    loadVoiceGateEnabled(db.settings).then((on) => {
+      if (done || voiceGateTouchedRef.current) return;
+      done = true;
+      setVoiceGateEnabledState(on);
+      setVoiceGateEnabled(on);
+    });
+    const timer = setTimeout(() => { done = true; }, DIRECTION_LOAD_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [setVoiceGateEnabled]);
+
+  function changeVoiceGate(on) {
+    voiceGateTouchedRef.current = true;
+    setVoiceGateEnabledState(on);
+    setVoiceGateEnabled(on);
+    saveVoiceGateEnabled(db.settings, on);
   }
 
   // The load-time question. Continue confirms AND starts listening (one
@@ -325,6 +356,10 @@ function App() {
           onDirectionChange={changeDirection}
           heardAsEnabled={heardAsEnabled}
           onHeardAsChange={changeHeardAs}
+          voiceGateEnabled={voiceGateEnabled}
+          onVoiceGateChange={changeVoiceGate}
+          voiceGateStatus={voiceGateStatus}
+          voiceGateMessage={voiceGateMessage}
         />
       )}
 
@@ -416,6 +451,8 @@ function App() {
                 active={activeTab === "dashboard"}
                 voiced={voiced}
                 holding={holding}
+                pitchVoiced={pitchVoiced}
+                pitchHolding={pitchHolding}
                 pitch={pitch}
                 pitchLevel={pitchLevel}
                 steadiness={steadiness}
@@ -445,8 +482,8 @@ function App() {
                     <PitchTrace
                       pitchTraceRef={pitchTraceRef}
                       subscribeTrace={subscribeTrace}
-                      voiced={voiced}
-                      holding={holding}
+                      voiced={pitchVoiced}
+                      holding={pitchHolding}
                       pitch={pitch}
                       pitchLevel={pitchLevel}
                       target={pitchTargetFor(direction)}
@@ -484,10 +521,13 @@ function App() {
                       instead of one dot transitioning colour + shadow, which
                       ran on the main thread every display frame
                       (measurements/main-thread-cpu-2026-10-08.md). */}
-                  <div className="relative w-2 h-2" data-voice-status={voiced ? "voiced" : holding ? "holding" : "waiting"}>
-                    <div className={`absolute inset-0 rounded-full bg-green-400 shadow-[0_0_6px_rgba(74,222,128,0.5)] transition-opacity duration-300 ${voiced ? "opacity-100" : "opacity-0"}`} />
-                    <div className={`absolute inset-0 rounded-full bg-yellow-400/60 transition-opacity duration-300 ${!voiced && holding ? "opacity-100" : "opacity-0"}`} />
-                    <div className={`absolute inset-0 rounded-full bg-neutral-600 transition-opacity duration-300 ${!voiced && !holding ? "opacity-100" : "opacity-0"}`} />
+                  {/* pitchVoiced / pitchHolding: the pitch display's flags (=
+                      voiced / holding unless the try-out voice gate hides
+                      the pitch). */}
+                  <div className="relative w-2 h-2" data-voice-status={pitchVoiced ? "voiced" : pitchHolding ? "holding" : "waiting"}>
+                    <div className={`absolute inset-0 rounded-full bg-green-400 shadow-[0_0_6px_rgba(74,222,128,0.5)] transition-opacity duration-300 ${pitchVoiced ? "opacity-100" : "opacity-0"}`} />
+                    <div className={`absolute inset-0 rounded-full bg-yellow-400/60 transition-opacity duration-300 ${!pitchVoiced && pitchHolding ? "opacity-100" : "opacity-0"}`} />
+                    <div className={`absolute inset-0 rounded-full bg-neutral-600 transition-opacity duration-300 ${!pitchVoiced && !pitchHolding ? "opacity-100" : "opacity-0"}`} />
                   </div>
                   {/* One width for all three texts, so the centred Stop
                       Listening button beside it doesn't slide left and right
@@ -495,9 +535,9 @@ function App() {
                   <span className="inline-grid text-[11px] text-neutral-500">
                     {VOICE_STATUS_TEXTS.map((t) => <span key={t} aria-hidden="true" className="invisible col-start-1 row-start-1 whitespace-nowrap">{t}</span>)}
                     <span className="col-start-1 row-start-1 whitespace-nowrap">
-                      {voiced
+                      {pitchVoiced
                         ? "Voice detected"
-                        : holding
+                        : pitchHolding
                           ? "Listening..."
                           : "Waiting for voice..."}
                     </span>

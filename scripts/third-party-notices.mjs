@@ -68,6 +68,13 @@ export const NON_NPM_COMPONENTS = Object.freeze([
 ]);
 
 export const ORT_THIRD_PARTY_NOTICES = "licenses/onnxruntime-web/ThirdPartyNotices.txt";
+// Models whose files the app serves (not npm packages): their licence text
+// always ships in THIRD_PARTY_NOTICES.txt. FireRedVAD: the voice gate's
+// model (Apache-2.0; served from a Hugging Face mirror, or from the app's own
+// models/firered/ fetched by scripts/fetch-firered-model.mjs).
+export const MODEL_LICENSES = [
+  { title: "FireRedVAD (FireRedTeam) — model used by the voice gate, Apache License 2.0", file: "licenses/fireredvad/LICENSE" },
+];
 export const NOTICES_FILE = "THIRD_PARTY_NOTICES.txt";
 export const ORT_NOTICES_FILE = "licenses/onnxruntime-ThirdPartyNotices.txt";
 
@@ -132,6 +139,9 @@ export function buildNoticesText(packages, { repo = REPO, components = [] } = {}
     if (missing.length) throw new Error(`third-party notices: ${c.name}: missing ${missing.join(", ")} (scripts/third-party-notices.mjs)`);
     const text = c.files.map((f) => readFileSync(path.join(repo, f), "utf8").trimEnd()).join(`\n\n${"-".repeat(78)}\n\n`);
     parts.push("", rule, c.title, rule, text);
+  }
+  for (const m of MODEL_LICENSES) {
+    parts.push("", rule, m.title, rule, readFileSync(path.join(repo, m.file), "utf8").trimEnd());
   }
   return parts.join("\n") + "\n";
 }
