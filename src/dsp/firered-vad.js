@@ -15,9 +15,9 @@
 //
 // Model: FireRedVAD Stream-VAD, the official streaming ONNX with cache I/O
 // (github.com/FireRedTeam/FireRedVAD @ c30ec49, Apache-2.0). Loaded at runtime
-// from the project's Hugging Face mirror once its commit is pinned below
-// (`mirrorCommit`), else from the app's own models/firered/ (filled by
-// scripts/fetch-firered-model.mjs; not committed). Inputs: `feat` [1, T, 80]
+// from the project's Hugging Face mirror at the commit pinned below
+// (`mirrorCommit`, since 2026-10-21), checked against the sha256 below and
+// kept in Cache Storage. Not committed and not in the build. Inputs: `feat` [1, T, 80]
 // (CMVN'd log-mel fbank) and `caches_in` [8, 1, 128, 19]; outputs `probs`
 // [1, T, 1] and `caches_out`.
 // The DFSMN looks back 19 frames per layer and never ahead, so frame i
@@ -43,13 +43,16 @@ export const FIRERED_MODEL = Object.freeze({
   // (src/ml/speech-detector.js SPEECH_DETECTOR): the project's Hugging Face
   // mirror of the two official files (plus LICENSE and README.md there),
   // pinned to the mirror's commit and checked against the sha256 below, with
-  // a Cache Storage copy (loadVerifiedModel). The mirror is uploaded by the
-  // repo owner; until its commit is filled in here, `mirrorCommit` stays null
-  // and the files load from the app's own `dir` instead.
+  // a Cache Storage copy (loadVerifiedModel). The mirror (both files
+  // byte-identical to the upstream commit, plus LICENSE and README.md) was
+  // uploaded by the repo owner and verified at this commit on 2026-10-21.
   mirror: "Alice-Sabrina-Ivy/fireredvad-stream-vad-onnx",
-  mirrorCommit: null,
-  // Under the app's base URL (public/models/firered/ in the source tree,
-  // filled by scripts/fetch-firered-model.mjs): used while mirrorCommit is null.
+  mirrorCommit: "7128fcfded226bac7b4852014c1c3caa88c80f07",
+  // Offline development only: set mirrorCommit to null and the app loads the
+  // files from this folder under its base URL instead (public/models/firered/
+  // in the source tree: node scripts/fetch-firered-model.mjs
+  // --out=public/models/firered). Never shipped: the deployed build has no
+  // copy, and with the mirror pinned nothing reads this path.
   dir: "models/firered/",
   files: Object.freeze([
     Object.freeze({
@@ -129,7 +132,8 @@ export async function loadVerified(url, spec, { fetchFn = globalThis.fetch } = {
 //   { kind: "mirror", base }  the Hugging Face mirror at the pinned commit
 //                             (when model.mirrorCommit is set)
 //   { kind: "app", base }     the app's own models/firered/ (appBaseUrl: that
-//                             folder's absolute URL), while mirrorCommit is null
+//                             folder's absolute URL), only if mirrorCommit is
+//                             set to null (offline development)
 //   null                      no source (no mirror and no app URL, e.g. the
 //                             Node harnesses that drive the hook)
 export function fireredModelSource({ appBaseUrl = null, model = FIRERED_MODEL } = {}) {

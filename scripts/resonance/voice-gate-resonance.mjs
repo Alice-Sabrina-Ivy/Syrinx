@@ -81,8 +81,8 @@ const ORT_DIST = path.join(repo, "node_modules/onnxruntime-web/dist");
 const ort = await import(pathToFileURL(path.join(ORT_DIST, "ort.wasm.bundle.min.mjs")).href);
 ort.env.wasm.numThreads = 1;
 ort.env.wasm.wasmBinary = readFileSync(path.join(ORT_DIST, "ort-wasm-simd-threaded.wasm"));
-const { FIRERED_MODEL, createFireRedRunner, parseKaldiCmvn } = await import(pathToFileURL(path.join(repo, "src/dsp/firered-vad.js")).href);
-const MD = path.join(repo, "public", FIRERED_MODEL.dir);
+const { createFireRedRunner, parseKaldiCmvn } = await import(pathToFileURL(path.join(repo, "src/dsp/firered-vad.js")).href);
+const { LOCAL_MODEL_DIR: MD } = await import(pathToFileURL(path.join(repo, "scripts/firered/local-model.mjs")).href);
 if (!existsSync(path.join(MD, "cmvn.ark"))) { console.error("model files missing: node scripts/fetch-firered-model.mjs"); process.exit(2); }
 const session = await ort.InferenceSession.create(readFileSync(path.join(MD, "fireredvad_stream_vad_with_cache.onnx")), { executionProviders: ["wasm"] });
 const cmvn = parseKaldiCmvn(readFileSync(path.join(MD, "cmvn.ark")));

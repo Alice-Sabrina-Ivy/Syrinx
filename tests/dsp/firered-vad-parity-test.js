@@ -19,7 +19,7 @@
 //      module's frame timing (framesAvailableAt: the screen's first_avail_ms
 //      26), equals score.py's per-hop score and decision (gate["26"], the
 //      screen's own rule) on every hop; the old 25 ms timing must not;
-//   C  model (when public/models/firered/ holds the pinned files — run
+//   C  model (when build/models/firered/ holds the pinned files — run
 //      `node scripts/fetch-firered-model.mjs`; skipped with a notice
 //      otherwise): onnxruntime-web WASM (the bundle and .wasm the app ships)
 //      through createVoiceDetector, hop by hop: per-frame probabilities
@@ -39,6 +39,7 @@ import {
   FIRERED_MODEL, FBANK, parseKaldiCmvn, createFireRedFrontend, createVoiceGate,
   createFireRedRunner, createVoiceDetector, framesAvailableAt, CATCHUP_FRAMES, MAX_BACKLOG_FRAMES,
 } from "../../src/dsp/firered-vad.js";
+import { LOCAL_MODEL_DIR } from "../../scripts/firered/local-model.mjs";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const REF = JSON.parse(readFileSync(path.join(repo, "tests/dsp/fixtures/firered-parity.json"), "utf8"));
@@ -77,9 +78,10 @@ console.log(`fixture: ${(x16.length / 16000).toFixed(2)} s, ${nHops} hops, ${REF
 check("fixture rebuilt bit for bit (sha256 of the int16 stream)",
   createHash("sha256").update(Buffer.from(pcm.buffer)).digest("hex") === REF.pcm_sha256);
 
-// The model files (not committed): public/models/firered/, fetched by
-// scripts/fetch-firered-model.mjs. Parts A and B do not need them.
-const MODEL_DIR = path.join(repo, "public", FIRERED_MODEL.dir);
+// The model files (not committed): the local copy in build/models/firered/,
+// fetched by scripts/fetch-firered-model.mjs (the app loads them from the
+// Hugging Face mirror instead). Parts A and B do not need them.
+const MODEL_DIR = LOCAL_MODEL_DIR;
 const fileOk = (f) => {
   const p = path.join(MODEL_DIR, f.name);
   if (!existsSync(p)) return false;
@@ -157,7 +159,7 @@ check("the fixture exercises both decisions and the hangover running out",
 
 // ---- C: the model through onnxruntime-web
 if (!haveModel) {
-  console.log("\nC. SKIPPED: public/models/firered/ lacks the pinned model files (run `node scripts/fetch-firered-model.mjs`)");
+  console.log("\nC. SKIPPED: build/models/firered/ lacks the pinned model files (run `node scripts/fetch-firered-model.mjs`)");
 } else {
   console.log("\nC. onnxruntime-web WASM through createVoiceDetector, hop by hop");
   const DIST = path.join(repo, "node_modules/onnxruntime-web/dist");

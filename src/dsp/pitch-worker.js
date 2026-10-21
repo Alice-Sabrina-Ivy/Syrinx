@@ -35,8 +35,9 @@
 // into cue-strip 2026-10-21; src/dsp/firered-vad.js,
 // measurements/noise-detector-tryout-2026-10-20.md).
 // Only when init carries `vad: { modelBase, source? }` (the app does: the
-// Hugging Face mirror, source "mirror", once firered-vad.js pins its commit,
-// else the app's own models/firered/, source "app"; the Node
+// Hugging Face mirror at the commit firered-vad.js pins, source "mirror"
+// (the app's own models/firered/, source "app", only for offline development
+// with mirrorCommit set to null); the Node
 // harnesses that drive this worker do not, and then nothing below runs and
 // the worker is exactly as before). FireRedVAD runs on this worker's own
 // 16 kHz stream (the resampler's output, before the notch), hop by hop, so

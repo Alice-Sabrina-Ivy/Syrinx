@@ -70,8 +70,8 @@ export const NON_NPM_COMPONENTS = Object.freeze([
 export const ORT_THIRD_PARTY_NOTICES = "licenses/onnxruntime-web/ThirdPartyNotices.txt";
 // Models whose files the app serves (not npm packages): their licence text
 // always ships in THIRD_PARTY_NOTICES.txt. FireRedVAD: the voice gate's
-// model (Apache-2.0; served from a Hugging Face mirror, or from the app's own
-// models/firered/ fetched by scripts/fetch-firered-model.mjs).
+// model (Apache-2.0; loaded at runtime from the project's Hugging Face mirror,
+// pinned in src/dsp/firered-vad.js FIRERED_MODEL.mirrorCommit).
 export const MODEL_LICENSES = [
   { title: "FireRedVAD (FireRedTeam) — model used by the voice gate, Apache License 2.0", file: "licenses/fireredvad/LICENSE" },
 ];
