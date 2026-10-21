@@ -11,7 +11,8 @@
 // scripts/cue-strip-smoke-wavs.mjs) is cut into 3 s of speech + 2.5 s of
 // silence, repeated, so every readout passes through its voiced and its
 // unvoiced text ("Pitch 276 Hz" in bright / grey, "— Hz", "—" st …).
-// Per viewport, every button's (and input's) box is sampled every 100 ms in:
+// The Resonance lab tab is hidden by default (2026-10-21); each page switches it on in
+// Settings first. Per viewport, every button's (and input's) box is sampled every 100 ms in:
 //   1 the Dashboard cue strip      (the row "i"s, the steadiness "i")
 //   2 the Resonance lab            (header buttons, view switch, card "i"s)
 //   3 the lab's Weight × clarity   (header buttons, view switch, map button)
@@ -286,6 +287,18 @@ async function openPage(viewport, errors) {
   await page.bringToFront();
   return page;
 }
+// Settings' "Show the Resonance lab (experimental)" switch: on (the tab is hidden by default).
+async function enableLab(page) {
+  try {
+    await page.evaluate(() => document.querySelector('button[aria-label="Settings & Data"]').click());
+    await page.waitForSelector("[data-settings-lab-switch]", { timeout: 10000 });
+    await page.evaluate(() => { const b = document.querySelector("[data-settings-lab-switch]"); if (b.getAttribute("aria-checked") !== "true") b.click(); });
+    await page.waitForFunction(() => document.querySelector("[data-settings-lab-switch]")?.getAttribute("aria-checked") === "true", { timeout: 5000 });
+    await page.evaluate(() => document.querySelector('button[aria-label="Close settings"]').click());
+    await page.waitForFunction(() => [...document.querySelectorAll("nav button")].some((b) => b.textContent.trim() === "Resonance lab"), { timeout: 5000 });
+    return true;
+  } catch { return false; }
+}
 if (LAYOUT) browser = await launch(WAV);
 
 for (const [vp, viewport] of Object.entries(LAYOUT ? VIEWPORTS : {})) {
@@ -294,6 +307,8 @@ for (const [vp, viewport] of Object.entries(LAYOUT ? VIEWPORTS : {})) {
   const listening = await startListening(page);
   check(vp, "listening", listening);
   if (!listening) { await page.close(); continue; }
+  // the Resonance lab tab is off by default (2026-10-21): switch it on in Settings
+  check(vp, "Resonance lab switched on in Settings", await enableLab(page));
 
   // 1 Dashboard cue strip
   await page.waitForSelector('[data-cue="pitch"]', { timeout: 20000 }).catch(() => {});

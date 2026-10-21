@@ -1,11 +1,12 @@
 // lab-smoke.mjs — headless smoke test of the resonance lab against the BUILT app
-// (dist/, served by `vite preview`). The lab tab is visible to everyone; the lab
-// itself starts only once the tab is opened.
+// (dist/, served by `vite preview`). The lab tab is shown only when Settings' "Show the
+// Resonance lab (experimental)" is on (off by default since 2026-10-21; runs 2-5 switch it
+// on in Settings); the lab itself starts only once the tab is opened.
 //
 //   npm run build && node scripts/resonance-lab/lab-smoke.mjs --wav=<48 kHz speech wav> [--seconds=40] [--shot=out.png]
 //
-// Run 1 (tab never opened): asserts that no lab chunk / worker / asset is requested and
-// only the three production workers start. Run 2: opens the "Resonance lab" tab while
+// Run 1 (the setting left off, the default): asserts that there is no lab tab, that no lab
+// chunk / worker / asset is requested and only the three production workers start. Run 2: opens the "Resonance lab" tab while
 // listening, waits, prints the lab's readout text and saves a screenshot. Run 3: opens the
 // tab BEFORE listening, then starts — the lab must start with the pipeline. Run 4: the lab
 // on a phone (402x750 CSS px — an iPhone 16 Pro with Safari's toolbars showing; mobile
@@ -109,10 +110,24 @@ async function run(url, { lab, tabFirst = false, viewport = null, wait = SECONDS
     if (b) b.click();
     return !!b;
   }, texts);
+  // Settings' lab switch on (the tab is hidden by default); the profile keeps it.
+  const enableLab = async () => {
+    try {
+      await page.waitForSelector('button[aria-label="Settings & Data"]', { timeout: 30000 });
+      await page.evaluate(() => document.querySelector('button[aria-label="Settings & Data"]').click());
+      await page.waitForSelector("[data-settings-lab-switch]", { timeout: 10000 });
+      await page.evaluate(() => { const b = document.querySelector("[data-settings-lab-switch]"); if (b.getAttribute("aria-checked") !== "true") b.click(); });
+      await page.waitForFunction(() => document.querySelector("[data-settings-lab-switch]")?.getAttribute("aria-checked") === "true", { timeout: 5000 });
+      await page.evaluate(() => document.querySelector('button[aria-label="Close settings"]').click());
+      return true;
+    } catch { return false; }
+  };
+  let labTab = null;
   if (tabFirst) {
-    // Get Started first if the welcome overlay is up, then the tab, then start.
+    // Get Started first if the welcome overlay is up, then the setting, the tab, then start.
     await clickText(["Get Started"]);
     await sleep(1000);
+    log("lab switched on in Settings:", await enableLab());
     log("lab tab clicked before listening:", await clickText(["Resonance lab"]));
     await sleep(1500);
   }
@@ -125,6 +140,8 @@ async function run(url, { lab, tabFirst = false, viewport = null, wait = SECONDS
   }
   log("pipeline running:", running);
   await sleep(1500);
+  labTab = await page.evaluate(() => [...document.querySelectorAll("nav button")].some((b) => b.textContent.trim() === "Resonance lab"));
+  if (lab && !tabFirst) log("lab switched on in Settings:", await enableLab());
   let weightOut = null;
   if (weight) {
     // The first-run training-direction dialog (if shown) would cover the screenshots:
@@ -196,7 +213,7 @@ async function run(url, { lab, tabFirst = false, viewport = null, wait = SECONDS
   const fit = viewport ? await page.evaluate(measurePhoneFit) : null;
   if (SHOT && lab) await page.screenshot({ path: viewport ? SHOT.replace(/(\.png)?$/i, "-phone.png") : SHOT, fullPage: !viewport });
   await page.close();
-  return { requests, workers, errors, text, fit, weightOut };
+  return { requests, workers, errors, text, fit, weightOut, labTab };
 }
 
 log("starting preview server");
@@ -221,7 +238,8 @@ const offWorkers = off.workers.map((u) => u.split("/").pop());
 console.log("TAB NOT OPENED: workers", offWorkers);
 console.log("TAB NOT OPENED: lab requests", labHits.length ? labHits : "none");
 console.log("TAB NOT OPENED: page errors", off.errors.length ? off.errors : "none");
-const offOk = labHits.length === 0 && off.workers.length === 3 && !off.workers.some((u) => u.includes("lab-worker"));
+console.log("SETTING OFF (default): lab tab shown", off.labTab);
+const offOk = off.labTab === false && labHits.length === 0 && off.workers.length === 3 && !off.workers.some((u) => u.includes("lab-worker"));
 
 const on = await run(base, { lab: true });
 console.log("TAB OPENED: workers", on.workers.map((u) => u.split("/").pop()));

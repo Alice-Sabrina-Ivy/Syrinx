@@ -11,8 +11,13 @@
 //
 // layout  (clean.wav) per viewport, one page: listening on the Dashboard and then the lab
 //         opened on Resonance request nothing of Voice Shaper (tab chunk, worker, glue,
-//         .wasm); the tab bar reads Dashboard, Pitch, History, Voice Shaper, Resonance lab on
-//         one row inside the viewport (screenshot <viewport>-dark-tabs); the lab offers its
+//         .wasm); the Resonance lab is hidden by default (2026-10-21: a fresh profile's
+//         Settings switch is off; the tab bar reads Dashboard, Pitch, History, Voice Shaper
+//         and nothing of the lab is requested); with the switch off and then on, the tab bar
+//         reads those four / Dashboard, Pitch, History, Voice Shaper, Resonance lab on
+//         one row inside the viewport (screenshots <viewport>-dark-tabs4 / -tabs); on the
+//         first viewport, turning the switch off with the lab open goes back to the
+//         Dashboard and stops the lab's worker; the lab offers its
 //         two views only (Resonance, Weight × clarity); opening the Voice Shaper tab requests
 //         exactly one .wasm and the card gets ready (SIMD in Chrome); at 360 x 690 the lab's
 //         Resonance view still fits its four cards (the lab smoke's check). Record waits for
@@ -70,7 +75,8 @@
 //         the non-SIMD build (fetched once), which records, renders and plays.
 // chunkfail the static server answers 404 for the Voice Shaper tab's chunk (as after a deploy
 //         while the page stays open): opening the tab shows "Voice Shaper could not load…" in
-//         the tab; the app stays (tabs, Stop Listening), and the Resonance lab still opens.
+//         the tab; the app stays (tabs, Stop Listening), and the Resonance lab (switched on in
+//         Settings first) still opens.
 // Every part also fails on console errors, the workers' included.
 // timing  (not in the default parts; needs timing.wav, i.e. $VP_CACHE) desktop timing in the
 //         spike's browser (--chrome=<Chrome for Testing 154>, default $VP_CACHE/browsers/…),
@@ -268,6 +274,19 @@ const tabBar = (page) => page.evaluate(() => {
     clip: (() => { const h = document.querySelector("header").getBoundingClientRect(); const n = nav.getBoundingClientRect(); return { x: 0, y: Math.max(0, h.top - 4), width: innerWidth, height: n.bottom + 8 - Math.max(0, h.top - 4) }; })() };
 });
 const TAB_ORDER = ["Dashboard", "Pitch", "History", "Voice Shaper", "Resonance lab"];
+const TAB_ORDER_NO_LAB = TAB_ORDER.slice(0, 4);
+// Settings' "Show the Resonance lab (experimental)" switch (off by default since 2026-10-21):
+// open Settings, set it, close Settings. Returns the switch's state before.
+async function setLab(page, on) {
+  await page.evaluate(() => document.querySelector('button[aria-label="Settings & Data"]').click());
+  await page.waitForSelector("[data-settings-lab-switch]", { timeout: 10000 });
+  const was = await page.evaluate(() => document.querySelector("[data-settings-lab-switch]").getAttribute("aria-checked") === "true");
+  if (was !== on) await page.evaluate(() => document.querySelector("[data-settings-lab-switch]").click());
+  await page.waitForFunction((on) => document.querySelector("[data-settings-lab-switch]")?.getAttribute("aria-checked") === String(on), { timeout: 5000 }, on);
+  await page.evaluate(() => document.querySelector('button[aria-label="Close settings"]').click());
+  await page.waitForFunction((on) => [...document.querySelectorAll("nav button")].some((b) => b.textContent.trim() === "Resonance lab") === on, { timeout: 5000 }, on);
+  return was;
+}
 const vp = (page) => page.evaluate(() => {
   const c = document.querySelector("[data-voice-preview]");
   if (!c) return null;
@@ -489,7 +508,36 @@ async function partLayout() {
     await sleep(2500);
     const vpDash = served.slice(before).filter(isVp);
     check("listening on the Dashboard: nothing of Voice Shaper requested", vpDash.length === 0, vpDash.join(", "));
-    // the tab bar: five tabs in order, one row, inside the viewport
+    // the Resonance lab setting: off for a fresh profile (the first viewport), set off on the
+    // others (the profile keeps it); four tabs, one row, inside the viewport
+    const first = v === LAYOUT_VIEWPORTS[0];
+    const labWas = await setLab(page, false);
+    if (first) {
+      const labReq = served.slice(before).filter(isLab);
+      check("the Resonance lab is hidden by default: the Settings switch is off, nothing of the lab requested", labWas === false && labReq.length === 0, `switch ${labWas}; ${labReq.join(", ")}`);
+    }
+    const tb4 = await tabBar(page);
+    check("lab off: tab bar Dashboard, Pitch, History, Voice Shaper; Dashboard is aria-current=\"page\"", JSON.stringify(tb4.labels) === JSON.stringify(TAB_ORDER_NO_LAB)
+      && JSON.stringify(tb4.current) === JSON.stringify(["Dashboard"]), `${tb4.labels.join(" | ")}; current ${tb4.current.join(", ")}`);
+    check("lab off: one row, inside the viewport, no overflow, no horizontal page scroll; tabs >= 24 x 24",
+      tb4.oneRow && tb4.left >= -0.5 && tb4.right <= tb4.innerW + 0.5 && !tb4.navOverflow && tb4.docW <= tb4.innerW && tb4.minW >= 24 && tb4.minH >= 24, JSON.stringify({ ...tb4, clip: undefined }));
+    await page.screenshot({ path: path.join(OUT, `${v}-dark-tabs4.png`), clip: tb4.clip });
+    // the narrowest phone (320 px wide, same emulation): four tabs, then five, on one row
+    const at320 = async (labels) => {
+      if (!first || VIEWPORTS[v].width <= 320) return;
+      await page.setViewport({ ...VIEWPORTS[v], width: 320 });
+      await sleep(300);
+      const t = await tabBar(page);
+      check(`320 px: ${labels.length} tabs on one row, inside the viewport, no overflow; tabs >= 24 x 24`, JSON.stringify(t.labels) === JSON.stringify(labels)
+        && t.oneRow && t.left >= -0.5 && t.right <= t.innerW + 0.5 && !t.navOverflow && t.docW <= t.innerW && t.minW >= 24 && t.minH >= 24, JSON.stringify({ ...t, clip: undefined }));
+      await page.screenshot({ path: path.join(OUT, `p320-dark-tabs${labels.length}.png`), clip: t.clip });
+      await page.setViewport(VIEWPORTS[v]);
+      await sleep(300);
+    };
+    await at320(TAB_ORDER_NO_LAB);
+    await setLab(page, true);
+    await at320(TAB_ORDER);
+    // the tab bar with the lab on: five tabs in order, one row, inside the viewport
     const tb = await tabBar(page);
     check("tab bar: Dashboard, Pitch, History, Voice Shaper, Resonance lab; Dashboard is aria-current=\"page\"", JSON.stringify(tb.labels) === JSON.stringify(TAB_ORDER)
       && JSON.stringify(tb.current) === JSON.stringify(["Dashboard"]), `${tb.labels.join(" | ")}; current ${tb.current.join(", ")}`);
@@ -510,6 +558,19 @@ async function partLayout() {
       check("the lab's Resonance view still fits its four cards above Stop Listening, no scroll",
         f.phone && f.bottoms.length === 4 && f.scrollH <= f.clientH + 1 && f.bottoms.every((b) => b <= f.barTop + 0.5) && f.doc.scrollH <= f.doc.innerH + 1 && f.doc.scrollW <= f.doc.innerW, JSON.stringify(f));
       await shot(page, `${v}-dark-lab-resonance`);
+    }
+    if (first) {
+      // the switch turned off with the lab open: back to the Dashboard, the tab gone, the lab's worker stopped
+      const labWorker = () => page.workers().some((w) => /lab-worker/.test(w.url()));
+      await page.waitForFunction(() => /Voiced so far|Pitch \d+ Hz/.test(document.querySelector("[data-lab-root]")?.innerText ?? ""), { timeout: 30000 }).catch(() => {});
+      const running = labWorker();
+      await setLab(page, false);
+      await sleep(1000);
+      const tbOff = await tabBar(page);
+      check("lab turned off while open: back to the Dashboard, no lab tab or view, its worker stopped",
+        running && tbOff.active === "Dashboard" && JSON.stringify(tbOff.labels) === JSON.stringify(TAB_ORDER_NO_LAB) && !(await page.$("[data-lab-root]")) && !labWorker(),
+        `worker before ${running}, after ${labWorker()}; active ${tbOff.active}; ${tbOff.labels.join(" | ")}`);
+      await setLab(page, true);
     }
     const mark = served.length;
     await openShaper(page);
@@ -1172,6 +1233,7 @@ async function partChunkFail() {
     await launch(WAV.clean);
     const { page } = await open("p360");
     await startListening(page);
+    await setLab(page, true); // the lab tab (off by default) is checked below
     await clickButton(page, ["Voice Shaper"], "nav button");
     const shown = await waitVp(page, () => !!document.querySelector("[data-vp-load-error]"), "load error shown", 20000);
     const st = await page.evaluate(() => ({
