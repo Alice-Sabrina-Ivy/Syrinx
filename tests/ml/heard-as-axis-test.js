@@ -1,11 +1,14 @@
 // heard-as-axis-test.js — src/components/heardAsAxisModel.js: the "Likely
 // heard as" panel's man <-> woman split bar (orientation, the solid parts =
 // the low ends of the range rounded outward to tenths, the best guess s kept
-// for the checks — not drawn since the 2026-10-20 review —, "can't tell yet",
-// words, screen-reader text), that its range / unsure words are the
-// 2026-10-07 axis's, unchanged (tests/ml/fixtures/heard-as-axis-words-golden.json,
-// frozen before the 2026-10-20 split bar; its last two columns, the old
-// screen-reader best-guess words, are no longer used), and its gender
+// for the checks — not drawn since the 2026-10-20 review —, the wide state
+// "Could go either way" (user decision 2026-10-21; it said "Can't tell yet",
+// now only the panel's "no reading yet" reason), words, screen-reader text),
+// that its range / unsure words are the 2026-10-07 axis's
+// (tests/ml/fixtures/heard-as-axis-words-golden.json, frozen before the
+// 2026-10-20 split bar; only the wide rows' range line regenerated
+// 2026-10-21; its last two columns, the old screen-reader best-guess words,
+// are no longer used), and its gender
 // symmetry (a mirrored estimate gives a mirrored bar and the same words with
 // man / woman swapped).
 //
@@ -15,7 +18,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { heardAsShares, shareTenths, formatShare } from "../../src/ml/heard-as.js";
 import { HEARD_AS_CALIBRATION as C } from "../../src/ml/heardAsCalibration.js";
-import { heardAsAxis, AXIS_ENDS, unsureWords, shortReason, UNVOICED_SHARE, quickCheck } from "../../src/components/heardAsAxisModel.js";
+import { heardAsAxis, AXIS_ENDS, unsureWords, shortReason, UNVOICED_SHARE, quickCheck, WIDE_TEXT } from "../../src/components/heardAsAxisModel.js";
 
 let passed = 0, failed = 0;
 function check(name, cond, detail = "") {
@@ -53,7 +56,7 @@ console.log("orientation and geometry (split bar)");
   check("best guess s (data-split-guess, not drawn) grows as more would say man", mono);
 }
 
-console.log("\nwords unchanged by the split bar (frozen at 550c959)");
+console.log("\nwords unchanged by the split bar (frozen at 550c959; the wide line as of 2026-10-21)");
 {
   const golden = JSON.parse(readFileSync(fileURLToPath(new URL("./fixtures/heard-as-axis-words-golden.json", import.meta.url)), "utf8"));
   let same = 0, detail = "";
@@ -64,14 +67,27 @@ console.log("\nwords unchanged by the split bar (frozen at 550c959)");
     if (got.every((v, i) => v === want[i])) same++;
     else if (!detail) detail = `eta ${eta}: ${JSON.stringify(got)} vs ${JSON.stringify(want)}`;
   }
-  check(`range line, unsure line, tenths and "can't tell yet" identical on all ${golden.rows.length} frozen estimates`, same === golden.rows.length && golden.rows.length === 281, detail);
+  check(`range line, unsure line, tenths and "could go either way" identical on all ${golden.rows.length} frozen estimates`, same === golden.rows.length && golden.rows.length === 281, detail);
 }
 
-console.log("\ncan't tell yet");
+console.log("\ncould go either way (a shown reading in the middle; user decision 2026-10-21)");
 {
   const mid = heardAsAxis(sharesAt(0));
   check("eta 0: range covers most of the scale -> wide (the bar mostly striped)", mid.wide && 1 - mid.man - mid.woman >= 0.8 - 1e-9, `${mid.man} / ${mid.woman}`);
-  check("wide: says 'Can't tell yet', no 'in 10' precision in the visible range line", /^Can't tell yet/.test(mid.rangeText) && !mid.rangeText.includes("in 10"));
+  check("wide: says exactly 'Could go either way — listeners would be split', no 'in 10' precision in the visible range line",
+    WIDE_TEXT === "Could go either way — listeners would be split" && mid.rangeText === WIDE_TEXT && !mid.rangeText.includes("in 10"), mid.rangeText);
+  let noCantTell = true, cantDetail = "";
+  for (let k = -140; k <= 140; k++) {
+    const ax = heardAsAxis(sharesAt(k / 20));
+    for (const t of [ax.rangeText, ax.unsureText ?? "", ax.srText]) if (/can.t tell/i.test(t)) { noCantTell = false; cantDetail ||= `eta ${k / 20}: ${t}`; }
+  }
+  check("no shown reading says 'Can't tell yet' (range line, unsure line, screen-reader text; eta -7..7)", noCantTell, cantDetail);
+  const panelSrc = readFileSync(fileURLToPath(new URL("../../src/components/HeardAsPanel.jsx", import.meta.url)), "utf8");
+  check("'Can't tell yet' stays only for no reading yet: the panel's 'short' reason starts with it",
+    panelSrc.includes(`\n  short: () => "Can't tell yet — keep talking, it needs a few seconds of running speech",`));
+  const q = (w) => `${String.fromCharCode(92)}u201c${w}${String.fromCharCode(92)}u201d`; // the source's escaped quotes
+  check("the panel's 'More' text names the wide state by its new words",
+    panelSrc.includes(`Some voices get ${q("Could go either way")} most of the time.`) && !panelSrc.includes(q("Can't tell yet")));
   const clear = heardAsAxis(sharesAt(3.5));
   check("eta 3.5: not wide, range line gives both sides in tenths", !clear.wide && /^About \d+–\d+ in 10 would say man · about \d+–\d+ in 10 would say woman$/.test(clear.rangeText), clear.rangeText);
   let consistent = true;
@@ -109,7 +125,8 @@ console.log("\nwords");
     check(`screen-reader text at eta ${e} uses the end words, no '0 in 10' / '10 in 10'`, !/\b(0|10) in 10/.test(t), t);
   }
   const w = heardAsAxis(sharesAt(0));
-  check("screen-reader text says can't tell yet when wide; no unsure line then", w.srText.includes("Can't tell yet") && !w.srText.includes("Best guess") && w.unsureText === null);
+  check("screen-reader text says 'Could go either way: listeners would be split' when wide (not 'Can't tell yet'); no unsure line then",
+    w.srText.includes("Could go either way: listeners would be split — ") && !w.srText.includes("Can't tell") && !w.srText.includes("Best guess") && w.unsureText === null, w.srText);
 }
 
 console.log("\nhide reason: 'short' vs 'unvoiced' (whisper gets its own words, 2026-10-07 UX review)");

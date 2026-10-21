@@ -54,7 +54,8 @@ const VARIANT = arg("variant", "shipped");
 // stream the pitch-only warning would see).
 export function simulate(s, v = VARIANTS[VARIANT], phaseMs = 0) {
   const aggOpts = { ...v.agg };
-  const agg = createHeardAsAggregator(aggOpts);
+  // v.makeAgg (lowhide.mjs): an aggregator wrapper that adds a candidate hide rule
+  const agg = v.makeAgg ? v.makeAgg(aggOpts) : createHeardAsAggregator(aggOpts);
   const minWindows = aggOpts.minWindows ?? C.minWindows, minVoicedMs = aggOpts.minVoicedMs ?? C.minVoicedMs;
   const ev = [];
   for (const [ms, f0] of s.pitch) ev.push([ms, 0, f0]);

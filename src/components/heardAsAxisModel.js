@@ -21,13 +21,16 @@
 // woman — so it read backwards; the user had made it optional). `guess` (s,
 // unrounded, always inside the striped part) stays in the model for the
 // checks only (data-split-guess). A range spanning ≥ WIDE_SHARE_TENTHS (8)
-// tenths is "can't tell yet" (mostly stripes; no unsure line). The unsure /
+// tenths is "could go either way" (mostly stripes; no unsure line; it said
+// "Can't tell yet" until user decision 2026-10-21 (1): waiting does not help a
+// voice whose reading sits in the middle — "Can't tell yet" is now only the
+// panel's words before a reading exists, HeardAsPanel.jsx). The unsure /
 // neither share is a text line: the share at the best guess rounded to the
 // nearest tenth ("about N in 10", "fewer than 1 in 10"), left out while it is
-// "can't tell yet". (Until review round 2 it was the range's outward-rounded
+// "could go either way". (Until review round 2 it was the range's outward-rounded
 // min…peak, which read "about 0–5 in 10" on most readings of typical voices —
 // measurements/heard-as-panel-review-2-2026-10-07.md §4.) The range and
-// unsure words are the 2026-10-07 axis's, unchanged
+// unsure words are the 2026-10-07 axis's, unchanged except the wide line
 // (tests/ml/fixtures/heard-as-axis-words-golden.json).
 
 import { formatShare, shareTenths, isWideShare } from "../ml/heard-as.js";
@@ -37,6 +40,9 @@ export function unsureWords(u) {
   const n = Math.round(10 * u);
   return n <= 0 ? "fewer than 1 in 10" : `about ${n} in 10`;
 }
+
+/** The range line of a shown reading that spans most of the scale (wide). */
+export const WIDE_TEXT = "Could go either way — listeners would be split";
 
 const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
 
@@ -87,12 +93,12 @@ export function heardAsAxis(shares) {
   const guess = Math.min(1, Math.max(0, shares.s));
   const man = formatShare(manRange), woman = formatShare(womanRange);
   const rangeText = wide
-    ? "Can't tell yet — the range covers most of the scale"
+    ? WIDE_TEXT
     : `${cap(man)} would say man · ${woman} would say woman`;
   const unsureText = wide ? null : `${cap(unsureWords(shares.centre.unsure))} might be unsure or say neither`;
   const scale = "Bar of listeners in tenths: would say man fills from the left, would say woman from the right, and the striped part between could go either way.";
   const srText = wide
-    ? `${scale} Can't tell yet: the range covers most of the scale — ${man} would say man, ${woman} would say woman.`
+    ? `${scale} Could go either way: listeners would be split — ${man} would say man, ${woman} would say woman.`
     : `${scale} ${cap(man)} would say man, ${woman} would say woman.`;
   return {
     man: a / 10,

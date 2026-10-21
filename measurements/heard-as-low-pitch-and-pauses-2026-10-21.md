@@ -8,7 +8,9 @@ held-out run. **Result: H1+H3 passes every part of the bar on held-out for
 women and men (§8).** A review the same day (§9) rebuilt the §8.3 guard
 baseline (pass / fail unchanged) and added what the bar did not check: the
 new ~75 Hz readings lean toward "woman", early readings for one feminine-pitch
-male voice, and short "Keep talking" flashes (§8.5). This is the hard-rule-3 measurement file for any change to
+male voice, and short "Keep talking" flashes (§8.5). **Addendum (2026-10-21, after §9): a pre-registered low-voice hide rule —
+FAIL on dev, nothing implemented** (no rule hides the ~75 Hz readings
+without costing ~90 Hz voices 12–60 points; §A.4). This is the hard-rule-3 measurement file for any change to
 the heard-as modules (`src/ml/heard-as.js`, `heardAsCalibration.js`,
 `utterance-gate.js`, `gender-worker.js`, `speech-detector.js`, and the
 panel's `src/components/HeardAsPanel.jsx`) that comes out of it.
@@ -923,3 +925,185 @@ inside the panel, and the pitch-only warning appears 6.1 s (man) and 7.5 s
 `lab-layout-smoke.mjs` was not re-run: `first()` can now show a reading
 with the note, a state `compute()` already produced, and that smoke does
 not open the "More" list.
+
+## Addendum: low-voice hide (pre-registered, 2026-10-21)
+
+**Why.** §8.5: since H1+H3, voices around 75 Hz get readings, but the pitch
+worker drops most of their frames below its 75 Hz floor, so the pooled F0
+reads ~1.14× high, the 81 Hz "outside the tested range" rule does not fire,
+and ~85 % of those readings are for a voice below the tested range, leaning
+~0.47 logit toward "woman". **User decision (2026-10-21):** hide readings for
+very low voices (below ~80 Hz) for now, with a measured rule, so they get the
+panel's existing out-of-range state ("Outside the range it was tested on");
+the pitch-detector fix (P1) is deferred. This plan is committed and pushed
+before the chain is run on any stream or any candidate is coded.
+
+**Baseline ("shipped")** = the panel on `cue-strip` 35bf286: H1+H3
+(`minVoicedMs` 2000, first-reading check) — `analyze.mjs` variant `H1+H3`.
+
+### A.1 Candidates (heard-as modules only; each can only hide)
+
+Both are computed in `heard-as.js` `estimate()` from what the aggregator
+already holds — the pooled posted voiced F0 values (the frames the pooled
+median uses: posted voiced frames inside the scored windows' spans) and the
+posted frames, voiced or not, inside those spans. A reading that fires the
+rule is hidden as `"outside"` (the panel's existing out-of-range state),
+checked after the existing "short" rule, on the 2 s updates and on the
+first-reading check alike.
+
+- **L1 — low tail of the posted pitch:** hide when the q-th percentile of the
+  pooled voiced F0 values is below T Hz. Percentile = the value at index
+  floor(q · (n − 1) / 100) of the ascending list.
+  Grid: q ∈ {10, 20}, T ∈ {76, 77, 78, 79, 80} Hz (10 cells).
+- **L2 — lost voicing at a low pitch:** hide when the pooled F0 (the median,
+  as shown) is below M Hz AND the voiced share of the pooled spans — posted
+  voiced time / posted frame time (each frame counted by its capped spacing,
+  as `voicedMs` counts it) inside the scored windows' spans — is below V.
+  Grid: M ∈ {95, 100, 110} Hz, V ∈ {0.30, 0.35, 0.40, 0.45, 0.50} (15 cells).
+
+### A.2 Streams (a fixed subset, rebuilt)
+
+`build_streams.py` (unchanged except a new `--conds` option that builds a
+subset of conditions; same seeds, so the streams are the §3 ones):
+**all 80 LibriSpeech readers** (dev = test-clean 20 W / 20 M, held-out =
+dev-clean 20 / 20), conditions **nat p0, nat pnat, w75 p0, w75 pnat, w90 pnat,
+w185 pnat** (the other pause conditions, w90 p0, w185 p0 and w1 are not
+rebuilt), plus PTDB-TUG (M01, M02, F01, F02), FDA (rl, sb) and Hillenbrand
+(45 men, 48 women) as in §3. Same chain (`run.mjs`, speech detector live),
+two processes. The candidates are simulated over the stored runs exactly as
+`analyze.mjs` simulates the panel (four 2 s-timer phases, 250 ms display
+samples, the first-reading check).
+
+### A.3 Split, selection, the bar
+
+- **Dev:** the 40 test-clean readers' streams. **Held-out:** the 40 dev-clean
+  readers' streams and PTDB-TUG / FDA (in no fit, never used to choose).
+  Hillenbrand: reported only.
+- **Selection (dev only, written to `build/heard-as/lowhide/selection.json`
+  before any held-out candidate number is computed):** a cell is eligible if
+  on dev it passes (a)–(d) for both sexes (with dev's groups: w75; w90 and
+  natural LibriSpeech men; natural LibriSpeech women and w185). Of the
+  eligible cells: the largest min-over-sexes reduction in (a); ties (within
+  2 points) → the smaller largest drop in (b); then L1 before L2, then the
+  smaller threshold (T, or M then V). If none is eligible: FAIL, nothing is
+  implemented, the numbers are reported.
+- **The bar (held-out, one look at the pick; women and men separately;
+  failing one group fails):**
+  - **(a) ~75 Hz voices** (w75, p0 and pnat pooled): shown readings below the
+    tested range — shown 250 ms display samples (four phases) whose reference
+    F0 (median of the WORLD reference's voiced values in the trailing 8 s) is
+    below 81 Hz — drop by **≥ 80 %** per sex.
+  - **(b) ~90 Hz voices and natural male speech:** time with a reading (the
+    mean over streams of the shown share, `analyze.mjs` `shareShown`) drops by
+    **≤ 2.0 points** for w90 pnat (W, M), LibriSpeech men (nat p0 + pnat),
+    PTDB-TUG men (M01 + M02) and FDA rl — each group judged on its own.
+  - **(c) women, natural and feminine-shifted:** the same shown share changes
+    by **≤ 0.5 point** for LibriSpeech women (nat p0 + pnat), PTDB-TUG women
+    (F01 + F02), FDA sb and w185 pnat (W, and M — the feminine-pitch stand-in
+    for men).
+  - **(d) no new readings:** on every rebuilt stream, at every 250 ms sample
+    and phase, the candidate shows a reading only where the baseline shows
+    one, with the same eta (it can only hide).
+- **Reported (not judged):** Hillenbrand men / women shown share; the (a)
+  share on dev; shown ↔ hidden changes per minute on w75 / w90 (blinking); how
+  many shown readings the rule hides on each group.
+- **Verdict:** PASS only if (a)–(d) all pass on held-out. If the pick passes,
+  it is implemented (a hide rule in `heard-as.js` + its constants in
+  `heardAsCalibration.js`, unit tests, the panel's "More" text); if not,
+  nothing is implemented.
+
+Scripts: `scripts/heard-as/low-pitch-pauses/lowhide.mjs` (written after this
+commit; it imports `analyze.mjs` `simulate` with the candidate rule supplied
+to the aggregator).
+
+### A.4 Results (2026-10-21) — FAIL on dev, nothing implemented
+
+**Order.** Plan committed and pushed 12:46:03 CDT (db9bb0d); the streams were
+being built meanwhile (no chain run, no panel number). Chain run 12:53–13:19
+(579 streams, two processes). Dev selection written 13:21:22
+(`build/heard-as/lowhide/selection.json`). One deviation: at 13:09, while the
+run was going, `lowhide.mjs` was smoke-tested on the 48 dev streams finished
+by then, in a scratch directory (dev only; no held-out stream was evaluated
+at any point).
+
+**No cell is eligible on dev, so there is no pick and no held-out look.
+Verdict: FAIL. No hide rule is implemented** (`heard-as.js` and the panel are
+unchanged by this addendum; readings for ~75 Hz voices stay as in §8.5).
+
+Dev (LibriSpeech test-clean, 20 W / 20 M readers), the shipped panel
+(H1+H3) → the cell; (a) = drop in shown readings below the tested range on
+the ~75 Hz voices (bar ≥ 80 %), (b) = drop in time with a reading (points;
+bar ≤ 2.0) — the 90 Hz voices are the binding group; (c) passed for every cell
+(women and the 185 Hz voices: 0.00 points everywhere):
+
+| cell | (a) W / M % | (b) w90 W / M, points | (b) LibriSpeech men, points | w90 shown ↔ hidden changes / min, W / M (shipped 2.2 / 2.4) |
+|---|---|---|---|---|
+| L1 q10 T76 | 5.2 / 3.6 | max 0.39 | | |
+| L1 q10 T77 | 27.8 / 29.1 | max 2.46 | | |
+| L1 q10 T78 | 57.8 / 61.9 | max 10.8 | | |
+| L1 q10 T79 | 78.1 / 81.2 | 23.5 / 15.5 | 0.50 | 6.6 / 6.3 |
+| L1 q10 T80 | 90.7 / 90.1 | 37.7 / 33.0 | 2.34 | 9.0 / 7.3 |
+| L1 q20 T76–T80 | 0.0–50.8 / 0.0–45.7 | max 0.0–7.1 | | |
+| L2 M95 V0.30 | 39.6 / 40.6 | 0.54 / 0.96 | 0.02 | 2.5 / 2.9 |
+| L2 M95 V0.40 | 74.9 / 72.4 | max 8.4 | | |
+| L2 M100 V0.30 | 43.7 / 46.0 | max 1.33 | | |
+| L2 M100 V0.40 | 84.7 / 81.3 | 12.5 / 13.2 | 0.96 | 6.3 / 7.6 |
+| L2 M100 V0.45 | 91.3 / 85.6 | 25.0 / 27.2 | 1.64 | 8.7 / 9.6 |
+| L2 M100 V0.50 | 93.1 / 86.2 | 44.2 / 40.7 | 2.42 | 7.6 / 8.9 |
+| L2 M110 V0.40 | 90.0 / 94.1 | 14.8 / 22.8 | 1.30 | 6.3 / 8.7 |
+| L2 M110 V0.45 | 97.1 / 98.5 | 28.8 / 43.4 | 3.04 | 8.5 / 8.9 |
+| L2 M110 V0.50 | 99.0 / 99.1 | 50.0 / 59.8 | 7.03 | 7.1 / 6.4 |
+
+(Every cell: `build/heard-as/lowhide/dev.log`; blank = not printed here.)
+Every cell that reaches (a) also costs the ~90 Hz voices 12–60 points of time
+with a reading and makes them blink about 3–4× as often; every cell that keeps
+(b) within 2 points removes at most ~46 % of the low readings (L2 M100
+V0.30). Natural LibriSpeech men lose less on average — 0.96 to 7.0 points in
+the cells that reach (a) — but the average hides single voices: under L2 M100
+V0.40 (mean 0.96) two of the 40 natural male streams lose more than 5 points,
+the worst (reader 1089, natural pauses) 17.2 points (92.5 → 75.3 % shown;
+under L1 q10 T79 the same stream loses 7.0) — a per-stream replay of the same
+simulation in the review (2026-10-21), whose group means match `dev.log`
+exactly. The 90 Hz voices are the binding problem: their pitch also reaches below the 75 Hz floor, so they lose frames
+in the same way, only less — neither the low tail of the posted pitch nor the
+voiced share separates "about 75 Hz" from "about 90 Hz" well enough. The
+missing frames are the cause, so the fix belongs in the pitch chain (P1,
+deferred by the user to after 2026-10-25), not in a heard-as hide rule.
+
+**(d) as written fails for every cell that hides anything, but no cell shows a
+reading where the panel shows none.** The plan's (d) asked for "a reading
+only where the baseline shows one, with the same eta". After a rule hide, the
+first-reading check (H3) shows the next ready reading at once, from a newer
+pool than the one the shipped panel is still showing — so the eta differs
+(e.g. L2 M100 V0.40: 78–678 such samples per group). Shown where the shipped
+panel shows nothing: **0 samples in every group and cell**. This did not
+decide the verdict ((a) and (b) cannot both pass in any cell).
+
+**Not done:** held-out, PTDB-TUG, FDA, Hillenbrand (no pick to look at);
+`lowhide.mjs --split=test` stays unrun. The stream subset (§A.2) and
+`analyze.mjs`'s new `makeAgg` hook (used only by `lowhide.mjs`; every other
+variant simulates as before) are the only code changes.
+
+**What users see:** unchanged for low voices — voices around 75 Hz can still
+get a reading that is less reliable and leans toward "would say woman" (the
+"More" text says so since the §9 review). Options for the user: (1) accept a
+cell that hides most low readings at the cost of the ~90 Hz voices — e.g. L2
+M100 V0.40: −81 to −85 % of low readings, −12 to −13 points for 90 Hz voices,
+natural LibriSpeech men −1.0 point on average but −17.2 for the worst natural
+male voice (two of 40 streams lose more than 5). **This option cannot pass
+the bar as written:** besides (b), (d) fails on dev for every cell that hides
+anything, by design (after a hide, H3 shows the next ready reading; 78–678
+such samples per group for this cell), and would fail on held-out too. Taking
+it means the user redefining (d) after seeing dev results — e.g. "never shown
+where the current panel shows nothing" (0 samples in every group and cell on
+dev) — and accepting the (b) cost, as explicit decisions, before its one
+held-out look. (2) Wait for P1.
+
+**Checks (2026-10-21, with the "Could go either way" wording; no hide rule):**
+`npm run lint` clean; `npm run test:unit` 68 / 68 scripts
+(`tests/ml/heard-as-axis-test.js` 32 / 32 — its new wording checks fail on
+the old words); `npm run build` ok; `scripts/cue-strip-smoke.mjs
+--pitch-only=man,woman` (phone viewport, built app, fake mic) 109 / 109 — the
+live panel showed "Could go either way — listeners would be split" with the
+matching screen-reader label, and the pitch-only warning appeared 6.3 s (man)
+and 7.7 s (woman) after the shift.
