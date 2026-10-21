@@ -50,3 +50,54 @@ comes, not any decision (the backlog is scored the same way; the module
 header explains why every decision after the catch-up equals a run from the
 start). Then: the unit tests, and one run of `scripts/voice-gate-smoke.mjs`
 on the built app.
+
+## Results (2026-10-21)
+
+Machine load during the run: 99–100 % (other jobs were running), so the
+times are those of a busy desktop. Each run uses a fresh session, as in the
+app (a first draft of the script warmed one session up before the runs; it
+changed nothing material). `node scripts/firered/catchup-lag.mjs`, five
+repeats per row, 4 s backlog (the 1 s and 2 s rows are smaller everywhere):
+
+| cap K | catch-up | steady hop | max hop, m = 1 / 2 | peak lag (s), m = 1 / 2 / 3 / 4.5 / 6 |
+|---|---|---|---|---|
+| **50** | 9 hops (0.23 s) | 2.8 ms | 8.5 / 17.1 ms | 0.00 / 0.00 / 0.00 / **0.08** / 0.17 |
+| 30 | 15 hops (0.38 s) | 2.6 ms | 6.2 / 12.4 ms | 0.00 / 0.00 / 0.00 / 0.01 / 0.11 |
+| 20 | 23 hops (0.58 s) | 2.7 ms | 8.1 / 16.3 ms | 0.00 / 0.00 / 0.00 / 0.01 / 0.13 |
+| 15 | 32 hops (0.80 s) | 2.4 ms | 5.5 / 11.0 ms | 0.00 / 0.00 / 0.00 / 0.00 / 0.02 |
+| 10 | 53 hops (1.33 s) | 2.5 ms | 5.5 / 11.0 ms | 0.00 / 0.00 / 0.00 / 0.00 / 0.01 |
+
+**By the plan, K = 50 passes:** C1 0.08 s ≤ 0.25 s at m = 4.5; C2 17.1 ms
+< 25 ms at m = 2; C3 0.23 s. The decision rule keeps K = 50, so the code
+is unchanged.
+
+**But the browser is slower than this model (outside the plan).** The
+voice-gate smoke on the built app, on the same busy machine
+(`node scripts/voice-gate-smoke.mjs --port=4231`, model from the mirror,
+backlog about 2–3 s): the catch-up hops took up to 34.6 ms (noise run,
+4 hops), 87.6 ms (speech, 6 hops) and 32.4 ms (held, 3 hops); the review's
+run had 31–46 ms. In Node the same hops take about 8 ms. In Node a model
+call has a large fixed cost and a small cost per frame; in Chrome the
+steady hops cost about the same as in Node (detector 2.5 ms median per
+hop in this smoke run), but the 50-frame catch-up calls cost 4–10× more. So the Node model
+understates the catch-up in the browser, and the scaled figures above are
+not a phone estimate.
+
+What this means:
+
+- Desktop: on a busy machine single pitch posts stall 35–90 ms during the
+  first second after the model loads, and the smoke's "< 25 ms" check
+  fails there (this run: 32 of 33 checks passed, the catch-up check
+  failed — max 87.6 ms over 13 hops). An upper bound on the lag from the
+  hop counts and maxima: noise 0.04 s, held 0.02 s, speech 0.38 s — below
+  the 0.5 s switch-off, but not far for speech. In the noise run the
+  detector kept working after the catch-up (its hide checks passed); the
+  smoke does not read the "slow" status in the other runs.
+- Phone: not measured. If a phone's catch-up frames cost several times the
+  desktop's, the first catch-up from a 2–4 s backlog can pass 0.5 s and
+  switch the detector off for that session. In the browser the cost is
+  mostly per frame, so a smaller cap would help there (the Node model,
+  where it is mostly per call, cannot show this).
+- **Open, before `main`:** measure the catch-up in Chrome (and on a
+  phone) at several caps, with the cap as the variable, and then decide.
+  Until then K stays 50.
