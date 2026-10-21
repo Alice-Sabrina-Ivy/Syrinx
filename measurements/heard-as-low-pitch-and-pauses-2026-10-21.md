@@ -5,7 +5,10 @@ results (§8).** The attribution measures only the shipped code. The plan (§6)
 was committed and pushed (2d8ce1d) before any candidate was coded or run; the
 dev selection (H1+H3) was committed and pushed (d1c4d46) before the pick's one
 held-out run. **Result: H1+H3 passes every part of the bar on held-out for
-women and men (§8).** This is the hard-rule-3 measurement file for any change to
+women and men (§8).** A review the same day (§9) rebuilt the §8.3 guard
+baseline (pass / fail unchanged) and added what the bar did not check: the
+new ~75 Hz readings lean toward "woman", early readings for one feminine-pitch
+male voice, and short "Keep talking" flashes (§8.5). This is the hard-rule-3 measurement file for any change to
 the heard-as modules (`src/ml/heard-as.js`, `heardAsCalibration.js`,
 `utterance-gate.js`, `gender-worker.js`, `speech-detector.js`, and the
 panel's `src/components/HeardAsPanel.jsx`) that comes out of it.
@@ -486,6 +489,9 @@ node scripts/heard-as/low-pitch-pauses/guards.mjs --runs=<guards>/run.0.jsonl,<g
 
 `candidates.mjs --split=dev` writes `selection.json` once and refuses to
 overwrite it; `--split=test` runs only the variant `selection.json` names, once.
+"shipped" in all three scripts is the panel before 2026-10-21 (3 s rule, no
+first-reading check), pinned in `analyze.mjs` `VARIANTS` since the review
+(§8.3, §9); before that it followed `heardAsCalibration.js`.
 
 The CI fixture (§8.7), from the same runs:
 
@@ -600,7 +606,8 @@ Reported only (natural low and other speech, all talkers; shipped → H1+H3):
 ### 8.3 No new readings (bar iv)
 
 Streams of `build_guards.py` through the same chain (`run.mjs`, speech
-detector live), shipped and H1+H3 on the same runs, four timer phases each
+detector live), shipped (the panel before 2026-10-21: 3 s rule, no
+first-reading check) and H1+H3 on the same runs, four timer phases each
 (shown 250 ms samples, summed over the phases):
 
 | stream | streams | shown, shipped → H1+H3 | notes |
@@ -611,11 +618,29 @@ detector live), shipped and H1+H3 on the same runs, four timer phases each
 | 60 s pause fill (−65 dBFS) | 1 | 0 → 0 | |
 | 60 s pink noise at speech level (−22.3 dBFS) | 1 | 0 → 0 | |
 | held vowel 110 / 220 / 330 Hz alone (5 s, ±0.3 st vibrato) | 3 | 0 → 0 | "sustained" reached in every phase |
-| held vowel after 10 s of reading (8 readers × 3 pitches) | 24 | — | shown while the voice state is "sustained": 0 → 0; still shown after "sustained" began: 0 → 0 (hidden within 250 ms); shown in the note before "sustained" (the reading of the speech before it): 288 → 288 of 1,824 |
+| held vowel after 10 s of reading (8 readers × 3 pitches) | 24 | 2,160 → 3,386 (of 7,008; the readings of the 10 s of speech) | shown while the voice state is "sustained": 0 → 0; still shown after "sustained" began: 0 → 0 (hidden within 250 ms); shown in the note before "sustained" (the reading of the speech before it): 288 → 288 of 1,824 |
 | whisper alone, unphonated talkers (EARS + Expresso) | 24 W / 24 M | 0 → 0 | |
-| whisper alone, the five phonated EARS women | 5 | 944 → 1,012 | shipped already shows readings: these "whisper" recordings are 33–46 % phonated (whisper-voicing-2026-10-07.md) |
-| speech + whisper, unphonated talkers: B1 (whisper share of the pooled logits) | 9 W / 8 M | W 0.9 → 0.9 %, M 0.4 → 0.4 % (bar ≤ 5.0 %) | over every shown panel computation (2 s updates and H3's first readings) |
-| speech + whisper, phonated EARS women: B1 | 5 | 22.5 → 21.6 % | reported (not in the 2026-10-08 B1) |
+| whisper alone, the five phonated EARS women | 5 | **664 → 1,012 (+52 %)** | shipped already shows readings: these "whisper" recordings are 33–46 % phonated (whisper-voicing-2026-10-07.md); the faster panel shows clearly more of them |
+| speech + whisper, unphonated talkers: B1 (whisper share of the pooled logits) | 9 W / 8 M | W 1.2 → 0.9 %, M 0.5 → 0.4 % (bar ≤ 5.0 %) | over every shown panel computation (2 s updates and H3's first readings); shown samples W 4,424 → 6,394, M 4,737 → 6,605 |
+| speech + whisper, phonated EARS women: B1 | 5 | 24.7 → 21.6 % | reported (not in the 2026-10-08 B1); shown samples 1,336 → 1,644 |
+
+**Baseline rebuilt (review, 2026-10-21).** The first version of this table
+(up to b2a440d) compared H1 with H1+H3, not the panel before 2026-10-21 with
+H1+H3: `analyze.mjs` had `VARIANTS.shipped = { agg: {} }`, which takes
+`minVoicedMs` from `heardAsCalibration.js`; that file carried H1's 2 s from
+10:33 on, and `guards.mjs` ran at 10:44. It reported the phonated whisper-only
+streams as 944 → 1,012 (+7 %), B1 as W 0.9 → 0.9 / M 0.4 → 0.4 % and the
+phonated B1 as 22.5 → 21.6 %; the rows above are the re-run with the true
+baseline. Pass / fail does not change (the bar's limits are absolute: no
+reading where the old panel had none, B1 ≤ 5 %). `VARIANTS.shipped` is now
+pinned to the 3 s rule in `analyze.mjs` (and every variant except H1's to
+3 s), so the reproduce commands of §7 give the old panel at any commit. §8.1
+and §8.2 ran before the change (10:30 and 10:31) and are unaffected: with the
+pin, `analyze.mjs --variant=shipped` regenerates the stored
+`streams.shipped.json` byte-identical, `--variant=H1+H3` the stored
+`streams.H1+H3.json`, and `candidates.mjs --split=dev` into a fresh directory
+prints the stored dev log line for line and the same `selection.json` (only
+its timestamp differs).
 
 ### 8.4 CI and the app (bar vi)
 
@@ -652,6 +677,65 @@ detector live), shipped and H1+H3 on the same runs, four timer phases each
   few frames there (§4.2), so they come late (median 7–13 s) and women's
   voices lowered that far mostly read "Can't tell yet". P1 (the pitch-chain
   change) stays a separate decision.
+- **Those new low readings are for voices below the tested range, on a pitch
+  that reads too high** (review, 2026-10-21; bar iii never checked them —
+  it judged the natural readers only). The pooled F0 is the median of the
+  posted frames, and the pitch worker drops most frames below 75 Hz: only
+  the higher frames get through, so the pooled F0 sits above the voice's
+  and the "Outside the range it was tested on" rule (81 Hz) does not fire.
+  On the WORLD 75 Hz streams with natural pauses (all 80 readers, both
+  splits; the review's `f0bias.mjs`, shown 2 s updates over the four timer
+  phases, against the same 8 s of the WORLD reference pitch):
+
+  | | W shipped → H1+H3 | M shipped → H1+H3 |
+  |---|---|---|
+  | shown 2 s updates | 182 → 1,085 | 192 → 1,385 |
+  | … with the reference pitch below 81 Hz | 59 → 86 % | 57 → 85 % |
+  | pooled F0 / reference F0 (median) | 1.14 → 1.14 | 1.12 → 1.15 |
+  | eta(pooled F0) − eta(reference F0) (median; < 0 = toward "woman") | −0.45 → −0.47 logit | −0.38 → −0.48 logit |
+  | shown readings that change "Can't tell yet" / side with the reference pitch | 40 → 35 % | 1 → 2 % |
+
+  So these readings lean toward "would say woman" by about twice the
+  ±0.225 logit tolerance of bar (iii). Men's readings stay "would say man"
+  (98 % informative); a woman's voice lowered to 75 Hz (synthetic here — real
+  voices that low are almost all men's) changes "Can't tell yet" / side in a
+  third of its readings. On the held-out 75 Hz voices a reading is now shown
+  33 % (W) / 48 % (M) of the time, against 3 % / 7 % before (§8.2). The
+  panel's "More" text said "very high or low voices hide it"; since the
+  review it says that very high voices hide it and that very low voices
+  (below about 80 Hz) can get a reading that is less reliable and leans
+  toward "would say woman". Not done (each needs its own pre-registered
+  measurement, and P1 the user's approval): hide a reading when many voiced
+  frames are lost near the 75 Hz floor, or tie these readings to P1.
+- **Feminine pitch with male-typical resonance: an early reading can lean
+  the wrong way** (review, 2026-10-21; the kind of voice in the user's
+  screenshot — a feminine pitch whose settled reading is "Can't tell yet"). On
+  the held-out WORLD 185 Hz men, 3.74 % of the readings that only H1+H3
+  shows (64 of 1,712 samples over the four phases) are informative on the
+  side opposite the stream's settled reading; the panel before 2026-10-21
+  shows none (0 %). All 64 are one voice (6295, the natural-pause and the
+  continuous stream): about 2 s of an informative "would say woman" reading
+  (eta −1.71) from ~3.75 s, where the settled answer is "Can't tell yet"
+  (eta +0.10 / +0.15). Dev: none. Bar (iii) checked the natural readers
+  only; there no early reading is informative on the wrong side (0.0 %).
+- **Short "Keep talking" flashes; low voices blink** (review, 2026-10-21;
+  the bar measured neither). A 2 s update can hide the reading and the next
+  250 ms check show it again. Held-out, per minute of speech (the review's
+  `flicker.mjs`, four phases):
+
+  | stream | hides between two readings, W / M | of them ≤ 250 ms, W / M | shown ↔ hidden changes, W / M |
+  |---|---|---|---|
+  | natural, natural pauses | 0.39 → 0.27 / 0.56 → 0.22 | 0.03 → 0.27 / 0.02 → 0.10 | 2.18 → 1.92 / 2.53 → 1.80 |
+  | natural, 2.5 s pauses | 5.68 → 1.54 / 5.27 → 2.44 | 0.00 → 0.37 / 0.00 → 0.53 | 12.7 → 4.0 / 12.0 → 5.8 |
+  | WORLD 75 Hz, natural pauses | 0.09 → 3.20 / 0.36 → 2.43 | 0.00 → 0.45 / 0.00 → 0.32 | 0.74 → 8.15 / 1.61 → 6.57 |
+
+  On natural voices the panel hides less often than before, but a hide that
+  remains is now often a 250 ms flash (before, a hide lasted until the next
+  2 s update). The ~75 Hz voices, which mostly got no reading before, now
+  switch between shown and hidden 6.6–8.2 times a minute. Not changed: a
+  rule that re-shows only when the reading is still ready at the next check
+  would change the pre-registered H3 and delay every first reading by
+  250 ms; it needs its own measurement (the user's call).
 - **Pitch-only warning feed** (2 s updates; the first-reading checks never
   reach it): shown updates per minute of speech, natural pauses, held-out
   W 25.9 → 27.3, M 24.4 → 27.0; first shown 2 s update (median) 7 → 5 s. Its
@@ -669,7 +753,8 @@ detector live), shipped and H1+H3 on the same runs, four timer phases each
    sign from the stream's settled eta (the plan did not say how to treat a
    settled reading that is itself "Can't tell"; sign is used for every
    stream). Shipped and candidate are both at 0.0 % either way: no
-   informative reading on the wrong side exists in either.
+   informative reading on the wrong side exists in either (natural readers,
+   the bar's population; on the WORLD 185 Hz men H1+H3 has 3.74 %, §8.5).
 3. **H3 in the simulation**: after the selection, the simulation was made to
    match the panel code exactly — a first-reading check that finds no reading
    leaves the hidden view and its reason as they are (it had refreshed the
@@ -681,6 +766,9 @@ detector live), shipped and H1+H3 on the same runs, four timer phases each
    the files at hand) and 22 speech + whisper streams; new floor-noise seed.
    "No reading on whisper alone" is judged on the unphonated talkers (B1's
    population); the five phonated EARS women already got readings shipped.
+   This choice hides a large rise there: H1+H3 shows 52 % more readings on
+   those five partly voiced "whisper-only" streams (664 → 1,012 samples,
+   §8.3 with the rebuilt baseline).
 5. **Held notes and noise** are synthetic (/a/ with the smoke WAV's
    formants; "speech level" pink noise at the probe sets' −22.3 dBFS
    reference); held notes after reading use the first 10 s of 8 readers'
@@ -689,7 +777,8 @@ detector live), shipped and H1+H3 on the same runs, four timer phases each
    the dev table can be reproduced.
 7. **Not re-measured:** the noise / phone-channel shown shares quoted in the
    panel's "More" text and in CLAUDE.md were measured with the 3 s rule; with
-   2 s readings will be shown at least as often there (not re-run).
+   2 s readings will be shown at least as often there (not re-run). The
+   pitch-only warning's study was not re-run either (§8.5).
 
 ### 8.7 Regression test (CI)
 
@@ -699,7 +788,9 @@ the panel's two timers on the audio clock as `HeardAsPanel.jsx` runs them —
 (update / first reading / nothing) — over the app's aggregator with the
 shipped constants, at the four timer phases. A source check ties the replay to
 the JSX (the 250 ms constant, the two timers, `first()` showing a ready reading
-and never calling the pitch-only warning).
+and never calling the pitch-only warning; since the review, also `first()`
+showing the pitch-only note exactly when it tells screen readers the warning,
+§9).
 
 **Fixture** `tests/ml/fixtures/heard-as-responsiveness.json` (44 KB, public
 data, derived numbers only), written by
@@ -749,7 +840,10 @@ judges; the five phonated EARS women pool 4.3–5.2 s and got readings before
 and after the change. A whisperer whose recordings carry more voicing than
 p084's could now get a reading; the synthetic stand-in in the test pools up
 to 1.65 s (stricter than p084; 1.2–2 s asserted), so a lower `minVoicedMs`
-would be caught.
+would be caught. The review confirmed the 1.375 s and added: these
+unphonated whisper-only streams are only 14–23 s long (the phonated ones
+17–25 s), so a longer stretch of whisper has more 8 s windows in which to
+reach 2 s.
 
 **Golden file not updated.** The plan (§6.3 iii) requires
 `tests/ml/fixtures/heard-as-golden.json` to stay as is: H1 and H3 change no
@@ -761,3 +855,57 @@ With the test in place: `npm run lint` clean, `npm run test:unit` 47 / 47
 scripts, `npm run build` ok, `scripts/cue-strip-smoke.mjs --pitch-only=man,woman`
 (phone viewport, built app) 107 / 107 — the pitch-only warning appears 6.4 s
 (man) and 7.5 s (woman) after the shift.
+
+## 9. Review (2026-10-21) and fixes
+
+An independent review the same day found no high-severity issue. It
+confirmed the order (plan pushed 10:20:59, candidates and dev pick 10:30:50,
+the one held-out run 10:31:17, code 11:11), that the sim change of §8.6
+item 3 moves no bar number (0 differences over 1,219 streams), that the
+shipped code is the pick (two streams re-run through the real chain match
+the stored records; the real `HeardAsPanel.jsx` in headless Chrome with a
+virtual clock matched the simulation at all four timer phases, 0 differences
+over 1,460 samples of 250 ms, at 53e3832 and at the pick), that readings
+both versions show are the same, that the regression test fails on the old
+code, and that lint, the unit tests and the privacy rules pass. Its
+findings and what was done (every number re-run here from the stored runs
+with the review's scripts before it was written down):
+
+1. **Medium — the §8.3 "shipped" column was H1, not the old panel.**
+   Fixed: `VARIANTS.shipped` (and every variant but H1's) pinned to the 3 s
+   rule in `analyze.mjs`; `guards.mjs` re-run; §8.3 rows corrected and the
+   rebuild noted there; §8.6 item 4 now states the +52 % on the phonated
+   whisper-only streams. The pin was checked to reproduce §8.1–8.2's stored
+   outputs exactly (§8.3).
+2. **Medium — the new ~75 Hz readings are for voices below the tested range,
+   on a pitch that reads too high; bar (iii) never checked them.** Fixed as
+   the review's minimum: the numbers are in §8.5; the panel's "More" text
+   no longer says low voices hide it (it says very low voices, below about
+   80 Hz, can get a reading that is less reliable and leans toward "would
+   say woman"); CLAUDE.md says the same. Not done: a new hide rule for
+   voices that lose many frames near the 75 Hz floor, or tying these
+   readings to P1 — a hide rule is a new heard-as candidate and needs its
+   own pre-registered measurement (hard rule 3), and P1 needs the user's
+   approval. Both are the user's call.
+3. **Low — new 250 ms "Keep talking" flashes; low voices blink.** Fixed as
+   asked: reported in §8.5 with the numbers. The optional change (re-show
+   only if still ready at the next check) was not made: it alters the
+   pre-registered H3 and delays every first reading by 250 ms, so it would
+   need its own measurement.
+4. **Low — after a hide, `first()` showed the reading without the
+   pitch-only note while the live region still announced it.** Fixed in
+   `HeardAsPanel.jsx`: `first()` sets the note from the warning's held run,
+   the same value as the live region (`pitchOnly: held, live: held`), so
+   the visible note and what screen readers are told agree. It still never
+   feeds the warning. `tests/ml/heard-as-responsiveness-test.js` gained a
+   source check for it. (Display only: no estimate, timing or warning
+   decision changes.)
+5. **Low — the screenshot's kind of voice can now get an early reading that
+   leans the wrong way.** Fixed as asked: reported in §8.5 (WORLD 185 Hz
+   men, one held-out voice, 3.74 % of the new-only readings, the old panel
+   0 %).
+6. **Low — disclosed trade-offs** (0.6 s whisper margin on 14–25 s whisper
+   streams; the unused H2 option; the pitch-only warning's study and the
+   "More" noise numbers not re-run). Nothing to change; the stream-length
+   point is added to the whisper margin paragraph (§8.7) and §8.6 item 7
+   now names the warning's study.

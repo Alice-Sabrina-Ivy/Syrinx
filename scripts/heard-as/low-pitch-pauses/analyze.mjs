@@ -25,18 +25,24 @@ const { HEARD_AS_CALIBRATION: C } = await import(pathToFileURL(path.join(repo, "
 const arg = (k, d) => (process.argv.find((a) => a.startsWith(`--${k}=`)) ?? `=${d}`).split("=").slice(1).join("=");
 
 // Pre-registered candidates (measurements/heard-as-low-pitch-and-pauses-2026-10-21.md §6.1).
+// "shipped" is the panel BEFORE 2026-10-21 (53e3832): the 3 s voiced rule and
+// no first-reading check. It is pinned here, not read from
+// heardAsCalibration.js, which carries H1's 2 s since 2026-10-21 (until the
+// 2026-10-21 review, `shipped: { agg: {} }` took the calibration file's value,
+// so a run after the change compared H1 with H1+H3 — note §8.3, §9).
+const BASE = { minVoicedMs: 3000 };
 const H1 = { minVoicedMs: 2000 };
 const H2 = { poolGapCapMs: ML_WINDOW_MS, poolMaxBackMs: 16000 };
 const H3 = { fastFirst: true };
 export const VARIANTS = {
-  shipped: { agg: {}, panel: {}, changes: 0 },
-  H1: { agg: { ...H1 }, panel: {}, changes: 1 },
-  H2: { agg: { ...H2 }, panel: {}, changes: 1 },
-  H3: { agg: {}, panel: { ...H3 }, changes: 1 },
-  "H1+H2": { agg: { ...H1, ...H2 }, panel: {}, changes: 2 },
-  "H1+H3": { agg: { ...H1 }, panel: { ...H3 }, changes: 2 },
-  "H2+H3": { agg: { ...H2 }, panel: { ...H3 }, changes: 2 },
-  "H1+H2+H3": { agg: { ...H1, ...H2 }, panel: { ...H3 }, changes: 3 },
+  shipped: { agg: { ...BASE }, panel: {}, changes: 0 },
+  H1: { agg: { ...BASE, ...H1 }, panel: {}, changes: 1 },
+  H2: { agg: { ...BASE, ...H2 }, panel: {}, changes: 1 },
+  H3: { agg: { ...BASE }, panel: { ...H3 }, changes: 1 },
+  "H1+H2": { agg: { ...BASE, ...H1, ...H2 }, panel: {}, changes: 2 },
+  "H1+H3": { agg: { ...BASE, ...H1 }, panel: { ...H3 }, changes: 2 },
+  "H2+H3": { agg: { ...BASE, ...H2 }, panel: { ...H3 }, changes: 2 },
+  "H1+H2+H3": { agg: { ...BASE, ...H1, ...H2 }, panel: { ...H3 }, changes: 3 },
 };
 const VARIANT = arg("variant", "shipped");
 

@@ -1,7 +1,9 @@
 // guards.mjs — bar (iv) of measurements/heard-as-low-pitch-and-pauses-2026-10-21.md
 // §6.3 on the build_guards.py streams (run through run.mjs): no new readings
-// where the shipped panel shows none. Shipped vs a variant, the panel as in
-// analyze.mjs (four 2 s-timer phases, 250 ms samples).
+// where the shipped panel shows none. Shipped (the panel before 2026-10-21:
+// 3 s rule, no first-reading check — analyze.mjs VARIANTS, pinned since the
+// 2026-10-21 review) vs a variant, the panel as in analyze.mjs (four 2 s-timer
+// phases, 250 ms samples).
 //
 //   node guards.mjs --runs=<run.0.jsonl,run.1.jsonl> --variant=<name> [--out=<file.json>]
 //
