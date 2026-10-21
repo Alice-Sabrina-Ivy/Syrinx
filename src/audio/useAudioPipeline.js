@@ -96,8 +96,10 @@ const NO_STEADINESS = { value: null, held: false };
 // measurements/noise-detector-tryout-resonance-2026-10-21.md, built at 73 %
 // against an 80 % bar by user decision 2026-10-21). Everything else keeps the
 // raw values: the DSP / ML pitch hints, the "Likely heard as" panel, the
-// pitch-only warning, formants / HNR, the resonance row (voiced / holding
-// stay raw), and the recorded voiced / f0 that session stats use. Recorded
+// pitch-only warning, formants, the resonance row (voiced / holding stay
+// raw), and the recorded voiced / f0 / hnr that session stats use. The HNR
+// readout shows "—" on those frames too (display only; user decision
+// 2026-10-21). Recorded
 // frames carry the decision in `voiceGate` ("voice" | "hidden" | "novoice",
 // absent without a decision) and `painted` is what the live trace drew.
 // The model files' absolute URL (null where there is no page location, e.g.
@@ -1351,7 +1353,8 @@ export function useAudioPipeline() {
           steadinessHeld: vadHide ? false : steady.held,
           formants: held.formants,
           spectralTilt: held.spectralTilt,
-          hnr: held.hnr,
+          // Voice gate: HNR readout "—" while the gate hides (display only).
+          hnr: vadHide ? null : held.hnr,
         }));
       } else {
         // Prolonged silence: clear everything, including the paint
@@ -1608,7 +1611,9 @@ export function useAudioPipeline() {
       steadinessHeld: vadHide ? false : steady.held,
       formants: smoothedFormants,
       spectralTilt: currentTilt,
-      hnr: currentHnr,
+      // Voice gate: HNR readout "—" while the gate hides (display only; the
+      // recorded frame above keeps the measured value).
+      hnr: vadHide ? null : currentHnr,
     }));
   }
 

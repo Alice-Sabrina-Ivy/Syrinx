@@ -1,15 +1,18 @@
-// voice-gate-display-test.js — the try-out voice gate's display mask, on the
-// REAL useAudioPipeline hook (noise-detector try-out, 2026-10-20;
-// measurements/noise-detector-tryout-2026-10-20.md).
+// voice-gate-display-test.js — the voice gate's display mask, on the REAL
+// useAudioPipeline hook (noise-detector try-out 2026-10-20, merged into
+// cue-strip 2026-10-21; measurements/noise-detector-tryout-2026-10-20.md).
 //
 // The hook is loaded in Node exactly as tests/audio/display-hook-test.js
 // does (scripts/session-oracle/lib/react-mock.mjs). Each case runs a frame
 // sequence twice — with the detector's decision on the pitch messages, and
 // without any decision (the pre-try-out app) — and checks:
-//   - "no voice" + setting on: the trace shows a gap, the Hz / note and the
-//     steadiness readouts are empty, pitchVoiced / pitchHolding are false;
+//   - "no voice" + setting on: the trace shows a gap, the Hz / note, the
+//     steadiness and the HNR readouts are empty, pitchVoiced / pitchHolding
+//     are false (HNR: user decision 2026-10-21, display only — the recorded
+//     hnr is unchanged);
 //   - nothing else moves: the recorded voiced / f0 (what session stats read),
-//     the raw voiced / holding flags (the resonance row), formants, and the
+//     the raw voiced / holding flags (the resonance row), formants, the HNR
+//     readout on frames the gate does not hide, the recorded hnr, and the
 //     painted value of every frame the gate does not hide are bit-identical
 //     to the run without decisions (a mask on the unchanged chain — the veto
 //     the 2026-10-20 screen scored);
@@ -74,7 +77,7 @@ async function run(frames, { gateOn = true } = {}) {
       painted: e && e.time === Math.round(t) && e.pitch !== null ? e.pitch : 0,
       pitch: s.pitch, note: s.noteName, level: s.pitchLevel, steadiness: s.steadiness,
       voiced: s.voiced, holding: s.holding, pitchVoiced: s.pitchVoiced, pitchHolding: s.pitchHolding,
-      formants: s.formants,
+      formants: s.formants, hnr: s.hnr,
     });
   }
   return { out, rec };
@@ -106,6 +109,9 @@ check("the baseline did paint the false line there (the case is real)", base.out
 check("Hz / note / level readouts empty on hidden frames", gated.out.every((o, i) => !hidden[i] || (o.pitch === null && o.note === null && o.level === null)));
 check("steadiness readout empty on hidden frames", gated.out.every((o, i) => !hidden[i] || o.steadiness === null));
 check("pitchVoiced / pitchHolding false on hidden frames", gated.out.every((o, i) => !hidden[i] || (!o.pitchVoiced && !o.pitchHolding)));
+check("HNR readout empty on hidden frames", gated.out.every((o, i) => !hidden[i] || o.hnr === null),
+  gated.out.map((o, i) => (!hidden[i] || o.hnr === null ? "" : i)).filter(String).slice(0, 8).join(","));
+check("the baseline did show an HNR there (the case is real: noise-derived values)", base.out.filter((o, i) => hidden[i] && o.hnr !== null).length > 60);
 
 console.log("\nnothing else moves");
 check("frames the gate does not hide paint exactly what the ungated app paints",
@@ -113,6 +119,8 @@ check("frames the gate does not hide paint exactly what the ungated app paints",
   gated.out.map((o, i) => (hidden[i] || o.painted === base.out[i].painted ? "" : i)).filter(String).join(","));
 check("raw voiced / holding (resonance row) unchanged", gated.out.every((o, i) => o.voiced === base.out[i].voiced && o.holding === base.out[i].holding));
 check("formants unchanged", gated.out.every((o, i) => JSON.stringify(o.formants) === JSON.stringify(base.out[i].formants)));
+check("HNR readout unchanged on frames the gate does not hide", gated.out.every((o, i) => hidden[i] || o.hnr === base.out[i].hnr));
+check("recorded hnr unchanged (the DSP value; display-only gate)", gated.rec.every((r, i) => r.hnr === base.rec[i].hnr));
 check("recorded voiced / f0 unchanged (session stats)", gated.rec.length === base.rec.length &&
   gated.rec.every((r, i) => r.voiced === base.rec[i].voiced && r.f0 === base.rec[i].f0 && r.intensity === base.rec[i].intensity));
 check("recorded painted = what the live trace drew", gated.rec.every((r, i) => r.painted === (gated.out[i].painted > 0)));
@@ -146,6 +154,8 @@ console.log("\nsilence after speech: the 5 s silence hold is unchanged");
     g.out.map((o, i) => (["pitch", "note", "level", "steadiness", "pitchVoiced", "pitchHolding"].every((k) => o[k] === b.out[i][k]) ? "" : i)).filter(String).slice(0, 8).join(","));
   check("recorded frames: voiceGate hidden on the no-voice quiet frames, nothing painted there",
     g.rec.every((r, i) => !late[i] || (r.voiceGate === "hidden" && r.painted === false)));
+  check("HNR: the held value while the detector still says voice, \"—\" once it says no voice",
+    g.out.every((o, i) => (late[i] ? o.hnr === null : o.hnr === b.out[i].hnr)) && b.out.some((o, i) => late[i] && o.hnr !== null));
 }
 {
   // The same quiet after painted frames the gate hid: no stale held value.
