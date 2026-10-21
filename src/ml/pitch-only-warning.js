@@ -142,7 +142,10 @@
 // Eligible update: the panel shows an estimate (lnF0 known), startU, u and
 // the reference known, fill ≥ 1, verdict ≠ "sustained", sinceResumeS ≥ 2.
 // Condition: |12·(lnF0 − ref)/ln 2| ≥ X AND |u − startU| ≤ 0.6 u AND the
-// DS10 gate — the same in both directions (absolute values only).
+// DS10 gate — the same in both directions (absolute values only). u here is
+// the cue's plain 5 s median (uPlain, warningU below), not the shown value,
+// which restarts on a confirmed change since 2026-10-21 — so the warning's
+// input is what it was when it was measured.
 // Shown when the condition holds on K = 2 consecutive SHOWN updates that are
 // eligible (~2–4 s); cleared on the first shown update where it fails or is
 // ineligible. (The original study's mechanical choice was K = 1; K = 2 is in
@@ -224,6 +227,14 @@ function medianTyped(a, n) {
 }
 const finite = (v) => typeof v === "number" && Number.isFinite(v);
 
+/** The resonance value the warning compares with startU: the plain 5 s median
+ *  (uPlain), not the shown value, which restarts on a confirmed change since
+ *  2026-10-21 (src/resonance/resonanceCue.js RESTART). Snapshots without
+ *  uPlain (recorded before it existed) carry the plain median in u. */
+export function warningU(r) {
+  return r.uPlain !== undefined ? r.uPlain : r.u;
+}
+
 /** The pitch / resonance condition at threshold X alone (no eligibility, no
  *  DS gate, no K): pure, symmetric. */
 export function pitchOnlyCondition({ lnF0, p0, u, startU, X = PITCH_ONLY_WARNING.minPitchSt }, C = PITCH_ONLY_WARNING) {
@@ -237,7 +248,7 @@ export function pitchOnlyCondition({ lnF0, p0, u, startU, X = PITCH_ONLY_WARNING
 export function pitchOnlyEligible({ lnF0, p0, resonance: r }, C = PITCH_ONLY_WARNING) {
   if (typeof lnF0 !== "number" || !Number.isFinite(lnF0)) return false;
   if (typeof p0 !== "number" || !Number.isFinite(p0)) return false;
-  if (!r || r.startU == null || r.u == null || !Number.isFinite(r.u) || !Number.isFinite(r.startU)) return false;
+  if (!r || r.startU == null || warningU(r) == null || !Number.isFinite(warningU(r)) || !Number.isFinite(r.startU)) return false;
   if (!((r.fill ?? 0) >= 1)) return false;
   if (r.verdict === "sustained") return false;
   return (r.sinceResumeS ?? 0) >= C.minSinceResumeS;
@@ -463,7 +474,7 @@ export function createPitchOnlyWarning(C = PITCH_ONLY_WARNING) {
       let c = false;
       const elig = shown && pitchOnlyEligible({ lnF0, p0: ref, resonance }, C);
       if (elig) {
-        c = Math.abs(dP) >= X - EPS && Math.abs(resonance.u - resonance.startU) <= C.maxResonanceU + EPS;
+        c = Math.abs(dP) >= X - EPS && Math.abs(warningU(resonance) - resonance.startU) <= C.maxResonanceU + EPS;
         if (c && C.ds != null) {
           if (noStart) { // Q5: no warning until the fallback share is known
             c = fbState === "closed" && finite(share) && Math.abs(share - fbMedian) * 100 >= C.ds;
@@ -478,7 +489,7 @@ export function createPitchOnlyWarning(C = PITCH_ONLY_WARNING) {
         if (fbState === "collecting") {
           const inWin = audioMs <= fbT0 + L.windowMs;
           if (shown && finite(share) && (inWin || fbShares.length < L.minShares)
-              && elig && Math.abs(dP) < X - EPS && Math.abs(resonance.u - resonance.startU) <= C.maxResonanceU + EPS) fbShares.push(share);
+              && elig && Math.abs(dP) < X - EPS && Math.abs(warningU(resonance) - resonance.startU) <= C.maxResonanceU + EPS) fbShares.push(share);
           if (!inWin && fbShares.length >= Math.max(1, L.minShares)) { fbState = "closed"; fbMedian = median(fbShares); fbShares = []; }
         }
       }

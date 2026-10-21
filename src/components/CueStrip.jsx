@@ -120,7 +120,7 @@ const PITCH_INFO =
   "Bands: typical adult men's (85–155 Hz) and women's (165–255 Hz) average speaking pitch. The trail shows the last ~2 s.";
 const RESONANCE_INFO =
   "Spectral warp: how stretched your voice's spectrum is compared with an average voice, from about your last " +
-  "5 s of running speech (held vowels and single words don't count). The ring marks where you started this " +
+  "5 s of running speech (after a clear change, from the last ~1.5 s, so it catches up in about 3 s; held vowels and single words don't count). The ring marks where you started this " +
   "session (the middle of your first ~12 s of speech) and the header says how far you have moved from it — that change is what this cue measures reliably. " +
   "The dashed bands are where 8 in 10 single readings of 20 men and 20 women reading audiobooks on good " +
   "microphones fell, so even typical speakers' dots land outside their band about 1 time in 5. Your microphone, " +

@@ -407,12 +407,36 @@ change.
 | — men readers | 80.8 % | 77.3 % (−3.5) | |
 | — women readers | 89.5 % | 87.8 % (−1.7) | |
 | restarts on unchanged speech, per minute | — | 0.54 (men 0.80, women 0.29) | (reported) |
+| back at the starting voice (join 2): header never "about where you started" within the segment | 21 / 300 | 42 / 300 | (reported, no bar) |
+| after the first change (join 1): header right from 8 s on, median share of the time | 0.76 | 0.71 | (reported, no bar) |
 
 Each restart on steady speech moves the dot to the last 1.5 s median, which
 can sit outside the 0.3 u "about where you started" deadband for a few
-seconds. Gained: a change of resonance is followed in about half the time,
-the same up and down (up Tdb 6.0 → 3.2 s; 30/36 dark-first T50 away 5.5 →
-2.8 s); every other bar passes (§The bar).
+seconds. The two header rows come from the same held-out run
+(`build/resonance-switch/cand-held.md`; §Held-out result "Reported, no
+bar"); they had no pre-registered bar. Gained: a change of resonance is
+followed in about half the time, the same up and down (up Tdb 6.0 → 3.2 s;
+30/36 dark-first T50 away 5.5 → 2.8 s); every other pre-registered bar
+passes (§The bar).
+
+**The pitch-only warning is not affected.** It compares the resonance
+value with the start (`|u − startU| ≤ 0.6 u`, `src/ml/pitch-only-warning.js`)
+and was measured on the plain 5 s median. The worker's state post carries
+that plain median as `uPlain` (the cue snapshot's `uPlain`, never
+restarted, null exactly when u is) and the warning reads it (`warningU`),
+so its input is the same value as before this change
+(`tests/resonance/switch-restart-test.js` checks `uPlain` against
+`restart: null` at every bin of the fixture).
+
+**Not re-measured with the restart:**
+- the voice-gate note's noise-only figures for the resonance row
+  ([voice-gate-resonance-row-2026-10-21.md](voice-gate-resonance-row-2026-10-21.md):
+  "dot moves", "beyond the scale") were measured on the plain readout.
+  When dots are drawn is unchanged (same admitted bins, same nulls), but
+  how far a drawn dot moves on noise could rise with restarts;
+- the lab tab's vtln readout (`src/resonance-lab/readout.js`, the plain
+  median) is unchanged, so after a change it trails the Dashboard row by
+  about 3 s.
 
 **Reproduction through the real chain.** `switch-asymmetry.mjs --split=held
 --patterns=,x6,x10 --only=<6 ids>` with the shipped module (worker = BASE,

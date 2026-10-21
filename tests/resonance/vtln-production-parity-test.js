@@ -213,7 +213,9 @@ console.log("\nresonance worker (shim)");
 for (const name of fixtures) {
   const { chunks, posts, snap } = bForC[name];
   // ungated reference over B's stamped bins
-  const cue = createResonanceCue({ reference, gate: false });
+  // restart: null — the engine's readout is the plain 5 s median; with the
+  // restart on, this would hold only while no restart fires (short clips).
+  const cue = createResonanceCue({ reference, gate: false, restart: null });
   runFrames(chunks, 48000, posts, 0, (n, te, st, v) => { if (n === "vtln") cue.onStamped(te, st, v); });
   const cs = cue.snapshot();
   check(`${name}: ungated cue readout === engine readout`, cs.raw === snap.finalists.vtln.raw && cs.n === snap.finalists.vtln.n,

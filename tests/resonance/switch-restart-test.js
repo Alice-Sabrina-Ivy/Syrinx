@@ -17,6 +17,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import * as RC from "../../src/resonance/resonanceCue.js";
 import { createReadout } from "../../src/resonance-lab/readout.js";
+import * as PW from "../../src/ml/pitch-only-warning.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.resolve(here, "../..");
@@ -75,6 +76,26 @@ console.log("resonanceCue restart — only the shown value changes");
   const isMed = (r) => set.has(r) || vals.some((a) => set.has(2 * r - a) || vals.some((b) => (a + b) / 2 === r));
   const changed = now.sw.filter(([, s], i) => s.raw !== old.sw[i][1].raw).map(([, s]) => s.raw);
   check("values that differ from the plain median are medians of admitted bins", changed.length > 0 && changed.every(isMed), `${changed.length} differ`);
+}
+
+console.log("the pitch-only warning keeps the plain 5 s median");
+{
+  // uPlain = what u was before the restart (restart: null), at every bin
+  let same = true, differs = 0;
+  for (let i = 0; i < now.sw.length; i++) {
+    const a = now.sw[i][1], b = old.sw[i][1];
+    if (a.uPlain !== b.u) same = false;
+    if (a.u !== a.uPlain) differs++;
+  }
+  check("snapshot uPlain equals the restart: null cue's u at every bin (and differs from the shown u somewhere)", same && differs > 0,
+    `${differs} bins differ`);
+  const wU = PW.warningU ?? ((r) => r.u);
+  check("the warning reads uPlain, and u on a snapshot recorded without it",
+    wU({ u: 2, uPlain: 0.1 }) === 0.1 && wU({ u: 0.3 }) === 0.3 && wU({ u: 2, uPlain: null }) === null);
+  const r = { u: 2, uPlain: 0.1, startU: 0, fill: 1, verdict: "score", sinceResumeS: 5 };
+  check("eligibility follows uPlain (shown u null, plain known → eligible; plain null → not)",
+    PW.pitchOnlyEligible({ lnF0: Math.log(200), p0: Math.log(120), resonance: { ...r, u: null } }) === true
+    && PW.pitchOnlyEligible({ lnF0: Math.log(200), p0: Math.log(120), resonance: { ...r, uPlain: null } }) === false);
 }
 
 console.log("resonanceCue restart: null — the plain 5 s median");

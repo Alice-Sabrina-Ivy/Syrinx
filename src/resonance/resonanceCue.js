@@ -223,6 +223,7 @@ export function createResonanceCue({ reference, horizonS = 5, gate = true, resta
       return {
         u: d.u,
         raw: d.raw,
+        uPlain: s.u, // the plain 5 s median, never restarted: the pitch-only warning's input
         n: s.n,
         fill: s.fill,
         voicedS: s.voicedS,
