@@ -491,7 +491,9 @@ node scripts/heard-as/low-pitch-pauses/guards.mjs --runs=<guards>/run.0.jsonl,<g
 overwrite it; `--split=test` runs only the variant `selection.json` names, once.
 "shipped" in all three scripts is the panel before 2026-10-21 (3 s rule, no
 first-reading check), pinned in `analyze.mjs` `VARIANTS` since the review
-(§8.3, §9); before that it followed `heardAsCalibration.js`.
+(§8.3, §9); before that it followed `heardAsCalibration.js`. The review's
+extra checks of §8.5 (low-pitch bias, flashes, readings only H1+H3 shows):
+`node scripts/heard-as/low-pitch-pauses/review_checks.mjs --runs=<run.0.jsonl>,<run.1.jsonl>`.
 
 The CI fixture (§8.7), from the same runs:
 
@@ -684,7 +686,7 @@ its timestamp differs).
   the higher frames get through, so the pooled F0 sits above the voice's
   and the "Outside the range it was tested on" rule (81 Hz) does not fire.
   On the WORLD 75 Hz streams with natural pauses (all 80 readers, both
-  splits; the review's `f0bias.mjs`, shown 2 s updates over the four timer
+  splits; `review_checks.mjs` "f0bias", shown 2 s updates over the four timer
   phases, against the same 8 s of the WORLD reference pitch):
 
   | | W shipped → H1+H3 | M shipped → H1+H3 |
@@ -720,8 +722,8 @@ its timestamp differs).
   only; there no early reading is informative on the wrong side (0.0 %).
 - **Short "Keep talking" flashes; low voices blink** (review, 2026-10-21;
   the bar measured neither). A 2 s update can hide the reading and the next
-  250 ms check show it again. Held-out, per minute of speech (the review's
-  `flicker.mjs`, four phases):
+  250 ms check show it again. Held-out, per minute of speech
+  (`review_checks.mjs` "flicker", four phases):
 
   | stream | hides between two readings, W / M | of them ≤ 250 ms, W / M | shown ↔ hidden changes, W / M |
   |---|---|---|---|
@@ -869,7 +871,8 @@ over 1,460 samples of 250 ms, at 53e3832 and at the pick), that readings
 both versions show are the same, that the regression test fails on the old
 code, and that lint, the unit tests and the privacy rules pass. Its
 findings and what was done (every number re-run here from the stored runs
-with the review's scripts before it was written down):
+with the review's scripts before it was written down; the ones §8.5 cites
+are committed as `scripts/heard-as/low-pitch-pauses/review_checks.mjs`):
 
 1. **Medium — the §8.3 "shipped" column was H1, not the old panel.**
    Fixed: `VARIANTS.shipped` (and every variant but H1's) pinned to the 3 s
