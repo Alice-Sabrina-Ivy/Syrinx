@@ -92,4 +92,122 @@ this repository.
 
 ## Results
 
-(pending)
+**Verdict: FAIL** (noise). Speech and held vowels pass; noise-only time
+with a position falls 73.2 %, short of the 80 % bar. **Nothing is
+implemented**; the try-out is unchanged.
+
+Run: 462 streams, 7.7 h of audio, every pitch message with a detector
+decision (none late). Under machine load the first attempt of one noise
+stream tripped the detector's "slow" switch (a wall-clock safeguard); the
+driver now runs such a stream again, and no stream in the final rows
+needed it.
+
+Changes from the plan, made while preparing the audio, before any result:
+the local PTDB-TUG copy has 4 speakers (2 / 2), not 20, so each speaker's
+sentences (and each FDA speaker's utterances) are split, in order, into
+streams of ≥ 60 s (S2 17, S3 5 streams); the H2 check counts the voiced time
+admitted to the readout (a stamped bin without a value carries none)
+instead of bins; D1's ten noise clips are all Freesound "computer" clips
+(the first ten fan / computer / hvac clips in id order).
+
+### Noise only (judged: N1 + N2 pooled)
+
+| set | streams | audio s | voiced hops hidden | position BASE | GATED | reduction |
+|---|---|---|---|---|---|---|
+| N1 broadband | 22 | 1810 | 85.8 % | 21.7 % | 13.6 % | 37.3 % |
+| N1 intermittent-tonal | 8 | 782 | 81.6 % | 29.3 % | 4.8 % | 83.7 % |
+| N1 mixed | 76 | 6912 | 74.7 % | 38.8 % | 13.2 % | 66.0 % |
+| N1 stationary-tonal | 60 | 4565 | 72.2 % | 56.2 % | 13.0 % | 76.9 % |
+| **N1 pooled** | 166 | 14069 | 74.6 % | 41.7 % | 12.7 % | 69.6 % |
+| N2 computer | 10 | 696 | 84.2 % | 7.3 % | 0.0 % | 100 % |
+| N2 fans | 15 | 901 | 42.0 % | 36.5 % | 13.8 % | 62.3 % |
+| N2 fridge | 15 | 1165 | 97.9 % | 54.6 % | 1.5 % | 97.2 % |
+| N2 hvac | 9 | 699 | 51.5 % | 0.0 % | 0.0 % | — |
+| N2 mains | 15 | 856 | 85.8 % | 32.2 % | 6.8 % | 78.9 % |
+| N2 traffic | 15 | 1255 | 81.0 % | 18.6 % | 2.4 % | 87.1 % |
+| N2 DCASE 2025 machines (8 classes) | 24 | 768 | 88.1 % | 26.4 % | 2.0 % | 92.4 % |
+| **N2 pooled** | 103 | 6341 | 77.9 % | 27.3 % | 3.9 % | 85.8 % |
+| **N1 + N2 pooled (judged)** | 269 | 20410 | 75.4 % | 37.2 % | 10.0 % | **73.2 %** |
+
+("voiced hops hidden": share of the pitch worker's voiced hops that the
+detector called "no voice", i.e. that GATED sends as unvoiced.)
+
+Why it falls short:
+
+- **A position, once there, stays.** The readout is a window of voiced
+  time; it freezes, it does not clear. So a few seconds of noise that get
+  through give a dot for the rest of the stream. A position ever shown:
+  128 of 269 streams BASE, 30 GATED. In a stream where the detector hid
+  93 % of the voiced noise hops (a hair dryer), the rest still gave a
+  position after 32 s, and it stayed for 73 % of the clip.
+- **Noise the detector hears as voice.** The 30 streams are mostly DEMAND
+  recordings of places with people in them (restaurant, metro, public
+  square — the only DEMAND streams with a GATED position: 31 % of the
+  GATED position time) and steady tonal sources
+  FireRedVAD scores as voice (a light ballast, a refrigerator, two hvac
+  clips, some fans and mains hums; 4 streams get a position within 5 s).
+
+Information: the share of noise time the dot sits at the clamp ("beyond
+the scale") falls from 5.0 % to 1.2 %; the share of noise time it moves
+(> 0.01 u between 0.2 s posts) from 3.3 % to 0.8 %.
+
+### Speech, per sex (judged pooled; median |Δu| ≤ 0.02, time to first position +≤ 0.5 s)
+
+| | streams | median \|Δu\| | p95 \|Δu\| | first position BASE (median) | GATED − BASE (median) | largest increase | GATED never | position share BASE / GATED | voiced hops hidden |
+|---|---|---|---|---|---|---|---|---|---|
+| women S1 LibriSpeech | 20 | 0.000 | 0.000 | 5.0 s | 0.00 s | 0.67 s | 0 | 92.8 / 92.7 % | 0.1 % |
+| women S2 PTDB-TUG | 9 | 0.000 | 0.000 | 11.9 s | 0.00 s | 0.00 s | 0 | 82.3 / 82.3 % | 0.0 % |
+| women S3 FDA | 3 | 0.000 | 0.000 | 7.9 s | 0.00 s | 0.00 s | 0 | 88.1 / 88.1 % | 0.0 % |
+| **women** | 32 | **0.000** | 0.000 | 5.6 s | **0.00 s** | 0.67 s | 0 | 89.4 / 89.3 % | 0.1 % |
+| men S1 LibriSpeech | 20 | 0.000 | 0.000 | 5.6 s | 0.00 s | 0.00 s | 0 | 91.3 / 91.3 % | 0.0 % |
+| men S2 PTDB-TUG | 8 | 0.000 | 0.014 | 14.7 s | 0.00 s | 0.00 s | 0 | 79.6 / 79.6 % | 0.1 % |
+| men S3 FDA | 2 | 0.000 | 0.000 | 6.1 s | 0.00 s | 0.00 s | 0 | 92.0 / 92.0 % | 0.0 % |
+| **men** | 30 | **0.000** | 0.000 | 6.3 s | **0.00 s** | 0.00 s | 0 | 87.9 / 87.9 % | 0.0 % |
+
+Speech: PASS. The detector hides almost no voiced speech hop, so the
+readout is unchanged.
+
+### Held vowels
+
+- H1 (24 synthetic holds): a position on no hold, BASE or GATED; at most
+  0.13 s (BASE) / 0.08 s (GATED) of a hold's voiced time reaches the
+  readout. The detector hides 91 % of the holds' voiced hops, so the
+  utterance gate no longer sees them: the verdict "sustained" covers 100 %
+  of the hold after its first second in BASE, 0 % in GATED. Had this been
+  built, the row would say "keep talking…" on such a hold instead of
+  "needs running speech".
+- H2 (97 PVQD recordings, 579 s of annotated holds): voiced time admitted
+  to the readout inside the holds 65.9 s BASE, 64.5 s GATED.
+
+Held: PASS (still excluded).
+
+### Speech, then noise (information)
+
+Ten readers' first 30 s, then 30 s of a computer-noise clip: the position
+is shown through the whole noise part in both arms (the readout keeps the
+reader's value). It moves by at most 0.71 u (median 0.015) in BASE and
+0.14 u (median 0.000) in GATED.
+
+### Private check
+
+On the user's own room recording (fans and coil whine, 60 s; results kept
+outside this repository) BASE showed a position most of the time and GATED
+none.
+
+### Not done
+
+Nothing was implemented (plan: fail → report). The hint change, its hook
+test and the smoke extension were drafted and are not committed. What the
+numbers point at, untested: the stickiness, not the hint, is most of the
+remaining noise time — for example clearing the resonance position after a
+long stretch the detector calls "no voice" would need its own measurement.
+
+### Reproduce
+
+```
+python scripts/resonance/voice-gate-prep.py --vad-build=<voice-detector worktree>/build \
+    --ls=<resonance-lab cache root> --corpora=<tests/dsp/data with fda/ ptdb-tug/>
+node scripts/fetch-firered-model.mjs
+node scripts/resonance/voice-gate-resonance.mjs --shard=i/5          # i = 0..4, in parallel
+node scripts/resonance/voice-gate-resonance.mjs --report=build/resonance-voicegate/rows-0of5.jsonl,...
+```
