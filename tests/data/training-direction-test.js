@@ -201,5 +201,21 @@ function check(name, ok, detail = "") {
   check("frame order doesn't matter (sorted by time)", shuffled.pctTimeInPitchTarget === f.pctTimeInPitchTarget);
 }
 
+// History's chart colours each saved session under its own stored rule:
+// rows without pitchTargetRule "band" (saved before 2026-10-19) counted a
+// level past the band in the direction of travel as on target.
+{
+  const f = TD.pitchTargetFor("feminine"), m = TD.pitchTargetFor("masculine"), a = TD.pitchTargetFor("androgynous");
+  const st = TD.pitchStatusForRule ?? (() => undefined);
+  check("legacy row: past the band in the direction of travel is on target",
+    st(300, f, null) === "in" && st(300, f, undefined) === "in" && st(78, m, null) === "in");
+  check("legacy row: the wrong side and a zone stay off target",
+    st(120, f, null) === "out" && st(200, m, null) === "out"
+    && st(120, a, null) === "out" && st(220, a, null) === "out");
+  check("new row: band only", st(300, f, "band") === "out" && st(78, m, "band") === "out"
+    && st(200, f, "band") === "in");
+  check("no target / no level -> null under either rule", st(200, null, null) === null && st(null, f, null) === null);
+}
+
 console.log(failures === 0 ? "\nAll training-direction checks passed." : `\n${failures} check(s) FAILED.`);
 process.exit(failures === 0 ? 0 : 1);
