@@ -179,7 +179,10 @@ export const PITCH_ONLY_WARNING = Object.freeze({
     // K-seed: the panel's own pooling and hide rules (heard-as.js)
     updateMs: HEARD_AS_CALIBRATION.updateMs,           // 2 s pseudo updates
     seedWindowMs: HEARD_AS_CALIBRATION.windowMs,       // 8 s of posted frames
-    seedMinVoicedMs: HEARD_AS_CALIBRATION.minVoicedMs, // >= 3 s voiced
+    // >= 3 s voiced: the panel's rule when the warning was studied (the panel
+    // needs 2 s since 2026-10-21, measurements/heard-as-low-pitch-and-pauses-
+    // 2026-10-21.md); kept at 3 s so the warning is the one its study measured.
+    seedMinVoicedMs: 3000,
     seedFreshMs: HEARD_AS_CALIBRATION.freshMs,         // newest voiced frame <= 5 s old
     seedLnF0: HEARD_AS_CALIBRATION.range.lnF0,         // [ln 81, ln 293.1] Hz
     // Q5: the fallback start share

@@ -42,7 +42,8 @@ const VARIANT = arg("variant", "shipped");
 
 // ---------------------------------------------------------------- panel
 // H3 (panel.fastFirst): while no reading is shown, the 250 ms check also runs
-// estimate() and shows a reading as soon as there is one; shown, updates stay
+// estimate() and shows a reading as soon as there is one (a check that finds
+// none leaves the hidden view and its reason as they are); shown, updates stay
 // on the 2 s timer (and only the 2 s updates are recorded in `updates`, the
 // stream the pitch-only warning would see).
 export function simulate(s, v = VARIANTS[VARIANT], phaseMs = 0) {
@@ -65,10 +66,15 @@ export function simulate(s, v = VARIANTS[VARIANT], phaseMs = 0) {
       else voiceState = x;
     }
     const update = (now - phaseMs) % C.updateMs === 0;
-    if (update || (cur.shown && voiceState === "sustained") || (v.panel?.fastFirst && !cur.shown)) {
+    const hideCheck = cur.shown && voiceState === "sustained";
+    // H3's extra check (as HeardAsPanel.jsx): shows a ready reading, otherwise leaves the view as it is
+    const firstCheck = !update && !hideCheck && !!v.panel?.fastFirst && !cur.shown;
+    if (update || hideCheck || firstCheck) {
       const e = agg.estimate(now, voiceState);
       const g = agg.aggregate(now);
-      if (e.hidden) {
+      if (e.hidden && firstCheck) {
+        // still no reading: the hidden view (and its reason) stays
+      } else if (e.hidden) {
         let why = e.hidden;
         if (why === "short") {
           // which input rule fails (several can): the first in this order
@@ -83,7 +89,7 @@ export function simulate(s, v = VARIANTS[VARIANT], phaseMs = 0) {
       }
       if (update) updates.push({ t: now, ...cur, nWindows: g.nWindows, nClassified: g.nClassified, voicedMs: g.voicedMs, lnF0: g.lnF0, meterLogit: g.meterLogit });
     }
-    samples.push({ t: now, ...cur });
+    samples.push({ t: now, vs: voiceState, upd: update, ...cur });
   }
   return { samples, updates };
 }

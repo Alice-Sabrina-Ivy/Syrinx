@@ -57,6 +57,16 @@ export function shortReason(e, minWindows) {
   return (e.nWindows ?? 0) >= minWindows && (e.voicedMs ?? 0) < UNVOICED_SHARE * span ? "unvoiced" : "short";
 }
 
+// What the panel's 250 ms check does. With a reading shown: a full update
+// ("update", which also feeds the pitch-only warning) only when a held note
+// has started, so the reading hides at once. With none shown: "first" — ask
+// estimate() and show a reading as soon as there is one, never feeding the
+// warning (2026-10-21, H3 of measurements/heard-as-low-pitch-and-pauses-2026-10-21.md).
+export function quickCheck(shown, voiceState) {
+  if (shown) return voiceState === "sustained" ? "update" : null;
+  return "first";
+}
+
 export const AXIS_ENDS = Object.freeze({ left: "would say man", right: "would say woman" });
 
 /**

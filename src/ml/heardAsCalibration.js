@@ -70,7 +70,15 @@ export const HEARD_AS_CALIBRATION = Object.freeze({
   // Live pooling and hide rules the constants assume (heard-as.js).
   windowMs: 8000,
   updateMs: 2000,
-  minVoicedMs: 3000,
+  // 2026-10-21 (H1, pre-registered): 3000 -> 2000, the voiced time of the fit
+  // material (single utterances, Palette median 2.06 s voiced inside the
+  // scored windows). With the panel's first-reading check (H3,
+  // HeardAsPanel.jsx) the first reading with natural pauses comes after
+  // ~3.4 / 3.9 s instead of 6.25 / 6.75 s (held-out women / men), voices at
+  // ~75 Hz get one, and readings both versions show are unchanged:
+  // measurements/heard-as-low-pitch-and-pauses-2026-10-21.md. (The
+  // pitch-only warning's K-seed keeps its own 3 s: pitch-only-warning.js.)
+  minVoicedMs: 2000,
   minWindows: 10,
   freshMs: 5000,
   // Voiced windows only (2026-10-08, user decision A — whisper must not get

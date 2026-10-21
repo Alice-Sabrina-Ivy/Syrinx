@@ -27,7 +27,12 @@
 // heardAsAxisModel.js (unit-tested; the words are the 2026-10-07 axis's,
 // unchanged). Updates every 2 s from the last ~8 s of running speech
 // (src/ml/heard-as.js); hides with a reason otherwise — within 250 ms when a
-// held note starts.
+// held note starts. While it shows no reading, the 250 ms check also asks for
+// one and shows it as soon as it is ready (2026-10-21, H3 of
+// measurements/heard-as-low-pitch-and-pauses-2026-10-21.md: the 2 s timer
+// added ~1 s to the first reading); once shown, it updates on the 2 s timer.
+// That extra check never feeds the pitch-only warning (its update stream stays
+// the 2 s one, plus the held-note hides).
 // Constants, errors and the evidence for every caveat sentence:
 // measurements/heard-as-calibration-2026-10-07.md.
 //
@@ -77,7 +82,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { heardAsShares } from "../ml/heard-as";
-import { heardAsAxis, AXIS_ENDS, shortReason } from "./heardAsAxisModel";
+import { heardAsAxis, AXIS_ENDS, shortReason, quickCheck } from "./heardAsAxisModel";
 import { HEARD_AS_CALIBRATION } from "../ml/heardAsCalibration";
 import { PITCH_ONLY_TEXT } from "../ml/pitch-only-warning";
 import { HEARD_AS_DOWNLOAD_MB } from "../ml/heard-as-download";
@@ -188,7 +193,9 @@ export const PITCH_ONLY_FALSE_ALARM_TEXT =
 
 // Replaces "In background noise, low voices are recognised as speech less
 // often …" (that described the old pitch-voicing gate). With the speech
-// detector, the panel's own rule — >= 3 s of voiced pitch in 8 s — is what
+// detector, the panel's own rule — >= 3 s of voiced pitch in 8 s until
+// 2026-10-21, 2 s since (measurements/heard-as-low-pitch-and-pauses-2026-10-21.md;
+// the noise numbers below were measured with 3 s, not re-run) — is what
 // keeps it hidden: on 38 LibriSpeech talkers in noise / channel conditions
 // (measurements/heard-as-voiced-windows-2026-10-08.md) men's readings were
 // shown less often than women's (10 dB pink / real noise 46 vs 58-59 %,
@@ -431,13 +438,28 @@ export function HeardAsPanel({
         live: pitchOnly,
       });
     };
+    // The first reading (and the first after a hide), as soon as it is ready:
+    // shows a reading when estimate() has one, otherwise leaves the hidden
+    // view as it is. Never feeds the pitch-only warning (no note until the
+    // next 2 s update; the live region keeps what the hidden view had).
+    const first = () => {
+      if (statusRef.current !== "ready") return;
+      const now = audioClockRef?.current;
+      if (now == null) return;
+      const e = heardAsRef.current.estimate(now, genderStateRef?.current?.state ?? null);
+      if (e.hidden) return;
+      show({ axis: heardAsAxis(heardAsShares(e.meterLogit, e.lnF0)), ageMs: e.ageMs, pitchOnly: false, live: warning?.held() === true });
+    };
     computeRef.current = compute;
     compute();
     const id = setInterval(compute, HEARD_AS_CALIBRATION.updateMs);
-    // Hide promptly (not on the 2 s cadence) when a held note starts, so the
-    // panel never shows ranges while the strip already says "sustained".
+    // Every 250 ms: hide promptly (not on the 2 s cadence) when a held note
+    // starts, so the panel never shows ranges while the strip already says
+    // "sustained"; with no reading shown, look for the first one.
     const fast = setInterval(() => {
-      if (shownRef.current && genderStateRef?.current?.state === "sustained") compute();
+      const q = quickCheck(shownRef.current, genderStateRef?.current?.state ?? null);
+      if (q === "update") compute();
+      else if (q === "first") first();
     }, HIDE_CHECK_MS);
     return () => {
       clearInterval(id); clearInterval(fast);

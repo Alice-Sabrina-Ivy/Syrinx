@@ -33,8 +33,8 @@ const near = (a, b, tol) => Math.abs(a - b) <= tol;
 console.log("constants = calibration.json");
 check("a / bMeter / bLnF0", C.a === TV.model.a && C.bMeter === TV.model.b && C.bLnF0 === TV.model.c);
 check("halfWidth 2.25, unsure k 0.42 / floor 0.02", C.halfWidth === TV.halfWidth && C.unsureK === TV.unsure.k && C.unsureFloor === TV.unsure.f);
-check("hide rules: 8 s window, 3 s voiced, 10 windows, 5 s fresh, 2 s update",
-  C.windowMs === 8000 && C.minVoicedMs === 3000 && C.minWindows === 10 && C.freshMs === 5000 && C.updateMs === 2000);
+check("hide rules: 8 s window, 2 s voiced (3 s until 2026-10-21), 10 windows, 5 s fresh, 2 s update, clock pool",
+  C.windowMs === 8000 && C.minVoicedMs === 2000 && C.minWindows === 10 && C.freshMs === 5000 && C.updateMs === 2000 && !(C.poolGapCapMs > 0));
 
 console.log("\ntest vectors (4-decimal rounding in the calibration)");
 for (const v of TV.vectors) {
@@ -109,9 +109,12 @@ function feed(agg, { from, to, voiced, f0, scored, logit, mode = "gated" }) {
 {
   const agg = createHeardAsAggregator();
   check("nothing scored yet -> listening", agg.estimate(0).hidden === "listening");
-  feed(agg, { from: 25, to: 2000, voiced: () => true, f0: () => 200, scored: () => true, logit: () => 2 });
-  const e1 = agg.estimate(2000);
-  check("2 s of speech -> short (needs 3 s voiced)", e1.hidden === "short", JSON.stringify(e1));
+  feed(agg, { from: 25, to: 1900, voiced: () => true, f0: () => 200, scored: () => true, logit: () => 2 });
+  const e0 = agg.estimate(1900);
+  check("1.9 s of speech -> short (needs 2 s voiced)", e0.hidden === "short", JSON.stringify(e0));
+  feed(agg, { from: 1925, to: 2100, voiced: () => true, f0: () => 200, scored: () => true, logit: () => 2 });
+  const e1 = agg.estimate(2100);
+  check("2.1 s of voiced speech -> an estimate (2026-10-21: was hidden until 3 s)", !e1.hidden && e1.voicedMs >= 2000 && e1.nWindows >= 10, JSON.stringify(e1));
   feed(agg, { from: 2025, to: 6000, voiced: () => true, f0: () => 200, scored: () => true, logit: () => 2 });
   const e2 = agg.estimate(6000);
   check("6 s of speech -> an estimate", !e2.hidden && near(e2.meterLogit, 2, 1e-12) && near(e2.lnF0, Math.log(200), 1e-12), JSON.stringify(e2));
@@ -250,6 +253,46 @@ console.log("\nvoiced windows only (measurements/heard-as-voiced-windows-2026-10
   };
   // 6 frames: one 150 ms run; with a 125 ms gap: 100 ms + (100 ms capped spacing + 25 ms) = 125 ms < 150
   check("run rule: one 150 ms run counts; a > 100 ms gap splits it", run(25) === 1 && run(125) === 0);
+}
+
+console.log("\nspeech-time pool (H2 of measurements/heard-as-low-pitch-and-pauses-2026-10-21.md; measured, not shipped)");
+{
+  const H2 = { poolGapCapMs: 750, poolMaxBackMs: 16000 };
+  // unbroken speech: the same pool as the clock pool at every 250 ms
+  const a = createHeardAsAggregator(), b = createHeardAsAggregator(H2);
+  let same = true, detail = "";
+  for (let t = 25; t <= 20000; t += 25) {
+    const f0 = 150 + 30 * Math.sin(t / 900), L = Math.sin(t / 1300) * 3;
+    for (const x of [a, b]) { x.addPitch({ audioMs: t, f0 }); if (t % 150 === 0) x.addWindow({ audioMs: t, logit: L, mode: "gated" }); }
+    if (t % 250 === 0) { const ga = a.aggregate(t), gb = b.aggregate(t); if (JSON.stringify(ga) !== JSON.stringify(gb)) { same = false; detail = `t ${t}`; } }
+  }
+  check("unbroken speech: the speech-time pool is the clock pool", same, detail);
+  // speech 0-6 s, a 3 s pause, then 1 s of speech: the clock pool drains, the speech-time pool keeps the earlier speech
+  const mk = (o) => {
+    const x = createHeardAsAggregator(o);
+    feed(x, { from: 25, to: 6000, voiced: () => true, f0: () => 200, scored: () => true, logit: () => 2 });
+    feed(x, { from: 6025, to: 9000, voiced: () => false, f0: () => 0, scored: () => false, logit: () => 0 });
+    feed(x, { from: 9025, to: 10000, voiced: () => true, f0: () => 200, scored: () => true, logit: () => 2 });
+    return x;
+  };
+  const ca = mk({}).aggregate(10000), cb = mk(H2).aggregate(10000);
+  // clock: windows ending in (2000, 10000]; speech time: 1 s of speech + one 750 ms gap + 6 s back -> all but the first ~0.25 s
+  check("a 3 s pause: the clock pool loses the speech before it, the speech-time pool keeps it", cb.voicedMs > ca.voicedMs + 1000 && cb.nWindows > ca.nWindows,
+    `voiced ${ca.voicedMs} -> ${cb.voicedMs} ms, windows ${ca.nWindows} -> ${cb.nWindows}`);
+  // never more than 16 s of clock time back
+  const far = createHeardAsAggregator(H2);
+  feed(far, { from: 25, to: 3000, voiced: () => true, f0: () => 200, scored: () => true, logit: () => 2 });
+  for (let k = 0; k < 6; k++) {
+    feed(far, { from: 3025 + 3000 * k, to: 5000 + 3000 * k, voiced: () => false, f0: () => 0, scored: () => false, logit: () => 0 });
+    feed(far, { from: 5025 + 3000 * k, to: 6000 + 3000 * k, voiced: () => true, f0: () => 120, scored: (t) => t % 900 === 0, logit: () => -1 });
+  }
+  const gf = far.aggregate(21000);
+  check("never reaches back more than 16 s of clock time", gf.nWindows > 0 && Math.abs(gf.meterLogit - -1) < 1e-12, JSON.stringify(gf));
+  // the fit-time aggregate (windowMs Infinity) is untouched
+  const inf0 = createHeardAsAggregator({ windowMs: Infinity, minVoicedMs: 0, minWindows: 0 });
+  const inf1 = createHeardAsAggregator({ windowMs: Infinity, minVoicedMs: 0, minWindows: 0, ...H2 });
+  for (const x of [inf0, inf1]) feed(x, { from: 25, to: 12000, voiced: (t) => t % 4000 < 2500, f0: () => 180, scored: (t) => t % 4000 < 2600, logit: (t) => t / 4000 });
+  check("whole-stimulus aggregate unchanged by the option", JSON.stringify(inf0.aggregate(Infinity)) === JSON.stringify(inf1.aggregate(Infinity)));
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

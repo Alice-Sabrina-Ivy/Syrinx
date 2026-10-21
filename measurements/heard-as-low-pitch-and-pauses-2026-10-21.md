@@ -1,9 +1,11 @@
 # "Likely heard as": low pitch and breath pauses — attribution and pre-registered plan — 2026-10-21
 
-**Status: attribution of the shipped panel + pre-registered plan.** The
-attribution below measures only the shipped code. The plan (§6) is committed
-and pushed before any candidate is coded or run; candidate results will be
-appended below it. This is the hard-rule-3 measurement file for any change to
+**Status: attribution of the shipped panel + pre-registered plan (§1–7) +
+results (§8).** The attribution measures only the shipped code. The plan (§6)
+was committed and pushed (2d8ce1d) before any candidate was coded or run; the
+dev selection (H1+H3) was committed and pushed (d1c4d46) before the pick's one
+held-out run. **Result: H1+H3 passes every part of the bar on held-out for
+women and men (§8).** This is the hard-rule-3 measurement file for any change to
 the heard-as modules (`src/ml/heard-as.js`, `heardAsCalibration.js`,
 `utterance-gate.js`, `gender-worker.js`, `speech-detector.js`, and the
 panel's `src/components/HeardAsPanel.jsx`) that comes out of it.
@@ -469,3 +471,214 @@ pinned v6.2.3 (`SPEECH_DETECTOR.modelUrl`, sha256-checked); the classifier
 is the deployed q8-v2 from the transformers.js cache. 1219 streams, 14.6 h
 of audio, ~58 min wall in two processes. In `report.py` and the stream
 files, `split` "dev" = test-clean, "test" = dev-clean (held-out).
+
+Candidates and the bar (after §6 was committed):
+
+```
+node scripts/heard-as/low-pitch-pauses/candidates.mjs --runs=<run.0.jsonl>,<run.1.jsonl> --out=<dir> --split=dev
+node scripts/heard-as/low-pitch-pauses/candidates.mjs --runs=… --out=<dir> --split=test --variant=H1+H3
+node scripts/heard-as/low-pitch-pauses/analyze.mjs --runs=… --out=<dir> --variant=H1+H3
+python scripts/heard-as/low-pitch-pauses/build_guards.py --out=<guards> --smoke=build/cue-strip-smoke \
+  --streams=build/heard-as/lowpause/streams --whisper="<Expresso dir>;<EARS dir>"
+node scripts/heard-as/low-pitch-pauses/run.mjs --jobs=<guards>/jobs.json --out=<guards>/run.0.jsonl --shard=0/2 --silero=…   # and 1/2
+node scripts/heard-as/low-pitch-pauses/guards.mjs --runs=<guards>/run.0.jsonl,<guards>/run.1.jsonl --variant=H1+H3
+```
+
+`candidates.mjs --split=dev` writes `selection.json` once and refuses to
+overwrite it; `--split=test` runs only the variant `selection.json` names, once.
+
+## 8. Results (2026-10-21)
+
+**Order.** Plan committed and pushed 10:20:56 CDT (2d8ce1d). Candidates
+coded afterwards (`heard-as.js` gained the H2 options, default off — the
+shipped panel's stream metrics regenerate byte-identical). Dev selection
+written 10:30:36 CDT and committed and pushed with the code (d1c4d46,
+10:30:47). The pick's one held-out run: 10:31:17.
+
+### 8.1 Selection on dev (LibriSpeech test-clean, 20 W / 20 M)
+
+Dev shipped: first reading W 5.75 / M 6.75 s (targets ≤ 4.03 / ≤ 4.73 s);
+informative reading the same; informative share 70.7 / 70.0 %; WORLD 75 Hz
+pnat with no reading 10 / 15 of 20 (targets ≤ 6 / ≤ 10); WORLD 90 Hz pnat
+shown 71.8 / 54.4 % (targets ≥ 81.8 / ≥ 64.4 %).
+
+| config | W: first / informative s, inf. share % | W: 75 Hz never, 90 Hz shown % | W: Δeta both / opposite % | M: first / informative s, inf. share % | M: 75 Hz never, 90 Hz shown % | M: Δeta both / opposite % | eligible |
+|---|---|---|---|---|---|---|---|
+| H1 | 3.75 / 3.75, 75.5 ✓ | 3, 86.5 ✓ | 0.000 / 0.0 ✓ | **4.75** / 4.75, 81.0 ✗ | 1, 80.8 ✓ | 0.000 / 0.0 ✓ | no |
+| H2 | 5.75 / 5.75, 70.9 ✗ | 9, 73.8 ✗ | +0.002 / 0.0 ✓ | 6.75 / 6.75, 75.4 ✗ | 14, 61.2 ✗ | +0.003 / 0.0 ✓ | no |
+| H3 | 5.00 / 5.00, 73.0 ✗ | 10, 76.9 ✗ | 0.000 / 0.0 ✓ | 5.75 / 5.75, 74.1 ✗ | 15, 61.9 ✗ | 0.000 / 0.0 ✓ | no |
+| H1+H2 | 3.75 / 3.75, 75.5 ✓ | 3, 87.0 ✓ | +0.002 / 0.0 ✓ | **4.75** / 4.75, 82.0 ✗ | 1, 81.5 ✓ | +0.003 / 0.0 ✓ | no |
+| **H1+H3** | 3.00 / 3.00, 77.5 ✓ | 3, 89.2 ✓ | 0.000 / 0.0 ✓ | 4.00 / 4.00, 83.1 ✓ | 1, 83.6 ✓ | 0.000 / 0.0 ✓ | **yes** |
+| H2+H3 | 5.00 / 5.00, 72.9 ✗ | 9, 78.3 ✗ | +0.002 / 0.0 ✓ | 5.75 / 5.75, 78.0 ✗ | 14, 68.1 ✗ | +0.003 / 0.0 ✓ | no |
+| H1+H2+H3 | 3.00 / 3.00, 77.5 ✓ | 3, 89.5 ✓ | +0.002 / 0.0 ✓ | 4.00 / 4.00, 83.9 ✓ | 1, 84.1 ✓ | +0.003 / 0.0 ✓ | yes |
+
+(Δeta both = mean eta difference where both versions show a reading,
+tolerance ± 0.225; opposite = readings only the candidate shows that are
+informative on the other side of the stream's settled reading, bar: the
+shipped readings' share + 2 pp — shipped 0.0 %.) Eligible: H1+H3 and
+H1+H2+H3. **Pick: H1+H3** (fewest changes). H1 alone missed the men's
+first-reading target by 0.03 s; H2 and H3 alone are far from it.
+
+### 8.2 The pick on held-out (LibriSpeech dev-clean, 20 W / 20 M) — the bar
+
+| part | measure | W shipped → H1+H3 (target) | M shipped → H1+H3 (target) | result |
+|---|---|---|---|---|
+| (i) | first reading, natural pauses (median s) | 6.25 → **3.38** (≤ 4.38) | 6.75 → **3.88** (≤ 4.73) | pass |
+| (i) | informative reading, natural pauses (median s; 18 / 19 streams) | 6.25 → **3.38** (≤ 4.38) | 6.75 → **3.75** (≤ 4.73) | pass |
+| (i) | time with an informative reading % | 74.8 → **81.6** (> 74.8) | 71.9 → **82.1** (> 71.9) | pass |
+| (ii) | WORLD 75 Hz, pauses: voices with no reading | 14 → **1** of 20 (≤ 9) | 12 → **1** of 20 (≤ 8) | pass |
+| (ii) | WORLD 90 Hz, pauses: shown % | 68.5 → **89.4** (≥ 78.5) | 67.3 → **87.3** (≥ 77.3) | pass |
+| (iii) | readings both show: mean eta change | 0.000 (79,259 samples) | 0.000 (72,998) | pass |
+| (iii) | readings only H1+H3 shows: informative on the wrong side | 0.0 % of 16,915 (≤ 0.0 + 2) | 0.0 % of 21,755 (≤ 0.0 + 2) | pass |
+| (iii) | … their mean \|eta − settled eta\| (reported) | 0.27 (shipped readings 0.18) | 0.27 (0.22) | — |
+| (iii) | equivalence test, golden file, test vectors | 28 / 28 pass; `make_golden.mjs` rewrites `heard-as-golden.json` byte-identical (its `golden_check.py` agrees); the test vectors pass unchanged | | pass |
+| (iv) | noise, silence, pause fill, held notes, whisper | no new reading anywhere (§8.3) | | pass |
+| (v) | continuous reading: shown % | 83.4 → 90.6 (≥ 82.9) | 83.2 → 90.0 (≥ 82.7) | pass |
+| (v) | continuous reading: first reading s | 5.25 → 3.13 (not later) | 5.75 → 3.25 | pass |
+| (vi) | lint, unit tests, resonance-lab tests, build, smoke | §8.4 | | pass |
+
+**Verdict: SHIP-ELIGIBLE** — every part passes on held-out for women and for
+men. Readings that both versions show are identical by construction: H1 and
+H3 never change what a pool holds, only whether it is shown, and when.
+Readings that only H1+H3 shows sit further from where the voice settles
+(mean |eta − settled| 0.27 vs 0.18–0.22: they pool 2–3 s of voiced pitch
+instead of ≥ 3 s), but none of them was informative on the wrong side.
+
+Held-out, every condition (shipped → H1+H3; times = median of the per-stream
+mean over the four timer phases):
+
+| stream | sex | first reading s | informative s | no reading (of 20) | shown % | informative % | "Can't tell yet" % | shown after the first reading % |
+|---|---|---|---|---|---|---|---|---|
+| natural, continuous | W | 5.25 → 3.13 | 5.25 → 3.25 | 0 → 0 | 83.4 → 90.6 | 74.3 → 81.1 | 9.0 → 9.5 | 98.6 → 99.6 |
+| natural, continuous | M | 5.75 → 3.25 | 5.75 → 3.25 | 0 → 0 | 83.2 → 90.0 | 75.4 → 81.9 | 7.8 → 8.0 | 99.5 → 99.9 |
+| natural, 0.3 s pauses | W | 5.75 → 3.25 | 5.75 → 3.25 | 0 → 0 | 83.8 → 91.1 | 74.5 → 81.5 | 9.4 → 9.7 | 98.9 → 99.8 |
+| natural, 0.3 s pauses | M | 6.25 → 3.50 | 6.25 → 3.50 | 0 → 0 | 82.3 → 90.4 | 74.0 → 81.9 | 8.3 → 8.5 | 97.6 → 100.0 |
+| natural, 0.6 s pauses | W | 5.75 → 3.50 | 6.00 → 3.50 | 0 → 0 | 84.1 → 91.6 | 74.7 → 81.7 | 9.3 → 9.9 | 99.2 → 99.8 |
+| natural, 0.6 s pauses | M | 6.75 → 3.88 | 6.75 → 3.88 | 0 → 0 | 81.0 → 90.6 | 73.0 → 82.3 | 8.0 → 8.3 | 96.3 → 99.8 |
+| natural, 1.0 s pauses | W | 6.25 → 3.63 | 6.50 → 3.88 | 0 → 0 | 82.8 → 91.9 | 74.3 → 82.9 | 8.5 → 9.0 | 97.0 → 99.9 |
+| natural, 1.0 s pauses | M | 6.75 → 4.13 | 6.75 → 4.13 | 0 → 0 | 75.6 → 90.5 | 67.7 → 81.6 | 7.9 → 8.9 | 88.0 → 99.3 |
+| natural, 1.5 s pauses | W | 7.00 → 3.63 | 7.25 → 4.13 | 0 → 0 | 76.0 → 92.2 | 68.3 → 82.3 | 7.7 → 9.8 | 88.4 → 99.8 |
+| natural, 1.5 s pauses | M | 7.25 → 4.75 | 7.25 → 4.75 | 0 → 0 | 64.4 → 89.5 | 58.1 → 80.9 | 6.3 → 8.6 | 75.3 → 98.2 |
+| natural, 2.5 s pauses | W | 7.75 → 3.63 | 8.00 → 4.63 | 0 → 0 | 47.0 → 90.5 | 43.2 → 81.4 | 3.8 → 9.1 | 53.8 → 97.1 |
+| natural, 2.5 s pauses | M | 8.25 → 5.63 | 8.25 → 5.63 | 0 → 0 | 35.2 → 84.7 | 31.6 → 76.3 | 3.5 → 8.4 | 38.9 → 92.5 |
+| natural, natural pauses | W | 6.25 → 3.38 | 6.50 → 3.50 | 0 → 0 | 84.3 → 91.5 | 74.8 → 81.6 | 9.5 → 9.8 | 98.8 → 99.9 |
+| natural, natural pauses | M | 6.75 → 3.88 | 6.75 → 3.88 | 0 → 0 | 80.0 → 90.5 | 71.9 → 82.1 | 8.1 → 8.4 | 94.1 → 99.8 |
+| WORLD 75 Hz, continuous | W | 29.8 → 8.4 | never → 19.9 | 8 → 0 | 10.0 → 53.9 | 2.2 → 18.3 | 7.8 → 35.6 | 34.6 → 72.6 |
+| WORLD 75 Hz, continuous | M | 30.6 → 6.3 | 31.5 → 6.3 | 8 → 0 | 18.2 → 62.9 | 17.5 → 61.2 | 0.7 → 1.7 | 59.2 → 79.6 |
+| WORLD 75 Hz, pauses | W | never → 12.8 | never → 24.4 | 14 → 1 | 3.3 → 33.2 | 1.0 → 11.3 | 2.3 → 21.9 | 42.9 → 52.5 |
+| WORLD 75 Hz, pauses | M | never → 7.1 | never → 7.1 | 12 → 1 | 7.3 → 47.7 | 7.3 → 46.3 | 0.1 → 1.4 | 46.4 → 64.8 |
+| WORLD 90 Hz, continuous | W | 6.50 → 3.75 | 33.6 → 33.6 | 0 → 0 | 77.4 → 89.0 | 17.2 → 20.7 | 60.2 → 68.3 | 98.0 → 99.9 |
+| WORLD 90 Hz, continuous | M | 6.50 → 3.50 | 6.75 → 3.50 | 0 → 0 | 76.5 → 88.7 | 72.8 → 84.9 | 3.7 → 3.8 | 94.3 → 99.8 |
+| WORLD 90 Hz, pauses | W | 7.50 → 4.25 | 29.8 → 29.8 | 0 → 0 | 68.5 → 89.4 | 13.6 → 22.0 | 54.9 → 67.4 | 85.6 → 99.6 |
+| WORLD 90 Hz, pauses | M | 7.00 → 4.38 | 7.00 → 4.38 | 0 → 0 | 67.3 → 87.3 | 65.2 → 85.1 | 2.1 → 2.2 | 82.0 → 97.0 |
+| WORLD 185 Hz, continuous | W | 5.75 → 3.25 | 5.75 → 3.25 | 0 → 0 | 84.1 → 90.6 | 78.4 → 84.9 | 5.7 → 5.7 | 99.1 → 99.7 |
+| WORLD 185 Hz, continuous | M | 5.25 → 3.00 | never → never | 0 → 0 | 85.2 → 91.4 | 10.0 → 10.9 | 75.2 → 80.4 | 99.8 → 99.9 |
+| WORLD 185 Hz, pauses | W | 6.25 → 3.25 | 6.25 → 3.25 | 0 → 0 | 85.4 → 92.1 | 78.5 → 85.1 | 7.0 → 7.0 | 99.2 → 99.8 |
+| WORLD 185 Hz, pauses | M | 5.75 → 3.25 | never → never | 0 → 0 | 85.3 → 92.2 | 8.5 → 9.4 | 76.8 → 82.8 | 98.9 → 100.0 |
+| WORLD own F0 (control), pauses | W | 6.25 → 3.25 | 6.25 → 3.25 | 0 → 0 | 85.2 → 92.0 | 75.8 → 82.3 | 9.5 → 9.8 | 99.3 → 99.8 |
+| WORLD own F0 (control), pauses | M | 6.25 → 3.50 | 6.25 → 3.63 | 0 → 0 | 82.1 → 91.3 | 72.2 → 81.1 | 9.8 → 10.2 | 96.8 → 100.0 |
+
+Reported only (natural low and other speech, all talkers; shipped → H1+H3):
+
+| set | sex | talkers | first reading s | shown % | informative % | no reading |
+|---|---|---|---|---|---|---|
+| PTDB-TUG | W | 2 | 6.5 → 3.8 | 85.4 → 95.1 | 85.4 → 95.1 | 0 → 0 |
+| PTDB-TUG | M | 2 | 21.5 → 4.6 | 41.8 → 84.0 | 41.8 → 84.0 | 0 → 0 |
+| FDA | W | 1 | 8.8 → 5.0 | 65.4 → 93.5 | 65.4 → 93.5 | 0 → 0 |
+| FDA | M | 1 | 8.8 → 5.2 | 74.6 → 93.6 | 74.6 → 93.6 | 0 → 0 |
+| Hillenbrand /hVd/ | W | 48 | 6.8 → 3.9 | 67.1 → 80.9 | 65.7 → 79.2 | 0 → 0 |
+| Hillenbrand /hVd/ | M | 45 | 6.8 → 4.0 | 60.0 → 77.1 | 53.0 → 68.4 | 1 → 0 |
+
+### 8.3 No new readings (bar iv)
+
+Streams of `build_guards.py` through the same chain (`run.mjs`, speech
+detector live), shipped and H1+H3 on the same runs, four timer phases each
+(shown 250 ms samples, summed over the phases):
+
+| stream | streams | shown, shipped → H1+H3 | notes |
+|---|---|---|---|
+| synthetic held vowel (cue-strip smoke WAV) | 1 | 0 → 0 | |
+| synthetic pink noise, −30 dBFS (smoke WAV) | 1 | 0 → 0 | |
+| digital silence (smoke WAV) | 1 | 0 → 0 | |
+| 60 s pause fill (−65 dBFS) | 1 | 0 → 0 | |
+| 60 s pink noise at speech level (−22.3 dBFS) | 1 | 0 → 0 | |
+| held vowel 110 / 220 / 330 Hz alone (5 s, ±0.3 st vibrato) | 3 | 0 → 0 | "sustained" reached in every phase |
+| held vowel after 10 s of reading (8 readers × 3 pitches) | 24 | — | shown while the voice state is "sustained": 0 → 0; still shown after "sustained" began: 0 → 0 (hidden within 250 ms); shown in the note before "sustained" (the reading of the speech before it): 288 → 288 of 1,824 |
+| whisper alone, unphonated talkers (EARS + Expresso) | 24 W / 24 M | 0 → 0 | |
+| whisper alone, the five phonated EARS women | 5 | 944 → 1,012 | shipped already shows readings: these "whisper" recordings are 33–46 % phonated (whisper-voicing-2026-10-07.md) |
+| speech + whisper, unphonated talkers: B1 (whisper share of the pooled logits) | 9 W / 8 M | W 0.9 → 0.9 %, M 0.4 → 0.4 % (bar ≤ 5.0 %) | over every shown panel computation (2 s updates and H3's first readings) |
+| speech + whisper, phonated EARS women: B1 | 5 | 22.5 → 21.6 % | reported (not in the 2026-10-08 B1) |
+
+### 8.4 CI and the app (bar vi)
+
+- `npm run lint` clean; `npm run test:unit` 46 / 46 scripts pass (the pinned
+  `minVoicedMs` and a 1.9 s / 2.1 s case in `tests/ml/heard-as-test.js`; new
+  cases for the H2 option — unbroken speech gives the clock pool, a pause no
+  longer drains it, never more than 16 s back, the whole-stimulus aggregate
+  unchanged — and for the panel's 250 ms check (`heardAsAxisModel.js`
+  `quickCheck`) in `tests/ml/heard-as-axis-test.js`); the pitch-only
+  warning's tests (217, incl. its golden) pass unchanged.
+- `npm run test:resonance-lab` 89 / 89; `npm run build` ok.
+- `scripts/cue-strip-smoke.mjs --viewport=desktop --pitch-only=man,woman`
+  (built app, fake mic): 107 / 107 — the panel turns on, shows the bar on
+  speech, hides on held notes and silence; the pitch-only warning appears
+  6.2 s after the man's shift. `--viewport=phone`: 83 / 83.
+- `scripts/resonance-lab/lab-layout-smoke.mjs` (360 / 448 px and desktop):
+  63 / 63 — the live panel on gapped speech passes through shown, "Can't
+  tell yet", "Older reading", "Keep talking" and stale with nothing below it
+  moving, and all 78 forced panel states keep one height. (A first run with a
+  relative `--out` failed parts 1–3 only because Chrome could not find the
+  fake-mic WAV — a harness invocation error; rerun with the default path.)
+
+### 8.5 What it does not change, and the pitch-only warning
+
+- **"Can't tell yet" for a feminine pitch with male-typical resonance** (the
+  user's screenshot: speaking in a feminine voice, not below 80 Hz). H1+H3
+  gives that voice a reading sooner (WORLD 185 Hz men, pauses: 5.75 → 3.25 s)
+  but the reading is still "Can't tell yet" (76.8 → 82.8 % of the time; more
+  time shown, the same reading in the middle). As §4.3 found, that is where
+  the calibration puts such a voice; only the wording (W1, the user's call)
+  could change what it says.
+- **Below ~75 Hz** readings now appear (WORLD 75 Hz with pauses: 1 of 20
+  voices per sex without one, was 14 / 12), but the pitch worker still posts
+  few frames there (§4.2), so they come late (median 7–13 s) and women's
+  voices lowered that far mostly read "Can't tell yet". P1 (the pitch-chain
+  change) stays a separate decision.
+- **Pitch-only warning feed** (2 s updates; the first-reading checks never
+  reach it): shown updates per minute of speech, natural pauses, held-out
+  W 25.9 → 27.3, M 24.4 → 27.0; first shown 2 s update (median) 7 → 5 s. Its
+  late-switch-on seed keeps its own 3 s rule (`pitch-only-warning.js`
+  `seedMinVoicedMs` pinned at 3000, so the warning is the one its study
+  measured). Whether its study needs a re-run on the new update stream is the
+  user's decision.
+
+### 8.6 Deviations from the plan
+
+1. **Dev targets** are the plan's relative rules on dev's own shipped
+   numbers (30 % faster than dev shipped, a third fewer "never"); the plan
+   wrote out only the held-out values.
+2. **"Opposite side"** (iii): an informative reading whose eta has the other
+   sign from the stream's settled eta (the plan did not say how to treat a
+   settled reading that is itself "Can't tell"; sign is used for every
+   stream). Shipped and candidate are both at 0.0 % either way: no
+   informative reading on the wrong side exists in either.
+3. **H3 in the simulation**: after the selection, the simulation was made to
+   match the panel code exactly — a first-reading check that finds no reading
+   leaves the hidden view and its reason as they are (it had refreshed the
+   reason). Checked on all 1,219 streams: only the hidden-reason breakdown
+   changes; every bar number is identical.
+4. **Whisper set rebuilt** from the public mirror (Malfaro43/whisperedAudio-
+   benchmark; EARS and Expresso, CC BY-NC 4.0) with the 2026-10-08 probe
+   rules: 53 whisper-alone streams (the probe set had 54: Expresso grouping on
+   the files at hand) and 22 speech + whisper streams; new floor-noise seed.
+   "No reading on whisper alone" is judged on the unphonated talkers (B1's
+   population); the five phonated EARS women already got readings shipped.
+5. **Held notes and noise** are synthetic (/a/ with the smoke WAV's
+   formants; "speech level" pink noise at the probe sets' −22.3 dBFS
+   reference); held notes after reading use the first 10 s of 8 readers'
+   continuous streams (2 W + 2 M dev, 2 W + 2 M held-out).
+6. **The H2 option stays in `heard-as.js`**, default off and unit-tested, so
+   the dev table can be reproduced.
+7. **Not re-measured:** the noise / phone-channel shown shares quoted in the
+   panel's "More" text and in CLAUDE.md were measured with the 3 s rule; with
+   2 s readings will be shown at least as often there (not re-run).
