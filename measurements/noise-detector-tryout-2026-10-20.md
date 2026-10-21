@@ -5,9 +5,14 @@ in my limited testing"), together with the resonance-row gate and an HNR
 display gate, and with a plan for hosting the model — see "Merged into
 cue-strip (2026-10-21)" below. The confirmation it waited for passed
 ([firered-confirmation-2026-10-21.md](firered-confirmation-2026-10-21.md),
-CONFIRMATION: PASS). The rest of this note is the try-out as built on
+CONFIRMATION: PASS). **Follow-up the same day** (branch
+`voice-gate-followup`, section "Follow-up (2026-10-21)" below): the
+resonance row follows the gate, the HNR readout keeps its 5 s silence hold,
+the model loads from the pinned Hugging Face mirror, and the session oracle
+runs the gate. The rest of this note is the try-out as built on
 2026-10-20; where it disagrees with the merge section, the merge section
-wins.
+wins, and where the merge section disagrees with the follow-up, the
+follow-up wins.
 
 **Historical (superseded 2026-10-21):** Branch `noise-detector-tryout` (from
 `cue-strip`). A **try-out build for the PC**, not a ship: the user decided on
@@ -15,6 +20,64 @@ wins.
 now and asked for a build to try next to a proper confirmation run. The
 confirmation is separate work (pre-registered on branch `voice-detector`,
 `measurements/firered-confirmation-2026-10-21.md`); nothing here replaces it.
+
+## Follow-up (2026-10-21)
+
+Branch `voice-gate-followup` (from `cue-strip` 1a1713f), after the merge's
+review:
+
+- **Resonance row follows the gate** (user decision: "make the resonance row
+  not react to noise"). Both cue-strip rows now take their state from the
+  pitch display's own flags `pitchVoiced` / `pitchHolding`
+  (`cueStripModel.js` `cueRowStates`); the resonance row read the raw
+  voiced / holding until then. Measured first,
+  [voice-gate-resonance-row-2026-10-21.md](voice-gate-resonance-row-2026-10-21.md)
+  (ROW GATE: GUARDS PASS): on noise only the row leaves "idle" 7.0 % of the
+  time instead of 33.3 % (78.8 % less), "keep talking…" 4.0 % instead of
+  26.9 %, a drawn dot 3.0 % instead of 6.3 %; never more on any noise
+  stream; speech keeps the same state on 99.9 / 100.0 % of the time (women
+  / men) with the same positions; no held vowel gets a new drawn position.
+  A held vowel the detector hides now reads "—" (the row cannot tell a
+  hidden hold from silence), not "keep talking…". That note also corrects
+  the resonance note's wording (the 73 % was the worker's stored position,
+  not the drawn dot: drawn dot −68.8 %). The strip's caption ("Start
+  speaking — …") follows the same flag.
+- **HNR readout** (user decision): in the 5 s silence hold it keeps its last
+  value, like the dim pitch readout, also once the detector says "no voice"
+  ~2 s into the silence; "—" there only when the gate hid painted pitch after
+  that value (`gateHidPaintRef`, the pitch readout's own exception).
+  Elsewhere unchanged: "—" on frames the gate hides; recorded frames keep the
+  measured value.
+- **Model hosting: the mirror is pinned.** `FIRERED_MODEL.mirrorCommit` =
+  `7128fcfded226bac7b4852014c1c3caa88c80f07`
+  (`Alice-Sabrina-Ivy/fireredvad-stream-vad-onnx`, both files byte-identical
+  to the upstream commit, uploaded and verified by the repo owner; CORS
+  allows the Pages origin). The pitch worker loads both files from
+  `https://huggingface.co/<mirror>/resolve/<commit>/` through
+  `loadVerifiedModel` (Cache Storage copy first, size + sha256 checked). No
+  build carries a copy any more. `scripts/fetch-firered-model.mjs` stays for
+  Node only — the parity test, the session oracle's `--voice-gate` option and
+  the voice-gate drivers — and now writes to `build/models/firered/`
+  (gitignored, outside `public/`, so a local build never ships it). Offline
+  development of the app: `--out=public/models/firered` with `mirrorCommit`
+  set to `null`.
+  Checked in the built app (desktop Chrome, `scripts/voice-gate-smoke.mjs`,
+  fresh profile, no local model files in `dist/`): both files requested at
+  the pinned commit (the ONNX file redirects to Hugging Face's CDN, `cmvn.ark`
+  to its resolve cache), none from the app's own server; the detector
+  "ready" (size + sha256 passed); both files in Cache Storage
+  (`syrinx-voice-detector-onnx` / `-cmvn`) with the pinned sha256, read back
+  in the page; after a reload the detector is ready with no request for the
+  ONNX file; with the Hugging Face hosts unreachable Settings says "Off: the
+  voice detector could not load, so pitch is shown as before." and nothing is
+  hidden; the gate hides the noise line as before.
+- **Session oracle** (`scripts/session-oracle/`, `--voice-gate`): the
+  merge's regression run used an uncommitted driver; `run.mjs` and
+  `corpus.mjs` now run the real FireRedVAD model in the real pitch worker
+  and drive the real hook with its decisions, gate on vs off, from one
+  worker run. On vocadito it reproduces the merge's numbers exactly (every
+  cell identical without the option / gate off / gate on; 31 222 / 1 228 / 0
+  decisions; false painting on reference-unvoiced hops 52.56 → 51.81 %).
 
 ## Merged into cue-strip (2026-10-21)
 
@@ -49,7 +112,8 @@ hangover: only 14–28 % of it is removed in the first 2 s).
   [noise-detector-tryout-resonance-2026-10-21.md](noise-detector-tryout-resonance-2026-10-21.md):
   73 % less noise-only position time (the pre-set bar was 80 % — built
   anyway), speech unchanged, held vowels still excluded. A position the row
-  already has stays (the readout freezes; it does not clear). The row's own
+  already has stays (the readout freezes; it does not clear).
+  **Historical (superseded 2026-10-21, follow-up):** The row's own
   voiced / holding flags stay raw (the DSP gate), so on noise the detector
   hides the row reads "keep talking…" with no position (the smoke's
   air-conditioner clip: no position, states warming / idle), and a held
@@ -58,8 +122,9 @@ hangover: only 14–28 % of it is removed in the first 2 s).
   measurement.
 - **HNR readout** (user decision 2026-10-21): the cue strip's "HNR … dB"
   showed noise-derived values with no one speaking. It shows "—" while the
-  gate hides (also during the 5 s silence hold once the detector says "no
-  voice", ~2 s into a silence, while the dim pitch readout keeps its 5 s).
+  gate hides (**historical (superseded 2026-10-21, follow-up):** also during
+  the 5 s silence hold once the detector says "no voice", ~2 s into a
+  silence, while the dim pitch readout keeps its 5 s).
   Display only: `dsp-worker.js` computes HNR as before, recorded frames keep
   the measured value, and speech keeps its HNR as the confirmation keeps
   speech (≤ 0.2 % of speech hops blanked).
@@ -68,12 +133,14 @@ hangover: only 14–28 % of it is removed in the first 2 s).
   "Model hosting"): `FIRERED_MODEL.mirror` =
   `Alice-Sabrina-Ivy/fireredvad-stream-vad-onnx` (files
   `fireredvad_stream_vad_with_cache.onnx`, `cmvn.ark`, `LICENSE`,
-  `README.md`), uploaded by the repo owner. Once `FIRERED_MODEL.mirrorCommit`
+  `README.md`), uploaded by the repo owner (pinned in the follow-up above).
+  Once `FIRERED_MODEL.mirrorCommit`
   holds the mirror's commit, the pitch worker loads both files from
   `huggingface.co/<mirror>/resolve/<commit>/` through `loadVerifiedModel` (a
   Cache Storage copy first — HF's `/resolve/` redirect is `no-store` — one
-  cache per file, sha256 checked, plus the size check). **Until then
-  `mirrorCommit` is `null`** and the files load from the app's own
+  cache per file, sha256 checked, plus the size check). **Historical
+  (superseded 2026-10-21, follow-up):** Until then
+  `mirrorCommit` is `null` and the files load from the app's own
   `models/firered/` exactly as in the try-out (`scripts/fetch-firered-model.mjs`,
   a developer step). To switch: upload the two official files byte for byte
   (same sha256 as pinned), put the commit in `mirrorCommit`, and check the
@@ -378,8 +445,13 @@ once a little noise gets through, plus noise the detector hears as voice.
 
 ## Before any merge to main
 
-**Updated 2026-10-21 (merge into cue-strip):** the developer instruction is
-gone (plain "could not load" text), and the hosting is decided — the
+**Updated 2026-10-21 (follow-up):** the mirror is uploaded and pinned
+(`mirrorCommit` 7128fcf…; checked in the built app, section "Follow-up"
+above). Still open before `main`: phone CPU and the mobile WASM path are not
+measured.
+
+**Historical (superseded 2026-10-21, follow-up):** the developer instruction
+is gone (plain "could not load" text), and the hosting is decided — the
 Hugging Face mirror, pending its upload. Still open before `main`: upload the
 mirror and pin `mirrorCommit` (until then the live site would show the gate
 as unavailable, pitch as before); phone CPU and the mobile WASM path are not

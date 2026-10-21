@@ -238,7 +238,7 @@ rarely; results kept outside this repository.
 ```
 python scripts/resonance/voice-gate-prep.py --vad-build=<voice-detector worktree>/build \
     --ls=<resonance-lab cache root> --corpora=<tests/dsp/data with fda/ ptdb-tug/>
-node scripts/fetch-firered-model.mjs
+node scripts/fetch-firered-model.mjs                     # the Node copy, build/models/firered/
 SO_TAP=0 node --import ./scripts/session-oracle/lib/register.mjs scripts/resonance/voice-gate-resonance.mjs \
     --row --shuffle=20261021 --shard=i/2                 # i = 0, 1, in parallel
 SO_TAP=0 node scripts/resonance/voice-gate-resonance.mjs --row \
@@ -247,3 +247,17 @@ SO_TAP=0 node scripts/resonance/voice-gate-resonance.mjs --row \
 
 The same rows without `--row` print the earlier note's tables
 (`--report=` as above).
+
+## Built (2026-10-21)
+
+The candidate as measured, on the same branch (commit f71ddc0): both
+cue-strip rows take their state from `pitchVoiced` / `pitchHolding`
+(`src/components/cueStripModel.js` `cueRowStates`, used by `CueStrip.jsx`).
+Tests: `tests/audio/voice-gate-display-test.js` (the real hook's flags
+through `cueRowStates`: the row idle on every hidden noise frame, equal to
+the ungated app elsewhere), `tests/audio/cue-strip-model-test.js`;
+browser: `scripts/voice-gate-smoke.mjs` (committed air-conditioner clip,
+gate on: the row idle on 64 of 64 samples after 3 s, never "keep
+talking…"; gate off: not idle on 65.6 %; speech: row-state shares within
+10 points of gate off) and `scripts/cue-strip-smoke.mjs` (synthetic held
+vowel, gate on: the row idle, no dot).
