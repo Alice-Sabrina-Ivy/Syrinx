@@ -15,7 +15,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { heardAsShares, shareTenths, formatShare } from "../../src/ml/heard-as.js";
 import { HEARD_AS_CALIBRATION as C } from "../../src/ml/heardAsCalibration.js";
-import { heardAsAxis, AXIS_ENDS, unsureWords, shortReason, UNVOICED_SHARE } from "../../src/components/heardAsAxisModel.js";
+import { heardAsAxis, AXIS_ENDS, unsureWords, shortReason, UNVOICED_SHARE, quickCheck } from "../../src/components/heardAsAxisModel.js";
 
 let passed = 0, failed = 0;
 function check(name, cond, detail = "") {
@@ -137,6 +137,12 @@ console.log("\ngender symmetry (mirrored estimate -> mirrored bar, same words)")
   check("deep and light parts swap, the best guess mirrors about the middle and 'can't tell' agrees", geo, detail);
   check("range and unsure words mirror (man <-> woman), identical template", words, detail);
 }
+
+console.log("\nthe 250 ms check (2026-10-21, H3)");
+check("no reading shown -> look for the first one (never a full update: the pitch-only warning is not fed)",
+  quickCheck(false, null) === "first" && quickCheck(false, "speaking") === "first" && quickCheck(false, "sustained") === "first");
+check("a reading shown -> a full update only when a held note starts, else nothing (the 2 s timer updates it)",
+  quickCheck(true, "sustained") === "update" && quickCheck(true, null) === null && quickCheck(true, "speaking") === null);
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);

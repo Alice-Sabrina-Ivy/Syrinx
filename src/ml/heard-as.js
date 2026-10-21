@@ -67,15 +67,25 @@ export function createHeardAsAggregator({
   freshMs = HEARD_AS_CALIBRATION.freshMs,
   logitMinVoicedMs = HEARD_AS_CALIBRATION.logitMinVoicedMs ?? 0,
   logitMinRunMs = HEARD_AS_CALIBRATION.logitMinRunMs ?? 0,
+  poolGapCapMs = HEARD_AS_CALIBRATION.poolGapCapMs ?? 0,
+  poolMaxBackMs = HEARD_AS_CALIBRATION.poolMaxBackMs ?? 0,
 } = {}) {
   let windows = []; // { audioMs, logit } ascending
   let frames = [];  // { audioMs, f0, dt, gap } ascending (gap = raw spacing, uncapped)
   let lastFrameMs = null;
   let everScored = false;
+  // Speech-time pool (poolGapCapMs > 0, finite windowMs): the trailing windowMs
+  // are counted in speech time — every gap between consecutive scored windows,
+  // and between the newest one and now, counts at most poolGapCapMs — and the
+  // pool never reaches back more than poolMaxBackMs of clock time. With
+  // scored windows every 150 ms it is the clock pool; in a pause it stops
+  // draining. measurements/heard-as-low-pitch-and-pauses-2026-10-21.md (H2).
+  const speechPool = poolGapCapMs > 0 && Number.isFinite(windowMs);
+  const backMs = speechPool ? Math.max(windowMs, poolMaxBackMs > 0 ? poolMaxBackMs : windowMs) : windowMs;
 
   function trim(nowMs) {
     if (!Number.isFinite(windowMs)) return;
-    const cut = nowMs - windowMs - ML_WINDOW_MS - 1000;
+    const cut = nowMs - backMs - ML_WINDOW_MS - 1000;
     let i = 0;
     while (i < windows.length && windows[i].audioMs < cut) i++;
     if (i) windows = windows.slice(i);
@@ -123,8 +133,23 @@ export function createHeardAsAggregator({
     },
     /** The raw aggregate over (nowMs − windowMs, nowMs], no hide rules (fit-time use). */
     aggregate(nowMs) {
-      const lo = Number.isFinite(windowMs) ? nowMs - windowMs : -Infinity;
-      const W = windows.filter((w) => w.audioMs > lo && w.audioMs <= nowMs);
+      let W;
+      if (speechPool) {
+        let i = windows.length - 1;
+        while (i >= 0 && windows[i].audioMs > nowMs) i--;
+        const end = i + 1;
+        let acc = 0, prev = nowMs;
+        for (; i >= 0; i--) {
+          const t = windows[i].audioMs;
+          acc += Math.min(prev - t, poolGapCapMs);
+          if (!(acc < windowMs) || !(t > nowMs - backMs)) break;
+          prev = t;
+        }
+        W = windows.slice(i + 1, end);
+      } else {
+        const lo = Number.isFinite(windowMs) ? nowMs - windowMs : -Infinity;
+        W = windows.filter((w) => w.audioMs > lo && w.audioMs <= nowMs);
+      }
       if (!W.length) return { nWindows: 0, nClassified: 0, meterLogit: null, lnF0: null, voicedMs: 0, newestMs: null };
       let sum = 0, nL = 0;
       for (const w of W) if (w.logit !== null && voicedEnough(w.audioMs)) { sum += w.logit; nL++; }
