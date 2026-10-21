@@ -204,6 +204,18 @@ export const PITCH_ONLY_FALSE_ALARM_TEXT =
 export const NOISE_TEXT =
   "It needs a few seconds of your voiced (pitched) speech. In background noise or through a phone or laptop microphone it may stay hidden longer — more often for low voices, whose pitch is harder to pick out.";
 
+// What it does not cover, and where it hides. Until the 2026-10-21 review:
+// "… Held notes and very high or low voices hide it; …". With the 2 s rule
+// (measurements/heard-as-low-pitch-and-pauses-2026-10-21.md §8.5) voices
+// below the 81 Hz tested floor get readings: the pitch worker drops most
+// frames below 75 Hz, so the pooled pitch (median of the posted frames) reads
+// ~1.14x too high and the range rule does not fire; at the voice's own pitch
+// the reading would sit ~0.47 logit further toward "man" (men's readings stay
+// "would say man"; a woman's voice lowered to 75 Hz changes "Can't tell yet" /
+// side in about a third of its readings).
+export const RANGE_LIMITS_TEXT =
+  "Singing, children's voices, held vowels and single words are not supported. Held notes and very high voices hide it. Very low voices (below about 80 Hz) can get a reading, but it is less reliable: their pitch is hard to pick out, and the reading leans toward “would say woman”. Singing and children are not detected — don't use it for them.";
+
 // "Can't tell yet" per sex (measurements/heard-as-voiced-windows-2026-10-08.md):
 // on 80 LibriSpeech readers ~13 % of women's and ~7 % of men's shown
 // readings, mostly from a few voices that get it nearly always.
@@ -440,15 +452,21 @@ export function HeardAsPanel({
     };
     // The first reading (and the first after a hide), as soon as it is ready:
     // shows a reading when estimate() has one, otherwise leaves the hidden
-    // view as it is. Never feeds the pitch-only warning (no note until the
-    // next 2 s update; the live region keeps what the hidden view had).
+    // view as it is. Never feeds the pitch-only warning; the note shows while
+    // the warning's run is held through a brief hide — the same value the
+    // live region announces, so the visible note and what screen readers
+    // are told agree (2026-10-21 review, §9 of
+    // measurements/heard-as-low-pitch-and-pauses-2026-10-21.md; it had shown
+    // the reading without the note for up to 2 s while the live region kept
+    // the warning).
     const first = () => {
       if (statusRef.current !== "ready") return;
       const now = audioClockRef?.current;
       if (now == null) return;
       const e = heardAsRef.current.estimate(now, genderStateRef?.current?.state ?? null);
       if (e.hidden) return;
-      show({ axis: heardAsAxis(heardAsShares(e.meterLogit, e.lnF0)), ageMs: e.ageMs, pitchOnly: false, live: warning?.held() === true });
+      const held = warning?.held() === true;
+      show({ axis: heardAsAxis(heardAsShares(e.meterLogit, e.lnF0)), ageMs: e.ageMs, pitchOnly: held, live: held });
     };
     computeRef.current = compute;
     compute();
@@ -585,7 +603,7 @@ export function HeardAsPanel({
           <li data-heard-as-cant-tell="">{CANT_TELL_TEXT}</li>
           <li>Within clearly feminine or clearly masculine voices it does not track small changes — use the pitch and resonance rows under the pitch trace for those.</li>
           <li>It uses only your pitch and a voice classifier; it ignores intonation, vocal weight and articulation.</li>
-          <li>Singing, children&apos;s voices, held vowels and single words are not supported. Held notes and very high or low voices hide it; singing and children are not detected — don&apos;t use it for them.</li>
+          <li data-heard-as-range-limits="">{RANGE_LIMITS_TEXT}</li>
           <li>The striped part of the bar is the range where about 8 in 10 published listener groups fell for clearly feminine or clearly masculine voices; less is known for in-between voices. The scale is listeners choosing between man and woman: those who might be unsure or say neither are counted half on each side. The &ldquo;unsure or neither&rdquo; line counts listeners who answered &ldquo;another gender&rdquo; as well as those who weren&apos;t sure, and depends on how listeners are asked.</li>
           <li data-heard-as-noise="">{NOISE_TEXT}</li>
           <li>Nothing is stored or sent anywhere; it is computed on this device and forgotten when you stop.</li>

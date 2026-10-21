@@ -909,3 +909,14 @@ with the review's scripts before it was written down):
    "More" noise numbers not re-run). Nothing to change; the stream-length
    point is added to the whisper margin paragraph (§8.7) and §8.6 item 7
    now names the warning's study.
+
+Checks after the fixes: `npm run lint` clean; `npm run test:unit` 47 / 47
+scripts (`heard-as-responsiveness-test.js` 30 / 30; its new `first()` check
+fails on the previous panel source); `npm run build` ok;
+`scripts/cue-strip-smoke.mjs --pitch-only=man,woman` (built app, fake mic)
+107 / 107 at the phone and desktop viewports — the "More" list still wraps
+inside the panel, and the pitch-only warning appears 6.1 s (man) and 7.5 s
+(woman) after the shift and stays on 76 / 76 shown samples.
+`lab-layout-smoke.mjs` was not re-run: `first()` can now show a reading
+with the note, a state `compute()` already produced, and that smoke does
+not open the "More" list.

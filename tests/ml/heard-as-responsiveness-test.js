@@ -49,6 +49,11 @@ console.log("HeardAsPanel.jsx wiring (what the replay below assumes)");
   check("first(): a reading when estimate() has one, else the view stays; it never feeds the pitch-only warning",
     first.includes(".estimate(") && /if \(e\.hidden\) return;/.test(first) && first.includes("show(") && !first.includes("warn(") && !first.includes("warning?.update"),
     first ? "" : "first() not found");
+  // 2026-10-21 review: after a hide, the reading came back without the
+  // pitch-only note while the live region still announced the warning.
+  check("first(): the pitch-only note and the live region both follow the warning's held run",
+    /const held = warning\?\.held\(\) === true;/.test(first) && /pitchOnly: held, live: held/.test(first) && !/pitchOnly: false/.test(first),
+    first ? "" : "first() not found");
 }
 
 // ---------------------------------------------------------------- replay
