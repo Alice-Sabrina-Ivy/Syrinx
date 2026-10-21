@@ -321,7 +321,7 @@ export function DataManagement({
                   Hide pitch when no voice is heard (experimental)
                 </span>
                 <p className="text-[11px] text-neutral-400 mt-0.5">
-                  A voice detector hides the pitch line, Hz / note, steadiness and HNR while it hears no voice, such as a fan or hum alone, and keeps that noise out of the resonance reading. It can blank parts of held notes in loud noise, and noise can still show for about 2 s after you stop speaking.
+                  A voice detector hides the pitch line, Hz / note, steadiness and HNR while it hears no voice, such as a fan or hum alone, and keeps most of that noise out of the resonance reading. It can blank parts of long held notes and vowels, more in loud noise, and noise can still show for about 2 s after you stop speaking.
                 </p>
                 <p className="text-[11px] text-neutral-500 mt-0.5" data-voice-gate-status-text="">
                   {voiceGateStatusText(voiceGateStatus, voiceGateProbe)}

@@ -31,7 +31,9 @@ screen and the relaxed-rules addendum that picked the R1 h point) and
 (fresh public data, every gate passed: 80.6 % of the false pitch line removed
 on fresh noise — 86.9 % without one mislabelled interview clip — and 79.2 % on
 held-out B; speech ≤ 0.2 % and songs 0 % blanked; mixes ≤ 1.4 %; clean held
-voices ≤ 1.9 %; onset delay 0 ms; desktop browser CPU 0.85 ms per 25 ms. Costs
+voices ≤ 1.9 % on short (≤ 5 s) holds — long clean holds were not re-measured
+(the screen's last 10 s of long clean holds: 15.6 / 29.0 % blanked, women /
+men); onset delay 0 ms; desktop browser CPU 0.85 ms per 25 ms. Costs
 it names: held voices in loud noise — up to 8 % of fresh notes at 0 dB, about
 20 % for men's held series and up to 44 % for men's sustained /a/ in the old
 mixes — and the false line right after speech, which stays for the 2 s
@@ -47,7 +49,13 @@ hangover: only 14–28 % of it is removed in the first 2 s).
   [noise-detector-tryout-resonance-2026-10-21.md](noise-detector-tryout-resonance-2026-10-21.md):
   73 % less noise-only position time (the pre-set bar was 80 % — built
   anyway), speech unchanged, held vowels still excluded. A position the row
-  already has stays (the readout freezes; it does not clear).
+  already has stays (the readout freezes; it does not clear). The row's own
+  voiced / holding flags stay raw (the DSP gate), so on noise the detector
+  hides the row reads "keep talking…" with no position (the smoke's
+  air-conditioner clip: no position, states warming / idle), and a held
+  vowel the detector hides reads "keep talking…" instead of "needs running
+  speech". Masking those flags would be a separate change with its own
+  measurement.
 - **HNR readout** (user decision 2026-10-21): the cue strip's "HNR … dB"
   showed noise-derived values with no one speaking. It shows "—" while the
   gate hides (also during the 5 s silence hold once the detector says "no
@@ -79,10 +87,13 @@ hangover: only 14–28 % of it is removed in the first 2 s).
   before".
 - **Settings text:** "A voice detector hides the pitch line, Hz / note,
   steadiness and HNR while it hears no voice, such as a fan or hum alone, and
-  keeps that noise out of the resonance reading. It can blank parts of held
-  notes in loud noise, and noise can still show for about 2 s after you stop
-  speaking." The switch keeps its label "Hide pitch when no voice is heard
-  (experimental)", on by default.
+  keeps most of that noise out of the resonance reading. It can blank parts
+  of long held notes and vowels, more in loud noise, and noise can still show
+  for about 2 s after you stop speaking." (Review 2026-10-21: "most of" —
+  73 % less noise-only position time, and a position already shown stays;
+  "long held notes and vowels" — the long-hold cost below was not
+  re-measured.) The switch keeps its label "Hide pitch when no voice is heard
+  (experimental)", on by default; the text under it lists what it also hides.
 
 **Tests added:** `tests/audio/voice-gate-resonance-hint-test.js` (real hook
 `start()` relay with fake workers: no-voice hops reach the resonance worker

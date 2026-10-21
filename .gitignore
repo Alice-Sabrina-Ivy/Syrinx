@@ -66,6 +66,7 @@ scripts/penn-validation/
 public/audeering-6l-gender/
 public/jaesunghuh-gender/
 
-# FireRedVAD model files for the noise-detector try-out (fetched by
-# scripts/fetch-firered-model.mjs; Apache-2.0, not committed).
+# FireRedVAD model files for the voice gate, used until the Hugging Face
+# mirror is pinned (fetched by scripts/fetch-firered-model.mjs; Apache-2.0,
+# not committed).
 public/models/firered/

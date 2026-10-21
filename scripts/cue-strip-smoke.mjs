@@ -62,7 +62,10 @@
 //                   noise-detector-tryout): with the detector running the pitch
 //                   row is live on <= 10 % of 8 s of samples (FireRedVAD hears
 //                   this synthetic vowel as no voice — the documented cost),
-//                   the resonance row active on >= 80 %; then the gate off and:
+//                   the resonance row not idle on >= 80 % (its voiced /
+//                   holding flags are not gated; the gate only makes its
+//                   pitch hint unvoiced, so it reads "keep talking…" with no
+//                   position); then the gate off and:
 //                   resonance "sustained" for >= 60 % of the voiced hold after
 //                   its first second; the panel says "sustained", never ranges.
 //   4 noise / 5 silence  no dot on any row after the 5 s hold; the panel never
@@ -795,16 +798,20 @@ check("held: listening", await continueAfterReload(page));
 // the documented cost (measurements/noise-detector-tryout-2026-10-20.md).
 // Checked here, so the cost stays visible: the pitch row hidden (when the
 // detector is running; a change here means the design note is out of date)
-// while the resonance row, which the gate does not touch, stays active.
+// while the resonance row stays active: its voiced / holding flags are not
+// gated (the gate only makes its pitch hint unvoiced, so with the gate on it
+// reads "keep talking…" instead of "needs running speech", no position).
 // Then the gate is switched off in Settings so the checks below, which use
 // the pitch row as their voicing proxy for the RESONANCE row's verdict, run
 // as before.
 if (await page.evaluate(() => !!document.querySelector('[aria-label="Settings & Data"]'))) {
   await sleep(1000);
   let n = 0, live = 0, resVoiced = 0;
+  const resStates = new Set();
   await sample(page, 8000, (s) => {
     n++;
     if (s.rows.pitch?.state === "live") live++;
+    if (s.rows.resonance?.state) resStates.add(s.rows.resonance.state);
     if (s.rows.resonance?.state && !["idle", "starting"].includes(s.rows.resonance.state)) resVoiced++;
   });
   await openSettings(page);
@@ -821,14 +828,14 @@ if (await page.evaluate(() => !!document.querySelector('[aria-label="Settings & 
   await closeSettings(page);
   if (sw !== null) {
     const gating = sw.was === "true" && sw.status === "ready";
-    log(`  held (gate ${sw.was === "true" ? "on" : "off"}, detector ${sw.status}): pitch row live on ${live}/${n} samples; resonance row active on ${resVoiced}/${n}`);
+    log(`  held (gate ${sw.was === "true" ? "on" : "off"}, detector ${sw.status}): pitch row live on ${live}/${n} samples; resonance row active on ${resVoiced}/${n} (states ${[...resStates].join(",")})`);
     if (gating) {
       check("held, voice gate on: the pitch row stays hidden on this synthetic held vowel (the documented cost)",
         n >= 20 && live <= Math.floor(n * 0.1), `live on ${live}/${n} samples`);
     } else {
       log(`  (the pitch-row cost is not checked: the gate is ${sw.was === "true" ? `on but the detector is ${sw.status}` : "off"})`);
     }
-    check("held, voice gate on: the resonance row stays active (the gate does not touch it)", n >= 20 && resVoiced >= Math.ceil(n * 0.8), `${resVoiced}/${n}`);
+    check("held, voice gate on: the resonance row stays active (its voiced flag is not gated; the gate gates only its pitch hint)", n >= 20 && resVoiced >= Math.ceil(n * 0.8), `${resVoiced}/${n}`);
     check("held: try-out voice gate switched off for the resonance checks", after === "false", `${after}`);
   }
 }

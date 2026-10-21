@@ -184,9 +184,10 @@ readout is unchanged.
   0.13 s (BASE) / 0.08 s (GATED) of a hold's voiced time reaches the
   readout. The detector hides 91 % of the holds' voiced hops, so the
   utterance gate no longer sees them: the verdict "sustained" covers 100 %
-  of the hold after its first second in BASE, 0 % in GATED. Had this been
-  built, the row would say "keep talking…" on such a hold instead of
-  "needs running speech".
+  of the hold after its first second in BASE, 0 % in GATED. **Now live
+  (built 2026-10-21):** with the gate on, the row says "keep talking…" on
+  such a hold instead of "needs running speech". (Written before the build
+  as "Had this been built, the row would say …".)
 - H2 (97 PVQD recordings, 579 s of annotated holds): voiced time admitted
   to the readout inside the holds 65.9 s BASE, 64.5 s GATED.
 
