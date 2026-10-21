@@ -15,7 +15,9 @@
 // written to storage. Every user-facing string comes from strings.js.
 //
 // Accessibility (§10): one labelled section; the Record / Stop / Record again control is
-// one button element (focus stays put when a recording ends); controls that cannot act
+// one button element (focus stays put when a recording ends; it is inactive for the
+// controller's REARM_MS after that, so the press that stopped a recording cannot start the
+// next one); controls that cannot act
 // stay focusable (aria-disabled) and give their reason in visible text linked with
 // aria-describedby; native range inputs with aria-valuetext, committed on release
 // (pointer) or 400 ms after the last key; one polite live region for state changes.
@@ -301,17 +303,21 @@ function Card({ sess, direction = null, isSessionRecording, phone = false }) {
   const sessionRec = tick.sessionRec;
 
   // ---- the one Record / Stop / Record again button
+  // After a recording ends the button stays inactive for REARM_MS (s.rearming, the
+  // controller's re-arm): it turns from Stop into Record / Record again in the same place, and
+  // a press that belongs to stopping (the finger touching down again) must not start a new
+  // recording (2026-10-21 phone report).
   let recLabel = S.record;
   let recAction = () => ctl.record();
-  let recInactive = !RECORDABLE.has(phase) || waiting;
+  let recInactive = !RECORDABLE.has(phase) || waiting || s.rearming;
   if (phase === "recording") { recLabel = S.stop; recAction = () => ctl.stop(); recInactive = false; }
   else if (AGAIN.has(phase)) {
     // Record again waits, like Record, until listening has run 6 s (after listening
     // restarts with a preview on screen): pressing it then would discard the preview and
     // record nothing. The wait line under the status says how long.
     recLabel = S.recordAgain;
-    recAction = () => { if (ctl.readyInMs() !== 0) return; silently(() => playback.clear()); ctl.recordAgain(); };
-    recInactive = waiting;
+    recAction = () => { if (ctl.readyInMs() !== 0 || ctl.getState().rearming) return; silently(() => playback.clear()); ctl.recordAgain(); };
+    recInactive = waiting || s.rearming;
   }
   const recPrimary = phase !== "recording" && phase !== "preview";
 

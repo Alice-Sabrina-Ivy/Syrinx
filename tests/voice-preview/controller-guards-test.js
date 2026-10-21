@@ -6,13 +6,17 @@
 // preview and record nothing); a worker that never gets ready, or never finishes the
 // analysis, is terminated by a watchdog and the card gets a way out (load-error / error,
 // then Record again with a fresh worker); a render out of memory still goes to "memory".
+// Re-arm (2026-10-21 phone report): for REARM_MS after a recording ends, Record / Record
+// again refuse, so the press that stopped it (a finger touching down again as Stop turns
+// into Record again) cannot start a new recording and drop the preview.
 // measurements/voice-preview-phase1-2026-10-19.md, "Fix step".
 //
 //   node tests/voice-preview/controller-guards-test.js
 import { setVoicePreviewCapture, voicePreviewPitchTap } from "../../src/voice-preview/bridge.js";
-import {
-  createVoicePreviewController, LISTEN_BEFORE_RECORD_MS, LOAD_TIMEOUT_MS, ANALYSE_TIMEOUT_MS,
-} from "../../src/voice-preview/controller.js";
+import * as controller from "../../src/voice-preview/controller.js";
+const { createVoicePreviewController, LISTEN_BEFORE_RECORD_MS, LOAD_TIMEOUT_MS, ANALYSE_TIMEOUT_MS } = controller;
+// (read through the namespace so this file still runs, and its re-arm checks fail, on code without it)
+const REARM_MS = controller.REARM_MS ?? 1000;
 import { makeChecker } from "./vp-test-lib.js";
 
 const T = makeChecker();
@@ -182,12 +186,15 @@ console.log("\nwatchdog: an analysis that never finishes");
   const n1 = w.sent.length;
   voicePreviewPitchTap({ contextTime: 2, pitch: 200 });
   T.check("…and the pitch tap removed", w.sent.length === n1);
+  advance(REARM_MS);
   T.check("Record again: a fresh worker that records when ready", ctl.recordAgain() === true && workers.at(-1) !== w);
   ready(workers.at(-1));
   T.check("…recording", ctl.getState().phase === "recording");
   from(workers.at(-1), { type: "recorded", seconds: 5, reason: "user" });
   from(workers.at(-1), ANALYSED());
-  T.check("a finished analysis clears the watchdog", ctl.getState().phase === "preview" && timers.length === 0);
+  T.check("a finished analysis clears the watchdog (only the re-arm timer is left)", ctl.getState().phase === "preview" && timers.length === 1 && ctl.getState().rearming === true);
+  advance(REARM_MS);
+  T.check("…and no timer once re-armed", timers.length === 0 && ctl.getState().rearming === false);
   ctl.dispose();
 }
 
@@ -205,6 +212,51 @@ console.log("\nwatchdog: Discard while analysing");
   T.check("only the fresh worker's load watchdog is left", timers.length === 1);
   ready(workers.at(-1));
   T.check("…ready, no timer", ctl.getState().phase === "ready" && timers.length === 0);
+  ctl.dispose();
+}
+
+console.log("\nre-arm: a press right after a recording ends does not start the next one");
+{
+  timers = [];
+  T.check("REARM_MS is about a second", REARM_MS >= 500 && REARM_MS <= 1500, String(REARM_MS));
+  const ctl = make();
+  const w = workers.at(-1);
+  ready(w);
+  listen(10000);
+  T.check("not re-arming before any recording", ctl.getState().rearming === false && ctl.record() === true);
+  ctl.stop();                                       // the Stop press
+  T.check("Stop pressed: still recording until the worker answers", ctl.getState().phase === "recording" && ctl.getState().rearming === false);
+  from(w, { type: "recorded", seconds: 3.5, reason: "user" });
+  T.check("analysing: no re-arm yet (the button cannot act)", ctl.getState().phase === "analysing" && ctl.getState().rearming === false);
+  from(w, ANALYSED());
+  T.check("preview: the button re-arms", ctl.getState().phase === "preview" && ctl.getState().rearming === true);
+  // the finger touches down again: Record again
+  T.check("Record again right away: refused (returns false)", ctl.recordAgain() === false);
+  T.check("…the preview, its worker and its audio are kept; no new recording", ctl.getState().phase === "preview" && ctl.getState().original !== null && !w.terminated && workers.at(-1) === w
+    && w.sent.filter((m) => m.type === "record").length === 1);
+  advance(REARM_MS - 1);
+  T.check(`still refused ${REARM_MS - 1} ms after the preview appeared`, ctl.getState().rearming === true && ctl.recordAgain() === false && workers.at(-1) === w);
+  advance(1);
+  T.check(`re-armed ${REARM_MS} ms after it`, ctl.getState().rearming === false && timers.length === 0);
+  T.check("…then Record again works", ctl.recordAgain() === true && w.terminated && workers.at(-1) !== w);
+  const w2 = workers.at(-1);
+  ready(w2);
+  T.check("…and records with the fresh worker", ctl.getState().phase === "recording");
+  // a stop before 3 s: too short, Record right away is the same press
+  from(w2, { type: "too-short", seconds: 1.2 });
+  T.check("too short: re-arming, Record refused", ctl.getState().phase === "too-short" && ctl.getState().rearming === true && ctl.record() === false
+    && w2.sent.filter((m) => m.type === "record").length === 1);
+  advance(REARM_MS);
+  T.check("…and accepted once re-armed", ctl.record() === true && ctl.getState().phase === "recording");
+  // no voice (the message the phone report saw): the same
+  from(w2, { type: "recorded", seconds: 4, reason: "user" });
+  from(w2, { type: "no-voice", voicedS: 0.2, check: {} });
+  T.check("no voice: re-arming, Record refused", ctl.getState().phase === "no-voice" && ctl.getState().rearming === true && ctl.record() === false);
+  // Discard is deliberate: a fresh worker is not re-arming
+  ctl.discard();
+  T.check("Discard clears the re-arm and its timer", ctl.getState().rearming === false && timers.filter((t) => t.at - clock === REARM_MS).length === 0);
+  ready(workers.at(-1));
+  T.check("…Record works at once on the fresh worker", ctl.record() === true);
   ctl.dispose();
 }
 

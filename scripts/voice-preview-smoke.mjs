@@ -5,7 +5,7 @@
 // measurements/voice-preview-phase1-2026-10-19.md §14 "Smoke", "Renamed and moved 2026-10-20".
 //
 //   npm run build && node scripts/voice-preview-smoke-wavs.mjs &&
-//   node scripts/voice-preview-smoke.mjs [--parts=layout,flow,checks,dev,preview,fallback,chunkfail] [--out=<dir>]
+//   node scripts/voice-preview-smoke.mjs [--parts=layout,flow,checks,touchstop,dev,preview,fallback,chunkfail] [--out=<dir>]
 //        [--viewports=p360,p402,phone,landscape,desktop] [--chrome=<exe>]
 //        [--port=4193] [--dev-port=5193] [--preview-port=4194]
 //
@@ -51,6 +51,15 @@
 //         preview, and "Preview ready." is announced WITH the notice (fix step). The noise run
 //         (448 x 890, touch, direction "More feminine"): opening the target row with a prefilled
 //         field does not focus the field (no phone keyboard over the tab's area).
+// touchstop (speech-then-silence.wav, 448 x 890, touch; 2026-10-21 phone report "pressing
+//         Stop keeps popping up 'There wasn't enough voice…'"): a recording of ~3.5 s of
+//         speech is stopped by a touch held 300 ms on Stop (touchstart … touchend, with the
+//         mouse / click events Chrome synthesizes), and the finger touches the same spot again
+//         the moment the button turns into Record again. That one press stops the recording
+//         (one click); the second contact does not start a new recording (the button re-arms
+//         REARM_MS after it stops being Stop); the preview is made and stays; no "There wasn't
+//         enough voice…" (on the old code the second contact started an 8 s recording of the
+//         silence that follows, which ended with that message); Record again works once re-armed.
 // dev     one run against `vite` (dev server): the ?url glue import works there too. The dev
 //         server runs in this process (Vite's createServer) with its own dependency cache in
 //         build/vp-smoke-vite/, so a worktree whose node_modules is a junction never writes
@@ -95,7 +104,7 @@ import { applyPreset } from "../src/voice-preview/controls.js";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const arg = (k, d) => (process.argv.find((a) => a.startsWith(`--${k}=`)) ?? `=${d}`).split("=").slice(1).join("=");
-const PARTS = new Set(arg("parts", "layout,flow,checks,dev,preview,fallback,chunkfail").split(",").filter(Boolean));
+const PARTS = new Set(arg("parts", "layout,flow,checks,touchstop,dev,preview,fallback,chunkfail").split(",").filter(Boolean));
 const WAVDIR = arg("wavs", path.join(repo, "build", "voice-preview-smoke", "wavs"));
 const OUT = arg("out", path.join(repo, "build", "voice-preview-smoke", "shots"));
 const PORT = Number(arg("port", "4193"));
@@ -104,7 +113,7 @@ const PREVIEW_PORT = Number(arg("preview-port", "4194"));
 const CFT = path.join(P.browsers, "chrome", "win64-154.0.8037.57", "chrome-win64", "chrome.exe"); // the spike's timing browser
 const CHROME = arg("chrome", "") || (PARTS.has("timing") && existsSync(CFT) ? CFT : "") || ["C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
   "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe"].find(existsSync);
-const WAV = Object.fromEntries(["clean", "hum", "noise"].map((k) => [k, path.join(WAVDIR, `${k}.wav`)]));
+const WAV = Object.fromEntries(["clean", "hum", "noise", "speech-then-silence"].map((k) => [k, path.join(WAVDIR, `${k}.wav`)]));
 const TIMING_WAV = path.join(WAVDIR, "timing.wav");
 const TIMING_N = Number(arg("timing-n", "10"));
 if (!CHROME || Object.values(WAV).some((w) => !existsSync(w))) { console.error("need Chrome and the WAVs (scripts/voice-preview-smoke-wavs.mjs)"); process.exit(2); }
@@ -1046,6 +1055,76 @@ async function partChecks() {
   }
 }
 
+// A lingering touch on Stop, and the finger touching down again as the button turns into
+// Record again (2026-10-21 phone report). The second contact must not start a new recording.
+async function partTouchStop() {
+  scope = "touchstop";
+  await launch(WAV["speech-then-silence"]);
+  const { page, errors } = await open("phone");
+  await startListening(page);
+  await openShaper(page);
+  await watchLive(page);
+  await page.evaluate(() => {
+    window.__vpEv = [];
+    window.__vpPhases = [];
+    const card = () => document.querySelector("[data-voice-preview]");
+    for (const type of ["touchstart", "touchend", "click"]) {
+      document.addEventListener(type, (e) => {
+        const b = e.target?.closest?.("[data-vp-record]");
+        if (b) window.__vpEv.push({ type, label: b.textContent.trim(), phase: card()?.dataset.vpPhase, inactive: b.getAttribute("aria-disabled") === "true" });
+      }, true);
+    }
+    new MutationObserver(() => {
+      const p = card()?.dataset.vpPhase;
+      if (p !== window.__vpPhases.at(-1)) window.__vpPhases.push(p);
+    }).observe(document.body, { subtree: true, attributes: true, attributeFilter: ["data-vp-phase"], childList: true });
+  });
+  const center = async () => {
+    const el = await page.$("[data-vp-record]");
+    await el.evaluate((e) => e.scrollIntoView({ block: "center" }));
+    const b = await el.boundingBox();
+    await el.dispose();
+    return [b.x + b.width / 2, b.y + b.height / 2];
+  };
+  await recordReady(page, 30000);
+  let [x, y] = await center();
+  await page.touchscreen.tap(x, y);
+  check("a tap on Record starts a recording", await phaseIs(page, "recording", 5000));
+  await sleep(3500);
+  [x, y] = await center();
+  await page.evaluate(() => { window.__vpEv.length = 0; window.__vpPhases.length = 0; });
+  await page.touchscreen.touchStart(x, y);
+  await sleep(300);
+  await page.touchscreen.touchEnd();
+  // the finger touches the same spot again the moment the button reads Record again
+  const turned = await waitVp(page, () => /Record again|^Record$/.test(document.querySelector("[data-vp-record]")?.textContent.trim() ?? "")
+    && !["recording", "analysing"].includes(document.querySelector("[data-voice-preview]")?.dataset.vpPhase), "button turned", 15000);
+  const evStop = await page.evaluate(() => window.__vpEv.slice());
+  await page.touchscreen.touchStart(x, y);
+  await sleep(80);
+  await page.touchscreen.touchEnd();
+  const tSecond = Date.now();
+  // an 8 s recording of the silence and its analysis would end by here
+  await waitVp(page, () => ["no-voice", "too-short", "error"].includes(document.querySelector("[data-voice-preview]")?.dataset.vpPhase), "a second recording's end (none expected)", 11000);
+  const st = await vp(page);
+  const phases = await page.evaluate(() => window.__vpPhases.slice());
+  const ev = await page.evaluate(() => window.__vpEv.slice());
+  const live = await liveLog(page);
+  log(`touchstop: phases ${phases.join(" > ")}; events ${ev.map((e) => `${e.type}@${e.label}/${e.phase}${e.inactive ? "(inactive)" : ""}`).join(", ")}`);
+  check("the Stop press held 300 ms is one click on Stop, and it stops the recording", turned && evStop.filter((e) => e.type === "click").length === 1 && evStop.find((e) => e.type === "click")?.label === "Stop",
+    evStop.map((e) => `${e.type}@${e.label}/${e.phase}`).join(", "));
+  check("the second contact right after does not start a new recording", !phases.slice(phases.indexOf("preview")).some((p) => p === "loading" || p === "recording") && phases.includes("preview"), phases.join(" > "));
+  check("the preview is made and stays", st.vpPhase === "preview" && /Record again/.test(st.record), `${st.vpPhase}; button "${st.record}"; ${((Date.now() - tSecond) / 1000).toFixed(1)} s after the second contact`);
+  check("no \"There wasn't enough voice…\" message", !st.text.includes("There wasn't enough voice") && !live.some((t) => t.includes("There wasn't enough voice")), live.join(" | "));
+  const rearmed = await waitVp(page, () => { const b = document.querySelector("[data-vp-record]"); return b?.textContent.trim() === "Record again" && b.getAttribute("aria-disabled") !== "true"; }, "re-armed", 3000);
+  [x, y] = await center();
+  await page.touchscreen.tap(x, y);
+  check("once re-armed, a tap on Record again records", rearmed && await phaseIs(page, "recording", 8000));
+  await shot(page, "phone-dark-touchstop");
+  check("no console errors", errors.length === 0, errors.slice(0, 3).join(" | "));
+  await page.close();
+}
+
 async function partDev() {
   scope = "dev";
   const { createServer: createViteServer } = await import("vite");
@@ -1269,6 +1348,7 @@ try {
   if (PARTS.has("layout")) await partLayout();
   if (PARTS.has("flow")) await partFlow();
   if (PARTS.has("checks")) await partChecks();
+  if (PARTS.has("touchstop")) await partTouchStop();
   if (PARTS.has("dev")) await partDev();
   if (PARTS.has("preview")) await partPreview();
   if (PARTS.has("fallback")) await partFallback();
