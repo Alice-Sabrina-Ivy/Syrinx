@@ -1,8 +1,11 @@
 // analyze.mjs — attribution tables of measurements/heard-as-low-pitch-and-pauses-2026-10-21.md
-// from run.mjs outputs (the SHIPPED panel only; candidate variants are run
-// later, after the pre-registered plan, with --variant).
+// from run.mjs outputs: the SHIPPED panel, or a pre-registered candidate
+// (§6.1: H1 minVoicedMs 2000, H2 speech-time pool, H3 first reading on the
+// 250 ms check, and their combinations) with --variant.
 //
-//   node analyze.mjs --runs=<run.0.jsonl,run.1.jsonl> --out=<dir> [--variant=<name>]
+//   node analyze.mjs --runs=<run.0.jsonl,run.1.jsonl> --out=<dir> [--variant=<name>] [--split=dev|test]
+//
+// (importable: candidates.mjs uses simulate / settled / streamMetrics.)
 //
 // Live panel = src/ml/heard-as.js + src/ml/heardAsCalibration.js, updates every
 // 2 s of audio from the stream start, the 250 ms held-note check, the display
@@ -20,14 +23,29 @@ const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../.
 const { createHeardAsAggregator, heardAsShares, isWideShare, outsideTestedRange, ML_WINDOW_MS } = await import(pathToFileURL(path.join(repo, "src/ml/heard-as.js")).href);
 const { HEARD_AS_CALIBRATION: C } = await import(pathToFileURL(path.join(repo, "src/ml/heardAsCalibration.js")).href);
 const arg = (k, d) => (process.argv.find((a) => a.startsWith(`--${k}=`)) ?? `=${d}`).split("=").slice(1).join("=");
-const OUT = arg("out", ".");
-mkdirSync(OUT, { recursive: true });
 
-export const VARIANTS = { shipped: { agg: {}, panel: {} } };
+// Pre-registered candidates (measurements/heard-as-low-pitch-and-pauses-2026-10-21.md §6.1).
+const H1 = { minVoicedMs: 2000 };
+const H2 = { poolGapCapMs: ML_WINDOW_MS, poolMaxBackMs: 16000 };
+const H3 = { fastFirst: true };
+export const VARIANTS = {
+  shipped: { agg: {}, panel: {}, changes: 0 },
+  H1: { agg: { ...H1 }, panel: {}, changes: 1 },
+  H2: { agg: { ...H2 }, panel: {}, changes: 1 },
+  H3: { agg: {}, panel: { ...H3 }, changes: 1 },
+  "H1+H2": { agg: { ...H1, ...H2 }, panel: {}, changes: 2 },
+  "H1+H3": { agg: { ...H1 }, panel: { ...H3 }, changes: 2 },
+  "H2+H3": { agg: { ...H2 }, panel: { ...H3 }, changes: 2 },
+  "H1+H2+H3": { agg: { ...H1, ...H2 }, panel: { ...H3 }, changes: 3 },
+};
 const VARIANT = arg("variant", "shipped");
 
 // ---------------------------------------------------------------- panel
-function simulate(s, v = VARIANTS[VARIANT], phaseMs = 0) {
+// H3 (panel.fastFirst): while no reading is shown, the 250 ms check also runs
+// estimate() and shows a reading as soon as there is one; shown, updates stay
+// on the 2 s timer (and only the 2 s updates are recorded in `updates`, the
+// stream the pitch-only warning would see).
+export function simulate(s, v = VARIANTS[VARIANT], phaseMs = 0) {
   const aggOpts = { ...v.agg };
   const agg = createHeardAsAggregator(aggOpts);
   const minWindows = aggOpts.minWindows ?? C.minWindows, minVoicedMs = aggOpts.minVoicedMs ?? C.minVoicedMs;
@@ -47,7 +65,7 @@ function simulate(s, v = VARIANTS[VARIANT], phaseMs = 0) {
       else voiceState = x;
     }
     const update = (now - phaseMs) % C.updateMs === 0;
-    if (update || (cur.shown && voiceState === "sustained")) {
+    if (update || (cur.shown && voiceState === "sustained") || (v.panel?.fastFirst && !cur.shown)) {
       const e = agg.estimate(now, voiceState);
       const g = agg.aggregate(now);
       if (e.hidden) {
@@ -71,7 +89,7 @@ function simulate(s, v = VARIANTS[VARIANT], phaseMs = 0) {
 }
 
 /** The stream's settled reading: every scored window of the stream pooled once (no hide rules). */
-function settled(s) {
+export function settled(s) {
   const agg = createHeardAsAggregator({ windowMs: Infinity, minVoicedMs: 0, minWindows: 0 });
   for (const [ms, f0] of s.pitch) agg.addPitch({ audioMs: ms, f0 });
   for (const w of s.windows) agg.addWindow({ audioMs: w[0], logit: w[2] ? s.logits[w[0]] : null, mode: w[1], classified: !!w[2] });
@@ -92,12 +110,12 @@ function refAt(ref, hopMs, ms) { const i = Math.round(ms / hopMs); return i >= 0
 // counts the whole stream span; "never" = no phase reaches it). Update-level
 // tables use phase 0.
 const PHASES = [0, 500, 1000, 1500];
-function streamMetrics(s) {
+export function streamMetrics(s, vname = VARIANT) {
   const lead = s.leadMs ?? 1000;
   const speechEnd = s.speechSpans[s.speechSpans.length - 1][1];
   const spanS = (speechEnd + 1000 - lead) / 1000;
   const per = PHASES.map((ph) => {
-    const { samples, updates } = simulate(s, VARIANTS[VARIANT], ph);
+    const { samples, updates } = simulate(s, VARIANTS[vname], ph);
     const vis = samples.filter((x) => x.t >= lead && x.t <= speechEnd + 1000);
     const tFirst = (pred) => { const x = samples.find((q) => q.t >= lead && pred(q)); return x ? (x.t - lead) / 1000 : null; };
     return { samples, updates, vis, tF: tFirst((q) => q.shown), tI: tFirst((q) => q.shown && !q.wide),
@@ -203,13 +221,21 @@ function streamMetrics(s) {
 function median(a) { if (!a.length) return null; const b = [...a].sort((x, y) => x - y); const h = b.length >> 1; return b.length % 2 ? b[h] : (b[h - 1] + b[h]) / 2; }
 
 // ---------------------------------------------------------------- main
-const rows = [];
-for (const p of arg("runs", "").split(",")) {
-  for (const l of readFileSync(p, "utf8").split("\n")) {
-    if (!l.trim()) continue;
-    const s = JSON.parse(l);
-    rows.push(streamMetrics(s));
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+  if (!VARIANTS[VARIANT]) throw new Error(`unknown variant ${VARIANT}`);
+  const OUT = arg("out", ".");
+  const SPLIT = arg("split", "all");
+  mkdirSync(OUT, { recursive: true });
+  const rows = [];
+  for (const p of arg("runs", "").split(",")) {
+    for (const l of readFileSync(p, "utf8").split("\n")) {
+      if (!l.trim()) continue;
+      const s = JSON.parse(l);
+      if (SPLIT !== "all" && s.split !== SPLIT) continue;
+      rows.push(streamMetrics(s));
+    }
   }
+  const tag = SPLIT === "all" ? VARIANT : `${VARIANT}.${SPLIT}`;
+  writeFileSync(path.join(OUT, `streams.${tag}.json`), JSON.stringify(rows));
+  console.log(`${rows.length} streams -> ${path.join(OUT, `streams.${tag}.json`)}`);
 }
-writeFileSync(path.join(OUT, `streams.${VARIANT}.json`), JSON.stringify(rows));
-console.log(`${rows.length} streams -> ${path.join(OUT, `streams.${VARIANT}.json`)}`);
