@@ -27,7 +27,9 @@
 //   - silence after speech: the dim held readout AND the held HNR keep their
 //     5 s silence hold (the detector's "no voice" 2 s into the silence does
 //     not clear them; HNR: user decision 2026-10-21), unless the gate hid
-//     painted frames after the held value — then both show "—".
+//     painted frames after the held value — then both show "—". The held
+//     HNR is the last one the readout SHOWED: hidden unpainted noise (an
+//     HNR, no pitch line) before the quiet never becomes the held HNR.
 //
 //   node tests/audio/voice-gate-display-test.js
 
@@ -51,7 +53,8 @@ let fakeNow = 0;
 performance.now = () => fakeNow;
 
 let gen = 0;
-// frames: [{ x: Hz | "q" (quiet) | "l" (loud, no pitch), vad: true | false | undefined }]
+// frames: [{ x: Hz | "q" (quiet) | "l" (loud, no pitch), vad: true | false | undefined,
+//            hnr: the DSP frame's HNR (default 12) }]
 async function run(frames, { gateOn = true } = {}) {
   M.refs = []; M.effects = []; M.state = null;
   const mod = await import(`${HOOK}?g=${++gen}`);
@@ -76,7 +79,7 @@ async function run(frames, { gateOn = true } = {}) {
       type: "pitch", pitch, confidence, voiced: pitch !== null, ts: t, contextTime: t / 1000,
       ...(fr.vad === undefined ? {} : { vad: { p: fr.vad ? 0.9 : 0.1, voice: fr.vad } }),
     });
-    har.current({ intensity, formants: { f1: 500, f2: 1500, f3: 2500 }, spectralTilt: -10, hnr: 12, cpp: null, absoluteTime: t });
+    har.current({ intensity, formants: { f1: 500, f2: 1500, f3: 2500 }, spectralTilt: -10, hnr: fr.hnr ?? 12, cpp: null, absoluteTime: t });
     const trace = api.pitchTraceRef.current;
     const e = trace[trace.length - 1];
     const s = M.state;
@@ -90,8 +93,8 @@ async function run(frames, { gateOn = true } = {}) {
   return { out, rec };
 }
 
-const rep = (v, n, vad) => Array.from({ length: n }, () => ({ x: v, vad }));
-const strip = (frames) => frames.map((f) => ({ x: f.x }));
+const rep = (v, n, vad, hnr) => Array.from({ length: n }, () => ({ x: v, vad, ...(hnr === undefined ? {} : { hnr }) }));
+const strip = (frames) => frames.map((f) => ({ x: f.x, ...(f.hnr === undefined ? {} : { hnr: f.hnr }) }));
 
 // A false pitch line (noise decoded at 117 Hz) with the detector saying no
 // voice, then speech (detector: voice), then the line again.
@@ -204,6 +207,42 @@ console.log("\nsilence after speech: the 5 s silence hold is unchanged");
     g.out.every((o, i) => !q[i] || (o.pitch === null && o.note === null && !o.pitchHolding)));
   check("after a line the gate hid, the silence hold shows no HNR either (the ungated app holds one there)",
     g.out.every((o, i) => !q[i] || o.hnr === null) && b.out.filter((o, i) => q[i] && o.hnr !== null).length === 40);
+}
+
+{
+  // Hidden UNPAINTED noise (loud, no pitch line, its own HNR 3), then quiet:
+  // the gate hid that HNR, so the hold must not show it — it shows the last
+  // HNR the readout showed, like the dim pitch readout: none at all; the
+  // speech's 12 when the noise starts after the pitch hold ended (the held
+  // pitch shows too); "—" when the noise follows the speech at once (the
+  // 400 ms pitch hold paints into the noise, the gate hides that, so the
+  // pitch readout shows "—" as well). The ungated app holds the noise's 3
+  // there (the case is real). Review finding 2026-10-21.
+  const ALONE = [...rep("l", 40, false, 3), ...rep("q", 40, false, 3)];
+  const AFTER = [...rep(205, 60, true, 12), ...rep("l", 20, true, 12), ...rep("l", 40, false, 3), ...rep("q", 40, false, 3)];
+  const AT_ONCE = [...rep(205, 60, true, 12), ...rep("l", 40, false, 3), ...rep("q", 40, false, 3)];
+  for (const [name, seq, want, wantPitch] of [
+    ["no speech before", ALONE, null, null],
+    ["speech, then noise after the pitch hold", AFTER, 12, 205],
+    ["speech straight into noise", AT_ONCE, null, null],
+  ]) {
+    const g = await run(seq);
+    const b = await run(strip(seq));
+    const n = seq.map((f) => f.x === "l" && f.vad === false);
+    // The silence hold: quiet frames once the silence gate's 3-frame
+    // debounce has passed (the first two are still ordinary hidden frames).
+    const q0 = seq.findIndex((f) => f.x === "q");
+    const q = seq.map((f, i) => f.x === "q" && i >= q0 + 2);
+    check(`hidden unpainted noise (${name}): HNR "—" while it plays`, g.out.every((o, i) => !n[i] || o.hnr === null));
+    check(`hidden unpainted noise (${name}): the silence hold never shows the hidden HNR 3 (shows ${want === null ? "—" : want})`,
+      g.out.every((o, i) => !q[i] || o.hnr === want),
+      g.out.map((o, i) => (!q[i] || o.hnr === want ? "" : `${i}:${o.hnr}`)).filter(String).slice(0, 6).join(","));
+    check(`hidden unpainted noise (${name}): the held pitch readout agrees (${wantPitch === null ? "—" : wantPitch})`,
+      g.out.every((o, i) => !q[i] || (wantPitch === null ? o.pitch === null : Math.round(o.pitch) === wantPitch)));
+    check(`hidden unpainted noise (${name}): the ungated app holds the noise's HNR there (the case is real)`,
+      b.out.filter((o, i) => q[i] && o.hnr === 3).length === 38);
+    check(`hidden unpainted noise (${name}): recorded hnr unchanged (display only)`, g.rec.every((r, i) => r.hnr === b.rec[i].hnr));
+  }
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

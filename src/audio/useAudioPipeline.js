@@ -97,9 +97,10 @@ const NO_STEADINESS = { value: null, held: false };
 //     vetoed");
 //   - the HNR readout shows "—" (display only: the DSP worker computes HNR as
 //     before and recorded frames keep it; user decision 2026-10-21), except in
-//     the 5 s silence hold, which keeps the last HNR like the dim pitch
-//     readout — "—" there only when the gate hid painted pitch after it
-//     (gateHidPaintRef; user decision 2026-10-21);
+//     the 5 s silence hold, which keeps the last HNR the readout SHOWED
+//     (lastVoicedRef shownHnr — never a value the gate hid) like the dim
+//     pitch readout — "—" there only when the gate hid painted pitch after
+//     it (gateHidPaintRef; user decision 2026-10-21);
 //   - the resonance worker's pitch hint says unvoiced (pitch / contextTime
 //     unchanged), so noise the pitch worker voices does not become resonance
 //     readings (the measured variant of
@@ -311,6 +312,10 @@ export function useAudioPipeline() {
     formants: { f1: null, f2: null, f3: null },
     spectralTilt: null,
     hnr: null,
+    // The last HNR the readout SHOWED (the voice gate leaves the measured
+    // hnr above updating on frames it hides): the 5 s silence hold shows
+    // this one, never a value the gate hid.
+    shownHnr: null,
   });
 
   // History buffers for canvas visualizations (read directly by rAF loops)
@@ -1082,6 +1087,7 @@ export function useAudioPipeline() {
       formants: { f1: null, f2: null, f3: null },
       spectralTilt: null,
       hnr: null,
+      shownHnr: null,
     };
     pitchTraceRef.current = [];
     for (const fn of traceListenersRef.current) fn();
@@ -1369,10 +1375,11 @@ export function useAudioPipeline() {
           steadinessHeld: vadHide ? false : steady.held,
           formants: held.formants,
           spectralTilt: held.spectralTilt,
-          // Voice gate: the held HNR stays for the whole hold, like the dim
-          // pitch readout, unless the gate hid painted pitch after it
-          // (display only; user decision 2026-10-21).
-          hnr: gateHid ? null : held.hnr,
+          // Voice gate: the last HNR the readout showed stays for the whole
+          // hold, like the dim pitch readout (never a value the gate hid),
+          // unless the gate hid painted pitch after it (display only; user
+          // decision 2026-10-21). Without the gate shownHnr === hnr.
+          hnr: gateHid ? null : held.shownHnr,
         }));
       } else {
         // Prolonged silence: clear everything, including the paint
@@ -1579,6 +1586,8 @@ export function useAudioPipeline() {
       formants: smoothedFormants,
       spectralTilt: currentTilt,
       hnr: currentHnr,
+      // The readout below shows currentHnr unless the gate hides this frame.
+      shownHnr: vadHide ? lastVoicedRef.current.shownHnr : currentHnr,
     };
 
     // Notify frame callback (session recording) with smoothed values.
