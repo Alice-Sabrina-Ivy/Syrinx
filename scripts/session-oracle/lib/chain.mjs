@@ -28,7 +28,10 @@
 //     paint  value painted on the live trace this hop (0 = gap)
 //     brk    1 if the hook inserted an octave-class line break before it
 //     ro     readout Hz in the hook's state (0 = "—")
-//     style  0 inactive, 1 holding (dim), 2 voiced
+//     style  0 inactive, 1 holding (dim), 2 voiced — as the pitch display
+//            shows it: pitchVoiced / pitchHolding (the voice gate's mask,
+//            since 2026-10-21; equal to the raw voiced / holding without a
+//            decision); trees without those fields: voiced / holding
 //     rec    session-recorded f0 (frame callback; 0 = unvoiced)
 //   --voice-gate runs (lib/voice-gate.mjs) add:
 //     vadv   the voice detector's decision the display hop consumed
@@ -186,7 +189,9 @@ export async function driveHook(hookPath, frames, n) {
     if (painted > 0 && prev && prev.time === now && prev.pitch === null) out.brk[f.k] = 1;
     const s = M.state;
     out.ro[f.k] = s.pitch ?? 0;
-    out.style[f.k] = s.voiced ? 2 : s.holding ? 1 : 0;
+    const shownVoiced = s.pitchVoiced ?? s.voiced;
+    const shownHolding = s.pitchHolding ?? s.holding;
+    out.style[f.k] = shownVoiced ? 2 : shownHolding ? 1 : 0;
     out.rec[f.k] = rec && rec.voiced && rec.f0 !== null ? rec.f0 : 0;
     out.vadv[f.k] = vadVoice === null ? -1 : vadVoice ? 1 : 0;
   }

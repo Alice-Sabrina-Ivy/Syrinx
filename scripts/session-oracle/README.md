@@ -126,8 +126,19 @@ correct 98.53 / 98.31 / 97.34 / 97.43 % at dec / post / paint / readout),
 31 222 "voice" / 1 228 "no voice" / 0 undecided messages, no late message,
 no mask violation, false painting on reference-unvoiced hops 52.56 →
 51.81 % (vocadito_34: 45.42 → 38.93 %). `run.mjs --voice-gate` on a public
-clip: every column of the gate-off and gate-on passes equals the run
-without the option except where the gate hides.
+clip: every column of the gate-off pass equals the run without the option.
+The gate-on pass differs only in `paint`, `ro` and (since the 2026-10-21
+review fix below) `style`: on the hops the gate hides, and on hops where
+the detector says "voice" but the dim held readout stays blank because the
+gate hid the painted frames before it (`gateHidPaintRef`, intended; 7 hops
+on vocadito_34).
+
+**Fix (2026-10-21, review):** `style` (and `styleA`) read the raw
+`voiced` / `holding`, so in the gate-on pass it equalled gate off on every
+hop. It now records what the pitch display shows, `pitchVoiced` /
+`pitchHolding` (falling back to `voiced` / `holding` for trees without
+them; identical without a decision, so runs without `--voice-gate` do not
+change). No analysis reads `style`, so no published number changes.
 
 ## Conventions (2026-10-03)
 
