@@ -1,11 +1,127 @@
 # Noise-detector try-out: FireRedVAD pitch gate (design note, 2026-10-20)
 
-Branch `noise-detector-tryout` (from `cue-strip`). A **try-out build for the
-PC**, not a ship: the user decided on 2026-10-20 that blanking some held
-notes / sustained vowels is acceptable for now and asked for a build to try
-next to a proper confirmation run. The confirmation is separate work
-(pre-registered on branch `voice-detector`,
+**Merged into `cue-strip` on 2026-10-21** (user decision: "works well enough
+in my limited testing"), together with the resonance-row gate and an HNR
+display gate, and with a plan for hosting the model — see "Merged into
+cue-strip (2026-10-21)" below. The confirmation it waited for passed
+([firered-confirmation-2026-10-21.md](firered-confirmation-2026-10-21.md),
+CONFIRMATION: PASS). The rest of this note is the try-out as built on
+2026-10-20; where it disagrees with the merge section, the merge section
+wins.
+
+**Historical (superseded 2026-10-21):** Branch `noise-detector-tryout` (from
+`cue-strip`). A **try-out build for the PC**, not a ship: the user decided on
+2026-10-20 that blanking some held notes / sustained vowels is acceptable for
+now and asked for a build to try next to a proper confirmation run. The
+confirmation is separate work (pre-registered on branch `voice-detector`,
 `measurements/firered-confirmation-2026-10-21.md`); nothing here replaces it.
+
+## Merged into cue-strip (2026-10-21)
+
+Branch `firered-merge` (from `cue-strip` 8e7252a): `noise-detector-tryout`
+and `noise-detector-tryout-res` merged; conflicts only in the third-party
+notices script / test (Voice Shaper's WORLD / Emscripten components next to
+FireRedVAD's model licence: both kept) and the hook's imports (both kept).
+
+**Decision data** (now in this branch's `measurements/`, copied from branch
+`voice-detector`):
+[offtheshelf-screen-2026-10-20.md](offtheshelf-screen-2026-10-20.md) (the
+screen and the relaxed-rules addendum that picked the R1 h point) and
+[firered-confirmation-2026-10-21.md](firered-confirmation-2026-10-21.md)
+(fresh public data, every gate passed: 80.6 % of the false pitch line removed
+on fresh noise — 86.9 % without one mislabelled interview clip — and 79.2 % on
+held-out B; speech ≤ 0.2 % and songs 0 % blanked; mixes ≤ 1.4 %; clean held
+voices ≤ 1.9 %; onset delay 0 ms; desktop browser CPU 0.85 ms per 25 ms. Costs
+it names: held voices in loud noise — up to 8 % of fresh notes at 0 dB, about
+20 % for men's held series and up to 44 % for men's sustained /a/ in the old
+mixes — and the false line right after speech, which stays for the 2 s
+hangover: only 14–28 % of it is removed in the first 2 s).
+
+**What changed with the merge:**
+
+- **Resonance row** (user decision 2026-10-21): the hook sends the resonance
+  worker a pitch hint with `voiced: false` on every hop the detector calls
+  "no voice" while the setting is on; `pitch` / `contextTime` unchanged; no
+  decision (loading / unavailable / off / slow) or the setting off: the hint
+  as before. Exactly the measured variant of
+  [noise-detector-tryout-resonance-2026-10-21.md](noise-detector-tryout-resonance-2026-10-21.md):
+  73 % less noise-only position time (the pre-set bar was 80 % — built
+  anyway), speech unchanged, held vowels still excluded. A position the row
+  already has stays (the readout freezes; it does not clear).
+- **HNR readout** (user decision 2026-10-21): the cue strip's "HNR … dB"
+  showed noise-derived values with no one speaking. It shows "—" while the
+  gate hides (also during the 5 s silence hold once the detector says "no
+  voice", ~2 s into a silence, while the dim pitch readout keeps its 5 s).
+  Display only: `dsp-worker.js` computes HNR as before, recorded frames keep
+  the measured value, and speech keeps its HNR as the confirmation keeps
+  speech (≤ 0.2 % of speech hops blanked).
+- **Model hosting** (user decision 2026-10-21), as the Silero speech
+  detector (`src/ml/speech-detector.js`; [low-voice-noise-2026-10-07.md](low-voice-noise-2026-10-07.md)
+  "Model hosting"): `FIRERED_MODEL.mirror` =
+  `Alice-Sabrina-Ivy/fireredvad-stream-vad-onnx` (files
+  `fireredvad_stream_vad_with_cache.onnx`, `cmvn.ark`, `LICENSE`,
+  `README.md`), uploaded by the repo owner. Once `FIRERED_MODEL.mirrorCommit`
+  holds the mirror's commit, the pitch worker loads both files from
+  `huggingface.co/<mirror>/resolve/<commit>/` through `loadVerifiedModel` (a
+  Cache Storage copy first — HF's `/resolve/` redirect is `no-store` — one
+  cache per file, sha256 checked, plus the size check). **Until then
+  `mirrorCommit` is `null`** and the files load from the app's own
+  `models/firered/` exactly as in the try-out (`scripts/fetch-firered-model.mjs`,
+  a developer step). To switch: upload the two official files byte for byte
+  (same sha256 as pinned), put the commit in `mirrorCommit`, and check the
+  built app loads the detector ("ready"); `tests/dsp/firered-model-hosting-test.js`
+  checks the URL shape, the cache and the failure paths with mocks.
+- **Plain failure text:** any load failure (not there, wrong size, hash
+  mismatch, network) is status `unavailable` (was `missing`); Settings says
+  "Off: the voice detector could not load, so pitch is shown as before." No
+  user-facing text names a developer command any more; the technical reason
+  is in the diag overlay. Error / slow say the same "pitch is shown as
+  before".
+- **Settings text:** "A voice detector hides the pitch line, Hz / note,
+  steadiness and HNR while it hears no voice, such as a fan or hum alone, and
+  keeps that noise out of the resonance reading. It can blank parts of held
+  notes in loud noise, and noise can still show for about 2 s after you stop
+  speaking." The switch keeps its label "Hide pitch when no voice is heard
+  (experimental)", on by default.
+
+**Tests added:** `tests/audio/voice-gate-resonance-hint-test.js` (real hook
+`start()` relay with fake workers: no-voice hops reach the resonance worker
+unvoiced, pitch / contextTime / ML / DSP hints unchanged, setting off /
+unavailable / slow = today's hints, init names the model source; fails on the
+pre-merge hook), HNR checks in `tests/audio/voice-gate-display-test.js` (fail
+on the pre-merge hook), `tests/dsp/firered-model-hosting-test.js` (both
+sources with mock fetch and Cache Storage; a hash mismatch, wrong size, 404 or
+network error -> unavailable; the real pitch worker's loader on both sources;
+plain status text). `scripts/voice-gate-smoke.mjs` now also checks, on the
+committed air-conditioner clip, that with the gate on from the start the
+resonance row gets no position (and, in a fresh run with the gate off, that
+it does get one — the case is real), that the HNR readout shows "—", and the
+plain "unavailable" text.
+
+**Checks (2026-10-21, branch `firered-merge`, desktop Chrome):**
+
+- `npm run lint` clean; `npm run test:unit` 67 / 67 scripts (incl. the new
+  hosting and resonance-hint tests); `npm run build` green. FireRedVAD parity
+  with the model fetched: 21 / 21 (probabilities within 3.0e-7 of the Python
+  runner, decisions equal to score.py on all 720 hops).
+- `scripts/voice-gate-smoke.mjs`: **24 / 24**. Committed air-conditioner
+  clip: gate on hides the pitch line (0 of 313 painted frames shown), the
+  resonance row gets no position over 20 s with the gate on from the start
+  (0 of 76 samples), while a fresh run with the gate off gets one (first at
+  12.8 s; 10.3 s in an earlier run), and the HNR readout shows "—" on 64 of
+  64 samples after 3 s (gate off: a number on 44 of 46). Speech: 411 / 411
+  painted frames kept. VocalSet long tones: 0 of 749 hidden. Model files
+  removed: Settings says "Off: the voice detector could not load, so pitch is
+  shown as before.", status `unavailable`, nothing hidden. Detector CPU
+  1.2 ms median / 2.1 ms p95 per 25 ms hop; the catch-up hop after the model
+  loads at most 19.3 ms. (An earlier run with the machine at 100 % CPU from
+  other work failed only that catch-up check, 36 ms, with the detector median
+  at 2.7 ms; the catch-up code is unchanged by the merge.)
+- `scripts/cue-strip-smoke.mjs --pitch-only=man,woman` (phone viewport):
+  110 / 110.
+- `scripts/voice-preview-smoke.mjs` (Voice Shaper, all viewports): 304 / 304.
+- `scripts/resonance-lab/lab-layout-smoke.mjs`: 63 / 63.
+- `tests/site/no-local-paths-test.js`: pass.
 
 ## Measurement it rests on (CLAUDE.md hard rule 3)
 
@@ -237,6 +353,9 @@ taken:
 
 ## Known issue: the resonance row in noise (2026-10-21)
 
+**Historical (superseded 2026-10-21):** built anyway by user decision — see
+"Merged into cue-strip (2026-10-21)". Kept as written:
+
 User report: with only PC fans and coil whine, the pitch line is hidden but
 the Dashboard's resonance row moves and can show "beyond the scale" — its
 pitch hints are not gated (above, "Display mask"). Gating that hint was
@@ -248,7 +367,15 @@ once a little noise gets through, plus noise the detector hears as voice.
 
 ## Before any merge to main
 
-Fine for this PC try-out, not for the live site:
+**Updated 2026-10-21 (merge into cue-strip):** the developer instruction is
+gone (plain "could not load" text), and the hosting is decided — the
+Hugging Face mirror, pending its upload. Still open before `main`: upload the
+mirror and pin `mirrorCommit` (until then the live site would show the gate
+as unavailable, pitch as before); phone CPU and the mobile WASM path are not
+measured.
+
+**Historical (superseded 2026-10-21):** Fine for this PC try-out, not for the
+live site:
 
 - CI and the Pages deploy do not fetch the model files, so a merge as is
   would ship with the gate always "missing" (nothing hidden; Settings says
@@ -262,4 +389,6 @@ fetch and check them in the workflows, and a user-facing message).
 ## How to turn it off
 
 Settings → "Hide pitch when no voice is heard (experimental)" → off (kept
-across reloads). Without the model files the gate is off by itself.
+across reloads): pitch, HNR and the resonance hint are then exactly as
+without the detector. If the model cannot load, the gate is off by itself
+and Settings says so.
