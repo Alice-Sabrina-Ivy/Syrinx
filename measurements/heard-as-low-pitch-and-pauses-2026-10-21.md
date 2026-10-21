@@ -1013,3 +1013,69 @@ samples, the first-reading check).
 Scripts: `scripts/heard-as/low-pitch-pauses/lowhide.mjs` (written after this
 commit; it imports `analyze.mjs` `simulate` with the candidate rule supplied
 to the aggregator).
+
+### A.4 Results (2026-10-21) — FAIL on dev, nothing implemented
+
+**Order.** Plan committed and pushed 12:46:03 CDT (db9bb0d); the streams were
+being built meanwhile (no chain run, no panel number). Chain run 12:53–13:19
+(579 streams, two processes). Dev selection written 13:21:22
+(`build/heard-as/lowhide/selection.json`). One deviation: at 13:09, while the
+run was going, `lowhide.mjs` was smoke-tested on the 48 dev streams finished
+by then, in a scratch directory (dev only; no held-out stream was evaluated
+at any point).
+
+**No cell is eligible on dev, so there is no pick and no held-out look.
+Verdict: FAIL. No hide rule is implemented** (`heard-as.js` and the panel are
+unchanged by this addendum; readings for ~75 Hz voices stay as in §8.5).
+
+Dev (LibriSpeech test-clean, 20 W / 20 M readers), the shipped panel
+(H1+H3) → the cell; (a) = drop in shown readings below the tested range on
+the ~75 Hz voices (bar ≥ 80 %), (b) = drop in time with a reading (points;
+bar ≤ 2.0) — the 90 Hz voices are the binding group; (c) passed for every cell
+(women and the 185 Hz voices: 0.00 points everywhere):
+
+| cell | (a) W / M % | (b) w90 W / M, points | (b) LibriSpeech men, points | w90 shown ↔ hidden changes / min, W / M (shipped 2.2 / 2.4) |
+|---|---|---|---|---|
+| L1 q10 T76 | 5.2 / 3.6 | — | 0.00 | — |
+| L1 q10 T77 | 27.8 / 29.1 | max 2.46 | | |
+| L1 q10 T78 | 57.8 / 61.9 | max 10.8 | | |
+| L1 q10 T79 | 78.1 / 81.2 | 23.5 / 15.5 | 0.50 | 6.6 / 6.3 |
+| L1 q10 T80 | 90.7 / 90.1 | 37.7 / 33.0 | 2.34 | 9.0 / 7.3 |
+| L1 q20 T76–T80 | 0.0–50.8 / 0.0–45.7 | max 0.0–7.1 | | |
+| L2 M95 V0.30 | 39.6 / 40.6 | 0.54 / 0.96 | 0.02 | 2.5 / 2.9 |
+| L2 M95 V0.40 | 74.9 / 72.4 | max 8.4 | | |
+| L2 M100 V0.40 | 84.7 / 81.3 | 12.5 / 13.2 | 0.96 | 6.3 / 7.6 |
+| L2 M110 V0.40 | 90.0 / 94.1 | 14.8 / 22.8 | 1.30 | 6.3 / 8.7 |
+| L2 M110 V0.50 | 99.0 / 99.1 | max 59.9 | | |
+
+(Every cell: `build/heard-as/lowhide/dev.log`; blank = not printed here.)
+Every cell that reaches (a) also costs the ~90 Hz voices 12–38 points of time
+with a reading and makes them blink 3–4× as often; every cell that keeps
+(b) within 2 points removes at most ~41 % of the low readings. Natural
+LibriSpeech men are barely touched (≤ 2.3 points); the 90 Hz voices are the
+problem: their pitch also reaches below the 75 Hz floor, so they lose frames
+in the same way, only less — neither the low tail of the posted pitch nor the
+voiced share separates "about 75 Hz" from "about 90 Hz" well enough. The
+missing frames are the cause, so the fix belongs in the pitch chain (P1,
+deferred by the user to after 2026-10-25), not in a heard-as hide rule.
+
+**(d) as written fails for every cell that hides anything, but no cell shows a
+reading where the panel shows none.** The plan's (d) asked for "a reading
+only where the baseline shows one, with the same eta". After a rule hide, the
+first-reading check (H3) shows the next ready reading at once, from a newer
+pool than the one the shipped panel is still showing — so the eta differs
+(e.g. L2 M100 V0.40: 78–678 such samples per group). Shown where the shipped
+panel shows nothing: **0 samples in every group and cell**. This did not
+decide the verdict ((a) and (b) cannot both pass in any cell).
+
+**Not done:** held-out, PTDB-TUG, FDA, Hillenbrand (no pick to look at);
+`lowhide.mjs --split=test` stays unrun. The stream subset (§A.2) and
+`analyze.mjs`'s new `makeAgg` hook (used only by `lowhide.mjs`; every other
+variant simulates as before) are the only code changes.
+
+**What users see:** unchanged for low voices — voices around 75 Hz can still
+get a reading that is less reliable and leans toward "would say woman" (the
+"More" text says so since the §9 review). Options for the user: accept a cell
+that hides most low readings at the cost of the ~90 Hz voices (e.g. L2 M100
+V0.40: −83 % of low readings, −13 points for 90 Hz voices; it would still
+need its held-out look), or wait for P1.
