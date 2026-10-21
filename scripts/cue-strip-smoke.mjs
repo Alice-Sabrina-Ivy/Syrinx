@@ -38,8 +38,9 @@
 //                   decision 2026-10-20; no bracket rows, no ring axis): the
 //                   deep part from the left = the low end of "would say man",
 //                   the light part from the right = the low end of "would
-//                   say woman", striped between (the parts' widths match the
-//                   range line's tenths), no best-guess mark (review
+//                   say woman", striped between (the range line's one-side
+//                   "About N in 10 listeners would say …" is the middle of the
+//                   bar's range, 2026-10-21), no best-guess mark (review
 //                   2026-10-20), a deep / light key beside each end word,
 //                   the range line and (unless "could go either way") the unsure
 //                   line, end words and bar inside the panel, screen-reader
@@ -110,6 +111,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import puppeteer from "puppeteer-core";
 import { PITCH_ONLY_TEXT } from "../src/ml/pitch-only-warning.js";
+import { sayText } from "../src/components/heardAsAxisModel.js";
 import { NARROWBAND_NOTICE, NARROWBAND_INFO } from "../src/components/cueStripModel.js";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -363,21 +365,21 @@ async function sample(page, ms, fn) {
 let womanGuess = null;
 function axisChecks(who, s) {
   const a = s.heardAs?.axis;
-  // The words' tenths: "About A–B in 10 would say man · about C–D in 10 would say woman"
-  // ("fewer than 1" = 0–1, "nearly all" = 9–10); the deep part is A tenths, the light part C.
-  const tenths = (t) => (/^fewer than 1/i.test(t) ? 0 : /^nearly all/i.test(t) ? 9 : Number((t.match(/(\d+)(?:–\d+)? in 10/) ?? [])[1]));
-  const [mw, ww] = (a?.range ?? "").split(" · ");
-  const want = a && !a.wide && ww ? { man: tenths(mw) / 10, woman: tenths(ww) / 10 } : null;
-  check(`${who}: split bar parts match the range line (deep = low end of man, light = low end of woman, striped between), no best-guess mark, a deep key by "would say man" and a light one by "would say woman"`,
+  // The range line (2026-10-21): one side at the middle of the bar's range —
+  // deep = A tenths from the left, light = C = 10 − B from the right — "About N
+  // in 10 listeners would say …", or "Could go either way" (sayText, the
+  // panel's own words, from the drawn tenths).
+  const want = a ? sayText(Math.round(a.man * 10), 10 - Math.round(a.woman * 10), a.wide) : null;
+  check(`${who}: split bar parts match the data (deep = low end of man, light = low end of woman, striped between), no best-guess mark, a deep key by "would say man" and a light one by "would say woman"`,
     !!a && !a.dotShown && a.keys === "man,woman" && a.barH >= 16 && a.barH <= 20
     && Math.abs((a.parts.man ?? 0) - a.man) < 0.02 && Math.abs((a.parts.woman ?? 0) - a.woman) < 0.02
     && Math.abs((a.parts.either ?? 0) - (1 - a.man - a.woman)) < 0.02
-    && (!want || (Math.abs(want.man - a.man) < 1e-6 && Math.abs(want.woman - a.woman) < 1e-6))
     && a.guess >= a.man - 1e-6 && a.guess <= 1 - a.woman + 1e-6, JSON.stringify(a));
-  check(`${who}: bar words — range line ("could go either way" when wide) and unsure line (one tenth value; none when wide)`, !!a
+  check(`${who}: bar words — range line = one side at the middle of the bar's range ("could go either way" when wide) and unsure line (one tenth value; none when wide)`, !!a
+    && a.range === want && !a.range.includes(" · ")
     && (a.wide ? /^Could go either way/.test(a.range) && a.unsure === ""
-      : /would say man · .* would say woman$/.test(a.range) && /^(About \d+|Fewer than 1) in 10 might be unsure or say neither$/.test(a.unsure)), `${a?.range} | ${a?.unsure}`);
-  check(`${who}: bar screen-reader label`, !!a && a.sr.startsWith("Bar of listeners in tenths: would say man fills from the left"), a?.sr);
+      : /^(About \d|Nearly all)( in 10)? listeners would say (man|woman)$|^Could go either way/.test(a.range) && /^(About \d+|Fewer than 1) in 10 might be unsure or say neither$/.test(a.unsure)), `${a?.range} | want ${want} | ${a?.unsure}`);
+  check(`${who}: bar screen-reader label = the bar, then the visible sentence word for word`, !!a && a.sr.startsWith("Bar of listeners in tenths: would say man fills from the left") && a.sr.endsWith(` ${a.range}.`), a?.sr);
   check(`${who}: bar, end words and parts fit inside the panel`, !!a && a.fits);
 }
 
