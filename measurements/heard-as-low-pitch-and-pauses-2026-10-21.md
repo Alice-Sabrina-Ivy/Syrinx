@@ -923,3 +923,93 @@ inside the panel, and the pitch-only warning appears 6.1 s (man) and 7.5 s
 `lab-layout-smoke.mjs` was not re-run: `first()` can now show a reading
 with the note, a state `compute()` already produced, and that smoke does
 not open the "More" list.
+
+## Addendum: low-voice hide (pre-registered, 2026-10-21)
+
+**Why.** §8.5: since H1+H3, voices around 75 Hz get readings, but the pitch
+worker drops most of their frames below its 75 Hz floor, so the pooled F0
+reads ~1.14× high, the 81 Hz "outside the tested range" rule does not fire,
+and ~85 % of those readings are for a voice below the tested range, leaning
+~0.47 logit toward "woman". **User decision (2026-10-21):** hide readings for
+very low voices (below ~80 Hz) for now, with a measured rule, so they get the
+panel's existing out-of-range state ("Outside the range it was tested on");
+the pitch-detector fix (P1) is deferred. This plan is committed and pushed
+before the chain is run on any stream or any candidate is coded.
+
+**Baseline ("shipped")** = the panel on `cue-strip` 35bf286: H1+H3
+(`minVoicedMs` 2000, first-reading check) — `analyze.mjs` variant `H1+H3`.
+
+### A.1 Candidates (heard-as modules only; each can only hide)
+
+Both are computed in `heard-as.js` `estimate()` from what the aggregator
+already holds — the pooled posted voiced F0 values (the frames the pooled
+median uses: posted voiced frames inside the scored windows' spans) and the
+posted frames, voiced or not, inside those spans. A reading that fires the
+rule is hidden as `"outside"` (the panel's existing out-of-range state),
+checked after the existing "short" rule, on the 2 s updates and on the
+first-reading check alike.
+
+- **L1 — low tail of the posted pitch:** hide when the q-th percentile of the
+  pooled voiced F0 values is below T Hz. Percentile = the value at index
+  floor(q · (n − 1) / 100) of the ascending list.
+  Grid: q ∈ {10, 20}, T ∈ {76, 77, 78, 79, 80} Hz (10 cells).
+- **L2 — lost voicing at a low pitch:** hide when the pooled F0 (the median,
+  as shown) is below M Hz AND the voiced share of the pooled spans — posted
+  voiced time / posted frame time (each frame counted by its capped spacing,
+  as `voicedMs` counts it) inside the scored windows' spans — is below V.
+  Grid: M ∈ {95, 100, 110} Hz, V ∈ {0.30, 0.35, 0.40, 0.45, 0.50} (15 cells).
+
+### A.2 Streams (a fixed subset, rebuilt)
+
+`build_streams.py` (unchanged except a new `--conds` option that builds a
+subset of conditions; same seeds, so the streams are the §3 ones):
+**all 80 LibriSpeech readers** (dev = test-clean 20 W / 20 M, held-out =
+dev-clean 20 / 20), conditions **nat p0, nat pnat, w75 p0, w75 pnat, w90 pnat,
+w185 pnat** (the other pause conditions, w90 p0, w185 p0 and w1 are not
+rebuilt), plus PTDB-TUG (M01, M02, F01, F02), FDA (rl, sb) and Hillenbrand
+(45 men, 48 women) as in §3. Same chain (`run.mjs`, speech detector live),
+two processes. The candidates are simulated over the stored runs exactly as
+`analyze.mjs` simulates the panel (four 2 s-timer phases, 250 ms display
+samples, the first-reading check).
+
+### A.3 Split, selection, the bar
+
+- **Dev:** the 40 test-clean readers' streams. **Held-out:** the 40 dev-clean
+  readers' streams and PTDB-TUG / FDA (in no fit, never used to choose).
+  Hillenbrand: reported only.
+- **Selection (dev only, written to `build/heard-as/lowhide/selection.json`
+  before any held-out candidate number is computed):** a cell is eligible if
+  on dev it passes (a)–(d) for both sexes (with dev's groups: w75; w90 and
+  natural LibriSpeech men; natural LibriSpeech women and w185). Of the
+  eligible cells: the largest min-over-sexes reduction in (a); ties (within
+  2 points) → the smaller largest drop in (b); then L1 before L2, then the
+  smaller threshold (T, or M then V). If none is eligible: FAIL, nothing is
+  implemented, the numbers are reported.
+- **The bar (held-out, one look at the pick; women and men separately;
+  failing one group fails):**
+  - **(a) ~75 Hz voices** (w75, p0 and pnat pooled): shown readings below the
+    tested range — shown 250 ms display samples (four phases) whose reference
+    F0 (median of the WORLD reference's voiced values in the trailing 8 s) is
+    below 81 Hz — drop by **≥ 80 %** per sex.
+  - **(b) ~90 Hz voices and natural male speech:** time with a reading (the
+    mean over streams of the shown share, `analyze.mjs` `shareShown`) drops by
+    **≤ 2.0 points** for w90 pnat (W, M), LibriSpeech men (nat p0 + pnat),
+    PTDB-TUG men (M01 + M02) and FDA rl — each group judged on its own.
+  - **(c) women, natural and feminine-shifted:** the same shown share changes
+    by **≤ 0.5 point** for LibriSpeech women (nat p0 + pnat), PTDB-TUG women
+    (F01 + F02), FDA sb and w185 pnat (W, and M — the feminine-pitch stand-in
+    for men).
+  - **(d) no new readings:** on every rebuilt stream, at every 250 ms sample
+    and phase, the candidate shows a reading only where the baseline shows
+    one, with the same eta (it can only hide).
+- **Reported (not judged):** Hillenbrand men / women shown share; the (a)
+  share on dev; shown ↔ hidden changes per minute on w75 / w90 (blinking); how
+  many shown readings the rule hides on each group.
+- **Verdict:** PASS only if (a)–(d) all pass on held-out. If the pick passes,
+  it is implemented (a hide rule in `heard-as.js` + its constants in
+  `heardAsCalibration.js`, unit tests, the panel's "More" text); if not,
+  nothing is implemented.
+
+Scripts: `scripts/heard-as/low-pitch-pauses/lowhide.mjs` (written after this
+commit; it imports `analyze.mjs` `simulate` with the candidate rule supplied
+to the aggregator).

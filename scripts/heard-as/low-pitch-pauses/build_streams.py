@@ -44,6 +44,9 @@ ap.add_argument("--corpora", required=True)
 ap.add_argument("--out", required=True)
 ap.add_argument("--shard", default="0/1")
 ap.add_argument("--speech-s", type=float, default=36.0)
+# a subset of the LibriSpeech conditions, e.g. "nat:p0,pnat;w75:p0,pnat;w90:pnat;w185:pnat"
+# (voices left out are not resynthesised); default: every condition below
+ap.add_argument("--conds", default="")
 a = ap.parse_args()
 shI, shN = map(int, a.shard.split("/"))
 SR = 16000
@@ -181,12 +184,16 @@ for (subset, spk) in readers:
     med = float(np.median(f0[f0 > 0]))
     ref_nat = fit_ref(f0, len(x), SR)
     voices = {"nat": (x, ref_nat, 1.0)}
+    conds = {"nat": list(PAUSES) + ["pnat"], "w75": ["p0", "pnat"], "w90": ["p0", "pnat"], "w185": ["p0", "pnat"], "w1": ["pnat"]}
+    if a.conds:
+        conds = {v: c.split(",") for v, c in (kv.split(":") for kv in a.conds.split(";"))}
     for name, target in (("w75", 75.0), ("w90", 90.0), ("w185", 185.0), ("w1", None)):
+        if name not in conds:
+            continue
         fac = 1.0 if target is None else target / med
         y = synth(f0, sp, apr, SR, fac, len(x))
         y *= np.sqrt((x ** 2).mean() / max((y ** 2).mean(), 1e-12))
         voices[name] = (y, fit_ref(f0 * fac, len(x), SR), fac)
-    conds = {"nat": list(PAUSES) + ["pnat"], "w75": ["p0", "pnat"], "w90": ["p0", "pnat"], "w185": ["p0", "pnat"], "w1": ["pnat"]}
     for vname, clist in conds.items():
         y, ref, fac = voices[vname]
         for c in clist:
