@@ -24,8 +24,12 @@
 //                    carries recovering: true; an asset-load failure stays
 //                    "error" and carries reason: "load" — a page reload is
 //                    what fixes it)
-//                   { type: "state", u, raw, n, fill, voicedS, clamp, verdict, startU,
+//                   { type: "state", u, raw, uPlain, n, fill, voicedS, clamp, verdict, startU,
 //                     startProgress, sinceResumeS, framesDropped, narrowband, perf? }    every 200 ms of audio
+//                   u / raw = the shown value (restarts on a confirmed change,
+//                   resonanceCue.js RESTART); uPlain = the plain 5 s median
+//                   (never restarted; what u was before 2026-10-21) — the
+//                   pitch-only warning reads uPlain, so its input is unchanged
 //                   narrowband = { on, decided, f, n }: the phone-quality audio
 //                   detector (narrowband.js, run on every voiced 10 ms grid
 //                   frame of this engine's 16 kHz ring). Until it has decided
@@ -111,6 +115,7 @@ function post(force = false) {
     type: "state",
     u: pos ? s.u : null,
     raw: pos ? s.raw : null,
+    uPlain: pos ? s.uPlain : null,
     n: s.n,
     fill: s.fill,
     voicedS: s.voicedS,
