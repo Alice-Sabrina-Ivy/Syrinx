@@ -258,6 +258,6 @@ through `cueRowStates`: the row idle on every hidden noise frame, equal to
 the ungated app elsewhere), `tests/audio/cue-strip-model-test.js`;
 browser: `scripts/voice-gate-smoke.mjs` (committed air-conditioner clip,
 gate on: the row idle on 64 of 64 samples after 3 s, never "keep
-talking…"; gate off: not idle on 65.6 %; speech: row-state shares within
+talking…"; gate off: not idle on 65.6 %; speech: the row no more idle and with no fewer dots than a gate-off run, within
 10 points of gate off) and `scripts/cue-strip-smoke.mjs` (synthetic held
 vowel, gate on: the row idle, no dot).

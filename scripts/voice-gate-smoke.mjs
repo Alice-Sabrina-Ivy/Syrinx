@@ -55,9 +55,13 @@
 //           the committed air-conditioner clip the first position came after
 //           ~10 s in the 2026-10-21 run).
 //   speech  gate on 16 s: speech is kept (shown >= 97 % of painted frames);
-//           the resonance row's state shares (idle / "keep talking…" /
-//           with a dot) within 10 points of a gate-off run on the same clip
-//           (speech-off, 16 s).
+//           the gate takes the resonance row to "idle" no more than a
+//           gate-off run on the same clip does (speech-off, 16 s): idle
+//           share at most 10 points above it, dot share at most 10 points
+//           below it. One-sided: the gate can only add "idle" and remove
+//           dots, and two live runs differ in timing by themselves (a gate-on
+//           run once drew more dots than its gate-off run, 90 vs 75 %, with
+//           the machine at ~90 % CPU from other work).
 //   held    gate on 20 s: information (share of the held notes' painted
 //           frames the gate hides; the screen's known cost).
 //   unavailable the mirror unreachable (this Chrome resolves no
@@ -499,9 +503,9 @@ console.log(`preview on :${PORT}`);
   await sleep(1500); // the gate-on run waited this long for the model
   const st = await sampleStrip(page, 16000);
   const on = report.runs.speech.row, off = rowShares(st);
-  const close = (k) => Math.abs(on[k] - off[k]) <= 0.1;
-  check("speech: the resonance row is unchanged by the gate (idle / \"keep talking…\" / dot shares within 10 points of gate off)",
-    st.length > 40 && close("idle") && close("warming") && close("dot"), `gate on ${shareText(on)}; gate off ${shareText(off)}`);
+  check("speech: the gate does not take the resonance row to idle (gate on: idle <= gate off + 10 points, dot >= gate off - 10 points)",
+    st.length > 40 && on.idle <= off.idle + 0.1 && on.dot >= off.dot - 0.1,
+    `gate on ${shareText(on)}, idle ${pct(on.idle)}; gate off ${shareText(off)}, idle ${pct(off.idle)}`);
   check("speech-off: no page or console errors", errors.length === 0, errors.slice(0, 3).join(" | "));
   report.runs.speechOff = { row: off, errors };
   await page.close();
