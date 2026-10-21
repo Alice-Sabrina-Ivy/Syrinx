@@ -12,8 +12,13 @@
 //           fixtures, CC BY 4.0), 15 s
 //   held    the committed VocalSet long tones (tests/dsp/data/notch-real
 //           vs_f2_262 + vs_m1_128, CC BY 4.0), 18.75 s
-//   noise   --noise (e.g. one of the screen's tuning machine-noise clips),
-//           default the committed MS-SNSD air conditioner (ac114, CC0), 10 s
+//   noise   --noise (16 kHz, 16-bit PCM or 32-bit float; e.g. one of the
+//           screen's tuning machine-noise clips), default the committed
+//           MS-SNSD air conditioner (ac114, CC0), 10 s. A clip FireRedVAD
+//           itself hears as voice fails the hide check — that is the
+//           detector, not the plumbing (e.g. Freesound hvac 121285: no
+//           "no voice" hop even on its native 16 kHz samples;
+//           scripts/firered/tune194-replay.mjs gives per-clip numbers)
 // Chrome loops each file. One fresh temporary profile per run; Chrome and the
 // preview server are closed by their own PIDs (CLAUDE.md hard rule 2).
 //
@@ -66,12 +71,14 @@ function readWav16k(file) {
   let o = 12, fmt = null;
   while (o + 8 <= b.length) {
     const id = b.toString("ascii", o, o + 4), size = b.readUInt32LE(o + 4);
-    if (id === "fmt ") fmt = { ch: b.readUInt16LE(o + 10), sr: b.readUInt32LE(o + 12), bits: b.readUInt16LE(o + 22) };
+    if (id === "fmt ") fmt = { tag: b.readUInt16LE(o + 8), ch: b.readUInt16LE(o + 10), sr: b.readUInt32LE(o + 12), bits: b.readUInt16LE(o + 22) };
     if (id === "data") {
-      if (!fmt || fmt.sr !== 16000 || fmt.bits !== 16) throw new Error(`${file}: expected 16 kHz 16-bit`);
-      const n = Math.floor(size / 2 / fmt.ch);
+      const f32 = fmt?.tag === 3 && fmt.bits === 32;
+      if (!fmt || fmt.sr !== 16000 || !(fmt.bits === 16 || f32)) throw new Error(`${file}: expected 16 kHz, 16-bit PCM or 32-bit float`);
+      const w = fmt.bits / 8;
+      const n = Math.floor(size / w / fmt.ch);
       const x = new Float32Array(n);
-      for (let i = 0; i < n; i++) x[i] = b.readInt16LE(o + 8 + 2 * i * fmt.ch) / 32768;
+      for (let i = 0; i < n; i++) x[i] = f32 ? b.readFloatLE(o + 8 + w * i * fmt.ch) : b.readInt16LE(o + 8 + w * i * fmt.ch) / 32768;
       return x;
     }
     o += 8 + size + (size & 1);

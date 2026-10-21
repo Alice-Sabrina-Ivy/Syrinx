@@ -784,6 +784,34 @@ log("held vowel");
 await launch(WAV.held);
 ({ page, errors } = await open());
 check("held: listening", await continueAfterReload(page));
+// Try-out voice gate (branch noise-detector-tryout): FireRedVAD scores this
+// SYNTHETIC held vowel as no voice (the 2026-10-20 screen: median 0.08-0.22
+// on clean synthetic hums), so with the gate on the pitch row stays idle —
+// the documented cost (measurements/noise-detector-tryout-2026-10-20.md).
+// Recorded here; then the gate is switched off in Settings so the checks
+// below, which use the pitch row as their voicing proxy for the RESONANCE
+// row's verdict (which the gate does not touch), run as before.
+if (await page.evaluate(() => !!document.querySelector('[aria-label="Settings & Data"]'))) {
+  await sleep(1000);
+  let n = 0, live = 0, resVoiced = 0;
+  await sample(page, 8000, (s) => {
+    n++;
+    if (s.rows.pitch?.state === "live") live++;
+    if (s.rows.resonance?.state && !["idle", "starting"].includes(s.rows.resonance.state)) resVoiced++;
+  });
+  log(`  held (gate on): pitch row live on ${live}/${n} samples; resonance row active on ${resVoiced}/${n}`);
+  await openSettings(page);
+  const sw = await page.evaluate(() => {
+    const b = document.querySelector("[data-voice-gate-switch]");
+    if (!b) return null;
+    if (b.getAttribute("aria-checked") === "true") b.click();
+    return b.getAttribute("aria-checked");
+  });
+  await sleep(150);
+  const after = await page.evaluate(() => document.querySelector("[data-voice-gate-switch]")?.getAttribute("aria-checked") ?? null);
+  await closeSettings(page);
+  if (sw !== null) check("held: try-out voice gate switched off for the resonance checks", after === "false", `${after}`);
+}
 {
   let voiced = 0, sustained = 0, shownEver = false, reasonSustained = false;
   let voicedRun = 0;
@@ -798,6 +826,16 @@ check("held: listening", await continueAfterReload(page));
   check("held: the panel never shows ranges", !shownEver);
   check("held: the panel says it needs running speech", reasonSustained);
   await shot(page, "06-held");
+}
+// The try-out voice gate back on (its default) for the later runs on this profile.
+if (await page.evaluate(() => !!document.querySelector('[aria-label="Settings & Data"]'))) {
+  await openSettings(page);
+  await page.evaluate(() => {
+    const b = document.querySelector("[data-voice-gate-switch]");
+    if (b && b.getAttribute("aria-checked") === "false") b.click();
+  });
+  await sleep(300);
+  await closeSettings(page);
 }
 
 // ============================================================ 4 noise / 5 silence
