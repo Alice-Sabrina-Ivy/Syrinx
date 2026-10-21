@@ -603,8 +603,9 @@ The default practice mode — everything at a glance. **As built (Design A
   shares on one man ↔ woman split bar in tenths (deep indigo from the left =
   the low end of "would say man", light indigo from the right = the low end
   of "would say woman", striped between = could go either way; under it one
-  sentence for the side more listeners would choose, at the middle of the
-  range, e.g. "About 8 in 10 listeners would say man"; "Could go either way —
+  sentence for the side more listeners would choose, the panel's best guess
+  rounded to a whole tenth, e.g. "About 9 in 10 listeners would say man"
+  ("Nearly all …" at 10 in 10); "Could go either way —
   listeners would be split" when the range covers most of it; the unsure /
   neither share at the best guess as a text line), never
   a verdict, with its known weaknesses stated (including that it was not
