@@ -10,6 +10,9 @@
 //   hum.wav    10 s of a synthetic fan hum alone (scripts/noise-synth.js fanHum, 120 Hz),
 //              then the clean phrase with the hum 20 dB below the speech, ~20.6 s
 //   noise.wav  the clean phrase with synthetic pink noise at +10 dB SNR, ~10.6 s
+//   speech-then-silence.wav  the clean phrase, then 30 s of digital silence, ~40.6 s: the
+//              touch-stop part records speech, and a second recording started by mistake
+//              after it would hold no voice ("There wasn't enough voice…")
 //   timing.wav (only when the Phase 0 spike's timing clips are in $VP_CACHE, local only) the
 //              spike's four speech-dense 8 s clips at 48 kHz (PTDB-TUG, public;
 //              $VP_CACHE/clips/timing-speech/{F01,F02,M01,M02}_8s.f32), each followed by
@@ -69,6 +72,11 @@ writeWav("clean.wav", clean);
 {
   const { mixed } = mix(clean, pink(clean.length), 10);
   writeWav("noise.wav", mixed);
+}
+{
+  const y = new Float32Array(clean.length + 30 * SR);
+  y.set(clean, 0);
+  writeWav("speech-then-silence.wav", y);
 }
 
 {

@@ -47,6 +47,10 @@ export function subscribe(fn) {
 export const getState = () => state;
 
 let worker = null;
+// The capture feed startLab connected ({ src, port }): stopLab takes it off
+// the capture source's broadcast list, so switching the lab off (Settings)
+// leaves no dead feed copying every chunk until listening stops.
+let feed = null;
 
 /** captureSrc: the running capture source; opts.trackSettings: the mic track's getSettings(); opts.trackLabel: its label. */
 export function startLab(captureSrc, opts = {}) {
@@ -80,12 +84,17 @@ export function startLab(captureSrc, opts = {}) {
   };
   worker.postMessage({ type: "init", sampleRate: captureSrc.sampleRate, assetBase: import.meta.env.BASE_URL, capture });
   const port = captureSrc.connectConsumer();
+  feed = { src: captureSrc, port };
   worker.postMessage({ type: "audioPort", port }, [port]);
   if (weightWanted) worker.postMessage({ type: "weight", cmd: "enable", map: savedWeightMap });
   return { stop: stopLab };
 }
 
 export function stopLab() {
+  if (feed) {
+    try { feed.src.disconnectConsumer?.(feed.port); } catch { /* source closed */ }
+    feed = null;
+  }
   if (worker) {
     worker.terminate();
     worker = null;

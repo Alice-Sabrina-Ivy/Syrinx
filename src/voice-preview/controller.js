@@ -19,6 +19,12 @@
 // terminated and goes to error, so Record again / Discard always come back. recordAgain()
 // does nothing while Record would have to wait (the 6 s listening wait after listening
 // restarts): it used to discard the preview and then not record.
+// Re-arm (2026-10-21): the card's one button turns from Stop into Record / Record again in
+// the same place, so a press that belongs to stopping (a finger that touches down again, a
+// second tap because the label changed under it, a held Enter key repeating) used to start
+// a new recording at once — on a phone that recording of silence ended "There wasn't enough
+// voice…". When a recording ends (the phase leaves recording / analysing for a phase whose
+// button can act), `rearming` is true for REARM_MS and record() / recordAgain() refuse.
 import { getVoicePreviewCapture, onVoicePreviewCapture, setVoicePreviewPitchTap } from "./bridge.js";
 
 export const RECORD_MAX_S = 8;
@@ -29,8 +35,12 @@ export const LISTEN_BEFORE_RECORD_MS = 6000;
 export const LOAD_TIMEOUT_MS = 30000;
 /** `recorded` -> `analysed` longer than this (500 ms track wait + analysis, ~2.3 s for 8 s on the gate phone) is an error. */
 export const ANALYSE_TIMEOUT_MS = 20000;
+/** After a recording ends, Record / Record again ignore presses this long (the press that stopped it). */
+export const REARM_MS = 1000;
 
 const RECORDABLE = new Set(["ready", "too-short", "no-voice", "cancelled"]);
+/** Phases whose one button can act (Record, or Record again). */
+const ACTIONABLE = new Set([...RECORDABLE, "preview", "error", "memory"]);
 
 function initialState() {
   return {
@@ -47,12 +57,13 @@ function initialState() {
     rendering: null,      // { st, pct } in flight
     voicedS: null,        // no-voice
     error: null,          // { stage, kind, message }
+    rearming: false,      // true for REARM_MS after a recording ended: Record / Record again wait
   };
 }
 
 export function createVoicePreviewController({
   createWorker, glueUrl, wasmUrls, now = () => performance.now(),
-  loadTimeoutMs = LOAD_TIMEOUT_MS, analyseTimeoutMs = ANALYSE_TIMEOUT_MS,
+  loadTimeoutMs = LOAD_TIMEOUT_MS, analyseTimeoutMs = ANALYSE_TIMEOUT_MS, rearmMs = REARM_MS,
   setTimer = (fn, ms) => setTimeout(fn, ms), clearTimer = (t) => clearTimeout(t),
 }) {
   let state = initialState();
@@ -65,10 +76,22 @@ export function createVoicePreviewController({
   let waitingRender = null;
   let renderSeq = 0;
   let watchdog = null;
+  let rearmTimer = null;
 
   function set(patch) {
+    const was = state.phase;
     state = { ...state, ...patch };
+    // the recording ended and the button can act again: it re-arms after rearmMs
+    if ((was === "recording" || was === "analysing") && ACTIONABLE.has(state.phase) && rearmMs > 0) {
+      if (rearmTimer !== null) clearTimer(rearmTimer);
+      state = { ...state, rearming: true };
+      rearmTimer = setTimer(() => { rearmTimer = null; set({ rearming: false }); }, rearmMs);
+    }
     for (const fn of listeners) fn(state);
+  }
+
+  function clearRearm() {
+    if (rearmTimer !== null) { clearTimer(rearmTimer); rearmTimer = null; }
   }
 
   function removeTap() { setVoicePreviewPitchTap(null); }
@@ -119,6 +142,7 @@ export function createVoicePreviewController({
   function terminate() {
     workerGen++;
     unwatch();
+    clearRearm();
     removeTap();
     releaseCapture();
     pendingRecord = false;
@@ -202,7 +226,7 @@ export function createVoicePreviewController({
   }
 
   function record() {
-    if (!worker || !RECORDABLE.has(state.phase)) return false;
+    if (!worker || !RECORDABLE.has(state.phase) || state.rearming) return false;
     const h = getVoicePreviewCapture();
     if (!h || readyInMs() > 0) return false;
     const port = h.connect();
@@ -256,10 +280,11 @@ export function createVoicePreviewController({
 
   /**
    * Discard, then record as soon as the fresh worker is ready. Refused (nothing discarded,
-   * returns false) while Record would have to wait or listening is off.
+   * returns false) while Record would have to wait, listening is off, or the button is
+   * re-arming after the recording ended.
    */
   function recordAgain() {
-    if (readyInMs() !== 0) return false;
+    if (readyInMs() !== 0 || state.rearming) return false;
     discard();
     pendingRecord = true;
     return true;
