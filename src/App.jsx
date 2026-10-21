@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, lazy, Suspense } from "react";
+import { Component, useState, useRef, useEffect, lazy, Suspense } from "react";
 import { useAudioPipeline } from "./audio/useAudioPipeline";
 import { PitchTrace } from "./components/PitchTrace";
 import { CombinedDashboard } from "./components/CombinedDashboard";
@@ -27,12 +27,70 @@ const DiagnosticOverlay = DIAG_ENABLED
 // opened; opening it is also what starts the lab (resonance-lab/labRequest.js).
 const LabView = lazy(() => import("./resonance-lab/LabView.jsx"));
 
+// Experimental Voice Shaper (record a phrase, hear it with another pitch or
+// resonance; src/voice-preview/, measurements/voice-preview-phase1-2026-10-19.md):
+// its own tab since 2026-10-20 (a Resonance lab view before). A lazy chunk fetched
+// only when the tab is first opened; loading it starts its worker. Opening it does
+// not start the lab.
+const VoiceShaperView = lazy(() => import("./voice-preview/VoiceShaperView.jsx"));
+
 const TABS = [
   { id: "dashboard", label: "Dashboard" },
   { id: "pitch", label: "Pitch" },
   { id: "history", label: "History" },
+  { id: "shaper", label: "Voice Shaper" },
   { id: "lab", label: "Resonance lab" },
 ];
+
+// The tab bar (the same in every state). Below Tailwind's sm breakpoint the tabs
+// are narrower (px-2, gap-0.5) so the five fit on one row at 360 px, the two-word
+// labels wrapping onto two lines there; from sm up, px-4 / gap-1 as before the
+// Voice Shaper tab (2026-10-20). With larger text (125 % at 360 px) the row is
+// wider than the screen: `justify-center-safe` starts it at its first tab and it
+// scrolls sideways, instead of centring and cutting off "Dashboard" and
+// "Resonance lab" where nothing could scroll to them (review 2026-10-20). Under
+// 360 px the row reaches into the page's 16 px gutters (-mx-4), as the centred
+// tabs already did at 320 px (5-315 px), so they still fit there without
+// scrolling; px-1 / pt-1 / pb-1 keep the focus ring inside the scroll box, and
+// -mx-1 / -mt-1 / mb-2 cancel them, so at the default text size nothing moves
+// from 360 px up. Inactive labels
+// neutral-400 (about 7:1; neutral-500 was about 4:1 at 12 px), aria-current on
+// the active tab.
+function TabNav({ activeTab, setActiveTab }) {
+  return (
+    <nav className="flex-shrink-0 flex justify-center-safe gap-0.5 sm:gap-1 overflow-x-auto -mx-1 max-[360px]:-mx-4 px-1 -mt-1 pt-1 pb-1 mb-2">
+      {TABS.map((tab) => (
+        <button
+          key={tab.id}
+          onClick={() => setActiveTab(tab.id)}
+          aria-current={activeTab === tab.id ? "page" : undefined}
+          className={`px-2 sm:px-4 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+            activeTab === tab.id
+              ? "bg-neutral-700 text-white"
+              : "text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/50"
+          }`}
+        >
+          {tab.label}
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+// A Voice Shaper chunk that fails to download (a deploy replaced the hashed chunks
+// while the page stayed open, a flaky phone connection) must not take the app down:
+// without a boundary React removes the whole root (tabs, Stop Listening, a running
+// session recording). The texts equal strings.js S.loading / S.loadError
+// (tests/voice-preview/strings-test.js checks them).
+class ShaperBoundary extends Component {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  render() {
+    return this.state.failed
+      ? <p className="text-sm text-neutral-300" data-vp-load-error="">Voice Shaper could not load. Reload the page to try again.</p>
+      : this.props.children;
+  }
+}
 
 const WELCOME_KEY = "syrinx_welcomed";
 
@@ -296,33 +354,8 @@ function App() {
       <div className="flex-1 flex flex-col items-center min-h-0" inert={blocked}>
         {status === "idle" && activeTab !== "history" && (
           <div className="flex-1 flex flex-col w-full max-w-6xl min-h-0">
-            {/* Tab navigation even when idle. The three tab rows: with larger
-                text a row wider than the screen starts at its first tab and
-                scrolls sideways (justify-center-safe + overflow-x-auto; centred,
-                both end tabs were cut off with nothing to scroll — review
-                2026-10-20); under 360 px it reaches into the 16 px gutters, as
-                the centred row did, with narrower tabs (px-2), so the four fit
-                there on one line without scrolling; the padding keeps the focus
-                ring inside the scroll box and the negative margins cancel it,
-                so from 360 px up the tabs keep their boxes. Inactive labels
-                neutral-400 (about 7:1; neutral-500 was about 4:1 at 12 px),
-                aria-current on the active tab. */}
-            <nav className="flex-shrink-0 flex justify-center-safe gap-1 overflow-x-auto -mx-1 max-[360px]:-mx-4 px-1 -mt-1 pt-1 pb-1 mb-2">
-              {TABS.map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  aria-current={activeTab === tab.id ? "page" : undefined}
-                  className={`px-4 max-[360px]:px-2 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
-                    activeTab === tab.id
-                      ? "bg-neutral-700 text-white"
-                      : "text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/50"
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </nav>
+            {/* Tab navigation even when idle */}
+            <TabNav activeTab={activeTab} setActiveTab={setActiveTab} />
             <div className="flex-1 flex items-center justify-center">
               <button
                 onClick={start}
@@ -336,22 +369,7 @@ function App() {
 
         {status === "idle" && activeTab === "history" && (
           <div className="flex-1 flex flex-col w-full max-w-6xl min-h-0">
-            <nav className="flex-shrink-0 flex justify-center-safe gap-1 overflow-x-auto -mx-1 max-[360px]:-mx-4 px-1 -mt-1 pt-1 pb-1 mb-2">
-              {TABS.map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  aria-current={activeTab === tab.id ? "page" : undefined}
-                  className={`px-4 max-[360px]:px-2 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
-                    activeTab === tab.id
-                      ? "bg-neutral-700 text-white"
-                      : "text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/50"
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </nav>
+            <TabNav activeTab={activeTab} setActiveTab={setActiveTab} />
             <SessionHistory />
           </div>
         )}
@@ -381,22 +399,7 @@ function App() {
         {status === "running" && (
           <div className="flex-1 flex flex-col w-full max-w-6xl min-h-0">
             {/* Tab navigation */}
-            <nav className="flex-shrink-0 flex justify-center-safe gap-1 overflow-x-auto -mx-1 max-[360px]:-mx-4 px-1 -mt-1 pt-1 pb-1 mb-2">
-              {TABS.map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  aria-current={activeTab === tab.id ? "page" : undefined}
-                  className={`px-4 max-[360px]:px-2 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
-                    activeTab === tab.id
-                      ? "bg-neutral-700 text-white"
-                      : "text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/50"
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </nav>
+            <TabNav activeTab={activeTab} setActiveTab={setActiveTab} />
 
             {/* Tab content. Scrolls below lg: on a phone the trace and the
                 cue strip fit the first screen, the experimental panel and
@@ -455,6 +458,16 @@ function App() {
               )}
 
               {activeTab === "history" && <SessionHistory />}
+
+              {activeTab === "shaper" && (
+                <ShaperBoundary>
+                  <Suspense fallback={<p className="text-sm text-neutral-400">Loading Voice Shaper…</p>}>
+                    {/* the target prefill and the playback guard during a
+                        Dashboard session recording */}
+                    <VoiceShaperView direction={direction} isSessionRecording={() => sessionRef.current.recording} />
+                  </Suspense>
+                </ShaperBoundary>
+              )}
 
               {activeTab === "lab" && (
                 <Suspense fallback={null}>

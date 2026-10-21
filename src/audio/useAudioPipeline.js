@@ -45,6 +45,7 @@ import {
   setMlWorkerAlive,
 } from "../diag/diag";
 import { isResonanceLabRequested, onResonanceLabRequested } from "../resonance-lab/labRequest";
+import { setVoicePreviewCapture, voicePreviewPitchTap } from "../voice-preview/bridge";
 
 // Silence-gate thresholds (SILENCE_THRESHOLD_DB, CONFIDENCE_THRESHOLD,
 // SILENCE_DEBOUNCE_FRAMES), pitch staleness, and the bounded pitch-hold
@@ -862,6 +863,16 @@ export function useAudioPipeline() {
         }, 1000);
       }
 
+      // Voice Shaper (experimental, its own tab): the capture handle its
+      // recorder uses while listening (one extra capture consumer, only
+      // during a recording). Cleared in stop(). voice-preview/bridge.js.
+      setVoicePreviewCapture({
+        sampleRate: captureSrc.sampleRate,
+        connect: () => captureSrc.connectConsumer(),
+        disconnect: (port) => captureSrc.disconnectConsumer?.(port),
+        startedAt: performance.now(),
+      });
+
       setState((s) => ({ ...s, status: "running" }));
     } catch (err) {
       // Best-effort cleanup of any partial state. start() may have set up
@@ -911,6 +922,7 @@ export function useAudioPipeline() {
 
   const stop = useCallback(() => {
     pipelineGenRef.current++; // invalidate in-flight worker messages
+    setVoicePreviewCapture(null);
     if (ctxSamplerRef.current) {
       clearInterval(ctxSamplerRef.current);
       ctxSamplerRef.current = null;
@@ -1127,6 +1139,9 @@ export function useAudioPipeline() {
       msg.pitch,
       typeof msg.contextTime === "number" ? msg.contextTime : msg.ts / 1000,
     );
+    // Voice Shaper: the posted value for its recording's F0 track (only
+    // while it records; changes no state here). voice-preview/bridge.js.
+    voicePreviewPitchTap(msg);
   }
 
   useEffect(() => { handlePitchMessageRef.current = handlePitchMessage; });
