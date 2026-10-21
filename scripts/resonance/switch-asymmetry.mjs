@@ -31,7 +31,7 @@
 // arm the record then also carries .cand: the replica's posts (same 0.2 s
 // cadence, same fields as the worker's) through the same row logic. Parity
 // is then checked on verdict and startU only.
-import { readFileSync, mkdirSync, appendFileSync, existsSync } from "node:fs";
+import { readFileSync, mkdirSync, appendFileSync, existsSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -339,6 +339,12 @@ const [si, sn] = arg("shard", "0/1").split("/").map(Number);
 items = items.filter((_, i) => i % sn === si);
 const out = path.resolve(repo, arg("out", `build/resonance-switch/run-${split}-${si}of${sn}.jsonl`));
 mkdirSync(path.dirname(out), { recursive: true });
+// resumable: a run stopped mid-write leaves a partial last line; drop it
+if (existsSync(out)) {
+  const txt = readFileSync(out, "utf8");
+  const cut = txt.lastIndexOf("\n") + 1;
+  if (cut < txt.length) writeFileSync(out, txt.slice(0, cut));
+}
 const done = new Set(existsSync(out) ? readFileSync(out, "utf8").split(/\r?\n/).filter(Boolean).map((l) => JSON.parse(l).id) : []);
 console.log(`${items.length} streams (${done.size} done) -> ${out}`);
 const t0 = Date.now();

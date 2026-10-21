@@ -180,8 +180,17 @@ for (const r of rows) {
     for (const a of ARMS) for (const c of cands) {
       const S = series.get(r.id)[a][c], O = series.get(cOld)[a][c], N = series.get(cNew)[a][c];
       const mask = S.dot.map((d) => d === 1);
+      // header (reported, no bar): first live / holding chunk with the expected text, and the share from 8 s on
+      const expect = r.seq[0] === to ? "about where you started" : LETTER_BRIGHT[to] > LETTER_BRIGHT[r.seq[0]] ? "brighter than your start" : "darker than your start";
+      let th = null, lateN = 0, lateOk = 0;
+      for (let k = k0; k < k1; k++) {
+        if (!LIVE.has(S.state[k])) continue;
+        const ok = S.hdr[k] === expect;
+        if (ok && th === null) th = (k - k0) * CHS;
+        if (k - k0 >= 8 / CHS) { lateN++; if (ok) lateOk++; }
+      }
       events.push({ id: r.id, kind: r.kind, sex: r.kind === "a" ? r.sex : null, seq: r.seq, join: j, dir, arm: a, cand: c, pat,
-        darkFirst: LETTER_BRIGHT[r.seq[0]] === 0, st: settle(S.u, O.u, N.u, k0, k1, mask) });
+        darkFirst: LETTER_BRIGHT[r.seq[0]] === 0, st: settle(S.u, O.u, N.u, k0, k1, mask), th, hdrLate: lateN ? lateOk / lateN : null });
     }
   }
 }
@@ -262,6 +271,14 @@ say("|---|---|---|---|---|---|---|");
 for (const c of cands) for (const [label, pred] of [["a, readers m", (e) => e.kind === "a" && e.sex === "m"], ["a, readers f", (e) => e.kind === "a" && e.sex === "f"], ["b (pairs)", (e) => e.kind === "b"]]) for (const dir of ["up", "down"]) {
   const es = sel(c, (e) => pred(e) && e.dir === dir);
   say(`| ${c} | ${label} | ${dir} | ${es.length} | ${f1(med(es.map((e) => e.st.tdb)))} | ${f1(med(es.map((e) => e.st.t50)))} | ${f1(med(es.map((e) => e.st.ttol)))} |`);
+}
+say();
+// header (reported, no bar; arm on)
+say("| cand | join | n | header first right (median s; never: n) | right from 8 s on (median share) |");
+say("|---|---|---|---|---|");
+for (const c of cands) for (const j of [1, 2]) {
+  const es = sel(c, (e) => e.join === j);
+  say(`| ${c} | ${j} | ${es.length} | ${f1(med(es.filter((e) => e.th != null).map((e) => e.th)))} (${es.filter((e) => e.th == null).length}) | ${f2(med(es.map((e) => e.hdrLate)))} |`);
 }
 say();
 // per pattern away/back (arm on)

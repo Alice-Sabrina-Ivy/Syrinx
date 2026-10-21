@@ -3,7 +3,8 @@
 Branch `resonance-asymmetry` (from `cue-strip` c0d031f). Public data only
 (LibriSpeech dev-clean for this pass; test-clean is held out for the plan
 below). Dev candidate results and the pick: §Dev results (committed before
-any held-out run).
+any held-out run). **Held-out: the pick fails bar 4 — no change shipped**
+(§Held-out result).
 
 ## Why
 
@@ -319,6 +320,73 @@ direction (Tdb up / down): men 3.4 / 3.4, women 3.4 / 3.3, pairs 3.7 / 3.5.
 Held-out: run once, `switch-asymmetry.mjs --split=held --patterns=,x6,x10
 --cand=c1-s1.5-j0.6-n4` (BASE = the real worker's posts in the same run).
 
+## Held-out result (2026-10-21): FAIL — no change shipped
+
+Run once: 20 test-clean readers (10 men, 10 women) + 10 pairs, patterns
+18/36, 30/36, 30/40, both orders, and the controls — 400 streams through
+the real pitch worker (with the voice detector), DSP worker, hook,
+resonance worker (BASE) and the replica with the pick's cue (CAND), both
+through the real row logic. Worker = replica on verdict and startU on
+192 000 / 192 000 posts. Scored with `switch-cand.mjs --mode=recorded`.
+
+### The bar (arm on, drawn dot)
+
+| bar | BASE | C1 s1.5 j0.6 n4 | needed | result |
+|---|---|---|---|---|
+| 1a: up Tdb, all patterns, a + b (300 events) | 6.0 s | 3.2 s (−47 %) | ≤ −40 % | pass |
+| 1a: up / down Tdb | 0.99 | 0.89 | ≤ 1.5 | pass |
+| 1b: 30/36 dark-first, T50 away (50 events) | 5.5 s | 2.8 s (−49 %) | ≤ −40 % | pass |
+| 1b: T50 away / back | 1.23 | 0.94 | ≤ 1.5 | pass |
+| 2: jitter p90 \|Δu\| (all / men / women) | 0.028 / 0.028 / 0.028 | 0.029 / 0.029 / 0.028 (1.03 / 1.06 / 1.01 ×) | ≤ 1.10 × | pass |
+| 2: 5 s spread (all / men / women) | 0.088 / 0.085 / 0.092 | 0.091 / 0.090 / 0.094 (1.03 / 1.06 / 1.03 ×) | ≤ 1.10 × | pass |
+| 3: drawn chunks = BASE | — | 1 728 000 / 1 728 000 | identical | pass |
+| 4: median \|Δu\| vs BASE, steady | — | 0.000 | ≤ 0.02 | pass |
+| **4: "about where you started", unchanged voice** | **85.6 %** | **83.1 % (−2.5 points)** | **≥ −2 points** | **FAIL** |
+
+Bar 4 by reader sex (reported): men 80.8 → 77.3 % (−3.5), women 89.5 →
+87.8 % (−1.7). The restart fires on steady speech more often than on dev
+(0.54 per minute vs 0.13; men 0.80, women 0.29), and each time the dot
+jumps to the last 1.5 s median, which can sit outside the 0.3 u deadband
+of the start. H1 / N2 were not run: bar 3 holds by construction (only the
+shown value changes; checked on all held-out chunks) and the result was
+already a fail.
+
+### Settle per reader sex and direction (arm on, drawn; medians, s of audio)
+
+| set | dir | n | BASE Tdb | CAND Tdb | BASE T50 | CAND T50 | BASE Ttol | CAND Ttol |
+|---|---|---|---|---|---|---|---|---|
+| a, men readers | up | 120 | 6.3 | 3.1 | 5.5 | 2.8 | 7.1 | 4.4 |
+| a, men readers | down | 120 | 6.7 | 3.9 | 5.8 | 3.1 | 7.6 | 6.0 |
+| a, women readers | up | 120 | 5.8 | 2.8 | 4.6 | 2.5 | 6.1 | 4.4 |
+| a, women readers | down | 120 | 6.0 | 3.1 | 4.7 | 2.7 | 6.5 | 5.0 |
+| b, pairs | up | 60 | 6.0 | 3.6 | 5.0 | 3.2 | 6.3 | 4.8 |
+| b, pairs | down | 60 | 6.0 | 4.0 | 5.4 | 3.4 | 6.4 | 6.0 |
+
+Away and back (arm on, drawn; medians, s of audio):
+
+| joins | first | BASE away T50 / Tdb | CAND away T50 / Tdb | BASE back T50 / Tdb | CAND back T50 / Tdb |
+|---|---|---|---|---|---|
+| 18/36 | dark | 5.4 / 6.3 | 3.0 / 4.3 | 5.0 / 5.8 | 2.9 / 3.1 |
+| 18/36 | bright | 5.8 / 6.7 | 3.4 / 4.0 | 4.9 / 5.8 | 2.7 / 2.8 |
+| 30/36 | dark | 5.5 / 6.0 | 2.8 / 2.8 | 4.5 / 5.8 | 3.0 / 3.4 |
+| 30/36 | bright | 5.5 / 6.0 | 2.8 / 3.3 | 3.2 / 5.6 | 2.7 / 3.0 |
+| 30/40 | dark | 5.5 / 6.5 | 2.8 / 2.8 | 6.0 / 6.8 | 3.4 / 3.7 |
+| 30/40 | bright | 5.5 / 6.8 | 2.8 / 3.8 | 5.0 / 6.0 | 3.2 / 3.4 |
+
+Reported, no bar: header first right after join 1 4.2 s vs 5.2 s (never
+in the segment: 78 vs 88 of 300); after join 2 3.2 vs 5.8 s, but never in
+the segment 42 vs 21 of 300. Arm off: up / down Tdb 3.2 / 3.6 s vs 6.0 /
+6.1 s.
+
+**Verdict.** The restart halves the time to follow a change, the same up
+and down and for both sexes, but on unchanged speech it moves the header
+off "about where you started" 2.5 points more often (men 3.5), past the
+pre-registered 2-point limit. Per the plan nothing is shipped; the cue
+stays the plain 5 s median. A next pass would have to keep the start
+comparison on the unrestarted readout (or widen the restart's evidence
+on steady speech) and be pre-registered again on fresh data; these
+held-out readers are now spent.
+
 ## Reproduce
 
 ```
@@ -331,4 +399,8 @@ SO_TAP=0 node --import ./scripts/session-oracle/lib/register.mjs scripts/resonan
     --split=dev --patterns=x6,x10 --no-controls --shard=i/2 --out=build/resonance-switch/dwell-dev-<i>of2.jsonl
 node scripts/resonance/switch-report.mjs --runs=<the four jsonl files>
 node scripts/resonance/switch-cand.mjs --mode=replay --runs=<the four jsonl files>
+# held-out (once): both shards, then
+SO_TAP=0 node --import ./scripts/session-oracle/lib/register.mjs scripts/resonance/switch-asymmetry.mjs \
+    --split=held --patterns=,x6,x10 --cand=c1-s1.5-j0.6-n4 --shard=i/2 --out=build/resonance-switch/held-<i>of2.jsonl
+node scripts/resonance/switch-cand.mjs --mode=recorded --cand=c1-s1.5-j0.6-n4 --runs=<the two held jsonl files>
 ```
