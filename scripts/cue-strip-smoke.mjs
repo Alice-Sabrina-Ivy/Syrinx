@@ -39,12 +39,14 @@
 //                   deep part from the left = the low end of "would say man",
 //                   the light part from the right = the low end of "would
 //                   say woman", striped between (the range line's one-side
-//                   "About N in 10 listeners would say …" is the middle of the
-//                   bar's range, 2026-10-21), no best-guess mark (review
-//                   2026-10-20), a deep / light key beside each end word,
-//                   the range line and (unless "could go either way") the unsure
-//                   line, end words and bar inside the panel, screen-reader
-//                   label present; contrast: text >= 4.5:1, both shades >=
+//                   "About N in 10 listeners would say …" is the best guess s,
+//                   data-split-guess, to the nearest tenth, 2026-10-21), no
+//                   best-guess mark (review 2026-10-20), a deep / light key
+//                   beside each end word, the range line and (unless "could go
+//                   either way") the unsure line, end words and bar inside the
+//                   panel, screen-reader label = the bar's own description and
+//                   the sentence announced once (2026-10-21: the label repeated
+//                   it); contrast: text >= 4.5:1, both shades >=
 //                   3:1 against the panel and each other, no green / red /
 //                   amber / pink / blue hue in the bar (both shades 244-270°,
 //                   on the violet side of 240° blue).
@@ -111,7 +113,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import puppeteer from "puppeteer-core";
 import { PITCH_ONLY_TEXT } from "../src/ml/pitch-only-warning.js";
-import { sayText } from "../src/components/heardAsAxisModel.js";
+import { sayText, BAR_DESCRIPTION } from "../src/components/heardAsAxisModel.js";
 import { NARROWBAND_NOTICE, NARROWBAND_INFO } from "../src/components/cueStripModel.js";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -250,6 +252,14 @@ const state = (page) => page.evaluate(() => {
           dotShown: !!a.querySelector("[data-split-guess-mark]"), keys: [...a.querySelectorAll("[data-axis-ends] [data-axis-key]")].map((e) => e.dataset.axisKey).join(","),
           sr: a.querySelector("[role=img]")?.getAttribute("aria-label") ?? "",
           range: p.querySelector("[data-heard-as-range]")?.textContent ?? "", unsure: p.querySelector("[data-heard-as-unsure]")?.textContent ?? "",
+          // how often a screen reader meets the sentence: aria-labels that contain it + leaf text equal to it outside aria-hidden
+          rangeAnnounced: (() => {
+            const t = p.querySelector("[data-heard-as-range]")?.textContent ?? "";
+            if (!t) return 0;
+            const labels = [...p.querySelectorAll("[aria-label]")].filter((e) => e.getAttribute("aria-label").includes(t)).length;
+            const texts = [...p.querySelectorAll("*")].filter((e) => e.children.length === 0 && e.textContent.trim() === t && !e.closest('[aria-hidden="true"]')).length;
+            return labels + texts;
+          })(),
           fits: p.scrollWidth <= p.clientWidth + 1 && ends.length === 2 && ends.every((e) => e.left >= pr.left - 0.5 && e.right <= pr.right + 0.5)
             && ends[0].right <= ends[1].left && !!bar && bar.left >= pr.left - 0.5 && bar.right <= pr.right + 0.5 };
       })(),
@@ -365,21 +375,24 @@ async function sample(page, ms, fn) {
 let womanGuess = null;
 function axisChecks(who, s) {
   const a = s.heardAs?.axis;
-  // The range line (2026-10-21): one side at the middle of the bar's range —
-  // deep = A tenths from the left, light = C = 10 − B from the right — "About N
-  // in 10 listeners would say …", or "Could go either way" (sayText, the
-  // panel's own words, from the drawn tenths).
-  const want = a ? sayText(Math.round(a.man * 10), 10 - Math.round(a.woman * 10), a.wide) : null;
+  // The range line (2026-10-21): one side, the panel's best guess s (drawn
+  // nowhere; data-split-guess, 3 decimals) to the nearest tenth — "About N in
+  // 10 listeners would say …" / "Nearly all …", or "Could go either way"
+  // (sayText, the panel's own words). ±0.0005 covers data-split-guess's
+  // rounding at a tenth boundary.
+  const wants = a ? new Set([-0.0005, 0, 0.0005].map((d) => sayText(a.guess + d, a.wide))) : new Set();
+  const want = [...wants].join(" / ");
   check(`${who}: split bar parts match the data (deep = low end of man, light = low end of woman, striped between), no best-guess mark, a deep key by "would say man" and a light one by "would say woman"`,
     !!a && !a.dotShown && a.keys === "man,woman" && a.barH >= 16 && a.barH <= 20
     && Math.abs((a.parts.man ?? 0) - a.man) < 0.02 && Math.abs((a.parts.woman ?? 0) - a.woman) < 0.02
     && Math.abs((a.parts.either ?? 0) - (1 - a.man - a.woman)) < 0.02
     && a.guess >= a.man - 1e-6 && a.guess <= 1 - a.woman + 1e-6, JSON.stringify(a));
-  check(`${who}: bar words — range line = one side at the middle of the bar's range ("could go either way" when wide) and unsure line (one tenth value; none when wide)`, !!a
-    && a.range === want && !a.range.includes(" · ")
+  check(`${who}: bar words — range line = one side, the best guess to the nearest tenth ("could go either way" when wide) and unsure line (one tenth value; none when wide)`, !!a
+    && wants.has(a.range) && !a.range.includes(" · ")
     && (a.wide ? /^Could go either way/.test(a.range) && a.unsure === ""
       : /^(About \d|Nearly all)( in 10)? listeners would say (man|woman)$|^Could go either way/.test(a.range) && /^(About \d+|Fewer than 1) in 10 might be unsure or say neither$/.test(a.unsure)), `${a?.range} | want ${want} | ${a?.unsure}`);
-  check(`${who}: bar screen-reader label = the bar, then the visible sentence word for word`, !!a && a.sr.startsWith("Bar of listeners in tenths: would say man fills from the left") && a.sr.endsWith(` ${a.range}.`), a?.sr);
+  check(`${who}: bar screen-reader label = the bar's own description, without the sentence; the sentence announced once (the visible line, not aria-hidden)`,
+    !!a && a.sr === BAR_DESCRIPTION && !a.sr.includes(a.range) && a.rangeAnnounced === 1, `${a?.sr} | sentence announced ${a?.rangeAnnounced}x`);
   check(`${who}: bar, end words and parts fit inside the panel`, !!a && a.fits);
 }
 

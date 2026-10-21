@@ -11,12 +11,13 @@
 // / "would say woman"; no best-guess mark (review 2026-10-20: a mark at the
 // split point sat over the end word of the answer FEWER listeners would give,
 // so it read backwards). Under it, in larger text,
-// one sentence for the side above 5 in 10, the middle of the range ("About 8
-// in 10 listeners would say man"; user decision 2026-10-21 — until then both
-// sides as ranges, "About 5–10 in 10 would say man · about 0–5 in 10 would say
-// woman", which read as confusing) and the unsure / neither share as one text
-// line — never a single verdict, no percent signs, the same words and colours
-// in every direction. Two shades of ONE colour: never the app's green / red (on / off
+// one sentence for the side the panel's best guess favours, that guess
+// rounded to a whole tenth ("About 9 in 10 listeners would say man"; user
+// decisions 2026-10-21 — until then both sides as ranges, "About 5–10 in 10
+// would say man · about 0–5 in 10 would say woman", which read as confusing,
+// and then, briefly, the middle of the range, which read about a tenth low)
+// and the unsure / neither share as one text line — never a single verdict,
+// no percent signs, the same words and colours in every direction. Two shades of ONE colour: never the app's green / red (on / off
 // target) or amber (experimental / warning), never pink / blue; the shades
 // are theme tokens in src/index.css (--color-heard-man / --color-heard-woman,
 // >= 3:1 against the panel and each other; Windows high-contrast mode:
@@ -25,13 +26,13 @@
 // "Could go either way — listeners would be split" (user decision 2026-10-21
 // (1): it said "Can't tell yet", which promised that waiting helps; "Can't
 // tell yet" is now only in the "short" reason — no reading yet); it says the
-// same, keeping the unsure line, when the range is not wide but its middle
-// rounds to 5 in 10 (none inside the tested range today). An estimate older than 2 s says
+// same, keeping the unsure line, when the range is not wide but the best
+// guess rounds to 5 in 10 (none inside the tested range today). An estimate older than 2 s says
 // "Older reading" in its legend line (nothing is dimmed: dimming took text
 // below WCAG contrast). The first caveat sentence stays on screen; the rest
 // of it and the long explanation are behind "More". Layout numbers and words:
 // heardAsAxisModel.js (unit-tested; the unsure words are the 2026-10-07
-// axis's, unchanged; the range sentence is the 2026-10-21 one-side form). Updates every 2 s from the last ~8 s of running speech
+// axis's, unchanged; the range sentence is the 2026-10-21 one-side best-guess form). Updates every 2 s from the last ~8 s of running speech
 // (src/ml/heard-as.js); hides with a reason otherwise — within 250 ms when a
 // held note starts. While it shows no reading, the 250 ms check also asks for
 // one and shows it as soon as it is ready (2026-10-21, H3 of
@@ -346,9 +347,10 @@ function BarScale({ grey = false }) {
 // man"), light indigo from the right (the low end of "would say woman"),
 // striped between them (could go either way); ticks in tenths and the end
 // words with their colour keys under it. No best-guess mark (see the top of
-// this file). Colours: src/index.css (.heard-*). Purely visual
-// (role img with the full sentence as its label); the visible text lines
-// follow it. The parts jump between tenths, no transition: a left / width
+// this file). Colours: src/index.css (.heard-*). Purely visual (role img
+// labelled with the bar's own description only; the visible sentence right
+// under it is read once — 2026-10-21: the label repeated it, so screen
+// readers read it twice). The parts jump between tenths, no transition: a left / width
 // transition re-ran style + layout every frame on the main thread (−8.9 ms/s
 // pooled with the panel on; main-thread-cpu-2026-10-08.md §3 F6).
 function HeardAsAxis({ axis }) {
@@ -598,7 +600,7 @@ export function HeardAsPanel({
           <li>Within clearly feminine or clearly masculine voices it does not track small changes — use the pitch and resonance rows under the pitch trace for those.</li>
           <li>It uses only your pitch and a voice classifier; it ignores intonation, vocal weight and articulation.</li>
           <li data-heard-as-range-limits="">{RANGE_LIMITS_TEXT}</li>
-          <li>The striped part of the bar is the range where about 8 in 10 published listener groups fell for clearly feminine or clearly masculine voices; less is known for in-between voices. The sentence under the bar gives the middle of that range, rounded to a whole tenth (halfway values toward 5 in 10), for the side more listeners would choose. The scale is listeners choosing between man and woman: those who might be unsure or say neither are counted half on each side. The &ldquo;unsure or neither&rdquo; line counts listeners who answered &ldquo;another gender&rdquo; as well as those who weren&apos;t sure, and depends on how listeners are asked.</li>
+          <li>The striped part of the bar is the range where about 8 in 10 published listener groups fell for clearly feminine or clearly masculine voices; less is known for in-between voices. The sentence under the bar gives the panel&apos;s best guess for the side more listeners would choose, rounded to a whole tenth (halfway values toward 5 in 10); the best guess always lies inside the striped part. The scale is listeners choosing between man and woman: those who might be unsure or say neither are counted half on each side. The &ldquo;unsure or neither&rdquo; line counts listeners who answered &ldquo;another gender&rdquo; as well as those who weren&apos;t sure, and depends on how listeners are asked.</li>
           <li data-heard-as-noise="">{NOISE_TEXT}</li>
           <li>Nothing is stored or sent anywhere; it is computed on this device and forgotten when you stop.</li>
         </ul>
