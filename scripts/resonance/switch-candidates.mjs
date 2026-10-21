@@ -17,6 +17,11 @@
 // createDisplayReadout({ ref, horizonS: 5, restart: null }) equals
 // src/resonance-lab/readout.js's median readout value for value (checked by
 // switch-cand.mjs).
+//
+// Shipped 2026-10-21 (user decision): c1-s1.5-j0.6-n4 is now the cue itself
+// (src/resonance/resonanceCue.js RESTART / createRestartReadout, the same
+// code), so in a new run the worker's posts (BASE) already restart. To
+// compare against the pre-ship readout, build the cue with restart: null.
 
 export const CANDIDATES = {
   base: null,

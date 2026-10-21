@@ -3,8 +3,8 @@
 Branch `resonance-asymmetry` (from `cue-strip` c0d031f). Public data only
 (LibriSpeech dev-clean for this pass; test-clean is held out for the plan
 below). Dev candidate results and the pick: §Dev results (committed before
-any held-out run). **Held-out: the pick fails bar 4 — no change shipped**
-(§Held-out result).
+any held-out run). **Held-out: the pick fails bar 4** (§Held-out result).
+**User decision 2026-10-21: shipped anyway** (§User decision).
 
 ## Why
 
@@ -320,7 +320,7 @@ direction (Tdb up / down): men 3.4 / 3.4, women 3.4 / 3.3, pairs 3.7 / 3.5.
 Held-out: run once, `switch-asymmetry.mjs --split=held --patterns=,x6,x10
 --cand=c1-s1.5-j0.6-n4` (BASE = the real worker's posts in the same run).
 
-## Held-out result (2026-10-21): FAIL — no change shipped
+## Held-out result (2026-10-21): FAIL — no change shipped (superseded by the user decision below)
 
 Run once: 20 test-clean readers (10 men, 10 women) + 10 pairs, patterns
 18/36, 30/36, 30/40, both orders, and the controls — 400 streams through
@@ -387,6 +387,52 @@ comparison on the unrestarted readout (or widen the restart's evidence
 on steady speech) and be pre-registered again on fresh data; these
 held-out readers are now spent.
 
+## User decision 2026-10-21: shipped despite the failed guard
+
+The user chose (2026-10-21, ~16:00) to ship the pick anyway, accepting the
+bar-4 cost. Shipped exactly as run on held-out: `RESTART = { shortS: 1.5,
+jumpU: 0.6, confirmN: 4 }` in `src/resonance/resonanceCue.js`
+(`createRestartReadout`, the same code as `createDisplayReadout` in
+`scripts/resonance/switch-candidates.mjs`). Only the shown value (u, raw,
+clamp) comes from it; fill, voicedS, n, sinceResumeS and the start
+collection (startU) stay on the plain 5 s median, as in the replica.
+`createResonanceCue({ restart: null })` gives the readout before this
+change.
+
+**Accepted cost** (held-out controls, unchanged voice, arm on):
+
+| | before | shipped | pre-registered limit |
+|---|---|---|---|
+| "about where you started", share of live time | 85.6 % | 83.1 % (−2.5 points) | ≥ −2 points |
+| — men readers | 80.8 % | 77.3 % (−3.5) | |
+| — women readers | 89.5 % | 87.8 % (−1.7) | |
+| restarts on unchanged speech, per minute | — | 0.54 (men 0.80, women 0.29) | (reported) |
+
+Each restart on steady speech moves the dot to the last 1.5 s median, which
+can sit outside the 0.3 u "about where you started" deadband for a few
+seconds. Gained: a change of resonance is followed in about half the time,
+the same up and down (up Tdb 6.0 → 3.2 s; 30/36 dark-first T50 away 5.5 →
+2.8 s); every other bar passes (§The bar).
+
+**Reproduction through the real chain.** `switch-asymmetry.mjs --split=held
+--patterns=,x6,x10 --only=<6 ids>` with the shipped module (worker = BASE,
+no `--cand`) on 6 held-out streams (a man's 18/36 and 30/36 switch, two
+controls with 5 and 3 restarts, a woman's own recording, a man/woman pair
+30/36): the worker's posts equal the replica on 240 / 240 posts per arm,
+and the posted u, row state, drawn dot, header and startU equal the
+held-out run's pick (`.cand`) on 25 920 / 25 920 chunks (both arms; the
+old BASE differed from the pick on 6 576 of them).
+
+**Test.** `tests/resonance/switch-restart-test.js` on
+`tests/resonance/fixtures/switch-up-bins.json` (dev-clean reader 2078, pitch
+kept, darker → brighter at 18 s, and the all-brighter control; written by
+`scripts/resonance/switch-fixture.mjs`): settles within 0.3 u of the
+control in 2.55 s (≤ 3.5 s required; the plain 5 s median takes 5.70 s, so
+the test fails on the old module); positions, fill, voicedS and startU are
+unchanged; `restart: null` equals `readout.js` value for value. The
+existing resonance tests (cue, narrowband, production parity, worker
+recovery, overload guard, CPU exactness) pass unchanged.
+
 ## Reproduce
 
 ```
@@ -403,4 +449,5 @@ node scripts/resonance/switch-cand.mjs --mode=replay --runs=<the four jsonl file
 SO_TAP=0 node --import ./scripts/session-oracle/lib/register.mjs scripts/resonance/switch-asymmetry.mjs \
     --split=held --patterns=,x6,x10 --cand=c1-s1.5-j0.6-n4 --shard=i/2 --out=build/resonance-switch/held-<i>of2.jsonl
 node scripts/resonance/switch-cand.mjs --mode=recorded --cand=c1-s1.5-j0.6-n4 --runs=<the two held jsonl files>
+node scripts/resonance/switch-fixture.mjs --runs=<the two run-dev jsonl files>   # tests/resonance/fixtures/switch-up-bins.json
 ```

@@ -55,6 +55,22 @@
 // kept. On wideband audio the detector never turns on (0.0 % of voiced time
 // measured), so nothing here changes there.
 //
+// Following a change (restart; 2026-10-21,
+// measurements/resonance-switch-asymmetry-2026-10-21.md): the shown value
+// is the 5 s voiced median, plus a short median over the last RESTART.shortS
+// (1.5 s) of voiced time. When the two differ by ≥ RESTART.jumpU (0.6 u)
+// with the same sign on RESTART.confirmN (4) admitted bins in a row, the
+// window drops its bins older than the short window: the shown value
+// becomes the short median and grows back to 5 s. A change of resonance is
+// followed in ~3 s instead of ~6 s, up and down alike. Every value shown is
+// still a median of admitted bins. Only u / raw / clamp come from this
+// readout; fill, voicedS, n, sinceResumeS and the start collection (startU)
+// come from the plain 5 s readout, so a position exists exactly when it did
+// before. Cost (user decision 2026-10-21, shipped despite the failed
+// guard): on an unchanged voice the restart also fires ~0.5 times a minute,
+// and "about where you started" held 83.1 % of live time vs 85.6 % before.
+// restart: null gives the plain 5 s median (the readout before 2026-10-21).
+//
 // Units: u = (readout − LibriSpeech men's median) / (women's − men's
 // median) (reference.json "vtln"): 0 = typical adult man in that corpus,
 // 1 = typical adult woman. The vtln estimator clamps ln α at ±0.24; a
@@ -67,15 +83,72 @@ import { createUtteranceGate } from "../ml/utterance-gate.js";
 export const VTLN_CLAMP_EDGE = 0.2395;
 export const IDLE_RESET_S = 10;
 export const START_COLLECT_S = 12;
+export const RESTART = Object.freeze({ shortS: 1.5, jumpU: 0.6, confirmN: 4 });
 const DROP_VERDICTS = new Set(["sustained", "warming"]);
+
+function median(vals) {
+  if (!vals.length) return null;
+  const a = Float64Array.from(vals).sort();
+  const h = a.length >> 1;
+  return a.length % 2 ? a[h] : (a[h - 1] + a[h]) / 2;
+}
+
+/**
+ * The shown readout: the median over the trailing horizonS of voiced time,
+ * restarted on a confirmed change (see the header). restart: null = the
+ * plain median, value for value equal to readout.js's median readout.
+ * (The same code as the switch pass's display readout,
+ * scripts/resonance/switch-candidates.mjs createDisplayReadout.)
+ */
+export function createRestartReadout({ ref, horizonS = 5, restart = RESTART }) {
+  const gap = ref.womenMedian - ref.menMedian;
+  let items = [];
+  let raw = null;
+  let streak = 0, sign = 0, restarts = 0;
+  return {
+    add(stampS, s) {
+      if (s === null || !Number.isFinite(s)) return false;
+      items.push({ v: stampS, s });
+      const lo = stampS - horizonS;
+      let cut = 0;
+      while (cut < items.length && items[cut].v <= lo) cut++;
+      if (cut) items = items.slice(cut);
+      raw = median(items.map((x) => x.s));
+      if (restart) {
+        const lo2 = stampS - restart.shortS;
+        let c2 = 0;
+        while (c2 < items.length && items[c2].v <= lo2) c2++;
+        const short = items.slice(c2);
+        const sm = median(short.map((x) => x.s));
+        const d = (sm - raw) / gap;
+        const sg = Math.abs(d) >= restart.jumpU ? Math.sign(d) : 0;
+        if (sg !== 0 && sg === sign) streak++;
+        else { sign = sg; streak = sg !== 0 ? 1 : 0; }
+        if (streak >= restart.confirmN) {
+          items = short;
+          raw = sm;
+          streak = 0; sign = 0; restarts++;
+        }
+      }
+      return true;
+    },
+    snapshot() {
+      return { raw, u: raw === null ? null : (raw - ref.menMedian) / gap, n: items.length, restarts };
+    },
+    reset() { items = []; raw = null; streak = 0; sign = 0; },
+  };
+}
 
 /**
  * reference: reference.json (needs .vtln {menMedian, womenMedian})
- * gate:      false = admit every bin (tests: equals the engine's own readout)
+ * gate:      false = admit every bin (tests: equals the engine's own readout
+ *            when restart is null)
+ * restart:   RESTART (default) or null = the plain 5 s median shown
  */
-export function createResonanceCue({ reference, horizonS = 5, gate = true } = {}) {
+export function createResonanceCue({ reference, horizonS = 5, gate = true, restart = RESTART } = {}) {
   const ref = reference.vtln;
   const readout = createReadout({ agg: "median", horizonS, ref });
+  const shown = createRestartReadout({ ref, horizonS, restart });
   const g = gate ? createUtteranceGate() : null;
   let verdict = gate ? "silent" : "score";
   let startU = null;
@@ -109,6 +182,7 @@ export function createResonanceCue({ reference, horizonS = 5, gate = true } = {}
     noteNarrowband(on) {
       if (on && !narrowband) {
         readout.reset();
+        shown.reset();
         if (startU === null) { startSamples = []; startVoicedS = 0; }
       }
       narrowband = !!on;
@@ -127,6 +201,7 @@ export function createResonanceCue({ reference, horizonS = 5, gate = true } = {}
       if (typeof te === "number") lastAdmitTe = te;
       sinceResumeS += delta;
       readout.add(stampS - droppedVoicedS, value);
+      shown.add(stampS - droppedVoicedS, value);
       if (startU === null) {
         const s = readout.snapshot();
         if (s.fill >= 1 && s.u !== null) {
@@ -143,10 +218,11 @@ export function createResonanceCue({ reference, horizonS = 5, gate = true } = {}
     },
     snapshot() {
       const s = readout.snapshot();
-      const clamp = s.raw === null ? 0 : s.raw >= VTLN_CLAMP_EDGE ? 1 : s.raw <= -VTLN_CLAMP_EDGE ? -1 : 0;
+      const d = shown.snapshot();
+      const clamp = d.raw === null ? 0 : d.raw >= VTLN_CLAMP_EDGE ? 1 : d.raw <= -VTLN_CLAMP_EDGE ? -1 : 0;
       return {
-        u: s.u,
-        raw: s.raw,
+        u: d.u,
+        raw: d.raw,
         n: s.n,
         fill: s.fill,
         voicedS: s.voicedS,
@@ -158,6 +234,7 @@ export function createResonanceCue({ reference, horizonS = 5, gate = true } = {}
         binsDropped,
         sinceResumeS,
         resumes,
+        restarts: d.restarts,
       };
     },
   };
