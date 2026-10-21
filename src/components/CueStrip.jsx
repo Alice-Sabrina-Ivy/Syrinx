@@ -42,11 +42,10 @@ import {
   dotOpacity,
   NARROWBAND_INFO,
   highlightFor,
+  cueRowStates,
   pitchCueWord,
-  pitchRowState,
   resonanceClamp,
   resonanceHeader,
-  resonanceRowState,
   rowValue,
   ticks,
   trailOpacity,
@@ -348,8 +347,9 @@ export function CueStrip({
   direction = null,
   voiced,
   holding,
-  // The pitch row's voiced flags (the voice gate's mask); the
-  // resonance row keeps voiced / holding.
+  // The pitch display's voiced flags (the voice gate's mask): both rows and
+  // the caption read these (cueRowStates; the resonance row since
+  // 2026-10-21). voiced / holding are only their defaults.
   pitchVoiced = voiced,
   pitchHolding = holding,
   pitch,
@@ -371,7 +371,7 @@ export function CueStrip({
   // this, never the refs.
   const [view, setView] = useState({ snap: null, trails: { pitch: [], resonance: [] }, everVoiced: false, sr: {} });
   const latest = useRef(null);
-  useEffect(() => { latest.current = { voiced, holding, pitchVoiced, pitchHolding, pitchLevel, resonanceStatus, direction }; });
+  useEffect(() => { latest.current = { pitchVoiced, pitchHolding, pitchLevel, resonanceStatus, direction }; });
 
   useLayoutEffect(() => {
     const el = wrapRef.current;
@@ -419,14 +419,9 @@ export function CueStrip({
       const p = latest.current;
       if (!p) return;
       const snap = resonanceRef?.current ?? null;
-      if (p.voiced) ever = true;
+      if (p.pitchVoiced) ever = true;
       const inputs = { ...p, snap, workerStatus: p.resonanceStatus };
-      const states = {
-        pitch: pitchRowState({ ...inputs, voiced: p.pitchVoiced, holding: p.pitchHolding }),
-        // Without the reference only the worker's own state can show
-        // (unavailable / paused / starting): an error is never hidden.
-        resonance: resonanceRowState(ref ? inputs : { ...inputs, snap: null }),
-      };
+      const states = cueRowStates({ ...inputs, hasRef: !!ref });
       if (n++ % 4 === 0) {
         sr = {
           pitch: cueSummary("pitch", { state: states.pitch, direction: p.direction, pitchLevel: p.pitchLevel }),
@@ -447,9 +442,8 @@ export function CueStrip({
   }, [resonanceRef, assets]);
 
   const snap = view.snap;
-  const inputs = { voiced, holding, pitchLevel, snap, workerStatus: resonanceStatus };
-  const pState = pitchRowState({ ...inputs, voiced: pitchVoiced, holding: pitchHolding });
-  const rState = resonanceRowState(vtlnRef ? inputs : { ...inputs, snap: null });
+  const inputs = { pitchVoiced, pitchHolding, pitchLevel, snap, workerStatus: resonanceStatus };
+  const { pitch: pState, resonance: rState } = cueRowStates({ ...inputs, hasRef: !!vtlnRef });
   // The header number IS the dot: the 1.5 s level the target judges.
   const levelStatus = pitchLevel != null ? pitchStatus(pitchLevel, pitchTargetFor(direction)) : null;
   const rClamp = resonanceClamp(snap);
@@ -528,7 +522,7 @@ export function CueStrip({
       {!shortLandscape && (
         <div className="flex items-start justify-between gap-2 text-[10px] lg:text-xs leading-[14px] lg:leading-4 text-neutral-400" data-cue-caption="">
           <span className="min-w-0">
-            {view.everVoiced || voiced ? "Dots follow your recent speech · bands: typical adult speakers" : "Start speaking — the dots follow your recent speech"}
+            {view.everVoiced || pitchVoiced ? "Dots follow your recent speech · bands: typical adult speakers" : "Start speaking — the dots follow your recent speech"}
           </span>
           <span className="shrink-0" data-cue-hnr="">
             <Fixed widest={["HNR -00 dB"]}>HNR {hnr !== null && hnr !== undefined ? `${Math.round(hnr)} dB` : "—"}</Fixed>

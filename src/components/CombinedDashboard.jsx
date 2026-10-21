@@ -59,7 +59,7 @@ export function CombinedDashboard({
   voiced,
   holding,
   // The pitch display's voiced flags (= voiced / holding unless the
-  // voice gate hides the pitch); the resonance row keeps voiced / holding.
+  // voice gate hides the pitch): the trace and both cue-strip rows read them.
   pitchVoiced = voiced,
   pitchHolding = holding,
   pitch,

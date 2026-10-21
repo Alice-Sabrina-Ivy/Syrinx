@@ -181,6 +181,27 @@ export function resonanceRowState({ workerStatus, snap, voiced, holding }) {
   if (!voiced) return "holding";
   return "live";
 }
+/**
+ * Both rows' states, as the strip shows them. Both rows read the pitch
+ * display's own flags, pitchVoiced / pitchHolding (useAudioPipeline: the raw
+ * voiced / holding, except while the voice gate hides the pitch — setting on,
+ * detector ready, "no voice"). The resonance row read the raw flags until
+ * 2026-10-21, so noise the pitch chain voiced took it out of "idle" ("keep
+ * talking…" with nobody speaking) even with the gate on; user decision
+ * 2026-10-21, measured in measurements/voice-gate-resonance-row-2026-10-21.md
+ * (noise only: the row leaves "idle" 7.0 % of the time instead of 33.3 %;
+ * speech: the same state on >= 99.9 % of the time, the same positions).
+ * hasRef false: the reference bands are not loaded, so only the resonance
+ * worker's own state can show (unavailable / paused / starting) — an error
+ * is never hidden.
+ */
+export function cueRowStates({ pitchVoiced, pitchHolding, pitchLevel, snap, workerStatus, hasRef = true }) {
+  const flags = { voiced: !!pitchVoiced, holding: !!pitchHolding };
+  return {
+    pitch: pitchRowState({ ...flags, pitchLevel }),
+    resonance: resonanceRowState({ ...flags, workerStatus, snap: hasRef ? snap : null }),
+  };
+}
 /** The value a row's dot shows, in the cue's units (null = none). */
 export function rowValue(cue, inputs) {
   if (cue === "pitch") return inputs.pitchLevel ?? null;

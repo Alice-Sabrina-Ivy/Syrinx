@@ -12,6 +12,7 @@ import {
   bandsFor,
   createTrail,
   cueResonanceRef,
+  cueRowStates,
   cueSummary,
   dotColor,
   dotHollow,
@@ -206,6 +207,18 @@ console.log("\nrow states");
   check("resonance: settling 2–5 s", R({ snap: snap({ voicedS: 3, fill: 0.6 }) }) === "settling");
   check("resonance: holding after voice", R({ voiced: false, holding: true }) === "holding");
   check("resonance: live", R({}) === "live");
+  // Both rows read the pitch display's flags (pitchVoiced / pitchHolding:
+  // what the voice gate leaves), never the raw voiced / holding (2026-10-21).
+  const C = (o) => cueRowStates({ workerStatus: "ready", snap: snap({}), pitchLevel: 180, ...o });
+  check("cueRowStates: both rows from pitchVoiced / pitchHolding",
+    C({ pitchVoiced: true }).pitch === "live" && C({ pitchVoiced: true }).resonance === "live"
+    && C({ pitchVoiced: false, pitchHolding: true }).pitch === "holding" && C({ pitchVoiced: false, pitchHolding: true }).resonance === "holding"
+    && C({ pitchVoiced: false, pitchHolding: false }).resonance === "idle" && C({ pitchVoiced: false, pitchHolding: false }).pitch === "idle");
+  check("cueRowStates: the raw voiced / holding are ignored (the gate hid the pitch: both rows idle)",
+    C({ voiced: true, holding: true, pitchVoiced: false, pitchHolding: false }).resonance === "idle"
+    && C({ voiced: true, holding: true, pitchVoiced: false, pitchHolding: false }).pitch === "idle");
+  check("cueRowStates: without the reference only the worker's own state shows",
+    C({ pitchVoiced: true, hasRef: false }).resonance === "starting" && C({ pitchVoiced: true, hasRef: false, workerStatus: "error" }).resonance === "unavailable");
   const nb = (on, decided = true) => snap({ narrowband: { n: 400, decided, on, f: on ? -45 : -6 } });
   check("resonance: narrowband while the detector is on (live, idle, holding, held note alike)",
     R({ snap: nb(true) }) === "narrowband" && R({ snap: nb(true), voiced: false, holding: false }) === "narrowband"
