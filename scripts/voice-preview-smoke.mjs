@@ -818,7 +818,9 @@ async function partFlow() {
   await clickSel(page, "[data-vp-record]");
   const tooShort = await phaseIs(page, "too-short", 5000);
   const ts = await vp(page);
-  check("a stop at 2 s -> too short, Record available again", tooShort && ts.status.startsWith("That was under 3 seconds.") && ts.record === "Record" && !ts.recordInactive, ts.status);
+  // the button re-arms about 1 s after the recording ended (REARM_MS, 2026-10-21): inactive at first
+  const rearmed = await waitVp(page, () => document.querySelector("[data-vp-record]")?.getAttribute("aria-disabled") !== "true", "re-armed after too short", 3000);
+  check("a stop at 2 s -> too short, Record inactive at first, then available again", tooShort && ts.status.startsWith("That was under 3 seconds.") && ts.record === "Record" && ts.recordInactive && rearmed, `${ts.status}; inactive at first ${ts.recordInactive}`);
 
   // a full recording, stopped by the user after ~5 s
   const rec = await recordToPreview(page, { stopAfterMs: 5200 });
