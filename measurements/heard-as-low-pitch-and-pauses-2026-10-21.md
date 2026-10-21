@@ -487,6 +487,14 @@ node scripts/heard-as/low-pitch-pauses/guards.mjs --runs=<guards>/run.0.jsonl,<g
 `candidates.mjs --split=dev` writes `selection.json` once and refuses to
 overwrite it; `--split=test` runs only the variant `selection.json` names, once.
 
+The CI fixture (§8.7), from the same runs:
+
+```
+node scripts/heard-as/low-pitch-pauses/make_test_fixture.mjs --runs=<run.0.jsonl>,<run.1.jsonl> \
+  --guards=<guards>/run.0.jsonl,<guards>/run.1.jsonl
+node tests/ml/heard-as-responsiveness-test.js
+```
+
 ## 8. Results (2026-10-21)
 
 **Order.** Plan committed and pushed 10:20:56 CDT (2d8ce1d). Candidates
@@ -682,3 +690,74 @@ detector live), shipped and H1+H3 on the same runs, four timer phases each
 7. **Not re-measured:** the noise / phone-channel shown shares quoted in the
    panel's "More" text and in CLAUDE.md were measured with the 3 s rule; with
    2 s readings will be shown at least as often there (not re-run).
+
+### 8.7 Regression test (CI)
+
+`tests/ml/heard-as-responsiveness-test.js` (in `npm run test:unit`) replays
+the panel's two timers on the audio clock as `HeardAsPanel.jsx` runs them —
+`compute()` at mount and every 2 s; every 250 ms the app's own `quickCheck()`
+(update / first reading / nothing) — over the app's aggregator with the
+shipped constants, at the four timer phases. A source check ties the replay to
+the JSX (the 250 ms constant, the two timers, `first()` showing a ready reading
+and never calling the pitch-only warning).
+
+**Fixture** `tests/ml/fixtures/heard-as-responsiveness.json` (44 KB, public
+data, derived numbers only), written by
+`scripts/heard-as/low-pitch-pauses/make_test_fixture.mjs` from this study's
+`run.mjs` records: held-out readers with natural pauses (W `ls-dev-3576`,
+M `ls-dev-777`, first 20 s) and 2.5 s pauses (W `ls-dev-1673`, M `ls-dev-174`,
+30 s), the same readers' WORLD 75 Hz streams (W `ls-dev-1993`, M `ls-dev-3170`,
+20 s), held vowels after reading (`held.after.121.220`, `held.after.174.110`)
+and alone (110 / 220 / 330 Hz, the smoke WAV's), pink noise at speech level,
+the pause fill, the smoke WAV's noise and silence. The script refuses to write
+unless the stored stream (f0 rounded to 0.01 Hz, pruned to what the panel
+reads) gives the same panel as the full record at every 250 ms sample, at all
+four phases, under the 3 s rule and the shipped one. The real whisper streams
+(EARS / Expresso, CC BY-NC 4.0) are not stored; the test builds a synthetic
+stand-in patterned on the worst unphonated one (below).
+
+**Checks** (shipped panel; the 3 s rule in brackets, from the test's own
+reference replay):
+
+| check | W | M |
+|---|---|---|
+| natural pauses: first reading ≤ 4.5 s at every phase | 3.5 s at all phases [7 / 7.5 / 6 / 6.5] | 4.0 s [7 / 7.5 / 8 / 8.5] |
+| natural pauses: the same first-reading time at all four phases (shown when ready, not on the timer) | yes [no] | yes [no] |
+| 2.5 s pauses: first reading ≤ 3.5 s at every phase | 2.75 s [8–21 s] | 2.75 s [8–15.5 s] |
+| 2.5 s pauses: a reading shown ≥ 70 % of the time (30 s) | 76–85 % [7–14 %] | 85–90 % [27–41 %] |
+| WORLD 75 Hz: a reading by 8 s at every phase | 5.5 s [none in 20 s] | 5.75 s [none in 20 s] |
+| every reading the 3 s rule shows is shown, identical (eta, wide) | 784 samples, 0 differ (all speech streams pooled) | |
+| held vowel after reading: hidden at the first 250 ms check of "sustained", none while it lasts; a reading before it | pass | pass |
+| held vowels alone, noise, pause fill, silence: no reading | pass | |
+| synthetic unphonated whisper: no reading in 30 s (its pool reaches 40 windows, 5 counted logits, 1.65 s voiced; asserted ≥ 10, > 0, 1.2–2 s) | pass | |
+
+**Fails on the old panel:** with the 53e3832 sources the test stops at its
+import (`quickCheck` does not exist). With the old panel's 250 ms timer
+supplied as `quickCheck` (recompute only to hide a shown reading on a held
+note), 12 checks fail: the two wiring checks, all eight pause checks and both
+75 Hz checks. Each half of the pick alone also fails: H1 without H3 fails 7
+(first reading 3.5–5.5 s and phase-dependent; 2.5 s pauses 62–79 % shown),
+H3 without H1 fails 8 (first reading 5.75 / 7 s; no 75 Hz reading in 20 s).
+The held-note, noise, silence and whisper checks pass on both panels by
+design: they guard that the faster panel adds no reading there.
+
+**Whisper margin.** On the rebuilt whisper set (§8.3), the unphonated
+whisper-only streams pool at most **1.375 s** of posted voiced pitch in the
+8 s window (EARS p084; next 1.1 s, p002; the rest ≤ 0.8 s), against the 2 s
+rule: a 0.6 s margin (1.6 s with the 3 s rule). That is the population B1
+judges; the five phonated EARS women pool 4.3–5.2 s and got readings before
+and after the change. A whisperer whose recordings carry more voicing than
+p084's could now get a reading; the synthetic stand-in in the test pools up
+to 1.65 s (stricter than p084; 1.2–2 s asserted), so a lower `minVoicedMs`
+would be caught.
+
+**Golden file not updated.** The plan (§6.3 iii) requires
+`tests/ml/fixtures/heard-as-golden.json` to stay as is: H1 and H3 change no
+aggregate definition, only whether and when a pool is shown, and
+`make_golden.mjs` regenerated it byte-identical at d555c06; this test adds a
+new fixture instead.
+
+With the test in place: `npm run lint` clean, `npm run test:unit` 47 / 47
+scripts, `npm run build` ok, `scripts/cue-strip-smoke.mjs --pitch-only=man,woman`
+(phone viewport, built app) 107 / 107 — the pitch-only warning appears 6.4 s
+(man) and 7.5 s (woman) after the shift.
