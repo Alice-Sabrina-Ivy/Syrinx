@@ -91,8 +91,11 @@ const NO_STEADINESS = { value: null, held: false };
 // status) read as unvoiced. It is a mask on the unchanged chain — the
 // smoothing, paint gate, silence gate and hold run exactly as without it,
 // which is the veto the 2026-10-20 screen scored ("a painted hop the
-// detector calls no-voice is vetoed"). Everything else keeps the raw values:
-// the DSP / ML / resonance pitch hints, the "Likely heard as" panel, the
+// detector calls no-voice is vetoed"). On those hops the resonance worker's
+// pitch hint also says unvoiced (pitch / contextTime unchanged; measured in
+// measurements/noise-detector-tryout-resonance-2026-10-21.md, built at 73 %
+// against an 80 % bar by user decision 2026-10-21). Everything else keeps the
+// raw values: the DSP / ML pitch hints, the "Likely heard as" panel, the
 // pitch-only warning, formants / HNR, the resonance row (voiced / holding
 // stay raw), and the recorded voiced / f0 that session stats use. Recorded
 // frames carry the decision in `voiceGate` ("voice" | "hidden" | "novoice",
@@ -1205,8 +1208,15 @@ export function useAudioPipeline() {
     }
     // The resonance cue reuses these decisions (bit-identical to the lab's
     // own pitch replica — tests/resonance/vtln-production-parity-test.js)
-    // and gates on them with the same utterance gate.
-    if (resonanceWorkerRef.current) resonanceWorkerRef.current.postMessage(hint);
+    // and gates on them with the same utterance gate. Voice gate (see the
+    // header): while the setting is on and this hop's decision is "no
+    // voice", the hint says unvoiced (pitch / contextTime unchanged) — the
+    // measured variant (measurements/noise-detector-tryout-resonance-
+    // 2026-10-21.md). No decision, or the setting off: the hint as before.
+    if (resonanceWorkerRef.current) {
+      const hideRes = voiceGateEnabledRef.current && vad !== null && vad.voice === false;
+      resonanceWorkerRef.current.postMessage(hideRes ? { ...hint, voiced: false } : hint);
+    }
     if (typeof msg.contextTime === "number") {
       // The pitch-only warning's pitch start and its late-switch-on seed:
       // every posted frame, voiced values only (unvoiced as null).

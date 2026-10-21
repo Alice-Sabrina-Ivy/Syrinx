@@ -3,6 +3,16 @@
 Branch `noise-detector-tryout-res` (from `noise-detector-tryout`, c24a6be).
 Public data and synthetic stimuli only.
 
+**User decision (2026-10-21): build it anyway.** The resonance-hint gate is
+built exactly as measured here (the "GATED" hint below) at **73 %** less
+noise-only position time — the pre-set 80 % bar was missed — with speech
+unchanged (median |Δu| 0.000 for both sexes, +0.00 s to the first position)
+and held vowels still excluded. It went into `cue-strip` with the voice gate
+on 2026-10-21 (branch `firered-merge`; hook test
+`tests/audio/voice-gate-resonance-hint-test.js`, browser check in
+`scripts/voice-gate-smoke.mjs`). The plan, verdict and results below are
+unchanged.
+
 ## Why
 
 User report, 2026-10-21, trying the FireRedVAD try-out on the PC: with no
@@ -94,7 +104,8 @@ this repository.
 
 **Verdict: FAIL** (noise). Speech and held vowels pass; noise-only time
 with a position falls 73.2 %, short of the 80 % bar. **Nothing is
-implemented**; the try-out is unchanged.
+implemented**; the try-out is unchanged. (Built anyway by user decision
+2026-10-21 — top of this note.)
 
 Run: 462 streams, 7.7 h of audio, every pitch message with a detector
 decision (none late). Under machine load the first attempt of one noise
@@ -196,7 +207,8 @@ none.
 
 ### Not done
 
-Nothing was implemented (plan: fail → report). The hint change, its hook
+Nothing was implemented (plan: fail → report; built afterwards by user
+decision 2026-10-21, top of this note). The hint change, its hook
 test and the smoke extension were drafted and are not committed. What the
 numbers point at, untested: the stickiness, not the hint, is most of the
 remaining noise time — for example clearing the resonance position after a
