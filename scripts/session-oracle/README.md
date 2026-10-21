@@ -23,6 +23,7 @@ Decision data: [measurements/target-voice-combined-validation-2026-10-03.md](../
 | file | role |
 |---|---|
 | `lib/chain.mjs` | drives the real workers + hook over one audio stream (25 ms chunks, both workers fed the same chunk, each DSP frame consuming the latest pitch message) |
+| `lib/voice-gate.mjs` | the `--voice-gate` option of `run.mjs` / `corpus.mjs` (2026-10-21): the same chain with the real FireRedVAD model in the real pitch worker and the detector's decisions fed to the real hook, gate on vs off (below) |
 | `lib/hooks.mjs`, `lib/register.mjs`, `lib/react-mock.mjs` | Node loader: one-render React mock, Vite-style extensionless imports |
 | `lib/tap-boersma.mjs` | observation-only shim between `pitch-worker.js` and the real `boersma-ac.js` that records frame-local and decoded values (the worker never posts them). Return values pass through untouched |
 | `lib/wav.mjs` | 16-bit PCM reader |
@@ -78,6 +79,66 @@ node --import ./scripts/session-oracle/lib/register.mjs scripts/session-oracle/c
   --corpus=hil --src=src --tag=head --shard=0/2      # fda | ptdb | hil | voc
 node scripts/session-oracle/corpus.mjs --report=base,head
 ```
+
+## Voice gate (`--voice-gate`, 2026-10-21)
+
+The shipped pitch display has a voice gate ("Hide pitch when no voice is
+heard", on by default; `src/dsp/firered-vad.js`): the pitch worker runs
+FireRedVAD on its 16 kHz stream and tags each pitch message with a
+decision, and the hook hides the pitch display while the decision is "no
+voice". Without the option the oracle drives the hook with no decisions,
+which is the display with the setting off. With it:
+
+- the REAL pitch worker loads the REAL model through its test seam
+  `setVadModelLoaderForTests` (only the loading differs from the app:
+  onnxruntime-web's WASM build in Node, the files from the local copy
+  `build/models/firered/` — `node scripts/fetch-firered-model.mjs`);
+- the worker phase runs with a frozen `performance.now`, so the detector
+  never switches itself off as "slow" (a device that keeps up); any detector
+  status other than "ready" aborts the run;
+- the REAL hook is driven twice from the same worker run: with each
+  message's decision in `latestPitchRef` (gate on → `<tag>`) and without
+  (gate off → `<tag>-gateoff`). A `vadv` column records the decision each
+  display hop consumed.
+
+```bash
+node scripts/fetch-firered-model.mjs     # once: the local model copy
+node --import ./scripts/session-oracle/lib/register.mjs scripts/session-oracle/run.mjs \
+  --src=src --tag=head --refs=build/session-oracle/refs --voice-gate      # -> head/, head-gateoff/
+python scripts/session-oracle/analyze.py head-gateoff head
+node --import ./scripts/session-oracle/lib/register.mjs scripts/session-oracle/corpus.mjs \
+  --corpus=voc --src=src --tag=head --voice-gate                          # -> head, head-gateoff, head.voice-gate
+node scripts/session-oracle/corpus.mjs --report=base,head-gateoff,head
+```
+
+`corpus.mjs --voice-gate` also writes `<tag>.voice-gate/`: decision counts,
+late messages, mask violations (a gate-on painted value that differs from
+gate off — must be 0: the gate only hides) and false painting / readout on
+reference-unvoiced hops, gate off → on. `--report` prints them and says
+whether each tag's counts are identical to the first tag's in every
+stage × group × band.
+
+**Check (2026-10-21, vocadito, src of `voice-gate-followup`):** it
+reproduces the voice-gate merge's corpus check (run then with an
+uncommitted driver) exactly — every cell of `--report=plain,head-gateoff,head`
+identical (plain = the oracle without the option; e.g. all < 400 Hz
+correct 98.53 / 98.31 / 97.34 / 97.43 % at dec / post / paint / readout),
+31 222 "voice" / 1 228 "no voice" / 0 undecided messages, no late message,
+no mask violation, false painting on reference-unvoiced hops 52.56 →
+51.81 % (vocadito_34: 45.42 → 38.93 %). `run.mjs --voice-gate` on a public
+clip: every column of the gate-off pass equals the run without the option.
+The gate-on pass differs only in `paint`, `ro` and (since the 2026-10-21
+review fix below) `style`: on the hops the gate hides, and on hops where
+the detector says "voice" but the dim held readout stays blank because the
+gate hid the painted frames before it (`gateHidPaintRef`, intended; 7 hops
+on vocadito_34).
+
+**Fix (2026-10-21, review):** `style` (and `styleA`) read the raw
+`voiced` / `holding`, so in the gate-on pass it equalled gate off on every
+hop. It now records what the pitch display shows, `pitchVoiced` /
+`pitchHolding` (falling back to `voiced` / `holding` for trees without
+them; identical without a decision, so runs without `--voice-gate` do not
+change). No analysis reads `style`, so no published number changes.
 
 ## Conventions (2026-10-03)
 

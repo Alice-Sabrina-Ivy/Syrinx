@@ -1,10 +1,14 @@
 // fetch-firered-model.mjs — downloads the FireRedVAD streaming model used by
 // the voice gate ("Hide pitch when no voice is heard", src/dsp/firered-vad.js)
-// into public/models/firered/ (gitignored: the model files are not committed).
-// The app loads them from there while FIRERED_MODEL.mirrorCommit is null; once
-// the Hugging Face mirror's commit is pinned it loads them from the mirror,
-// and this script is only needed for the parity test and the browser smoke
-// (scripts/voice-gate-smoke.mjs) — a developer tool, never a user step.
+// into build/models/firered/ (gitignored, outside public/ so no build ships
+// it; scripts/firered/local-model.mjs). The app does not use this copy: it
+// loads the files from the project's Hugging Face mirror at the pinned
+// FIRERED_MODEL.mirrorCommit. The copy is for Node, which has no mirror
+// loader: the FireRedVAD parity test (part C), the session oracle's
+// --voice-gate option and the voice-gate drivers (scripts/resonance/
+// voice-gate-resonance.mjs, scripts/firered/). Offline development of the app
+// itself: --out=public/models/firered and set mirrorCommit to null. A
+// developer tool, never a user step.
 //
 // Source: the official files of github.com/FireRedTeam/FireRedVAD at a pinned
 // commit (Apache-2.0; licence text in licenses/fireredvad/LICENSE, attribution
@@ -16,19 +20,21 @@
 //   node scripts/fetch-firered-model.mjs            download what is missing
 //   node scripts/fetch-firered-model.mjs --check    verify only (exit 1 if missing / wrong)
 //   node scripts/fetch-firered-model.mjs --out=DIR  another target directory
+//                                                   (default build/models/firered)
 
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { FIRERED_MODEL } from "../src/dsp/firered-vad.js";
+import { LOCAL_MODEL_DIR } from "./firered/local-model.mjs";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const args = Object.fromEntries(process.argv.slice(2).map((a) => {
   const [k, v] = a.replace(/^--/, "").split("=");
   return [k, v ?? true];
 }));
-const OUT = path.resolve(REPO, typeof args.out === "string" ? args.out : "public/models/firered");
+const OUT = typeof args.out === "string" ? path.resolve(REPO, args.out) : LOCAL_MODEL_DIR;
 const RAW = `https://raw.githubusercontent.com/FireRedTeam/FireRedVAD/${FIRERED_MODEL.commit}/`;
 
 const sha256 = (buf) => createHash("sha256").update(buf).digest("hex");

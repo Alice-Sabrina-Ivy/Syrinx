@@ -62,14 +62,14 @@ the texts in `licenses/world/` and `licenses/emscripten/`.
   `c30ec49e8cc69642b0ee65362eba11b9d11c6e54` — Apache License 2.0 (the stock
   text, no NOTICE file; full text in `licenses/fireredvad/LICENSE` and in the
   shipped `THIRD_PARTY_NOTICES.txt`). The unmodified files are not in this
-  repository. They are to be served from a byte-identical mirror on the
-  project's Hugging Face account (`Alice-Sabrina-Ivy/fireredvad-stream-vad-onnx`,
-  with the LICENSE and a README that credits FireRedTeam), pinned to the
-  mirror's commit and kept in the browser's Cache Storage; until that commit
-  is set in `FIRERED_MODEL.mirrorCommit`, `scripts/fetch-firered-model.mjs`
-  downloads them from the upstream commit, checks their sha256 and puts them
-  in `public/models/firered/`, from where a local build serves them. Either
-  way the app checks size and sha256 before use. The Kaldi-style filterbank front end in `firered-vad.js` is
+  repository or in the build. The app loads them at runtime from a
+  byte-identical mirror on the project's Hugging Face account
+  (`Alice-Sabrina-Ivy/fireredvad-stream-vad-onnx`, with the LICENSE and a
+  README that credits FireRedTeam), pinned to the mirror's commit
+  `7128fcfded226bac7b4852014c1c3caa88c80f07` (`FIRERED_MODEL.mirrorCommit`),
+  checks size and sha256 before use, and keeps them in the browser's Cache
+  Storage. `scripts/fetch-firered-model.mjs` downloads the same files from the
+  upstream commit for the Node tests and harnesses. The Kaldi-style filterbank front end in `firered-vad.js` is
   this project's own JavaScript, written to match the official Python front
   end's settings.
 - **Resonance lab models** (`public/resonance-lab/`: `vtln_warp.json`,

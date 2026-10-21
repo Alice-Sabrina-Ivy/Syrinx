@@ -17,12 +17,13 @@
 //
 //   node scripts/firered/tune194-replay.mjs --dumps=<voice-detector build>/vad/dumps/noise
 //        --audio=<root holding <source>/<id>.wav> [--json=build/firered-tune194.json] [--limit=N]
-// Needs the model in public/models/firered/ (scripts/fetch-firered-model.mjs).
+// Needs the local model copy (build/models/firered/: node scripts/fetch-firered-model.mjs).
 
 import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { createVoiceDetector, createFireRedRunner, parseKaldiCmvn, FIRERED_MODEL } from "../../src/dsp/firered-vad.js";
+import { createVoiceDetector, createFireRedRunner, parseKaldiCmvn } from "../../src/dsp/firered-vad.js";
+import { LOCAL_MODEL_DIR } from "./local-model.mjs";
 import { createStreamingResampler } from "../../src/ml/audio-utils.js";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -38,7 +39,7 @@ const DIST = path.join(repo, "node_modules/onnxruntime-web/dist");
 const ort = await import(pathToFileURL(path.join(DIST, "ort.wasm.bundle.min.mjs")).href);
 ort.env.wasm.numThreads = 1;
 ort.env.wasm.wasmBinary = readFileSync(path.join(DIST, "ort-wasm-simd-threaded.wasm"));
-const MD = path.join(repo, "public", FIRERED_MODEL.dir);
+const MD = LOCAL_MODEL_DIR;
 const session = await ort.InferenceSession.create(readFileSync(path.join(MD, "fireredvad_stream_vad_with_cache.onnx")), { executionProviders: ["wasm"] });
 const cmvn = parseKaldiCmvn(readFileSync(path.join(MD, "cmvn.ark")));
 

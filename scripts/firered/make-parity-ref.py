@@ -22,7 +22,7 @@
 # the parity test checks that the old timing fails the comparison).
 #
 #   python -I scripts/firered/make-parity-ref.py --vd=<voice-detector checkout>/scripts/voice-detector
-#          [--model-dir=public/models/firered] [--out=tests/dsp/fixtures/firered-parity.json]
+#          [--model-dir=build/models/firered] [--out=tests/dsp/fixtures/firered-parity.json]
 import base64
 import hashlib
 import importlib.util
@@ -40,7 +40,7 @@ A = dict((a[2:].split("=", 1) + ["1"])[:2] for a in sys.argv[1:] if a.startswith
 if "vd" not in A:
     raise SystemExit("usage: make-parity-ref.py --vd=<voice-detector checkout>/scripts/voice-detector [--model-dir=..] [--out=..]")
 VD = os.path.abspath(A["vd"])
-MODEL_DIR = os.path.abspath(os.path.join(REPO, A.get("model-dir", "public/models/firered")))
+MODEL_DIR = os.path.abspath(os.path.join(REPO, A.get("model-dir", "build/models/firered")))
 OUT = os.path.abspath(os.path.join(REPO, A.get("out", "tests/dsp/fixtures/firered-parity.json")))
 
 # (file, start s, end s): noise lead, woman's speech, noise long enough for the

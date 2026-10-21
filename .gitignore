@@ -66,7 +66,9 @@ scripts/penn-validation/
 public/audeering-6l-gender/
 public/jaesunghuh-gender/
 
-# FireRedVAD model files for the voice gate, used until the Hugging Face
-# mirror is pinned (fetched by scripts/fetch-firered-model.mjs; Apache-2.0,
-# not committed).
+# FireRedVAD model files for the voice gate (Apache-2.0, not committed): the
+# app loads them from the Hugging Face mirror. This folder is for offline
+# development only (node scripts/fetch-firered-model.mjs
+# --out=public/models/firered, with FIRERED_MODEL.mirrorCommit null); the
+# Node tests' copy lives in build/models/firered/ (build/ is ignored above).
 public/models/firered/

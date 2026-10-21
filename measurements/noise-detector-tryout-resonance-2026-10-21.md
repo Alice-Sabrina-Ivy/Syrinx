@@ -13,6 +13,12 @@ on 2026-10-21 (branch `firered-merge`; hook test
 `scripts/voice-gate-smoke.mjs`). The plan, verdict and results below are
 unchanged.
 
+**Correction (2026-10-21, later):** "position" below is the resonance
+worker's stored u, not the dot the row draws; "beyond the scale" counted
+only the vtln clamp; and "the dot stays for the rest of the clip" is wrong
+for the drawn dot. The figures are unchanged (re-run: identical). Corrected
+wording and the drawn-dot figures: §"Correction (2026-10-21)" at the end.
+
 ## Why
 
 User report, 2026-10-21, trying the FireRedVAD try-out on the PC: with no
@@ -214,6 +220,52 @@ test and the smoke extension were drafted and are not committed. What the
 numbers point at, untested: the stickiness, not the hint, is most of the
 remaining noise time — for example clearing the resonance position after a
 long stretch the detector calls "no voice" would need its own measurement.
+
+## Correction (2026-10-21)
+
+Re-run on regenerated audio with the same driver (now
+`voice-gate-resonance.mjs --row`, which also drives the real DSP worker,
+the hook and the row logic of `cueStripModel.js`; details in
+[voice-gate-resonance-row-2026-10-21.md](voice-gate-resonance-row-2026-10-21.md)).
+The tables above reproduce exactly (37.2 % → 10.0 %, 73.2 %; clamp 5.0 % →
+1.2 %). Below, BASE = the ungated hint and GATED = the gated hint (as
+built), both with the row on the raw pitch display flags, per 25 ms of
+noise-only audio (N1 + N2, 269 streams).
+
+1. **"Position" was the worker's stored u, not the drawn dot.** The row
+   draws the dot only while its state allows one (the raw pitch display
+   voiced or holding, and the readout warm).
+
+   | | worker position BASE | GATED | less | drawn dot BASE | GATED | less |
+   |---|---|---|---|---|---|---|
+   | N1 | 41.6 % | 12.7 % | 69.6 % | 22.7 % | 7.9 % | 65.3 % |
+   | N2 | 27.1 % | 3.9 % | 85.8 % | 14.4 % | 2.7 % | 81.2 % |
+   | **N1 + N2** | 37.1 % | 9.9 % | **73.2 %** | 20.1 % | 6.3 % | **68.8 %** |
+
+   So the built gate cuts the noise-only worker position time by 73 % and
+   the drawn-dot time by 69 %.
+2. **"Beyond the scale" is the clamp OR u off the axis.** The row pins the
+   dot at an end (chevron) when the vtln clamp is on or u is below −1 or
+   above 2.2 (`axisPos`). The "5.0 % → 1.2 %" above counted the clamp only.
+   With both: worker position beyond the scale 8.9 % → 1.8 % of noise time;
+   drawn dot pinned at an end 4.7 % → 1.1 %; the header text "beyond the
+   scale" (shown in the live / holding states) 2.7 % → 0.3 %.
+3. **The dot does not stay for the rest of the clip.** The worker keeps
+   (freezes) its position; the row draws it only while the raw pitch
+   display is voiced or holding: on 54 % (BASE) / 63 % (GATED) of the
+   noise time with a worker position. In the hair-dryer stream (GATED) the
+   worker position covered 73 % of the clip and the drawn dot 65 %. A position
+   was shown ever in 128 / 30 streams (BASE / GATED), a drawn dot in
+   124 / 29.
+4. **Never worse.** The gated hint is never worse than the ungated one on
+   any of the 269 noise streams, for worker-position time and for
+   drawn-dot time. (Worker position beyond the scale: 3 streams have more
+   time with the gated hint — a copy machine, the hair dryer and a mains
+   hum.)
+5. **The row still reacted to noise.** With the built gate the row left
+   "idle" on 33.3 % of noise-only time ("keep talking…" 26.9 %), because
+   its state used the raw flags. Measured fix (the row on the gated flags):
+   [voice-gate-resonance-row-2026-10-21.md](voice-gate-resonance-row-2026-10-21.md).
 
 ### Reproduce
 

@@ -10,8 +10,13 @@
 //     steadiness and the HNR readouts are empty, pitchVoiced / pitchHolding
 //     are false (HNR: user decision 2026-10-21, display only — the recorded
 //     hnr is unchanged);
+//   - the cue strip's rows (cueStripModel.js cueRowStates on these flags):
+//     the resonance row stays idle on hidden noise — no "keep talking…" —
+//     and shows the ungated app's state on every frame the gate does not
+//     hide (user decision 2026-10-21; measurements/
+//     voice-gate-resonance-row-2026-10-21.md);
 //   - nothing else moves: the recorded voiced / f0 (what session stats read),
-//     the raw voiced / holding flags (the resonance row), formants, the HNR
+//     the raw voiced / holding flags, formants, the HNR
 //     readout on frames the gate does not hide, the recorded hnr, and the
 //     painted value of every frame the gate does not hide are bit-identical
 //     to the run without decisions (a mask on the unchanged chain — the veto
@@ -19,9 +24,12 @@
 //   - recorded frames carry voiceGate "hidden" / "voice" / "novoice";
 //   - setting off: the display is exactly the run without decisions;
 //   - decision "voice", or no decision: nothing changes;
-//   - silence after speech: the dim held readout keeps its 5 s silence hold
-//     (the detector's "no voice" 2 s into the silence does not clear it),
-//     unless the gate hid painted frames after the held value.
+//   - silence after speech: the dim held readout AND the held HNR keep their
+//     5 s silence hold (the detector's "no voice" 2 s into the silence does
+//     not clear them; HNR: user decision 2026-10-21), unless the gate hid
+//     painted frames after the held value — then both show "—". The held
+//     HNR is the last one the readout SHOWED: hidden unpainted noise (an
+//     HNR, no pitch line) before the quiet never becomes the held HNR.
 //
 //   node tests/audio/voice-gate-display-test.js
 
@@ -30,6 +38,7 @@ import { register } from "node:module";
 register(new URL("../../scripts/session-oracle/lib/hooks.mjs", import.meta.url));
 const { M } = await import(new URL("../../scripts/session-oracle/lib/react-mock.mjs", import.meta.url).href);
 const HOOK = new URL("../../src/audio/useAudioPipeline.js", import.meta.url).href;
+const CS = await import(new URL("../../src/components/cueStripModel.js", import.meta.url).href);
 
 let passed = 0, failed = 0;
 function check(name, cond, detail = "") {
@@ -44,7 +53,8 @@ let fakeNow = 0;
 performance.now = () => fakeNow;
 
 let gen = 0;
-// frames: [{ x: Hz | "q" (quiet) | "l" (loud, no pitch), vad: true | false | undefined }]
+// frames: [{ x: Hz | "q" (quiet) | "l" (loud, no pitch), vad: true | false | undefined,
+//            hnr: the DSP frame's HNR (default 12) }]
 async function run(frames, { gateOn = true } = {}) {
   M.refs = []; M.effects = []; M.state = null;
   const mod = await import(`${HOOK}?g=${++gen}`);
@@ -69,7 +79,7 @@ async function run(frames, { gateOn = true } = {}) {
       type: "pitch", pitch, confidence, voiced: pitch !== null, ts: t, contextTime: t / 1000,
       ...(fr.vad === undefined ? {} : { vad: { p: fr.vad ? 0.9 : 0.1, voice: fr.vad } }),
     });
-    har.current({ intensity, formants: { f1: 500, f2: 1500, f3: 2500 }, spectralTilt: -10, hnr: 12, cpp: null, absoluteTime: t });
+    har.current({ intensity, formants: { f1: 500, f2: 1500, f3: 2500 }, spectralTilt: -10, hnr: fr.hnr ?? 12, cpp: null, absoluteTime: t });
     const trace = api.pitchTraceRef.current;
     const e = trace[trace.length - 1];
     const s = M.state;
@@ -83,8 +93,8 @@ async function run(frames, { gateOn = true } = {}) {
   return { out, rec };
 }
 
-const rep = (v, n, vad) => Array.from({ length: n }, () => ({ x: v, vad }));
-const strip = (frames) => frames.map((f) => ({ x: f.x }));
+const rep = (v, n, vad, hnr) => Array.from({ length: n }, () => ({ x: v, vad, ...(hnr === undefined ? {} : { hnr }) }));
+const strip = (frames) => frames.map((f) => ({ x: f.x, ...(f.hnr === undefined ? {} : { hnr: f.hnr }) }));
 
 // A false pitch line (noise decoded at 117 Hz) with the detector saying no
 // voice, then speech (detector: voice), then the line again.
@@ -117,7 +127,7 @@ console.log("\nnothing else moves");
 check("frames the gate does not hide paint exactly what the ungated app paints",
   gated.out.every((o, i) => hidden[i] || o.painted === base.out[i].painted),
   gated.out.map((o, i) => (hidden[i] || o.painted === base.out[i].painted ? "" : i)).filter(String).join(","));
-check("raw voiced / holding (resonance row) unchanged", gated.out.every((o, i) => o.voiced === base.out[i].voiced && o.holding === base.out[i].holding));
+check("raw voiced / holding unchanged", gated.out.every((o, i) => o.voiced === base.out[i].voiced && o.holding === base.out[i].holding));
 check("formants unchanged", gated.out.every((o, i) => JSON.stringify(o.formants) === JSON.stringify(base.out[i].formants)));
 check("HNR readout unchanged on frames the gate does not hide", gated.out.every((o, i) => hidden[i] || o.hnr === base.out[i].hnr));
 check("recorded hnr unchanged (the DSP value; display-only gate)", gated.rec.every((r, i) => r.hnr === base.rec[i].hnr));
@@ -126,6 +136,35 @@ check("recorded voiced / f0 unchanged (session stats)", gated.rec.length === bas
 check("recorded painted = what the live trace drew", gated.rec.every((r, i) => r.painted === (gated.out[i].painted > 0)));
 check("recorded voiceGate: hidden / voice", gated.rec.every((r, i) => r.voiceGate === (hidden[i] ? "hidden" : "voice")));
 check("no voiceGate field without decisions", base.rec.every((r) => !("voiceGate" in r)));
+
+console.log("\nthe cue strip's rows (cueRowStates on the hook's flags)");
+{
+  // Two resonance worker states: one with a position (the row would draw
+  // it), one still warming up (the row would say "keep talking…").
+  const SNAPS = {
+    live: { u: 0.5, raw: 0, verdict: "score", voicedS: 30, fill: 1, sinceResumeS: 30, narrowband: { on: false, decided: true } },
+    warming: { u: null, raw: null, verdict: "warming", voicedS: 0.5, fill: 0, sinceResumeS: null, narrowband: { on: false, decided: true } },
+  };
+  const rowsOf = (o, snap) => CS.cueRowStates({ pitchVoiced: o.pitchVoiced, pitchHolding: o.pitchHolding, pitchLevel: o.level, snap, workerStatus: "ready" });
+  for (const [name, snap] of Object.entries(SNAPS)) {
+    const g = gated.out.map((o) => rowsOf(o, snap));
+    const b = base.out.map((o) => rowsOf(o, snap));
+    check(`${name}: the resonance row stays idle on every hidden frame (no dot, no "keep talking…")`,
+      g.every((r, i) => !hidden[i] || r.resonance === "idle"),
+      g.map((r, i) => (!hidden[i] || r.resonance === "idle" ? "" : `${i}:${r.resonance}`)).filter(String).slice(0, 8).join(","));
+    check(`${name}: the ungated app's resonance row reacts there (the case is real)`,
+      b.filter((r, i) => hidden[i] && r.resonance !== "idle").length > 60);
+    check(`${name}: both rows equal the ungated app's on every frame the gate does not hide`,
+      g.every((r, i) => hidden[i] || (r.resonance === b[i].resonance && r.pitch === b[i].pitch)),
+      g.map((r, i) => (hidden[i] || (r.resonance === b[i].resonance && r.pitch === b[i].pitch) ? "" : `${i}:${r.resonance}/${b[i].resonance}`)).filter(String).slice(0, 8).join(","));
+  }
+  const offRows = off.out.map((o) => rowsOf(o, SNAPS.warming));
+  const baseRows = base.out.map((o) => rowsOf(o, SNAPS.warming));
+  check("setting off: the rows equal the ungated app's", offRows.every((r, i) => r.resonance === baseRows[i].resonance && r.pitch === baseRows[i].pitch));
+  // The rows read the gated flags only: the raw ones no longer matter.
+  check("the raw voiced / holding flags no longer drive the resonance row",
+    CS.cueRowStates({ voiced: true, holding: true, pitchVoiced: false, pitchHolding: false, pitchLevel: null, snap: SNAPS.live, workerStatus: "ready" }).resonance === "idle");
+}
 
 console.log("\nsetting off");
 check("display identical to the ungated app", off.out.every((o, i) => JSON.stringify(o) === JSON.stringify(base.out[i])));
@@ -154,16 +193,56 @@ console.log("\nsilence after speech: the 5 s silence hold is unchanged");
     g.out.map((o, i) => (["pitch", "note", "level", "steadiness", "pitchVoiced", "pitchHolding"].every((k) => o[k] === b.out[i][k]) ? "" : i)).filter(String).slice(0, 8).join(","));
   check("recorded frames: voiceGate hidden on the no-voice quiet frames, nothing painted there",
     g.rec.every((r, i) => !late[i] || (r.voiceGate === "hidden" && r.painted === false)));
-  check("HNR: the held value while the detector still says voice, \"—\" once it says no voice",
-    g.out.every((o, i) => (late[i] ? o.hnr === null : o.hnr === b.out[i].hnr)) && b.out.some((o, i) => late[i] && o.hnr !== null));
+  check("HNR: the held value for the whole silence hold, as in the ungated app (also once the detector says no voice)",
+    g.out.every((o, i) => o.hnr === b.out[i].hnr) && b.out.filter((o, i) => late[i] && o.hnr !== null).length === 40,
+    g.out.map((o, i) => (o.hnr === b.out[i].hnr ? "" : i)).filter(String).slice(0, 8).join(","));
 }
 {
   // The same quiet after painted frames the gate hid: no stale held value.
   const NOISE = [...rep(205, 40, true), ...rep(117, 40, false), ...rep("q", 40, false)];
   const g = await run(NOISE);
+  const b = await run(strip(NOISE));
   const q = NOISE.map((f) => f.x === "q");
   check("after a line the gate hid, the silence hold shows nothing and no holding flag (not the older pitch)",
     g.out.every((o, i) => !q[i] || (o.pitch === null && o.note === null && !o.pitchHolding)));
+  check("after a line the gate hid, the silence hold shows no HNR either (the ungated app holds one there)",
+    g.out.every((o, i) => !q[i] || o.hnr === null) && b.out.filter((o, i) => q[i] && o.hnr !== null).length === 40);
+}
+
+{
+  // Hidden UNPAINTED noise (loud, no pitch line, its own HNR 3), then quiet:
+  // the gate hid that HNR, so the hold must not show it — it shows the last
+  // HNR the readout showed, like the dim pitch readout: none at all; the
+  // speech's 12 when the noise starts after the pitch hold ended (the held
+  // pitch shows too); "—" when the noise follows the speech at once (the
+  // 400 ms pitch hold paints into the noise, the gate hides that, so the
+  // pitch readout shows "—" as well). The ungated app holds the noise's 3
+  // there (the case is real). Review finding 2026-10-21.
+  const ALONE = [...rep("l", 40, false, 3), ...rep("q", 40, false, 3)];
+  const AFTER = [...rep(205, 60, true, 12), ...rep("l", 20, true, 12), ...rep("l", 40, false, 3), ...rep("q", 40, false, 3)];
+  const AT_ONCE = [...rep(205, 60, true, 12), ...rep("l", 40, false, 3), ...rep("q", 40, false, 3)];
+  for (const [name, seq, want, wantPitch] of [
+    ["no speech before", ALONE, null, null],
+    ["speech, then noise after the pitch hold", AFTER, 12, 205],
+    ["speech straight into noise", AT_ONCE, null, null],
+  ]) {
+    const g = await run(seq);
+    const b = await run(strip(seq));
+    const n = seq.map((f) => f.x === "l" && f.vad === false);
+    // The silence hold: quiet frames once the silence gate's 3-frame
+    // debounce has passed (the first two are still ordinary hidden frames).
+    const q0 = seq.findIndex((f) => f.x === "q");
+    const q = seq.map((f, i) => f.x === "q" && i >= q0 + 2);
+    check(`hidden unpainted noise (${name}): HNR "—" while it plays`, g.out.every((o, i) => !n[i] || o.hnr === null));
+    check(`hidden unpainted noise (${name}): the silence hold never shows the hidden HNR 3 (shows ${want === null ? "—" : want})`,
+      g.out.every((o, i) => !q[i] || o.hnr === want),
+      g.out.map((o, i) => (!q[i] || o.hnr === want ? "" : `${i}:${o.hnr}`)).filter(String).slice(0, 6).join(","));
+    check(`hidden unpainted noise (${name}): the held pitch readout agrees (${wantPitch === null ? "—" : wantPitch})`,
+      g.out.every((o, i) => !q[i] || (wantPitch === null ? o.pitch === null : Math.round(o.pitch) === wantPitch)));
+    check(`hidden unpainted noise (${name}): the ungated app holds the noise's HNR there (the case is real)`,
+      b.out.filter((o, i) => q[i] && o.hnr === 3).length === 38);
+    check(`hidden unpainted noise (${name}): recorded hnr unchanged (display only)`, g.rec.every((r, i) => r.hnr === b.rec[i].hnr));
+  }
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);
