@@ -1,0 +1,132 @@
+{
+ "set": "pvqd+voiced",
+ "streams": 504,
+ "rows_app16": {},
+ "point": {
+  "smooth_frames": 5,
+  "threshold": 0.55,
+  "hangover_ms": 2000.0
+ },
+ "scored_at": "2026-10-20 22:45:00 -0500",
+ "seconds": 0.9,
+ "rows": {
+  "G8 pvqd+voiced": {
+   "unknown": [
+    134870,
+    470,
+    0.34848372506858455
+   ],
+   "m": [
+    11923,
+    120,
+    1.0064581061813302
+   ],
+   "f": [
+    21503,
+    217,
+    1.0091615123471143
+   ]
+  },
+  "pvqd+voiced rate 16000 Hz": {
+   "unknown": [
+    134870,
+    470,
+    0.34848372506858455
+   ],
+   "m": [
+    11923,
+    120,
+    1.0064581061813302
+   ],
+   "f": [
+    21503,
+    217,
+    1.0091615123471143
+   ]
+  },
+  "long holds pvqd+voiced: 0-2 s into the hold": {
+   "unknown": [
+    29723,
+    123,
+    0.4138209467415806
+   ],
+   "m": [
+    4987,
+    9,
+    0.180469219971927
+   ],
+   "f": [
+    9322,
+    26,
+    0.278910105127655
+   ]
+  },
+  "long holds pvqd+voiced: 2-5 s into the hold": {
+   "unknown": [
+    16915,
+    112,
+    0.6621342004138339
+   ],
+   "m": [
+    5545,
+    94,
+    1.6952209197475203
+   ],
+   "f": [
+    8793,
+    146,
+    1.6604116911179347
+   ]
+  },
+  "long holds pvqd+voiced: 5-10 s into the hold": {
+   "unknown": [
+    883,
+    0,
+    0.0
+   ],
+   "m": [
+    0,
+    0,
+    null
+   ],
+   "f": [
+    0,
+    0,
+    null
+   ]
+  },
+  "long holds pvqd+voiced: >= 10 s into the hold": {
+   "unknown": [
+    0,
+    0,
+    null
+   ],
+   "m": [
+    0,
+    0,
+    null
+   ],
+   "f": [
+    0,
+    0,
+    null
+   ]
+  },
+  "pvqd hops inside held segments (sustained vowels)": {
+   "unknown": [
+    47521,
+    235,
+    0.4945182130005682
+   ]
+  },
+  "pvqd hops outside held segments (sentences, vowel edges)": {
+   "unknown": [
+    87349,
+    235,
+    0.26903570733494375
+   ]
+  }
+ },
+ "onsets": [],
+ "rescore": null
+}

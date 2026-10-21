@@ -1,0 +1,184 @@
+{
+ "set": "noiseho",
+ "streams": 119,
+ "rows_app16": {},
+ "point": {
+  "smooth_frames": 5,
+  "threshold": 0.55,
+  "hangover_ms": 2000.0
+ },
+ "scored_at": "2026-10-20 22:44:47 -0500",
+ "seconds": 0.2,
+ "rows": {
+  "G2 noiseho": {
+   "-": [
+    46033,
+    36437,
+    79.15408511285382
+   ]
+  },
+  "noiseho source dcaseeval": {
+   "-": [
+    5272,
+    4819,
+    91.40743550834598
+   ]
+  },
+  "noiseho class ToyCar": {
+   "-": [
+    616,
+    580,
+    94.15584415584415
+   ]
+  },
+  "noiseho class ToyConveyor": {
+   "-": [
+    1090,
+    748,
+    68.62385321100918
+   ]
+  },
+  "noiseho class fan": {
+   "-": [
+    804,
+    804,
+    100.0
+   ]
+  },
+  "noiseho class pump": {
+   "-": [
+    3516,
+    3328,
+    94.65301478953356
+   ]
+  },
+  "noiseho class slider": {
+   "-": [
+    1083,
+    1083,
+    100.0
+   ]
+  },
+  "noiseho class valve": {
+   "-": [
+    1042,
+    967,
+    92.80230326295586
+   ]
+  },
+  "noiseho source fsheld": {
+   "-": [
+    40761,
+    31618,
+    77.56924511174897
+   ]
+  },
+  "noiseho class appliance_motor": {
+   "-": [
+    4023,
+    3862,
+    95.99801143425304
+   ]
+  },
+  "noiseho class boiler": {
+   "-": [
+    3766,
+    2212,
+    58.7360594795539
+   ]
+  },
+  "noiseho class building": {
+   "-": [
+    869,
+    610,
+    70.19562715765247
+   ]
+  },
+  "noiseho class compressor": {
+   "-": [
+    197,
+    24,
+    12.182741116751268
+   ]
+  },
+  "noiseho class computer_fan": {
+   "-": [
+    95,
+    95,
+    100.0
+   ]
+  },
+  "noiseho class electronics_whine": {
+   "-": [
+    9,
+    9,
+    100.0
+   ]
+  },
+  "noiseho class engine_idle": {
+   "-": [
+    577,
+    322,
+    55.805892547660314
+   ]
+  },
+  "noiseho class exhaust_fan": {
+   "-": [
+    1036,
+    984,
+    94.98069498069498
+   ]
+  },
+  "noiseho class hvac": {
+   "-": [
+    940,
+    940,
+    100.0
+   ]
+  },
+  "noiseho class industrial": {
+   "-": [
+    6552,
+    5644,
+    86.14163614163614
+   ]
+  },
+  "noiseho class mains_hum": {
+   "-": [
+    4822,
+    3966,
+    82.24802986312733
+   ]
+  },
+  "noiseho class office": {
+   "-": [
+    6213,
+    3839,
+    61.789795589892165
+   ]
+  },
+  "noiseho class small_motor": {
+   "-": [
+    1454,
+    876,
+    60.24759284731775
+   ]
+  },
+  "noiseho class transformer": {
+   "-": [
+    4989,
+    3553,
+    71.21667668871517
+   ]
+  },
+  "noiseho class vehicle_interior": {
+   "-": [
+    2340,
+    1991,
+    85.08547008547009
+   ]
+  }
+ },
+ "onsets": [],
+ "rescore": null
+}

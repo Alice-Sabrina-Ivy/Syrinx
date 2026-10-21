@@ -1,0 +1,22 @@
+{
+ "sets": [
+  "nfresh",
+  "noiseho",
+  "ravspeech",
+  "slr83",
+  "ravsong",
+  "vocalset",
+  "pvqd",
+  "voiced",
+  "vmode",
+  "vinfresh20",
+  "vinfresh0",
+  "vin20",
+  "vin0"
+ ],
+ "shard": "1/2",
+ "streams": 3674,
+ "audio_s": 56597.45924999994,
+ "wall_s": 232.23894548416138,
+ "cpu_ms_per_25ms_fbank_model": 0.09636999517783133
+}

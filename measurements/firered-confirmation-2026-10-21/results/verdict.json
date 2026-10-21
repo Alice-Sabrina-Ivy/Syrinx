@@ -1,0 +1,373 @@
+{
+ "gates": [
+  {
+   "row": "G1 nfresh",
+   "value": 80.63902968863142,
+   "n": 44192,
+   "limit": ">= 60 %",
+   "pass": true
+  },
+  {
+   "row": "G2 noiseho",
+   "value": 79.15408511285382,
+   "n": 46033,
+   "limit": ">= 50 %",
+   "pass": true
+  },
+  {
+   "row": "G3 ravspeech",
+   "groups": {
+    "m": [
+     15163,
+     31,
+     0.2044450306667546
+    ],
+    "f": [
+     17250,
+     26,
+     0.15072463768115943
+    ]
+   },
+   "worst_group": "m",
+   "value": 0.2044450306667546,
+   "limit": "<= 1 %",
+   "pass": true,
+   "note": null
+  },
+  {
+   "row": "G3 slr83",
+   "groups": {
+    "f": [
+     20113,
+     9,
+     0.04474717844180381
+    ],
+    "m": [
+     38926,
+     0,
+     0.0
+    ]
+   },
+   "worst_group": "f",
+   "value": 0.04474717844180381,
+   "limit": "<= 1 %",
+   "pass": true,
+   "note": null
+  },
+  {
+   "row": "G5 ravsong",
+   "groups": {
+    "m": [
+     25960,
+     0,
+     0.0
+    ],
+    "f": [
+     19382,
+     0,
+     0.0
+    ]
+   },
+   "worst_group": "m",
+   "value": 0.0,
+   "limit": "<= 1 %",
+   "pass": true,
+   "note": null
+  },
+  {
+   "row": "G8 pvqd+voiced",
+   "groups": {
+    "unknown": [
+     134870,
+     470,
+     0.34848372506858455
+    ],
+    "m": [
+     11923,
+     120,
+     1.0064581061813302
+    ],
+    "f": [
+     21503,
+     217,
+     1.0091615123471143
+    ]
+   },
+   "worst_group": "f",
+   "value": 1.0091615123471143,
+   "limit": "<= 10 %",
+   "pass": true,
+   "note": null
+  },
+  {
+   "row": "G8 vmode (Behringer)",
+   "groups": {
+    "f": [
+     21113,
+     302,
+     1.4303983327807512
+    ],
+    "m": [
+     25419,
+     487,
+     1.915889688815453
+    ]
+   },
+   "worst_group": "m",
+   "value": 1.915889688815453,
+   "limit": "<= 10 %",
+   "pass": true,
+   "note": null
+  },
+  {
+   "row": "G8 vocalset",
+   "groups": {
+    "f": [
+     17130,
+     107,
+     0.6246351430239346
+    ],
+    "m": [
+     70979,
+     651,
+     0.917172684878626
+    ]
+   },
+   "worst_group": "m",
+   "value": 0.917172684878626,
+   "limit": "<= 10 %",
+   "pass": true,
+   "note": null
+  },
+  {
+   "row": "G4 vin lead 0 +10 dB",
+   "groups": {
+    "m": [
+     9886,
+     0,
+     0.0
+    ],
+    "unknown": [
+     15237,
+     5,
+     0.03281485856795957
+    ],
+    "f": [
+     10311,
+     0,
+     0.0
+    ]
+   },
+   "worst_group": "unknown",
+   "value": 0.03281485856795957,
+   "limit": "<= 3 %",
+   "pass": true,
+   "note": null
+  },
+  {
+   "row": "G4 vin lead 0 0 dB",
+   "groups": {
+    "m": [
+     4848,
+     41,
+     0.8457095709570958
+    ],
+    "unknown": [
+     11083,
+     104,
+     0.9383740864386899
+    ],
+    "f": [
+     5543,
+     4,
+     0.07216308858019123
+    ]
+   },
+   "worst_group": "unknown",
+   "value": 0.9383740864386899,
+   "limit": "<= 10 %",
+   "pass": true,
+   "note": null
+  },
+  {
+   "row": "G4 vin lead 20 s +10 dB",
+   "groups": {
+    "m": [
+     9748,
+     0,
+     0.0
+    ],
+    "unknown": [
+     15043,
+     0,
+     0.0
+    ],
+    "f": [
+     10422,
+     0,
+     0.0
+    ]
+   },
+   "worst_group": "m",
+   "value": 0.0,
+   "limit": "<= 3 %",
+   "pass": true,
+   "note": null
+  },
+  {
+   "row": "G4 vin lead 20 s 0 dB",
+   "groups": {
+    "m": [
+     4741,
+     44,
+     0.9280742459396751
+    ],
+    "unknown": [
+     11187,
+     105,
+     0.9385894341646555
+    ],
+    "f": [
+     5745,
+     5,
+     0.08703220191470844
+    ]
+   },
+   "worst_group": "unknown",
+   "value": 0.9385894341646555,
+   "limit": "<= 10 %",
+   "pass": true,
+   "note": null
+  },
+  {
+   "row": "G4 vinfresh lead 0 +10 dB",
+   "groups": {
+    "f": [
+     4289,
+     0,
+     0.0
+    ],
+    "m": [
+     4737,
+     36,
+     0.759974667511083
+    ]
+   },
+   "worst_group": "m",
+   "value": 0.759974667511083,
+   "limit": "<= 3 %",
+   "pass": true,
+   "note": null
+  },
+  {
+   "row": "G4 vinfresh lead 0 0 dB",
+   "groups": {
+    "f": [
+     2808,
+     30,
+     1.0683760683760684
+    ],
+    "m": [
+     2700,
+     31,
+     1.1481481481481481
+    ]
+   },
+   "worst_group": "m",
+   "value": 1.1481481481481481,
+   "limit": "<= 10 %",
+   "pass": true,
+   "note": null
+  },
+  {
+   "row": "G4 vinfresh lead 20 s +10 dB",
+   "groups": {
+    "f": [
+     4352,
+     0,
+     0.0
+    ],
+    "m": [
+     4679,
+     57,
+     1.2182090190211583
+    ]
+   },
+   "worst_group": "m",
+   "value": 1.2182090190211583,
+   "limit": "<= 3 %",
+   "pass": true,
+   "note": null
+  },
+  {
+   "row": "G4 vinfresh lead 20 s 0 dB",
+   "groups": {
+    "f": [
+     2869,
+     39,
+     1.3593586615545485
+    ],
+    "m": [
+     2754,
+     38,
+     1.3798111837327525
+    ]
+   },
+   "worst_group": "m",
+   "value": 1.3798111837327525,
+   "limit": "<= 10 %",
+   "pass": true,
+   "note": null
+  },
+  {
+   "row": "G6 onset delay, median per sex group (gating voice streams)",
+   "groups": {
+    "f": {
+     "n": 2318,
+     "median_ms": 0.0,
+     "p90_ms": 0.0,
+     "never_shown": 2
+    },
+    "m": {
+     "n": 2402,
+     "median_ms": 0.0,
+     "p90_ms": 0.0,
+     "never_shown": 8
+    },
+    "unknown": {
+     "n": 494,
+     "median_ms": 0.0,
+     "p90_ms": 0.0,
+     "never_shown": 2
+    }
+   },
+   "value": 0.0,
+   "limit": "<= 100 ms",
+   "pass": true
+  },
+  {
+   "row": "G7 desktop browser CPU per 25 ms (max of Node / Chrome medians)",
+   "value": 0.84662192214163,
+   "limit": "<= 2.0 ms",
+   "pass": true,
+   "per_runtime": {
+    "node": {
+     "median_ms": 0.84662192214163,
+     "min_ms": 0.8195132278999346,
+     "max_ms": 0.8915984401194982,
+     "counted": "5 quiet runs"
+    },
+    "chrome": {
+     "median_ms": 0.8118518518936009,
+     "min_ms": 0.7699621519553418,
+     "max_ms": 0.8214111922017248,
+     "counted": "5 quiet runs"
+    }
+   }
+  }
+ ],
+ "missing_sets": [],
+ "failing_rows": [],
+ "undecided_rows": [],
+ "verdict": "CONFIRMED"
+}

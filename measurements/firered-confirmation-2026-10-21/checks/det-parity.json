@@ -1,0 +1,121 @@
+{
+ "streams": [
+  {
+   "k": 0,
+   "set": "hil",
+   "sr": 16000,
+   "id": "m32iy",
+   "seconds": 0.5
+  },
+  {
+   "k": 1,
+   "set": "fda",
+   "sr": 20000,
+   "id": "sb028",
+   "seconds": 5.0
+  },
+  {
+   "k": 2,
+   "set": "ptdb",
+   "sr": 48000,
+   "id": "mic_F02_sx59",
+   "seconds": 6.5
+  },
+  {
+   "k": 3,
+   "set": "voc",
+   "sr": 44100,
+   "id": "vocadito_34",
+   "seconds": 24.84
+  },
+  {
+   "k": 4,
+   "set": "vvoice",
+   "sr": 16000,
+   "id": "libri__3331-159605-0004",
+   "seconds": 2.1
+  },
+  {
+   "k": 5,
+   "set": "vvoice",
+   "sr": 48000,
+   "id": "coswara__20200919_7IeLM4Wp0tOmjNfel0c9yK9gYVV2_counting-fast",
+   "seconds": 4.85
+  },
+  {
+   "k": 6,
+   "set": "noise",
+   "sr": 16000,
+   "id": "dcase__ToyConveyor_id02_anomaly_id_02_00000001",
+   "seconds": 10.0
+  },
+  {
+   "k": 7,
+   "set": "vmix0",
+   "sr": 16000,
+   "id": "vmix2__fstrain__417553__kids_10_M_nonNative_10__snr+10",
+   "seconds": 60.0
+  }
+ ],
+ "rows": [
+  {
+   "k": 0,
+   "set": "hil",
+   "sr": 16000,
+   "frames": 48,
+   "max_abs_delta": 1.1920928955078125e-07
+  },
+  {
+   "k": 1,
+   "set": "fda",
+   "sr": 20000,
+   "frames": 498,
+   "max_abs_delta": 1.7881393432617188e-07
+  },
+  {
+   "k": 2,
+   "set": "ptdb",
+   "sr": 48000,
+   "frames": 648,
+   "max_abs_delta": 1.1920928955078125e-07
+  },
+  {
+   "k": 3,
+   "set": "voc",
+   "sr": 44100,
+   "frames": 2481,
+   "max_abs_delta": 2.086162567138672e-07
+  },
+  {
+   "k": 4,
+   "set": "vvoice",
+   "sr": 16000,
+   "frames": 208,
+   "max_abs_delta": 1.7881393432617188e-07
+  },
+  {
+   "k": 5,
+   "set": "vvoice",
+   "sr": 48000,
+   "frames": 483,
+   "max_abs_delta": 2.384185791015625e-07
+  },
+  {
+   "k": 6,
+   "set": "noise",
+   "sr": 16000,
+   "frames": 998,
+   "max_abs_delta": 3.8743019104003906e-07
+  },
+  {
+   "k": 7,
+   "set": "vmix0",
+   "sr": 16000,
+   "frames": 5998,
+   "max_abs_delta": 3.5762786865234375e-07
+  }
+ ],
+ "max_abs_delta": 3.8743019104003906e-07,
+ "runtime": "node v24.14.1, onnxruntime-web 1.30.0 (ort.node.min.mjs, wasm EP, 1 thread)",
+ "pass": true
+}

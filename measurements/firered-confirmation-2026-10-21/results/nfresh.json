@@ -1,0 +1,283 @@
+{
+ "set": "nfresh",
+ "streams": 175,
+ "rows_app16": {
+  "G1 nfresh": {
+   "-": [
+    34972,
+    27545,
+    78.76301040832666
+   ]
+  },
+  "nfresh part freesound": {
+   "-": [
+    34972,
+    27545,
+    78.76301040832666
+   ]
+  },
+  "nfresh class freesound:computer": {
+   "-": [
+    1725,
+    1387,
+    80.40579710144928
+   ]
+  },
+  "nfresh rate 44100 Hz": {
+   "-": [
+    15504,
+    8943,
+    57.68188854489164
+   ]
+  },
+  "nfresh rate 48000 Hz": {
+   "-": [
+    17332,
+    16523,
+    95.33233325640434
+   ]
+  },
+  "nfresh class freesound:fans": {
+   "-": [
+    9070,
+    4443,
+    48.98566703417861
+   ]
+  },
+  "nfresh rate 96000 Hz": {
+   "-": [
+    1828,
+    1771,
+    96.88183807439825
+   ]
+  },
+  "nfresh class freesound:fridge": {
+   "-": [
+    12699,
+    12457,
+    98.09433813686117
+   ]
+  },
+  "nfresh class freesound:hvac": {
+   "-": [
+    714,
+    363,
+    50.84033613445378
+   ]
+  },
+  "nfresh rate 88200 Hz": {
+   "-": [
+    65,
+    65,
+    100.0
+   ]
+  },
+  "nfresh class freesound:mains": {
+   "-": [
+    6776,
+    5736,
+    84.6517119244392
+   ]
+  },
+  "nfresh rate 192000 Hz": {
+   "-": [
+    243,
+    243,
+    100.0
+   ]
+  },
+  "nfresh class freesound:traffic": {
+   "-": [
+    3988,
+    3159,
+    79.21263791374122
+   ]
+  }
+ },
+ "point": {
+  "smooth_frames": 5,
+  "threshold": 0.55,
+  "hangover_ms": 2000.0
+ },
+ "scored_at": "2026-10-20 22:44:42 -0500",
+ "seconds": 0.3,
+ "rows": {
+  "G1 nfresh": {
+   "-": [
+    44192,
+    35636,
+    80.63902968863142
+   ]
+  },
+  "nfresh part dcase25": {
+   "-": [
+    9220,
+    8043,
+    87.23427331887201
+   ]
+  },
+  "nfresh class dcase25:AutoTrash": {
+   "-": [
+    792,
+    792,
+    100.0
+   ]
+  },
+  "nfresh rate 16000 Hz": {
+   "-": [
+    9220,
+    8043,
+    87.23427331887201
+   ]
+  },
+  "nfresh class dcase25:BandSealer": {
+   "-": [
+    174,
+    174,
+    100.0
+   ]
+  },
+  "nfresh class dcase25:CoffeeGrinder": {
+   "-": [
+    1263,
+    504,
+    39.90498812351544
+   ]
+  },
+  "nfresh class dcase25:HomeCamera": {
+   "-": [
+    2232,
+    2045,
+    91.62186379928315
+   ]
+  },
+  "nfresh class dcase25:Polisher": {
+   "-": [
+    396,
+    396,
+    100.0
+   ]
+  },
+  "nfresh class dcase25:ScrewFeeder": {
+   "-": [
+    892,
+    892,
+    100.0
+   ]
+  },
+  "nfresh class dcase25:ToyPet": {
+   "-": [
+    2553,
+    2450,
+    95.96553074813944
+   ]
+  },
+  "nfresh class dcase25:ToyRCCar": {
+   "-": [
+    918,
+    790,
+    86.05664488017429
+   ]
+  },
+  "nfresh part freesound": {
+   "-": [
+    34972,
+    27593,
+    78.90026306759694
+   ]
+  },
+  "nfresh class freesound:computer": {
+   "-": [
+    1725,
+    1329,
+    77.04347826086956
+   ]
+  },
+  "nfresh rate 44100 Hz": {
+   "-": [
+    15504,
+    8864,
+    57.17234262125903
+   ]
+  },
+  "app16 paired: same hops, scipy-fed": {
+   "-": [
+    34972,
+    27593,
+    78.90026306759694
+   ]
+  },
+  "app16 paired: same hops, app-resampler-fed": {
+   "-": [
+    34972,
+    27545,
+    78.76301040832666
+   ]
+  },
+  "nfresh rate 48000 Hz": {
+   "-": [
+    17332,
+    16650,
+    96.06508192937919
+   ]
+  },
+  "nfresh class freesound:fans": {
+   "-": [
+    9070,
+    4519,
+    49.82359426681367
+   ]
+  },
+  "nfresh rate 96000 Hz": {
+   "-": [
+    1828,
+    1771,
+    96.88183807439825
+   ]
+  },
+  "nfresh class freesound:fridge": {
+   "-": [
+    12699,
+    12334,
+    97.12575793369557
+   ]
+  },
+  "nfresh class freesound:hvac": {
+   "-": [
+    714,
+    328,
+    45.938375350140056
+   ]
+  },
+  "nfresh rate 88200 Hz": {
+   "-": [
+    65,
+    65,
+    100.0
+   ]
+  },
+  "nfresh class freesound:mains": {
+   "-": [
+    6776,
+    5919,
+    87.35242030696575
+   ]
+  },
+  "nfresh rate 192000 Hz": {
+   "-": [
+    243,
+    243,
+    100.0
+   ]
+  },
+  "nfresh class freesound:traffic": {
+   "-": [
+    3988,
+    3164,
+    79.33801404212637
+   ]
+  }
+ },
+ "onsets": [],
+ "rescore": null
+}
