@@ -1,0 +1,273 @@
+# Resonance row: why going up feels slow and coming back feels fast (2026-10-21)
+
+Branch `resonance-asymmetry` (from `cue-strip` c0d031f). Public data only
+(LibriSpeech dev-clean for this pass; test-clean is held out for the plan
+below). No candidate has been run yet.
+
+## Why
+
+User report 2026-10-21 (phone, cue-strip c0d031f, voice gate on): starting
+at a low (male) resonance and then switching to a high (female) one, the
+Dashboard resonance row takes several seconds of speech to adjust; going
+back down, it adjusts quickly.
+
+## Method
+
+**Stimuli** (`scripts/resonance/switch-prep.py`, `switch-streams.mjs`): the
+first 54 s of each of 10 dev-clean readers (5 men, 5 women; the first 5 of
+each sex by speaker id in the `r1_dev` manifest).
+
+- (a) **Same reader, resonance changed by the Voice Shaper's WORLD engine**
+  (`src/voice-preview/engine/preview.js`, the app's own engine; pitch track
+  from the real pitch chain). Two versions of the whole 54 s: *dark*
+  (formants −8 %) and *bright* (formants +9 %). Two pitch modes: *pitch
+  kept* (0 st both) and *pitch moves* (dark −3 st, bright +3 st, as people
+  raise pitch with resonance).
+- (b) **Different real readers** back to back: man *i* → woman *i* → man *i*
+  and the reverse (5 pairs), each segment taken from that reader's own
+  recording at that time.
+
+Streams are spliced from these (10 ms crossfades). Join patterns: **18/36**
+(three 18 s segments), **30/36** (30 s, then a 6 s excursion, then back),
+**30/40** (a 10 s excursion). Both orders (dark first / bright first).
+**Controls:** the same audio with no switch (all dark, all bright, or the
+reader's own recording). The row has settled when it shows what the control
+shows at the same moment, so text and timing are matched chunk for chunk.
+
+**Driver** (`scripts/resonance/switch-asymmetry.mjs`): the REAL pitch worker
+with the real FireRedVAD model, the REAL DSP worker, the REAL hook (voice
+gate setting on), the REAL resonance worker, and the REAL row logic
+(`cueStripModel.js`). Two arms: **off** (hint as posted, row on the raw
+flags) and **on** (hint hidden where the detector hears no voice, row on the
+gated flags; what cue-strip ships). Next to each resonance worker runs a
+replica built from the same modules, with a tap on every vtln bin; its
+posts equal the worker's on all 96 000 posts checked.
+
+**Metrics** (s of audio after the join; p = how far the shown value has
+moved from the old voice's control to the new one's):
+
+- **T50**: first time p ≥ 0.5.
+- **Tdb**: from then on within 0.3 u (the header deadband) of the new
+  voice's control.
+- **Ttol**: from then on within 0.15 u.
+- **drawn**: counting only chunks where the row draws a dot. Censored at
+  the segment end.
+
+**Stages** (same events, replayed from the tapped bins on the bins' audio
+time):
+
+| stage | what it is |
+|---|---|
+| **bin** | each vtln bin against the control's bin (vtln's trailing ~1 s of voicing) |
+| **all** | a 5 s voiced median of all bins (no gate) |
+| **cue** | the admitted bins (utterance gate, and the voice gate in arm on) |
+| **posted** | the worker's post every 0.2 s |
+| **drawn** | the dot |
+
+## Results (dev: 200 streams, 150 with switches = 300 switch events per arm)
+
+### Settle time per stage, 18/36 (Ttol, median s of audio; arm on = arm off on every row)
+
+| set | dir | n | bin | all | cue | posted | drawn |
+|---|---|---|---|---|---|---|---|
+| a: pitch kept | up | 20 | 1.2 | 6.8 | 7.1 | 7.3 | **7.3** |
+| a: pitch kept | down | 20 | 1.2 | 6.4 | 6.6 | 6.7 | **6.7** |
+| a: pitch moves | up | 20 | 1.3 | 6.9 | 7.0 | 7.2 | **7.2** |
+| a: pitch moves | down | 20 | 1.2 | 6.7 | 6.9 | 7.2 | **7.2** |
+| b: different readers | up | 10 | 1.2 | 7.0 | 7.3 | 7.4 | **7.4** |
+| b: different readers | down | 10 | 1.5 | 6.5 | 6.4 | 6.7 | **6.7** |
+
+T50 drawn:
+
+| set | up | down |
+|---|---|---|
+| a, pitch kept | 5.2 | 5.4 |
+| a, pitch moves | 5.0 | 5.4 |
+| b | 5.0 | 4.4 |
+
+Up/down ratio of drawn Ttol:
+
+| set | all | original men | original women |
+|---|---|---|---|
+| a, pitch kept | 1.08 | 0.98 | 1.23 |
+| a, pitch moves | 1.00 | 0.98 | 1.06 |
+| b | 1.10 | — | — |
+
+**With equal time in each voice, up and down take the same time:** about 7 s
+of audio (5 s of the median halfway) in both directions.
+
+### Short excursion: away and back (arm on, drawn, median s of audio)
+
+| set | joins | n (per join) | away: T50 | away: Tdb | back: T50 | back: Tdb | p reached at the end of the excursion | T50 ratio away / back |
+|---|---|---|---|---|---|---|---|---|
+| a | 18/36 | 40 | 5.2 | 6.1 | 5.4 | 5.8 | — | 0.96 |
+| a | **30/36** | 40 | **6.0 (20 of 40 never reach halfway)** | 6.0 | **2.1** | 5.8 | **0.47–0.49** | **2.82** |
+| a | 30/40 | 40 | 6.1 | 6.9 | 5.4 | 6.3 | 0.98–0.99 | 1.12 |
+| b | 18/36 | 10 | 4.9 | 5.4 | 4.6 | 5.4 | — | 1.07 |
+| b | **30/36** | 10 | **6.0 (6 of 10 never)** | 6.0 | **0.0** | 5.4 | **0.29–0.41** | — (back already past halfway) |
+| b | 30/40 | 10 | 6.7 | 6.9 | 5.2 | 5.8 | 0.96–0.98 | 1.28 |
+
+It is the same with bright first (a 30/36: away T50 5.9, back 2.1). **The
+direction does not matter. What matters is how long the old voice was
+held.**
+
+### At the join (arm on, first 3–5 s after it)
+
+- **Utterance gate:** it drops 10–18 of 660 bins after a join, against
+  11–18 in the control ("warming" at utterance onsets).
+- **Voice gate:** it hid 0 voiced hops on the switch streams in the 5 s
+  after a join; arm on equals arm off on every metric.
+- **Pitch hints, a (pitch kept / moves):** voicing differs from the control
+  on 4–6 of 2 400 hops, and > 1 st off on 1–36.
+- **Pitch hints, b:** voicing differs on 48 (up) / 32 (down) of 1 200 hops,
+  and > 1 st off on 8 / 8.
+- **Row:** it draws a dot 95–97 % of that time (live 73–77 %, holding
+  19–22 %). Drawn = posted on every row.
+- **Start reference (startU):** not found at the 18 s join in any stream
+  (0 of 50 switch streams). It is found at join 2 in all. The header shows "finding your
+  start…" until it is found: header first right 11.9–14.4 s after join 1,
+  3.6–5.6 s after join 2.
+
+## Attribution
+
+1. **The worker's 5 s voiced median (horizon / statistic): most of the
+   delay, in both directions.**
+   - A median of the last 5 s of voiced bins moves halfway only after about
+     2.5 s of new voiced speech (≈ 5 s of audio at reading voicing). It is
+     within 0.15 u of the new voice only when nearly all old bins have left
+     (6.4–7.0 s; stage "all").
+   - On the user's pattern (a long time in one voice, then a few seconds in
+     the other), the median has not reached the new voice when the user
+     goes back:
+     - after a 6 s excursion the dot got 29–49 % of the way;
+     - after a 10 s excursion, 96–99 %.
+   - Going back, the window is still mostly the first voice, so the dot is
+     back halfway after 0–2.4 s.
+   - **This reproduces the report: away slow, back fast.** The same happens
+     with the order reversed, so it is a dwell effect, not a direction
+     effect.
+2. **vtln's trailing ~1 s of voiced frames:** 1.2–1.5 s (stage "bin"),
+   nested inside 1. The same both ways.
+3. **Utterance gate (held / warming):** −0.1 to +0.3 s (stage cue − all). The new voice is not
+   classed as held or warming more than the control.
+4. **Voice gate:** 0 on this clean speech (arm on = arm off).
+5. **Pitch hints at the register change:** no measurable delay. The bin
+   stage is the same up and down, and the readers' hint differences are
+   0.2–4 % of hops in the first 3 s.
+6. **Posting cadence:** +0.1–0.3 s (posted − cue).
+7. **Row settling logic:** 0. Drawn = posted; no "settling" state at the
+   joins.
+8. **Start-up collection (header only):**
+   - The start is the median of the readouts over the first 12 s of voiced
+     speech after the readout fills: about 25–30 s of audio at reading
+     voicing.
+   - A change inside the first ~30 s leaves the header at "finding your
+     start…" for ~12–14 s after an 18 s join. The start found then mixes
+     both voices.
+   - Back at the first voice (join 2), "about where you started" is right
+     on 0.49–1.00 of the live time from 8 s after the join (median per
+     group).
+
+What this pass cannot see: the user's own voice. Her "female" voice may be
+held more steadily (utterance gate), heard less by the voice detector, or
+tracked an octave low (vtln reads half pitch darker). On these public
+readers each of those adds ≤ 0.3 s, and none of them differs by direction.
+A descriptive check on a private recording was not run in this pass.
+
+## Plan (pre-registered, 2026-10-21, before any candidate result)
+
+**Scope.** Candidate fixes touch only `src/resonance/resonanceCue.js` (and,
+if needed, `src/components/cueStripModel.js`). The worker, the engine, vtln
+and both gates are unchanged.
+
+**Candidates.**
+
+- **C1 `restart` (resonanceCue.js):** follow a sustained change at once.
+  - Alongside the 5 s readout, keep a short readout: the median of the
+    admitted bins in the last `shortS` s of voiced time.
+  - When |short − long| ≥ `jumpU` u on `confirmN` consecutive admitted bins
+    with the same sign, the long readout drops its items older than the
+    short window. The readout becomes the short median and grows back to
+    5 s.
+  - It is value-preserving: every value shown is a median of admitted bins.
+  - It does not touch `fill`, `voicedS`, `sinceResumeS`, the drop rules,
+    narrowband or the start collection, so positions exist exactly when
+    they exist now.
+  - Dev grid (8 cells): `shortS` ∈ {1.5, 2.0} s, `jumpU` ∈ {0.4, 0.6} u,
+    `confirmN` ∈ {4, 7} bins (0.6 / 1.05 s of voicing).
+- **C2 `horizon` (resonanceCue.js):** a shorter readout horizon, 3.0 or
+  2.5 s voiced (2 cells). The simple comparator; expected to cost jitter.
+
+**Split.**
+
+- **dev** = this pass's 10 dev-clean readers (all tuning; replays of the
+  tapped bins, exact for cue-only changes — BASE replay checked equal to
+  the posted u first).
+- **held-out** = 20 test-clean readers (10 men, 10 women; the first 10 of
+  each sex by speaker id in `r1_test`), built and run the same way:
+  - (a) both pitch modes;
+  - (b) 10 man/woman pairs;
+  - patterns 18/36, 30/36, 30/40, both orders, and the controls.
+
+  Run once, through the real workers, for the single dev winner and BASE
+  (cue-strip c0d031f).
+
+**Dev selection.** Among the cells that pass (ii)–(iv) on dev, the lowest
+dev median away Tdb wins. On a tie (within 0.1 s), the larger `jumpU`, then
+the larger `confirmN`, then C2 after C1. If no cell passes on dev, nothing
+goes to held-out and the result is "no candidate".
+
+**Bar on held-out (all must hold, arm on, drawn dot):**
+
+1. **Settle.** Both:
+   - (a) Over all up events (all patterns, kinds a + b): median Tdb
+     improves by ≥ 40 % vs BASE, and median Tdb up / down ≤ 1.5.
+   - (b) The reported asymmetry, 30/36, dark first (the user's order):
+     median T50 away improves by ≥ 40 % vs BASE, and median T50 away /
+     back ≤ 1.5.
+
+   Censored events count at the segment end.
+2. **Steady speech jitter.** On the held-out controls (dark, bright, own
+   recording; both pitch modes):
+   - p90 of |Δu| between consecutive worker posts while a dot is drawn;
+   - the median over non-overlapping 5 s windows of the drawn u's
+     q90 − q10.
+
+   Each ≤ 1.10 × BASE, pooled and per sex of the reader.
+3. **Held vowels, noise only (gate on) and narrowband: no new positions.**
+   The chunks with a drawn dot are identical to BASE on:
+   - H1, the 24 synthetic holds of `scripts/resonance/gating.mjs` /
+     `voice-gate-resonance.mjs`;
+   - N2, fresh noise rebuilt with `scripts/resonance/voice-gate-prep.py`
+     as in [voice-gate-resonance-row-2026-10-21.md](voice-gate-resonance-row-2026-10-21.md);
+   - the narrowband tests `tests/resonance/narrowband-test.js` and
+     `tests/resonance/resonance-cue-test.js`, which pass unchanged.
+4. **Speech readouts unchanged on steady stretches** (the earlier notes'
+   tolerance), on the held-out controls:
+   - median |Δu| CAND vs BASE over chunks where both draw ≤ 0.02;
+   - "about where you started" share of live time on unchanged voice not
+     lower than BASE by more than 2 points.
+
+**Reported, no bar:**
+
+- the header (first right, and right from 8 s on);
+- per-sex settle times;
+- arm off;
+- the 18/36 and 30/40 rows;
+- how often C1 restarts on steady speech.
+
+**Not in scope:** the start collection (header), which is a separate
+question; this plan only reports it.
+
+## Reproduce
+
+```
+python scripts/resonance/switch-prep.py --ls=<resonance-lab cache root>
+node --import ./scripts/session-oracle/lib/register.mjs scripts/resonance/switch-streams.mjs --split=dev --n=5
+node scripts/fetch-firered-model.mjs
+SO_TAP=0 node --import ./scripts/session-oracle/lib/register.mjs scripts/resonance/switch-asymmetry.mjs \
+    --split=dev --shard=i/2                                   # i = 0, 1
+SO_TAP=0 node --import ./scripts/session-oracle/lib/register.mjs scripts/resonance/switch-asymmetry.mjs \
+    --split=dev --patterns=x6,x10 --no-controls --shard=i/2 --out=build/resonance-switch/dwell-dev-<i>of2.jsonl
+node scripts/resonance/switch-report.mjs --runs=<the four jsonl files>
+```
