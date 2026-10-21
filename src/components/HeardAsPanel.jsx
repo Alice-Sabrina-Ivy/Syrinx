@@ -20,7 +20,9 @@
 // >= 3:1 against the panel and each other; Windows high-contrast mode:
 // solid / striped / hollow in system colours). When the range spans 8
 // tenths or more it is mostly stripes, the unsure line is dropped and it says
-// "Can't tell yet". An estimate older than 2 s says
+// "Could go either way — listeners would be split" (user decision 2026-10-21
+// (1): it said "Can't tell yet", which promised that waiting helps; "Can't
+// tell yet" is now only in the "short" reason — no reading yet). An estimate older than 2 s says
 // "Older reading" in its legend line (nothing is dimmed: dimming took text
 // below WCAG contrast). The first caveat sentence stays on screen; the rest
 // of it and the long explanation are behind "More". Layout numbers and words:
@@ -37,7 +39,7 @@
 // measurements/heard-as-calibration-2026-10-07.md.
 //
 // One height in every state (2026-10-20 review: switching between "Keep
-// talking", "Can't tell yet" and a range with its "unsure" line moved More,
+// talking", "Can't tell yet" (now "Could go either way") and a range with its "unsure" line moved More,
 // Save Session and the notes box by up to ~100 px several times a minute;
 // user decision 2026-10-20 (2)). While it shows no estimate (loading, model
 // error, "Keep talking", …) the panel keeps the bar on screen, empty and
@@ -216,11 +218,12 @@ export const NOISE_TEXT =
 export const RANGE_LIMITS_TEXT =
   "Singing, children's voices, held vowels and single words are not supported. Held notes and very high voices hide it. Very low voices (below about 80 Hz) can get a reading, but it is less reliable: their pitch is hard to pick out, and the reading leans toward “would say woman”. Singing and children are not detected — don't use it for them.";
 
-// "Can't tell yet" per sex (measurements/heard-as-voiced-windows-2026-10-08.md):
+// "Can't tell yet" (since 2026-10-21 "Could go either way": a shown reading
+// that spans most of the scale) per sex (measurements/heard-as-voiced-windows-2026-10-08.md):
 // on 80 LibriSpeech readers ~13 % of women's and ~7 % of men's shown
 // readings, mostly from a few voices that get it nearly always.
 export const CANT_TELL_TEXT =
-  "Some voices get \u201cCan't tell yet\u201d most of the time. In tests on 80 audiobook readers that happened more often for women's voices (about 13 in 100 readings) than for men's (about 7 in 100), mostly for a few voices.";
+  "Some voices get \u201cCould go either way\u201d most of the time. In tests on 80 audiobook readers that happened more often for women's voices (about 13 in 100 readings) than for men's (about 7 in 100), mostly for a few voices.";
 
 // Loading: p = the classifier's download share (null before any progress
 // arrives); at 100 % it is still loading its engine (the ONNX Runtime files
@@ -233,7 +236,7 @@ const REASONS = {
   error: () => "Unavailable — the voice model couldn't run. Switch it off and on to try again, or reload the page",
   listening: () => "Waiting for running speech",
   sustained: () => "Needs running speech — held vowels and notes don't count",
-  short: () => "Keep talking — needs a few seconds of running speech",
+  short: () => "Can't tell yet — keep talking, it needs a few seconds of running speech",
   unvoiced: () => "Needs voiced (pitched) speech — whispering gets no reading, and loud noise can hide your pitch",
   stale: () => "Waiting for running speech",
   outside: () => "Outside the range it was tested on — no guess shown",

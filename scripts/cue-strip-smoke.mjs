@@ -375,7 +375,7 @@ function axisChecks(who, s) {
     && (!want || (Math.abs(want.man - a.man) < 1e-6 && Math.abs(want.woman - a.woman) < 1e-6))
     && a.guess >= a.man - 1e-6 && a.guess <= 1 - a.woman + 1e-6, JSON.stringify(a));
   check(`${who}: bar words — range line ("can't tell yet" when wide) and unsure line (one tenth value; none when wide)`, !!a
-    && (a.wide ? /^Can't tell yet/.test(a.range) && a.unsure === ""
+    && (a.wide ? /^Could go either way/.test(a.range) && a.unsure === ""
       : /would say man · .* would say woman$/.test(a.range) && /^(About \d+|Fewer than 1) in 10 might be unsure or say neither$/.test(a.unsure)), `${a?.range} | ${a?.unsure}`);
   check(`${who}: bar screen-reader label`, !!a && a.sr.startsWith("Bar of listeners in tenths: would say man fills from the left"), a?.sr);
   check(`${who}: bar, end words and parts fit inside the panel`, !!a && a.fits);
@@ -724,7 +724,7 @@ for (const who of PITCH_ONLY) {
       shownAfter++;
       if (s.heardAs.pitchOnly) { warnedAfter++; if (s.heardAs.wide) wideWarned++; }
     });
-    log(`  pitch-only ${who}: next 20 s — ${warnedAfter}/${shownAfter} shown samples carry the warning (${wideWarned} of them while "Can't tell yet")`);
+    log(`  pitch-only ${who}: next 20 s — ${warnedAfter}/${shownAfter} shown samples carry the warning (${wideWarned} of them while "Could go either way")`);
     check(`pitch-only ${who}: kept on most shown estimates in the next 20 s (>= 80 %)`, shownAfter > 0 && warnedAfter / shownAfter >= 0.8, `${warnedAfter}/${shownAfter}`);
     await page.evaluate(() => document.querySelector("[data-pitch-only]")?.scrollIntoView({ block: "center" }));
     await sleep(200);

@@ -245,7 +245,7 @@ export function formatShare([lo, hi]) {
 // A range whose rounded ends span 8 tenths or more says almost nothing
 // (2026-10-07 review: "about 0–10 in 10" read as a full bar). The panel's
 // man <-> woman axis (heardAsAxisModel.js) applies it to the two-way range:
-// band dimmed, no dot, "Can't tell yet".
+// band dimmed, no dot, "Could go either way" ("Can't tell yet" until 2026-10-21).
 export const WIDE_SHARE_TENTHS = 8;
 export function isWideShare(range) {
   const [a, b] = shareTenths(range);

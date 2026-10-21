@@ -22,8 +22,8 @@
 // Next … Done: the three mapping buttons must keep their boxes; then Cancel.
 //   4 the "Likely heard as" panel switched ON (unless --panel=0; downloads the
 //     voice model from Hugging Face): a second browser plays 9 s of speech +
-//     7 s of silence, so the panel cycles through "Keep talking", "Can't tell
-//     yet", a range with its "unsure" line and "Older reading"; for
+//     7 s of silence, so the panel cycles through "Can't tell yet — keep
+//     talking", "Could go either way", a range with its "unsure" line and "Older reading"; for
 //     --panel-seconds the panel's own buttons, Save Session, the notes box and
 //     the Stop Listening bar must not move (one panel height in every state),
 //     and neither may the boxes of the panel itself (its bottom edge), the
