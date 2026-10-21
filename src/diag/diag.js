@@ -219,6 +219,8 @@ function _createState() {
     //   pitch,       // Hz or null
     //   confidence,  // 0..1
     //   voiced,      // confidence >= threshold (0.5)
+    //   vadP, vadVoice, vadMs  // try-out voice detector: smoothed score,
+    //                // decision and worker time (fbank + model) of the hop
     // }
     pitchInferences: new RingBuffer(PITCH_INFERENCES_CAP),
     // Pitch-trace paint latency + redraw cadence
@@ -244,6 +246,11 @@ function _createState() {
     // mlModel for the pitch-worker — currently always SwiftF0 ONNX on
     // wasm, but recorded for snapshot reproducibility.
     pitchModel: { modelUrl: null, device: null, threshold: null },
+    // Try-out voice gate (branch noise-detector-tryout): the pitch worker's
+    // FireRedVAD status (loading | ready | missing | error | slow), the
+    // "Hide pitch when no voice is heard" setting, and the latest hop's
+    // smoothed score p, decision (voice) and whether the display is hidden.
+    voiceGate: { status: null, message: null, enabled: null, p: null, voice: null, hiding: null },
     // Long-history low-res ring. One entry per second, ≤ LOW_RES_CAP
     // entries (10 min). Populated by pushFrame (which dedups to ≤ 1
     // entry/sec) and supplemented by setAudioCtxSample for periodic
@@ -428,6 +435,13 @@ export function setPitchModel(info) {
   diagState.pitchModel = { ...diagState.pitchModel, ...info };
 }
 
+// Try-out voice gate (useAudioPipeline.js): merges status / setting / the
+// latest decision. No-op without diag.
+export function setVoiceGate(info) {
+  if (!diagState) return;
+  diagState.voiceGate = { ...diagState.voiceGate, ...info };
+}
+
 // Resonance cue worker (src/resonance/resonance-worker.js, diag mode): its
 // latest perf block ({ msPerAudioS (EMA), meanMsPerAudioS, audioS, bins… })
 // and status, plus whether the lazy gender worker (the opt-in "Likely heard
@@ -559,6 +573,7 @@ export function snapshot() {
     mlModel: { ...diagState.mlModel },
     pitchInferences: diagState.pitchInferences.toArray(),
     pitchModel: { ...diagState.pitchModel },
+    voiceGate: { ...diagState.voiceGate },
     resonancePerf: diagState.resonancePerf ?? null,
     resonanceStatus: diagState.resonanceStatus ?? null,
     mlWorkerAlive: diagState.mlWorkerAlive ?? false,

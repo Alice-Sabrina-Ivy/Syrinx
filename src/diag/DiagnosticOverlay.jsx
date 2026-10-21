@@ -21,7 +21,37 @@ import {
   pushTap,
   downloadSnapshot,
   getStatus,
+  p95,
 } from "./diag";
+
+// Try-out voice gate row (branch noise-detector-tryout): detector status,
+// the setting, the latest smoothed score and decision, whether the pitch is
+// hidden, and the detector's worker time per 25 ms hop (front end + model)
+// over the pitch inference ring, median / p95 (the first hop after the model
+// loads also scores the frames that waited for it).
+function VoiceGateRows() {
+  const g = diagState?.voiceGate;
+  if (!g) return null;
+  const ms = (diagState?.pitchInferences.toArray() ?? []).map((e) => e.vadMs).filter((v) => typeof v === "number");
+  const sorted = [...ms].sort((a, b) => a - b);
+  const med = sorted.length ? sorted[Math.floor(sorted.length / 2)] : null;
+  const state = g.status !== "ready" ? "off (no detector)" : g.enabled === false ? "off (setting)" : g.hiding ? "HIDING pitch" : "showing";
+  return (
+    <div className="mb-3" data-diag-voice-gate="">
+      <div className="text-[10px] uppercase text-neutral-500 mb-1 tracking-wider">Voice gate (try-out)</div>
+      <div className="space-y-0.5 text-[10px] font-mono">
+        <div className="flex justify-between"><span className="text-neutral-400">detector:</span>
+          <span className={g.status === "ready" ? "text-green-400" : "text-amber-400"} data-diag-vad-status={g.status ?? ""}>{g.status ?? "—"}{g.message ? ` (${g.message})` : ""}</span></div>
+        <div className="flex justify-between"><span className="text-neutral-400">p (w5) / decision:</span>
+          <span className="text-purple-300" data-diag-vad-p={g.p ?? ""}>{g.p == null ? "—" : g.p.toFixed(3)} / {g.voice == null ? "—" : g.voice ? "voice" : "no voice"}</span></div>
+        <div className="flex justify-between"><span className="text-neutral-400">gate:</span>
+          <span className={g.hiding && g.enabled !== false && g.status === "ready" ? "text-red-300" : "text-neutral-200"} data-diag-vad-gate={state}>{state}</span></div>
+        <div className="flex justify-between"><span className="text-neutral-400">ms / 25 ms hop:</span>
+          <span className="text-neutral-200">{med == null ? "—" : `${med.toFixed(2)} med · ${p95(ms).toFixed(2)} p95`}</span></div>
+      </div>
+    </div>
+  );
+}
 
 const REFRESH_HZ = 10; // overlay refresh rate; cheap because we read from refs
 // The sparkline plots only this much of the ~30 s ring (RING_CAP 1200 at
@@ -151,6 +181,7 @@ function Sparkline({ frames }) {
     };
     drawSeries("confidence", "#22d3ee");
     drawSeries("inputRms", "#fb923c", 4); // ×4 so quiet speech is visible
+    drawSeries("vadP", "#c084fc"); // try-out voice detector score (violet)
 
     // Baseline + 0.5 gridline for the bottom panel
     ctx.strokeStyle = "rgba(255,255,255,0.08)";
@@ -287,6 +318,8 @@ export default function DiagnosticOverlay() {
         </div>
       </div>
 
+      <VoiceGateRows />
+
       {/* Timings */}
       <div className="mb-3">
         <div className="flex justify-between items-baseline mb-1">
@@ -315,7 +348,8 @@ export default function DiagnosticOverlay() {
           <span className="text-[9px] normal-case">
             <span className="text-amber-400">pitch</span>{" · "}
             <span className="text-cyan-400">conf</span>{" · "}
-            <span className="text-orange-400">rms×4</span>
+            <span className="text-orange-400">rms×4</span>{" · "}
+            <span className="text-purple-400">vad</span>
           </span>
         </div>
         <Sparkline frames={sparkFrames} />

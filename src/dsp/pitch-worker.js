@@ -25,10 +25,30 @@
 //   ~56 ms; the trade for octave-flip rates at Praat parity).
 //
 // Protocol:
-//   main → worker: { type: "init", inputSampleRate, diag? }
+//   main → worker: { type: "init", inputSampleRate, diag?, vad? }
 //                  { type: "audioPort", port }       MessagePort from captureSource
 //   worker → main: { type: "status", status, message? }     "ready"|"error"
-//                  { type: "pitch", pitch, confidence, voiced, ts, contextTime, inferMs? }
+//                  { type: "pitch", pitch, confidence, voiced, ts, contextTime, inferMs?, vad?, vadMs? }
+//                  { type: "vad-status", status, message? } (try-out detector, below)
+//
+// TRY-OUT voice detector (branch noise-detector-tryout, 2026-10-20;
+// src/dsp/firered-vad.js, measurements/noise-detector-tryout-2026-10-20.md).
+// Only when init carries `vad: { modelBase }` (the app does; the Node
+// harnesses that drive this worker do not, and then nothing below runs and
+// the worker is exactly as before). FireRedVAD runs on this worker's own
+// 16 kHz stream (the resampler's output, before the notch), hop by hop, so
+// the decision for the pitch message of chunk k is computed from the audio up
+// to the end of chunk k — the alignment the 2026-10-20 screen scored. Each
+// pitch message then carries `vad: { p, voice }` (p = smoothed score at the
+// hop; voice = the R1 h decision). The main thread hides the pitch display
+// when voice is false and the user's setting is on; every other consumer
+// (DSP / ML / resonance hints, heard-as, pitch-only warning) gets the
+// posted pitch unchanged. While the model loads, or if it is missing,
+// messages carry no `vad` (not gated). The model runs through
+// onnxruntime-web (asynchronous), so once it is ready chunks are processed
+// through a promise chain that keeps them in order; if that chain falls
+// VAD_MAX_QUEUE chunks behind, the detector switches itself off ("slow")
+// rather than delay the pitch display.
 //
 // (The main thread tears workers down via Worker.terminate(). The
 // SwiftF0-era inference timeout machinery is gone — the detector is a
@@ -57,6 +77,7 @@ import {
 import { createNoiseNotch, isNearNotch } from "./noise-notch.js";
 import { createStreamingResampler } from "../ml/audio-utils.js";
 import { PITCH_DISPLAY_RANGE } from "../utils/constants.js";
+import { FIRERED_MODEL, createVoiceDetector, createFireRedRunner, parseKaldiCmvn, loadVerified } from "./firered-vad.js";
 
 const TARGET_SAMPLE_RATE = 16000;
 const FRAME_LENGTH = BOERSMA_FRAME_LENGTH_16K; // 1280 = 80 ms
@@ -95,6 +116,50 @@ let buffer16kFill = 0;
 // each decoded pitch is posted with ITS OWN frame's contextTime and
 // strength data (not the just-arrived chunk's). Length lookback+1.
 let frameMeta = [];
+
+// Try-out voice detector state (see the header). vadDetector exists from init
+// (its front end runs from the first sample) until the model is found to be
+// missing / broken / too slow; vadQueue is the in-order chain used once the
+// model is ready.
+let vadDetector = null;
+let vadQueue = null;
+let vadQueued = 0;
+let vadGen = 0;
+let streamSamplesIn = 0;      // input samples since init: hop time = samplesIn / inputSampleRate
+const VAD_MAX_QUEUE = 20;     // 0.5 s of chunks waiting
+
+function vadStatus(s, message) {
+  self.postMessage({ type: "vad-status", status: s, ...(message ? { message } : {}) });
+}
+
+async function loadVad(cfg, gen) {
+  vadStatus("loading");
+  try {
+    const base = String(cfg.modelBase);
+    const [onnxSpec, cmvnSpec] = ["onnx", "cmvn"].map((k) => FIRERED_MODEL.files.find((f) => f.key === k));
+    const [onnxBytes, cmvnBytes] = await Promise.all([loadVerified(base + onnxSpec.name, onnxSpec), loadVerified(base + cmvnSpec.name, cmvnSpec)]);
+    const cmvn = parseKaldiCmvn(cmvnBytes);
+    // onnxruntime-web's WASM build and the app's own copy of its plain
+    // runtime file (shipped since 2026-10-07 for Safari; src/ml/
+    // ort-runtime-files.js) — no new download source. Imported here so the
+    // Node harnesses that load this worker never touch them.
+    const [ort, files, paths] = await Promise.all([
+      import("onnxruntime-web/wasm"),
+      import("../ml/ort-runtime-files.js"),
+      import("../ml/ort-wasm-paths.js"),
+    ]);
+    ort.env.wasm.numThreads = 1;
+    ort.env.wasm.wasmPaths = paths.selfHostedWasmPaths({ wasm: paths.ORT_RUNTIME_VARIANTS.plain.wasm }, files.ORT_RUNTIME_URLS);
+    const session = await ort.InferenceSession.create(onnxBytes, { executionProviders: ["wasm"] });
+    if (gen !== vadGen || !vadDetector) return;
+    vadDetector.setModel({ runner: createFireRedRunner(ort, session), cmvn });
+    vadStatus("ready");
+  } catch (err) {
+    if (gen !== vadGen) return;
+    vadDetector = null;
+    vadStatus(err?.code === "missing" ? "missing" : "error", String(err?.message || err));
+  }
+}
 
 function status(s, message, extra) {
   self.postMessage({
@@ -137,13 +202,23 @@ function frameConfidence(voiced, meta) {
   return voiced ? Math.min(1, Math.max(0.5, c)) : Math.max(0, Math.min(0.499, c));
 }
 
+// One capture chunk -> { out: the pitch message to post (or null), t: the
+// hop's stream time (s), vadMs } ; null when the chunk is not a hop.
 function processChunk(msg) {
-  if (!ready || !msg || !msg.buffer) return;
+  if (!ready || !msg || !msg.buffer) return null;
   const incoming = new Float32Array(msg.buffer);
-  if (incoming.length === 0) return;
+  if (incoming.length === 0) return null;
+  streamSamplesIn += incoming.length;
+  const hop = { out: null, t: streamSamplesIn / inputSampleRate, vadMs: 0 };
   const t0 = _diag ? performance.now() : 0;
-  appendToBuffer(noiseNotch.process(resample(incoming)));
-  if (buffer16kFill < FRAME_LENGTH) return;
+  const x16 = resample(incoming);
+  if (vadDetector) {
+    const v0 = _diag ? performance.now() : 0;
+    vadDetector.pushAudio(x16); // copies the samples before the notch below runs
+    if (_diag) hop.vadMs += performance.now() - v0;
+  }
+  appendToBuffer(noiseNotch.process(x16));
+  if (buffer16kFill < FRAME_LENGTH) return hop;
 
   const frameCandidates = detector.candidates(buffer16k);
   frameMeta.push({
@@ -154,10 +229,11 @@ function processChunk(msg) {
   bufferDelayLine.push(Float32Array.from(buffer16k));
   if (bufferDelayLine.length > tracker.config.lookback + 1) bufferDelayLine.shift();
   const decoded = tracker.emit(frameCandidates);
-  const inferMs = _diag ? performance.now() - t0 : null;
+  // (the voice detector's front end above is timed separately, in vadMs)
+  const inferMs = _diag ? performance.now() - t0 - hop.vadMs : null;
 
   // Tracker warm-up: no decode for the first `lookback` frames.
-  if (frameMeta.length <= tracker.config.lookback) return;
+  if (frameMeta.length <= tracker.config.lookback) return hop;
   const meta = frameMeta.shift();
 
   // Ghost-voicing veto: never report a pitch AT an actively-notched
@@ -189,7 +265,7 @@ function processChunk(msg) {
     vetoed = null;
   }
   const voiced = vetoed !== null && vetoed !== undefined && vetoed > 0;
-  self.postMessage({
+  hop.out = {
     type: "pitch",
     pitch: voiced ? vetoed : null,
     confidence: frameConfidence(voiced, meta),
@@ -205,16 +281,74 @@ function processChunk(msg) {
     ...(noiseNotch.activeFreqs().length > 0
       ? { notchedFreqs: noiseNotch.activeFreqs() }
       : {}),
-  });
+  };
+  return hop;
+}
+
+function postHop(hop, vad) {
+  if (!hop || !hop.out) return;
+  if (vad) {
+    hop.out.vad = { p: vad.p, voice: vad.voice };
+    if (_diag) hop.out.vadMs = hop.vadMs;
+  }
+  self.postMessage(hop.out);
+}
+
+// Synchronous path (no detector, or its model not ready yet): exactly the
+// pre-try-out worker, plus the detector's front end and hop bookkeeping.
+function handleChunkSync(data) {
+  const hop = processChunk(data);
+  if (hop && vadDetector) vadDetector.noteHop(hop.t);
+  postHop(hop, null);
+}
+
+// Asynchronous path (model ready): the pitch part runs at once, the post
+// waits for the detector's decision on the same hop.
+async function handleChunkAsync(data) {
+  const hop = processChunk(data);
+  if (!hop) return;
+  let vad = null;
+  if (vadDetector?.ready) {
+    const v0 = _diag ? performance.now() : 0;
+    try {
+      vad = await vadDetector.hop(hop.t);
+    } catch (err) {
+      vadDetector = null;
+      vad = null;
+      vadStatus("error", String(err?.message || err));
+    }
+    if (_diag) hop.vadMs += performance.now() - v0;
+  } else if (vadDetector) {
+    vadDetector.noteHop(hop.t);
+  }
+  postHop(hop, vad);
 }
 
 function attachAudioPort(port) {
   port.onmessage = (e) => {
-    try {
-      processChunk(e.data);
-    } catch (err) {
-      status("error", String(err?.message || err));
+    if (!vadQueue && !vadDetector?.ready) {
+      try {
+        handleChunkSync(e.data);
+      } catch (err) {
+        status("error", String(err?.message || err));
+      }
+      return;
     }
+    vadQueued++;
+    if (vadQueued > VAD_MAX_QUEUE && vadDetector) {
+      // Falling behind real time: the pitch display must not wait for the
+      // detector. Chunks already queued still post in order, ungated.
+      vadDetector = null;
+      vadStatus("slow", `the voice detector fell ${VAD_MAX_QUEUE} chunks behind; switched off for this session`);
+    }
+    const data = e.data;
+    vadQueue = (vadQueue ?? Promise.resolve())
+      .then(() => handleChunkAsync(data))
+      .catch((err) => status("error", String(err?.message || err)))
+      .finally(() => {
+        vadQueued--;
+        if (vadQueued === 0) vadQueue = null;
+      });
   };
 }
 
@@ -234,6 +368,15 @@ self.onmessage = (e) => {
       buffer16k.fill(0);
       buffer16kFill = 0;
       frameMeta = [];
+      streamSamplesIn = 0;
+      vadGen++;
+      vadQueue = null;
+      vadQueued = 0;
+      vadDetector = null;
+      if (msg.vad && typeof msg.vad.modelBase === "string") {
+        vadDetector = createVoiceDetector(); // fresh state per start
+        loadVad(msg.vad, vadGen);
+      }
       ready = true;
       // Same "ready" shape the SwiftF0 worker posted so diag snapshots
       // keep recording which pitch backend loaded; modelUrl is null and
