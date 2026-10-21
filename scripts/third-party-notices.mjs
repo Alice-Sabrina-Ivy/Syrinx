@@ -36,6 +36,13 @@ export const COMMITTED_LICENSES = {
   "onnxruntime-common": ["licenses/onnxruntime-web/LICENSE"],
 };
 export const ORT_THIRD_PARTY_NOTICES = "licenses/onnxruntime-web/ThirdPartyNotices.txt";
+// Models whose files the app serves (not npm packages): their licence text
+// always ships in THIRD_PARTY_NOTICES.txt. FireRedVAD: the try-out voice
+// gate's model (public/models/firered/, fetched by
+// scripts/fetch-firered-model.mjs; Apache-2.0).
+export const MODEL_LICENSES = [
+  { title: "FireRedVAD (FireRedTeam) — model used by the try-out voice gate, Apache License 2.0", file: "licenses/fireredvad/LICENSE" },
+];
 export const NOTICES_FILE = "THIRD_PARTY_NOTICES.txt";
 export const ORT_NOTICES_FILE = "licenses/onnxruntime-ThirdPartyNotices.txt";
 
@@ -86,6 +93,9 @@ export function buildNoticesText(packages, { repo = REPO } = {}) {
   if (names.includes("onnxruntime-web")) {
     parts.push("", rule, "onnxruntime-web — the WebAssembly runtime's third-party components",
       rule, `See ${ORT_NOTICES_FILE} (ONNX Runtime's ThirdPartyNotices.txt at the commit the runtime was built from).`);
+  }
+  for (const m of MODEL_LICENSES) {
+    parts.push("", rule, m.title, rule, readFileSync(path.join(repo, m.file), "utf8").trimEnd());
   }
   return parts.join("\n") + "\n";
 }

@@ -65,3 +65,7 @@ scripts/penn-validation/
 # env.allowLocalModels = false), so these are unreachable from the app.
 public/audeering-6l-gender/
 public/jaesunghuh-gender/
+
+# FireRedVAD model files for the noise-detector try-out (fetched by
+# scripts/fetch-firered-model.mjs; Apache-2.0, not committed).
+public/models/firered/
