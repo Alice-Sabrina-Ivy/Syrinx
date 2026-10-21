@@ -8,7 +8,9 @@ held-out run. **Result: H1+H3 passes every part of the bar on held-out for
 women and men (§8).** A review the same day (§9) rebuilt the §8.3 guard
 baseline (pass / fail unchanged) and added what the bar did not check: the
 new ~75 Hz readings lean toward "woman", early readings for one feminine-pitch
-male voice, and short "Keep talking" flashes (§8.5). This is the hard-rule-3 measurement file for any change to
+male voice, and short "Keep talking" flashes (§8.5). **Addendum (2026-10-21, after §9): a pre-registered low-voice hide rule —
+FAIL on dev, nothing implemented** (no rule hides the ~75 Hz readings
+without costing ~90 Hz voices 12–38 points; §A.4). This is the hard-rule-3 measurement file for any change to
 the heard-as modules (`src/ml/heard-as.js`, `heardAsCalibration.js`,
 `utterance-gate.js`, `gender-worker.js`, `speech-detector.js`, and the
 panel's `src/components/HeardAsPanel.jsx`) that comes out of it.
@@ -1036,7 +1038,7 @@ bar ≤ 2.0) — the 90 Hz voices are the binding group; (c) passed for every ce
 
 | cell | (a) W / M % | (b) w90 W / M, points | (b) LibriSpeech men, points | w90 shown ↔ hidden changes / min, W / M (shipped 2.2 / 2.4) |
 |---|---|---|---|---|
-| L1 q10 T76 | 5.2 / 3.6 | — | 0.00 | — |
+| L1 q10 T76 | 5.2 / 3.6 | max 0.39 | | |
 | L1 q10 T77 | 27.8 / 29.1 | max 2.46 | | |
 | L1 q10 T78 | 57.8 / 61.9 | max 10.8 | | |
 | L1 q10 T79 | 78.1 / 81.2 | 23.5 / 15.5 | 0.50 | 6.6 / 6.3 |
@@ -1044,6 +1046,7 @@ bar ≤ 2.0) — the 90 Hz voices are the binding group; (c) passed for every ce
 | L1 q20 T76–T80 | 0.0–50.8 / 0.0–45.7 | max 0.0–7.1 | | |
 | L2 M95 V0.30 | 39.6 / 40.6 | 0.54 / 0.96 | 0.02 | 2.5 / 2.9 |
 | L2 M95 V0.40 | 74.9 / 72.4 | max 8.4 | | |
+| L2 M100 V0.30 | 43.7 / 46.0 | max 1.33 | | |
 | L2 M100 V0.40 | 84.7 / 81.3 | 12.5 / 13.2 | 0.96 | 6.3 / 7.6 |
 | L2 M110 V0.40 | 90.0 / 94.1 | 14.8 / 22.8 | 1.30 | 6.3 / 8.7 |
 | L2 M110 V0.50 | 99.0 / 99.1 | max 59.9 | | |
@@ -1051,7 +1054,8 @@ bar ≤ 2.0) — the 90 Hz voices are the binding group; (c) passed for every ce
 (Every cell: `build/heard-as/lowhide/dev.log`; blank = not printed here.)
 Every cell that reaches (a) also costs the ~90 Hz voices 12–38 points of time
 with a reading and makes them blink 3–4× as often; every cell that keeps
-(b) within 2 points removes at most ~41 % of the low readings. Natural
+(b) within 2 points removes at most ~46 % of the low readings (L2 M100
+V0.30). Natural
 LibriSpeech men are barely touched (≤ 2.3 points); the 90 Hz voices are the
 problem: their pitch also reaches below the 75 Hz floor, so they lose frames
 in the same way, only less — neither the low tail of the posted pitch nor the
@@ -1077,5 +1081,5 @@ variant simulates as before) are the only code changes.
 get a reading that is less reliable and leans toward "would say woman" (the
 "More" text says so since the §9 review). Options for the user: accept a cell
 that hides most low readings at the cost of the ~90 Hz voices (e.g. L2 M100
-V0.40: −83 % of low readings, −13 points for 90 Hz voices; it would still
+V0.40: −81 to −85 % of low readings, −12 to −13 points for 90 Hz voices; it would still
 need its held-out look), or wait for P1.
