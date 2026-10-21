@@ -15,11 +15,11 @@
 # their git blob ids are recorded in the output.
 #
 # Frame availability: score.py takes a candidate's first_avail_ms. The screen
-# declared 26 ms for every stream (+1 ms for its resampled streams); on a
-# native 16 kHz stream fed in 400-sample chunks, frame i is complete exactly at
-# 25 + 10 i ms, which is what the app's worker uses (frames whose 400 samples
-# have arrived). The gate decisions are written for 25 (the comparison) and 26
-# (information).
+# declared 26 ms for every stream (+1 ms for its resampled streams); the app
+# uses the same rule (src/dsp/firered-vad.js framesAvailableAt, since the
+# 2026-10-20 review; before it, 25 + 10 i ms, when frame i's samples are in).
+# The gate decisions are written for 26 (the comparison) and 25 (information:
+# the parity test checks that the old timing fails the comparison).
 #
 #   python -I scripts/firered/make-parity-ref.py --vd=<voice-detector checkout>/scripts/voice-detector
 #          [--model-dir=public/models/firered] [--out=tests/dsp/fixtures/firered-parity.json]

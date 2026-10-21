@@ -36,8 +36,10 @@
 //           hidden.
 // Every run: no page errors or console errors. CPU: the pitch worker's own
 // time per 25 ms hop for the detector (front end + model call), median / p95,
-// from the diag ring (the first hop after the model loads also scores the
-// frames that waited for it; it is left out).
+// from the diag ring, over the hops with a decision after the first one. The
+// hops right after the model loads score the frames that waited for it (at
+// most 50 per hop) and carry no decision: their time is reported separately
+// and each must stay under one hop's 25 ms (no stalled pitch post).
 
 import { execFileSync, spawn } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
@@ -232,10 +234,22 @@ const pct = (v) => (v == null ? "—" : `${(100 * v).toFixed(1)} %`);
 async function vadTimes(page) {
   return page.evaluate(() => {
     const e = window.__syrinxDiag.state.pitchInferences.toArray();
-    const firstDecided = e.findIndex((x) => typeof x.vadMs === "number");
-    const vad = e.slice(firstDecided + 1).map((x) => x.vadMs).filter((v) => typeof v === "number");
+    const decided = (x) => typeof x.vadVoice === "boolean";
+    const firstDecided = e.findIndex(decided);
+    const vad = e.slice(firstDecided + 1).filter(decided).map((x) => x.vadMs).filter((v) => typeof v === "number");
     const pitch = e.map((x) => x.inferMs).filter((v) => typeof v === "number");
     return { vad, pitch };
+  });
+}
+// Right after the model is ready: the detector time of the hops that caught
+// up on the waiting frames (model loaded, no decision yet) and of the first
+// decided hop.
+async function catchupTimes(page) {
+  return page.evaluate(() => {
+    const e = window.__syrinxDiag.state.pitchInferences.toArray();
+    const firstDecided = e.findIndex((x) => typeof x.vadVoice === "boolean");
+    if (firstDecided < 0) return null;
+    return e.slice(0, firstDecided + 1).map((x) => x.vadMs).filter((v) => typeof v === "number");
   });
 }
 const quant = (a, q) => { if (!a.length) return null; const s = [...a].sort((x, y) => x - y); return s[Math.min(s.length - 1, Math.floor(q * s.length))]; };
@@ -250,7 +264,13 @@ async function waitReady(page, status = "ready", ms = 30000) {
 }
 
 const report = { noise: path.basename(NOISE), durs, runs: {} };
-const cpu = { vad: [], pitch: [] };
+const cpu = { vad: [], pitch: [], catchup: [] };
+async function noteCatchup(page, run) {
+  await sleep(1500);
+  const c = await catchupTimes(page);
+  if (c) cpu.catchup.push(...c);
+  console.log(`INFO  ${run}: model ready; ${c ? c.length : "?"} hop(s) caught up on the waiting frames, max ${c && c.length ? Math.max(...c).toFixed(2) : "—"} ms`);
+}
 await startServer();
 console.log(`preview on :${PORT}`);
 
@@ -260,6 +280,7 @@ console.log(`preview on :${PORT}`);
   const { page, errors } = await launch(WAV.noise);
   await startListening(page);
   check("noise: detector ready", await waitReady(page), JSON.stringify((await gateStatus(page)).diag));
+  await noteCatchup(page, "noise");
   const s0 = await now(page);
   await sleep(12000);
   const s1 = await now(page);
@@ -295,6 +316,7 @@ console.log(`preview on :${PORT}`);
   const { page, errors } = await launch(WAV.speech);
   await startListening(page);
   check("speech: detector ready", await waitReady(page));
+  await noteCatchup(page, "speech");
   const s0 = await now(page);
   await sleep(16000);
   const s1 = await now(page);
@@ -314,6 +336,7 @@ console.log(`preview on :${PORT}`);
   const { page, errors } = await launch(WAV.held);
   await startListening(page);
   check("held: detector ready", await waitReady(page));
+  await noteCatchup(page, "held");
   const s0 = await now(page);
   await sleep(20000);
   const s1 = await now(page);
@@ -362,7 +385,11 @@ console.log(`preview on :${PORT}`);
 const vmed = quant(cpu.vad, 0.5), vp95 = quant(cpu.vad, 0.95), pmed = quant(cpu.pitch, 0.5);
 console.log(`\nCPU (desktop Chrome, pitch worker): detector ${vmed?.toFixed(3)} ms median / ${vp95?.toFixed(3)} ms p95 per 25 ms hop over ${cpu.vad.length} hops; pitch detector itself ${pmed?.toFixed(3)} ms median`);
 check("CPU measured", cpu.vad.length > 500);
-report.cpu = { hops: cpu.vad.length, vadMsMedian: vmed, vadMsP95: vp95, vadMsP99: quant(cpu.vad, 0.99), pitchInferMsMedian: pmed, ua: null };
+const cmax = cpu.catchup.length ? Math.max(...cpu.catchup) : null;
+console.log(`catch-up after the model loads: ${cpu.catchup.length} hops, max ${cmax?.toFixed(2)} ms`);
+check("catch-up after the model loads: every hop's detector time < 25 ms (no stalled pitch post)", cpu.catchup.length > 0 && cmax < 25, `max ${cmax?.toFixed(2)} ms over ${cpu.catchup.length} hops`);
+report.cpu = { hops: cpu.vad.length, vadMsMedian: vmed, vadMsP95: vp95, vadMsP99: quant(cpu.vad, 0.99), pitchInferMsMedian: pmed,
+  catchupHops: cpu.catchup.length, catchupMsMax: cmax, ua: null };
 report.results = results;
 mkdirSync(path.dirname(JSON_OUT), { recursive: true });
 writeFileSync(JSON_OUT, JSON.stringify(report, null, 1));

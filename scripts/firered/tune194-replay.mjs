@@ -12,8 +12,8 @@
 //   app48    the clip band-limited x3 to 48 kHz, then the app's linear
 //            48 -> 16 kHz streaming resampler in 1200-sample chunks (what the
 //            pitch worker hands the detector from a 48 kHz microphone)
-// The screen reported 79.8 % (native, frame availability 26 ms; here 25 ms,
-// the true value for 400-sample hops).
+// The screen reported 79.8 % (native; the detector uses the screen's frame
+// timing, first_avail_ms 26, since the 2026-10-20 review).
 //
 //   node scripts/firered/tune194-replay.mjs --dumps=<voice-detector build>/vad/dumps/noise
 //        --audio=<root holding <source>/<id>.wav> [--json=build/firered-tune194.json] [--limit=N]

@@ -46,16 +46,29 @@ real voices only); the noise clips are 16 kHz.
     screen scored — with no second resampler and no cross-worker timing.
     The cost is that the worker turns asynchronous once the model is loaded
     (ONNX Runtime Web's `run` is async): chunks then go through an in-order
-    promise chain, and if it falls 20 chunks (0.5 s) behind the detector
-    switches itself off ("slow") rather than delay the pitch. Without a
-    model the worker is synchronous and identical to before; the Node
-    harnesses that drive it (session oracle, above-range test, resonance
-    parity) never load the detector.
+    promise chain. Without a model the worker is synchronous and identical
+    to before; the Node harnesses that drive it (session oracle, above-range
+    test, resonance parity) never load the detector.
+  - **Lag safeguard:** if the worker's own work puts the pitch messages
+    more than 0.5 s behind real time, the detector switches itself off for
+    the session ("slow"; Settings says so) rather than delay the pitch. The
+    lag is a queue estimate: each chunk adds its handling time (wall clock,
+    from the start of its handling to its post) and subtracts its own audio
+    length, floored at zero. So a main-thread stall that delivers chunks
+    late and in a burst, lost capture audio or audio-clock drift does not
+    count — only the worker being slower than the audio. (Until the
+    2026-10-20 review it counted chunks waiting in the chain; that count
+    never goes above 1, because `run` finishes without yielding to the
+    event loop, so a detector slower than real time just delayed the
+    display without limit.)
 - **Gate** (`createVoiceGate`): screen.py's / score.py's definitions exactly —
   trailing mean of the last 5 frame probabilities (float64 running-sum
   difference, rounded to float32), "on" when the newest available frame's
   score ≥ 0.55 (0 before the first frame), voice while a hop within the last
-  2 s was on.
+  2 s was on. A frame counts as available by the screen's own timing rule
+  (`framesAvailableAt`: frame i from 26 + 10 i ms, the screen's
+  `first_avail_ms` 26), so the app makes the decisions the screen scored,
+  hop for hop.
 - **Display mask** (`useAudioPipeline.js`): while the setting is on and the
   latest hop's decision is "no voice", the pitch trace shows a gap, the
   Hz / note and steadiness readouts show "—", and the pitch-display flags
@@ -67,7 +80,11 @@ real voices only); the noise clips are 16 kHz.
   `voiced` / `holding`), and the recorded `voiced` / `f0` that session stats
   use. Recorded frames carry `voiceGate` ("voice" | "hidden" | "novoice";
   non-indexed, no schema bump); `painted` is what the live trace drew, so
-  History shows the same gaps.
+  History shows the same gaps. **Silence:** the dim held Hz / note readout
+  keeps its 5 s silence hold as without the gate (the detector's "no voice"
+  2 s into a silence does not clear it); only when the gate hid painted
+  frames after the held value does it show "—" instead (the held value
+  would be older than what the chain last drew).
 - **Setting:** Settings → "Hide pitch when no voice is heard (experimental)",
   **on by default in this try-out**; switching it off shows the unmasked
   display from the next frame (the detector keeps running, so switching back
@@ -92,47 +109,73 @@ real voices only); the noise clips are 16 kHz.
   log-mel equal to the runner's on every 20th frame (max |Δ| 9.5e-7, the
   float32 rounding of the reference);
   probabilities through ORT-web WASM within **3.0e-7** of the Python
-  runner's (limit 1e-3); the gate decision equal to score.py's on all 720
-  hops, also when the model arrives 1.5 s late; two broken front ends (no
-  pre-emphasis; samples not scaled to the int16 range) and a 0.97 → 0.9
-  pre-emphasis edit of the module all fail it. The model part skips with a
-  notice where the model is not fetched (CI); the front-end and gate parts
-  always run.
-- `tests/dsp/firered-vad-gate-test.js` (state machine, front end, CMVN
-  parser, backlog replay) and `tests/audio/voice-gate-display-test.js` (the
-  REAL hook: hidden frames empty; every other output, the recorded
-  voiced / f0 and every unhidden frame's painted value bit-identical to the
-  run without decisions; setting off = no change).
+  runner's (limit 1e-3); the gate decision equal to score.py's (the
+  screen's 26 ms frame timing, `gate["26"]`) on all 720 hops — the old
+  25 ms timing fails that comparison — also when the model arrives at hop
+  1, 37, 60, 300 or 700 (at 300 and 700 more than the 4 s backlog had
+  waited; caught up within 9 hops, at most 50 frames per model call), and
+  a 1 s backlog cap (shorter than the model's memory) fails it; two broken
+  front ends (no pre-emphasis; samples not scaled to the int16 range) and a
+  0.97 → 0.9 pre-emphasis edit of the module all fail it. The model part
+  skips with a notice where the model is not fetched (CI); the front-end
+  and gate parts always run.
+- `tests/dsp/firered-vad-gate-test.js` (state machine, frame timing vs
+  score.py's formula, front end, CMVN parser, backlog cap and per-hop
+  catch-up) and `tests/audio/voice-gate-display-test.js` (the REAL hook:
+  hidden frames empty; every other output, the recorded voiced / f0 and
+  every unhidden frame's painted value bit-identical to the run without
+  decisions; setting off = no change; the silence hold after speech
+  unchanged, "—" after a hidden line).
+- `tests/dsp/pitch-worker-vad-test.js` (the REAL pitch worker in Node with
+  a fake model through its test seam `setVadModelLoaderForTests`): a model
+  slower than real time (40 ms per hop) switches the detector off as
+  "slow" after 28 pitch messages, about 0.8 s of audio, and every later
+  message carries no decision, none lost; 10 ms per hop, a 3 s burst of
+  chunks (as after a main-thread stall) and a fast model never trip it; the
+  model arriving after 20 s is caught up within 9 hops at ≤ 50 frames per
+  call and ≤ 8.2 ms of detector time per hop; the posted pitch is
+  bit-identical to the worker without the detector. Disabling the lag
+  estimate fails 4 of its checks.
 - `scripts/firered/tune194-replay.mjs` — the JS detector + gate (ORT-web
   WASM in Node, 400-sample hops) on the screen's tuning-194 noise clips,
   scored on the benchmark dumps' falsely painted hops exactly as the screen
-  counts them: **79,223 false hops (the screen's count), 79.85 % removed
+  counts them: **79,223 false hops (the screen's count), 79.76 % removed
   (the screen: 79.8 %)**; per class stationary-tonal / mixed / broadband /
-  intermittent-tonal 76.3 / 84.4 / 80.0 / 74.5 % (screen 75.9 / 84.8 / 79.4 /
-  74.5). The same clips band-limited to 48 kHz and passed through the app's
-  linear 48 → 16 kHz resampler (what the detector reads from a 48 kHz
-  microphone): 86.9 % removed (85.8 / 90.2 / 77.3 / 84.8). Selection data,
-  information only.
+  intermittent-tonal 75.9 / 84.8 / 79.4 / 74.5 %, the screen's numbers. With
+  the screen's frame timing this is the screen's own result: the review's
+  re-score of the screen's probabilities with its 26 ms rule gives 63,187
+  removed hops, 79.758 %, and the JS detector gives the same hops (with the
+  1 ms earlier timing used until the review: 79.85 %, different decisions
+  on 22 of 194 clips, mostly at the start). The same clips band-limited to
+  48 kHz and passed through the app's linear 48 → 16 kHz resampler (what
+  the detector reads from a 48 kHz microphone): 87.0 % removed
+  (86.0 / 90.3 / 76.1 / 84.7). Selection data, information only.
 - `scripts/voice-gate-smoke.mjs` (built app, headless desktop Chrome, fake
-  mic, two runs): air-conditioner noise (the committed CC0 clip) — the gate
-  hid all 178 painted frames after the first 3 s (switched off: 0 of 460
-  frames differ from the chain; on again: all hidden); LibriSpeech speech —
-  426 of 426 painted frames kept; VocalSet long tones (2.75–3.5 s holds) —
-  0 of 749 hidden; model files removed — Settings says so, nothing hidden;
-  no page or console errors. **Detector CPU in the pitch worker, desktop
-  Chrome: 1.1–1.2 ms median, 1.6–1.9 ms p95 per 25 ms hop** (about 2,770
-  hops per run; worker timer at 0.1 ms resolution; the pitch detector
-  itself 0.3–0.4 ms median). With a tuning clip FireRedVAD hears as voice
-  (Freesound HVAC 121285: no "no voice" hop even on its native 16 kHz
-  samples) the gate hides only 13–25 % of that clip's line — the detector,
-  not the plumbing.
+  mic, two runs before the review, one after; 19 / 19 after it):
+  air-conditioner noise (the committed CC0 clip) — the gate hid all 178
+  (after the review: 162) painted frames after the first 3 s (switched off:
+  0 of 460 frames differ from the chain; on again: all hidden); LibriSpeech
+  speech — 426 of 426 (411 of 411) painted frames kept; VocalSet long tones
+  (2.75–3.5 s holds) — 0 of 749 hidden; model files removed — Settings says
+  so, nothing hidden; no page or console errors. **Detector CPU in the
+  pitch worker, desktop Chrome: 1.0–1.2 ms median, 1.3–1.9 ms p95 per 25 ms
+  hop** (about 2,770–2,950 hops per run; worker timer at 0.1 ms resolution;
+  the pitch detector itself 0.3–0.4 ms median). Since the review the smoke
+  also times the hops that catch up on the frames that waited for the
+  model: 1 hop per run here (the model loads in well under a second), at
+  most 14.7 ms, under the 25 ms the check allows. With a tuning clip
+  FireRedVAD hears as voice (Freesound HVAC 121285: no "no voice" hop even
+  on its native 16 kHz samples) the gate hides only 13–25 % of that clip's
+  line — the detector, not the plumbing.
 - `scripts/cue-strip-smoke.mjs --pitch-only=man,woman` (phone viewport):
-  108 / 108. Its synthetic held vowel: with the gate on the pitch row is
-  never live (0 of 31 samples; FireRedVAD scores clean synthetic hums low,
-  as the screen found) while the resonance row stays active (31 of 31); the
-  smoke records that, then switches the gate off for its resonance checks
-  and back on afterwards.
-- `npm run lint`, `npm run test:unit` (50 / 50), `npm run build` green; the
+  110 / 110. Its synthetic held vowel: with the gate on the pitch row is
+  live on 0 of 31 samples (FireRedVAD scores clean synthetic hums low,
+  as the screen found) while the resonance row stays active (31 of 31);
+  since the review the smoke checks both (pitch row live on ≤ 10 % of the
+  samples while the detector runs — the documented cost, kept visible; the
+  resonance row active on ≥ 80 %), then switches the gate off for its
+  resonance checks and back on afterwards.
+- `npm run lint`, `npm run test:unit` (51 / 51), `npm run build` green; the
   detector also loads under `npm run dev` in the worktree.
 
 ## Known differences from the screen (for the confirmation to settle)
@@ -140,18 +183,70 @@ real voices only); the noise clips are 16 kHz.
 - **Resampler:** the detector reads the app's linear 48 → 16 kHz resampler
   (no anti-alias filter); the screen fed scipy polyphase audio, and its
   noise clips were 16 kHz at the source. On the tuning clips this path
-  removes more (86.9 vs 79.8 %, above); what it costs voices is not
+  removes more (87.0 vs 79.8 %, above); what it costs voices is not
   measured.
-- **Frame availability:** a frame is used as soon as its 400 samples arrive
-  (25 + 10 i ms); the screen declared 26 ms for every stream. On the parity
-  fixture this changes 1 of 720 hops (the first).
 - **Cold start:** the model's first outputs from a zero state are about
   0.58, so the gate opens at the first hops and stays open for its 2 s
-  hangover after Start (the screen started every stream the same way).
+  hangover after Start, as in the screen's runs (with the screen's frame
+  timing the app's first hops are the screen's, decision for decision).
 - **Model load:** hops before the model is ready (well under a second
-  locally) carry no decision and are not gated; the waiting frames are then
-  scored and replayed, so later decisions equal a run from the start.
+  locally) carry no decision and are not gated. The audio that waited, the
+  last 4 s at most, is then scored at most 50 frames per hop, with no
+  decision until it has caught up (within 9 hops); the later decisions
+  equal a run from the start, because 4 s holds more than the model's
+  152-frame memory, the smoothing and the 2 s hangover.
 - Desktop only; phone CPU and the mobile WASM path are not measured.
+
+## Changes after the review (2026-10-20)
+
+A review of the branch at 7bb6d72 (read-only, its own probes) found one
+medium and two low problems and three information items. All six were
+taken:
+
+1. **The "slow" switch could never fire** (medium). It counted chunks
+   waiting in the chain, which never exceeds 1 (above, "Lag safeguard"); a
+   40 ms-per-hop slowdown in the built app left the display about 8 s
+   behind and growing with the detector still "ready". Now a lag estimate
+   from the worker's own handling time. Built app, headless Chrome, the
+   review's probe changed to busy-wait 40 ms only on the pitch posts that
+   carry a decision (a detector too slow for the device): switched off as
+   "slow" at 0.51 s of estimated lag within the first 5 s, after which the
+   pitch messages run at real time again (40.2 per second against 40 of
+   audio). With the review's original probe (the busy-wait on every post,
+   so the whole worker is slow, not only the detector) it switches off the
+   same way and the remaining slowness is the worker's own. Main-thread
+   stalls of 0.3 / 0.7 / 1.5 / 3 s do not switch it off.
+   `tests/dsp/pitch-worker-vad-test.js` drives the real worker with a slow
+   fake model.
+2. **Frames were used 1 ms earlier than the screen's rule** (low). Now the
+   screen's rule; the parity test compares with `gate["26"]` and the old
+   timing fails it. The tuning-clip replay now gives the screen's own
+   number (above).
+3. **One pitch stall when the model loads late** (low): the first ready hop
+   scored the whole backlog at once (review: 328 ms after 26 s, ~0.75 s at
+   the old 60 s cap). Now the backlog is capped at 4 s and scored at most 50
+   frames per hop, with no decision until caught up (within 9 hops); the
+   decisions afterwards are unchanged (above, "Model load"). In the browser
+   smoke the catch-up hops took at most 14.7 ms of detector time.
+4. **The dim held readout cleared after ~2 s of silence, not 5 s** (info):
+   the gate cut the silence hold short. Now the hold is as without the gate,
+   unless the gate hid painted frames after the held value ("Display mask").
+5. **Not deployable as is** (info): see "Before any merge to main".
+6. **The cue-strip smoke only logged the held-vowel cost** (info): now a
+   check (above).
+
+## Before any merge to main
+
+Fine for this PC try-out, not for the live site:
+
+- CI and the Pages deploy do not fetch the model files, so a merge as is
+  would ship with the gate always "missing" (nothing hidden; Settings says
+  the files are not installed).
+- That Settings text tells the user to run
+  `node scripts/fetch-firered-model.mjs` — a developer instruction.
+
+Both need fixing first (for example: host the pinned files with the app or
+fetch and check them in the workflows, and a user-facing message).
 
 ## How to turn it off
 

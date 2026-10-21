@@ -15,15 +15,19 @@
 //      front ends (no pre-emphasis; samples not scaled to the int16 range)
 //      must FAIL the same comparison;
 //   B  gate (always): the JS R1 h gate (w5, p >= 0.55, 2 s hangover) on the
-//      runner's probabilities, fed hop by hop as the worker feeds it, equals
-//      score.py's per-hop score and decision on every hop;
+//      runner's probabilities, fed hop by hop as the worker feeds it with the
+//      module's frame timing (framesAvailableAt: the screen's first_avail_ms
+//      26), equals score.py's per-hop score and decision (gate["26"], the
+//      screen's own rule) on every hop; the old 25 ms timing must not;
 //   C  model (when public/models/firered/ holds the pinned files — run
 //      `node scripts/fetch-firered-model.mjs`; skipped with a notice
 //      otherwise): onnxruntime-web WASM (the bundle and .wasm the app ships)
 //      through createVoiceDetector, hop by hop: per-frame probabilities
 //      within 1e-3 of the runner's, the gate decision equal to score.py's on
-//      every hop, also when the model arrives late (backlog replay); the
-//      broken front end must move the probabilities past 1e-3.
+//      every hop, also when the model arrives late (at hops 1, 37, 60, 300,
+//      700: the 4 s backlog cap and the per-hop catch-up give the same
+//      decisions once caught up); the broken front end must move the
+//      probabilities past 1e-3.
 //
 //   node tests/dsp/firered-vad-parity-test.js
 
@@ -33,7 +37,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   FIRERED_MODEL, FBANK, parseKaldiCmvn, createFireRedFrontend, createVoiceGate,
-  createFireRedRunner, createVoiceDetector,
+  createFireRedRunner, createVoiceDetector, framesAvailableAt, CATCHUP_FRAMES, MAX_BACKLOG_FRAMES,
 } from "../../src/dsp/firered-vad.js";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -127,12 +131,14 @@ function gateOverHops(probsOf, framesAtHop) {
   return out;
 }
 // frames whose 400 samples have arrived by the end of hop k
-const framesAtHop = Array.from({ length: nHops }, (_, k) => {
+const producedAtHop = Array.from({ length: nHops }, (_, k) => {
   const n = (k + 1) * HOP;
   return n < FBANK.frameLength ? 0 : Math.floor((n - FBANK.frameLength) / FBANK.frameShift) + 1;
 });
-console.log("\nB. gate (w5, p >= 0.55, 2000 ms) on the runner's probabilities vs score.py");
-const refGate = REF.gate["25"];
+// the frames the app uses at hop k: the screen's rule, capped at those produced
+const framesAtHop = producedAtHop.map((n, k) => Math.min(framesAvailableAt(((k + 1) * HOP) / 16000), n));
+console.log("\nB. gate (w5, p >= 0.55, 2000 ms) on the runner's probabilities vs score.py (first_avail_ms 26)");
+const refGate = REF.gate["26"];
 const gB = gateOverHops(REF.probs, framesAtHop);
 const pMismatch = gB.filter((h, k) => h.p !== refGate.hop_p[k]).length;
 const vMismatch = gB.filter((h, k) => (h.voice ? "1" : "0") !== refGate.voice[k]).length;
@@ -141,6 +147,13 @@ check("per-hop decision equals score.py's voice_flags", vMismatch === 0,
   `${vMismatch} of ${nHops} hops differ; voice on ${refGate.voice.split("").filter((c) => c === "1").length} hops`);
 check("the fixture exercises both decisions and the hangover running out",
   /1+0+1+0+/.test(refGate.voice) || /0+1+0+/.test(refGate.voice));
+{
+  // The pre-review timing (frames used as soon as their samples arrive, 25 ms)
+  // is not the screen's rule: on this fixture it differs from gate["26"].
+  const g25 = gateOverHops(REF.probs, producedAtHop);
+  const d25 = g25.filter((h, k) => (h.voice ? "1" : "0") !== refGate.voice[k] || h.p !== refGate.hop_p[k]).length;
+  check("the 25 ms timing fails the same comparison (the check sees a 1 ms shift)", d25 > 0, `${d25} hops differ`);
+}
 
 // ---- C: the model through onnxruntime-web
 if (!haveModel) {
@@ -155,14 +168,16 @@ if (!haveModel) {
   const cmvn = parseKaldiCmvn(readFileSync(path.join(MODEL_DIR, cmvnSpec.name)));
   check("cmvn.ark parsed: 80 means, finite inverse std", cmvn.dim === 80 && [...cmvn.istd].every((v) => Number.isFinite(v) && v > 0));
 
-  // A recording runner: the production runner, keeping every probability.
+  // A recording runner: the production runner, keeping every probability and
+  // the size of every call.
   const recording = () => {
     const r = createFireRedRunner(ort, session);
     const probs = [];
-    return { probs, runner: { async run(fr) { const p = await r.run(fr); probs.push(...p); return p; }, reset: r.reset } };
+    const calls = [];
+    return { probs, calls, runner: { async run(fr) { calls.push(fr.length); const p = await r.run(fr); probs.push(...p); return p; }, reset: r.reset } };
   };
-  async function runDetector({ readyAtHop = 0 } = {}) {
-    const det = createVoiceDetector();
+  async function runDetector({ readyAtHop = 0, maxBacklog } = {}) {
+    const det = createVoiceDetector(maxBacklog ? { maxBacklog } : {});
     const rec = recording();
     const out = [];
     for (let k = 0; k < nHops; k++) {
@@ -170,7 +185,7 @@ if (!haveModel) {
       det.pushAudio(x16.subarray(k * HOP, (k + 1) * HOP));
       out.push(det.ready ? await det.hop(((k + 1) * HOP) / 16000) : det.noteHop(((k + 1) * HOP) / 16000));
     }
-    return { out, probs: rec.probs };
+    return { out, probs: rec.probs, calls: rec.calls, det };
   }
 
   const live = await runDetector();
@@ -181,12 +196,28 @@ if (!haveModel) {
   const vC = live.out.filter((h, k) => (h.voice ? "1" : "0") !== refGate.voice[k]).length;
   check("per-hop decision equals score.py's on every hop (model live from the first hop)", vC === 0, `${vC} hops differ`);
 
-  // Model ready only after 1.5 s: hops before get no decision; after it, the
-  // replayed state gives the same decisions as a run from stream start.
-  const late = await runDetector({ readyAtHop: 60 });
-  check("before the model is ready: no decision (display not gated)", late.out.slice(0, 60).every((h) => h === null));
-  const vL = late.out.slice(60).filter((h, k) => (h.voice ? "1" : "0") !== refGate.voice[60 + k]).length;
-  check("model ready late (hop 60): later decisions equal score.py's (backlog replayed)", vL === 0, `${vL} hops differ`);
+  // The model arriving late: hops before it, and while the waiting audio is
+  // scored (at most CATCHUP_FRAMES per hop), get no decision; from then on the
+  // decisions equal score.py's — also when more than the 4 s backlog cap had
+  // waited (hops 300, 700: older frames dropped).
+  for (const at of [1, 37, 60, 300, 700]) {
+    const late = await runDetector({ readyAtHop: at });
+    const first = late.out.findIndex((h, k) => k >= at && h !== null);
+    const before = late.out.slice(0, at).every((h) => h === null);
+    const vL = first < 0 ? nHops : late.out.slice(first).filter((h, k) => h === null || (h.voice ? "1" : "0") !== refGate.voice[first + k]).length;
+    const maxCall = Math.max(...late.calls);
+    check(`model ready late (hop ${at}): no decision before; caught up by hop ${first} (${first - at + 1} hops, <= ${CATCHUP_FRAMES} frames per call); every later decision equals score.py's`,
+      before && first >= at && first - at <= 10 && maxCall <= CATCHUP_FRAMES && vL === 0,
+      `${vL} hops differ; largest call ${maxCall} frames${late.det.truncated ? `; backlog capped at ${MAX_BACKLOG_FRAMES} frames` : ""}`);
+  }
+  {
+    // Sensitivity: a 1 s cap (shorter than the model's 152-frame memory)
+    // must change later decisions — the 4 s cap is what keeps them exact.
+    const short = await runDetector({ readyAtHop: 300, maxBacklog: 100 });
+    const first = short.out.findIndex((h, k) => k >= 300 && h !== null);
+    const dS = short.out.slice(first).filter((h, k) => h === null || h.p !== refGate.hop_p[first + k]).length;
+    check("a 1 s backlog cap changes later scores (the check sees the model's memory)", dS > 0, `${dS} hops differ`);
+  }
 
   // The broken front end through the model: the probabilities move past the tolerance.
   for (const [name] of Object.entries(BROKEN)) {

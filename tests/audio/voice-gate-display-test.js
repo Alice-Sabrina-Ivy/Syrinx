@@ -15,7 +15,10 @@
 //     the 2026-10-20 screen scored);
 //   - recorded frames carry voiceGate "hidden" / "voice" / "novoice";
 //   - setting off: the display is exactly the run without decisions;
-//   - decision "voice", or no decision: nothing changes.
+//   - decision "voice", or no decision: nothing changes;
+//   - silence after speech: the dim held readout keeps its 5 s silence hold
+//     (the detector's "no voice" 2 s into the silence does not clear it),
+//     unless the gate hid painted frames after the held value.
 //
 //   node tests/audio/voice-gate-display-test.js
 
@@ -124,6 +127,33 @@ console.log("\ndecision voice everywhere");
 {
   const allVoice = await run(SEQ.map((f) => ({ x: f.x, vad: true })));
   check("display identical to the ungated app", allVoice.out.every((o, i) => JSON.stringify(o) === JSON.stringify(base.out[i])));
+}
+
+console.log("\nsilence after speech: the 5 s silence hold is unchanged");
+{
+  // Speech, then quiet: the detector's hangover keeps "voice" for 2 s, then
+  // says "no voice". The dim held readout still holds for the whole 5 s
+  // silence hold (3 s here), as without the gate: it holds the last pitch the
+  // gate showed.
+  const HOLD = [...rep(205, 60, true), ...rep("q", 80, true), ...rep("q", 40, false)];
+  const b = await run(strip(HOLD));
+  const g = await run(HOLD);
+  const late = HOLD.map((f) => f.x === "q" && f.vad === false);
+  check("the ungated app holds the last pitch dimmed through these quiet frames (the case is real)",
+    b.out.filter((o, i) => late[i] && o.pitch !== null && o.pitchHolding).length === 40);
+  check("gate on: readout, note, level, steadiness and pitch flags equal the ungated app on every frame",
+    g.out.every((o, i) => ["pitch", "note", "level", "steadiness", "pitchVoiced", "pitchHolding"].every((k) => o[k] === b.out[i][k])),
+    g.out.map((o, i) => (["pitch", "note", "level", "steadiness", "pitchVoiced", "pitchHolding"].every((k) => o[k] === b.out[i][k]) ? "" : i)).filter(String).slice(0, 8).join(","));
+  check("recorded frames: voiceGate hidden on the no-voice quiet frames, nothing painted there",
+    g.rec.every((r, i) => !late[i] || (r.voiceGate === "hidden" && r.painted === false)));
+}
+{
+  // The same quiet after painted frames the gate hid: no stale held value.
+  const NOISE = [...rep(205, 40, true), ...rep(117, 40, false), ...rep("q", 40, false)];
+  const g = await run(NOISE);
+  const q = NOISE.map((f) => f.x === "q");
+  check("after a line the gate hid, the silence hold shows nothing and no holding flag (not the older pitch)",
+    g.out.every((o, i) => !q[i] || (o.pitch === null && o.note === null && !o.pitchHolding)));
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

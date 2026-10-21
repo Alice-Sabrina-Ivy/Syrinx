@@ -275,6 +275,13 @@ export function useAudioPipeline() {
   // switch, is the OTHER register (the "readout an octave low" report).
   // Cleared by the next painted frame.
   const heldReadoutStaleRef = useRef(false);
+  // Try-out voice gate: set when the gate hides a frame the chain painted,
+  // cleared by the next frame it shows. The 5 s silence hold below shows the
+  // last shown pitch dimmed, as without the gate, unless this is set: then
+  // the chain painted something after that value which the gate hid (a noise
+  // line, or a note the detector did not hear as voice), the held value is
+  // older than what the chain last drew, and the readout shows "—".
+  const gateHidPaintRef = useRef(false);
   const lastVoicedRef = useRef({
     pitch: null,
     pitchLevel: null,
@@ -1031,6 +1038,7 @@ export function useAudioPipeline() {
     displayVoicedRef.current = false;
     unpitchedFramesRef.current = 0;
     heldReadoutStaleRef.current = false;
+    gateHidPaintRef.current = false;
     // Without this reset the next session's initial silence "holds" the
     // PREVIOUS session's pitch/note/formants in the dim style for up to
     // 5 s before the first utterance.
@@ -1295,16 +1303,21 @@ export function useAudioPipeline() {
       notifyTrace();
 
       if (silenceDuration < SILENCE_HOLD_MS) {
-        // Hold last voiced values (display goes to reduced opacity)
+        // Hold last voiced values (display goes to reduced opacity). The
+        // try-out voice gate does not cut this hold short (the detector says
+        // "no voice" 2 s into a silence): the held pitch is the last one it
+        // let through — unless it hid painted frames after it
+        // (gateHidPaintRef), and then the readout shows "—".
         dspGateRef.current = { voiced: false, holding: true };
         const held = lastVoicedRef.current;
-        const heldStale = heldReadoutStaleRef.current || vadHide;
+        const gateHid = gateHidPaintRef.current;
+        const heldStale = heldReadoutStaleRef.current || gateHid;
         throttledSetState((s) => ({
           ...s,
           voiced: false,
           holding: true,
           pitchVoiced: false,
-          pitchHolding: !vadHide,
+          pitchHolding: !gateHid,
           pitch: heldStale ? null : held.pitch,
           pitchLevel: heldStale ? null : held.pitchLevel,
           intensity,
@@ -1465,6 +1478,8 @@ export function useAudioPipeline() {
     const showHeldReadout = displayHolding && !heldReadoutStaleRef.current && !vadHide;
     // What the display actually shows (the try-out voice gate's mask).
     const shown = displayPitched && !vadHide;
+    if (shown) gateHidPaintRef.current = false;
+    else if (displayPitched) gateHidPaintRef.current = true;
     if (DIAG_ENABLED) lastDisplayRef.current = { painted: displayPitched, shown, hidden: vadHide };
 
     const noteInfo = displayPitched ? hzToNote(smoothedPitch) : null;

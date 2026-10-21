@@ -55,6 +55,21 @@ export const FIRERED_MODEL = Object.freeze({
 // The operating point: the screen's "R1 h" point (w5, p >= 0.55, 2000 ms).
 export const FIRERED_GATE = Object.freeze({ smooth: 5, threshold: 0.55, hangoverMs: 2000 });
 
+// When a frame may be used: the screen's rule. Its candidate.json declared
+// first_avail_ms 26 (frame i needs 16 kHz samples [0, 160 i + 400), complete
+// at 25 + 10 i ms, plus 1 ms the screen added for its resampled streams; one
+// value for every stream), and score.py hop_probs counts the frames available
+// at hop time t as floor((t - 0.026) / 0.010 + 1e-9) + 1. The app uses the
+// same count (capped at the frames the front end has produced), so it makes
+// the decisions the screen scored hop for hop. (Until the 2026-10-20 review
+// the app used frames as soon as their samples arrived, 25 + 10 i ms: 1 ms
+// earlier, which changed the decisions near the start of some streams.)
+export const FIRST_AVAIL_MS = 26;
+export function framesAvailableAt(t) {
+  const i = Math.floor((t - FIRST_AVAIL_MS / 1000) / (FBANK.frameShift / FBANK.sampleRate) + 1e-9);
+  return i < 0 ? 0 : i + 1;
+}
+
 export const FBANK = Object.freeze({
   sampleRate: 16000,
   frameLength: 400,   // 25 ms
@@ -309,7 +324,8 @@ export function applyCmvn(logmel, cmvn) {
 //     hop at or before it that was on lies within 2000 ms of hop time
 //     (t_k - t_last_on <= 2.0 s + 1e-9).
 // Hop time t is the stream time (s) at the end of the pitch worker's chunk;
-// the frames available at hop k are those whose 400 samples had arrived.
+// the frames available at hop k are framesAvailableAt(t) (below: the screen's
+// own timing rule), never more than the front end has produced.
 export function createVoiceGate({ smooth = FIRERED_GATE.smooth, threshold = FIRERED_GATE.threshold, hangoverMs = FIRERED_GATE.hangoverMs } = {}) {
   const cums = new Float64Array(smooth + 1); // c[i+1-smooth .. i+1] ring
   let n = 0;           // frames added
@@ -363,74 +379,101 @@ export function createFireRedRunner(ort, session) {
 // ------------------------------------------------------------------ detector
 // Front end + model + gate per pitch-worker hop. The front end runs from the
 // first sample; until the model is ready (setModel: the runner and the
-// parsed cmvn.ark) the log-mel frames wait in a backlog and hops get no
-// decision (null: the display is not gated). When the model arrives, the
-// backlog is scored from zero caches and the gate replays the waiting hops,
-// so its state equals a run from stream start.
+// parsed cmvn.ark) its log-mel frames wait in a backlog and hops get no
+// decision (null: the display is not gated). Once the model is there the
+// backlog is scored from zero caches, at most CATCHUP_FRAMES per hop so no
+// single pitch post waits for all of it, and the gate replays the hops that
+// went out undecided; hops keep getting null until it has caught up.
 //   pushAudio(x16)           every 16 kHz sample of the stream, in order
 //   then, once per chunk, in order:
-//     noteHop(t) -> null                          while !ready (synchronous)
-//     hop(t) -> Promise<{ p, on, voice }>         once ready
-export const MAX_BACKLOG_FRAMES = 6000; // 60 s; beyond it the oldest frames are dropped
-const RUN_CHUNK = 100;                  // frames per model call when catching up (as the screen's runner)
+//     noteHop(t) -> null                                 while !ready (synchronous)
+//     hop(t) -> Promise<{ p, on, voice } | null>         once ready (null while catching up)
+//
+// The backlog keeps the last MAX_BACKLOG_FRAMES frames (4 s) and drops older
+// ones. That loses nothing the later decisions depend on: the model's output
+// for a frame depends on that frame and the 152 before it, no others (8
+// layers with a 19-frame cache; measured on the parity fixture: after a
+// zero-cache restart the outputs are bit-identical from the 153rd frame on),
+// the gate's smoothing on 5 frames and its hangover on the last 2 s of hops —
+// 152 + 5 frames + 2 s < 4 s. So once it has caught up, every decision equals
+// that of a run from the start of the stream.
+export const MAX_BACKLOG_FRAMES = 400;
+export const CATCHUP_FRAMES = 50;       // per hop; ~2.5 new frames arrive per 25 ms hop
+const RUN_CHUNK = 100;                  // frames per model call at most (as the screen's runner)
 
-export function createVoiceDetector({ gateOptions } = {}) {
+export function createVoiceDetector({ gateOptions, maxBacklog = MAX_BACKLOG_FRAMES, catchup = CATCHUP_FRAMES } = {}) {
   const frontend = createFireRedFrontend(null);
   const gate = createVoiceGate(gateOptions);
   let runner = null;
   let cmvn = null;
-  let backlog = [];        // log-mel frames not yet scored
-  let backlogStart = 0;    // frame index of backlog[0]
-  let waitingHops = [];    // { t, frames } hops decided without the model
+  let feats = [];          // log-mel frames not yet scored; feats[0] is frame featStart
+  let featStart = 0;
+  let probs = [];          // scored probabilities not yet in the gate; probs[0] is frame gateNext
+  let gateNext = 0;
+  let hops = [];           // hops not yet decided: { t, avail } (avail = frames usable at the hop)
   let truncated = false;
+
+  function addHop(t) {
+    const h = { t, avail: Math.min(framesAvailableAt(t), frontend.frames) };
+    hops.push(h);
+    return h;
+  }
+  async function score(n) {
+    const batch = feats.splice(0, n);
+    featStart += batch.length;
+    for (let a = 0; a < batch.length; a += RUN_CHUNK) {
+      const p = await runner.run(batch.slice(a, a + RUN_CHUNK).map((f) => applyCmvn(f, cmvn)));
+      for (let i = 0; i < p.length; i++) probs.push(p[i]);
+    }
+  }
+  // Decide the waiting hops, in order, whose frames are all scored; returns
+  // the last decision made (null if none).
+  function decide() {
+    let last = null;
+    let used = 0;
+    while (hops.length > 0 && gateNext + (probs.length - used) >= hops[0].avail) {
+      const h = hops.shift();
+      while (gateNext < h.avail) { gate.addFrame(probs[used++]); gateNext++; }
+      last = { h, d: gate.hop(h.t) };
+    }
+    if (used) probs = probs.slice(used);
+    return last;
+  }
   return {
     pushAudio(x16) {
       const f = frontend.push(x16);
-      for (const fr of f) backlog.push(fr);
-      if (!runner && backlog.length > MAX_BACKLOG_FRAMES) {
-        const drop = backlog.length - MAX_BACKLOG_FRAMES;
-        backlog = backlog.slice(drop);
-        backlogStart += drop;
+      for (const fr of f) feats.push(fr);
+      if (!runner && feats.length > maxBacklog) {
+        const drop = feats.length - maxBacklog;
+        feats = feats.slice(drop);
+        featStart += drop;
+        gateNext = featStart;  // nothing has reached the gate before the model is there
         truncated = true;
+        // hops that can see none of the kept frames have nothing to replay
+        while (hops.length > 0 && hops[0].avail <= featStart) hops.shift();
       }
     },
     setModel(m) { cmvn = m.cmvn; runner = m.runner; },
     get ready() { return runner !== null; },
     get truncated() { return truncated; },
     get frames() { return frontend.frames; },
+    // frames still to score / hops still to decide (non-zero while catching up)
+    get backlog() { return feats.length; },
+    get waitingHops() { return hops.length; },
     noteHop(t) {
-      waitingHops.push({ t, frames: frontend.frames });
-      if (waitingHops.length > MAX_BACKLOG_FRAMES) waitingHops.shift();
+      addHop(t);
       return null;
     },
     async hop(t) {
-      if (!runner) return this.noteHop(t);
-      if (backlog.length > 0) {
-        const feats = backlog;
-        const first = backlogStart;
-        backlog = [];
-        backlogStart = first + feats.length;
-        const probs = new Float32Array(feats.length);
-        for (let a = 0; a < feats.length; a += RUN_CHUNK) {
-          probs.set(await runner.run(feats.slice(a, a + RUN_CHUNK).map((f) => applyCmvn(f, cmvn))), a);
-        }
-        // Replay the hops that went out undecided, then this one.
-        let i = 0;
-        for (const h of waitingHops) {
-          while (i < probs.length && first + i < h.frames) gate.addFrame(probs[i++]);
-          gate.hop(h.t);
-        }
-        waitingHops = [];
-        while (i < probs.length) gate.addFrame(probs[i++]);
-      } else if (waitingHops.length) {
-        for (const h of waitingHops) gate.hop(h.t);
-        waitingHops = [];
-      }
-      return gate.hop(t);
+      const h = addHop(t);
+      if (!runner) return null;
+      if (feats.length > 0) await score(Math.min(feats.length, catchup));
+      const last = decide();
+      return last && last.h === h ? last.d : null;
     },
     reset() {
       frontend.reset(); gate.reset(); runner?.reset?.();
-      backlog = []; backlogStart = 0; waitingHops = []; truncated = false;
+      feats = []; featStart = 0; probs = []; gateNext = 0; hops = []; truncated = false;
     },
   };
 }

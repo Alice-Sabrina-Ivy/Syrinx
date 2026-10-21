@@ -1,9 +1,11 @@
 // firered-vad-gate-test.js — unit tests of the try-out voice gate's state
 // machine and plumbing (src/dsp/firered-vad.js), no model needed:
 //   createVoiceGate      w5 smoothing, p >= 0.55, 2 s hangover (the screen's R1 h point)
+//   framesAvailableAt    the screen's frame timing (first_avail_ms 26)
 //   createFireRedFrontend  frame timing, chunk-size invariance
 //   parseKaldiCmvn       DM / FM matrices
-//   createVoiceDetector  backlog replay when the model arrives late, truncation
+//   createVoiceDetector  the model arriving late: backlog capped at 4 s, scored
+//                        a little per hop, then the decisions of a run from the start
 // The decisions on real audio are checked against the screen's Python code
 // by tests/dsp/firered-vad-parity-test.js.
 //
@@ -11,6 +13,7 @@
 
 import {
   FIRERED_GATE, createVoiceGate, createFireRedFrontend, parseKaldiCmvn, createVoiceDetector, MAX_BACKLOG_FRAMES,
+  CATCHUP_FRAMES, FIRST_AVAIL_MS, framesAvailableAt,
 } from "../../src/dsp/firered-vad.js";
 
 let passed = 0, failed = 0;
@@ -77,6 +80,19 @@ console.log("\nhangover (voice while a hop within the last 2 s was on)");
   check("reset clears frames", g.frames === 0);
 }
 
+console.log("\nframe timing (score.py hop_probs, first_avail_ms 26: frame i from 26 + 10 i ms)");
+{
+  check("first_avail_ms is the screen's 26", FIRST_AVAIL_MS === 26);
+  check("no frame at 25 ms (frame 0's samples are in, but the screen counts it from 26 ms)", framesAvailableAt(0.025) === 0);
+  check("frame 0 at 26 ms", framesAvailableAt(0.026) === 1);
+  check("3 frames at 50 ms, 4 at 56 ms", framesAvailableAt(0.05) === 3 && framesAvailableAt(0.056) === 4);
+  // the same formula as score.py, at the pitch worker's 25 ms hop times
+  const py = (t) => { const i = Math.floor((t - 26 / 1000.0) / (10 / 1000.0) + 1e-9); return i < 0 ? 0 : i + 1; };
+  let diff = 0;
+  for (let k = 0; k < 4000; k++) if (framesAvailableAt(((k + 1) * 400) / 16000) !== py((k + 1) * 0.025)) diff++;
+  check("equals score.py's count on 4000 hop times (k * 400 / 16000 s vs k * 0.025 s)", diff === 0, `${diff} differ`);
+}
+
 console.log("\nfront end");
 {
   const N = 16000;
@@ -124,18 +140,20 @@ let threw = false;
 try { parseKaldiCmvn(new Uint8Array([60, 33, 68, 79])); } catch { threw = true; }
 check("non-Kaldi bytes are refused", threw);
 
-console.log("\ndetector: backlog replay when the model arrives late");
+console.log("\ndetector: the model arriving late (backlog capped at 4 s, scored a little per hop)");
 {
-  // A fake model: probability = mean of the frame's 80 features squashed
-  // (deterministic per frame, no state), so replay order is what's tested.
+  // A fake model: probability from one feature, squashed (deterministic per
+  // frame, no state), so replay order and truncation are what's tested. It
+  // records how many frames each call scored.
   const fakeRunner = () => {
-    const seen = [];
-    return { seen, async run(frames) { const p = Float32Array.from(frames, (f) => 1 / (1 + Math.exp(-f[5] / 4))); seen.push(...p); return p; }, reset() {} };
+    const calls = [];
+    return { calls, async run(frames) { calls.push(frames.length); return Float32Array.from(frames, (f) => 1 / (1 + Math.exp(-f[5] / 4))); }, reset() {} };
   };
   const cm = { mean: new Float64Array(80).fill(0), istd: new Float64Array(80).fill(1) };
-  const sig = Float32Array.from({ length: 16000 * 6 }, (_, i) => {
+  // 14 s: voice at 0.5-2 s, 4.6-5 s, 9-9.4 s and 12-13 s, quiet between
+  const sig = Float32Array.from({ length: 16000 * 14 }, (_, i) => {
     const t = i / 16000;
-    const on = (t > 0.5 && t < 2) || (t > 4.6 && t < 5);
+    const on = (t > 0.5 && t < 2) || (t > 4.6 && t < 5) || (t > 9 && t < 9.4) || (t > 12 && t < 13);
     return on ? 0.3 * Math.sin(2 * Math.PI * 180 * t) : 1e-4 * Math.sin(i);
   });
   async function drive(readyAt) {
@@ -149,21 +167,34 @@ console.log("\ndetector: backlog replay when the model arrives late");
       const t = ((k + 1) * 400) / 16000;
       out.push(det.ready ? await det.hop(t) : det.noteHop(t));
     }
-    return out;
+    return { out, calls: r.calls, det };
   }
-  const ref = await drive(0);
-  check("the fake signal opens and closes the gate", ref.some((h) => h.voice) && ref.some((h) => !h.voice));
-  for (const at of [1, 40, 100]) {
-    const got = await drive(at);
-    const before = got.slice(0, at).every((h) => h === null);
-    const after = got.slice(at).every((h, i) => h.voice === ref[at + i].voice && h.p === ref[at + i].p);
-    check(`ready at hop ${at}: null before, identical after`, before && after);
+  const { out: ref, calls: refCalls } = await drive(0);
+  check("model from the start: a decision on every hop", ref.every((h) => h !== null));
+  check("model from the start: the gate opens and closes", ref.some((h) => h.voice) && ref.some((h) => !h.voice));
+  check("model from the start: at most 3 frames per call", Math.max(...refCalls) <= 3, `max ${Math.max(...refCalls)}`);
+  for (const at of [1, 40, 100, 200, 300, 480]) {
+    const { out: got, calls, det } = await drive(at);
+    const firstDecided = got.findIndex((h, k) => k >= at && h !== null);
+    const nullsBefore = got.slice(0, at).every((h) => h === null);
+    const after = firstDecided >= 0 && got.slice(firstDecided).every((h, i) => h !== null && h.voice === ref[firstDecided + i].voice && h.p === ref[firstDecided + i].p);
+    const waited = Math.min(at * 2.5, MAX_BACKLOG_FRAMES);
+    const catchHops = firstDecided - at;
+    check(`ready at hop ${at}: null before; decisions after catching up equal the run from the start`, nullsBefore && after,
+      `first decision at hop ${firstDecided}`);
+    check(`ready at hop ${at}: at most ${CATCHUP_FRAMES} frames scored per hop; caught up in ${catchHops + 1} hop(s)`,
+      Math.max(...calls) <= CATCHUP_FRAMES && catchHops <= Math.ceil(waited / (CATCHUP_FRAMES - 3)),
+      `max ${Math.max(...calls)} frames per call`);
+    if (at * 2.5 > MAX_BACKLOG_FRAMES + 10) check(`ready at hop ${at}: the backlog was capped at ${MAX_BACKLOG_FRAMES} frames (flagged)`, det.truncated);
   }
 }
 {
   const det = createVoiceDetector();
   det.pushAudio(new Float32Array(400 + 160 * (MAX_BACKLOG_FRAMES + 10)));
-  check("backlog capped while the model is missing (flagged)", det.truncated && det.frames === MAX_BACKLOG_FRAMES + 11);
+  check("backlog capped while the model is missing (flagged; every frame still counted)",
+    det.truncated && det.backlog === MAX_BACKLOG_FRAMES && det.frames === MAX_BACKLOG_FRAMES + 11);
+  check("the cap holds at least the model's 152-frame memory + 5-frame smoothing + 2 s hangover",
+    MAX_BACKLOG_FRAMES >= 152 + 5 + FIRERED_GATE.hangoverMs / 10 + 3);
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);
