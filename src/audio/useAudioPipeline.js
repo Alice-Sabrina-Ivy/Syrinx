@@ -88,13 +88,18 @@ const NO_STEADINESS = { value: null, held: false };
 //   - the pitch DISPLAY shows nothing: the trace gets a gap instead of its
 //     point, the Hz / note readout and the steadiness readout show "—", and
 //     the pitch-display voiced flags (pitchVoiced / pitchHolding: the trace
-//     header, the cue strip's pitch row, the listening status) read as
-//     unvoiced. A mask on the unchanged chain — the smoothing, paint gate,
+//     header, the cue strip's pitch AND resonance rows, the listening status)
+//     read as unvoiced — so noise the pitch chain voices leaves the resonance
+//     row idle, not "keep talking…" (cueStripModel.js cueRowStates; user
+//     decision 2026-10-21, measurements/voice-gate-resonance-row-2026-10-21.md). A mask on the unchanged chain — the smoothing, paint gate,
 //     silence gate and hold run exactly as without it, which is the veto the
 //     2026-10-20 screen scored ("a painted hop the detector calls no-voice is
 //     vetoed");
 //   - the HNR readout shows "—" (display only: the DSP worker computes HNR as
-//     before and recorded frames keep it; user decision 2026-10-21);
+//     before and recorded frames keep it; user decision 2026-10-21), except in
+//     the 5 s silence hold, which keeps the last HNR like the dim pitch
+//     readout — "—" there only when the gate hid painted pitch after it
+//     (gateHidPaintRef; user decision 2026-10-21);
 //   - the resonance worker's pitch hint says unvoiced (pitch / contextTime
 //     unchanged), so noise the pitch worker voices does not become resonance
 //     readings (the measured variant of
@@ -102,14 +107,15 @@ const NO_STEADINESS = { value: null, held: false };
 //     noise-only position time, speech unchanged; built at 73 % against an
 //     80 % bar by user decision 2026-10-21).
 // Everything else keeps the raw values: the DSP / ML pitch hints, the
-// "Likely heard as" panel, the pitch-only warning, formants, the resonance
-// row's voiced / holding flags, and the recorded voiced / f0 / hnr that
+// "Likely heard as" panel, the pitch-only warning, formants, the raw voiced /
+// holding flags in the state, and the recorded voiced / f0 / hnr that
 // session stats use. Without a decision (detector loading / unavailable /
 // off / switched off as too slow) nothing is gated. Recorded frames carry
 // the decision in `voiceGate` ("voice" | "hidden" | "novoice", absent without
 // a decision) and `painted` is what the live trace drew.
 // Where the model files come from (firered-vad.js fireredModelSource: the
-// Hugging Face mirror once pinned, else the app's own models/firered/); null
+// Hugging Face mirror at its pinned commit; the app's own models/firered/
+// only for offline development with mirrorCommit null); null
 // where there is no page location, e.g. the Node harnesses that drive this
 // hook: no detector there.
 function voiceModelSource() {
@@ -1363,8 +1369,10 @@ export function useAudioPipeline() {
           steadinessHeld: vadHide ? false : steady.held,
           formants: held.formants,
           spectralTilt: held.spectralTilt,
-          // Voice gate: HNR readout "—" while the gate hides (display only).
-          hnr: vadHide ? null : held.hnr,
+          // Voice gate: the held HNR stays for the whole hold, like the dim
+          // pitch readout, unless the gate hid painted pitch after it
+          // (display only; user decision 2026-10-21).
+          hnr: gateHid ? null : held.hnr,
         }));
       } else {
         // Prolonged silence: clear everything, including the paint
