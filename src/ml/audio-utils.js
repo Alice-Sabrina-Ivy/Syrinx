@@ -167,8 +167,37 @@ export function femaleScoreFromResult(result) {
   return Math.max(0, Math.min(1, female));
 }
 
+// The classifier's window logit, ln(p_female) − ln(p_male), from the same
+// pipeline result as femaleScoreFromResult (labels parsed by name, so the
+// order of the result array doesn't matter). With 2 labels this equals the
+// model's fc7 logit difference d[female] − d[male] (softmax cancels; the
+// pipeline rounds probabilities to float32, |Δ| ≤ ~1e-6 —
+// measurements/heard-as-window-logit-2026-10-07.md). It is the input the
+// experimental "Likely heard as" estimate pools (src/ml/heard-as.js): the
+// UNSMOOTHED per-window value, never the EMA. Not clamped (real windows
+// reach about −37 / +9). null when either label is missing or not > 0.
+export function femaleLogitFromResult(result) {
+  if (!Array.isArray(result) || result.length === 0) return null;
+  let female = null, male = null;
+  for (const r of result) {
+    if (r == null || typeof r.score !== "number") continue;
+    const label = String(r.label ?? "").toLowerCase();
+    if (label.includes("female") || label === "f") female = r.score;
+    else if (label.includes("male") || label === "m") male = r.score;
+  }
+  if (!(female > 0) || !(male > 0)) return null;
+  const l = Math.log(female) - Math.log(male);
+  return Number.isFinite(l) ? l : null;
+}
+
 // ---------------------------------------------------------------------------
 // Voiced-recency gate for the ML VAD (2026-07-19).
+//
+// SUPERSEDED in gender-worker.js on 2026-10-07 by utterance-gate.js (it
+// let one false-voiced noise blip open 500 ms of scoring and scored the
+// mostly-pre-onset first windows of every utterance:
+// measurements/perceived-voice-gate-2026-10-07.md). Kept, with
+// subFloorVoiced below, for the oracle scripts that replay the old chain.
 //
 // The peak-amplitude VAD alone cannot tell steady noise from speech —
 // every synthetic noise type passed it in 100 % of noise-only windows,
@@ -216,6 +245,12 @@ export function createVoicedRecencyGate({
 
 // ---------------------------------------------------------------------------
 // Sub-floor voicing probe (2026-07-19, Codex review on PR #90).
+//
+// No longer used by gender-worker.js since 2026-10-07: on real public
+// noise it passed 8.6 % of noise-only windows by itself, and the new
+// utterance gate scores only pitch-confirmed voicing (sustained sub-75 Hz
+// phonation is also invisible to the pitch trace, whose floor is 75 Hz).
+// Kept for scripts/noise-augment-oracle.js.
 //
 // The voiced-recency gate keys on the pitch worker, whose detector is
 // bounded to 75-400 Hz — so a speaker sustaining phonation BELOW the
@@ -342,4 +377,22 @@ export function createStreamingResampler(srIn, srOut) {
     hasPrev = true;
     return out.subarray(0, m);
   };
+}
+
+// ---- Classifier cadence (2026-10-07, measurements/heard-as-cpu-2026-10-07.md) ----
+// The gender worker DECIDES on a window every ML_DECISION_HOP_MS (the
+// utterance gate's tick: voice states, held-note detection, span onsets —
+// unchanged), but runs the classifier only on a scored window at least
+// ML_CLASSIFY_HOP_MS after the previous classified one. The only consumer is
+// the experimental "Likely heard as" panel, which pools 8 s and updates every
+// 2 s, so a third of the 80 %-overlapping windows carry almost all of the
+// information at a third of the CPU. classifyDue() is the shared rule (worker
+// and the Node replay of scripts/heard-as/chain.mjs); half a decision hop of
+// tolerance keeps "every Nth scored tick" when ticks land a few ms late (the
+// worker times its hop on chunk arrival).
+export const ML_DECISION_HOP_MS = 150;
+export const ML_CLASSIFY_HOP_MS = 450;
+export function classifyDue(nowMs, lastClassifyMs, hopMs = ML_CLASSIFY_HOP_MS, decisionHopMs = ML_DECISION_HOP_MS) {
+  if (lastClassifyMs === null || lastClassifyMs === undefined) return true;
+  return nowMs - lastClassifyMs >= hopMs - decisionHopMs / 2;
 }

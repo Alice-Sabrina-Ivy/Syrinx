@@ -7,8 +7,18 @@
 // Usage (repo root):
 //   node --import ./scripts/session-oracle/lib/register.mjs scripts/session-oracle/corpus.mjs \
 //        --corpus=fda|ptdb|hil|voc [--src=src] [--tag=head] [--shard=i/n]
-//        [--out=build/session-oracle/corpus]
+//        [--out=build/session-oracle/corpus] [--voice-gate]
 //   node scripts/session-oracle/corpus.mjs --report=BASE_TAG,TAG[,...] [--out=...]
+//
+// --voice-gate (2026-10-21, lib/voice-gate.mjs): the pitch worker runs the
+// real FireRedVAD model; one worker run per file, the hook driven with the
+// detector's decisions (gate on -> <tag>) and without (gate off ->
+// <tag>-gateoff). Also <out>/<tag>.voice-gate/<corpus>.<shard>.json:
+// decision counts, late messages, mask violations (a gate-on painted value
+// that differs from gate off; must be 0) and false painting / readout on
+// reference-unvoiced hops, gate on and off; --report prints them for every
+// reported tag that has them. Needs the local model copy (node
+// scripts/fetch-firered-model.mjs).
 //
 // Scoring (2026-10-03 corpus conventions, = ceiling/octave workstreams'
 // corp-run.mjs / corpus.mjs): a worker-stage value describes the analysis
@@ -64,21 +74,59 @@ if (args.report) {
       return `${t}: cor ${f(p(a, "correct"))} dn ${f(p(a, "down2") + p(a, "down3"))} up2 ${f(p(a, "up2"))} up3 ${f(p(a, "up3"))} null ${f(p(a, "null"))}`;
     }).join(" | "));
   }
+  // Identical counts in every category, stage, group and band?
+  if (tags.length > 1) {
+    const same = (a, b) => !!a && !!b && ["n", ...CATS].every((c) => a[c] === b[c]);
+    const keys = new Set(tags.flatMap((t) => Object.keys(agg[t])));
+    for (const t of tags.slice(1)) {
+      const diff = [...keys].filter((k) => !same(agg[tags[0]][k], agg[t][k]));
+      console.log(`\n${t} vs ${tags[0]}: ${diff.length ? `${diff.length} of ${keys.size} cells differ (${diff.slice(0, 6).join(", ")})` : `identical in all ${keys.size} cells (stage x group x band, every class count)`}`);
+    }
+  }
+  // --voice-gate runs: decisions, mask check, false painting on
+  // reference-unvoiced hops.
+  for (const t of tags) {
+    const dir = resolve(OUT, `${t}.voice-gate`);
+    if (!existsSync(dir)) continue;
+    const x = { files: 0, voice: 0, novoice: 0, none: 0, late: 0, maskBad: 0, uv: { on: {}, off: {} } };
+    for (const fn of readdirSync(dir).filter((y) => y.endsWith(".json"))) {
+      const j = JSON.parse(readFileSync(resolve(dir, fn), "utf8"));
+      for (const k of ["files", "voice", "novoice", "none", "late", "maskBad"]) x[k] += j[k];
+      for (const arm of ["on", "off"]) for (const [g, v] of Object.entries(j.uv[arm])) {
+        const a = x.uv[arm][g] ??= { n: 0, paint: 0, ro: 0 };
+        a.n += v.n; a.paint += v.paint; a.ro += v.ro;
+      }
+    }
+    console.log(`\n${t} (--voice-gate): ${x.files} files; detector decisions voice ${x.voice} / no voice ${x.novoice} / none ${x.none}; late ${x.late}; mask violations ${x.maskBad}`);
+    console.log("false painting / readout on reference-unvoiced hops, gate off -> on:");
+    for (const g of Object.keys(x.uv.off).sort()) {
+      const a = x.uv.off[g], b = x.uv.on[g];
+      console.log(`  ${g.padEnd(7)} n=${String(a.n).padStart(6)}  paint ${(100 * a.paint / a.n).toFixed(2)} -> ${(100 * b.paint / b.n).toFixed(2)} %   readout ${(100 * a.ro / a.n).toFixed(2)} -> ${(100 * b.ro / b.n).toFixed(2)} %`);
+    }
+  }
   process.exit(0);
 }
 
 const { loadSrc, runWorkers, buildFrames, driveHook } = await import("./lib/chain.mjs");
+const VOICE_GATE = !!args["voice-gate"];
+const VGL = VOICE_GATE ? await import("./lib/voice-gate.mjs") : null;
 const { loadFda, loadPtdbTug, loadVocadito, loadHillenbrand } = await import("../../tests/dsp/data/corpora.js");
 const SETS = { fda: [loadFda, 0], ptdb: [loadPtdbTug, 20], hil: [loadHillenbrand, 0], voc: [loadVocadito, 0] };
 const corpus = args.corpus;
 const [loader, off] = SETS[corpus];
 const [shI, shN] = (args.shard ?? "0/1").split("/").map(Number);
 const S = await loadSrc(args.src ?? "src");
-const res = {};
-const add = (st, g, r, c) => {
+const VG = VOICE_GATE ? await VGL.loadVoiceGate(S) : null;
+const TAG = args.tag ?? "head";
+// One result per display arm: without --voice-gate just <tag>; with it
+// <tag> (gate on) and <tag>-gateoff (the same worker run, no decisions).
+const ARMS = VOICE_GATE ? [[TAG, true], [`${TAG}-gateoff`, false]] : [[TAG, null]];
+const res = Object.fromEntries(ARMS.map(([t]) => [t, {}]));
+const vg = { files: 0, voice: 0, novoice: 0, none: 0, late: 0, maskBad: 0, uv: { on: {}, off: {} } };
+const add = (R, st, g, r, c) => {
   for (const [bn, lo, hi] of BANDS) {
     if (r < lo || r >= hi) continue;
-    const a = res[`${st}|${g}|${bn}`] ??= Object.fromEntries(["n", ...CATS].map((x) => [x, 0]));
+    const a = R[`${st}|${g}|${bn}`] ??= Object.fromEntries(["n", ...CATS].map((x) => [x, 0]));
     a.n++; a[c]++;
   }
 };
@@ -87,19 +135,44 @@ let nt = 0;
 const tracks = loader().filter((_, i) => i % shN === shI);
 for (const tr of tracks) {
   nt++;
-  const W = runWorkers(S, tr.samples, tr.sampleRate);
-  const D = await driveHook(S.hookPath, buildFrames(W), W.n);
+  const W = VOICE_GATE ? await VGL.runWorkersVad(S, VG, tr.samples, tr.sampleRate) : runWorkers(S, tr.samples, tr.sampleRate);
+  const Ds = [];
+  for (const [, gate] of ARMS) Ds.push(await driveHook(S.hookPath, gate === null ? buildFrames(W) : VGL.buildFramesVad(W, { gate }), W.n));
+  if (VOICE_GATE) {
+    vg.files++; vg.voice += W.stats.voice; vg.novoice += W.stats.novoice; vg.none += W.stats.none; vg.late += W.stats.late;
+    vg.maskBad += VGL.maskCheck(Ds[0], Ds[1]).bad;
+  }
   const hop = W.C / W.sr;
   const gs = corpus === "voc" ? (tr.trackId === "vocadito_34" ? ["voc", "v34"] : ["voc"]) : [`${corpus}_${tr.gender === "w" ? "f" : tr.gender}`];
-  const refAt = (tSec) => { const i = Math.round((tSec * 1000 - off) / tr.ref.hopMs); return i >= 0 && i < tr.ref.f0.length ? tr.ref.f0[i] : 0; };
+  const refIdx = (tSec) => Math.round((tSec * 1000 - off) / tr.ref.hopMs);
+  const refAt = (tSec) => { const i = refIdx(tSec); return i >= 0 && i < tr.ref.f0.length ? tr.ref.f0[i] : 0; };
   for (let k = 0; k < W.n; k++) {
     const rw = refAt((k + 1) * hop - 0.040);
-    if (rw > 0) for (const g of gs) { add("dec", g, rw, cls(W.col.dec[k], rw)); add("post", g, rw, cls(W.col.post[k], rw)); }
-    const rd = refAt((k + 1) * hop - 0.040 - W.L * hop - 0.030);
-    if (rd > 0) for (const g of gs) { add("paint", g, rd, cls(D.paint[k], rd)); add("ro", g, rd, cls(D.ro[k], rd)); }
+    if (rw > 0) for (const g of gs) for (const [t] of ARMS) { add(res[t], "dec", g, rw, cls(W.col.dec[k], rw)); add(res[t], "post", g, rw, cls(W.col.post[k], rw)); }
+    const td = (k + 1) * hop - 0.040 - W.L * hop - 0.030;
+    const rd = refAt(td);
+    if (rd > 0) {
+      for (const g of gs) ARMS.forEach(([t], ai) => { add(res[t], "paint", g, rd, cls(Ds[ai].paint[k], rd)); add(res[t], "ro", g, rd, cls(Ds[ai].ro[k], rd)); });
+    } else if (VOICE_GATE && refIdx(td) >= 0 && refIdx(td) < tr.ref.f0.length && !Number.isNaN(W.col.inten[k])) {
+      // reference unvoiced: false painting / readout, gate on and off
+      for (const g of gs) ARMS.forEach(([, gate], ai) => {
+        const a = vg.uv[gate ? "on" : "off"][g] ??= { n: 0, paint: 0, ro: 0 };
+        a.n++; if (Ds[ai].paint[k] > 0) a.paint++; if (Ds[ai].ro[k] > 0) a.ro++;
+      });
+    }
   }
 }
-const dir = resolve(OUT, args.tag ?? "head");
-mkdirSync(dir, { recursive: true });
-writeFileSync(resolve(dir, `${corpus}.${shI}of${shN}.json`), JSON.stringify(res));
-console.log(`${corpus} ${shI}/${shN}: ${nt} tracks, ${(Date.now() - t0) / 1000}s -> ${dir}`);
+for (const [t] of ARMS) {
+  const dir = resolve(OUT, t);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(resolve(dir, `${corpus}.${shI}of${shN}.json`), JSON.stringify(res[t]));
+}
+if (VOICE_GATE) {
+  const dir = resolve(OUT, `${TAG}.voice-gate`);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(resolve(dir, `${corpus}.${shI}of${shN}.json`), JSON.stringify(vg));
+}
+const vgText = VOICE_GATE ? `; detector voice ${vg.voice} / no voice ${vg.novoice} / none ${vg.none}, late ${vg.late}, mask violations ${vg.maskBad}` : "";
+console.log(`${corpus} ${shI}/${shN}: ${nt} tracks, ${(Date.now() - t0) / 1000}s${vgText} -> ${ARMS.map(([t]) => resolve(OUT, t)).join(", ")}`);
+// --voice-gate: the detector's ONNX session keeps the event loop alive.
+if (VOICE_GATE) process.exit(0);

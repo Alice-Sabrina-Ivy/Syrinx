@@ -1,16 +1,80 @@
 // SessionHistory.jsx — Past sessions list with expandable cards + detail traces
+//
+// Targets come from each session's own direction log (the training
+// direction(s) in effect while it was recorded — utils/trainingDirection.js),
+// so a session is always judged against what the user was aiming for then,
+// on the pitch LEVEL (utils/pitchLevel.js), as live. Sessions recorded
+// before directions existed have no log: their traces are drawn neutrally
+// with no band, and their stored time-in-range figures are shown in a
+// neutral colour, labelled with the fixed range they were computed
+// against — never judged as on or off target. F2 has no target (neutral).
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import db from "../db";
 import { EXCURSION_SEMI } from "../audio/pitchPaintGate";
 import { isLiveSession } from "../utils/sessionRepair";
 import {
-  DEFAULT_PITCH_TARGET,
-  DEFAULT_F2_TARGET,
   PITCH_DISPLAY_RANGE,
   F2_DISPLAY_RANGE,
   COLORS,
+  statusColor,
 } from "../utils/constants";
+import {
+  directionAt,
+  directionSequence,
+  directionLabel,
+  pitchTargetFor,
+  pitchStatusForRule,
+  bandForDisplay,
+  formatOnTarget,
+  formatTarget,
+} from "../utils/trainingDirection";
+import { pitchLevels } from "../utils/pitchLevel";
+
+// The fixed ranges sessions recorded before training directions existed
+// were scored against (their stored pctTimeIn* figures) — labels only.
+const LEGACY_PITCH_RANGE_LABEL = "165–255 Hz";
+const LEGACY_F2_RANGE_LABEL = "≥ 1400 Hz";
+
+function hasDirectionLog(session) {
+  return Array.isArray(session.directionLog) && session.directionLog.length > 0;
+}
+
+// "More feminine", "More feminine → Just exploring → More feminine" (the
+// log in order, returns included), or null (legacy).
+function goalText(session) {
+  if (!hasDirectionLog(session)) return null;
+  return directionSequence(session.directionLog).map(directionLabel).join(" → ");
+}
+
+// Label for the pitch figure: "Pitch on target (165–255 Hz)" for a
+// single-direction session (on target = the band, since 2026-10-19),
+// "Pitch on target" when it changed, the fixed range for legacy sessions.
+// Rows saved before 2026-10-19 (no pitchTargetRule) keep their saved
+// figure, which counted past the band in the direction of travel as on
+// target, so their label keeps the old wording ("≥ 165 Hz").
+function pitchStatLabel(session) {
+  if (!hasDirectionLog(session)) return `Pitch in ${LEGACY_PITCH_RANGE_LABEL}`;
+  const seq = directionSequence(session.directionLog);
+  const t = seq.length === 1 ? pitchTargetFor(seq[0]) : null;
+  if (!t) return "Pitch on target";
+  return `Pitch on target (${session.pitchTargetRule === "band" ? formatTarget(t) : formatOnTarget(t)})`;
+}
+
+// Colour of a percentage: judged only for sessions with a direction log;
+// legacy figures are neutral (they were computed against the old
+// feminising range and are not re-interpreted).
+function pctClass(session, v) {
+  if (!hasDirectionLog(session)) return "text-neutral-300";
+  return v >= 50 ? "text-green-400" : "text-red-400";
+}
+
+// "of 57% of voiced time" when only part of the session had a target
+// (e.g. part of it was "Just exploring"); null otherwise.
+function coverageNote(session) {
+  const c = session.pctVoicedWithPitchTarget;
+  return c != null && c < 100 ? `over the ${c}% of voiced time with a target` : null;
+}
 
 export function SessionHistory() {
   const [sessions, setSessions] = useState([]);
@@ -193,33 +257,27 @@ function SessionCard({ session, expanded, onToggle, onDelete }) {
           </span>
           {session.pctTimeInPitchTarget != null && (
             <span className="text-neutral-400">
-              Pitch in target:{" "}
-              <span
-                className={
-                  session.pctTimeInPitchTarget >= 50
-                    ? "text-green-400"
-                    : "text-red-400"
-                }
-              >
+              {pitchStatLabel(session)}:{" "}
+              <span className={pctClass(session, session.pctTimeInPitchTarget)}>
                 {fmtPct(session.pctTimeInPitchTarget)}
               </span>
+              {coverageNote(session) && (
+                <span className="text-neutral-500"> {coverageNote(session)}</span>
+              )}
             </span>
           )}
+          {/* Legacy rows only: F2 has no target since 2026-10-07. */}
           {session.pctTimeInResonanceTarget != null && (
             <span className="text-neutral-400">
-              F2 in target:{" "}
-              <span
-                className={
-                  session.pctTimeInResonanceTarget >= 50
-                    ? "text-blue-400"
-                    : "text-orange-400"
-                }
-              >
-                {fmtPct(session.pctTimeInResonanceTarget)}
-              </span>
+              F2 {LEGACY_F2_RANGE_LABEL}:{" "}
+              <span className="text-neutral-300">{fmtPct(session.pctTimeInResonanceTarget)}</span>
             </span>
           )}
         </div>
+
+        {goalText(session) && (
+          <p className="text-[11px] text-neutral-500 mt-1">Goal: {goalText(session)}</p>
+        )}
 
         {session.notes && (
           <p className="text-xs text-neutral-500 mt-1 truncate italic">
@@ -253,8 +311,14 @@ function SessionCard({ session, expanded, onToggle, onDelete }) {
             <Stat label="Avg HNR" value={
               session.avgHnr != null ? `${session.avgHnr.toFixed(1)} dB` : "--"
             } />
-            <Stat label="Pitch in Target" value={fmtPct(session.pctTimeInPitchTarget)} />
-            <Stat label="F2 in Target" value={fmtPct(session.pctTimeInResonanceTarget)} />
+            <Stat label={pitchStatLabel(session)} value={
+              session.pctTimeInPitchTarget != null && coverageNote(session)
+                ? `${fmtPct(session.pctTimeInPitchTarget)} (${coverageNote(session)})`
+                : fmtPct(session.pctTimeInPitchTarget)
+            } />
+            {session.pctTimeInResonanceTarget != null && (
+              <Stat label={`F2 ${LEGACY_F2_RANGE_LABEL}`} value={fmtPct(session.pctTimeInResonanceTarget)} />
+            )}
             <Stat label="Total Duration" value={formatDuration(session.durationSeconds)} />
             <Stat label="Voiced Duration" value={formatDuration(session.voicedDurationSeconds)} />
           </div>
@@ -264,7 +328,7 @@ function SessionCard({ session, expanded, onToggle, onDelete }) {
           )}
 
           {/* Static traces */}
-          <SessionTraces sessionId={session.id} />
+          <SessionTraces sessionId={session.id} directionLog={hasDirectionLog(session) ? session.directionLog : null} pitchTargetRule={session.pitchTargetRule} />
 
           {/* Audio playback */}
           {session.audioBlob && <AudioPlayer blob={session.audioBlob} />}
@@ -313,7 +377,7 @@ function AudioPlayer({ blob }) {
 }
 
 // Static pitch + resonance traces for a completed session
-function SessionTraces({ sessionId }) {
+function SessionTraces({ sessionId, directionLog, pitchTargetRule }) {
   const [frames, setFrames] = useState(null);
   const pitchCanvasRef = useRef(null);
   const resCanvasRef = useRef(null);
@@ -360,8 +424,8 @@ function SessionTraces({ sessionId }) {
     canvas.width = rect.width * dpr;
     canvas.height = rect.height * dpr;
 
-    drawStaticPitchTrace(canvas, frames, dpr);
-  }, [frames, resizeTick]);
+    drawStaticPitchTrace(canvas, frames, dpr, directionLog, pitchTargetRule);
+  }, [frames, resizeTick, directionLog, pitchTargetRule]);
 
   // Draw resonance trace
   useEffect(() => {
@@ -432,13 +496,46 @@ function SessionTraces({ sessionId }) {
   );
 }
 
-function drawStaticPitchTrace(canvas, frames, dpr) {
+// Target bands for a session: one rect per direction-log segment (a
+// session whose direction changed shows each target where it applied).
+// No log (legacy) or "Just exploring" segments draw nothing.
+function drawTargetBands(ctx, log, targetFor, displayRange, totalMs, msToX, hzToY, plotLeft, plotRight, dpr) {
+  if (!log) return;
+  for (let i = 0; i < log.length; i++) {
+    const band = bandForDisplay(targetFor(log[i].direction), displayRange);
+    if (!band) continue;
+    const x0 = Math.max(plotLeft, msToX(i === 0 ? 0 : log[i].atMs));
+    const x1 = Math.min(plotRight, msToX(i + 1 < log.length ? log[i + 1].atMs : totalMs));
+    if (x1 <= x0) continue;
+    const top = hzToY(band.high);
+    const bottom = hzToY(band.low);
+    ctx.fillStyle = COLORS.targetBand;
+    ctx.fillRect(x0, top, x1 - x0, bottom - top);
+    ctx.strokeStyle = COLORS.targetBandBorder;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4 * dpr, 4 * dpr]);
+    ctx.beginPath();
+    ctx.moveTo(x0, top);
+    ctx.lineTo(x1, top);
+    ctx.moveTo(x0, bottom);
+    ctx.lineTo(x1, bottom);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+}
+
+// Line colour for a pitch level at a session time: that moment's target
+// status under the session's own rule (band only since 2026-10-19; older
+// rows keep their stored figure's rule), neutral without one.
+function traceColor(log, atMs, level, rule) {
+  return log ? statusColor(pitchStatusForRule(level, pitchTargetFor(directionAt(log, atMs)), rule)) : COLORS.neutralTrace;
+}
+
+function drawStaticPitchTrace(canvas, frames, dpr, log, rule) {
   const ctx = canvas.getContext("2d");
   const w = canvas.width;
   const h = canvas.height;
 
-  const targetLow = DEFAULT_PITCH_TARGET.low;
-  const targetHigh = DEFAULT_PITCH_TARGET.high;
   const displayLow = PITCH_DISPLAY_RANGE.low;
   const displayHigh = PITCH_DISPLAY_RANGE.high;
 
@@ -494,21 +591,8 @@ function drawStaticPitchTrace(canvas, frames, dpr) {
     ctx.fillText(label, x, plotBottom + 3 * dpr);
   }
 
-  // Target band
-  const bandTop = hzToY(targetHigh);
-  const bandBottom = hzToY(targetLow);
-  ctx.fillStyle = COLORS.targetBand;
-  ctx.fillRect(plotLeft, bandTop, plotRight - plotLeft, bandBottom - bandTop);
-  ctx.strokeStyle = COLORS.targetBandBorder;
-  ctx.lineWidth = 1;
-  ctx.setLineDash([4 * dpr, 4 * dpr]);
-  ctx.beginPath();
-  ctx.moveTo(plotLeft, bandTop);
-  ctx.lineTo(plotRight, bandTop);
-  ctx.moveTo(plotLeft, bandBottom);
-  ctx.lineTo(plotRight, bandBottom);
-  ctx.stroke();
-  ctx.setLineDash([]);
+  // Target band(s)
+  drawTargetBands(ctx, log, pitchTargetFor, PITCH_DISPLAY_RANGE, totalMs, msToX, hzToY, plotLeft, plotRight, dpr);
 
   // Pitch line. Clip to the plot rect: sessions recorded before the
   // 2026-06-10 detector-floor change can hold stored F0 below the 75 Hz
@@ -529,6 +613,10 @@ function drawStaticPitchTrace(canvas, frames, dpr) {
   // hops on the private session recordings, 2026-10-04) — history is
   // not an exact replica.
   // Legacy frames (no field) draw as before. Stats keep using voiced/f0.
+  // Pitch level per frame (running 1.5 s median of the voiced pitch), as
+  // the live trace and the session's on-target figure judge it.
+  const levels = pitchLevels(frames, (f) => f.timestampMs, (f) => (f.voiced && f.f0 != null ? f.f0 : null));
+
   let inSegment = false;
   let lastDrawnF0 = null;
   for (let i = 0; i < frames.length; i++) {
@@ -540,7 +628,7 @@ function drawStaticPitchTrace(canvas, frames, dpr) {
     }
     const x = msToX(f.timestampMs);
     const y = hzToY(f.f0);
-    const inTarget = f.f0 >= targetLow && f.f0 <= targetHigh;
+    const color = traceColor(log, f.timestampMs, levels[i], rule);
     // Octave-class step: start a new segment rather than stroking a
     // near-vertical connecting line (same rule as the live trace).
     if (inSegment && lastDrawnF0 !== null &&
@@ -552,17 +640,17 @@ function drawStaticPitchTrace(canvas, frames, dpr) {
 
     if (!inSegment) {
       ctx.beginPath();
-      ctx.strokeStyle = inTarget ? COLORS.inTarget : COLORS.outOfTarget;
+      ctx.strokeStyle = color;
       ctx.moveTo(x, y);
       inSegment = true;
     } else {
       const prev = frames[i - 1];
-      const prevInTarget = prev?.voiced && prev.f0 != null && prev.f0 >= targetLow && prev.f0 <= targetHigh;
-      if (inTarget !== prevInTarget) {
+      const prevColor = prev?.voiced && prev.f0 != null ? traceColor(log, prev.timestampMs, levels[i - 1], rule) : null;
+      if (color !== prevColor) {
         ctx.lineTo(x, y);
         ctx.stroke();
         ctx.beginPath();
-        ctx.strokeStyle = inTarget ? COLORS.inTarget : COLORS.outOfTarget;
+        ctx.strokeStyle = color;
         ctx.moveTo(x, y);
       } else {
         ctx.lineTo(x, y);
@@ -578,8 +666,6 @@ function drawStaticResonanceTrace(canvas, frames, dpr) {
   const w = canvas.width;
   const h = canvas.height;
 
-  const targetLow = DEFAULT_F2_TARGET.low;
-  const targetHigh = DEFAULT_F2_TARGET.high;
   const displayLow = F2_DISPLAY_RANGE.low;
   const displayHigh = F2_DISPLAY_RANGE.high;
 
@@ -635,27 +721,13 @@ function drawStaticResonanceTrace(canvas, frames, dpr) {
     ctx.fillText(label, x, plotBottom + 3 * dpr);
   }
 
-  // Target band
-  const bandTop = hzToY(targetHigh);
-  const bandBottom = hzToY(targetLow);
-  ctx.fillStyle = COLORS.resTargetBand;
-  ctx.fillRect(plotLeft, bandTop, plotRight - plotLeft, bandBottom - bandTop);
-  ctx.strokeStyle = COLORS.resTargetBandBorder;
-  ctx.lineWidth = 1;
-  ctx.setLineDash([4 * dpr, 4 * dpr]);
-  ctx.beginPath();
-  ctx.moveTo(plotLeft, bandTop);
-  ctx.lineTo(plotRight, bandTop);
-  ctx.moveTo(plotLeft, bandBottom);
-  ctx.lineTo(plotRight, bandBottom);
-  ctx.stroke();
-  ctx.setLineDash([]);
-
-  // F2 line
+  // F2 line (neutral: per-frame F2 is dominated by the vowel, so it has no
+  // target in any direction)
   ctx.lineWidth = 1.5 * dpr;
   ctx.lineJoin = "round";
   ctx.lineCap = "round";
 
+  ctx.strokeStyle = COLORS.neutralTrace;
   let inSegment = false;
   for (let i = 0; i < frames.length; i++) {
     const f = frames[i];
@@ -665,25 +737,12 @@ function drawStaticResonanceTrace(canvas, frames, dpr) {
     }
     const x = msToX(f.timestampMs);
     const y = hzToY(f.f2);
-    const inTarget = f.f2 >= targetLow;
-
     if (!inSegment) {
       ctx.beginPath();
-      ctx.strokeStyle = inTarget ? COLORS.resInTarget : COLORS.resOutOfTarget;
       ctx.moveTo(x, y);
       inSegment = true;
     } else {
-      const prev = frames[i - 1];
-      const prevInTarget = prev?.voiced && prev.f2 != null && prev.f2 >= targetLow;
-      if (inTarget !== prevInTarget) {
-        ctx.lineTo(x, y);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.strokeStyle = inTarget ? COLORS.resInTarget : COLORS.resOutOfTarget;
-        ctx.moveTo(x, y);
-      } else {
-        ctx.lineTo(x, y);
-      }
+      ctx.lineTo(x, y);
     }
   }
   if (inSegment) ctx.stroke();

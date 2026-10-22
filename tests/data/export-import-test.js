@@ -178,6 +178,23 @@ const expected = { version: EXPORT_VERSION, exportedAt, settings, sessions, fram
   check("settings merge never turns recordAudio on (local row lacks it)",
     !("recordAudio" in mergeImportedSettings({ id: "default", targetF0Low: 150 }, imported)));
   check("settings merge with nothing new → null (no write)", mergeImportedSettings({ ...local, displayName: "x" }, imported) === null);
+  // The experimental "Likely heard as" switch is never imported: an imported
+  // file must never switch an experiment on (or off).
+  const withHeardAs = { id: "default", heardAsEnabled: true, targetF0Low: 165 };
+  check("settings merge never imports heardAsEnabled (no local row)", !("heardAsEnabled" in mergeImportedSettings(undefined, withHeardAs)));
+  check("settings merge never turns heardAsEnabled on (local row lacks it)",
+    mergeImportedSettings({ id: "default", targetF0Low: 150 }, withHeardAs) === null);
+  check("settings merge keeps a local heardAsEnabled off",
+    mergeImportedSettings({ id: "default", heardAsEnabled: false }, withHeardAs).heardAsEnabled === false);
+  // The "Show the Resonance lab" switch (2026-10-21): same rule. An export
+  // carries it (the settings row is written whole); an import never sets it.
+  const withLab = { id: "default", labEnabled: true, targetF0Low: 165 };
+  check("export carries labEnabled with the settings row", JSON.parse(serializeExport({ exportedAt, settings: [withLab], sessions: [], frames: [] }).join("")).settings[0].labEnabled === true);
+  check("settings merge never imports labEnabled (no local row)", !("labEnabled" in mergeImportedSettings(undefined, withLab)));
+  check("settings merge never turns labEnabled on (local row lacks it)",
+    mergeImportedSettings({ id: "default", targetF0Low: 150 }, withLab) === null);
+  check("settings merge keeps a local labEnabled off",
+    mergeImportedSettings({ id: "default", labEnabled: false }, withLab).labEnabled === false);
   check("settings row validity", isImportableSettingsRow({ id: "default" }) && !isImportableSettingsRow({}) && !isImportableSettingsRow(null) && !isImportableSettingsRow({ id: {} }));
 }
 

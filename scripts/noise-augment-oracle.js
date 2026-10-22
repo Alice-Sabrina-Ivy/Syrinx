@@ -12,10 +12,18 @@
 //            noise-only tail appended to every track (the fan-hum
 //            painted-as-pitch failure mode).
 //   gender — Hillenbrand speaker subset through the production
-//            windowing/VAD/EMA pipeline (0.75 s window, 150 ms hop,
-//            peak VAD, α=0.2) with the production v2 model. Per cell:
-//            accuracy + mean |score - cleanScore| drift, plus VAD
-//            false-trigger rate + scores on noise-only audio.
+//            windowing/gate/EMA pipeline (0.75 s window, 150 ms hop,
+//            α=0.2) with the production v2 model. Per cell:
+//            accuracy + mean |score - cleanScore| drift, plus gate
+//            false-trigger rate + scores on noise-only audio. Since
+//            2026-10-07 the gate is the production utterance gate
+//            (src/ml/utterance-gate.js, driven by the simulated pitch
+//            chain on the audio clock, EMA reset at each utterance onset);
+//            --vad=voiced replays the retired 2026-07-19 gate (voiced
+//            pitch in the last 500 ms OR the sub-75 Hz probe), --vad=peak
+//            the peak-only VAD before it. Gender-mode figures in
+//            measurements/noise-robustness-oracle-2026-07-19.md predate
+//            the utterance gate.
 //   cpp    — Hillenbrand speaker subset, per-track median CPP bias vs
 //            clean (dB). No front-end can legitimately "fix" CPP (any
 //            denoiser alters the harmonic-to-noise structure CPP
@@ -242,6 +250,7 @@ async function runGender() {
     RingWindow, femaleScoreFromResult, windowPeak, ema, VAD_SILENCE_FLOOR,
     subFloorVoiced,
   } = await import("../src/ml/audio-utils.js");
+  const { createUtteranceGate } = await import("../src/ml/utterance-gate.js");
   const classifier = await hfPipeline("audio-classification", MODEL_ID, { dtype: "q8" });
 
   const corpora = loadAllCorpora();
@@ -279,12 +288,15 @@ async function runGender() {
   const HOP_SAMPLES = Math.floor(0.150 * SR);
   const VOICED_RECENCY_HOPS = Math.ceil(500 / 25); // 500 ms at the 25 ms pitch hop
 
-  // Production VAD since 2026-07-19 = peak amplitude AND recently-voiced
-  // pitch (relayed pitch-hint; audio-utils createVoicedRecencyGate).
-  // Simulate by running the production pitch chain (notch + AC + L=2
-  // tracker) over the same signal and gating windows on any voiced hop
-  // in the trailing 500 ms. --vad=peak measures the retired peak-only VAD.
-  const VAD_MODE = args.vad || "voiced";
+  // Production gate since 2026-10-07 = the utterance gate fed with the
+  // production pitch chain (notch + AC + L=2 tracker + post-decode chain)
+  // run over the same signal: one hint per 25 ms frame, ts = the frame's
+  // audio time, available to the ML worker 3 chunks after its own (L = 2
+  // decode delay + the main-thread relay); a decision per 150 ms hop on
+  // the window's end time. --vad=voiced: the retired 2026-07-19 gate
+  // (voiced hop in the trailing 500 ms, else the sub-75 Hz probe);
+  // --vad=peak: the peak-only VAD before it.
+  const VAD_MODE = args.vad || "utterance";
 
   function voicedTimeline(sig) {
     const notch = createNoiseNotch(SR);
@@ -306,13 +318,31 @@ async function runGender() {
       fill = Math.min(N, fill + 400);
       if (fill < N) { pt.emit({ voiced: [], unvoicedStrength: ac.config.voicingThreshold }); out.push(false); continue; }
       // ghost-voicing veto + above-range null + harmonic guard, as in pitch-worker
-      out.push(postFilter(pt.emit(ac.candidates(buf)), notch, gGuard, gDelay[0]) > 0);
+      const v = postFilter(pt.emit(ac.candidates(buf)), notch, gGuard, gDelay[0]);
+      out.push(v > 0 ? v : 0);
     }
     const L2 = pt.config.lookback;
     // flushed trailing frames through the same post-decode chain (2026-10-04)
-    const tail = pt.flush().map((v, j) => postFilter(v, notch, gGuard, gDelay[1 + j]) > 0);
+    const tail = pt.flush().map((v, j) => { const p = postFilter(v, notch, gGuard, gDelay[1 + j]); return p > 0 ? p : 0; });
     const vals = out.slice(L2).concat(tail);
-    return { voiced: out.map((_, k) => vals[k] ?? false), notchFreqs: freqs };
+    const pitch = out.map((_, k) => vals[k] ?? 0);   // per frame k (its own audio time)
+    return { pitch, voiced: pitch.map((p) => p > 0), notchFreqs: freqs };
+  }
+
+  // The production utterance gate over a timeline: hints for frames whose
+  // message has reached the ML worker by the window's end (frame k at
+  // (k + 1) * 25 ms audio time, relayed by chunk k + 3).
+  function utteranceGateFor(timeline) {
+    const gate = createUtteranceGate({ windowMs: 750 });
+    let fed = 0;
+    return (samplePos) => {
+      const nowMs = (samplePos / SR) * 1000;
+      for (; fed < timeline.pitch.length && (fed + 4) * 25 <= nowMs; fed++) {
+        const p = timeline.pitch[fed];
+        gate.notePitchHint({ voiced: p > 0, pitch: p > 0 ? p : null, ts: (fed + 1) * 25 });
+      }
+      return gate.decide(nowMs);
+    };
   }
 
   function recentlyVoiced(timeline, samplePos) {
@@ -328,7 +358,8 @@ async function runGender() {
   }
 
   async function scoreTrack(sig) {
-    const timeline = VAD_MODE === "voiced" ? voicedTimeline(sig) : null;
+    const timeline = VAD_MODE !== "peak" ? voicedTimeline(sig) : null;
+    const decide = VAD_MODE === "utterance" ? utteranceGateFor(timeline) : null;
     const ring = new RingWindow(WINDOW_SAMPLES);
     let smoothed = null;
     let pos = 0;
@@ -337,12 +368,17 @@ async function runGender() {
       pos += HOP_SAMPLES;
       if (!ring.isFull()) continue;
       const win = ring.snapshot();
-      // production VAD since 2026-07-20: silence floor + voiced gate
-      // (the timeline is always live in the oracle, so the legacy
-      // stale-fallback peak threshold never applies here)
-      if (windowPeak(win) < VAD_SILENCE_FLOOR) continue;
-      if (timeline && !recentlyVoiced(timeline, pos)
-          && !subFloorVoiced(win, SR, notchFreqsAt(timeline, pos))) continue;
+      // silence floor + the gate (the timeline is always live in the
+      // oracle, so the stale-fallback peak threshold never applies here)
+      if (decide) {
+        const d = decide(pos);
+        if (d.resetEma) smoothed = null;
+        if (d.verdict !== "score" || windowPeak(win) < VAD_SILENCE_FLOOR) continue;
+      } else {
+        if (windowPeak(win) < VAD_SILENCE_FLOOR) continue;
+        if (timeline && !recentlyVoiced(timeline, pos)
+            && !subFloorVoiced(win, SR, notchFreqsAt(timeline, pos))) continue;
+      }
       const female = femaleScoreFromResult(await classifier(win, { sampling_rate: SR }));
       if (female == null) continue;
       smoothed = ema(smoothed, female, 0.2);
@@ -379,7 +415,8 @@ async function runGender() {
       const noiseOnly = makeNoise(noiseName, 20 * SR, fdaSrc);
       // scale like a +10 dB-SNR mix against typical speech (activeRms ~0.1)
       const scaled = Float32Array.from(noiseOnly, (v) => v * 0.03);
-      const timelineN = VAD_MODE === "voiced" ? voicedTimeline(scaled) : null;
+      const timelineN = VAD_MODE !== "peak" ? voicedTimeline(scaled) : null;
+      const decideN = VAD_MODE === "utterance" ? utteranceGateFor(timelineN) : null;
       const ringN = new RingWindow(WINDOW_SAMPLES);
       let vadWindows = 0, vadPassed = 0, noiseScores = [];
       let p = 0;
@@ -387,11 +424,13 @@ async function runGender() {
         ringN.append(scaled.subarray(p, Math.min(p + HOP_SAMPLES, scaled.length)));
         p += HOP_SAMPLES;
         if (!ringN.isFull()) continue;
+        const dN = decideN ? decideN(p) : null;   // the gate sees every hop
         if (p < scaled.length / 2) continue; // warm-up half
         vadWindows++;
         const win = ringN.snapshot();
         if (windowPeak(win) < VAD_SILENCE_FLOOR) continue;
-        if (timelineN && !recentlyVoiced(timelineN, p)
+        if (dN ? dN.verdict !== "score"
+          : timelineN && !recentlyVoiced(timelineN, p)
             && !subFloorVoiced(win, SR, notchFreqsAt(timelineN, p))) continue;
         vadPassed++;
         const f = femaleScoreFromResult(await classifier(win, { sampling_rate: SR }));

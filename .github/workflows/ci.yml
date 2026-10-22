@@ -7,11 +7,22 @@ name: CI
 
 on:
   pull_request:
-    # Measurement notes and Markdown never change the built site (no unit
-    # test reads them either), so a push touching only those skips the run.
-    paths-ignore:
-      - 'measurements/**'
-      - '**/*.md'
+    # Measurement notes and Markdown don't change the built site, so a push
+    # touching only those skips the run. Exception: THIRD_PARTY_NOTICES.md is
+    # the source of the shipped THIRD_PARTY_NOTICES.txt
+    # (scripts/third-party-notices.mjs) and two unit tests read it
+    # (tests/site/third-party-notices-test.js, tests/ml/heard-as-download-test.js),
+    # so it always runs. GitHub applies `paths` patterns in order and the last
+    # match wins: '**' includes everything, the two '!' lines drop
+    # measurements and Markdown, and the final line re-includes the notices.
+    # Keep THIRD_PARTY_NOTICES.md after the '!**/*.md' line, or it is skipped.
+    # (tests/site/no-local-paths-test.js also scans Markdown; a Markdown-only
+    # push is checked by the next run that does trigger.)
+    paths:
+      - '**'
+      - '!measurements/**'
+      - '!**/*.md'
+      - 'THIRD_PARTY_NOTICES.md'
 
 permissions:
   contents: read

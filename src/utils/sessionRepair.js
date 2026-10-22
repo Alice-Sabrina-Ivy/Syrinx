@@ -82,7 +82,7 @@ async function run() {
     await db.sessions.update(session.id, {
       endedAt: session.startedAt + lastMs,
       durationSeconds: Math.round(lastMs / 1000),
-      ...computeSummaryStats(frames),
+      ...computeSummaryStats(frames, { directionLog: session.directionLog }),
     });
     repaired++;
   }

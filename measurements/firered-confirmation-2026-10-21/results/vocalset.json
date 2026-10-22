@@ -1,0 +1,88 @@
+{
+ "set": "vocalset",
+ "streams": 399,
+ "rows_app16": {},
+ "point": {
+  "smooth_frames": 5,
+  "threshold": 0.55,
+  "hangover_ms": 2000.0
+ },
+ "scored_at": "2026-10-20 22:44:59 -0500",
+ "seconds": 0.6,
+ "rows": {
+  "G8 vocalset": {
+   "f": [
+    17130,
+    107,
+    0.6246351430239346
+   ],
+   "m": [
+    70979,
+    651,
+    0.917172684878626
+   ]
+  },
+  "vocalset rate 16000 Hz": {
+   "f": [
+    17130,
+    107,
+    0.6246351430239346
+   ],
+   "m": [
+    70979,
+    651,
+    0.917172684878626
+   ]
+  },
+  "long holds vocalset: 0-2 s into the hold": {
+   "f": [
+    9593,
+    47,
+    0.4899405816741374
+   ],
+   "m": [
+    39438,
+    155,
+    0.3930219585171662
+   ]
+  },
+  "long holds vocalset: 2-5 s into the hold": {
+   "f": [
+    2280,
+    0,
+    0.0
+   ],
+   "m": [
+    11867,
+    235,
+    1.9802814527681807
+   ]
+  },
+  "long holds vocalset: 5-10 s into the hold": {
+   "f": [
+    0,
+    0,
+    null
+   ],
+   "m": [
+    24,
+    0,
+    0.0
+   ]
+  },
+  "long holds vocalset: >= 10 s into the hold": {
+   "f": [
+    0,
+    0,
+    null
+   ],
+   "m": [
+    0,
+    0,
+    null
+   ]
+  }
+ },
+ "onsets": [],
+ "rescore": null
+}

@@ -1,53 +1,114 @@
 // gender-worker.js — On-device perceived-gender classifier.
 //
-// Hosts a Wav2Vec2 audio-classification pipeline (Transformers.js) and
-// produces a 0-100 "femininity" score from a rolling 0.75-second window
-// of microphone audio. Inference runs at ~6.7 Hz (every 150 ms), gated
-// by a peak-amplitude VAD to skip silent windows and EMA-smoothed across
-// inferences. After a sustained run of silent inferences the EMA resets
-// so a new utterance doesn't blend with a stale pre-pause value.
-// Replaces the older hand-crafted vowel-normalized resonance score.
+// Hosts an audio-classification pipeline (Transformers.js) and produces a
+// 0-100 "femininity" score from a rolling 0.75-second window of
+// microphone audio. A window is decided every 150 ms (~6.7 Hz) by the
+// utterance gate (utterance-gate.js): recent AND voiced running speech, at
+// most half pre-onset audio, never held phonation; the classifier runs on
+// every 3rd scored window (ML_CLASSIFY_HOP_MS 450 ms, 2026-10-07).
+// Scores are EMA-smoothed within an utterance; the EMA restarts at each
+// utterance onset so a new utterance never blends with the previous one
+// or with the noise before it.
 //
 // Protocol:
 //   main → worker: { type: "init", inputSampleRate, modelId?, diag? }
 //                  { type: "audioPort", port }       MessagePort from AudioWorklet
+//                  { type: "pitch-hint", voiced, pitch, contextTime }  relayed
+//                                                per pitch frame; contextTime =
+//                                                capture seconds of the frame
 //   worker → main: { type: "status", status, message?, modelId?, device? }
 //                                                "loading"|"ready"|"error";
 //                                                modelId + device populated on
 //                                                "ready" so the main thread
 //                                                can record which model + ORT
 //                                                backend (webgpu vs wasm) won
-//                  { type: "progress", loaded, total, file }
-//                  { type: "score", score, confidence, ts, inferMs? }
+//                  { type: "progress", loaded, total, file }  the classifier's
+//                                                download, summed over its files
+//                                                (heard-as-download.js
+//                                                createClassifierProgress)
+//                  { type: "score", score, confidence, ts, logit, audioMs, spanId, mode, inferMs? }
+//                                                logit: ln(p_female) - ln(p_male) of THIS
+//                                                window (unsmoothed; null if unusable);
+//                                                audioMs: audio-clock ms of the window's
+//                                                newest chunk; spanId: the utterance gate's
+//                                                span; mode: "gated" | "fallback". Consumed
+//                                                by the experimental "Likely heard as" panel
+//                                                (src/ml/heard-as.js; 2026-10-07,
+//                                                measurements/heard-as-window-logit-2026-10-07.md)
+//                  { type: "scored", audioMs, spanId, mode }  a window the gate
+//                                                scored but the classifier skipped
+//                                                (it runs every ML_CLASSIFY_HOP_MS;
+//                                                2026-10-07, measurements/
+//                                                heard-as-cpu-2026-10-07.md)
+//                  { type: "voice-state", state, ts }  on change — the
+//                                                gate's state: "listening"
+//                                                | "updating" | "scoring" |
+//                                                "pause" | "sustained" (on
+//                                                "sustained" the "Likely heard
+//                                                as" panel replaces its reading
+//                                                with "Needs running speech —
+//                                                held vowels and notes don't
+//                                                count")
 //                  { type: "inference-event", event: "timeout", durationMs, ts }
+//                  { type: "inference-event", event: "error", message, ts }
+//                                                a classifier run threw; after
+//                                                MAX_CONSECUTIVE_ERRORS in a row
+//                                                the worker posts status "error"
+//                  { type: "speech-detector", status: "ready"|"error", message? }
+//                                                the utterance gate's speech
+//                                                detector (speech-detector.js);
+//                                                on "error" the gate keeps
+//                                                running on pitch voicing
 //
 // (The main thread tears workers down via Worker.terminate(); there is
-// no graceful "stop" message — calls were never wired up.)
+// no graceful "stop" message — calls were never wired up.) Since the cue
+// strip (2026-10-07) the main thread creates this worker only while the
+// opt-in "Likely heard as" panel is on.
 //
 // `inferMs` is the wall-clock duration of the classifier(...) call only
 // (no VAD gate, no EMA, no postMessage). Always populated when the
 // caller passes diag:true, included in the snapshot via diag.js's
 // mlInferences ring; mobile-diag-capture surfaces median/p95/p99
-// for the 150 ms hop-budget check.
+// for the 150 ms hop-budget check. With diag on, score messages also
+// carry `vadMs`: the speech detector's run time since the previous
+// posted score, i.e. per classifier hop (ML_CLASSIFY_HOP_MS, 450 ms: three
+// 150 ms decision ticks). It is 0 while the detector is not live, and it
+// accumulates over ticks that post no score, so the first score and the
+// first after a pause carry more than one hop's worth; per-hop summaries
+// keep back-to-back scores only.
 
 import { pipeline, env } from "@huggingface/transformers";
+// The same onnxruntime-web module instance Transformers.js runs on (it
+// imports "onnxruntime-web/webgpu"), so the speech detector shares its
+// WASM runtime and env (wasmPaths) instead of loading a second one.
+import * as ort from "onnxruntime-web/webgpu";
 import {
   createStreamingResampler,
   RingWindow,
   SilenceTracker,
   femaleScoreFromResult,
+  femaleLogitFromResult,
   windowPeak,
   ema,
-  VAD_PEAK_THRESHOLD,
-  VAD_SILENCE_FLOOR,
   TARGET_SAMPLE_RATE,
-  createVoicedRecencyGate,
-  subFloorVoiced,
+  ML_DECISION_HOP_MS,
+  ML_CLASSIFY_HOP_MS,
+  classifyDue,
 } from "./audio-utils.js";
+import { createUtteranceGate, decideMlWindow } from "./utterance-gate.js";
+import { SPEECH_DETECTOR, createSpeechFramer, createSileroRunner, loadVerifiedModel } from "./speech-detector.js";
+import { pointOrtAtAppRuntime } from "./ort-runtime-files.js";
+import { createClassifierProgress } from "./heard-as-download.js";
 
 // We don't ship the model in the bundle — fetch from the Hub at runtime.
 env.allowRemoteModels = true;
 env.allowLocalModels = false;
+// The ONNX Runtime WebAssembly runtime ships with the app (2026-10-07);
+// Transformers.js points it at jsDelivr on import, so re-point it here,
+// before either session is created. One env for both the voice model and
+// the speech detector (same onnxruntime-web instance, see above).
+// measurements/self-hosted-ort-2026-10-07.md
+pointOrtAtAppRuntime(env.backends.onnx.wasm);
 
 // 0.75-sec window at ~6.7 Hz design cadence. ECAPA-TDNN q8 inference
 // at this window length runs ~52 ms median on desktop browser WASM
@@ -61,7 +122,16 @@ env.allowLocalModels = false;
 // measurements/gender-model-latency-2026-07-19.md
 const WINDOW_SECONDS = 0.75;
 const WINDOW_SAMPLES = Math.floor(TARGET_SAMPLE_RATE * WINDOW_SECONDS);
-const INFERENCE_INTERVAL_MS = 150;        // ~6.7 Hz emit rate
+// The utterance gate decides on a window every 150 ms (~6.7 Hz); the
+// classifier runs on a scored window only every ML_CLASSIFY_HOP_MS (450 ms,
+// 2026-10-07): the old 0-100 meter bar is gone and the only consumer, the
+// "Likely heard as" panel, pools 8 s — a third of the inferences (scored
+// windows between runs are still posted, as "scored", so the panel's window
+// count, voiced time and F0 are unchanged; audio-utils classifyDue,
+// measurements/heard-as-cpu-2026-10-07.md). The EMA score below therefore
+// steps once per classified window (its α was tuned for 150 ms; nothing
+// shows it any more — kept for diag).
+const INFERENCE_INTERVAL_MS = ML_DECISION_HOP_MS;
 // EMA α=0.2. The previous model (prithivMLmods wav2vec2-base) had
 // female-voice raw_std median 0.32, which the original α=0.55 (~270 ms
 // time-constant) was too short to average out — caught and fixed in
@@ -84,6 +154,12 @@ const EMA_ALPHA = 0.2;                     // score smoothing
 // maybeInfer call proceeds normally. No effect when classifier() resolves
 // before the timer fires.
 const INFERENCE_TIMEOUT_MS = 2500;
+// A classifier run that throws (not a timeout) used to latch the worker in
+// "error" for the rest of the session after ONE failure, and the panel then
+// said the model "didn't load" (2026-10-19 review S-2). Now a failed run is
+// skipped like a timeout; only this many failed runs in a row mean the
+// classifier is broken.
+const MAX_CONSECUTIVE_ERRORS = 3;
 // JaesungHuh's voice-gender-classifier (ECAPA-TDNN), q8-quantized
 // ONNX export hosted under the project's HF account. ~15.4 M params
 // (5-6× smaller than the previous wav2vec2-base prithivMLmods).
@@ -98,7 +174,7 @@ const INFERENCE_TIMEOUT_MS = 2500;
 // damage. Labels are id2label {0:male, 1:female} — opposite ordering
 // from prithivMLmods's {0:female, 1:male}; femaleScoreFromResult
 // parses by label name not index, so model swaps can't silently
-// invert the meter. Decision data: measurements/
+// invert the score. Decision data: measurements/
 // gender-model-latency-2026-07-19.md; v1 remains published for
 // reproducibility of results measured against it.
 const DEFAULT_MODEL_ID = "Alice-Sabrina-Ivy/voice-gender-classifier-onnx-q8-v2";
@@ -122,20 +198,50 @@ let _diag = false;                      // populated by init.diag, gates inferMs
 const ring = new RingWindow(WINDOW_SAMPLES);
 
 let inferenceInProgress = false;
-let lastInferenceMs = 0;
+let consecutiveErrors = 0;
+let lastInferenceMs = 0;                // last window DECISION (gate tick)
+let lastClassifyMs = null;              // last classifier run (classifyDue)
 let smoothedFemale = null;              // EMA over recent inferences
+// EMA reset for the amplitude-only fallback below (pitch feed dead):
+// after a sustained run of gated windows the score is treated as stale.
 const silenceTracker = new SilenceTracker();
-// Pitch-voicedness gate (see createVoicedRecencyGate in audio-utils.js):
-// the peak VAD alone passes 100 % of noise-only windows for every noise
-// type measured, so pauses in a noisy room fed masculine-leaning scores
-// into the EMA. The main thread relays each pitch message here as
-// { type: "pitch-hint", voiced, ts }; windows without recent voiced
-// pitch are treated as silence. Fails OPEN if the pitch feed goes
-// stale. measurements/noise-robustness-oracle-2026-07-19.md §4.
-const voicedGate = createVoicedRecencyGate();
-// Active notch frequencies from the latest pitch-hint — consumed by the
-// sub-floor voicing probe below.
-let notchedFreqs = [];
+// Utterance gate (utterance-gate.js, 2026-10-07): decides from the
+// relayed pitch-voicing stream which windows are scoreable, when an
+// utterance starts (EMA reset), and when the voice is held phonation the
+// classifier can't read. Replaces the 2026-07-19 voiced-recency gate +
+// sub-75 Hz periodicity probe, which together scored 41 % of real-noise
+// windows and the mostly-pre-onset first windows of every utterance:
+// measurements/perceived-voice-gate-2026-10-07.md.
+// The gate runs on the AUDIO clock: hints carry their frame's capture
+// contextTime and "now" is the contextTime of the newest chunk in the
+// window, so its timing rules can't be upset by how the hints are
+// delivered (capture emits chunks in bursts, one burst per hardware
+// audio frame; on wall-clock decode times, frames >= 64 ms apart kept the
+// old meter blank). No audio time yet = "stale" (amplitude fallback).
+const gate = createUtteranceGate({ windowMs: WINDOW_SECONDS * 1000 });
+let audioNowMs = null;                  // contextTime (ms) of the newest chunk
+// Speech detector (speech-detector.js, low-voice-noise candidate
+// "voice-detector-gate", measurements/low-voice-noise-2026-10-07.md):
+// Silero VAD on the same 16 kHz stream, one probability per 32 ms frame,
+// fed to the gate as noteSpeech hints on the audio clock. While it is
+// live the gate asks IT whether someone is speaking; pitch voicing then
+// only shapes the held-note test. Until it is loaded (or if it fails)
+// the gate runs on pitch voicing alone, as before.
+let speechRunner = null;
+const speechFramer = createSpeechFramer();
+let vadMsSinceInfer = 0;                // diag: detector time since the last inference
+// Capture chunks are processed strictly in order (the detector is
+// async): resample, window, detector frames -> gate, then maybeInfer, so
+// every decision sees the detector frames of all audio up to "now".
+let chunkChain = Promise.resolve();
+let lastVoiceState = null;
+let lastGateMode = null;                // "gated" | "fallback"
+
+function postVoiceState(state) {
+  if (state === lastVoiceState) return;
+  lastVoiceState = state;
+  self.postMessage({ type: "voice-state", state, ts: performance.timeOrigin + performance.now() });
+}
 
 // Sentinel error class so the catch branch can distinguish a hang-induced
 // timeout from a real inference error. Only timeouts get the recover-and-
@@ -182,35 +288,45 @@ async function maybeInfer() {
   if (now - lastInferenceMs < INFERENCE_INTERVAL_MS) return;
 
   const windowCopy = ring.snapshot();
+  // The window's end on the audio clock (posted with its score).
+  const windowAudioMs = audioNowMs;
 
-  // Voice-activity gate: skip inference when the window contains no
-  // speech-level peaks. Peak (not RMS) is used because in any window
-  // that mixes speech with brief pauses a speaker between phrases
-  // produces a low average even though the speech portion is clearly
-  // voiced — RMS would falsely gate. After a sustained run of silent
-  // windows, drop the EMA so a resumed utterance doesn't blend with a
-  // stale pre-pause score.
-  // VAD (restructured 2026-07-20 — field report: quiet desktop mics froze
-  // the meter). Amplitude arm: only the true-silence floor is absolute;
-  // the old 0.05 threshold applies solely when the pitch feed is stale
-  // (legacy fallback), because real mics deliver speech peaks of
-  // 0.01-0.05 where 0.05 gated EVERYTHING. Speech-vs-noise otherwise
-  // rides the pitch-voicedness gate, which inherits the detector's
-  // adaptive mic-level handling — the two paths now share one notion of
-  // "loud enough". Sub-floor probe fails open for <75 Hz phonation
-  // (Codex PR #90), with actively-notched interferers excluded.
+  // Which windows get scored. Normally the utterance gate decides: from
+  // the speech detector's hints while it is loaded (pitch voicing then
+  // only drives the held-note test), else from the relayed pitch voicing
+  // (noise-robust: the pitch worker's tonal notch + harmonic voicing
+  // guard sit in front of it). The absolute
+  // silence floor always applies. If the pitch feed is dead ("stale" —
+  // never in normal operation; the pitch worker is pure JS and ready at
+  // once) fall back to the legacy peak-amplitude VAD with its silent-run
+  // EMA reset, so a broken pitch worker degrades the reading instead of
+  // silencing it. Peak, not RMS: a speech-with-pauses window has a low
+  // average but clearly speech-level peaks.
+  // The decision itself lives in utterance-gate.js decideMlWindow (pure,
+  // extracted 2026-10-07, bit-identical: the heard-as calibration replays
+  // it): which path (gated / fallback), whether to score, whether to start
+  // a fresh EMA (a path switch — never carry a score across it —, an
+  // utterance onset or the end of a held note, or the fallback's
+  // silent-run reset), and the voice state to post.
   const peak = windowPeak(windowCopy);
-  const verdict = voicedGate.shouldScore(performance.timeOrigin + performance.now());
-  const gatedOut =
-    peak < VAD_SILENCE_FLOOR ||
-    (verdict === "stale" && peak < VAD_PEAK_THRESHOLD) ||
-    (verdict === "unvoiced" && !subFloorVoiced(windowCopy, TARGET_SAMPLE_RATE, notchedFreqs));
-  if (gatedOut) {
-    if (silenceTracker.noteSilent()) smoothedFemale = null;
+  const d = decideMlWindow({ gate, audioNowMs, peak, lastGateMode, silenceTracker });
+  lastGateMode = d.mode;
+  if (d.resetEma) smoothedFemale = null;
+  postVoiceState(d.voiceState);
+  const score = d.score;
+  if (!score) {
     lastInferenceMs = now;
     return;
   }
-  silenceTracker.noteActive();
+  if (!classifyDue(now, lastClassifyMs, ML_CLASSIFY_HOP_MS)) {
+    // Scored but not classified (between classifier runs): the panel still
+    // counts the window — its span, voiced time and the window-count hide
+    // rule stay those of the 150 ms schedule; only the logit mean thins.
+    lastInferenceMs = now;
+    self.postMessage({ type: "scored", audioMs: windowAudioMs, spanId: d.spanId, mode: d.mode });
+    return;
+  }
+  lastClassifyMs = now;
 
   inferenceInProgress = true;
   // Hop is timed START-to-start (2026-07-19; was set in the finally
@@ -236,8 +352,16 @@ async function maybeInfer() {
       score,
       confidence,
       ts: performance.timeOrigin + performance.now(),
-      ...(_diag ? { inferMs } : {}),
+      // The unsmoothed window logit + where the window sits on the audio
+      // clock: what the experimental "Likely heard as" estimate pools.
+      logit: femaleLogitFromResult(result),
+      audioMs: windowAudioMs,
+      spanId: d.spanId,
+      mode: d.mode,
+      ...(_diag ? { inferMs, vadMs: vadMsSinceInfer } : {}),
     });
+    vadMsSinceInfer = 0;
+    consecutiveErrors = 0;
   } catch (err) {
     if (err instanceof InferenceTimeoutError) {
       // Classifier hung past INFERENCE_TIMEOUT_MS. Don't trip modelStatus —
@@ -251,9 +375,17 @@ async function maybeInfer() {
         durationMs: INFERENCE_TIMEOUT_MS,
         ts: performance.timeOrigin + performance.now(),
       });
+    } else if (++consecutiveErrors < MAX_CONSECUTIVE_ERRORS) {
+      // One failed run: skip this window, keep the model (see
+      // MAX_CONSECUTIVE_ERRORS).
+      self.postMessage({
+        type: "inference-event",
+        event: "error",
+        message: String(err?.message || err),
+        ts: performance.timeOrigin + performance.now(),
+      });
     } else {
-      self.postMessage({ type: "status", status: "error", message: String(err?.message || err) });
-      modelStatus = "error";
+      status("error", `the voice model stopped working: ${String(err?.message || err)}`);
     }
   } finally {
     // lastInferenceMs is NOT reset here — it was stamped at inference
@@ -265,14 +397,13 @@ async function maybeInfer() {
 async function loadModel(modelId) {
   if (modelStatus === "loading" || modelStatus === "ready") return;
   status("loading");
+  // Summed over the classifier's files against its known size, so the
+  // percentage neither flashes 100 % on the tiny config files nor drops back
+  // when the model file starts (2026-10-19 review N-3).
+  const progress = createClassifierProgress();
   const progressCallback = (info) => {
     if (info?.status === "progress") {
-      self.postMessage({
-        type: "progress",
-        loaded: info.loaded ?? 0,
-        total: info.total ?? 0,
-        file: info.file ?? "",
-      });
+      self.postMessage({ type: "progress", ...progress.update(info) });
     }
   };
   try {
@@ -282,7 +413,7 @@ async function loadModel(modelId) {
     // validation errors (Invalid BindGroupLayout / Concat) and limps —
     // exactly the failure mode a try/catch fallback can't catch. Same
     // ORT version, same machine, production path: WebGPU median 249 ms
-    // per inference (2.4 Hz effective meter cadence) vs WASM median
+    // per inference (2.4 Hz effective cadence) vs WASM median
     // ~50 ms — back inside the 150 ms hop budget at the design 6.7 Hz.
     // Quantized int8 ops are a poor fit for the WebGPU EP generally;
     // revisit only with a measured win on BOTH desktop and mobile.
@@ -297,13 +428,48 @@ async function loadModel(modelId) {
   }
 }
 
+async function loadSpeechDetector() {
+  try {
+    // Cache Storage first (HF's resolve redirect is no-store and this
+    // worker is recreated on every start), sha256-checked either way.
+    const { bytes, source } = await loadVerifiedModel({ url: SPEECH_DETECTOR.modelUrl, sha256: SPEECH_DETECTOR.modelSha256 });
+    const session = await ort.InferenceSession.create(new Uint8Array(bytes), { executionProviders: ["wasm"] });
+    speechFramer.reset();
+    speechRunner = createSileroRunner(ort, session);
+    self.postMessage({ type: "speech-detector", status: "ready", source });
+  } catch (err) {
+    speechRunner = null;
+    self.postMessage({ type: "speech-detector", status: "error", message: String(err?.message || err) });
+  }
+}
+
+async function handleChunk(buffer, contextTime) {
+  const hasTime = typeof contextTime === "number" && Number.isFinite(contextTime);
+  if (hasTime) audioNowMs = contextTime * 1000;
+  const x16 = resample(new Float32Array(buffer));
+  ring.append(x16);
+  if (speechRunner && hasTime) {
+    try {
+      const t0 = _diag ? performance.now() : 0;
+      for (const f of speechFramer.push(x16, contextTime * 1000)) {
+        gate.noteSpeech({ ts: f.ts, p: await speechRunner.run(f.input) });
+      }
+      if (_diag) vadMsSinceInfer += performance.now() - t0;
+    } catch (err) {
+      // Detector broken: stop feeding it; the gate returns to pitch
+      // voicing once its speech hints are stale.
+      speechRunner = null;
+      self.postMessage({ type: "speech-detector", status: "error", message: String(err?.message || err) });
+    }
+  }
+  maybeInfer();
+}
+
 function attachAudioPort(port) {
   port.onmessage = (e) => {
-    const { buffer } = e.data;
+    const { buffer, contextTime } = e.data;
     if (!buffer || !resample) return;
-    const incoming = new Float32Array(buffer);
-    ring.append(resample(incoming));
-    maybeInfer();
+    chunkChain = chunkChain.then(() => handleChunk(buffer, contextTime)).catch(() => {});
   };
 }
 
@@ -316,13 +482,18 @@ self.onmessage = (e) => {
       _diag = msg.diag === true;
       resample = createStreamingResampler(inputSampleRate, TARGET_SAMPLE_RATE);
       loadModel(msg.modelId || DEFAULT_MODEL_ID);
+      loadSpeechDetector();
       break;
     case "audioPort":
       attachAudioPort(msg.port);
       break;
     case "pitch-hint":
-      voicedGate.notePitchHint(msg);
-      if (Array.isArray(msg.notchedFreqs)) notchedFreqs = msg.notchedFreqs;
+      // Audio clock: the frame's capture time. A hint without one can't be
+      // placed on the window's clock and is dropped (never in practice —
+      // both capture paths stamp every chunk).
+      if (typeof msg.contextTime === "number" && Number.isFinite(msg.contextTime)) {
+        gate.notePitchHint({ voiced: msg.voiced, pitch: msg.pitch, ts: msg.contextTime * 1000 });
+      }
       break;
   }
 };

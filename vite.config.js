@@ -2,13 +2,19 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import basicSsl from '@vitejs/plugin-basic-ssl'
+import { thirdPartyNotices } from './scripts/third-party-notices.mjs'
 
 // `npm run dev:mobile` invokes Vite with `--mode mobile`, which gates the
 // self-signed-cert plugin so the LAN URL works on phones (mic capture
 // requires HTTPS on non-localhost origins). Default `npm run dev` keeps
 // HTTP localhost behavior unchanged. See CLAUDE.md "Mobile testing" for
 // the firewall + cert-warning workflow.
-export default defineConfig(({ mode }) => ({
+// The licence notices of everything bundled (app + workers) ship with the
+// site as THIRD_PARTY_NOTICES.txt (+ ONNX Runtime's own notices), linked
+// from Settings: scripts/third-party-notices.mjs.
+export default defineConfig(({ mode }) => {
+  const notices = thirdPartyNotices()
+  return {
   base: '/Syrinx/',
   // Build output is untracked; .github/workflows/deploy.yml uploads it to
   // GitHub Pages. (Was outDir 'docs' committed to main until 2026-10-04.)
@@ -17,8 +23,11 @@ export default defineConfig(({ mode }) => ({
     react(),
     tailwindcss(),
     ...(mode === 'mobile' ? [basicSsl()] : []),
+    notices.collect(),
+    notices.emit,
+    notices.serve,
   ],
-  worker: { format: 'es' },
+  worker: { format: 'es', plugins: () => [notices.collect()] },
   // build/ is the gitignored scratch dir for measurement runs and can hold
   // hundreds of thousands of files (corpora, nested worktrees). Vite's
   // watcher doesn't read .gitignore, so without this the dev server spends
@@ -30,20 +39,25 @@ export default defineConfig(({ mode }) => ({
   },
   // Transformers.js loads ONNX runtime + model weights at runtime; let it
   // self-manage rather than pre-bundling its WASM/ONNX assets. Same applies
-  // to onnxruntime-web (used directly by pitch-worker.js) — when Vite pre-
-  // bundles it via esbuild for dev, the relative WASM URLs inside the
-  // bundled .vite/deps/ output don't resolve (Vite serves only JS modules
-  // from that cache, not .wasm files), causing the pitch-worker to fail
-  // load with a "expected magic word 00 61 73 6d, found 3c 21 64 6f" error
+  // to onnxruntime-web (imported directly by gender-worker.js for the
+  // speech detector; the pitch worker used it in the SwiftF0 era, before
+  // 2026-06-09) — when Vite pre-bundles it via esbuild for dev, the relative
+  // WASM URLs inside the bundled .vite/deps/ output don't resolve (Vite
+  // serves only JS modules from that cache, not .wasm files), causing the
+  // worker to fail load with a "expected magic word 00 61 73 6d, found 3c 21 64 6f" error
   // (HTML SPA fallback served instead of the WASM bytes). Excluding the
   // package lets Vite serve the original node_modules/onnxruntime-web/
   // directory directly in dev, where ORT's relative path resolution works.
   // optimizeDeps is dev-only — production (Rollup) builds correctly emit
-  // hashed .wasm assets in dist/assets/ regardless of this setting.
+  // hashed .wasm assets in dist/assets/ regardless of this setting. Since
+  // 2026-10-07 the app points ONNX Runtime at its own copies of those
+  // files (src/ml/ort-runtime-files.js, `?url` imports) instead of
+  // Transformers.js's jsDelivr default.
   // entries: scan only the app's own index.html — the default globs every
   // .html under the root, including copies inside build/.
   optimizeDeps: {
     entries: ['index.html'],
     exclude: ['@huggingface/transformers', 'onnxruntime-web'],
   },
-}))
+  }
+})

@@ -1,0 +1,361 @@
+{
+ "protocol": "pre-registration 2026-10-13 §3.2 (round 6), v4bench.mjs",
+ "started": "2026-10-21T03:45:21.929Z",
+ "finished": "2026-10-21T04:00:15.392Z",
+ "machine": {
+  "cpu": "11th Gen Intel(R) Core(TM) i9-11900K @ 3.50GHz",
+  "cores": 16,
+  "os": "Windows_NT 10.0.26300",
+  "mem_gb": 63.8,
+  "node": "v24.14.1",
+  "chrome": "Chrome/155.0.8059.85"
+ },
+ "streams": [
+  {
+   "file": "s0.f32",
+   "group": "vsess",
+   "set": "vsess",
+   "id": "vsess__vctk__vctk_p252__snr+0",
+   "sec": 300
+  },
+  {
+   "file": "s1.f32",
+   "group": "vsess",
+   "set": "vsess",
+   "id": "vsess__svd__svd_2097__snr+10",
+   "sec": 300
+  },
+  {
+   "file": "s2.f32",
+   "group": "h5-synthetic-buzz",
+   "set": "h5",
+   "id": "h5__f__vsynth__k0010__snr+0",
+   "sec": 154.99525
+  },
+  {
+   "file": "s3.f32",
+   "group": "h5-synthetic-buzz",
+   "set": "h5",
+   "id": "h5__f__lfsynth__k0005__snr+0",
+   "sec": 145
+  },
+  {
+   "file": "s4.f32",
+   "group": "tune194",
+   "set": "noise",
+   "id": "freesound__electronics_whine__843849",
+   "sec": 40.725
+  },
+  {
+   "file": "s5.f32",
+   "group": "tune194",
+   "set": "noise",
+   "id": "mssnsd__train_VacuumCleaner_1",
+   "sec": 38.95
+  },
+  {
+   "file": "s6.f32",
+   "group": "val-speech",
+   "set": "vvoice",
+   "id": "coswara__20200502_IbHJbk0Rz4QkL9zRJzb28SEDxJj1_counting-normal",
+   "sec": 10.575
+  },
+  {
+   "file": "s7.f32",
+   "group": "val-speech",
+   "set": "vvoice",
+   "id": "libri__2414-159411-0004",
+   "sec": 14.525
+  }
+ ],
+ "quiet_limit_pct": 20,
+ "runs_per_runtime": 5,
+ "detectors": [
+  {
+   "name": "firered-r1h",
+   "module": "scripts/voice-detector/confirm/det_firered.mjs",
+   "assets": {
+    "model": "build/vad/offtheshelf/firered/dl/FireRedVAD/pretrained_models/onnx_models/fireredvad_stream_vad_with_cache.onnx",
+    "cmvn": "build/vad/confirm/bench/cmvn.json"
+   },
+   "reference": false,
+   "per_runtime": {
+    "node": {
+     "counted": "5 quiet runs",
+     "median_ms": 0.84662192214163,
+     "min_ms": 0.8195132278999346,
+     "max_ms": 0.8915984401194982,
+     "chunk_p95_ms": 1.1013999999995576,
+     "chunk_p99_ms": 1.5377999999998337,
+     "chunk_max_ms": 8.262899999999718,
+     "loads_other_pct": [
+      16.6,
+      18.7,
+      16.3,
+      14.4,
+      13.8
+     ],
+     "runtime": "node v24.14.1, onnxruntime-web 1.30.0 (ort.node.min.mjs, wasm EP, 1 thread)",
+     "runs": [
+      {
+       "cycle": 1,
+       "value_ms_per_25ms": 0.9125524493111931,
+       "quiet": false,
+       "load_other_pct": 23.794882964998408,
+       "load_total_pct_mean": 30.62087515194129,
+       "wall_ms": 37057,
+       "timed_ms": 33755.31510000033,
+       "timed_audio_s": 924.7499999994328,
+       "cpu_ms": 38907,
+       "runtime": "node v24.14.1, onnxruntime-web 1.30.0 (ort.node.min.mjs, wasm EP, 1 thread)",
+       "at": "2026-10-21T03:47:41.040Z"
+      },
+      {
+       "cycle": 2,
+       "value_ms_per_25ms": 0.84662192214163,
+       "quiet": true,
+       "load_other_pct": 16.58453705021648,
+       "load_total_pct_mean": 23.080176083893917,
+       "wall_ms": 34495,
+       "timed_ms": 31316.544899999684,
+       "timed_audio_s": 924.7499999994328,
+       "cpu_ms": 35984,
+       "runtime": "node v24.14.1, onnxruntime-web 1.30.0 (ort.node.min.mjs, wasm EP, 1 thread)",
+       "at": "2026-10-21T03:48:54.419Z"
+      },
+      {
+       "cycle": 3,
+       "value_ms_per_25ms": 0.8878905487975152,
+       "quiet": false,
+       "load_other_pct": 22.999957328781736,
+       "load_total_pct_mean": 29.525007766213484,
+       "wall_ms": 36344,
+       "timed_ms": 32843.07139999994,
+       "timed_audio_s": 924.7499999994328,
+       "cpu_ms": 37641,
+       "runtime": "node v24.14.1, onnxruntime-web 1.30.0 (ort.node.min.mjs, wasm EP, 1 thread)",
+       "at": "2026-10-21T03:50:11.330Z"
+      },
+      {
+       "cycle": 4,
+       "value_ms_per_25ms": 0.932405571776723,
+       "quiet": false,
+       "load_other_pct": 24.53306255077173,
+       "load_total_pct_mean": 30.8537353539926,
+       "wall_ms": 38173,
+       "timed_ms": 34489.68209999983,
+       "timed_audio_s": 924.7499999994328,
+       "cpu_ms": 39937,
+       "runtime": "node v24.14.1, onnxruntime-web 1.30.0 (ort.node.min.mjs, wasm EP, 1 thread)",
+       "at": "2026-10-21T03:51:33.097Z"
+      },
+      {
+       "cycle": 5,
+       "value_ms_per_25ms": 0.8984252095166346,
+       "quiet": false,
+       "load_other_pct": 21.856707497235284,
+       "load_total_pct_mean": 28.441316498660754,
+       "wall_ms": 36773,
+       "timed_ms": 33232.74849999993,
+       "timed_audio_s": 924.7499999994328,
+       "cpu_ms": 38876,
+       "runtime": "node v24.14.1, onnxruntime-web 1.30.0 (ort.node.min.mjs, wasm EP, 1 thread)",
+       "at": "2026-10-21T03:53:26.316Z"
+      },
+      {
+       "cycle": 6,
+       "value_ms_per_25ms": 0.8568600027039616,
+       "quiet": true,
+       "load_other_pct": 18.687609865939212,
+       "load_total_pct_mean": 25.238068780427305,
+       "wall_ms": 35094,
+       "timed_ms": 31695.251500000097,
+       "timed_audio_s": 924.7499999994328,
+       "cpu_ms": 36657,
+       "runtime": "node v24.14.1, onnxruntime-web 1.30.0 (ort.node.min.mjs, wasm EP, 1 thread)",
+       "at": "2026-10-21T03:55:53.751Z"
+      },
+      {
+       "cycle": 7,
+       "value_ms_per_25ms": 0.8249969261967769,
+       "quiet": true,
+       "load_other_pct": 16.28534407129931,
+       "load_total_pct_mean": 22.795068250481204,
+       "wall_ms": 33794,
+       "timed_ms": 30516.63630000006,
+       "timed_audio_s": 924.7499999994328,
+       "cpu_ms": 35313,
+       "runtime": "node v24.14.1, onnxruntime-web 1.30.0 (ort.node.min.mjs, wasm EP, 1 thread)",
+       "at": "2026-10-21T03:57:07.917Z"
+      },
+      {
+       "cycle": 8,
+       "value_ms_per_25ms": 0.8915984401194982,
+       "quiet": true,
+       "load_other_pct": 14.382027478393798,
+       "load_total_pct_mean": 20.97496983891556,
+       "wall_ms": 36261,
+       "timed_ms": 32980.22630000001,
+       "timed_audio_s": 924.7499999994328,
+       "cpu_ms": 37860,
+       "runtime": "node v24.14.1, onnxruntime-web 1.30.0 (ort.node.min.mjs, wasm EP, 1 thread)",
+       "at": "2026-10-21T03:58:24.320Z"
+      },
+      {
+       "cycle": 9,
+       "value_ms_per_25ms": 0.8195132278999346,
+       "quiet": true,
+       "load_other_pct": 13.841433793446118,
+       "load_total_pct_mean": 20.41579193009137,
+       "wall_ms": 33633,
+       "timed_ms": 30313.794299999983,
+       "timed_audio_s": 924.7499999994328,
+       "cpu_ms": 35266,
+       "runtime": "node v24.14.1, onnxruntime-web 1.30.0 (ort.node.min.mjs, wasm EP, 1 thread)",
+       "at": "2026-10-21T03:59:37.877Z"
+      }
+     ]
+    },
+    "chrome": {
+     "counted": "5 quiet runs",
+     "median_ms": 0.8118518518936009,
+     "min_ms": 0.7699621519553418,
+     "max_ms": 0.8214111922017248,
+     "chunk_p95_ms": 1,
+     "chunk_p99_ms": 1.399999976158142,
+     "chunk_max_ms": 4.099999904632568,
+     "loads_other_pct": [
+      12.8,
+      16.8,
+      18.4,
+      15.4,
+      16.3
+     ],
+     "runtime": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.0.0 Safari/537.36 (puppeteer browser.version(): Chrome/155.0.8059.85); onnxruntime-web 1.30.0 (ort.wasm.min.mjs, wasm EP, 1 thread)",
+     "runs": [
+      {
+       "cycle": 1,
+       "value_ms_per_25ms": 0.7699621519553418,
+       "quiet": true,
+       "load_other_pct": 12.837642684929328,
+       "load_total_pct_mean": 18.91818132140025,
+       "wall_ms": 32852,
+       "timed_ms": 28480.900000810623,
+       "timed_audio_s": 924.7499999994328,
+       "cpu_ms": 33109.375,
+       "runtime": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.0.0 Safari/537.36 (puppeteer browser.version(): Chrome/155.0.8059.85); onnxruntime-web 1.30.0 (ort.wasm.min.mjs, wasm EP, 1 thread)",
+       "at": "2026-10-21T03:48:16.908Z"
+      },
+      {
+       "cycle": 2,
+       "value_ms_per_25ms": 0.8214111922017248,
+       "quiet": true,
+       "load_other_pct": 16.760824983360017,
+       "load_total_pct_mean": 22.782932298261652,
+       "wall_ms": 34558,
+       "timed_ms": 30383.999999523163,
+       "timed_audio_s": 924.7499999994328,
+       "cpu_ms": 34031.25,
+       "runtime": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.0.0 Safari/537.36 (puppeteer browser.version(): Chrome/155.0.8059.85); onnxruntime-web 1.30.0 (ort.wasm.min.mjs, wasm EP, 1 thread)",
+       "at": "2026-10-21T03:49:31.978Z"
+      },
+      {
+       "cycle": 3,
+       "value_ms_per_25ms": 0.8960502838507397,
+       "quiet": false,
+       "load_other_pct": 24.963733653356368,
+       "load_total_pct_mean": 31.264394111672985,
+       "wall_ms": 37584,
+       "timed_ms": 33144.89999961853,
+       "timed_audio_s": 924.7499999994328,
+       "cpu_ms": 37031.25,
+       "runtime": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.0.0 Safari/537.36 (puppeteer browser.version(): Chrome/155.0.8059.85); onnxruntime-web 1.30.0 (ort.wasm.min.mjs, wasm EP, 1 thread)",
+       "at": "2026-10-21T03:50:51.921Z"
+      },
+      {
+       "cycle": 4,
+       "value_ms_per_25ms": 0.8891403082003276,
+       "quiet": false,
+       "load_other_pct": 22.6191355667707,
+       "load_total_pct_mean": 28.74261059003224,
+       "wall_ms": 37397,
+       "timed_ms": 32889.300000309944,
+       "timed_audio_s": 924.7499999994328,
+       "cpu_ms": 36484.375,
+       "runtime": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.0.0 Safari/537.36 (puppeteer browser.version(): Chrome/155.0.8059.85); onnxruntime-web 1.30.0 (ort.wasm.min.mjs, wasm EP, 1 thread)",
+       "at": "2026-10-21T03:52:13.507Z"
+      },
+      {
+       "cycle": 5,
+       "value_ms_per_25ms": 0.9571586915665563,
+       "quiet": false,
+       "load_other_pct": 30.728862245054913,
+       "load_total_pct_mean": 36.70715193655173,
+       "wall_ms": 40287,
+       "timed_ms": 35405.3000010252,
+       "timed_audio_s": 924.7499999994328,
+       "cpu_ms": 39109.375,
+       "runtime": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.0.0 Safari/537.36 (puppeteer browser.version(): Chrome/155.0.8059.85); onnxruntime-web 1.30.0 (ort.wasm.min.mjs, wasm EP, 1 thread)",
+       "at": "2026-10-21T03:54:09.611Z"
+      },
+      {
+       "cycle": 6,
+       "value_ms_per_25ms": 0.8147877804527062,
+       "quiet": true,
+       "load_other_pct": 18.432304907729193,
+       "load_total_pct_mean": 24.247629956569405,
+       "wall_ms": 34357,
+       "timed_ms": 30138.999998927116,
+       "timed_audio_s": 924.7499999994328,
+       "cpu_ms": 33421.875,
+       "runtime": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.0.0 Safari/537.36 (puppeteer browser.version(): Chrome/155.0.8059.85); onnxruntime-web 1.30.0 (ort.wasm.min.mjs, wasm EP, 1 thread)",
+       "at": "2026-10-21T03:56:31.114Z"
+      },
+      {
+       "cycle": 7,
+       "value_ms_per_25ms": 0.8118518518936009,
+       "quiet": true,
+       "load_other_pct": 15.362092124230115,
+       "load_total_pct_mean": 21.524055556395137,
+       "wall_ms": 34116,
+       "timed_ms": 30030.40000152588,
+       "timed_audio_s": 924.7499999994328,
+       "cpu_ms": 33343.75,
+       "runtime": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.0.0 Safari/537.36 (puppeteer browser.version(): Chrome/155.0.8059.85); onnxruntime-web 1.30.0 (ort.wasm.min.mjs, wasm EP, 1 thread)",
+       "at": "2026-10-21T03:57:45.044Z"
+      },
+      {
+       "cycle": 8,
+       "value_ms_per_25ms": 0.8061232765746182,
+       "quiet": true,
+       "load_other_pct": 16.29101043560741,
+       "load_total_pct_mean": 21.926615597990338,
+       "wall_ms": 33895,
+       "timed_ms": 29818.500000476837,
+       "timed_audio_s": 924.7499999994328,
+       "cpu_ms": 33125,
+       "runtime": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.0.0 Safari/537.36 (puppeteer browser.version(): Chrome/155.0.8059.85); onnxruntime-web 1.30.0 (ort.wasm.min.mjs, wasm EP, 1 thread)",
+       "at": "2026-10-21T03:59:01.232Z"
+      },
+      {
+       "cycle": 9,
+       "value_ms_per_25ms": 0.8223060286672107,
+       "quiet": true,
+       "load_other_pct": 16.83319111245531,
+       "load_total_pct_mean": 22.838200011074896,
+       "wall_ms": 34506,
+       "timed_ms": 30417.10000038147,
+       "timed_audio_s": 924.7499999994328,
+       "cpu_ms": 33500,
+       "runtime": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.0.0 Safari/537.36 (puppeteer browser.version(): Chrome/155.0.8059.85); onnxruntime-web 1.30.0 (ort.wasm.min.mjs, wasm EP, 1 thread)",
+       "at": "2026-10-21T04:00:15.392Z"
+      }
+     ]
+    }
+   },
+   "gating_ms": 0.84662192214163,
+   "limit_ms": 2,
+   "pass": true
+  }
+ ]
+}

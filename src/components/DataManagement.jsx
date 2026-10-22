@@ -1,4 +1,12 @@
-// DataManagement.jsx — Settings/data panel: export, import, delete all, audio recording toggle
+// DataManagement.jsx — Settings/data panel: training direction, audio
+// recording toggle, the experimental "Likely heard as" switch (the same
+// setting as the panel's own switch; App owns it), the "Hide pitch when no
+// voice is heard" switch (the voice gate) with its detector's status, export,
+// import, delete all.
+//
+// A modal dialog (App makes the page behind it inert): focus moves to the
+// panel when it opens and back to the gear when it closes (App), Escape
+// closes it. It is where the training direction is changed mid-session.
 
 import { useState, useRef, useEffect } from "react";
 import db from "../db";
@@ -9,6 +17,11 @@ import {
   stripSessionForExport,
   importExport,
 } from "../utils/exportFormat";
+import { DirectionOptions } from "./DirectionPrompt";
+import { HeardAsSwitch } from "./HeardAsPanel";
+import { HEARD_AS_DOWNLOAD_MB } from "../ml/heard-as-download";
+import { FIRERED_MODEL, fireredModelSource, probeModel } from "../dsp/firered-vad";
+import { voiceGateStatusText } from "../utils/voiceGateSetting";
 
 // Export assembly: frame lines are concatenated into ~1 MB strings, and
 // every ~32 MB of those are folded into a Blob (the browser's blob store,
@@ -24,16 +37,50 @@ function announceDataChanged() {
   window.dispatchEvent(new CustomEvent("syrinx:data-changed"));
 }
 
-export function DataManagement({ onClose }) {
+export function DataManagement({
+  onClose, direction = null, onDirectionChange, heardAsEnabled = false, onHeardAsChange,
+  voiceGateEnabled = true, onVoiceGateChange, voiceGateStatus = "idle",
+  labEnabled = false, onLabChange,
+}) {
   const [recordAudio, setRecordAudio] = useState(false);
+  // Before the first listening session: are the model files there?
+  const [voiceGateProbe, setVoiceGateProbe] = useState(null);
   const [importing, setImporting] = useState(false);
   const [status, setStatus] = useState(null);
   const fileInputRef = useRef(null);
+  const closeRef = useRef(null);
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
 
   useEffect(() => {
     db.settings.get("default").then((s) => {
       if (s?.recordAudio) setRecordAudio(true);
     });
+  }, []);
+
+  const hasVoiceGate = !!onVoiceGateChange;
+  useEffect(() => {
+    if (!hasVoiceGate || voiceGateStatus !== "idle") return undefined;
+    const source = fireredModelSource({
+      appBaseUrl: new URL(`${import.meta.env.BASE_URL}${FIRERED_MODEL.dir}`, window.location.href).href,
+    });
+    // The mirror is fetched (and cached) when listening starts; probing it
+    // here would download from it on every Settings visit.
+    if (source.kind === "mirror") { setVoiceGateProbe("mirror"); return undefined; }
+    let alive = true;
+    probeModel(source.base)
+      .then(() => alive && setVoiceGateProbe("ok"))
+      .catch(() => alive && setVoiceGateProbe("unavailable"));
+    return () => { alive = false; };
+  }, [hasVoiceGate, voiceGateStatus]);
+
+  useEffect(() => {
+    closeRef.current?.focus();
+    const onKey = (e) => {
+      if (e.key === "Escape") { e.preventDefault(); onCloseRef.current(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, []);
 
   async function toggleRecordAudio() {
@@ -175,24 +222,48 @@ export function DataManagement({ onClose }) {
       announceDataChanged();
     }
     // The settings row (and its recordAudio flag) is gone — reflect the
-    // default in the toggle instead of a stale "on".
+    // default in the toggle instead of a stale "on". Same for the
+    // experimental panel (default off).
     setRecordAudio(false);
+    if (heardAsEnabled) onHeardAsChange?.(false);
+    if (!voiceGateEnabled) onVoiceGateChange?.(true); // the default (on)
+    if (labEnabled) onLabChange?.(false); // the default (off)
     setStatus("All data deleted");
     setTimeout(() => setStatus(null), 2000);
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4">
-      <div className="bg-neutral-900 border border-neutral-700 rounded-2xl p-5 max-w-sm w-full shadow-xl">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4 py-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="settings-title"
+      data-dialog="settings"
+    >
+      <div className="bg-neutral-900 border border-neutral-700 rounded-2xl p-5 max-w-sm w-full shadow-xl max-h-full overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-light text-white">Settings & Data</h2>
+          <h2 id="settings-title" className="text-lg font-light text-white">Settings & Data</h2>
           <button
+            ref={closeRef}
             onClick={onClose}
-            className="text-neutral-500 hover:text-neutral-300 transition-colors cursor-pointer text-xl leading-none"
+            aria-label="Close settings"
+            className="text-neutral-500 hover:text-neutral-300 transition-colors cursor-pointer text-xl leading-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-300 rounded"
           >
             &times;
           </button>
         </div>
+
+        {/* Training direction — applies immediately, also mid-session */}
+        {onDirectionChange && (
+          <>
+            <div className="mb-4">
+              <h3 className="text-sm text-neutral-300 mb-0.5">What are you trying to sound like?</h3>
+              <p className="text-[11px] text-neutral-400 mb-2">Sets your targets. Changes apply right away — close this panel to see them.</p>
+              <DirectionOptions value={direction} onChange={onDirectionChange} compact name="training-direction-settings" />
+            </div>
+            <hr className="border-neutral-800 mb-4" />
+          </>
+        )}
 
         {/* Audio recording toggle */}
         <div className="mb-4">
@@ -201,7 +272,7 @@ export function DataManagement({ onClose }) {
               <span className="text-sm text-neutral-300">
                 Record audio with sessions
               </span>
-              <p className="text-[11px] text-neutral-500 mt-0.5">
+              <p className="text-[11px] text-neutral-400 mt-0.5">
                 Audio uses ~10MB per 30 minutes
               </p>
             </div>
@@ -213,18 +284,104 @@ export function DataManagement({ onClose }) {
               aria-checked={recordAudio}
               aria-label="Record audio with sessions"
               onClick={toggleRecordAudio}
-              className={`relative w-10 h-5 rounded-full transition-colors cursor-pointer ${
+              className={`hc-switch relative w-10 h-5 rounded-full transition-colors cursor-pointer ${
                 recordAudio ? "bg-purple-600" : "bg-neutral-700"
               }`}
             >
               <span
-                className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform ${
+                className={`hc-switch-thumb absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform ${
                   recordAudio ? "translate-x-5" : ""
                 }`}
               />
             </button>
           </label>
         </div>
+
+        {/* Experimental "Likely heard as" panel (off by default) */}
+        {onHeardAsChange && (
+          <div className="mb-4" data-settings-heard-as="">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <span className="text-sm text-neutral-300">
+                  Show the experimental &lsquo;Likely heard as&rsquo; estimate
+                </span>
+                <p className="text-[11px] text-neutral-400 mt-0.5">
+                  A rough, research-based guess shown as ranges, not a verdict. When first turned on it downloads a voice model, a speech detector and their engine (up to {HEARD_AS_DOWNLOAD_MB} MB).
+                </p>
+              </div>
+              <HeardAsSwitch on={heardAsEnabled} onChange={onHeardAsChange} label="Show the experimental 'Likely heard as' estimate" />
+            </div>
+          </div>
+        )}
+
+        {/* Voice gate (FireRedVAD; on by default) */}
+        {onVoiceGateChange && (
+          <div className="mb-4" data-settings-voice-gate="" data-voice-gate-status={voiceGateStatus}>
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <span className="text-sm text-neutral-300">
+                  Hide pitch when no voice is heard (experimental)
+                </span>
+                <p className="text-[11px] text-neutral-400 mt-0.5">
+                  A voice detector hides the pitch line, Hz / note, steadiness and HNR while it hears no voice, such as a fan or hum alone, and keeps most of that noise out of the resonance reading. It can blank parts of long held notes and vowels, more in loud noise, and noise can still show for about 2 s after you stop speaking.
+                </p>
+                <p className="text-[11px] text-neutral-500 mt-0.5" data-voice-gate-status-text="">
+                  {voiceGateStatusText(voiceGateStatus, voiceGateProbe)}
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={voiceGateEnabled}
+                aria-label="Hide pitch when no voice is heard (experimental)"
+                onClick={() => onVoiceGateChange(!voiceGateEnabled)}
+                data-voice-gate-switch=""
+                className={`hc-switch relative w-10 h-5 shrink-0 rounded-full transition-colors cursor-pointer ${
+                  voiceGateEnabled ? "bg-purple-600" : "bg-neutral-700"
+                }`}
+              >
+                <span
+                  className={`hc-switch-thumb absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform ${
+                    voiceGateEnabled ? "translate-x-5" : ""
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Resonance lab tab (off by default, 2026-10-21) */}
+        {onLabChange && (
+          <div className="mb-4" data-settings-lab="">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <span className="text-sm text-neutral-300">
+                  Show the Resonance lab (experimental)
+                </span>
+                <p className="text-[11px] text-neutral-400 mt-0.5">
+                  Adds the Resonance lab tab: research readouts of resonance and vocal weight. Opening it loads extra analysis and uses more of your device while you listen.
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={labEnabled}
+                aria-label="Show the Resonance lab (experimental)"
+                onClick={() => onLabChange(!labEnabled)}
+                data-settings-lab-switch=""
+                className={`hc-switch relative w-10 h-5 shrink-0 rounded-full transition-colors cursor-pointer ${
+                  labEnabled ? "bg-purple-600" : "bg-neutral-700"
+                }`}
+              >
+                <span
+                  className={`hc-switch-thumb absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform ${
+                    labEnabled ? "translate-x-5" : ""
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
+        )}
 
         <hr className="border-neutral-800 mb-4" />
 
@@ -272,6 +429,21 @@ export function DataManagement({ onClose }) {
         {status && (
           <p className="text-xs text-neutral-400 mt-3 text-center">{status}</p>
         )}
+
+        {/* Licence notices of the bundled third-party code (ONNX Runtime,
+            React, Dexie, Transformers.js) ship with the site:
+            scripts/third-party-notices.mjs. */}
+        <p className="text-[11px] text-neutral-400 mt-4" data-licence-notices="">
+          Syrinx is open source (MIT License).{" "}
+          <a
+            href={`${import.meta.env.BASE_URL}THIRD_PARTY_NOTICES.txt`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-neutral-300 underline underline-offset-2 hover:text-neutral-100"
+          >
+            Licences and third-party notices
+          </a>
+        </p>
       </div>
     </div>
   );

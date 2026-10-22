@@ -1,0 +1,197 @@
+{
+ "source": "calibration.json of the 2026-10-07 heard-as calibration (measurements/heard-as-calibration-2026-10-07.md); values rounded to 4 decimals there",
+ "model": {
+  "a": 17.67240817107044,
+  "b": -0.349098302736368,
+  "c": -3.5373482236362848
+ },
+ "halfWidth": 2.25,
+ "unsure": {
+  "k": 0.42,
+  "f": 0.02
+ },
+ "vectors": [
+  {
+   "meter_logit": -5,
+   "f0_hz": 110,
+   "eta": 2.7907,
+   "s": 0.9422,
+   "s_low": 0.632,
+   "s_high": 0.9936,
+   "man": 0.8964,
+   "man_low": 0.4366,
+   "man_high": 0.9871,
+   "unsure": 0.0915,
+   "woman": 0.0121,
+   "woman_low": 0,
+   "woman_high": 0.1727,
+   "word": "likely heard as a man",
+   "in_tenths": {
+    "man": [
+     4,
+     10
+    ],
+    "woman": [
+     0,
+     2
+    ]
+   }
+  },
+  {
+   "meter_logit": -3,
+   "f0_hz": 130,
+   "eta": 1.5015,
+   "s": 0.8178,
+   "s_low": 0.3212,
+   "s_high": 0.9771,
+   "man": 0.6926,
+   "man_low": 0.138,
+   "man_high": 0.9582,
+   "unsure": 0.2503,
+   "woman": 0.057,
+   "woman_low": 0.0041,
+   "woman_high": 0.4957,
+   "word": "listeners would split",
+   "in_tenths": {
+    "man": [
+     1,
+     10
+    ],
+    "woman": [
+     0,
+     5
+    ]
+   }
+  },
+  {
+   "meter_logit": -1,
+   "f0_hz": 150,
+   "eta": 0.2971,
+   "s": 0.5737,
+   "s_low": 0.1242,
+   "s_high": 0.9274,
+   "man": 0.3683,
+   "man_low": 0.0328,
+   "man_high": 0.8708,
+   "unsure": 0.4109,
+   "woman": 0.2208,
+   "woman_low": 0.016,
+   "woman_high": 0.7844,
+   "word": "listeners would split",
+   "in_tenths": {
+    "man": [
+     0,
+     9
+    ],
+    "woman": [
+     0,
+     8
+    ]
+   }
+  },
+  {
+   "meter_logit": 0,
+   "f0_hz": 165,
+   "eta": -0.3891,
+   "s": 0.4039,
+   "s_low": 0.0667,
+   "s_high": 0.8654,
+   "man": 0.2017,
+   "man_low": 0.0144,
+   "man_high": 0.7676,
+   "unsure": 0.4045,
+   "woman": 0.3938,
+   "woman_low": 0.0368,
+   "woman_high": 0.8811,
+   "word": "listeners would split",
+   "in_tenths": {
+    "man": [
+     0,
+     8
+    ],
+    "woman": [
+     0,
+     9
+    ]
+   }
+  },
+  {
+   "meter_logit": 2,
+   "f0_hz": 180,
+   "eta": -1.3951,
+   "s": 0.1986,
+   "s_low": 0.0255,
+   "s_high": 0.7016,
+   "man": 0.0649,
+   "man_low": 0.0046,
+   "man_high": 0.5257,
+   "unsure": 0.2674,
+   "woman": 0.6677,
+   "woman_low": 0.1225,
+   "woman_high": 0.9537,
+   "word": "listeners would split",
+   "in_tenths": {
+    "man": [
+     0,
+     6
+    ],
+    "woman": [
+     1,
+     10
+    ]
+   }
+  },
+  {
+   "meter_logit": 3.5,
+   "f0_hz": 210,
+   "eta": -2.464,
+   "s": 0.0784,
+   "s_low": 0.0089,
+   "s_high": 0.4467,
+   "man": 0.0177,
+   "man_low": 0,
+   "man_high": 0.2391,
+   "unsure": 0.1214,
+   "woman": 0.8609,
+   "woman_low": 0.3457,
+   "woman_high": 0.9822,
+   "word": "likely heard as a woman",
+   "in_tenths": {
+    "man": [
+     0,
+     3
+    ],
+    "woman": [
+     3,
+     10
+    ]
+   }
+  },
+  {
+   "meter_logit": 1.6,
+   "f0_hz": 161,
+   "eta": -0.8608,
+   "s": 0.2972,
+   "s_low": 0.0427,
+   "s_high": 0.8005,
+   "man": 0.1217,
+   "man_low": 0.0084,
+   "man_high": 0.6663,
+   "unsure": 0.3509,
+   "woman": 0.5274,
+   "woman_low": 0.0654,
+   "woman_high": 0.923,
+   "word": "listeners would split",
+   "in_tenths": {
+    "man": [
+     0,
+     7
+    ],
+    "woman": [
+     0,
+     10
+    ]
+   }
+  }
+ ]
+}

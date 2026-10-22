@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**Syrinx** is a free, open-source voice training toolkit that runs entirely in the browser. No downloads, no accounts, no servers — just open the URL and start training. It provides real-time visual feedback on pitch, resonance, vocal weight, and intonation using your device's microphone, with long-term progress tracking stored locally on your device.
+**Syrinx** is a free, open-source voice training toolkit that runs entirely in the browser. No downloads, no accounts, no servers — just open the URL and start training. It provides real-time visual feedback on pitch, resonance and intonation using your device's microphone, with long-term progress tracking stored locally on your device.
 
 The name comes from the vocal organ of songbirds (the most resonant voices in nature) and a Greek myth about transformation.
 
@@ -12,7 +12,7 @@ The name comes from the vocal organ of songbirds (the most resonant voices in na
 
 Voice training is one of the most impactful and most under-tooled aspects of transition. The existing landscape is fragmented:
 
-- **Pitch-only apps** (Voice Tools, Voice Pitch Analyzer): Only track F0, which is actually the *least* important metric for voice feminization. They give users a false sense that pitch is all that matters.
+- **Pitch-only apps** (Voice Tools, Voice Pitch Analyzer): Only track F0, which on its own is one of the weaker cues to how a voice is perceived — in either direction. They give users a false sense that pitch is all that matters.
 - **Praat**: The gold standard for acoustic analysis, used by speech pathologists and linguists. Incredibly powerful, but its interface is hostile to anyone without a phonetics PhD.
 - **Commercial voice coaching apps**: Subscription-based, closed-source, and generally shallow in their analysis.
 - **Nothing** that combines real-time multi-metric feedback, guided exercises, and long-term progress tracking in a free, private, zero-install tool.
@@ -21,10 +21,14 @@ Syrinx fills this gap. It runs entirely on your device — your voice data never
 
 ### Target Users
 
-- Transgender women and transfeminine people doing voice training (primary)
-- Transmasculine people tracking vocal changes on testosterone
+Voice training in any direction — no direction is assumed (the app asks
+what the user is trying to sound like on every load: more feminine, more
+masculine, androgynous / in between, or just exploring;
+`src/utils/trainingDirection.js`):
+
+- Trans and gender-diverse people training toward a more feminine, more masculine or more androgynous voice (including tracking vocal changes on testosterone)
 - Voice coaches who want clients to have a free practice tool between sessions
-- Anyone doing intentional vocal modification work
+- Anyone doing intentional vocal modification work (singers, speakers)
 
 ### Design Principles
 
@@ -51,7 +55,7 @@ Syrinx fills this gap. It runs entirely on your device — your voice data never
 
 7. **Progress charts**: Plot key metrics over weeks/months — pitch median, F2 average, % time in target, spectral tilt trend
 8. **Baseline capture**: A guided "record your starting point" flow. Progress is measured relative to where *you* started, not population averages.
-9. **Goal configuration**: Personal target ranges for all metrics, with presets for common goals ("voice feminization," "androgynous," "voice masculinization")
+9. **Goal configuration**: Personal target ranges for all metrics, with presets for common goals ("more feminine," "androgynous / in between," "more masculine") — the training-direction question (2026-10-07) is the first step: it sets the pitch target (and the resonance cue's outline); there is no clarity or weight target — CPP measures clarity, not weight, and the clarity row is hidden since 2026-10-11 (`measurements/clarity-cue-2026-10-08.md`); a resonance target waits for a readout that can carry one. **Historical (superseded 2026-10-11):** it also set a lighter / heavier vocal-weight zone for more feminine / more masculine (shown with a note that the reading moves with pitch)
 10. **Data export/import**: Export all data as JSON for backup or migration between devices. Import to restore.
 
 ### v0.3 — Training Modules
@@ -108,6 +112,19 @@ Everything runs in the browser. There is no backend.
 │  └──────────────┘                                            │
 └──────────────────────────────────────────────────────────────┘
 ```
+
+**As built (2026-10-07).** The capture source (AudioWorklet or a main-thread
+MediaStreamTrackProcessor) broadcasts ~25 ms chunks to several workers, each on
+its own thread: the **DSP worker** (formants, spectral tilt, HNR, intensity;
+CPP only on request — off in production since 2026-10-11, when the clarity row
+was hidden: `measurements/vocal-weight-pipeline-retire-2026-10-11.md`), the **pitch worker** (Boersma autocorrelation + path tracker), the
+**resonance worker** (the Dashboard's spectral-warp resonance cue — it reuses
+the pitch worker's posted decisions, relayed by the main thread, instead of
+running its own pitch tracker), the **gender worker** (voice classifier, only
+while the opt-in "Likely heard as" panel is on) and, once its tab is opened,
+the resonance-lab worker. The main-thread hook (`useAudioPipeline`) merges
+their outputs and relays each pitch decision to the DSP, resonance and (when
+running) gender workers. CLAUDE.md holds the current details.
 
 ### Key Architectural Decision: Web Worker for DSP
 
@@ -557,23 +574,57 @@ These are population averages and should be configurable per user.
 - **Scrolling pitch trace**: F0 over time, scrolling left to right, Y-axis spanning configured range
 - **Target band**: Shaded horizontal region for the user's target pitch range
 - **Instantaneous readout**: Current pitch in Hz + nearest musical note (e.g., "196 Hz — G3")
-- **Color coding**: Green in target, yellow close, red far off
+- **Color coding**: Green in target, yellow close, red far off (as built: green on target / red off target / neutral beyond the band in the direction of travel, judged on the running pitch level — `src/utils/pitchLevel.js` — not single frames; neutral with no direction)
 - **Pitch histogram** sidebar: Distribution of pitch values for the current session
 - **Pitch statistics**: Running min, max, mean, standard deviation
 
 ### View 3: Combined Dashboard (Default View)
 
-The default practice mode — everything at a glance:
+The default practice mode — everything at a glance. **As built (Design A
+"cue strip", 2026-10-07):**
 
-- **Top**: Compact resonance plot + compact pitch trace side by side (stacked on mobile)
-- **Middle**: Key live stats — current F0, F2, spectral tilt, HNR
-- **Bottom**: Session controls (start/stop, timer, notes) + quick metrics (time in target, session duration)
+- **Pitch trace** (15 s) on top.
+- **Cue strip** directly under it: two graded readouts — **Pitch** (log
+  Hz) and **Resonance · approx.** (spectral warp) — each on one neutral axis
+  with the typically-men end on the left, bands for typical adult men and
+  women (resonance bands are where single readings of typical speakers
+  fall), a dot for the current value and a trail (~2 s; ~30 s for resonance,
+  whose header says how far you have moved from where you started). **No
+  clarity or weight row (user decision 2026-10-11)** until a measure passes
+  its test: the third row — "Vocal weight", renamed "Clarity · approx." on
+  2026-10-11 because CPP measures periodicity (clear ↔ breathy), not weight —
+  is hidden, since the pre-registered test of pitch- and loudness-corrected
+  clarity measures failed (`measurements/clarity-cue-2026-10-08.md`). The
+  training direction appears as the same soft highlight on pitch and
+  resonance; only pitch is judged on / off target
+  (colour, a hollow dot and "↑ higher" / "↓ lower" — never colour alone). The
+  pitch level and steadiness sit in the pitch row, HNR in the strip's caption.
+- **"Likely heard as · Experimental"** — opt-in, off by default: listener
+  shares on one man ↔ woman split bar in tenths (deep indigo from the left =
+  the low end of "would say man", light indigo from the right = the low end
+  of "would say woman", striped between = could go either way; under it one
+  sentence for the side more listeners would choose, the panel's best guess
+  rounded to a whole tenth, e.g. "About 9 in 10 listeners would say man"
+  ("Nearly all …" at 10 in 10); "Could go either way —
+  listeners would be split" when the range covers most of it; the unsure /
+  neither share at the best guess as a text line), never
+  a verdict, with its known weaknesses stated (including that it was not
+  tested on trans women or nonbinary speakers); hidden outside the range it
+  was fitted on. A live note directly under the axis warns when the pitch has
+  moved a lot more than the resonance since the session's start ("this guess
+  can be far off, in either direction, when only pitch changes";
+  pre-registered rule, `measurements/heard-as-pitch-only-warning-2026-10-07.md`);
+  it is the only note while it shows and stays through brief pauses.
+- **Session row**: Save, timer, notes.
 
-On **mobile** this becomes a vertically scrolling layout:
-1. Pitch trace (most glanceable metric, gets top billing on small screens)
-2. Key stats row
-3. Resonance plot
-4. Session controls
+On **phones** these stack in that order (trace and strip fit the first screen
+at 360 × 690 and up); held sideways, trace and strip sit side by side; on
+desktop the trace fills the left and a column of 38 % of the width
+(420–540 px) holds the strip — drawn larger, for reading at arm's length —
+and the panel.
+
+**Historical (superseded 2026-10-07):** a resonance plot / Perceived-voice
+meter beside the trace and a stats row (F0, F2, vocal-weight gauge, HNR).
 
 ### View 4: Intonation Contour (v0.3)
 
@@ -947,18 +998,29 @@ Push to `main` → GitHub Actions builds → deploys to Pages. That's it.
 
 ---
 
-## Reference: Voice Feminization Metrics
+## Reference: Voice Gender Perception Metrics
 
-| Metric | Typical Male Range | Typical Female Range | Training Goal | Importance |
-|--------|-------------------|---------------------|---------------|------------|
-| **F2 (resonance)** | Varies by vowel | **~10-20% higher** | **Raise via vocal tract shaping** | **Highest** |
-| F1 | Varies by vowel | ~10-20% higher | Moderate shift | Moderate |
-| F0 (pitch) | 85–180 Hz | 165–255 Hz | Raise habitual pitch | Moderate — necessary but not sufficient |
-| Vocal weight (CPP-based correlate) | Lower CPP (heavier) | Higher CPP (lighter) | Lighten phonatory density | High — often undertrained. Per-user-baseline calibrated; published correlate of phonatory density (Aaen et al. 2025) rather than an absolute measurement. |
-| HNR | Higher (cleaner) | Similar or slightly lower | Maintain clarity | Low — mainly diagnostic |
-| Pitch variability (σ) | Lower (flatter) | Higher (more expressive) | Increase intonation range | Moderate |
+Population ranges, for orientation — not targets in themselves. The app's
+targets come from the user's training direction
+(`src/utils/trainingDirection.js`, sources in
+`measurements/training-direction-targets-2026-10-07.md`): today a pitch
+band per direction (plus the resonance cue's outline); no resonance target
+until that readout can carry one without misleading (per-frame F2 mostly
+tracks the vowel). **Historical (superseded 2026-10-11):** a lighter (more
+feminine) / heavier (more masculine) vocal-weight zone on the CPP reading —
+removed with the rename to Clarity (`measurements/clarity-cue-2026-10-08.md`).
 
-**Key insight**: Pitch gets all the attention, but resonance and vocal weight are what listeners primarily use to gender a voice. Syrinx treats voice feminization as the multi-dimensional problem it actually is.
+| Metric | Typical adult male | Typical adult female | Moving toward feminine | Moving toward masculine | Notes |
+|--------|-------------------|---------------------|------------------------|-------------------------|-------|
+| **F2 (resonance)** | Varies by vowel | **~10-20% higher, same vowel** | Raise (vocal tract shaping) | Lower | Strongest single cue listeners use |
+| F1 | Varies by vowel | ~10-20% higher | Raise | Lower | |
+| F0 (pitch) | ~85–155 Hz | ~165–255 Hz | Raise habitual pitch | Lower habitual pitch | Necessary but not sufficient; ~145–175 Hz is ambiguous, resonance decides |
+| Vocal weight | — | — | Lighten | Heavier | **No validated acoustic measure in Syrinx** (research only, 2026-10-08). CPP is **not** a weight correlate: it measures clarity (clear ↔ breathy) and read weight mostly backwards. **Historical (superseded 2026-10-11):** "Lower CPP (heavier) / Higher CPP (lighter), correlate of phonatory density (Aaen et al. 2025)" — a misread: Aaen et al. 2025 report *lower* CPP for the lighter, reduced-density conditions (`measurements/clarity-cue-2026-10-08.md`) |
+| Clarity (CPP) | — | — | — | — | Clear ↔ breathy (periodicity); also rises with loudness and pitch and varies with vowel. **Not shown** since 2026-10-11 (user decision; the clarity study failed). **Historical (superseded 2026-10-11):** shown self-relative with no target in any direction |
+| HNR | Higher (cleaner) | Similar or slightly lower | — | — | Mainly diagnostic |
+| Pitch variability (σ) | Lower (flatter) | Higher (more expressive) | More intonation range | Flatter | |
+
+**Key insight**: Pitch gets all the attention, but resonance and — per voice pedagogy — vocal weight (not measured by Syrinx yet) are what listeners primarily use to gender a voice. Syrinx treats changing how a voice is perceived — in any direction — as the multi-dimensional problem it actually is.
 
 ---
 

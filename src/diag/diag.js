@@ -110,13 +110,6 @@ const ML_INFERENCES_CAP = 600;
 // ~40 B per entry ≈ 60 KB.
 const PITCH_INFERENCES_CAP = 1500;
 
-// Vocal-weight aggregate ring. Aggregator emits at 4 Hz during voiced
-// speech; 600 entries = ~2.5 min of coverage. Each entry captures the
-// per-emit aggregate plus baseline state at that moment. Useful for
-// post-hoc diagnosis of calibration timing and gauge responsiveness.
-// ~50 B per entry ≈ 30 KB.
-const VOCAL_WEIGHT_CAP = 600;
-
 // Long-history low-res buffer: one entry per second, 600 entries = 10 min.
 // Each entry is sampled from the most recent high-res frame plus
 // audio-context introspection (state, baseLatency, outputLatency,
@@ -126,6 +119,9 @@ const VOCAL_WEIGHT_CAP = 600;
 // from the captured JSON without scrolling out of context.
 // 600 × ~120 B ≈ 72 KB.
 const LOW_RES_CAP = 600;
+
+// Pitch-trace draws (~40-150 Hz) and first-paint latencies: >= 26 s at 150 Hz.
+const PAINT_CAP = 4000;
 
 class RingBuffer {
   constructor(cap) {
@@ -204,6 +200,12 @@ function _createState() {
     //   tEpochMs,    // performance.timeOrigin + now() at score postMessage
     //   inferMs,     // wall-clock duration of classifier(...) — the only
     //                // load-bearing number for the 150 ms hop budget
+    //   vadMs,       // speech detector run time since the previous
+    //                // POSTED score: 0 while the detector is not live
+    //                // (loading or failed); the first score, and the
+    //                // first after a pause, also carry detector time from
+    //                // ticks that were not scored — summaries keep only
+    //                // back-to-back hops (mobile-diag-capture.js)
     //   score,       // 0..100 perceived-femininity score (post-EMA)
     //   confidence,  // 0..1
     // }
@@ -217,41 +219,38 @@ function _createState() {
     //   pitch,       // Hz or null
     //   confidence,  // 0..1
     //   voiced,      // confidence >= threshold (0.5)
+    //   vadP, vadVoice, vadMs  // voice detector (voice gate): smoothed score,
+    //                // decision and worker time (fbank + model) of the hop
     // }
     pitchInferences: new RingBuffer(PITCH_INFERENCES_CAP),
-    // Vocal-weight aggregate emits ring (when diag is on). Each entry:
-    // {
-    //   tEpochMs,        // performance.timeOrigin + now() at emit
-    //   aggregateTime,   // aggregator's internal time field (DSP absoluteTime
-    //                    // of the triggering push)
-    //   cpp,             // aggregate CPP value in dB
-    //   voicedFrames,    // number of voiced+valid-CPP frames in the 1 s window
-    //   baselineProgress,    // [0..1] fraction toward baseline lock at emit time
-    //   baselineSampleCount, // accumulated baseline samples
-    //   baselineSampleTarget,// target sample count
-    //   baselineLocked,  // whether baseline μ/σ is frozen
-    //   baselineMu,      // locked μ (null if not locked)
-    //   baselineSigma,   // locked σ (null if not locked)
-    //   sigmaDelta,      // (cpp - μ) / σ, null if not locked
-    // }
-    vocalWeightEmits: new RingBuffer(VOCAL_WEIGHT_CAP),
-    // Cumulative tally of frames pushed to the vocal-weight aggregator
-    // and how many of those were voiced. Used to surface "voiced-frame
-    // fraction" — if it's surprisingly low, the silence gate is firing
-    // more than expected during real speech. Reset by useAudioPipeline's
-    // start().
-    vocalWeightFrames: { pushed: 0, voiced: 0 },
+    // Pitch-trace paint latency + redraw cadence
+    // (measurements/main-thread-cpu-2026-10-08.md): capture epoch per DSP
+    // frame keyed by its rounded absoluteTime (the trace point's time), and
+    // per trace draw the draw-end epoch, the newest voiced point first shown
+    // by it (capture -> painted) and the scroll step since the previous draw.
+    _captureByPointTime: new Map(),
+    paintLatency: new RingBuffer(PAINT_CAP),
+    traceDraws: new RingBuffer(PAINT_CAP),
     // Which model+device the gender worker ended up running. Tracks
     // the modelId reported by the worker on its "ready" status and
     // the ORT backend that succeeded ("webgpu" or "wasm"). Useful
     // for post-hoc snapshot inspection — answers "did the worker
     // actually load the expected model on this device?" and
     // "was WebGPU available for it?".
-    mlModel: { modelId: null, device: null },
+    // speechDetector: the utterance gate's speech detector (Silero VAD,
+    // src/ml/speech-detector.js) — null until the worker reports,
+    // then "ready" or "error" (speechDetectorError holds the message;
+    // speechDetectorSource: "cache" = Cache Storage, "network" = fetched).
+    mlModel: { modelId: null, device: null, speechDetector: null, speechDetectorError: null, speechDetectorSource: null },
     // Which pitch model + device the pitch worker loaded. Mirror of
     // mlModel for the pitch-worker — currently always SwiftF0 ONNX on
     // wasm, but recorded for snapshot reproducibility.
     pitchModel: { modelUrl: null, device: null, threshold: null },
+    // Voice gate (FireRedVAD): the pitch worker's
+    // FireRedVAD status (loading | ready | unavailable | error | slow), the
+    // "Hide pitch when no voice is heard" setting, and the latest hop's
+    // smoothed score p, decision (voice) and whether the display is hidden.
+    voiceGate: { status: null, message: null, enabled: null, p: null, voice: null, hiding: null },
     // Long-history low-res ring. One entry per second, ≤ LOW_RES_CAP
     // entries (10 min). Populated by pushFrame (which dedups to ≤ 1
     // entry/sec) and supplemented by setAudioCtxSample for periodic
@@ -324,6 +323,11 @@ export function getStatus() {
 export function pushFrame(frame) {
   if (!diagState) return;
   diagState.frames.push(frame);
+  if (typeof frame.capturedEpochMs === "number" && typeof frame.tEpochMs === "number") {
+    const m = diagState._captureByPointTime;
+    m.set(Math.round(frame.tEpochMs), frame.capturedEpochMs);
+    if (m.size > 400) m.delete(m.keys().next().value);
+  }
   if (typeof document !== "undefined" && document.visibilityState === "hidden") {
     diagState.framesWhileHidden++;
   }
@@ -420,35 +424,6 @@ export function pushPitchInference(entry) {
   diagState.pitchInferences.push(entry);
 }
 
-// Called by useAudioPipeline.js's handleAnalysisResult on each DSP
-// frame, recording whether the frame was pushed to the aggregator
-// and whether it was tagged voiced. The cumulative tally surfaces
-// the voiced-frame fraction, which calibration-time investigations
-// need to distinguish "user pauses" from "silence gate too strict".
-export function noteVocalWeightFrame(voiced) {
-  if (!diagState) return;
-  diagState.vocalWeightFrames.pushed++;
-  if (voiced) diagState.vocalWeightFrames.voiced++;
-}
-
-// Called when the vocal-weight aggregator emits a fresh aggregate
-// (i.e., a unique emit time, not a throttle-cached repeat). Records
-// the aggregate value plus the baseline tracker's state at that
-// moment so post-hoc snapshot inspection can answer "why is
-// calibration slow / fast" without browser-side console.log.
-export function pushVocalWeightEmit(entry) {
-  if (!diagState) return;
-  diagState.vocalWeightEmits.push(entry);
-}
-
-// Reset cumulative counters at session start. Aggregate ring is left
-// alone — the ring is naturally bounded by RING_CAP and will scroll
-// out the previous session's entries as new ones arrive.
-export function resetVocalWeightCounters() {
-  if (!diagState) return;
-  diagState.vocalWeightFrames = { pushed: 0, voiced: 0 };
-}
-
 export function getPitchInferences() {
   return diagState ? diagState.pitchInferences.toArray() : [];
 }
@@ -458,6 +433,32 @@ export function getPitchInferences() {
 export function setPitchModel(info) {
   if (!diagState) return;
   diagState.pitchModel = { ...diagState.pitchModel, ...info };
+}
+
+// Voice gate (useAudioPipeline.js): merges status / setting / the
+// latest decision. No-op without diag.
+export function setVoiceGate(info) {
+  if (!diagState) return;
+  diagState.voiceGate = { ...diagState.voiceGate, ...info };
+}
+
+// Resonance cue worker (src/resonance/resonance-worker.js, diag mode): its
+// latest perf block ({ msPerAudioS (EMA), meanMsPerAudioS, audioS, bins… })
+// and status, plus whether the lazy gender worker (the opt-in "Likely heard
+// as" panel) currently exists — the smoke harness reads these through
+// window.__syrinxDiag.
+export function setResonancePerf(perf) {
+  if (!diagState) return;
+  diagState.resonancePerf = perf;
+}
+export function setResonanceStatus(s) {
+  if (!diagState) return;
+  diagState.resonanceStatus = s;
+}
+export function setMlWorkerAlive(alive) {
+  if (!diagState) return;
+  diagState.mlWorkerAlive = alive;
+  if (alive) diagState.mlWorkerStarts = (diagState.mlWorkerStarts ?? 0) + 1;
 }
 
 export function pushTap(tap) {
@@ -572,9 +573,30 @@ export function snapshot() {
     mlModel: { ...diagState.mlModel },
     pitchInferences: diagState.pitchInferences.toArray(),
     pitchModel: { ...diagState.pitchModel },
-    vocalWeightEmits: diagState.vocalWeightEmits.toArray(),
-    vocalWeightFrames: { ...diagState.vocalWeightFrames },
+    voiceGate: { ...diagState.voiceGate },
+    resonancePerf: diagState.resonancePerf ?? null,
+    resonanceStatus: diagState.resonanceStatus ?? null,
+    mlWorkerAlive: diagState.mlWorkerAlive ?? false,
+    mlWorkerStarts: diagState.mlWorkerStarts ?? 0,
+    paintLatency: diagState.paintLatency.toArray(),
+    traceDraws: diagState.traceDraws.toArray(),
   };
+}
+
+// One pitch-trace draw (PitchTrace, diag only): drawEndEpochMs, the time of
+// the newest voiced point this draw shows for the first time (or null), the
+// scroll step in CSS px since the previous draw, and from the redraw
+// scheduler (null without it) the frame timestamp its gate compared, as an
+// epoch (`ft`: frame-timestamp gaps carry no callback jitter or draw-time
+// spread, measurements/phone-cpu-2026-10-12.md §7.3 amendment), and the frame
+// callbacks since the previous draw that drew nothing (`sk`; draws + skips
+// per second = the loop's frame rate while it runs).
+export function noteTraceDraw(drawEndEpochMs, newPointTime, stepCssPx, frameEpochMs = null, skippedFrames = null) {
+  if (!diagState) return;
+  diagState.traceDraws.push({ t: drawEndEpochMs, step: stepCssPx, ft: frameEpochMs, sk: skippedFrames });
+  if (newPointTime == null) return;
+  const cap = diagState._captureByPointTime.get(newPointTime);
+  if (typeof cap === "number") diagState.paintLatency.push({ t: newPointTime, ms: drawEndEpochMs - cap });
 }
 
 // Trigger a browser download of the snapshot as a JSON file.

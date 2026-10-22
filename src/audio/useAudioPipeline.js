@@ -9,6 +9,8 @@ import {
   PITCH_TRACE_SECONDS,
   RESONANCE_TRACE_SECONDS,
 } from "../utils/constants";
+import { createHeardAsAggregator } from "../ml/heard-as";
+import { createPitchOnlyWarning } from "../ml/pitch-only-warning";
 import {
   pushAndMedianPitch,
   PITCH_SMOOTH_LEN,
@@ -18,9 +20,8 @@ import {
 import { createGateState, evaluateFrameGate } from "./pitchGate";
 import { createPaintGate, EXCURSION_SEMI } from "./pitchPaintGate";
 import { createSteadinessTracker } from "./steadiness";
+import { pitchLevelAt } from "../utils/pitchLevel";
 import { createCaptureSource } from "./captureSource";
-import { VocalWeightAggregator } from "./vocal-weight-aggregator";
-import { VocalWeightBaseline } from "./vocal-weight-baseline";
 import {
   DIAG_ENABLED,
   DIAG_SR_OVERRIDE,
@@ -39,11 +40,14 @@ import {
   setMlModel,
   pushPitchInference,
   setPitchModel,
-  noteVocalWeightFrame,
-  pushVocalWeightEmit,
-  resetVocalWeightCounters,
+  setVoiceGate,
+  setResonancePerf,
+  setResonanceStatus,
+  setMlWorkerAlive,
 } from "../diag/diag";
 import { isResonanceLabRequested, onResonanceLabRequested } from "../resonance-lab/labRequest";
+import { setVoicePreviewCapture, voicePreviewPitchTap } from "../voice-preview/bridge";
+import { FIRERED_MODEL, fireredModelSource } from "../dsp/firered-vad";
 
 // Silence-gate thresholds (SILENCE_THRESHOLD_DB, CONFIDENCE_THRESHOLD,
 // SILENCE_DEBOUNCE_FRAMES), pitch staleness, and the bounded pitch-hold
@@ -76,6 +80,61 @@ const VOICED_FALL_FRAMES = 16;
 // Steadiness readout when there is no reading (see steadiness.js).
 const NO_STEADINESS = { value: null, held: false };
 
+// Voice gate (FireRedVAD; noise-detector try-out 2026-10-20, merged into
+// cue-strip 2026-10-21; measurements/noise-detector-tryout-2026-10-20.md).
+// The pitch worker runs FireRedVAD on its 16 kHz stream and tags each pitch
+// message with `vad: { p, voice }` (src/dsp/firered-vad.js). While the
+// setting is on and the detector says "no voice":
+//   - the pitch DISPLAY shows nothing: the trace gets a gap instead of its
+//     point, the Hz / note readout and the steadiness readout show "—", and
+//     the pitch-display voiced flags (pitchVoiced / pitchHolding: the trace
+//     header, the cue strip's pitch AND resonance rows, the listening status)
+//     read as unvoiced — so noise the pitch chain voices leaves the resonance
+//     row idle, not "keep talking…" (cueStripModel.js cueRowStates; user
+//     decision 2026-10-21, measurements/voice-gate-resonance-row-2026-10-21.md). A mask on the unchanged chain — the smoothing, paint gate,
+//     silence gate and hold run exactly as without it, which is the veto the
+//     2026-10-20 screen scored ("a painted hop the detector calls no-voice is
+//     vetoed");
+//   - the HNR readout shows "—" (display only: the DSP worker computes HNR as
+//     before and recorded frames keep it; user decision 2026-10-21), except in
+//     the 5 s silence hold, which keeps the last HNR the readout SHOWED
+//     (lastVoicedRef shownHnr — never a value the gate hid) like the dim
+//     pitch readout — "—" there only when the gate hid painted pitch after
+//     it (gateHidPaintRef; user decision 2026-10-21);
+//   - the resonance worker's pitch hint says unvoiced (pitch / contextTime
+//     unchanged), so noise the pitch worker voices does not become resonance
+//     readings (the measured variant of
+//     measurements/noise-detector-tryout-resonance-2026-10-21.md: 73 % less
+//     noise-only position time, speech unchanged; built at 73 % against an
+//     80 % bar by user decision 2026-10-21).
+// Everything else keeps the raw values: the DSP / ML pitch hints, the
+// "Likely heard as" panel, the pitch-only warning, formants, the raw voiced /
+// holding flags in the state, and the recorded voiced / f0 / hnr that
+// session stats use. Without a decision (detector loading / unavailable /
+// off / switched off as too slow) nothing is gated. Recorded frames carry
+// the decision in `voiceGate` ("voice" | "hidden" | "novoice", absent without
+// a decision) and `painted` is what the live trace drew.
+// Where the model files come from (firered-vad.js fireredModelSource: the
+// Hugging Face mirror at its pinned commit; the app's own models/firered/
+// only for offline development with mirrorCommit null); null
+// where there is no page location, e.g. the Node harnesses that drive this
+// hook: no detector there.
+function voiceModelSource() {
+  let appBaseUrl;
+  try {
+    appBaseUrl = new URL(`${import.meta.env.BASE_URL}${FIRERED_MODEL.dir}`, globalThis.location?.href).href;
+  } catch {
+    return null;
+  }
+  return fireredModelSource({ appBaseUrl });
+}
+
+function voiceGateCode(vadVoice, enabled) {
+  if (vadVoice === true) return "voice";
+  if (vadVoice === false) return enabled ? "hidden" : "novoice";
+  return undefined;
+}
+
 export function useAudioPipeline() {
   const [state, setState] = useState({
     status: "idle",
@@ -83,6 +142,10 @@ export function useAudioPipeline() {
     voiced: false,
     holding: false,
     pitch: null,
+    // Pitch LEVEL the training-direction target is judged on
+    // (utils/pitchLevel.js: median of the last 1.5 s of painted pitch) —
+    // what colours the F0 readouts; null when nothing is shown.
+    pitchLevel: null,
     intensity: null,
     noteName: null,
     // Pitch steadiness (steadiness.js): SD in semitones of the posted
@@ -95,28 +158,26 @@ export function useAudioPipeline() {
     formants: { f1: null, f2: null, f3: null },
     spectralTilt: null,
     hnr: null,
-    // Vocal-weight metric (CPP-aggregate, per-user-baseline-normalized).
-    // - vocalWeight.cpp: latest 1-s aggregate CPP value in dB (raw).
-    // - vocalWeight.position: gauge position in [0, 1]; null while
-    //   warming up (insufficient voiced material) or while baseline
-    //   is still calibrating.
-    // - vocalWeight.sigmaDelta: σ-distance from baseline mean
-    //   (positive = lighter, negative = heavier).
-    // - vocalWeight.baselineProgress: 0-1 fraction of the first-30-s
-    //   baseline window that has been filled by voiced speech.
-    // - vocalWeight.baselineReady: true once baseline μ/σ are locked.
-    vocalWeight: {
-      cpp: null,
-      position: null,
-      sigmaDelta: null,
-      baselineProgress: 0,
-      baselineReady: false,
-    },
-    genderScore: null,        // 0-100 from ML worker, null until first inference
-    genderConfidence: null,
-    modelStatus: "idle",       // idle | loading | ready | error
+    // No `vocalWeight` (CPP clarity) slice since 2026-10-11: its only reader,
+    // the cue strip's Clarity row, is hidden and the CPP pipeline is retired
+    // (measurements/vocal-weight-pipeline-retire-2026-10-11.md).
+    // Gender worker (only while the opt-in "Likely heard as" panel is on —
+    // see setHeardAsEnabled): idle (not running) | loading | ready | error.
+    modelStatus: "idle",
     modelError: null,
     modelProgress: null,       // { loaded, total, file } during download
+    // Resonance cue worker (src/resonance/resonance-worker.js):
+    // idle | loading | ready | error | overloaded (a back-off pause). Its readings are in
+    // resonanceRef (read by the cue strip's 4 Hz tick).
+    resonanceStatus: "idle",
+    // Voice gate: the pitch display's own voiced flags (= voiced /
+    // holding except while the gate hides the pitch), and the detector's
+    // status: idle (never started) | loading | ready | unavailable | error | slow.
+    // Kept after stop() so Settings can still say why the gate was off.
+    pitchVoiced: false,
+    pitchHolding: false,
+    voiceGateStatus: "idle",
+    voiceGateMessage: null,
   });
 
   // Throttle setState to reduce React renders on mobile.
@@ -129,7 +190,38 @@ export function useAudioPipeline() {
   const captureSrcRef = useRef(null);        // unified handle from captureSource factory
   const workerRef = useRef(null);
   const mlWorkerRef = useRef(null);
+  const mlPortRef = useRef(null); // its capture port (disconnected when switched off)
   const pitchWorkerRef = useRef(null);
+  // Dashboard resonance cue (src/resonance/resonance-worker.js, always on
+  // while listening) and its latest posted state { u, raw, n, fill, voicedS,
+  // clamp, verdict, startU, framesDropped } (null until the first one).
+  const resonanceWorkerRef = useRef(null);
+  const resonanceRef = useRef(null);
+  // Experimental "Likely heard as" panel (opt-in, off by default): whether it
+  // is on (the gender worker runs only then), and its aggregator
+  // (src/ml/heard-as.js) fed by the gender worker's scored windows and the
+  // posted pitch frames, on the audio clock.
+  const heardAsEnabledRef = useRef(false);
+  const heardAsRef = useRef(null);
+  if (heardAsRef.current === null) heardAsRef.current = createHeardAsAggregator();
+  // The panel's pitch-only-change warning (src/ml/pitch-only-warning.js):
+  // fed every posted pitch frame and every resonance state message from the
+  // start of listening whether or not the panel is on (its pitch reference
+  // is the session's start, and its late-switch-on fallback builds its
+  // quiet-pitch history from these frames in the background); the panel
+  // calls update() on its 2 s cadence with the share it draws and this
+  // hook's audio clock (rule A40+KP8-3+DS10 since 2026-10-12, §8.6; KS-Q5
+  // for a panel switched on after the cue's start window since 2026-10-13,
+  // §8.9). The module keeps a bounded number of frames (at most ~7,500,
+  // ~320 once its reference is final), however long the panel stays off.
+  // measurements/heard-as-pitch-only-warning-2026-10-07.md
+  const pitchOnlyRef = useRef(null);
+  if (pitchOnlyRef.current === null) pitchOnlyRef.current = createPitchOnlyWarning();
+  // Newest audio-clock time (ms of capture contextTime) the hook has seen —
+  // the panel's "now".
+  const audioClockRef = useRef(null);
+  // Starts the gender worker on the running capture source (set in start()).
+  const startMlWorkerRef = useRef(null);
   // Experimental resonance lab: handle returned by the dynamically imported
   // labPipeline; stays null until the user opens the lab tab.
   const labRef = useRef(null);
@@ -148,6 +240,12 @@ export function useAudioPipeline() {
     voiced: false,
     ts: 0,
   });
+  // Voice gate: the setting (App owns it; on by default) — see voiceGateCode
+  // above.
+  const voiceGateEnabledRef = useRef(true);
+  // Diag only: what the last DSP frame's pitch display did — painted (the
+  // chain's decision), shown (after the voice gate's mask), hidden (masked).
+  const lastDisplayRef = useRef({ painted: false, shown: false, hidden: false });
   // Steadiness tracker (steadiness.js) — fed every pitch-worker message
   // (posted values, voiced or not) by handlePitchMessage; read on every
   // DSP frame by handleAnalysisResult (published on the throttled state
@@ -157,23 +255,15 @@ export function useAudioPipeline() {
   // cleared in stop(). Diag-mode-only; the ref stays null in production.
   const ctxSamplerRef = useRef(null);
 
-  // Gender-score history for the trace canvas. Each entry:
-  // { time: <ms epoch>, score: 0-100, confidence: 0-1, voiced: bool }
-  // Trimmed to the last RESONANCE_TRACE_SECONDS. The `voiced` field
-  // captures the DSP voicedness gate's state at the moment the ML score
-  // was emitted — so the history strip can filter out dots produced
-  // during DSP-detected non-voice (ambient noise, breath, etc.). Without
-  // this, the strip's 6 s retention overlaps the 5 s silence-hold,
-  // producing a 1 s window of stale colored dots after the bar/indicator
-  // have blanked. (Codex finding on PR #70.)
-  const genderTraceRef = useRef([]);
-
-  // Mirror of the latest DSP gate state, updated each analysis frame.
-  // The mlWorker.onmessage handler runs on a different cadence than DSP
-  // (ML 6.7 Hz, DSP ~40 Hz) and is a closure that doesn't see React
-  // state updates in real time; the ref bridges them so each ML score
-  // can be tagged with the DSP gate's current verdict.
+  // Mirror of the latest DSP gate state, updated each analysis frame
+  // (exposed for canvas readers; `voiced` = audio present).
   const dspGateRef = useRef({ voiced: false, holding: false });
+
+  // Latest voice state from the gender worker ({ state, ts }; state
+  // listening | updating | scoring | pause | sustained — see
+  // ml/utterance-gate.js). The "Likely heard as" panel hides on
+  // "sustained" (held vowel / note).
+  const genderStateRef = useRef(null);
 
   // Smoothing buffers
   const pitchSmoothRef = useRef([]);
@@ -185,24 +275,6 @@ export function useAudioPipeline() {
   const f2SmoothRef = useRef([]);
   const f3SmoothRef = useRef([]);
 
-  // Vocal-weight (CPP) aggregation + per-user baseline. The aggregator
-  // owns the 1-s window + 250 ms emit cadence + hard-reset rule
-  // (see src/audio/vocal-weight-aggregator.js); the baseline owns the
-  // first-30-s μ/σ derivation (see vocal-weight-baseline.js). Both are
-  // re-instantiated on each start() so a stop/start cycle gets a fresh
-  // baseline.
-  const cppAggregatorRef = useRef(null);
-  const cppBaselineRef = useRef(null);
-  // Latest CPP-aggregate emit; used by the throttled state update so
-  // we don't re-emit gauge state on every DSP frame.
-  const lastCppAggregateRef = useRef({ time: -1 });
-  // Last aggregate time pushed into the diag vocal-weight ring. Tracked
-  // separately from lastCppAggregateRef, which only advances when the
-  // aggregate is CONSUMED by the baseline (fresh AND pitched) — keying
-  // the diag push off that ref made an aggregate that emitted on an
-  // unpitched frame stay "fresh" forever, flooding the diag ring with
-  // the identical emit at frame rate for the rest of the silence.
-  const lastDiagVwEmitRef = useRef(-1);
 
   // Silence gating + pitch staleness/hold (see pitchGate.js)
   const silenceStartRef = useRef(null);
@@ -226,17 +298,44 @@ export function useAudioPipeline() {
   // switch, is the OTHER register (the "readout an octave low" report).
   // Cleared by the next painted frame.
   const heldReadoutStaleRef = useRef(false);
+  // Voice gate: set when the gate hides a frame the chain painted,
+  // cleared by the next frame it shows. The 5 s silence hold below shows the
+  // last shown pitch dimmed, as without the gate, unless this is set: then
+  // the chain painted something after that value which the gate hid (a noise
+  // line, or a note the detector did not hear as voice), the held value is
+  // older than what the chain last drew, and the readout shows "—".
+  const gateHidPaintRef = useRef(false);
   const lastVoicedRef = useRef({
     pitch: null,
+    pitchLevel: null,
     noteName: null,
     formants: { f1: null, f2: null, f3: null },
     spectralTilt: null,
     hnr: null,
+    // The last HNR the readout SHOWED (the voice gate leaves the measured
+    // hnr above updating on frames it hides): the 5 s silence hold shows
+    // this one, never a value the gate hid.
+    shownHnr: null,
   });
 
   // History buffers for canvas visualizations (read directly by rAF loops)
   const pitchTraceRef = useRef([]);
   const formantTrailRef = useRef([]);
+  // Append notification for the pitch trace: PitchTrace subscribes and
+  // notifyTrace() runs after each append / reset. PitchTrace's
+  // traceRedrawScheduler.js turns it into an animation-frame loop capped at
+  // ~60 Hz while points arrive, slowing to ~100 ms redraws once they stop
+  // (measurements/phone-cpu-2026-10-12.md; until then one redraw per
+  // appended point, main-thread pass 2026-10-08,
+  // measurements/main-thread-cpu-2026-10-08.md).
+  // (A ref, not a second useState: tools that drive this hook in Node read
+  // the hook's single state — scripts/session-oracle/lib/react-mock.mjs.)
+  const traceListenersRef = useRef(new Set());
+  const subscribeTrace = useCallback((fn) => {
+    traceListenersRef.current.add(fn);
+    return () => { traceListenersRef.current.delete(fn); };
+  }, []);
+  const notifyTrace = () => { for (const fn of traceListenersRef.current) fn(); };
 
   // Optional callback for session recording — called with every analysis frame
   const frameCallbackRef = useRef(null);
@@ -298,17 +397,8 @@ export function useAudioPipeline() {
     if (captureSrcRef.current || audioCtxRef.current) return;
     startingRef.current = true;
 
-    // Fresh CPP aggregator + baseline per session. Calibration is
-    // session-local — mic, room, time-of-day, and voice state may all
-    // differ between sessions; a 30-s re-calibration each session is
-    // cheaper than the UX complexity of cross-session persistence
-    // (which was implemented and then removed on 2026-05-12 in favor
-    // of this simpler zero-interaction model).
-    cppAggregatorRef.current = new VocalWeightAggregator();
-    cppBaselineRef.current = new VocalWeightBaseline();
-    lastCppAggregateRef.current = { time: -1 };
-    if (DIAG_ENABLED) resetVocalWeightCounters();
     steadinessRef.current = createSteadinessTracker();
+    pitchOnlyRef.current.reset();
 
     setState((s) => ({ ...s, status: "requesting", error: null }));
 
@@ -346,9 +436,10 @@ export function useAudioPipeline() {
 
       // Capture-source factory. Returns either an audiocontext-based or
       // mstp-based source depending on factory routing (see
-      // captureSource.js). Production default is "audiocontext"; the
-      // ?capture=mstp / ?capture=audiocontext diag flags override for
-      // measurement.
+      // captureSource.js). Production default is MSTP where supported,
+      // falling back to "audiocontext" on the same stream if MSTP fails at
+      // start; the ?capture=mstp / ?capture=audiocontext diag flags
+      // override for measurement (a forced mstp never falls back).
       //
       // latencyHint = "balanced" (NOT "interactive"). On Pixel-class
       // Android Chrome, "interactive" allocates a tight ~5 ms output
@@ -363,6 +454,13 @@ export function useAudioPipeline() {
         sampleRate: DIAG_SR_OVERRIDE,
         forceKind: DIAG_CAPTURE_KIND,
         onInitAck: (ack) => setCaptureStatus(ack),
+        // MSTP was feature-detected but failed at start; the session goes
+        // on via AudioContext. Recorded for the diag overlay / snapshot
+        // (audioInfo.captureFallback too) and the console for bug reports.
+        onFallback: (info) => {
+          console.warn(`[capture] MSTP failed at start (${info.message}); using AudioContext`);
+          pushError({ source: "capture", where: "mstp-fallback", message: info.message });
+        },
         onError: (err) => {
           pushError({ source: "capture", ...err });
           // Mid-stream capture failures (MSTP copyTo throw, MSTP
@@ -393,6 +491,32 @@ export function useAudioPipeline() {
       audioCtxRef.current = captureSrc.audioCtx; // null on mstp path
       const myGen = pipelineGenRef.current;
       const genAlive = () => pipelineGenRef.current === myGen;
+      // Worker "error" events (2026-10-19 review S-1). A worker whose script
+      // fails to load (e.g. its hashed file 404s after a deploy while the
+      // tab was open) or throws at top level fires "error" on the Worker
+      // object and never posts a message; without a handler the UI waited
+      // forever ("Loading voice model… 0 %", "starting…"). Errors from a
+      // stopped session or a replaced worker are ignored.
+      const onWorkerError = (w, isCurrent, onFail) => {
+        w.onerror = (ev) => {
+          if (!genAlive() || !isCurrent()) return;
+          onFail(ev?.message || "the worker script failed to load");
+        };
+      };
+      // The DSP and pitch workers drive the whole display: if one fails
+      // before it has posted anything, the session ends with an error (as a
+      // capture failure does). A later uncaught exception inside a running
+      // worker does not stop it (the worker keeps handling messages), so
+      // that is only recorded.
+      const failSession = (name, message) => {
+        pushError({ source: name, where: "load", message });
+        stopRef.current?.();
+        setState((s) => ({
+          ...s,
+          status: "error",
+          error: `Audio analysis failed to start (${name}: ${message}). Reload the page and try again.`,
+        }));
+      };
 
       // Diagnostic snapshot — captured once at start. Path-specific
       // fields (baseLatency / outputLatency / ctxCreatedAtEpochMs)
@@ -423,6 +547,11 @@ export function useAudioPipeline() {
         { type: "module" },
       );
       workerRef.current = worker;
+      let dspHeard = false;
+      onWorkerError(worker, () => workerRef.current === worker, (message) => {
+        if (dspHeard) pushError({ source: "dsp-worker", where: "uncaught", message });
+        else failSession("dsp-worker", message);
+      });
 
       worker.postMessage({
         type: "init",
@@ -439,25 +568,102 @@ export function useAudioPipeline() {
         [dspPort],
       );
 
-      // ML inference worker. Hosts a Transformers.js pipeline that emits
-      // a perceived-gender score (0-100) on a rolling 2-sec audio window.
-      // Audio is forked from the same AudioWorklet via a second MessagePort.
-      const mlWorker = new Worker(
-        new URL("../ml/gender-worker.js", import.meta.url),
+      // Resonance cue worker (2026-10-07): the resonance lab's spectral
+      // warp in "frames" mode — it reuses the pitch worker's posted
+      // decisions (relayed in handlePitchMessage) instead of re-running the
+      // pitch chain. measurements/resonance-cue-production-path-2026-10-07.md
+      const resonanceWorker = new Worker(
+        new URL("../resonance/resonance-worker.js", import.meta.url),
         { type: "module" },
       );
-      mlWorkerRef.current = mlWorker;
-      mlWorker.postMessage({
+      resonanceWorkerRef.current = resonanceWorker;
+      // The cue is not essential: a resonance worker whose script fails to
+      // load shows "unavailable — reload the page" in its row (a newer
+      // deploy replaced its file; a reload fetches it) and the session goes on.
+      onWorkerError(resonanceWorker, () => resonanceWorkerRef.current === resonanceWorker, (message) => {
+        resonanceRef.current = null;
+        pitchOnlyRef.current.noteResonance(null);
+        setState((s) => ({ ...s, resonanceStatus: "reload" }));
+        if (DIAG_ENABLED) setResonanceStatus({ status: "error", message });
+        pushError({ source: "resonance-worker", where: "load", message });
+      });
+      resonanceWorker.onmessage = (e) => {
+        if (!genAlive()) return;
+        const msg = e.data;
+        if (!msg?.type) return;
+        if (msg.type === "state") {
+          resonanceRef.current = msg;
+          pitchOnlyRef.current.noteResonance(msg, audioClockRef.current);
+          if (DIAG_ENABLED && msg.perf) setResonancePerf(msg.perf);
+        } else if (msg.type === "status") {
+          // "overloaded" is a back-off pause (the worker resumes with a
+          // fresh engine and posts "ready"): drop the stale reading. On
+          // "error" too: a frozen last snapshot must not keep driving the
+          // cue row or the pitch-only warning. After an exception while
+          // running, the worker restarts a fresh engine after a short
+          // back-off and posts "ready" again (a few times per session; a
+          // failed asset load stays "error") — resonance-worker.js. The row
+          // tells them apart (2026-10-19 review F2-1): "restarting" while
+          // it recovers, "reload" for a failed asset load, "error" once it
+          // has given up.
+          if (msg.status === "overloaded" || msg.status === "error") {
+            resonanceRef.current = null;
+            pitchOnlyRef.current.noteResonance(null);
+          }
+          const rs = msg.status !== "error" ? msg.status
+            : msg.recovering ? "restarting" : msg.reason === "load" ? "reload" : "error";
+          setState((s) => ({ ...s, resonanceStatus: rs }));
+          if (DIAG_ENABLED) setResonanceStatus({ status: msg.status, message: msg.message ?? null });
+          if (msg.status === "error") pushError({ source: "resonance-worker", where: "worker", message: msg.message });
+        }
+      };
+      resonanceWorker.postMessage({
         type: "init",
-        inputSampleRate: captureSrc.sampleRate,
+        sampleRate: captureSrc.sampleRate,
+        assetBase: import.meta.env.BASE_URL,
         ...(DIAG_ENABLED ? { diag: true } : {}),
       });
+      const resonancePort = captureSrc.connectConsumer();
+      resonanceWorker.postMessage({ type: "audioPort", port: resonancePort }, [resonancePort]);
 
-      const mlPort = captureSrc.connectConsumer();
-      mlWorker.postMessage(
-        { type: "audioPort", port: mlPort },
-        [mlPort],
-      );
+      // Gender (ML) worker: started only while the opt-in "Likely heard
+      // as" panel is on — now, or later in this session through
+      // setHeardAsEnabled (startMlWorkerRef). Saves ~0.3 s of CPU per
+      // second of speech and the first-time download (voice model + speech
+      // detector + ONNX Runtime engine, src/ml/heard-as-download.js) for everyone else
+      // (measurements/heard-as-window-logit-2026-10-07.md §4).
+      startMlWorkerRef.current = () => {
+        if (mlWorkerRef.current || !genAlive() || captureSrcRef.current !== captureSrc) return;
+        const mlWorker = new Worker(
+          new URL("../ml/gender-worker.js", import.meta.url),
+          { type: "module" },
+        );
+        mlWorkerRef.current = mlWorker;
+        if (DIAG_ENABLED) setMlWorkerAlive(true);
+        heardAsRef.current.reset();
+        genderStateRef.current = null;
+        let mlHeard = false;
+        mlWorker.onmessage = (ev) => { mlHeard = true; handleMlMessage(ev, mlWorker); };
+        // A gender worker that fails to load shows as an error in the panel
+        // (the panel's switch off and on starts a new one). As for the DSP
+        // and pitch workers, a later uncaught exception inside a running
+        // worker is only recorded: the worker keeps going, so the panel
+        // must not lock at "Unavailable" (2026-10-19 review F2-3).
+        onWorkerError(mlWorker, () => mlWorkerRef.current === mlWorker, (message) => {
+          if (mlHeard) { pushError({ source: "mlWorker", where: "uncaught", message }); return; }
+          pushError({ source: "mlWorker", where: "load", message });
+          setState((s) => ({ ...s, modelStatus: "error", modelError: message, modelProgress: null }));
+        });
+        mlWorker.postMessage({
+          type: "init",
+          inputSampleRate: captureSrc.sampleRate,
+          ...(DIAG_ENABLED ? { diag: true } : {}),
+        });
+        const mlPort = captureSrc.connectConsumer();
+        mlPortRef.current = mlPort;
+        mlWorker.postMessage({ type: "audioPort", port: mlPort }, [mlPort]);
+      };
+      if (heardAsEnabledRef.current) startMlWorkerRef.current();
 
       // Pitch detection worker. Hosts the Boersma-AC (Praat-style
       // autocorrelation) detector + bounded-Viterbi path tracker — pure
@@ -471,10 +677,18 @@ export function useAudioPipeline() {
         { type: "module" },
       );
       pitchWorkerRef.current = pitchWorker;
+      let pitchHeard = false;
+      onWorkerError(pitchWorker, () => pitchWorkerRef.current === pitchWorker, (message) => {
+        if (pitchHeard) pushError({ source: "pitch-worker", where: "uncaught", message });
+        else failSession("pitch-worker", message);
+      });
+      const voiceSource = voiceModelSource();
       pitchWorker.postMessage({
         type: "init",
         inputSampleRate: captureSrc.sampleRate,
         ...(DIAG_ENABLED ? { diag: true } : {}),
+        // Voice detector: where its model files come from (voiceModelSource).
+        ...(voiceSource ? { vad: { modelBase: voiceSource.base, source: voiceSource.kind } } : {}),
       });
 
       const pitchPort = captureSrc.connectConsumer();
@@ -486,15 +700,24 @@ export function useAudioPipeline() {
       // Experimental resonance lab: one EXTRA capture consumer + lab worker,
       // loaded on demand once the user has opened the lab tab (now, or later
       // in this listening session). Until then nothing lab-related is
-      // fetched or run (see resonance-lab/labRequest.js).
+      // fetched or run (see resonance-lab/labRequest.js). Turning the
+      // Settings switch off withdraws the request and stops it here.
       let labStarting = false;
       const startLabIfRequested = () => {
-        if (labStarting || labRef.current || !isResonanceLabRequested()) return;
+        // Withdrawn (Settings' lab switch turned off, labRequest.js): stop it.
+        if (!isResonanceLabRequested()) {
+          if (labRef.current) { labRef.current.stop(); labRef.current = null; }
+          return;
+        }
+        if (labStarting || labRef.current) return;
         labStarting = true;
         import("../resonance-lab/labPipeline.js")
           .then((lab) => {
-            if (!genAlive() || captureSrcRef.current !== captureSrc || labRef.current) return;
-            labRef.current = lab.startLab(captureSrc);
+            if (!genAlive() || captureSrcRef.current !== captureSrc || labRef.current || !isResonanceLabRequested()) return;
+            // The weight x clarity lab view needs the granted capture settings
+            // (gain control, microphone id + label) to know whether loudness can be matched.
+            const track = streamRef.current?.getAudioTracks?.()[0];
+            labRef.current = lab.startLab(captureSrc, { trackSettings: track?.getSettings?.() ?? null, trackLabel: track?.label ?? null });
           })
           .catch((err) => console.error("resonance lab failed to start", err))
           .finally(() => { labStarting = false; });
@@ -505,10 +728,19 @@ export function useAudioPipeline() {
 
       pitchWorker.onmessage = (e) => {
         if (!genAlive()) return; // late message after stop()
+        pitchHeard = true;
         const msg = e.data;
         if (!msg || !msg.type) return;
         if (msg.type === "pitch") {
           handlePitchMessageRef.current?.(msg);
+        } else if (msg.type === "vad-status") {
+          // Voice detector: loading | ready | unavailable | error | slow.
+          // Not ready = no decisions = the pitch display is not gated.
+          setState((s) => ({ ...s, voiceGateStatus: msg.status, voiceGateMessage: msg.message ?? null }));
+          setVoiceGate({ status: msg.status, message: msg.message ?? null });
+          if (msg.status === "error" || msg.status === "slow") {
+            pushError({ source: "pitch-worker", where: "voice-detector", message: msg.message ?? msg.status });
+          }
         } else if (msg.type === "inference-event") {
           // Mirrors the gender-worker timeout-event handling. Diag-only
           // capture of pitch-worker hangs into the errors ring so
@@ -535,28 +767,19 @@ export function useAudioPipeline() {
         }
       };
 
-      mlWorker.onmessage = (e) => {
-        if (!genAlive()) return; // late message after stop()
+      // Gender worker messages (the worker exists only while the panel is
+      // on). A message from a worker that has since been terminated (panel
+      // switched off, or a new session) is dropped.
+      function handleMlMessage(e, fromWorker) {
+        if (!genAlive() || mlWorkerRef.current !== fromWorker) return;
         const msg = e.data;
         if (!msg || !msg.type) return;
         if (msg.type === "score") {
-          // Tag the entry with the DSP gate's current state so the
-          // history strip can filter out dots emitted during non-voice
-          // (Codex finding on PR #70). dspGateRef is updated by
-          // handleAnalysisResult on every DSP analysis frame.
-          const entry = {
-            time: Math.round(msg.ts),
-            score: msg.score,
-            confidence: msg.confidence,
-            voiced: dspGateRef.current.voiced || dspGateRef.current.holding,
-          };
-          genderTraceRef.current.push(entry);
-          trimHistory(genderTraceRef.current, RESONANCE_TRACE_SECONDS * 1000, entry.time);
-          throttledSetState((s) => ({
-            ...s,
-            genderScore: msg.score,
-            genderConfidence: msg.confidence,
-          }));
+          // The panel pools the UNSMOOTHED per-window logit at the window's
+          // audio-clock time (gated windows only — heard-as.js). The 0-100
+          // EMA score is no longer shown anywhere.
+          heardAsRef.current.addWindow({ audioMs: msg.audioMs, logit: msg.logit, mode: msg.mode });
+          if (typeof msg.audioMs === "number") audioClockRef.current = Math.max(audioClockRef.current ?? -Infinity, msg.audioMs);
           // Diag-only: capture per-inference timing so mobile-diag-
           // capture's snapshot summary can compute median/p95/p99
           // against the 150 ms hop budget. No-op when diag isn't on
@@ -565,9 +788,28 @@ export function useAudioPipeline() {
             pushMlInference({
               tEpochMs: msg.ts,
               inferMs: msg.inferMs,
+              // speech detector's run time since the previous posted
+              // score (0 while the detector is not live; the first score
+              // and the first after a pause also carry unscored ticks)
+              vadMs: typeof msg.vadMs === "number" ? msg.vadMs : null,
               score: msg.score,
               confidence: msg.confidence,
             });
+          }
+        } else if (msg.type === "scored") {
+          // A window the gate scored between classifier runs (the worker
+          // classifies every 450 ms): counts for the panel's window count,
+          // voiced time and F0, not for the logit mean (heard-as.js).
+          heardAsRef.current.addWindow({ audioMs: msg.audioMs, logit: null, mode: msg.mode, classified: false });
+          if (typeof msg.audioMs === "number") audioClockRef.current = Math.max(audioClockRef.current ?? -Infinity, msg.audioMs);
+        } else if (msg.type === "speech-detector") {
+          // The utterance gate's speech detector (speech-detector.js):
+          // diag-only record of whether it loaded (setMlModel is a no-op
+          // without diag). On "error" the gate keeps running on pitch
+          // voicing, so there is nothing to show the user.
+          setMlModel({ speechDetector: msg.status, speechDetectorError: msg.message ?? null, speechDetectorSource: msg.source ?? null });
+          if (DIAG_ENABLED && msg.status === "error") {
+            pushError({ source: "mlWorker", where: "speech-detector", message: msg.message ?? "error", ts: Date.now() });
           }
         } else if (msg.type === "inference-event") {
           // Diag-only: capture defensive-timeout events from the gender
@@ -579,7 +821,7 @@ export function useAudioPipeline() {
             pushError({
               source: "mlWorker",
               where: msg.event,
-              message: `${msg.event}: ${msg.durationMs}ms`,
+              message: msg.message ?? `${msg.event}: ${msg.durationMs}ms`,
               ts: msg.ts,
             });
           }
@@ -600,16 +842,19 @@ export function useAudioPipeline() {
               device: msg.device ?? null,
             });
           }
+        } else if (msg.type === "voice-state") {
+          genderStateRef.current = { state: msg.state, ts: Math.round(msg.ts) };
         } else if (msg.type === "progress") {
           setState((s) => ({
             ...s,
             modelProgress: { loaded: msg.loaded, total: msg.total, file: msg.file },
           }));
         }
-      };
+      }
 
       worker.onmessage = (e) => {
         if (!genAlive()) return; // late message after stop()
+        dspHeard = true;
         const msg = e.data;
         if (!msg || !msg.type) return;
 
@@ -670,10 +915,18 @@ export function useAudioPipeline() {
           const handlerEnd = performance.timeOrigin + performance.now();
           pushFrame({
             tEpochMs: data.absoluteTime,
+            capturedEpochMs: audioCapturedEpochMs,
             pitch: latest.pitch,
             intensity: data.intensity,
             inputRms: data.diag.inputRms,
             confidence: latest.confidence,
+            // voice detector (null without a decision) and what
+            // the pitch display did on this frame
+            vadP: latest.vadP ?? null,
+            vadVoice: latest.vadVoice ?? null,
+            painted: lastDisplayRef.current.painted,
+            shown: lastDisplayRef.current.shown,
+            vadHidden: lastDisplayRef.current.hidden,
             pendingChunks: data.pendingChunks,
             timings: {
               chunkArrivalMs,
@@ -716,6 +969,16 @@ export function useAudioPipeline() {
         }, 1000);
       }
 
+      // Voice Shaper (experimental, its own tab): the capture handle its
+      // recorder uses while listening (one extra capture consumer, only
+      // during a recording). Cleared in stop(). voice-preview/bridge.js.
+      setVoicePreviewCapture({
+        sampleRate: captureSrc.sampleRate,
+        connect: () => captureSrc.connectConsumer(),
+        disconnect: (port) => captureSrc.disconnectConsumer?.(port),
+        startedAt: performance.now(),
+      });
+
       setState((s) => ({ ...s, status: "running" }));
     } catch (err) {
       // Best-effort cleanup of any partial state. start() may have set up
@@ -737,20 +1000,26 @@ export function useAudioPipeline() {
         labRef.current.stop();
         labRef.current = null;
       }
-      for (const ref of [workerRef, mlWorkerRef, pitchWorkerRef]) {
+      for (const ref of [workerRef, mlWorkerRef, pitchWorkerRef, resonanceWorkerRef]) {
         if (ref.current) {
           try { ref.current.terminate(); } catch { /* */ }
           ref.current = null;
         }
       }
+      startMlWorkerRef.current = null;
       if (ctxSamplerRef.current) {
         clearInterval(ctxSamplerRef.current);
         ctxSamplerRef.current = null;
       }
+      // Only a real permission refusal says "denied" — a capture failure
+      // after access was granted used to read as one.
+      const denied = err?.name === "NotAllowedError";
       setState((s) => ({
         ...s,
         status: "error",
-        error: err.message || "Microphone access denied",
+        error: denied
+          ? "Microphone access denied. Allow the microphone for this site, then try again."
+          : err?.message || "The microphone could not be started.",
       }));
     } finally {
       startingRef.current = false;
@@ -759,6 +1028,7 @@ export function useAudioPipeline() {
 
   const stop = useCallback(() => {
     pipelineGenRef.current++; // invalidate in-flight worker messages
+    setVoicePreviewCapture(null);
     if (ctxSamplerRef.current) {
       clearInterval(ctxSamplerRef.current);
       ctxSamplerRef.current = null;
@@ -775,11 +1045,22 @@ export function useAudioPipeline() {
     if (mlWorkerRef.current) {
       mlWorkerRef.current.terminate();
       mlWorkerRef.current = null;
+      if (DIAG_ENABLED) setMlWorkerAlive(false);
     }
+    mlPortRef.current = null;
+    startMlWorkerRef.current = null;
     if (pitchWorkerRef.current) {
       pitchWorkerRef.current.terminate();
       pitchWorkerRef.current = null;
     }
+    if (resonanceWorkerRef.current) {
+      resonanceWorkerRef.current.terminate();
+      resonanceWorkerRef.current = null;
+    }
+    resonanceRef.current = null;
+    heardAsRef.current.reset();
+    pitchOnlyRef.current.reset();
+    audioClockRef.current = null;
     if (labUnsubRef.current) { labUnsubRef.current(); labUnsubRef.current = null; }
     if (labRef.current) {
       labRef.current.stop();
@@ -801,31 +1082,33 @@ export function useAudioPipeline() {
     displayVoicedRef.current = false;
     unpitchedFramesRef.current = 0;
     heldReadoutStaleRef.current = false;
+    gateHidPaintRef.current = false;
     // Without this reset the next session's initial silence "holds" the
     // PREVIOUS session's pitch/note/formants in the dim style for up to
     // 5 s before the first utterance.
     lastVoicedRef.current = {
       pitch: null,
+      pitchLevel: null,
       noteName: null,
       formants: { f1: null, f2: null, f3: null },
       spectralTilt: null,
       hnr: null,
+      shownHnr: null,
     };
     pitchTraceRef.current = [];
+    for (const fn of traceListenersRef.current) fn();
     formantTrailRef.current = [];
-    genderTraceRef.current = [];
+    genderStateRef.current = null;
     dspGateRef.current = { voiced: false, holding: false };
-    cppAggregatorRef.current = null;
-    cppBaselineRef.current = null;
-    lastCppAggregateRef.current = { time: -1 };
-    lastDiagVwEmitRef.current = -1;
     steadinessRef.current = null;
-    setState({
+    setState((s) => ({
+      ...s,
       status: "idle",
       error: null,
       voiced: false,
       holding: false,
       pitch: null,
+      pitchLevel: null,
       intensity: null,
       noteName: null,
       steadiness: null,
@@ -833,19 +1116,49 @@ export function useAudioPipeline() {
       formants: { f1: null, f2: null, f3: null },
       spectralTilt: null,
       hnr: null,
-      vocalWeight: {
-        cpp: null,
-        position: null,
-        sigmaDelta: null,
-        baselineProgress: 0,
-        baselineReady: false,
-      },
-      genderScore: null,
-      genderConfidence: null,
       modelStatus: "idle",
       modelError: null,
       modelProgress: null,
-    });
+      resonanceStatus: "idle",
+      pitchVoiced: false,
+      pitchHolding: false,
+    }));
+  }, []);
+
+  // The "Hide pitch when no voice is heard" setting (App owns the
+  // persisted value). Applies from the next frame; the detector itself runs
+  // either way while listening, so switching it back on is immediate.
+  const setVoiceGateEnabled = useCallback((on) => {
+    voiceGateEnabledRef.current = !!on;
+    setVoiceGate({ enabled: !!on });
+  }, []);
+
+  // The "Likely heard as" panel switched on / off (Settings or the panel's
+  // own switch; App owns the persisted setting). On: start the gender worker
+  // now if listening (else start() does). Off: terminate it, take its
+  // capture port off the broadcast list (captureSource.disconnectConsumer —
+  // no chunk copies to a dead port, however often the switch is flipped)
+  // and forget its windows.
+  const setHeardAsEnabled = useCallback((on) => {
+    heardAsEnabledRef.current = !!on;
+    if (on) {
+      startMlWorkerRef.current?.();
+      return;
+    }
+    if (mlWorkerRef.current) {
+      mlWorkerRef.current.terminate();
+      mlWorkerRef.current = null;
+      if (DIAG_ENABLED) setMlWorkerAlive(false);
+    }
+    if (mlPortRef.current) {
+      captureSrcRef.current?.disconnectConsumer?.(mlPortRef.current);
+      mlPortRef.current = null;
+    }
+    heardAsRef.current.reset();
+    genderStateRef.current = null;
+    setState((s) => (s.modelStatus === "idle" && s.modelProgress === null && s.modelError === null
+      ? s
+      : { ...s, modelStatus: "idle", modelError: null, modelProgress: null }));
   }, []);
 
   // Unmount cleanup. Placed here (rather than at the top of the hook body
@@ -873,35 +1186,20 @@ export function useAudioPipeline() {
     }
   }
 
-  // Build the vocalWeight state slice from the latest aggregator output
-  // and the baseline tracker. Pure function — no side effects, called
-  // from each setState path so state stays consistent across silent/
-  // voiced/hold branches.
-  function buildVocalWeightState(aggregate) {
-    const baseline = cppBaselineRef.current;
-    const cppValue = aggregate ? aggregate.cpp : null;
-    if (!baseline) {
-      return { cpp: cppValue, position: null, sigmaDelta: null,
-               baselineProgress: 0, baselineReady: false };
-    }
-    return {
-      cpp: cppValue,
-      position: cppValue !== null ? baseline.gaugePosition(cppValue) : null,
-      sigmaDelta: cppValue !== null ? baseline.sigmaDelta(cppValue) : null,
-      baselineProgress: baseline.progress(),
-      baselineReady: baseline.ready(),
-    };
-  }
-
   // Pitch-worker "pitch" message: latest-pitch ref for the DSP frames,
-  // pitch hints to the DSP + ML workers, the steadiness window, diag.
+  // pitch hints to the DSP, ML and resonance workers, the steadiness window, diag.
   // Reached from start()'s onmessage through handlePitchMessageRef.
   function handlePitchMessage(msg) {
+    // Voice detector decision for this hop (null: no decision —
+    // detector loading / missing / off; the display is then not gated).
+    const vad = msg.vad && typeof msg.vad.voice === "boolean" ? msg.vad : null;
     latestPitchRef.current = {
       pitch: msg.pitch,
       confidence: msg.confidence,
       voiced: msg.voiced,
       ts: msg.ts,
+      vadVoice: vad ? vad.voice : null,
+      vadP: vad ? vad.p : null,
     };
     // Forward pitch hint to the DSP worker so its formant extraction
     // can pick the right LPC order / formant ceiling. One-frame lag
@@ -914,23 +1212,46 @@ export function useAudioPipeline() {
         pitch: msg.pitch,
       });
     }
-    // Forward voicedness to the ML worker: its VAD gates gender
-    // inference on "pitch recently voiced" so noise-only windows
-    // stop feeding masculine-leaning scores into the EMA (every
-    // synthetic noise type passed the old peak-amplitude VAD 100%
-    // of the time — measurements/noise-robustness-oracle-
-    // 2026-07-19.md §4). Sent on every pitch message, voiced or
-    // not, so the worker's recency window closes promptly.
+    // Forward every pitch frame to the ML worker: its utterance gate
+    // (ml/utterance-gate.js) scores only recent, voiced running speech,
+    // restarts the score at each utterance onset, and spots held
+    // phonation from the pitch track — so noise-only windows stop
+    // feeding masculine-leaning scores into the "Likely heard as" panel
+    // (measurements/perceived-voice-gate-2026-10-07.md; while the worker's
+    // speech detector is loaded it decides "is someone speaking" and pitch
+    // voicing only drives the held-note test). Sent voiced or
+    // not, so utterances close promptly. contextTime (the frame's capture
+    // time) puts the hint on the audio clock the gate runs on.
+    const hint = {
+      type: "pitch-hint",
+      voiced: msg.voiced,
+      pitch: msg.pitch,
+      contextTime: msg.contextTime ?? null,
+    };
     if (mlWorkerRef.current) {
-      mlWorkerRef.current.postMessage({
-        type: "pitch-hint",
-        voiced: msg.voiced,
-        ts: msg.ts,
-        // Active tonal-interferer notches — consumed by the ML
-        // worker's sub-floor voicing probe (fail-open for
-        // below-pitch-floor phonation, Codex review on PR #90).
-        notchedFreqs: msg.notchedFreqs ?? [],
-      });
+      mlWorkerRef.current.postMessage(hint);
+      // The "Likely heard as" estimate's F0: every posted frame (the posted
+      // value, never the smoothed / painted / held one), on the audio clock.
+      if (typeof msg.contextTime === "number") {
+        heardAsRef.current.addPitch({ audioMs: msg.contextTime * 1000, f0: msg.pitch });
+      }
+    }
+    // The resonance cue reuses these decisions (bit-identical to the lab's
+    // own pitch replica — tests/resonance/vtln-production-parity-test.js)
+    // and gates on them with the same utterance gate. Voice gate (see the
+    // header): while the setting is on and this hop's decision is "no
+    // voice", the hint says unvoiced (pitch / contextTime unchanged) — the
+    // measured variant (measurements/noise-detector-tryout-resonance-
+    // 2026-10-21.md). No decision, or the setting off: the hint as before.
+    if (resonanceWorkerRef.current) {
+      const hideRes = voiceGateEnabledRef.current && vad !== null && vad.voice === false;
+      resonanceWorkerRef.current.postMessage(hideRes ? { ...hint, voiced: false } : hint);
+    }
+    if (typeof msg.contextTime === "number") {
+      // The pitch-only warning's pitch start and its late-switch-on seed:
+      // every posted frame, voiced values only (unvoiced as null).
+      pitchOnlyRef.current.addPitch({ audioMs: msg.contextTime * 1000, f0: msg.voiced && msg.pitch > 0 ? msg.pitch : null });
+      audioClockRef.current = Math.max(audioClockRef.current ?? -Infinity, msg.contextTime * 1000);
     }
     if (DIAG_ENABLED && typeof msg.inferMs === "number") {
       pushPitchInference({
@@ -939,22 +1260,32 @@ export function useAudioPipeline() {
         pitch: msg.pitch,
         confidence: msg.confidence,
         voiced: msg.voiced,
+        // voice detector: smoothed score, decision, worker time
+        // for this hop (fbank + model), null without a decision
+        vadP: vad ? vad.p : null,
+        vadVoice: vad ? vad.voice : null,
+        vadMs: typeof msg.vadMs === "number" ? msg.vadMs : null,
       });
     }
+    if (DIAG_ENABLED && vad) setVoiceGate({ p: vad.p, voice: vad.voice, hiding: voiceGateEnabledRef.current && !vad.voice });
     // Steadiness window: every posted value (null = unvoiced) on the
     // audio clock. Lazily created so the oracle chain, which drives the
-    // hook without start(), exercises the same path.
+    // hook without start(), exercises the same path. A hop the voice
+    // gate hides enters as unvoiced.
     if (!steadinessRef.current) steadinessRef.current = createSteadinessTracker();
     steadinessRef.current.push(
-      msg.pitch,
+      voiceGateEnabledRef.current && vad && vad.voice === false ? null : msg.pitch,
       typeof msg.contextTime === "number" ? msg.contextTime : msg.ts / 1000,
     );
+    // Voice Shaper: the posted value for its recording's F0 track (only
+    // while it records; changes no state here). voice-preview/bridge.js.
+    voicePreviewPitchTap(msg);
   }
 
   useEffect(() => { handlePitchMessageRef.current = handlePitchMessage; });
 
   function handleAnalysisResult(data) {
-    const { intensity, formants, spectralTilt, hnr, cpp, absoluteTime } = data;
+    const { intensity, formants, spectralTilt, hnr, absoluteTime } = data;
 
     // Use the worker's absolute timestamp for data points.
     // This reflects when audio was *analyzed* in the worker, which is the
@@ -970,6 +1301,12 @@ export function useAudioPipeline() {
     // stall/death must not freeze the gate's voicedness arm), and the
     // bounded hold window for bridging brief SwiftF0 null gaps.
     const latestPitch = latestPitchRef.current;
+    // Voice gate (see voiceGateCode): hide the pitch display on this
+    // frame when the setting is on and the latest hop's decision is "no
+    // voice". A mask only — nothing below changes its state because of it.
+    const gateOn = voiceGateEnabledRef.current;
+    const vadHide = gateOn && latestPitch.vadVoice === false;
+    const voiceGate = voiceGateCode(latestPitch.vadVoice, gateOn);
     const gate = evaluateFrameGate(gateStateRef.current, {
       now,
       intensity,
@@ -987,56 +1324,6 @@ export function useAudioPipeline() {
     // Counted on every frame (silence frames included): true on a fresh
     // detection right after a gap — see smoothingBufferFor below.
     const freshAfterGap = smoothGapRef.current.frame(hasPitch);
-
-    // Push CPP into the vocal-weight aggregator gated on CONFIRMED
-    // PITCH, not the silence gate (changed 2026-06-10). CPP measures
-    // harmonic periodicity, so a frame the pitch detector confirms as
-    // pitched is exactly a frame where CPP is meaningful; the old
-    // !isQuiet gate let breath/fricatives/background noise (loud but
-    // unpitched) into the aggregate, dragging it toward "heavy/breathy."
-    // On a private session recording this cut Praat-unvoiced
-    // contamination of the gauge feed. Frames are pushed regardless
-    // of the silent/voiced branch below — the aggregator's hard-reset
-    // rule depends on observing unpitched gaps. Only the aggregator's
-    // emit result drives the gauge state update further down.
-    let cppAggregate = null;
-    if (cppAggregatorRef.current) {
-      cppAggregate = cppAggregatorRef.current.push({
-        time: now,
-        cpp,                               // may be null on non-6th-frame DSP cycles
-        voiced: hasPitch,
-      });
-    }
-    if (DIAG_ENABLED) noteVocalWeightFrame(hasPitch);
-    // Feed locked-or-warming baseline. Only pitched aggregates contribute
-    // so silence/breath/noise don't bias μ. Once baseline freezes,
-    // accumulate() is a no-op.
-    const isFreshAggregate =
-      cppAggregate && cppAggregate.time !== lastCppAggregateRef.current.time;
-    if (isFreshAggregate && hasPitch && cppBaselineRef.current) {
-      cppBaselineRef.current.accumulate({
-        time: cppAggregate.time,
-        cpp: cppAggregate.cpp,
-      });
-      lastCppAggregateRef.current = cppAggregate;
-    }
-    if (DIAG_ENABLED && cppAggregate && cppAggregate.time !== lastDiagVwEmitRef.current) {
-      lastDiagVwEmitRef.current = cppAggregate.time;
-      const baseline = cppBaselineRef.current;
-      pushVocalWeightEmit({
-        tEpochMs: performance.timeOrigin + performance.now(),
-        aggregateTime: cppAggregate.time,
-        cpp: cppAggregate.cpp,
-        voicedFrames: cppAggregate.voicedFrames,
-        baselineProgress: baseline ? baseline.progress() : 0,
-        baselineSampleCount: baseline ? baseline.state().sampleCount : 0,
-        baselineSampleTarget: baseline ? baseline.state().sampleTarget : null,
-        baselineLocked: baseline ? baseline.ready() : false,
-        baselineMu: baseline ? baseline.mu() : null,
-        baselineSigma: baseline ? baseline.sigma() : null,
-        sigmaDelta: baseline ? baseline.sigmaDelta(cppAggregate.cpp) : null,
-      });
-    }
 
     if (isQuiet) {
       // Silence frames are a trace gap for the paint gate (continuity
@@ -1068,26 +1355,37 @@ export function useAudioPipeline() {
       // Add gap to pitch trace (null pitch = gap)
       pitchTraceRef.current.push({ time: now, pitch: null, voiced: false });
       trimHistory(pitchTraceRef.current, PITCH_TRACE_SECONDS * 1000, now);
+      notifyTrace();
 
       if (silenceDuration < SILENCE_HOLD_MS) {
-        // Hold last voiced values (display goes to reduced opacity)
+        // Hold last voiced values (display goes to reduced opacity). The
+        // voice gate does not cut this hold short (the detector says
+        // "no voice" 2 s into a silence): the held pitch is the last one it
+        // let through — unless it hid painted frames after it
+        // (gateHidPaintRef), and then the readout shows "—".
         dspGateRef.current = { voiced: false, holding: true };
         const held = lastVoicedRef.current;
-        const heldStale = heldReadoutStaleRef.current;
-        const vw = buildVocalWeightState(cppAggregate);
+        const gateHid = gateHidPaintRef.current;
+        const heldStale = heldReadoutStaleRef.current || gateHid;
         throttledSetState((s) => ({
           ...s,
           voiced: false,
           holding: true,
+          pitchVoiced: false,
+          pitchHolding: !gateHid,
           pitch: heldStale ? null : held.pitch,
+          pitchLevel: heldStale ? null : held.pitchLevel,
           intensity,
           noteName: heldStale ? null : held.noteName,
-          steadiness: steady.value,
-          steadinessHeld: steady.held,
+          steadiness: vadHide ? null : steady.value,
+          steadinessHeld: vadHide ? false : steady.held,
           formants: held.formants,
           spectralTilt: held.spectralTilt,
-          hnr: held.hnr,
-          vocalWeight: vw,
+          // Voice gate: the last HNR the readout showed stays for the whole
+          // hold, like the dim pitch readout (never a value the gate hid),
+          // unless the gate hid painted pitch after it (display only; user
+          // decision 2026-10-21). Without the gate shownHnr === hnr.
+          hnr: gateHid ? null : held.shownHnr,
         }));
       } else {
         // Prolonged silence: clear everything, including the paint
@@ -1099,27 +1397,30 @@ export function useAudioPipeline() {
         f2SmoothRef.current = [];
         f3SmoothRef.current = [];
         paintGateRef.current.reset();
-        const vw = buildVocalWeightState(cppAggregate);
         throttledSetState((s) => ({
           ...s,
           voiced: false,
           holding: false,
+          pitchVoiced: false,
+          pitchHolding: false,
           pitch: null,
+          pitchLevel: null,
           intensity,
           noteName: null,
-          steadiness: steady.value,
-          steadinessHeld: steady.held,
+          steadiness: vadHide ? null : steady.value,
+          steadinessHeld: vadHide ? false : steady.held,
           formants: { f1: null, f2: null, f3: null },
           spectralTilt: null,
           hnr: null,
-          vocalWeight: vw,
         }));
       }
+      if (DIAG_ENABLED) lastDisplayRef.current = { painted: false, shown: false, hidden: vadHide };
       // Notify frame callback (session recording) even during silence
       if (frameCallbackRef.current) {
         frameCallbackRef.current({
           voiced: false, f0: null, painted: false, f1: null, f2: null, f3: null,
           intensity, spectralTilt: null, hnr: null,
+          ...(voiceGate ? { voiceGate } : {}),
         });
       }
       return;
@@ -1233,7 +1534,12 @@ export function useAudioPipeline() {
     // Dim held readout only while it is not known-stale (see
     // heldReadoutStaleRef): never show the other register's last value
     // while a fresh off-level pitch is suppressed.
-    const showHeldReadout = displayHolding && !heldReadoutStaleRef.current;
+    const showHeldReadout = displayHolding && !heldReadoutStaleRef.current && !vadHide;
+    // What the display actually shows (the voice gate's mask).
+    const shown = displayPitched && !vadHide;
+    if (shown) gateHidPaintRef.current = false;
+    else if (displayPitched) gateHidPaintRef.current = true;
+    if (DIAG_ENABLED) lastDisplayRef.current = { painted: displayPitched, shown, hidden: vadHide };
 
     const noteInfo = displayPitched ? hzToNote(smoothedPitch) : null;
     const noteName = noteInfo?.name || null;
@@ -1249,7 +1555,7 @@ export function useAudioPipeline() {
     // canvas starts a new segment instead of stroking a near-vertical
     // connecting line — the 06-10 "spike line" artefact, now prevented by
     // construction rather than only by suppression.
-    if (displayPitched) {
+    if (shown) {
       const prev = pitchTraceRef.current[pitchTraceRef.current.length - 1];
       if (prev && prev.voiced && prev.pitch !== null &&
           Math.abs(12 * Math.log2(smoothedPitch / prev.pitch)) >= EXCURSION_SEMI) {
@@ -1257,11 +1563,15 @@ export function useAudioPipeline() {
       }
     }
     pitchTraceRef.current.push(
-      displayPitched
+      shown
         ? { time: now, pitch: smoothedPitch, voiced: true }
         : { time: now, pitch: null, voiced: false },
     );
     trimHistory(pitchTraceRef.current, PITCH_TRACE_SECONDS * 1000, now);
+    notifyTrace();
+    // The level the readouts' target colour judges (display only — the
+    // painted values themselves are untouched).
+    const pitchLevel = shown ? pitchLevelAt(pitchTraceRef.current, now) : null;
 
     if (f1 !== null && f2 !== null) {
       formantTrailRef.current.push({ time: now, f1, f2, f3: f3, voiced: true });
@@ -1276,11 +1586,14 @@ export function useAudioPipeline() {
     // the measured fields (formants/tilt/HNR) still update, but the last
     // displayed pitch is kept so hold states can dim-display it.
     lastVoicedRef.current = {
-      pitch: displayPitched ? smoothedPitch : lastVoicedRef.current.pitch,
-      noteName: displayPitched ? noteName : lastVoicedRef.current.noteName,
+      pitch: shown ? smoothedPitch : lastVoicedRef.current.pitch,
+      pitchLevel: shown ? pitchLevel : lastVoicedRef.current.pitchLevel,
+      noteName: shown ? noteName : lastVoicedRef.current.noteName,
       formants: smoothedFormants,
       spectralTilt: currentTilt,
       hnr: currentHnr,
+      // The readout below shows currentHnr unless the gate hides this frame.
+      shownHnr: vadHide ? lastVoicedRef.current.shownHnr : currentHnr,
     };
 
     // Notify frame callback (session recording) with smoothed values.
@@ -1301,8 +1614,10 @@ export function useAudioPipeline() {
         // gate-suppressed excursions are gaps there too; hold-bridged
         // frames (painted live, recorded voiced:false above) are also gaps
         // in history — it is not an exact replica of the live trace
-        // (2026-10-04). Stats keep using voiced/f0.
-        painted: displayPitched,
+        // (2026-10-04). Stats keep using voiced/f0. A frame the voice
+        // gate hid is not painted; voiceGate records the decision.
+        painted: shown,
+        ...(voiceGate ? { voiceGate } : {}),
         f1: f1,
         f2: f2,
         f3: f3,
@@ -1315,20 +1630,23 @@ export function useAudioPipeline() {
     // Throttled: only update React state for text readouts at ~5fps.
     // displayHolding bridges brief pitch dropouts in the dim style so
     // the readout/status never strobe between voiced and inactive.
-    const vw = buildVocalWeightState(cppAggregate);
     throttledSetState((s) => ({
       ...s,
       voiced: displayPitched,
       holding: displayHolding,
-      pitch: displayPitched ? smoothedPitch : (showHeldReadout ? lastVoicedRef.current.pitch : null),
+      pitchVoiced: shown,
+      pitchHolding: displayHolding && !vadHide,
+      pitch: shown ? smoothedPitch : (showHeldReadout ? lastVoicedRef.current.pitch : null),
+      pitchLevel: shown ? pitchLevel : (showHeldReadout ? lastVoicedRef.current.pitchLevel : null),
       intensity,
-      noteName: displayPitched ? noteName : (showHeldReadout ? lastVoicedRef.current.noteName : null),
-      steadiness: steady.value,
-      steadinessHeld: steady.held,
+      noteName: shown ? noteName : (showHeldReadout ? lastVoicedRef.current.noteName : null),
+      steadiness: vadHide ? null : steady.value,
+      steadinessHeld: vadHide ? false : steady.held,
       formants: smoothedFormants,
       spectralTilt: currentTilt,
-      hnr: currentHnr,
-      vocalWeight: vw,
+      // Voice gate: HNR readout "—" while the gate hides (display only; the
+      // recorded frame above keeps the measured value).
+      hnr: vadHide ? null : currentHnr,
     }));
   }
 
@@ -1343,8 +1661,15 @@ export function useAudioPipeline() {
     start,
     stop,
     pitchTraceRef,
+    subscribeTrace,
     formantTrailRef,
-    genderTraceRef,
+    genderStateRef,
+    resonanceRef,
+    heardAsRef,
+    pitchOnlyRef,
+    audioClockRef,
+    setHeardAsEnabled,
+    setVoiceGateEnabled,
     // Exposed so canvas-based components can read the DSP voicedness gate
     // at full rAF rate, bypassing the ~5 fps throttledSetState. Note the
     // ref's `voiced` means "audio present" (silence gate not engaged),

@@ -3,7 +3,8 @@
 // sessions that never got finalized (tab close / crash / mobile discard),
 // so both write identical stat definitions. Pure — runnable in Node.
 
-import { DEFAULT_PITCH_TARGET, DEFAULT_F2_TARGET } from "./constants.js";
+import { directionAt, pitchTargetFor, pitchStatus, isOnTarget } from "./trainingDirection.js";
+import { pitchLevels } from "./pitchLevel.js";
 
 // Linear-interpolated percentile of an ascending-sorted numeric array.
 function percentileSorted(sorted, p) {
@@ -22,8 +23,26 @@ function percentileSorted(sorted, p) {
 export const PITCH_RANGE_LOW_PCT = 0.05;
 export const PITCH_RANGE_HIGH_PCT = 0.95;
 
-// Compute summary statistics from recorded frames
-export function computeSummaryStats(frames) {
+// Compute summary statistics from recorded frames.
+//
+// Time on target (pctTimeInPitchTarget) is the share of voiced frames
+// whose pitch LEVEL (utils/pitchLevel.js: running 1.5 s median — the
+// targets are ranges of average speaking pitch, so single frames would
+// mostly measure intonation) is on target — inside the band; a level past
+// it in either direction is off target (band-only since 2026-10-19, user
+// decision; `pitchTargetRule: "band"` marks rows computed this way — rows
+// saved before then counted "past the band in the direction of travel" as
+// on target and keep their saved figures, no migration) — for the
+// training direction in effect at that
+// frame (`directionLog`: [{ atMs, direction }] on the frames' timestampMs
+// clock — see utils/trainingDirection.js). Frames recorded while "Just
+// exploring" have no target and don't count either way;
+// pctVoicedWithPitchTarget says what share of the voiced time had one.
+// With no direction log at all (sessions recorded before directions
+// existed) both are null rather than assumed. There is no resonance (F2)
+// target any more (pctTimeInResonanceTarget is null; older rows keep
+// theirs).
+export function computeSummaryStats(frames, { directionLog = null } = {}) {
   const voicedFrames = frames.filter((f) => f.voiced && f.f0 !== null);
   const f0Values = voicedFrames.map((f) => f.f0);
   const f2Values = voicedFrames.filter((f) => f.f2 !== null).map((f) => f.f2);
@@ -46,11 +65,17 @@ export function computeSummaryStats(frames) {
     return Math.sqrt(variance);
   };
 
-  // Time in target calculations
-  const pitchInTarget = f0Values.filter(
-    (f0) => f0 >= DEFAULT_PITCH_TARGET.low && f0 <= DEFAULT_PITCH_TARGET.high
-  );
-  const f2InTarget = f2Values.filter((f2) => f2 >= DEFAULT_F2_TARGET.low);
+  // Time on target (per frame's pitch level, against that frame's direction).
+  const hasLog = Array.isArray(directionLog) && directionLog.length > 0;
+  let pitchWithTarget = 0, pitchOnTarget = 0;
+  if (hasLog && voicedFrames.length > 0) {
+    const ordered = [...voicedFrames].sort((a, b) => (a.timestampMs ?? 0) - (b.timestampMs ?? 0));
+    const levels = pitchLevels(ordered, (f) => f.timestampMs ?? 0, (f) => f.f0);
+    ordered.forEach((f, i) => {
+      const st = pitchStatus(levels[i], pitchTargetFor(directionAt(directionLog, f.timestampMs ?? 0)));
+      if (st !== null) { pitchWithTarget++; if (isOnTarget(st)) pitchOnTarget++; }
+    });
+  }
 
   // Estimate voiced duration. DSP analysis runs once per chunk arrival
   // (default chunkMs = 25), not once per WINDOW_MS — so frames are ~25 ms
@@ -75,12 +100,14 @@ export function computeSummaryStats(frames) {
     pitchRangeLow: percentileSorted(f0Sorted, PITCH_RANGE_LOW_PCT),
     pitchRangeHigh: percentileSorted(f0Sorted, PITCH_RANGE_HIGH_PCT),
     pitchStdev: stdev(f0Values),
-    pctTimeInPitchTarget: f0Values.length
-      ? Math.round((pitchInTarget.length / f0Values.length) * 100)
+    pctTimeInPitchTarget: pitchWithTarget
+      ? Math.round((pitchOnTarget / pitchWithTarget) * 100)
       : null,
-    pctTimeInResonanceTarget: f2Values.length
-      ? Math.round((f2InTarget.length / f2Values.length) * 100)
+    pctVoicedWithPitchTarget: hasLog && voicedFrames.length > 0
+      ? Math.round((pitchWithTarget / voicedFrames.length) * 100)
       : null,
+    pitchTargetRule: hasLog ? "band" : null,
+    pctTimeInResonanceTarget: null,
     voicedDurationSeconds,
   };
 }

@@ -10,8 +10,8 @@
 // is off by default — HOLD_SEC 0). A small info button
 // opens a one-paragraph explainer (tap-friendly; also a hover title).
 
-import { useEffect, useId, useRef, useState } from "react";
 import { formatSteadiness } from "../audio/steadiness";
+import { useInfoPopover } from "./useInfoPopover";
 
 const EXPLAINER =
   "How steadily your pitch held over the last second: the spread " +
@@ -25,64 +25,80 @@ const EXPLAINER =
 export function SteadinessReadout({
   value,
   held = false,
-  variant = "stat", // "stat" (dashboard column) | "inline" (Pitch tab)
+  variant = "stat", // "stat" (column) | "inline" (Pitch tab) | "compact" (cue strip)
 }) {
-  const [open, setOpen] = useState(false);
-  const wrapRef = useRef(null);
-  const tipId = useId();
+  // Outside tap / Escape / focus leaving close it; one explainer at a time.
+  const { open, toggle, wrapRef, buttonRef, tipId, onBlur } = useInfoPopover();
   const text = formatSteadiness(value);
 
-  // Close the explainer on an outside tap or Escape.
-  useEffect(() => {
-    if (!open) return undefined;
-    const onDown = (e) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
-    };
-    const onKey = (e) => { if (e.key === "Escape") setOpen(false); };
-    document.addEventListener("pointerdown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("pointerdown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
   const dim = text === null ? "opacity-40" : held ? "opacity-50" : "";
-  const valueNode = (
+  const shown = text === null ? "—" : `±${text}`;
+  const unit = <span className="text-xs text-neutral-500 ml-0.5">st</span>;
+  // In the cue strip the value and its unit keep the width of the widest text
+  // ("±<0.1 st"), so the F0 number beside it and the "i" after it never shift
+  // (2026-10-19): a number sits at the right of that space, "— st" at its left,
+  // next to the Hz (2026-10-20 review: "201 Hz      — st" left a wide gap).
+  const valueNode = variant === "compact" ? (
+    <span className="tabular-nums text-neutral-300 inline-grid">
+      <span aria-hidden="true" className="invisible col-start-1 row-start-1">±&lt;0.1{unit}</span>
+      <span className={`col-start-1 row-start-1 ${text === null ? "justify-self-start" : "justify-self-end"}`}>{shown}{unit}</span>
+    </span>
+  ) : (
     <span className="tabular-nums text-neutral-300">
-      {text === null ? "—" : `±${text}`}
-      <span className="text-xs text-neutral-500 ml-0.5">st</span>
+      {shown}
+      {unit}
     </span>
   );
   const infoButton = (
     <button
+      ref={buttonRef}
       type="button"
-      onClick={() => setOpen((o) => !o)}
+      onClick={toggle}
       aria-expanded={open}
       aria-controls={tipId}
       aria-label="What does steadiness measure?"
       title={EXPLAINER}
-      className="ml-1 inline-flex items-center justify-center w-3.5 h-3.5 rounded-full border border-neutral-600 text-[9px] leading-none text-neutral-500 hover:text-neutral-300 hover:border-neutral-400 transition-colors cursor-pointer align-middle"
+      className="relative ml-1 inline-flex items-center justify-center w-3.5 h-3.5 rounded-full border border-neutral-500 text-[9px] leading-none text-neutral-400 hover:text-neutral-200 hover:border-neutral-300 transition-colors cursor-pointer align-middle before:absolute before:-inset-2 before:content-['']"
     >
       i
     </button>
   );
   // Anchored to the side the readout sits on so it stays on screen at
   // phone width: the dashboard column is at the left, the Pitch-tab
-  // readout ends its row.
+  // readout ends its row. The cue strip ("compact") shows it as a card fixed
+  // in the middle of the viewport, like the strip's other info popovers
+  // (2026-10-07 review: opening upward it was clipped and invisible).
+  // whitespace-normal: the strip's header row is nowrap.
   const popover = open && (
     <div
       id={tipId}
       role="note"
-      className={`absolute z-20 bottom-full mb-2 ${variant === "inline" ? "right-0" : "left-0"} w-60 max-w-[calc(100vw-2rem)] rounded-lg border border-neutral-700 bg-neutral-900/95 px-3 py-2 text-left text-xs leading-relaxed text-neutral-300 shadow-lg normal-case tracking-normal`}
+      tabIndex={-1}
+      className={`outline-none ${variant === "compact"
+        ? "fixed z-40 inset-x-4 top-1/2 -translate-y-1/2 mx-auto max-w-md max-h-[80dvh] overflow-y-auto whitespace-normal break-words rounded-lg border border-neutral-600 bg-neutral-900 px-3 py-2 text-left text-xs lg:text-sm leading-relaxed font-normal text-neutral-200 shadow-2xl shadow-black/70 normal-case tracking-normal"
+        : `absolute z-20 bottom-full mb-2 ${variant === "stat" ? "left-0" : "right-0"} w-60 max-w-[calc(100vw-2rem)] whitespace-normal break-words rounded-lg border border-neutral-700 bg-neutral-900/95 px-3 py-2 text-left text-xs leading-relaxed font-normal text-neutral-300 shadow-lg normal-case tracking-normal`}`}
     >
       {EXPLAINER}
     </div>
   );
 
+  // Dashboard cue strip's pitch row header (2026-10-07): "±0.4 st ⓘ" in one
+  // 11 px line; the popover opens below, across the cue row.
+  if (variant === "compact") {
+    return (
+      <span ref={wrapRef} className="inline-flex items-center" data-steadiness="" onBlur={onBlur}>
+        {/* No visible label here, so screen readers get one (review N-8). */}
+        <span className="sr-only">{text === null ? "Steadiness: not available" : text === "<0.1" ? "Steadiness under ±0.1 semitones" : `Steadiness ±${text} semitones`}</span>
+        <span className={`text-[11px] transition-opacity duration-300 ${dim}`} title="Steadiness (last ~1 s)" aria-hidden="true">{valueNode}</span>
+        {infoButton}
+        {popover}
+      </span>
+    );
+  }
+
   if (variant === "inline") {
     return (
-      <span ref={wrapRef} className="relative inline-flex items-baseline gap-1.5">
+      <span ref={wrapRef} className="relative inline-flex items-baseline gap-1.5" onBlur={onBlur}>
         <span className={`inline-flex items-baseline gap-1.5 transition-opacity duration-300 ${dim}`}>
           <span className="text-[11px] text-neutral-500 uppercase tracking-wider">Steadiness</span>
           <span className="text-lg font-light">{valueNode}</span>
@@ -94,7 +110,7 @@ export function SteadinessReadout({
   }
 
   return (
-    <div ref={wrapRef} className="relative text-center">
+    <div ref={wrapRef} className="relative text-center" onBlur={onBlur}>
       <span className="text-[10px] leading-tight text-neutral-500 uppercase tracking-wider inline-flex items-center">
         Steadiness
         {infoButton}

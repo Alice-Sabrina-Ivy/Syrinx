@@ -1,4 +1,10 @@
 // vocal-weight-aggregator.js — Time-windowed CPP aggregation buffer.
+// DORMANT since 2026-10-11: not on the production path (the Clarity row is
+// hidden; measurements/vocal-weight-pipeline-retire-2026-10-11.md) — kept,
+// with its unit test, as library code for a future measure.
+// Feeds the cue strip's "Clarity · approx." row (historical module name;
+// CPP measures clear <-> breathy, not weight —
+// measurements/clarity-cue-2026-10-08.md). "Heavier" below = lower CPP.
 //
 // CPP arrives on every DSP frame (~40 fps, 25 ms chunks; it ran every
 // 6th frame, ~6.7 Hz, until c57b2a2 on 2026-05-10). The displayed

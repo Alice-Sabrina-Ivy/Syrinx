@@ -1,0 +1,22 @@
+{
+ "source": "LibriSpeech test-clean, the resonance lab's 20 adult men + 20 adult women (r1 set, 5 utterances each); distribution of individual gated 5 s readouts through the production path (scripts/resonance/gating.mjs), sampled every 0.2 s of audio once full, each reader weighted equally; raw vtln units (u via reference.json vtln medians)",
+ "generated": "2026-10-07",
+ "men": {
+  "q10": -0.12098916641302682,
+  "q25": -0.10032928452549397,
+  "q50": -0.06685209491036065,
+  "q75": -0.027188392323360618,
+  "q90": -0.0007920625652301783
+ },
+ "women": {
+  "q10": 0.009934391871269183,
+  "q25": 0.039320830493206504,
+  "q50": 0.06159825444732847,
+  "q75": 0.07980575226365338,
+  "q90": 0.10221807075080963
+ },
+ "readers": {
+  "men": 20,
+  "women": 20
+ }
+}

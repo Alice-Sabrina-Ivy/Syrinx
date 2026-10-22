@@ -55,8 +55,8 @@ same base URL: `SPEECH_DATA_ZIPPED.zip`.
 
 ## License
 
-PTDB-TUG is released under the Open Database License + Database Contents
-License (Open Data Commons). Citation when used in publications:
+PTDB-TUG is released under the Open Database License 1.0 (ODbL) + Database Contents
+License 1.0 (DbCL; Open Data Commons) — evaluation only in Syrinx, never used to fit shipped constants. Citation when used in publications:
 
 > G. Pirker, M. Wohlmayr, S. Petrik, F. Pernkopf,
 > "A Pitch Tracking Corpus with Evaluation on Multipitch Tracking Scenario",

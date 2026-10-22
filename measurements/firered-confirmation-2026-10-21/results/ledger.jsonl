@@ -1,0 +1,10 @@
+{"set": "nfresh", "file": "nfresh.json", "sha256": "90fe8766ab83acf746eea92c6799932bc76ef82681d2e16ab2488d43b19e6c25", "at": "2026-10-20 22:44:42 -0500", "rescore": null}
+{"set": "noiseho", "file": "noiseho.json", "sha256": "66385cb761ed402bb6b2c12255ae47a6aae20449c671a906e17218806e96d8da", "at": "2026-10-20 22:44:47 -0500", "rescore": null}
+{"set": "ravspeech", "file": "ravspeech.json", "sha256": "f366cea2223e1247b35e72f9a2c973ce2fc1897f251a7f8fbd9554ed2db8f1e2", "at": "2026-10-20 22:44:50 -0500", "rescore": null}
+{"set": "slr83", "file": "slr83.json", "sha256": "edfd84b5a3e34c20e9880bbce8ab507b44343267cbcf3e011f5d2787e7e6796b", "at": "2026-10-20 22:44:52 -0500", "rescore": null}
+{"set": "ravsong", "file": "ravsong.json", "sha256": "88cd07fe276fc2bd735ad324628f4694ff489f8ce02d34b24ad03930becaaa26", "at": "2026-10-20 22:44:54 -0500", "rescore": null}
+{"set": "vocalset", "file": "vocalset.json", "sha256": "fee28d1617d8730d522ed3c6be8aeda62d53945c059a3f7f3a4fa8e77d0155a4", "at": "2026-10-20 22:44:59 -0500", "rescore": null}
+{"set": "pvqd+voiced", "file": "pvqd+voiced.json", "sha256": "675b7edc7088a4985deee8fc426a49f0d8c6588d5b6fa4892442364605c7f68b", "at": "2026-10-20 22:45:00 -0500", "rescore": null}
+{"set": "vmode", "file": "vmode.json", "sha256": "a7a21c2b6800b19940c45ef69038d26696ba1556e3928811ff0df77feda800c2", "at": "2026-10-20 22:45:03 -0500", "rescore": null}
+{"set": "vinfresh", "file": "vinfresh.json", "sha256": "7f39f3035699f498bbdfe92c95ab6069d80666194491fb09a5be0f1f19af897c", "at": "2026-10-20 22:45:08 -0500", "rescore": null}
+{"set": "vin", "file": "vin.json", "sha256": "4544bc38b9070c84e8bacde8629fc14ddc17f5f09bd672afbc5f2a06c37ad64e", "at": "2026-10-20 22:45:12 -0500", "rescore": null}

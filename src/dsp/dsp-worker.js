@@ -1,6 +1,8 @@
 // dsp-worker.js — Web Worker that performs DSP analysis off the main thread
 // Formant extraction (Burg LPC, src/dsp/formants.js), spectral tilt, HNR
-// (window-corrected AC, src/dsp/hnr.js), intensity, CPP. Pitch detection
+// (window-corrected AC, src/dsp/hnr.js), intensity; CPP only on request (off in
+// production since 2026-10-11 — measurements/vocal-weight-pipeline-retire-2026-10-11.md).
+// Pitch detection
 // lives in pitch-worker.js (Boersma-AC); the main thread relays the latest
 // pitch back via "pitch-hint" messages so this worker can use it for
 // pitch-adaptive formant analysis (Praat-style male-vs-female analysis rate
@@ -38,6 +40,15 @@ let lastContextTime = 0; // AudioContext time when latest chunk was captured
 // fields are NOT computed or sent — only the existing production fields.
 // When on, processChunk emits extra fields the overlay uses.
 let _diag = false;
+
+// CPP (src/dsp/cpp.js), retired from the production path 2026-10-11: its
+// only user-facing reader, the cue strip's Clarity row, is hidden until a
+// measure passes its test (measurements/clarity-cue-2026-10-08.md), and no
+// session data ever stored it. Off unless the `init` message carries
+// `cpp: true` (harnesses / a future measure); `cpp` stays on every analysis
+// message (null when off) so the message shape does not change.
+// measurements/vocal-weight-pipeline-retire-2026-10-11.md
+let _cpp = false;
 
 // Most-recent pitch from pitch-worker, relayed by the main thread via the
 // "pitch-hint" message. Used by extractFormants for the male-vs-female
@@ -85,19 +96,24 @@ function processChunk(buffer, contextTime) {
       ? computeHNR(ringBuffer.subarray(ringLen - hnrSize, ringLen), sampleRate)
       : null;
   }
-  // CPP runs every frame (not throttled like the others). Original
-  // 6th-frame cadence dropped during the WS2 methodology investigation
-  // (2026-05-10): per-frame CPP gave Praat-comparison correlation
-  // r=0.62 on PTDB-TUG / r=0.62 on FDA vs r=0.46/0.48 at 6th-frame
-  // cadence. Each aggregator emit now averages ~40 CPP samples per 1-s
-  // window instead of ~7 — quieter emits, better baseline σ. Cost:
-  // ~80 ms/s CPU on desktop vs ~13 ms/s previously, both well within
-  // budget. See measurements/cpp-praat-methodology-probe-2026-05-10.json.
+  // CPP is off in production since 2026-10-11 (see _cpp: only harnesses
+  // that send `cpp: true` turn it on; the vocal-weight aggregator and
+  // baseline it fed no longer run in the app). When on it runs every frame
+  // (not throttled like the others). Original 6th-frame cadence dropped
+  // during the WS2 methodology investigation (2026-05-10): per-frame CPP
+  // gave Praat-comparison correlation r=0.62 on PTDB-TUG / r=0.62 on FDA
+  // vs r=0.46/0.48 at 6th-frame cadence; the then-production aggregator
+  // averaged ~40 CPP samples per 1-s window instead of ~7. Cost: ~80 ms/s
+  // CPU on desktop vs ~13 ms/s at the 6th-frame cadence. See
+  // measurements/cpp-praat-methodology-probe-2026-05-10.json.
   // Maryn-style processing (Theil + exponential trend + smoothing)
   // adds ~0.17 ms/frame over legacy LSQ. Well within budget.
-  const cppT0 = _diag ? performance.now() : 0;
-  cpp = computeCPP(window, sampleRate);
-  const cppMs = _diag ? performance.now() - cppT0 : null;
+  let cppMs = null;
+  if (_cpp) {
+    const cppT0 = _diag ? performance.now() : 0;
+    cpp = computeCPP(window, sampleRate);
+    cppMs = _diag ? performance.now() - cppT0 : null;
+  }
   analysisCount++;
 
   const analysisEndTime = performance.now();
@@ -121,9 +137,8 @@ function processChunk(buffer, contextTime) {
       // handoffToMainMs (DSP postMessage → main onmessage entry).
       chunkReceiveEpochMs,
       postedAtEpochMs: performance.timeOrigin + performance.now(),
-      // Per-frame computeCPP duration (Maryn-style). Surfaces in
-      // diag snapshots so users can verify the per-frame cost
-      // measurement (Step 2a) holds in real browser execution.
+      // Per-frame computeCPP duration (Maryn-style); null unless CPP is
+      // enabled (init `cpp: true`).
       cppMs,
     };
   }
@@ -157,6 +172,7 @@ self.onmessage = (e) => {
   if (type === "init") {
     sampleRate = e.data.sampleRate;
     if (e.data.diag) _diag = true;
+    _cpp = e.data.cpp === true;
     windowSize = Math.floor(sampleRate * WINDOW_MS / 1000);
     hnrSize = Math.floor(sampleRate * HNR_WINDOW_MS / 1000);
     // Formant extractor (src/dsp/formants.js): decimation, anti-alias FIR
@@ -169,7 +185,7 @@ self.onmessage = (e) => {
 
     // Reset cpp.js module state (cepstrum-time-smoothing buffer +
     // sampled-Theil pair indices) so a worker re-init starts fresh.
-    resetCppState();
+    if (_cpp) resetCppState();
 
     // Init-ack so the main thread can confirm the worker received the
     // diag flag and set up its buffers. Always sent regardless of diag.

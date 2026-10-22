@@ -97,7 +97,8 @@ dominates q8 WASM). Keep 0.75 s.
 
 Oracle runs with locally exported variants (`--local-root`/`--dtype`,
 new oracle flags; export via the preserved
-`perceived-voice-jaesunghuh-tdnn-investigation` branch scripts):
+`perceived-voice-jaesunghuh-tdnn-investigation` branch scripts; that branch was
+deleted on 2026-10-21 by the owner's decision and not kept):
 
 | variant | male acc | female acc | median raw_std (m/f) |
 |---|---|---|---|
@@ -223,4 +224,5 @@ node tests/ml/perceived-voice-hillenbrand-test.js \
 # fp32/fp16/re-quantized variants: export + quantize scripts on branch
 # perceived-voice-jaesunghuh-tdnn-investigation (padding: vowels < 0.75 s
 # are zero-padded for calibration windows)
+# (branch deleted 2026-10-21 by the owner's decision; not kept)
 ```

@@ -1,11 +1,22 @@
-import { useState, useRef, useEffect, lazy, Suspense } from "react";
+import { Component, useState, useRef, useEffect, lazy, Suspense } from "react";
 import { useAudioPipeline } from "./audio/useAudioPipeline";
 import { PitchTrace } from "./components/PitchTrace";
 import { CombinedDashboard } from "./components/CombinedDashboard";
 import { SessionHistory } from "./components/SessionHistory";
 import { DataManagement } from "./components/DataManagement";
+import { DirectionPrompt } from "./components/DirectionPrompt";
 import { DIAG_ENABLED } from "./diag/diag";
 import { repairInterruptedSessions } from "./utils/sessionRepair";
+import {
+  loadTrainingDirection,
+  saveTrainingDirection,
+  pitchTargetFor,
+} from "./utils/trainingDirection";
+import { loadHeardAsEnabled, saveHeardAsEnabled } from "./utils/heardAsSetting";
+import { loadVoiceGateEnabled, saveVoiceGateEnabled, VOICE_GATE_DEFAULT } from "./utils/voiceGateSetting";
+import { loadLabEnabled, saveLabEnabled } from "./utils/labSetting";
+import { withdrawResonanceLab } from "./resonance-lab/labRequest";
+import db from "./db";
 
 // Diagnostic overlay is dynamically imported and only rendered when the
 // ?diag=1 URL flag is present. Production users get zero bundle impact —
@@ -17,30 +28,123 @@ const DiagnosticOverlay = DIAG_ENABLED
 
 // Experimental resonance lab view — a lazy chunk fetched only when the tab is
 // opened; opening it is also what starts the lab (resonance-lab/labRequest.js).
+// The tab is shown only when Settings' "Show the Resonance lab (experimental)"
+// is on (off by default since 2026-10-21, utils/labSetting.js); turning it off
+// leaves the tab (to the Dashboard) and stops the running lab.
 const LabView = lazy(() => import("./resonance-lab/LabView.jsx"));
+
+// Experimental Voice Shaper (record a phrase, hear it with another pitch or
+// resonance; src/voice-preview/, measurements/voice-preview-phase1-2026-10-19.md):
+// its own tab since 2026-10-20 (a Resonance lab view before). A lazy chunk fetched
+// only when the tab is first opened; loading it starts its worker. Opening it does
+// not start the lab.
+const VoiceShaperView = lazy(() => import("./voice-preview/VoiceShaperView.jsx"));
 
 const TABS = [
   { id: "dashboard", label: "Dashboard" },
   { id: "pitch", label: "Pitch" },
   { id: "history", label: "History" },
+  { id: "shaper", label: "Voice Shaper" },
   { id: "lab", label: "Resonance lab" },
 ];
+// Without the lab setting: the first four.
+const TABS_NO_LAB = TABS.filter((t) => t.id !== "lab");
+
+// The tab bar (the same in every state). Below Tailwind's sm breakpoint the tabs
+// are narrower (px-2, gap-0.5) so the five fit on one row at 360 px, the two-word
+// labels wrapping onto two lines there; from sm up, px-4 / gap-1 as before the
+// Voice Shaper tab (2026-10-20). With larger text (125 % at 360 px) the row is
+// wider than the screen: `justify-center-safe` starts it at its first tab and it
+// scrolls sideways, instead of centring and cutting off "Dashboard" and
+// "Resonance lab" where nothing could scroll to them (review 2026-10-20). Under
+// 360 px the row reaches into the page's 16 px gutters (-mx-4), as the centred
+// tabs already did at 320 px (5-315 px), so they still fit there without
+// scrolling; px-1 / pt-1 / pb-1 keep the focus ring inside the scroll box, and
+// -mx-1 / -mt-1 / mb-2 cancel them, so at the default text size nothing moves
+// from 360 px up. Inactive labels
+// neutral-400 (about 7:1; neutral-500 was about 4:1 at 12 px), aria-current on
+// the active tab. Four tabs (the lab setting off, the default) use the same
+// classes: they fit with room to spare.
+function TabNav({ activeTab, setActiveTab, tabs = TABS }) {
+  return (
+    <nav className="flex-shrink-0 flex justify-center-safe gap-0.5 sm:gap-1 overflow-x-auto -mx-1 max-[360px]:-mx-4 px-1 -mt-1 pt-1 pb-1 mb-2">
+      {tabs.map((tab) => (
+        <button
+          key={tab.id}
+          onClick={() => setActiveTab(tab.id)}
+          aria-current={activeTab === tab.id ? "page" : undefined}
+          className={`px-2 sm:px-4 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+            activeTab === tab.id
+              ? "bg-neutral-700 text-white"
+              : "text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/50"
+          }`}
+        >
+          {tab.label}
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+// A Voice Shaper chunk that fails to download (a deploy replaced the hashed chunks
+// while the page stayed open, a flaky phone connection) must not take the app down:
+// without a boundary React removes the whole root (tabs, Stop Listening, a running
+// session recording). The texts equal strings.js S.loading / S.loadError
+// (tests/voice-preview/strings-test.js checks them).
+class ShaperBoundary extends Component {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  render() {
+    return this.state.failed
+      ? <p className="text-sm text-neutral-300" data-vp-load-error="">Voice Shaper could not load. Reload the page to try again.</p>
+      : this.props.children;
+  }
+}
 
 const WELCOME_KEY = "syrinx_welcomed";
 
+// How long to wait for the saved training direction (IndexedDB) before
+// asking without a preselection — a blocked/hung IndexedDB must not keep
+// the question from appearing.
+const DIRECTION_LOAD_TIMEOUT_MS = 1500;
+
+// The voice status beside Stop Listening (laid out at the widest one's width).
+const VOICE_STATUS_TEXTS = ["Voice detected", "Listening...", "Waiting for voice..."];
+
+// First visit only. A modal like the direction question (App makes the page
+// behind it inert): focus starts on Get Started, Escape also continues,
+// and the panel scrolls on short (landscape) viewports.
 function WelcomeOverlay({ onDismiss }) {
+  const buttonRef = useRef(null);
+  const dismissRef = useRef(onDismiss);
+  useEffect(() => { dismissRef.current = onDismiss; }, [onDismiss]);
+  useEffect(() => {
+    buttonRef.current?.focus();
+    const onKey = (e) => {
+      if (e.key === "Escape") { e.preventDefault(); dismissRef.current(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4">
-      <div className="bg-neutral-900 border border-neutral-700 rounded-2xl p-6 max-w-sm w-full text-center shadow-xl">
-        <h2 className="text-xl font-light text-white mb-3">Welcome to Syrinx</h2>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4 py-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="welcome-title"
+      data-dialog="welcome"
+    >
+      <div className="bg-neutral-900 border border-neutral-700 rounded-2xl p-6 max-w-sm w-full text-center shadow-xl max-h-full overflow-y-auto">
+        <h2 id="welcome-title" className="text-xl font-light text-white mb-3">Welcome to Syrinx</h2>
         <p className="text-sm text-neutral-300 leading-relaxed mb-5">
-          Syrinx gives you real-time visual feedback on your voice pitch, resonance, and
-          vocal weight — it needs microphone access to work.{" "}
-          The green target zones show the ranges you're aiming for.
+          Syrinx gives you real-time visual feedback on your voice pitch and
+          resonance — it needs microphone access to work.{" "}
+          Next, choose what you&apos;re aiming for — that sets the targets highlighted on the pitch trace and in the pitch and resonance rows under it.
         </p>
         <button
+          ref={buttonRef}
           onClick={onDismiss}
-          className="px-6 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium transition-colors cursor-pointer"
+          className="px-6 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-300"
         >
           Get Started
         </button>
@@ -70,6 +174,25 @@ function App() {
     }
   });
   const [showSettings, setShowSettings] = useState(false);
+  // Training direction: asked on EVERY load (never assumed). `direction`
+  // stays null — no targets, neutral readouts — until it's answered.
+  // The last answer (Dexie settings) is preselected in the prompt.
+  const [direction, setDirection] = useState(null);
+  const [savedDirection, setSavedDirection] = useState(null);
+  const [directionLoaded, setDirectionLoaded] = useState(false);
+  const [showDirectionPrompt, setShowDirectionPrompt] = useState(true);
+  // Experimental "Likely heard as" panel: OFF by default (missing / blocked
+  // storage = off); the panel's switch and Settings' row share this state.
+  const [heardAsEnabled, setHeardAsEnabledState] = useState(false);
+  // "Hide pitch when no voice is heard (experimental)" — the voice gate: ON
+  // by default (utils/voiceGateSetting.js).
+  const [voiceGateEnabled, setVoiceGateEnabledState] = useState(VOICE_GATE_DEFAULT);
+  // "Show the Resonance lab (experimental)": OFF by default (missing /
+  // blocked storage = off); the tab is shown only while it is on.
+  const [labEnabled, setLabEnabledState] = useState(false);
+  // Settings returns focus to the gear when it closes.
+  const gearRef = useRef(null);
+  const settingsOpenedRef = useRef(false);
   // Ref for session metadata (notes, elapsed, recording state) —
   // kept in sync by CombinedDashboard, readable by a future save/export feature.
   const sessionRef = useRef({ recording: false, elapsed: 0, notes: "" });
@@ -78,25 +201,135 @@ function App() {
     error,
     voiced,
     holding,
+    pitchVoiced,
+    pitchHolding,
     pitch,
+    pitchLevel,
     steadiness,
     steadinessHeld,
-    formants,
-    spectralTilt,
     hnr,
-    vocalWeight,
+    voiceGateStatus,
     modelStatus,
-    modelError,
     modelProgress,
+    resonanceStatus,
     start,
     stop,
     pitchTraceRef,
-    formantTrailRef,
-    genderTraceRef,
-    dspGateRef,
+    subscribeTrace,
+    genderStateRef,
+    resonanceRef,
+    heardAsRef,
+    pitchOnlyRef,
+    audioClockRef,
+    setHeardAsEnabled,
+    setVoiceGateEnabled,
     frameCallbackRef,
     streamRef,
   } = useAudioPipeline();
+
+  useEffect(() => {
+    let done = false;
+    const finish = (dir) => {
+      if (done) return;
+      done = true;
+      setSavedDirection(dir);
+      setDirectionLoaded(true);
+    };
+    loadTrainingDirection(db.settings).then(finish);
+    const timer = setTimeout(() => finish(null), DIRECTION_LOAD_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // The "Likely heard as" switch: same load / timeout pattern as the
+  // direction (a hung IndexedDB leaves it off). A user toggle before the
+  // load resolves wins.
+  const heardAsTouchedRef = useRef(false);
+  useEffect(() => {
+    let done = false;
+    loadHeardAsEnabled(db.settings).then((on) => {
+      if (done || heardAsTouchedRef.current) return;
+      done = true;
+      setHeardAsEnabledState(on);
+      setHeardAsEnabled(on);
+    });
+    const timer = setTimeout(() => { done = true; }, DIRECTION_LOAD_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [setHeardAsEnabled]);
+
+  function changeHeardAs(on) {
+    heardAsTouchedRef.current = true;
+    setHeardAsEnabledState(on);
+    setHeardAsEnabled(on);
+    saveHeardAsEnabled(db.settings, on);
+  }
+
+  // The voice gate switch: same load pattern (a hung IndexedDB keeps
+  // the default, on); a toggle before the load resolves wins.
+  const voiceGateTouchedRef = useRef(false);
+  useEffect(() => {
+    let done = false;
+    loadVoiceGateEnabled(db.settings).then((on) => {
+      if (done || voiceGateTouchedRef.current) return;
+      done = true;
+      setVoiceGateEnabledState(on);
+      setVoiceGateEnabled(on);
+    });
+    const timer = setTimeout(() => { done = true; }, DIRECTION_LOAD_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [setVoiceGateEnabled]);
+
+  function changeVoiceGate(on) {
+    voiceGateTouchedRef.current = true;
+    setVoiceGateEnabledState(on);
+    setVoiceGateEnabled(on);
+    saveVoiceGateEnabled(db.settings, on);
+  }
+
+  // The lab switch: same load pattern (a hung IndexedDB keeps it off); a
+  // toggle before the load resolves wins.
+  const labTouchedRef = useRef(false);
+  useEffect(() => {
+    let done = false;
+    loadLabEnabled(db.settings).then((on) => {
+      if (done || labTouchedRef.current) return;
+      done = true;
+      setLabEnabledState(on);
+    });
+    const timer = setTimeout(() => { done = true; }, DIRECTION_LOAD_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Turning it off while the lab tab is open goes to the Dashboard, and the
+  // running lab (its worker and capture consumer) stops; it starts again only
+  // when the tab is opened again (resonance-lab/labRequest.js).
+  function changeLab(on) {
+    labTouchedRef.current = true;
+    setLabEnabledState(on);
+    saveLabEnabled(db.settings, on);
+    if (!on) {
+      setActiveTab((t) => (t === "lab" ? "dashboard" : t));
+      withdrawResonanceLab();
+    }
+  }
+  const tabs = labEnabled ? TABS : TABS_NO_LAB;
+
+  // The load-time question. Continue confirms AND starts listening (one
+  // tap per load, as Start Listening alone was before the question
+  // existed); Escape only confirms.
+  function confirmDirection(next, { start: startListening = true } = {}) {
+    setDirection(next);
+    setSavedDirection(next);
+    setShowDirectionPrompt(false);
+    saveTrainingDirection(db.settings, next);
+    if (startListening && status === "idle") start();
+  }
+
+  // Settings panel, any time (also mid-session): applies at once.
+  function changeDirection(next) {
+    setDirection(next);
+    setSavedDirection(next);
+    saveTrainingDirection(db.settings, next);
+  }
 
   // One-shot repair of sessions a previous visit never finalized (tab
   // close / crash / mobile discard) — see utils/sessionRepair.js. A
@@ -115,8 +348,21 @@ function App() {
       // Site data blocked — dismissal lasts for this page load only.
     }
     setShowWelcome(false);
-    start();
   }
+
+  useEffect(() => {
+    if (showSettings) settingsOpenedRef.current = true;
+    else if (settingsOpenedRef.current) {
+      settingsOpenedRef.current = false;
+      gearRef.current?.focus();
+    }
+  }, [showSettings]);
+
+  // While the welcome, the direction question (also while the saved
+  // answer is still loading) or Settings is open, everything behind it is
+  // inert: no focus, no clicks — so the microphone can't be started and
+  // Settings can't be opened behind the question.
+  const blocked = showWelcome || showDirectionPrompt || showSettings;
 
   // h-dvh, not h-screen: on phones 100vh is the viewport with the URL bar
   // HIDDEN, so with it showing the bottom row (Stop Listening) sat below
@@ -135,11 +381,29 @@ function App() {
       {/* Welcome overlay (first visit only) */}
       {showWelcome && <WelcomeOverlay onDismiss={dismissWelcome} />}
 
+      {/* Training-direction question (every load; after the welcome) */}
+      {!showWelcome && showDirectionPrompt && directionLoaded && (
+        <DirectionPrompt initial={savedDirection} onConfirm={confirmDirection} />
+      )}
+
       {/* Settings overlay */}
-      {showSettings && <DataManagement onClose={() => setShowSettings(false)} />}
+      {showSettings && (
+        <DataManagement
+          onClose={() => setShowSettings(false)}
+          direction={direction}
+          onDirectionChange={changeDirection}
+          heardAsEnabled={heardAsEnabled}
+          onHeardAsChange={changeHeardAs}
+          voiceGateEnabled={voiceGateEnabled}
+          onVoiceGateChange={changeVoiceGate}
+          voiceGateStatus={voiceGateStatus}
+          labEnabled={labEnabled}
+          onLabChange={changeLab}
+        />
+      )}
 
       {/* Header */}
-      <header className="text-center mb-2 flex-shrink-0 relative">
+      <header className="text-center mb-2 flex-shrink-0 relative" inert={blocked}>
         <h1 className="text-2xl font-light text-white tracking-tight">
           Syrinx
         </h1>
@@ -148,9 +412,11 @@ function App() {
         </p>
         {/* Gear icon */}
         <button
+          ref={gearRef}
           onClick={() => setShowSettings(true)}
           className="absolute right-0 top-1 text-neutral-600 hover:text-neutral-400 transition-colors cursor-pointer"
           title="Settings & Data"
+          aria-label="Settings & Data"
         >
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
             <path fillRule="evenodd" d="M8.34 1.804A1 1 0 0 1 9.32 1h1.36a1 1 0 0 1 .98.804l.295 1.473c.497.144.971.342 1.416.587l1.25-.834a1 1 0 0 1 1.262.125l.962.962a1 1 0 0 1 .125 1.262l-.834 1.25c.245.445.443.919.587 1.416l1.473.294a1 1 0 0 1 .804.98v1.361a1 1 0 0 1-.804.98l-1.473.295a6.95 6.95 0 0 1-.587 1.416l.834 1.25a1 1 0 0 1-.125 1.262l-.962.962a1 1 0 0 1-1.262.125l-1.25-.834a6.953 6.953 0 0 1-1.416.587l-.294 1.473a1 1 0 0 1-.98.804H9.32a1 1 0 0 1-.98-.804l-.295-1.473a6.957 6.957 0 0 1-1.416-.587l-1.25.834a1 1 0 0 1-1.262-.125l-.962-.962a1 1 0 0 1-.125-1.262l.834-1.25a6.957 6.957 0 0 1-.587-1.416l-1.473-.294A1 1 0 0 1 1 10.68V9.32a1 1 0 0 1 .804-.98l1.473-.295c.144-.497.342-.971.587-1.416l-.834-1.25a1 1 0 0 1 .125-1.262l.962-.962A1 1 0 0 1 5.38 3.08l1.25.834a6.957 6.957 0 0 1 1.416-.587l.294-1.524ZM13 10a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" clipRule="evenodd" />
@@ -159,25 +425,11 @@ function App() {
       </header>
 
       {/* Main content */}
-      <div className="flex-1 flex flex-col items-center min-h-0">
+      <div className="flex-1 flex flex-col items-center min-h-0" inert={blocked}>
         {status === "idle" && activeTab !== "history" && (
           <div className="flex-1 flex flex-col w-full max-w-6xl min-h-0">
             {/* Tab navigation even when idle */}
-            <nav className="flex-shrink-0 flex justify-center gap-1 mb-3">
-              {TABS.map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
-                    activeTab === tab.id
-                      ? "bg-neutral-700 text-white"
-                      : "text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/50"
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </nav>
+            <TabNav activeTab={activeTab} setActiveTab={setActiveTab} tabs={tabs} />
             <div className="flex-1 flex items-center justify-center">
               <button
                 onClick={start}
@@ -191,21 +443,7 @@ function App() {
 
         {status === "idle" && activeTab === "history" && (
           <div className="flex-1 flex flex-col w-full max-w-6xl min-h-0">
-            <nav className="flex-shrink-0 flex justify-center gap-1 mb-3">
-              {TABS.map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
-                    activeTab === tab.id
-                      ? "bg-neutral-700 text-white"
-                      : "text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/50"
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </nav>
+            <TabNav activeTab={activeTab} setActiveTab={setActiveTab} tabs={tabs} />
             <SessionHistory />
           </div>
         )}
@@ -235,28 +473,12 @@ function App() {
         {status === "running" && (
           <div className="flex-1 flex flex-col w-full max-w-6xl min-h-0">
             {/* Tab navigation */}
-            <nav className="flex-shrink-0 flex justify-center gap-1 mb-3">
-              {TABS.map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
-                    activeTab === tab.id
-                      ? "bg-neutral-700 text-white"
-                      : "text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/50"
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </nav>
+            <TabNav activeTab={activeTab} setActiveTab={setActiveTab} tabs={tabs} />
 
-            {/* Tab content. Scrolls below lg: the stacked dashboard
-                (pitch 180 px + meter 260 px minimums + stats + controls)
-                is taller than a phone's tab area (< ~870 px viewport), and
-                with nothing scrolling the meter overflowed onto the stats
-                and session controls. At lg the side-by-side layout fills
-                the height as before. */}
+            {/* Tab content. Scrolls below lg: on a phone the trace and the
+                cue strip fit the first screen, the experimental panel and
+                the session row may need a scroll (small phones, landscape).
+                At lg the side-by-side layout fills the height. */}
             <div className="flex-1 flex flex-col min-h-0 overflow-y-auto lg:overflow-y-visible">
               {/* Always mounted while the pipeline runs: it owns the
                   session recording, and unmounting it finalizes the
@@ -268,20 +490,26 @@ function App() {
                 active={activeTab === "dashboard"}
                 voiced={voiced}
                 holding={holding}
+                pitchVoiced={pitchVoiced}
+                pitchHolding={pitchHolding}
                 pitch={pitch}
+                pitchLevel={pitchLevel}
                 steadiness={steadiness}
                 steadinessHeld={steadinessHeld}
-                formants={formants}
-                spectralTilt={spectralTilt}
                 hnr={hnr}
-                vocalWeight={vocalWeight}
                 modelStatus={modelStatus}
-                modelError={modelError}
                 modelProgress={modelProgress}
                 pitchTraceRef={pitchTraceRef}
-                formantTrailRef={formantTrailRef}
-                genderTraceRef={genderTraceRef}
-                dspGateRef={dspGateRef}
+                subscribeTrace={subscribeTrace}
+                genderStateRef={genderStateRef}
+                resonanceRef={resonanceRef}
+                resonanceStatus={resonanceStatus}
+                heardAsRef={heardAsRef}
+                pitchOnlyRef={pitchOnlyRef}
+                audioClockRef={audioClockRef}
+                heardAsEnabled={heardAsEnabled}
+                onHeardAsChange={changeHeardAs}
+                direction={direction}
                 sessionRef={sessionRef}
                 frameCallbackRef={frameCallbackRef}
                 streamRef={streamRef}
@@ -292,9 +520,12 @@ function App() {
                   <div className="flex-1 min-h-[240px]">
                     <PitchTrace
                       pitchTraceRef={pitchTraceRef}
-                      voiced={voiced}
-                      holding={holding}
+                      subscribeTrace={subscribeTrace}
+                      voiced={pitchVoiced}
+                      holding={pitchHolding}
                       pitch={pitch}
+                      pitchLevel={pitchLevel}
+                      target={pitchTargetFor(direction)}
                       steadiness={steadiness}
                       steadinessHeld={steadinessHeld}
                     />
@@ -304,7 +535,17 @@ function App() {
 
               {activeTab === "history" && <SessionHistory />}
 
-              {activeTab === "lab" && (
+              {activeTab === "shaper" && (
+                <ShaperBoundary>
+                  <Suspense fallback={<p className="text-sm text-neutral-400">Loading Voice Shaper…</p>}>
+                    {/* the target prefill and the playback guard during a
+                        Dashboard session recording */}
+                    <VoiceShaperView direction={direction} isSessionRecording={() => sessionRef.current.recording} />
+                  </Suspense>
+                </ShaperBoundary>
+              )}
+
+              {activeTab === "lab" && labEnabled && (
                 <Suspense fallback={null}>
                   <LabView />
                 </Suspense>
@@ -313,23 +554,32 @@ function App() {
 
             {/* Voice status + mic toggle (hidden on history tab) */}
             {activeTab !== "history" && (
-              <div className="flex-shrink-0 mt-3 flex items-center justify-center gap-4">
+              <div className="flex-shrink-0 mt-3 flex items-center justify-center gap-4" data-listen-bar="">
                 <div className="flex items-center gap-2">
-                  <div
-                    className={`w-2 h-2 rounded-full transition-all duration-300 ${
-                      voiced
-                        ? "bg-green-400 shadow-[0_0_6px_rgba(74,222,128,0.5)]"
-                        : holding
-                          ? "bg-yellow-400/60"
-                          : "bg-neutral-600"
-                    }`}
-                  />
-                  <span className="text-[11px] text-neutral-500">
-                    {voiced
-                      ? "Voice detected"
-                      : holding
-                        ? "Listening..."
-                        : "Waiting for voice..."}
+                  {/* Three stacked dots cross-fading by opacity (composited)
+                      instead of one dot transitioning colour + shadow, which
+                      ran on the main thread every display frame
+                      (measurements/main-thread-cpu-2026-10-08.md). */}
+                  {/* pitchVoiced / pitchHolding: the pitch display's flags (=
+                      voiced / holding unless the voice gate hides
+                      the pitch). */}
+                  <div className="relative w-2 h-2" data-voice-status={pitchVoiced ? "voiced" : pitchHolding ? "holding" : "waiting"}>
+                    <div className={`absolute inset-0 rounded-full bg-green-400 shadow-[0_0_6px_rgba(74,222,128,0.5)] transition-opacity duration-300 ${pitchVoiced ? "opacity-100" : "opacity-0"}`} />
+                    <div className={`absolute inset-0 rounded-full bg-yellow-400/60 transition-opacity duration-300 ${!pitchVoiced && pitchHolding ? "opacity-100" : "opacity-0"}`} />
+                    <div className={`absolute inset-0 rounded-full bg-neutral-600 transition-opacity duration-300 ${!pitchVoiced && !pitchHolding ? "opacity-100" : "opacity-0"}`} />
+                  </div>
+                  {/* One width for all three texts, so the centred Stop
+                      Listening button beside it doesn't slide left and right
+                      as the voice comes and goes (2026-10-20). */}
+                  <span className="inline-grid text-[11px] text-neutral-500">
+                    {VOICE_STATUS_TEXTS.map((t) => <span key={t} aria-hidden="true" className="invisible col-start-1 row-start-1 whitespace-nowrap">{t}</span>)}
+                    <span className="col-start-1 row-start-1 whitespace-nowrap">
+                      {pitchVoiced
+                        ? "Voice detected"
+                        : pitchHolding
+                          ? "Listening..."
+                          : "Waiting for voice..."}
+                    </span>
                   </span>
                 </div>
 
