@@ -21,9 +21,14 @@ now and asked for a build to try next to a proper confirmation run. The
 confirmation is separate work (pre-registered on branch `voice-detector`,
 `measurements/firered-confirmation-2026-10-21.md`); nothing here replaces it.
 
+**Note 2026-10-21:** branches `noise-detector-tryout` (merged; its commits remain in
+`cue-strip`'s history) and `voice-detector` were deleted on 2026-10-21 by the owner's
+decision. `voice-detector`'s scripts and data were not kept; its two notes cited here
+were copied into `cue-strip`'s `measurements/`.
+
 ## Follow-up (2026-10-21)
 
-Branch `voice-gate-followup` (from `cue-strip` 1a1713f), after the merge's
+Branch `voice-gate-followup` (from `cue-strip` fd2152f), after the merge's
 review:
 
 - **Resonance row follows the gate** (user decision: "make the resonance row
@@ -84,7 +89,7 @@ review:
 
 ## Merged into cue-strip (2026-10-21)
 
-Branch `firered-merge` (from `cue-strip` 8e7252a): `noise-detector-tryout`
+Branch `firered-merge` (from `cue-strip` 9084946): `noise-detector-tryout`
 and `noise-detector-tryout-res` merged; conflicts only in the third-party
 notices script / test (Voice Shaper's WORLD / Emscripten components next to
 FireRedVAD's model licence: both kept) and the hook's imports (both kept).
@@ -397,7 +402,7 @@ real voices only); the noise clips are 16 kHz.
 
 ## Changes after the review (2026-10-20)
 
-A review of the branch at 7bb6d72 (read-only, its own probes) found one
+A review of the branch at d7ddf45 (read-only, its own probes) found one
 medium and two low problems and three information items. All six were
 taken:
 

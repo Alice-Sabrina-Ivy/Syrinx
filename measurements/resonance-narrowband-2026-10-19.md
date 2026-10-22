@@ -13,6 +13,10 @@ wideband paths (100 Hz–7 kHz, AMR-WB, Opus 12 / 24 kbit/s, mSBC) shift
 ≤ 0.14 G and keep the change. Public data and synthetic signals only.
 Nothing under `src/` changes until this note has results (hard rule 3).
 
+**Note 2026-10-21:** branch `resonance-robustness` was deleted on 2026-10-21 by the
+owner's decision; its note `resonance-robustness-2026-10-19.md` (99ff7fc) and its scripts
+were not kept.
+
 ## Plan (pre-registered)
 
 Committed and pushed before any result exists. Deviations found later are
@@ -143,8 +147,8 @@ smoke runs.
 
 Recorded 2026-10-19, during the run.
 
-1. **Base commit.** `origin/cue-strip` was at 7928936 (not fdfa040) when the
-   plan was written; the plan (b991def) sits on top of it. No effect on the
+1. **Base commit.** `origin/cue-strip` was at 966f42f (not b657c5a) when the
+   plan was written; the plan (e4a10d0) sits on top of it. No effect on the
    measurement.
 2. **Budget rule (plan §3) not triggered.** The first condition (clean, dev
    half, 20 jobs × 6 streams) took 1.6 min at two processes, projecting
@@ -352,7 +356,7 @@ parity test against `scripts/resonance-narrowband/`.
 
 Recorded 2026-10-19, during the run.
 
-1. **Order.** The round 2 plan (c1d3c1f) and the `sweep.mjs` change (50442a0:
+1. **Order.** The round 2 plan (cd43d35) and the `sweep.mjs` change (e1ac5ef:
    judged positives = the five phone paths, `lp4k` descriptive, output files
    renamed `sweep-r2-*`) were both committed and pushed before any round 2
    detector output was computed.
@@ -596,10 +600,10 @@ unit / build / cue-strip smoke runs. Pitch stays untouched either way.
 
 Recorded 2026-10-19, during the run.
 
-1. **Order.** The round 3 plan (4730e8e), the sub-band extraction and edge
-   detector (05e9729: `detector.mjs` `subbandPowers` / `edgeFeatures` /
+1. **Order.** The round 3 plan (d0deb07), the sub-band extraction and edge
+   detector (bf0768f: `detector.mjs` `subbandPowers` / `edgeFeatures` /
    `createEdgeDecision`, `extract.mjs --subbands`, `conditions.py --r3`) and
-   the round 3 sweep (62bf3cc: `sweep3.mjs`) were each committed and pushed
+   the round 3 sweep (811ebb8: `sweep3.mjs`) were each committed and pushed
    before any round 3 detector output was computed. Before that only a
    synthetic sanity check was run (white noise, a gradual one-pole roll-off,
    and the same roll-off with a sharp 3.6 kHz cut-off), no stream.
@@ -826,7 +830,7 @@ unit / build / cue-strip smoke runs. Pitch stays untouched either way.
 
 Recorded 2026-10-19, during the run.
 
-1. **Order.** The round 4 plan (6e7ec57) and the `sweep.mjs` change (7bf2e80:
+1. **Order.** The round 4 plan (94941f6) and the `sweep.mjs` change (5c63273:
    judged positives = `tel`, `amrnb`, `g711u`, `btnb`; `opus8nb` and `lp4k`
    descriptive; output files `sweep-r4-*`) were both committed and pushed
    before any round 4 output was computed.

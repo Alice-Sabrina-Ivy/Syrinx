@@ -14,6 +14,12 @@ file for any candidate that touches `pitch-worker.js`, `boersma-ac.js`,
 Branch `lowvoice-noise`, from `voice-direction` 852b5cc. The pitch, DSP, hook
 and meter code there is identical to 5f6c8c7, the tip the diagnosis replayed.
 
+**Note 2026-10-21:** branches `lowvoice-noise` and `lowvoice-voice-detector-gate`
+(both merged; their commits remain in `cue-strip`'s history) were deleted on
+2026-10-21 by the owner's decision, and so were `voice-detector` and the candidate
+branches `lowvoice-meter-c1`, `lowvoice-meter-c2`, `lowvoice-pitch-absub` and
+`lowvoice-pitch-absub-c4`, whose scripts, data and results sections were not kept.
+
 ## Problem
 
 On `voice-direction` the Perceived Voice meter only scores running speech

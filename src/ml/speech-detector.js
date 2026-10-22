@@ -20,7 +20,8 @@
 // (utils_vad.py OnnxWrapper): 16 kHz, 512-sample chunks, each prefixed
 // with the previous chunk's last 64 samples (zeros before the first),
 // LSTM state carried chunk to chunk. One speech probability per 32 ms.
-// Benchmarked on the voice-detector branch, not merged here
+// Benchmarked on the voice-detector branch (deleted 2026-10-21 by the owner's
+// decision; its scripts and notes were not kept), not merged here
 // (measurements/voice-detector-benchmark-2026-10-06.md as of commit
 // e90233664b47787ba8c45475587c7ed97ca73536, the last to touch it): it separates
 // running speech from machine noise well (at p >= 0.5 it removes 98 % of

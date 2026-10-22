@@ -1,6 +1,6 @@
 # Voice gate: the resonance row follows the gate (2026-10-21)
 
-Branch `voice-gate-followup` (from `cue-strip` 1a1713f). Public data and
+Branch `voice-gate-followup` (from `cue-strip` fd2152f). Public data and
 synthetic stimuli only; the private check is descriptive and its results
 are kept outside this repository.
 
@@ -26,7 +26,7 @@ User decision 2026-10-21: make the resonance row not react to noise.
 ready (not missing / slow / loading), the resonance row's `voiced` /
 `holding` come from the gated pitch display flags `pitchVoiced` /
 `pitchHolding` — the ones that drive the hidden pitch line and the pitch
-row. Otherwise exactly as now. **BASE** = `cue-strip` 1a1713f (the row on
+row. Otherwise exactly as now. **BASE** = `cue-strip` fd2152f (the row on
 the raw flags). The resonance worker and its gated pitch hint are the same
 in both, so where both draw a dot it is the same position. The gated flags
 are never true where the raw ones are false, so CAND's row state is always
@@ -48,7 +48,7 @@ driver of [noise-detector-tryout-resonance-2026-10-21.md](noise-detector-tryout-
   `rowValue`, `resonanceClamp`, `axisPos`, `resonanceHeader`) on the latest
   resonance `state` post, every 25 ms chunk, three arms:
   - **PRE**: ungated hint, raw flags (before the merge);
-  - **BASE**: gated hint, raw flags (1a1713f);
+  - **BASE**: gated hint, raw flags (fd2152f);
   - **CAND**: gated hint, gated flags.
 - Workers run with a frozen `performance.now` (no overload / "slow"
   switch-off: a device that keeps up); the hook with the session oracle's
@@ -235,6 +235,9 @@ rarely; results kept outside this repository.
 
 ### Reproduce
 
+**Note 2026-10-21:** branch `voice-detector` was deleted on 2026-10-21 by the owner's
+decision; its worktree `build/` data (the `--vad-build` input below) were not kept.
+
 ```
 python scripts/resonance/voice-gate-prep.py --vad-build=<voice-detector worktree>/build \
     --ls=<resonance-lab cache root> --corpora=<tests/dsp/data with fda/ ptdb-tug/>
@@ -250,7 +253,7 @@ The same rows without `--row` print the earlier note's tables
 
 ## Built (2026-10-21)
 
-The candidate as measured, on the same branch (commit f71ddc0): both
+The candidate as measured, on the same branch (commit 93d1f48): both
 cue-strip rows take their state from `pitchVoiced` / `pitchHolding`
 (`src/components/cueStripModel.js` `cueRowStates`, used by `CueStrip.jsx`).
 Tests: `tests/audio/voice-gate-display-test.js` (the real hook's flags

@@ -7,6 +7,8 @@
 // reference in that JSON was written by scripts/firered/make-parity-ref.py
 // with the screen's own code (voice-detector branch: offtheshelf/firered/
 // firered.py, offtheshelf/common.py smooth, score.py hop_probs + voice_flags).
+// (Branch voice-detector was deleted on 2026-10-21 by the owner's decision and not
+// kept, so the reference can no longer be regenerated; the fixture stays.)
 //
 // Checks
 //   A  front end (always): the JS Kaldi log-mel fbank equals the runner's on

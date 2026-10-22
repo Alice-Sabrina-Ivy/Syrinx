@@ -23,7 +23,7 @@
 //   9. jittered callbacks (now() = vsync + U[0, J], J = 0–4 ms) at 60 / 90 /
 //      120 / 144 / 165 / 180 / 240 / 360 Hz: the gate reads the frame
 //      timestamp, so the jitter changes nothing — 60 Hz draws on EVERY frame
-//      (a9ddd6b's now() gate skipped some: the phone's ~53/s), 90 Hz 45/s,
+//      (a977b8f's now() gate skipped some: the phone's ~53/s), 90 Hz 45/s,
 //      120 Hz 60/s, 144 Hz 48/s, 165 Hz 55/s, 180 / 240 / 360 Hz 60/s; gaps
 //      exactly k frames, no two draws closer than MIN_DRAW_MS -
 //      DRAW_TOLERANCE_MS, none > that + 1 frame, and no display above
@@ -310,7 +310,7 @@ for (const [hz, opts, label] of [
 }
 
 // 12. No timestamp passed: the gate falls back to now() (exact clock here).
-// With callback jitter the fallback behaves like a9ddd6b's now() gate (its
+// With callback jitter the fallback behaves like a977b8f's now() gate (its
 // slack is 16.67 - 15 = 1.67 ms instead of 0.67 ms, so it skips only when
 // one callback runs that much later than the next); not asserted —
 // conforming browsers always pass a timestamp.

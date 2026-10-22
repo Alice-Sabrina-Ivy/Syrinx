@@ -5,6 +5,9 @@ files and identifiers keep the old name). The app code is in `src/voice-preview/
 [measurements/voice-preview-phase1-2026-10-19.md](../../measurements/voice-preview-phase1-2026-10-19.md).
 The Phase 0 spike (its timing pages, parity runners and listening tools) is on the
 `voice-preview-spike` branch.
+(Note 2026-10-21: that branch was deleted on 2026-10-21 by the owner's decision; its
+scripts and data were not kept, so `make-spike-parity.mjs` can no longer extract the
+spike commit. The committed fixture stays.)
 
 | Path | What |
 |---|---|

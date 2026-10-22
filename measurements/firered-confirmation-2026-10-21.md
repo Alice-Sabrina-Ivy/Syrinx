@@ -10,6 +10,9 @@
 > recordings were not read.
 > Per-set results and checks: the folder
 > [firered-confirmation-2026-10-21/](firered-confirmation-2026-10-21/), copied with it.
+> **Note 2026-10-21:** branch `voice-detector` was deleted on 2026-10-21 by the owner's
+> decision; its scripts, notes and `build/` data were not kept, so what is cited "on branch
+> `voice-detector`" below no longer exists.
 
 Branch `voice-detector`. User decision 2026-10-20: blanking some held notes
 and sustained vowels is acceptable for now; build a PC try-out **and** run a

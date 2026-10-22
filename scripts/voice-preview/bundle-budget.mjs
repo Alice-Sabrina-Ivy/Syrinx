@@ -3,7 +3,7 @@
 // (measurements/voice-preview-phase1-2026-10-19.md §11 and "Renamed and moved
 // 2026-10-20"): builds the base (default: the
 // merge base of HEAD and origin/cue-strip, i.e. the cue-strip commit this branch last
-// merged, else cue-strip at 62bf3cc, the branch point; extracted with `git archive` into
+// merged, else cue-strip at 811ebb8, the branch point; extracted with `git archive` into
 // build/vp-budget/) and this tree with the same Vite settings, and compares gzip sizes.
 //
 //   node scripts/voice-preview/bundle-budget.mjs [--base=<rev>] [--keep]
@@ -38,7 +38,7 @@ const arg = (k, d) => (process.argv.find((a) => a.startsWith(`--${k}=`)) ?? `=${
 function defaultBase() {
   try {
     return execFileSync("git", ["merge-base", "HEAD", "origin/cue-strip"], { cwd: repo, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim().slice(0, 12);
-  } catch { return "62bf3cc"; }
+  } catch { return "811ebb8"; }
 }
 const BASE_REV = arg("base", "") || defaultBase();
 const KEEP = process.argv.includes("--keep");

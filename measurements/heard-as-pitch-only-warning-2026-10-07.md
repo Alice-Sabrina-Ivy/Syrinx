@@ -986,7 +986,7 @@ same event stream. Chain = a clone of `cue-strip` @ cf76c58 (module sha256
 `5a7a5814f827c48d019b8bfe450de85ffb0855220c88e7e57440df4fc6c43a6a`, the
 module still on `cue-strip`; no file on the warning's input path has changed
 since — `HeardAsPanel.jsx` later gained only the text-only false-alarm line,
-56c886c, and its rewording after review).
+54bc242, and its rewording after review).
 Because the panel's 2 s timer phase is arbitrary in the app and moves
 per-reader figures by about ±2–6 pp, every session ran with four panel
 phases (0 / 500 / 1000 / 1500 ms, each its own warning instance and timers)
@@ -1319,8 +1319,11 @@ retroactively).**
 3. *Anchor hashes in git before results.* Push a pre-registration-only
    commit carrying PREREG's sha256 before the dev run, and one carrying
    CHOICE's before any test job is built. This round's external hash log is
-   an editable file; the first git-anchored copy (e7cd062) postdates the
+   an editable file; the first git-anchored copy (776fc57) postdates the
    test.
+   *Note 2026-10-21:* commit e7cd062 was rewritten on 2026-10-21 to remove a
+   local path; its replacement is 776fc57 (text differs only by the redacted
+   path), so the logged hash no longer matches a git object.
 4. *Few-update readers.* Pre-register a minimum eligible-update count (for
    example ≥ 30 per phase) for a reader to count toward the per-reader
    maximum, and report update-weighted natural FA beside reader-balanced.
@@ -1573,7 +1576,7 @@ window) with its own pre-registration, and adopt it only if it passes.
 Public data only (LibriSpeech, Multilingual LibriSpeech — CC BY 4.0); no
 private recordings. Every number below is per sex. **Verdict: FAIL, 29 of
 30 checks. `src/ml/pitch-only-warning.js` is unchanged (A40+KP8-3+DS10,
-module sha256 `2a1f4022…` (36202c2; code-identical to the
+module sha256 `2a1f4022…` (46e2406; code-identical to the
 port-parity-checked `94554a8e…`, comments only)), and the panel's "More" line about turning the
 panel on before you start talking stays.**
 
@@ -1615,7 +1618,7 @@ it is first turned on, or sessions where the model is still loading.
 gender worker on the audio clock, resonance posts every 0.2 s of audio,
 the panel's 2 s interval and 250 ms hide check, the deployed q8-v2
 classifier), extended with late switch-on and model loading as the app
-does it at 36202c2: switching the panel on at audio time A starts a new
+does it at 46e2406: switching the panel on at audio time A starts a new
 gender worker (and `heardAs.reset()`), every panel compute is a hidden
 "loading" update until the model is ready at A + L, then the panel
 computes on its 2 s interval from A. The warning object gets every pitch
@@ -1973,7 +1976,7 @@ T60, T120, four phases each) and the deployed q8-v2 classifier. New:
   by asserted exact string replacements (with no fallback it is the shipped
   code path);
 - `replay_r2.mjs`: drives the shipped copy, the repo module (cue-strip
-  4c81fea, sha256 asserted), the variants with no fallback, S0, the six
+  ac31826, sha256 asserted), the variants with no fallback, S0, the six
   candidates and round 1's F4-Q5 over each panel's recorded call stream;
 - `indep_r2.py`: an independent Python implementation from the rule text;
 - `late_eval_r2.py`: round 1's outcome definitions, unchanged.
@@ -2342,7 +2345,7 @@ review:
   label in the CLAUDE.md row and at the end of the Consequence paragraph.
   Both are now labelled. The CLAUDE.md row also now says "about the same
   warnings": KS-Q5 at T120 gives him 59 warnings over the four phases,
-  the shipped rule with the panel on from the start 65. Commit 098a401's
+  the shipped rule with the panel on from the start 65. Commit ae60cfa's
   message says "(the same warnings over 87-89 instead of 135-139 eligible
   updates; 11.84 % with the panel on from the start)" without a label; it
   is pushed, so it is left as it is and corrected here.
@@ -2996,7 +2999,7 @@ the shipped copy `2a1f4022…`, `make_fixture_late.mjs`, `late_synthetic.mjs`,
 `warning_bound.mjs` and `warning_bound_sim.mjs` in `scripts/heard-as/pitch-only/`.
 
 **Review fixes (2026-10-13), committed before the code change.** Two
-read-only reviews of 312c36d found one medium issue in the cap, one
+read-only reviews of 972de7f found one medium issue in the cap, one
 medium issue in the labels, and several low ones. Nothing above is
 edited. This part adds one change to "What changes" (2c′, which replaces
 2c's time test), the requirements that change must meet, and the review
@@ -3012,7 +3015,7 @@ with the panel on from the start, where the module is meant to be the
 shipped rule tick for tick. The reviewer's simulation (panel on from the
 start; 9 s of speech, a 200 s pause, 90 s of speech, then an 8 st
 pitch-only shift; seeds 1–3): the shipped module and the harness's KS-Q5
-first warn at 306 s and are on for 12 updates; 312c36d never warns. With a
+first warn at 306 s and are on for 12 updates; 972de7f never warns. With a
 100 s pause all three first warn at 206 s. The cap saved no memory there:
 the buffer keeps voiced frames only, and silence adds none (its A40 buffer
 peaked at 63–68 frames).
@@ -3127,7 +3130,7 @@ and still apply to the new module.
   - Run against the shipped module, the identity and golden groups pass
     and the late and bound groups fail.
   - Each of (f) 4's eight mutants still fails at least one check.
-  - So does each of these: the cap as 2c (312c36d's time test; it must
+  - So does each of these: the cap as 2c (972de7f's time test; it must
     fail the pause case); no F0 range check in the seed; no copy of the
     shadow's pending values; no back-fill of them; no verdict check; no
     freshness check; a 50 ms gap cap; a 0 ms first gap; the window edge
@@ -3146,7 +3149,7 @@ and still apply to the new module.
   - The cap (medium): 2c′ above.
   - Its frame figure at 44.1 kHz (low): the bound above.
   - The post-hoc label (medium): added to this note's header update and to
-    the module's header. The 4fed00a commit message also gives the 18.57 %
+    the module's header. The c62c4f1 commit message also gives the 18.57 %
     figure without the label and cannot be changed without rewriting
     pushed history. That figure is post hoc there too.
   - The unpinned K-seed rules (low): the fixture panels and synthetic
@@ -3436,7 +3439,7 @@ them verbatim.
 - `tests/ml/pitch-only-warning-test.js`: the 2c′ items of "What else
   changes" in the review fixes (the constants check, the bound 7,521,
   section 15's held-note and pause cases, the reviewer's pause case), and
-  its copies of the two strings. The K-seed pins are already in (b72bb8a).
+  its copies of the two strings. The K-seed pins are already in (25f7da9).
 - `scripts/heard-as/pitch-only/warning_bound.mjs`: the bound 7,521 and its
   comment.
 - `scripts/cue-strip-smoke.mjs`: only if its "More" check needs the new
@@ -3478,7 +3481,7 @@ decision. No requirement is relaxed afterwards.
   listening; 9 s of speech, which fills the cue; a 200 s pause; 90 s of
   speech, during which the cue sets its start, more than 180 s after it
   filled; a 30 s pitch-only shift of +8 st; 60 s of speech. 2c's time cap
-  gives up on this start, so the module as committed now (b72bb8a) never
+  gives up on this start, so the module as committed now (25f7da9) never
   warns. The new module must equal the shipped module (`2a1f4022…`): on/off
   at every update, `held()` after it and `pitchStart()` before it
   (`Object.is`), **0 mismatches**, and it must warn after the shift.
@@ -3524,17 +3527,17 @@ Inputs of this part: `review-parity/bound_adv.mjs` `98eb60cedcb820a4f06ce1ad359f
 `decide/ml/pitch-only-warning.js` `c1dbeba33e8a449f45cf8dd32b4b183cf152d50b7a93282c348edc6e9ad87d32`
 (a byte copy of `fix/countcap/pitch-only-warning.countcap.js`),
 `decide/ml/heardAsCalibration.js` `a813cf6a5b542504bb57ba3991d20813c5758d94138fe1af6b6d54b7fd17475c`
-(the same bytes as `src/ml/heardAsCalibration.js` at b72bb8a).
+(the same bytes as `src/ml/heardAsCalibration.js` at 25f7da9).
 
 **Results of the code commit (2026-10-13, 2c′ and the wording).** Every
 requirement of this part holds; nothing above was changed. The module
 `src/ml/pitch-only-warning.js` has sha256
 `c1dbeba33e8a449f45cf8dd32b4b183cf152d50b7a93282c348edc6e9ad87d32`, the
-same bytes as the ready module in `fix/countcap/` (b72bb8a's module was
-`a5879f5a…`). The ready patch did not apply cleanly at b72bb8a: it was made
-on an earlier tree and also carried the K-seed pins b72bb8a had already
+same bytes as the ready module in `fix/countcap/` (25f7da9's module was
+`a5879f5a…`). The ready patch did not apply cleanly at 25f7da9: it was made
+on an earlier tree and also carried the K-seed pins 25f7da9 had already
 committed. The patched files in `fix/countcap/` (module, test, bound
-script) differ from b72bb8a only by 2c′, so they were copied over, and the
+script) differ from 25f7da9 only by 2c′, so they were copied over, and the
 two strings and the comments were then changed as this part lists.
 
 - **(a) Panel on from the start: identical to the shipped module.**
@@ -3626,7 +3629,7 @@ two strings and the comments were then changed as this part lists.
   panel, no horizontal page scroll, no start line), and the built bundle
   holds both new strings.
 - **(f), (h4) Tests.** `tests/ml/pitch-only-warning-test.js`: **217 of
-  217** checks (212 at b72bb8a). New or changed: the constants check names
+  217** checks (212 at 25f7da9). New or changed: the constants check names
   `maxStartVoicedMs`; the bound is 7,521; "t_start never comes" runs on
   held notes at 25 and 24.989 ms frames, panel off and on (buffer ≤ 7,200,
   nothing kept past t_fill + 180 s, emptied, `pitchStart()` null, no
@@ -3647,7 +3650,7 @@ two strings and the comments were then changed as this part lists.
   | No freeze in `addPitch` | bound (4) |
   | No cap | bound (6: held notes at 25 / 24.989 ms, panel off / on — up to 15,601 frames —, speech with pauses, panel off / on) |
   | Shadow kept running when the late flag is false | bound (1) |
-  | **The cap as 2c** (312c36d's time test, t_fill + 180 s) | bound (7: the six "t_start never comes" checks — 7,201 frames at 25 ms, 7,204 at 24.989 ms; with pauses it empties at t_fill + 180 s, not at the 7,201st voiced frame — and **the 200 s pause case**) |
+  | **The cap as 2c** (972de7f's time test, t_fill + 180 s) | bound (7: the six "t_start never comes" checks — 7,201 frames at 25 ms, 7,204 at 24.989 ms; with pauses it empties at t_fill + 180 s, not at the 7,201st voiced frame — and **the 200 s pause case**) |
   | No F0 range check in the seed | late (2) |
   | No copy of the shadow's pending values | late (2) |
   | No back-fill of them | late (1) |
@@ -3684,7 +3687,7 @@ two strings and the comments were then changed as this part lists.
      and `pitchStart()` at every one of the case's updates, and it first
      warns at **306 s** for each seed, after the shift (which starts at
      299 s). The check also requires the first warning to come after the
-     shift. b72bb8a's module never warns there, and the "cap as 2c" mutant
+     shift. 25f7da9's module never warns there, and the "cap as 2c" mutant
      fails this check.
   2. `bound_adv.mjs --scenario=pauseAfterFill` (seeds 1–3; 25 ms, 24.989
      ms and 24.9887 ms frames): the new module, the shipped module and the
@@ -3729,7 +3732,7 @@ Inputs and outputs of this step (scratch folder `warning-ks-q5-adopt/code/`):
 
 #### Review notes, round 3 (2026-10-13)
 
-The third review (of f98a4d3) re-ran the parity replays, the pause and
+The third review (of 185a9f4) re-ran the parity replays, the pause and
 frame-timing simulations, the text checks and the suite. It found the code
 correct: 0 mismatches everywhere it compares, the counts above, and
 `retained()` never over the bound. Its five findings are about wording and
@@ -3789,14 +3792,14 @@ bundle is byte-identical (`index-DFsFzVEq.js`, `8c562211…`).
    cases split by a 300 s pause). In held170 (then speech and a +8 st
    shift) the shipped module warns at 272 s in 17 of 21 runs, the new
    module in 3 (the "drops" timing, whose stalls keep the voiced count
-   under the cap) and b72bb8a's time cap in none. Added: the exception to
+   under the cap) and 25f7da9's time cap in none. Added: the exception to
    "tick for tick" in the module header, the CLAUDE.md row and its
    resolved-issue entry, and this note's header; the cap as a limit in the
    module header's and CLAUDE.md's limits. Not changed: the panel's "More"
    text, which says held vowels are not supported but not this; its wording
    is the user's.
 
-4. **The f98a4d3 commit message's "every mutant fails a check" (nit): no
+4. **The 185a9f4 commit message's "every mutant fails a check" (nit): no
    change.** It leaves out the `ceil` mutant, which is equivalent and
    expected to pass. The results above have it right; the commit is pushed
    and is not rewritten.
@@ -3806,7 +3809,7 @@ bundle is byte-identical (`index-DFsFzVEq.js`, `8c562211…`).
    spacing. With the measurement-only `?chunk=N` (5–50 ms) the buffer
    between S0's P0 and A40's freeze holds up to 40 s of voiced frames.
    `r3fix/chunkbound.mjs` (panel off, every frame voiced, the cue fills at
-   10 s and sets its start 12, 39, 60 or 400 s later; the f98a4d3 module
+   10 s and sets its start 12, 39, 60 or 400 s later; the 185a9f4 module
    and the edited one give the same output):
 
    | Frame spacing | Most frames retained (buffer + ring) |
@@ -3854,7 +3857,7 @@ decision). The full `PITCH_ONLY_LATE_TEXT`, which replaces the quote in
 
 #### Review notes, round 4 (2026-10-18)
 
-The fourth review (of 8a8ff79) re-ran the parity replays on every pool and
+The fourth review (of 9a82ce3) re-ran the parity replays on every pool and
 panel (0 mismatches), the 15 s blind check (mismatches on every pool), 2,394
 synthetic runs (pauses, held notes, stop / start, late panels, ten frame
 timings, clock leads) and the suite. It found the code correct and the
@@ -3863,7 +3866,7 @@ Nothing above is edited, no requirement changes, and the module is
 unchanged.
 
 1. **"Another tab" in the late line (medium): fixed by the user decision
-   above, in bb06b51.** The line no longer mentions another tab. The
+   above, in 7877491.** The line no longer mentions another tab. The
    smoke's "More" check now requires "(for example while it is still
    downloading), the note may not appear" and no "another tab" in the late
    line. Re-run on the built tree of that change (bundle
@@ -3888,7 +3891,7 @@ unchanged.
    from round 3's simulation (`r3fix/sim3r.json`, held170, 21 runs): the
    shipped module warns (first at 272.0–272.2 s) in 17 of 21 runs, the new
    module in 3 of 21 (all three with the "drops" frame timing, whose
-   stalls keep the voiced count under the cap), b72bb8a's time cap in
+   stalls keep the voiced count under the cap), 25f7da9's time cap in
    none.
 
 4. **Split the late line into two list items (nit, optional): not

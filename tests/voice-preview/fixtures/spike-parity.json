@@ -1,7 +1,7 @@
 {
  "note": "Expected renders from the Phase 0 spike's own code (scripts/voice-preview/make-spike-parity.mjs). Inputs: tests/resonance-lab/fixtures LibriSpeech clips (CC BY 4.0), upsampled by the engine's resampleClip, cut to whole capture chunks. track: the real pitch chain's posted value per capture chunk (Hz, 0 = unvoiced; float32 values).",
  "spikeCommit": "3f7603fd77ad19fcafaa8d5491e6d99c4aa3067d",
- "srcCommit": "6194596e2489c97764a4a36a6d579f6225e698e3",
+ "srcCommit": "d2a06426e7370c07e377606a61cb9db3cc4242b1",
  "cells": [
   [
    0,

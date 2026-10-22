@@ -13,6 +13,9 @@
 #   hangover    the same voice_flags (2000 ms)
 # Those files are read from a checkout of the voice-detector branch (--vd);
 # their git blob ids are recorded in the output.
+# Note 2026-10-21: branch voice-detector was deleted on 2026-10-21 by the owner's
+# decision and its scripts were not kept, so this script can no longer run; the
+# committed fixture stays as written.
 #
 # Frame availability: score.py takes a candidate's first_avail_ms. The screen
 # declared 26 ms for every stream (+1 ms for its resampled streams); the app

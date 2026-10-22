@@ -1,7 +1,7 @@
 # Voice gate (FireRedVAD): pitch regression check (2026-10-21)
 
-Branch `firered-merge` (head 4e9d691) against its base `cue-strip`
-(8e7252a), with the voice gate **on**. The question: how much correctly
+Branch `firered-merge` (head 19279e0) against its base `cue-strip`
+(9084946), with the voice gate **on**. The question: how much correctly
 painted voice does the gate hide, per band (target 160–400 Hz, low
 75–160 Hz) and per display stage (painted trace, readout)? Public corpora
 only below. Results on the private session recordings are kept outside this
@@ -26,7 +26,7 @@ the base.
 
 ## Method
 
-- **Trees.** Base = `git archive 8e7252a src`. Head = this branch's `src`.
+- **Trees.** Base = `git archive 9084946 src`. Head = this branch's `src`.
 - **The committed session oracle does not run the detector.**
   `scripts/session-oracle/lib/chain.mjs` starts the pitch worker without
   `vad` in `init`. As the worker's header says, the detector then never runs,

@@ -56,6 +56,8 @@ docs/jaesunghuh-gender/
 # PENN Direction C investigation ONNX scaffolding. The investigation is
 # preserved on the pitch-detection-penn branch; the ONNX files
 # themselves are too large to commit on main.
+# (Note 2026-10-21: that branch was deleted on 2026-10-21 by the owner's
+# decision; not kept.)
 scripts/penn-validation/
 
 # public/ copies of the gender-model investigation artifacts (the source

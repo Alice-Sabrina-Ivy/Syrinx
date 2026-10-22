@@ -18,6 +18,8 @@
 //   node scripts/firered/tune194-replay.mjs --dumps=<voice-detector build>/vad/dumps/noise
 //        --audio=<root holding <source>/<id>.wav> [--json=build/firered-tune194.json] [--limit=N]
 // Needs the local model copy (build/models/firered/: node scripts/fetch-firered-model.mjs).
+// Note 2026-10-21: branch voice-detector was deleted on 2026-10-21 by the owner's decision;
+// its build/ dumps (--dumps) were not kept.
 
 import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync } from "node:fs";
 import path from "node:path";

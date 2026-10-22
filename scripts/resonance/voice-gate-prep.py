@@ -9,6 +9,9 @@ level as is) plus a manifest streams.json:
       --ls=<resonance-lab cache root> --corpora=<tests/dsp/data with fda/ ptdb-tug/>
       [--out=build/resonance-voicegate]
 
+Note 2026-10-21: branch voice-detector was deleted on 2026-10-21 by the owner's
+decision; its worktree build/ data (the --vad-build input) were not kept.
+
 Sets (the note's plan): N1 tuning-194 noise, N2 fresh confirmation noise,
 S1 LibriSpeech r1_test readers, S2 PTDB-TUG, S3 FDA, H2 PVQD holds,
 D1 speech then noise. H1 (synthetic holds) is made by the driver.

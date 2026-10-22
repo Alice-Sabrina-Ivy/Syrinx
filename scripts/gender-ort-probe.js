@@ -13,6 +13,8 @@
 // Regeneration: scripts/export-jaesunghuh-onnx.py on the preserved
 // branch perceived-voice-jaesunghuh-tdnn-investigation, then
 // onnxconverter_common.float16 (keep_io_types) for the fp16 variant.
+// (Note 2026-10-21: that branch was deleted on 2026-10-21 by the owner's
+// decision; not kept.)
 //
 // Spawned-process cleanup contract (CLAUDE.md hard rule 2): Chrome is
 // launched via puppeteer-core with an isolated user-data-dir;

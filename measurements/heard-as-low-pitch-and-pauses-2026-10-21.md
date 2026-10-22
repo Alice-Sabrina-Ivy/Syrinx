@@ -2,8 +2,8 @@
 
 **Status: attribution of the shipped panel + pre-registered plan (§1–7) +
 results (§8).** The attribution measures only the shipped code. The plan (§6)
-was committed and pushed (2d8ce1d) before any candidate was coded or run; the
-dev selection (H1+H3) was committed and pushed (d1c4d46) before the pick's one
+was committed and pushed (6183042) before any candidate was coded or run; the
+dev selection (H1+H3) was committed and pushed (26ed283) before the pick's one
 held-out run. **Result: H1+H3 passes every part of the bar on held-out for
 women and men (§8).** A review the same day (§9) rebuilt the §8.3 guard
 baseline (pass / fail unchanged) and added what the bar did not check: the
@@ -15,9 +15,9 @@ the heard-as modules (`src/ml/heard-as.js`, `heardAsCalibration.js`,
 `utterance-gate.js`, `gender-worker.js`, `speech-detector.js`, and the
 panel's `src/components/HeardAsPanel.jsx`) that comes out of it.
 
-Branch `heard-as-responsiveness`, from `cue-strip` 53e3832 (the pitch chain,
+Branch `heard-as-responsiveness`, from `cue-strip` 4a3db78 (the pitch chain,
 the utterance gate, the speech detector, the classifier and the panel are
-those of 53e3832). Public data only: LibriSpeech dev-clean and test-clean
+those of 4a3db78). Public data only: LibriSpeech dev-clean and test-clean
 (CC BY 4.0), PTDB-TUG, FDA, Hillenbrand et al. (1995) /hVd/ words. No private
 recording.
 
@@ -33,7 +33,7 @@ Two reports from using the app:
    complaint is also how long it takes to get an informative reading, not
    only the first one. (The below-80 Hz case happened separately.)
 
-## 2. How the panel decides (from the code at 53e3832)
+## 2. How the panel decides (from the code at 4a3db78)
 
 - **Inputs.** The gender worker decides on a 0.75 s window every 150 ms
   (utterance gate: the Silero speech detector says someone is speaking, the
@@ -507,10 +507,10 @@ node tests/ml/heard-as-responsiveness-test.js
 
 ## 8. Results (2026-10-21)
 
-**Order.** Plan committed and pushed 10:20:56 CDT (2d8ce1d). Candidates
+**Order.** Plan committed and pushed 10:20:56 CDT (6183042). Candidates
 coded afterwards (`heard-as.js` gained the H2 options, default off — the
 shipped panel's stream metrics regenerate byte-identical). Dev selection
-written 10:30:36 CDT and committed and pushed with the code (d1c4d46,
+written 10:30:36 CDT and committed and pushed with the code (26ed283,
 10:30:47). The pick's one held-out run: 10:31:17.
 
 ### 8.1 Selection on dev (LibriSpeech test-clean, 20 W / 20 M)
@@ -629,7 +629,7 @@ first-reading check) and H1+H3 on the same runs, four timer phases each
 | speech + whisper, phonated EARS women: B1 | 5 | 24.7 → 21.6 % | reported (not in the 2026-10-08 B1); shown samples 1,336 → 1,644 |
 
 **Baseline rebuilt (review, 2026-10-21).** The first version of this table
-(up to b2a440d) compared H1 with H1+H3, not the panel before 2026-10-21 with
+(up to 8e4564a) compared H1 with H1+H3, not the panel before 2026-10-21 with
 H1+H3: `analyze.mjs` had `VARIANTS.shipped = { agg: {} }`, which takes
 `minVoicedMs` from `heardAsCalibration.js`; that file carried H1's 2 s from
 10:33 on, and `guards.mjs` ran at 10:44. It reported the phonated whisper-only
@@ -826,7 +826,7 @@ reference replay):
 | held vowels alone, noise, pause fill, silence: no reading | pass | |
 | synthetic unphonated whisper: no reading in 30 s (its pool reaches 40 windows, 5 counted logits, 1.65 s voiced; asserted ≥ 10, > 0, 1.2–2 s) | pass | |
 
-**Fails on the old panel:** with the 53e3832 sources the test stops at its
+**Fails on the old panel:** with the 4a3db78 sources the test stops at its
 import (`quickCheck` does not exist). With the old panel's 250 ms timer
 supplied as `quickCheck` (recompute only to hide a shown reading on a held
 note), 12 checks fail: the two wiring checks, all eight pause checks and both
@@ -852,7 +852,7 @@ reach 2 s.
 **Golden file not updated.** The plan (§6.3 iii) requires
 `tests/ml/fixtures/heard-as-golden.json` to stay as is: H1 and H3 change no
 aggregate definition, only whether and when a pool is shown, and
-`make_golden.mjs` regenerated it byte-identical at d555c06; this test adds a
+`make_golden.mjs` regenerated it byte-identical at 768114e; this test adds a
 new fixture instead.
 
 With the test in place: `npm run lint` clean, `npm run test:unit` 47 / 47
@@ -869,7 +869,7 @@ item 3 moves no bar number (0 differences over 1,219 streams), that the
 shipped code is the pick (two streams re-run through the real chain match
 the stored records; the real `HeardAsPanel.jsx` in headless Chrome with a
 virtual clock matched the simulation at all four timer phases, 0 differences
-over 1,460 samples of 250 ms, at 53e3832 and at the pick), that readings
+over 1,460 samples of 250 ms, at 4a3db78 and at the pick), that readings
 both versions show are the same, that the regression test fails on the old
 code, and that lint, the unit tests and the privacy rules pass. Its
 findings and what was done (every number re-run here from the stored runs
@@ -938,7 +938,7 @@ panel's existing out-of-range state ("Outside the range it was tested on");
 the pitch-detector fix (P1) is deferred. This plan is committed and pushed
 before the chain is run on any stream or any candidate is coded.
 
-**Baseline ("shipped")** = the panel on `cue-strip` 35bf286: H1+H3
+**Baseline ("shipped")** = the panel on `cue-strip` 4833231: H1+H3
 (`minVoicedMs` 2000, first-reading check) — `analyze.mjs` variant `H1+H3`.
 
 ### A.1 Candidates (heard-as modules only; each can only hide)
@@ -1018,7 +1018,7 @@ to the aggregator).
 
 ### A.4 Results (2026-10-21) — FAIL on dev, nothing implemented
 
-**Order.** Plan committed and pushed 12:46:03 CDT (db9bb0d); the streams were
+**Order.** Plan committed and pushed 12:46:03 CDT (fdd7afd); the streams were
 being built meanwhile (no chain run, no panel number). Chain run 12:53–13:19
 (579 streams, two processes). Dev selection written 13:21:22
 (`build/heard-as/lowhide/selection.json`). One deviation: at 13:09, while the

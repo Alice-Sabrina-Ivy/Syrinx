@@ -8,6 +8,9 @@
 > The `build/vad*/` data paths are local, gitignored data of that branch's
 > worktree. Public data only; the sealed set and the private session
 > recordings were not read.
+> **Note 2026-10-21:** branch `voice-detector` was deleted on 2026-10-21 by the owner's
+> decision; its scripts, notes and `build/` data were not kept, so what is cited "on branch
+> `voice-detector`" below no longer exists.
 
 Branch `voice-detector`. User decision 2026-10-20: before choosing between a
 custom round 7 and stopping the detector work, run a cheap screen of

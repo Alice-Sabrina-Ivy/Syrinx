@@ -4,7 +4,7 @@
 this note. Any change to it is recorded under "Deviations" at the end, with its date and reason;
 the text above that section is not edited afterwards.
 
-**Branch:** `voice-preview`, started from `cue-strip` at 62bf3cc. No PR without the user's
+**Branch:** `voice-preview`, started from `cue-strip` at 811ebb8. No PR without the user's
 explicit go-ahead (CLAUDE.md hard rule 1).
 
 **Inputs:**
@@ -15,6 +15,8 @@ explicit go-ahead (CLAUDE.md hard rule 1).
   [voice-preview-spike-2026-10-12.md](voice-preview-spike-2026-10-12.md) and
   `scripts/voice-preview/` on that branch (`build.mjs`, `wasm/vp_world.cpp`, `lib/`,
   `worker/vp-worker.js`, `timing/`).
+  (Note 2026-10-21: branch `voice-preview-spike` was deleted on 2026-10-21 by the owner's
+  decision; its scripts and data were not kept.)
 - The spike's phone session (2026-10-19, Pixel 11 Pro XL, Tensor G6, Chrome 155.0.8059.81):
   **WORLD at 48 kHz with front end F-S passed the gate on both clip sets.** 5 s phrases, SIMD
   build:
@@ -973,7 +975,7 @@ five being problem 1. No synthetic input had to be repeated in the final runs.
 
 **Bundle** (`bundle-budget.mjs`, gzip level 9; WebAssembly and glue raw / gzip):
 
-| | vs the branch point (cue-strip 62bf3cc) | vs the current cue-strip tip (7bf2e80) |
+| | vs the branch point (cue-strip 811ebb8) | vs the current cue-strip tip (5c63273) |
 |---|---|---|
 | Entry chunk + static imports (JS) | 136.26 → 136.46 KB, **+202 B** | 136.31 → 136.46 KB, +149 B |
 | Main stylesheet (`index-*.css`, loaded with the entry) | 7 703 → 8 043 B, **+340 B** (raw +2 742 B) | the same |
@@ -1056,7 +1058,7 @@ checks are not on this branch.)
 
 ## Fix step (2026-10-19)
 
-The three reviews' findings applied (Deviations 25–39), the latest `cue-strip` (b60eec3: the
+The three reviews' findings applied (Deviations 25–39), the latest `cue-strip` (82d4b93: the
 narrowband detector for the resonance row, the frame-timestamp trace gate) merged first, then
 every check re-run on the merged tree. Headless Chrome 155 unless named; the same shared desktop,
 27–41 % busy.
@@ -1068,7 +1070,7 @@ every check re-run on the merged tree. Headless Chrome 155 unless named; the sam
 | `npm run lint`, `npm run test:unit` (60 scripts, incl. the new `controller-guards-test.js`: render queue after an error, Record again during the wait, both watchdogs, Discard while analysing, render out of memory), `npm run build` | pass |
 | `voice-preview-smoke.mjs` (layout at five viewports, flow, checks, dev, `vite preview`, fallback, chunkfail) | **278 pass, 0 fail**, no input repeated. Discard frees everything at all five viewports: AudioBuffers 0 → 3 → 0, array-buffer backing 0.5 → 4.6 → 0.5 MB, worker WebAssembly 16.1 → 76.3 → 16.1 MB (verify problem 1 fixed). Clean phrase: no notice, level margin 44.5–45.2 dB; fan hum: both notices (24.6 dB); pink noise +10 dB: the noise notice (15.9 dB); each announced with "Preview ready."; the dev part with no reload and no write to the linked checkout's Vite cache |
 | `cue-strip-smoke.mjs` (the merged cue-strip's own smoke, its WAVs regenerated) | 81 / 81 at each of 448 × 890, 402 × 750, 360 × 690, 890 × 360, 1280 × 800 |
-| `bundle-budget.mjs` (base: the merged cue-strip tip b60eec3) | pass: what every page load fetches +662 B gzip (entry JS +243 B, main stylesheet +419 B) against 1 KB; LabView +399 B (the error boundary included); card chunk 10.68 KB; worker chunk 5.31 KB; no voice-preview strings in the entry or LabView chunks; WebAssembly 52.2 KB (SIMD) / 50.3 KB gzip, fetched one at a time |
+| `bundle-budget.mjs` (base: the merged cue-strip tip 82d4b93) | pass: what every page load fetches +662 B gzip (entry JS +243 B, main stylesheet +419 B) against 1 KB; LabView +399 B (the error boundary included); card chunk 10.68 KB; worker chunk 5.31 KB; no voice-preview strings in the entry or LabView chunks; WebAssembly 52.2 KB (SIMD) / 50.3 KB gzip, fetched one at a time |
 | `build.mjs --check-shipped` | simd / nosimd `.wasm` and the glue byte-identical to the committed files (fa3a29cf…, 09cf5e8a…, 5e7a7a20…) after the `vp_world.cpp` comment change |
 | Desktop timing (`--parts=timing`, Chrome for Testing 154, 48 kHz, listening on, 10 + 10 recordings, twice; median / pooled p90, spike A5 limits in brackets) | 5 s analysis + rebuild 811 / 971 and 789 / 896 ms [1130 / 1420]; **5 s slider change 222 / 259 and 222 / 232 ms [220 / 350]: median 2 ms over**; 8 s analysis + rebuild 1284 / 1344 and 1257 / 1335 ms [1690 / 2220]; 8 s slider change 326 / 390 and 329 / 382 ms [360 / 550]. End to end: stop → "Preview ready" 0.90–0.91 s (5 s) and 1.30–1.31 s (8 s), press → rendered 0.31 / 0.40–0.41 s, far under the 3 s / 1 s gate. No growth over 19 Record again cycles (AudioBuffers 0 → 0, backing 4.9 → 4.9 MB, worker 92.1 → 92.1 MB). The renders are bit-identical to the spike's (`parity-test.js`); the verify step measured 214 ms on the branch before the merge, and the merged cue-strip adds the narrowband detector to the resonance worker that runs alongside — a plausible cause, not measured. The phone check is the gate |
 
@@ -1122,7 +1124,7 @@ plan; §15's manual steps (audibility through the speaker and headphones, TalkBa
 §15's timing, playback, hum and Discard steps on the gate phone, run with the phone check kit
 described under "Fix step" (it uses adb; the phone's microphone is never opened, the kit plays
 public / synthetic WAVs into the page in place of it). Pixel 11 Pro XL (Tensor G6, Android 17),
-Chrome 155, the built app of this branch at bd92ac5 (before the cue-strip merge that follows it).
+Chrome 155, the built app of this branch at 5b7f058 (before the cue-strip merge that follows it).
 Only timings and pass / fail are written down; the raw run log stays outside the repository.
 
 | Check | Result | Limit |
@@ -1152,7 +1154,7 @@ Resonance lab (tab order: Dashboard, Pitch, History, Voice Shaper, Resonance lab
 lazily loaded and keeps its listening and recording behaviour; the lab goes back to its two
 views (Resonance, Weight × clarity). The text above this section still says "Voice preview" and
 "the lab's third view"; where it disagrees with this section, this section wins. The latest
-`cue-strip` (c41838c: the split-bar "Likely heard as" panel, the quiet-floor notes) was merged
+`cue-strip` (acfbb52: the split-bar "Likely heard as" panel, the quiet-floor notes) was merged
 first, without conflicts.
 
 **What the user sees now**
@@ -1212,7 +1214,7 @@ started the lab's capture consumer, worker and model.
 **Bundle budget (§11, updated).** The card's chunk is now the tab's chunk: `VoiceShaperView`
 with the card (`bundle-budget.mjs` looks for `VoiceShaperView-*.js`), ≤ 15 KB gzip. A new check
 requires that chunk to stay outside the entry's static imports and that LabView never refers to
-it. The default base is still the merge base with `origin/cue-strip`, now c41838c, which has no
+it. The default base is still the merge base with `origin/cue-strip`, now acfbb52, which has no
 Voice Shaper at all.
 
 **Tests and smokes changed.** `strings-test.js`: the renamed strings and download name, App's own
@@ -1237,7 +1239,7 @@ median.
 |---|---|
 | `npm run lint`, `npm run build` | pass |
 | `npm run test:unit` | 60 / 60 scripts (incl. `no-local-paths-test.js`, `strings-test.js` 30 / 30, `parity-test.js`) |
-| `bundle-budget.mjs` (base c41838c) | pass: what every page load fetches +870 B gzip against 1 KB (entry JS +448 B, main stylesheet +422 B; the fix step measured +662 B against that day's cue-strip tip, a different base, so the move's own cost is not separated out). LabView −3 B (back to the base). Tab chunk 10.84 KB, worker chunk 5.31 KB; the tab chunk is only a lazy import; no voice-preview strings in the entry or LabView chunks |
+| `bundle-budget.mjs` (base acfbb52) | pass: what every page load fetches +870 B gzip against 1 KB (entry JS +448 B, main stylesheet +422 B; the fix step measured +662 B against that day's cue-strip tip, a different base, so the move's own cost is not separated out). LabView −3 B (back to the base). Tab chunk 10.84 KB, worker chunk 5.31 KB; the tab chunk is only a lazy import; no voice-preview strings in the entry or LabView chunks |
 | `voice-preview-smoke.mjs` (layout at five viewports, flow, checks, dev, `vite preview`, fallback, chunkfail) | **304 pass, 0 fail**, no input repeated (the first run: 303 / 304, the target-row check at 360 px described above, then fixed). The tab bar is one row inside the viewport at all five viewports (360 px: 16–344 px, tabs 43–76 px wide, 44 px tall); Discard frees everything at all five viewports, as before; nothing of the lab is fetched while only Voice Shaper is used; the chunk failure shows the load error in the tab with all five tabs and Stop Listening still there |
 | `cue-strip-smoke.mjs --pitch-only=man,woman` (448 × 890) | 107 / 107 |
 | `lab-layout-smoke.mjs` (360, 448, 1280 px; nothing moves as the voice comes and goes, the "Likely heard as" panel in every state) | partly. The forced part (all 44 panel states, no network): **18 / 18** at 360, 448 and 1280 px; the panel is 233 / 218 / 218 px in every state and nothing below it moved (max 0.00 px). The live parts (cue strip, lab Resonance, lab Weight × clarity with the mapping buttons): every check passed at 360 px (10 / 10) and at 448 px as far as they ran (cue strip, lab Resonance), no box moved; the runs did not finish, because a resource governor on this machine suspended the browser while other work held the CPU above 90 %, and the page call timed out. The live-panel part (it downloads the voice model) was not run |

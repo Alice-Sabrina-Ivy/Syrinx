@@ -1,6 +1,6 @@
 # Resonance row: why going up feels slow and coming back feels fast (2026-10-21)
 
-Branch `resonance-asymmetry` (from `cue-strip` c0d031f). Public data only
+Branch `resonance-asymmetry` (from `cue-strip` 54472d3). Public data only
 (LibriSpeech dev-clean for this pass; test-clean is held out for the plan
 below). Dev candidate results and the pick: §Dev results (committed before
 any held-out run). **Held-out: the pick fails bar 4** (§Held-out result).
@@ -8,7 +8,7 @@ any held-out run). **Held-out: the pick fails bar 4** (§Held-out result).
 
 ## Why
 
-User report 2026-10-21 (phone, cue-strip c0d031f, voice gate on): starting
+User report 2026-10-21 (phone, cue-strip 54472d3, voice gate on): starting
 at a low (male) resonance and then switching to a high (female) one, the
 Dashboard resonance row takes several seconds of speech to adjust; going
 back down, it adjusts quickly.
@@ -212,7 +212,7 @@ and both gates are unchanged.
   - patterns 18/36, 30/36, 30/40, both orders, and the controls.
 
   Run once, through the real workers, for the single dev winner and BASE
-  (cue-strip c0d031f).
+  (cue-strip 54472d3).
 
 **Dev selection.** Among the cells that pass (ii)–(iv) on dev, the lowest
 dev median away Tdb wins. On a tie (within 0.1 s), the larger `jumpU`, then

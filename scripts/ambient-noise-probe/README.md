@@ -8,7 +8,8 @@ the speaker's actual F0) — the probe identifies tonal
 interference sources that could be confusing the model.
 
 Background: see the negative-finding investigation at commit
-`pitch-half-period-octave-fix` branch. Frame-local autocorrelation
+`pitch-half-period-octave-fix` branch (deleted 2026-10-21 by the owner's
+decision; not kept). Frame-local autocorrelation
 fixes don't work when the interferer dominates the signal, so the
 remaining mitigation paths are either (a) noise-reduction
 front-end (Direction D, not pursued), or (b) identify and
@@ -105,4 +106,5 @@ the device. Stop the probe and close the tab to release the mic.
   mic. A prominence ≥ 15 dB peak in the speech F0 range is
   empirically enough to cause SwiftF0 octave-up failures (see
   the harmonic-stack reproducer test in the
-  pitch-half-period-octave-fix branch).
+  pitch-half-period-octave-fix branch, deleted 2026-10-21 by the
+  owner's decision and not kept).

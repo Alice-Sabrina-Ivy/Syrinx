@@ -499,9 +499,13 @@ only). On the phone the adopted build stays 11 % / 14 % below adf19c3.
 `performance.now()`; on the desktop at ~180 Hz draws, main-thread CPU and
 latency are unchanged within run spread. **Phone-checked 2026-10-19 (§7.6):
 PASS 6 / 6** — it draws on every 60 Hz frame (60.0 draws /s for women and
-men vs a9ddd6b's 52.3; frame-timestamp gap p99 16.8 ms; draw-end gap p99
+men vs a977b8f's 52.3; frame-timestamp gap p99 16.8 ms; draw-end gap p99
 20.9 vs 33.5 ms; SMOOTH by the automated screen-recording check) at +10.5
 ms/s (+3.1 %) main thread in the one usable pair (diag on; the production
 pair was spoiled by the phone locking, so the production-page cost is
 unmeasured). `trace-vsync` merged into `cue-strip`, replacing the
-`performance.now()` gate a9ddd6b's loop (adopted 2026-10-12) used.
+`performance.now()` gate a977b8f's loop (adopted 2026-10-12) used.
+
+**Note 2026-10-21:** branches `trace-raf60` and `trace-vsync` were deleted on 2026-10-21
+by the owner's decision; both were merged, so their commits remain in `cue-strip`'s
+history.

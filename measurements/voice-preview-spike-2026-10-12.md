@@ -7,6 +7,9 @@
 > The scripts it names (`scripts/voice-preview/timing/`, `worker/`, `hum/`, `lib/world-engine.js`,
 > the listening tools) are on that branch; this branch carries `build.mjs`, `wasm/vp_world.cpp`
 > and `lib/paths.mjs` of them.
+> **Note 2026-10-21:** branch `voice-preview-spike` was deleted on 2026-10-21 by the
+> owner's decision; its scripts and data were not kept, so the scripts named below that
+> this branch does not carry no longer exist.
 
 > **Results follow the plan:** see § Results (desktop, 2026-10-12, revised after review) and
 > § Review notes. The plan text below, from the status line to the end of §P10, is unchanged
@@ -32,7 +35,7 @@ phone gate (§P6), the PSOLA fallback is the engine.
 - No app feature code. Nothing under `src/` changes.
 - Spike code goes under `scripts/voice-preview/`.
 - Public data only.
-- No PR. The branch is `voice-preview-spike`, started from `cue-strip` at a9ddd6b.
+- No PR. The branch is `voice-preview-spike`, started from `cue-strip` at a977b8f.
 
 ## Plan (pre-registered)
 
@@ -169,7 +172,7 @@ FDA is not used, because its licence is unstated.
 
 Built `.wasm` files and all outputs stay outside the repo, under
 `$VP_CACHE/`. The build sha256 values are recorded here.
-Meters run on this branch's `src/` (a9ddd6b), read-only.
+Meters run on this branch's `src/` (a977b8f), read-only.
 
 ### P3. Parity criteria (WebAssembly vs pyworld)
 
@@ -208,7 +211,7 @@ fresh, not taken from the prototype's stored files.
 **Level 3: Syrinx's meters read the WebAssembly renders like the pyworld renders.**
 
 Both render sets are measured with this branch's meters. The meter code changed between the
-prototype's base (main 134bb34) and a9ddd6b (`noise-notch.js`, `vtln.js`, `lab-engine.js`), so the
+prototype's base (main 134bb34) and a977b8f (`noise-notch.js`, `vtln.js`, `lab-engine.js`), so the
 prototype's stored numbers are not the reference. Over the 208 finished renders:
 
 | Meter | Pass |

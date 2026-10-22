@@ -62,7 +62,7 @@ console.log("orientation and geometry (split bar)");
   check("best guess s (data-split-guess, not drawn) grows as more would say man", mono);
 }
 
-console.log("\nwords (frozen at 550c959; the range line as of 2026-10-21: 'Could go either way' and the one-side sentence)");
+console.log("\nwords (frozen at 119bb48; the range line as of 2026-10-21: 'Could go either way' and the one-side sentence)");
 {
   const golden = JSON.parse(readFileSync(fileURLToPath(new URL("./fixtures/heard-as-axis-words-golden.json", import.meta.url)), "utf8"));
   let same = 0, detail = "";

@@ -205,11 +205,13 @@ model on both platforms; also 4.6× faster on mobile.
    100/100 but mobile inference 1154 ms median on Pixel 8 Pro (7.7×
    over hop budget); wav2vec2-large desktop:mobile ratio ~21×. Branch
    [`perceived-voice-audeering-6l-integration`](https://github.com/Alice-Sabrina-Ivy/Syrinx/tree/perceived-voice-audeering-6l-integration)
-   preserved (conversion scripts + Hillenbrand test live there).
+   preserved (conversion scripts + Hillenbrand test live there). Deleted
+   2026-10-21 by the owner's decision; not kept.
 3. **JaesungHuh (2026-05-06)**: ECAPA-TDNN, Hillenbrand 95.6/95.8,
    mobile 460 ms median — over budget but ~2.5× faster than audeering.
    Branch [`perceived-voice-jaesunghuh-tdnn-investigation`](https://github.com/Alice-Sabrina-Ivy/Syrinx/tree/perceived-voice-jaesunghuh-tdnn-investigation)
-   preserved. Q8 ONNX uploaded to HF Hub (MIT, inherited upstream).
+   preserved (deleted 2026-10-21 by the owner's decision; not kept). Q8 ONNX
+   uploaded to HF Hub (MIT, inherited upstream).
 4. **Platform-split exploration (didn't ship)**: designed UA-routing +
    first-inference probe to ship JaesungHuh on desktop and
    prithivMLmods on mobile. Stage 5 mobile measurement killed it: the

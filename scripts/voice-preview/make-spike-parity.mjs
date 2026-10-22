@@ -4,6 +4,9 @@
 //
 //   node --import ./scripts/session-oracle/lib/register.mjs scripts/voice-preview/make-spike-parity.mjs
 //        [--spike=3f7603f]
+// Note 2026-10-21: branch voice-preview-spike (3f7603f) was deleted on 2026-10-21 by the
+// owner's decision and not kept, so the spike commit no longer exists and this script
+// cannot run as written; tests/voice-preview/fixtures/spike-parity.json stays as committed.
 //
 // 1. Extracts the spike's scripts/voice-preview/lib/ and the lab's sinc resampler from the
 //    spike commit with `git archive` into build/voice-preview/spike-<commit>/ (gitignored).

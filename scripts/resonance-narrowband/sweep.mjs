@@ -7,8 +7,8 @@
 //   node scripts/resonance-narrowband/sweep.mjs --half=held --point=B,8,3,6,-31
 //        (band, tauS, vMinS, hystDb, tOnDb)                               confirmation
 //
-// Round 1 (lp4k judged as a positive) is this script at 654e449; round 2 (five
-// phone paths judged, opus8nb included) is this script at 50442a0.
+// Round 1 (lp4k judged as a positive) is this script at 634e197; round 2 (five
+// phone paths judged, opus8nb included) is this script at e1ac5ef.
 //
 // Reads build/resonance-narrowband/feat/<cond>/<spk>.{json,f64} (extract.mjs).
 // The grid computes F once per (band pair, tau) with detector.mjs

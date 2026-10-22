@@ -1,7 +1,12 @@
 # Noise-detector try-out: gate the resonance row too? (2026-10-21)
 
-Branch `noise-detector-tryout-res` (from `noise-detector-tryout`, c24a6be).
+Branch `noise-detector-tryout-res` (from `noise-detector-tryout`, a9ebe95).
 Public data and synthetic stimuli only.
+
+**Note 2026-10-21:** branches `noise-detector-tryout` (merged; its commits remain in
+`cue-strip`'s history) and `voice-detector` were deleted on 2026-10-21 by the owner's
+decision. `voice-detector`'s worktree `build/` data (set N1 and the `--vad-build` input
+of the reproduce steps) were not kept.
 
 **User decision (2026-10-21): build it anyway.** The resonance-hint gate is
 built exactly as measured here (the "GATED" hint below) at **73 %** less

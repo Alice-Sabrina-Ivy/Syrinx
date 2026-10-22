@@ -4,6 +4,10 @@ Branch `quiet-floor` (from `cue-strip`). User decision 2026-10-20: measure a
 "too quiet to be a voice" floor — below an intensity that no real speech
 reaches, nothing is voiced or painted, whatever the pitch confidence.
 
+**Note 2026-10-21:** branch `quiet-floor` was deleted on 2026-10-21 by the owner's
+decision. This note and its scripts are in `cue-strip`; the branch's later round-2 plan,
+results and script changes were not kept.
+
 Background. In a silent room with PC fans and GPU coil whine, the live app was
 seen painting a pitch trace although nobody spoke. Three private sources were
 used: a recording of that room from the same microphone, an in-app `?diag=1`
@@ -75,7 +79,7 @@ guard already checks). The fail streak counts as today; frames at or above F
 are unchanged. Its offset against DSP intensity on the corpora is reported.
 G·F changes posted pitch, so it reaches every consumer.
 
-Baseline = `cue-strip` at b60eec3 (`src` via `git archive`). Variant trees
+Baseline = `cue-strip` at 82d4b93 (`src` via `git archive`). Variant trees
 are that `src` with only the change above.
 
 ### 3. Safety data (decides)

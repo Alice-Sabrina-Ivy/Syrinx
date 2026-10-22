@@ -276,6 +276,8 @@ Options for the user:
    spectral-tilt feature over the speech detector's frames, or the round-2
    voice detector on the `voice-detector` branch), measured against this
    same pre-registered primary.
+   (Note 2026-10-21: branch `voice-detector` was deleted on 2026-10-21 by
+   the owner's decision; its scripts and data were not kept.)
 4. **Label instead of hide:** show whisper readings with a "whisper"
    label (option c of the probes).
 

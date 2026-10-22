@@ -25,7 +25,7 @@ const { HEARD_AS_CALIBRATION: C } = await import(pathToFileURL(path.join(repo, "
 const arg = (k, d) => (process.argv.find((a) => a.startsWith(`--${k}=`)) ?? `=${d}`).split("=").slice(1).join("=");
 
 // Pre-registered candidates (measurements/heard-as-low-pitch-and-pauses-2026-10-21.md §6.1).
-// "shipped" is the panel BEFORE 2026-10-21 (53e3832): the 3 s voiced rule and
+// "shipped" is the panel BEFORE 2026-10-21 (4a3db78): the 3 s voiced rule and
 // no first-reading check. It is pinned here, not read from
 // heardAsCalibration.js, which carries H1's 2 s since 2026-10-21 (until the
 // 2026-10-21 review, `shipped: { agg: {} }` took the calibration file's value,

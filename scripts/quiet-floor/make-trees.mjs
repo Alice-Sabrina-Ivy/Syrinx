@@ -16,7 +16,7 @@
 //         exploratory safe-floor sweep reported after the pre-registered
 //         result; not candidates)
 //
-// Usage (repo root): node scripts/quiet-floor/make-trees.mjs [--base=b60eec3] [--out=build/trees] [--extra=...] [--extra-only]
+// Usage (repo root): node scripts/quiet-floor/make-trees.mjs [--base=82d4b93] [--out=build/trees] [--extra=...] [--extra-only]
 import { execSync } from "node:child_process";
 import { mkdirSync, rmSync, cpSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
@@ -24,7 +24,7 @@ import { resolve } from "node:path";
 const args = Object.fromEntries(process.argv.slice(2).map((a) => {
   const m = a.match(/^--([^=]+)(?:=(.*))?$/); return m ? [m[1], m[2] ?? "1"] : [a, "1"];
 }));
-const BASE = args.base ?? "b60eec3";
+const BASE = args.base ?? "82d4b93";
 const OUT = resolve(args.out ?? "build/trees");
 export const FLOORS = [60, 65, 70, 75];
 

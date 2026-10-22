@@ -8,7 +8,8 @@
 //   5 s to promote, so the seconds before the recording count through the notch's own
 //   memory (Record waits until listening has run 6 s).
 // Background noise: the spike's level check d2 (levelMargin in the spike's
-//   scripts/voice-preview/hum/hum-run.mjs, branch voice-preview-spike) with its floor moved
+//   scripts/voice-preview/hum/hum-run.mjs, branch voice-preview-spike, deleted 2026-10-21
+//   by the owner's decision and not kept) with its floor moved
 //   from the 10th to the 5th percentile (fix step) — margin = 95th - 5th percentile of the
 //   energies of non-overlapping 20 ms frames, 10 log10(mean x^2 + 1e-20),
 //   linear-interpolated percentiles — flagged below NOISE_MARGIN_DB (28 dB). With the 10th

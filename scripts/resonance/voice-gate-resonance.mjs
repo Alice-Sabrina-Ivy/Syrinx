@@ -45,7 +45,7 @@
 //      (resonanceRowState, dotOpacity, rowValue, resonanceClamp, axisPos,
 //      resonanceHeader) on the latest resonance `state` post, three arms:
 //        PRE   ungated hint (the worker before the merge), raw flags;
-//        BASE  gated hint (cue-strip 1a1713f), raw flags;
+//        BASE  gated hint (cue-strip fd2152f), raw flags;
 //        CAND  gated hint, the gated flags (pitchVoiced / pitchHolding) —
 //              the candidate: while the setting is on and the detector is
 //              ready the row's voiced / holding come from the gated pitch
