@@ -62,6 +62,7 @@ check("FireRedVAD's Apache-2.0 text ships (voice gate model)",
 console.log("\nnon-npm components (Voice Shaper: WORLD + Emscripten)");
 const vpIds = ["C:\\r\\src\\voice-preview\\wasm\\vp_world.mjs?url", "/r/src/voice-preview/wasm/simd/vp_world.wasm?url"];
 check("voice-preview wasm module ids -> WORLD + Emscripten", vpIds.every((id) => componentsOfModuleId(id).join() === "WORLD,Emscripten"));
+check("Voice Shaper's RNNoise module id -> Emscripten + RNNoise", componentsOfModuleId("/r/src/voice-preview/rnnoise/rnnoise.wasm?url").join() === "Emscripten,RNNoise");
 check("other modules -> none", componentsOfModuleId("/r/src/voice-preview/vp-worker.js").length === 0
   && componentsOfModuleId("/r/src/ml/gender-worker.js").length === 0 && componentsOfModuleId("C:/x/node_modules/react/index.js").length === 0);
 const sha = (buf) => createHash("sha256").update(buf).digest("hex");
@@ -91,6 +92,10 @@ check("with Voice Shaper: Emscripten, musl, dlmalloc and LLVM texts", withVp.inc
 check("without Voice Shaper: none of them", !withoutVp.includes(worldStr) && !withoutVp.includes(emsLicence) && !withoutVp.includes(musl));
 const md = readFileSync(path.join(repo, "THIRD_PARTY_NOTICES.md"), "utf8");
 check("THIRD_PARTY_NOTICES.md lists WORLD and the Emscripten runtime", md.includes("| WORLD (M. Morise)") && md.includes("| Emscripten 6.0.10 runtime"));
+const rnText = readFileSync(path.join(repo, "licenses/rnnoise/COPYING"), "utf8").trimEnd();
+check("licenses/rnnoise/COPYING = RNNoise's COPYING at 372f7b4 (sha256)", sha(readFileSync(path.join(repo, "licenses/rnnoise/COPYING"))) === "45d37ca1cdb278c088e1aa85e0e65ca3a534ed86a28dcc96ca16810248a61d35");
+check("with RNNoise: its BSD text; without: not", buildNoticesText(["react"], { components: ["Emscripten", "RNNoise"] }).includes(rnText) && !withoutVp.includes(rnText) && !withVp.includes(rnText));
+check("THIRD_PARTY_NOTICES.md lists RNNoise", md.includes("| RNNoise 0.2 (J.-M. Valin, Xiph.Org)"));
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);

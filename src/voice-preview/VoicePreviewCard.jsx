@@ -5,8 +5,9 @@
 // .wasm). Record a 3–8 s
 // phrase, then hear it with a different pitch or resonance: record -> analyse once in the
 // worker -> re-render on slider release -> three-way playback (preview / unchanged
-// rebuild / original) with loop. Record, then play only; never live.
-// measurements/voice-preview-phase1-2026-10-19.md §6–§10, §13.
+// rebuild / original) with loop. Record, then play only; never live. Optional background-noise
+// reduction (RNNoise on the recording before the analysis; "Original" stays as recorded).
+// measurements/voice-preview-phase1-2026-10-19.md §6–§10, §13; voice-shaper-denoise-2026-10-23.md.
 //
 // State lives outside React, for the page visit (it survives tab switches, like the lab):
 // the controller (worker lifecycle, recording, render queue), the playback
@@ -28,7 +29,7 @@ import { useEffect, useId, useRef, useSyncExternalStore } from "react";
 import { createVoicePreviewController, RECORD_MAX_S } from "./controller.js";
 import { onVoicePreviewCapture } from "./bridge.js";
 import { createPlayback } from "./playback.js";
-import { VP_GLUE_URL, VP_WASM_URLS } from "./wasm-files.js";
+import { VP_GLUE_URL, VP_WASM_URLS, VP_RNNOISE_URL } from "./wasm-files.js";
 import { applyPreset, targetSetting, targetPrefillHz } from "./controls.js";
 import { encodeWav } from "./wav.js";
 import {
@@ -71,6 +72,7 @@ function makeSession() {
     createWorker: () => new Worker(new URL("./vp-worker.js", import.meta.url), { type: "module" }),
     glueUrl: VP_GLUE_URL,
     wasmUrls: VP_WASM_URLS,
+    rnnoiseUrl: VP_RNNOISE_URL,
   });
 
   // Controller -> playback sources, slider reset, announcements.
@@ -78,7 +80,9 @@ function makeSession() {
   ctl.subscribe((s) => {
     const p = prev;
     prev = s;
-    if (s.analysis !== p.analysis) ui.set({ st: 0, pct: 0, targetOpen: false, targetMsg: null });
+    // a new recording resets the sliders; the same one analysed again (noise reduction) keeps them
+    const sameTake = s.analysis && p.analysis && s.analysis.take === p.analysis.take;
+    if (s.analysis !== p.analysis && !sameTake) ui.set({ st: 0, pct: 0, targetOpen: false, targetMsg: null });
     if (s.original !== p.original) {
       const rate = s.analysis && (s.analysis.captureRate > 96000 ? s.analysis.rate : s.analysis.captureRate);
       playback.setSource("original", s.original ? { pcm: s.original, rate } : null);
@@ -106,6 +110,8 @@ function makeSession() {
       if (s.rendering && !p.rendering) say(S.announce.updating);
       // the new setting, in words, with "may sound buzzier" when the pitch is lowered
       else if (s.preview !== p.preview && s.preview) say(previewUpdatedAnnouncement(s.preview.st, s.preview.pct, s.analysis?.pitch?.medianHz ?? 0));
+      // re-analysed (noise reduction) with nothing to render again: the rebuild is the update
+      else if (sameTake && s.analysis !== p.analysis && !s.reanalysing && !s.rendering) say(S.announce.updated);
       else if (s.error && !p.error) say(S.error);
     }
   });
@@ -382,13 +388,16 @@ function Card({ sess, direction = null, isSessionRecording, phone = false }) {
     say(S.announce.discarded);
     recordRef.current?.focus();
   };
+  const toggleDenoise = (on) => {
+    if (ctl.setDenoise(on) && ctl.getState().phase === "preview") say(on ? S.announce.denoiseOn : S.announce.denoiseOff);
+  };
   const download = () => {
     const src = s.preview ?? (s.rebuild ? { st: 0, pct: 0, pcm: s.rebuild, rate: a.rate } : null);
     if (!src) return;
     const url = URL.createObjectURL(new Blob([encodeWav(src.pcm, src.rate)], { type: "audio/wav" }));
     const link = document.createElement("a");
     link.href = url;
-    link.download = downloadName(src.st, src.pct);
+    link.download = downloadName(src.st, src.pct, !!a?.denoised);
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -406,7 +415,8 @@ function Card({ sess, direction = null, isSessionRecording, phone = false }) {
   const check = a?.check;
   const playReason = sessionRec ? id("guard") : null;
   const previewReason = !s.preview ? id("first") : null;
-  const settingLine = s.preview && !s.rendering ? previewSettingLine(s.preview.st, s.preview.pct) : null;
+  const updating = !!(s.rendering || s.reanalysing);
+  const settingLine = s.preview && !updating ? previewSettingLine(s.preview.st, s.preview.pct) : null;
   const describe = (...xs) => xs.filter(Boolean).join(" ") || undefined;
   // Pressed: light background; in forced colors (where backgrounds are replaced) the system
   // Highlight colours, so the playing version and Loop stay visible there too.
@@ -428,10 +438,14 @@ function Card({ sess, direction = null, isSessionRecording, phone = false }) {
       data-vp-noise={check ? String(check.noise) : ""}
       data-vp-margin={check ? check.marginDb.toFixed(1) : ""}
       data-vp-analysis-ms={a?.ms?.total != null ? a.ms.total.toFixed(1) : ""}
+      data-vp-denoise-ms={a?.ms?.denoise != null ? a.ms.denoise.toFixed(1) : ""}
       data-vp-hops={a?.hops ? `${a.hops.received}/${a.hops.recorded}` : ""}
       data-vp-render-ms={s.preview?.ms?.render != null ? s.preview.ms.render.toFixed(1) : ""}
       data-vp-rendered={s.preview ? `${s.preview.st},${s.preview.pct}` : ""}
       data-vp-rendering={s.rendering ? "1" : "0"}
+      data-vp-reanalysing={s.reanalysing ? "1" : "0"}
+      data-vp-denoise={s.denoise ? "1" : "0"}
+      data-vp-denoised={a ? (a.denoised ? "1" : "0") : ""}
       data-vp-playing={pb.playing ?? ""}
       data-vp-audio={pb.audio ?? ""}
     >
@@ -498,8 +512,27 @@ function Card({ sess, direction = null, isSessionRecording, phone = false }) {
               {check.hum && <p data-vp-notice="hum">{S.humNotice}</p>}
               {check.noise && <p data-vp-notice="noise">{S.noiseNotice}</p>}
               <p className="text-neutral-300">{S.quieterSpot}</p>
+              {check.noise && !s.denoise && !s.denoiseError && <p className="text-neutral-300" data-vp-denoise-try="">{S.denoiseTry}</p>}
             </div>
           )}
+          {/* background-noise reduction: re-analyses this recording; Original stays as recorded */}
+          <div data-vp-denoise-row="">
+            <label className={`flex min-h-11 items-center gap-2.5 text-sm text-neutral-100 ${s.denoiseError ? "cursor-not-allowed opacity-45" : "cursor-pointer"}`}>
+              <input
+                type="checkbox"
+                checked={s.denoise}
+                aria-disabled={s.denoiseError || undefined}
+                aria-describedby={id("dnhint")}
+                onChange={(e) => { if (!s.denoiseError) toggleDenoise(e.target.checked); }}
+                className="h-6 w-6 shrink-0 accent-purple-400 cursor-pointer aria-disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-300"
+                data-vp-denoise-toggle=""
+              />
+              {S.denoise}
+            </label>
+            <p id={id("dnhint")} className="text-[11px] leading-snug text-neutral-400" data-vp-denoise-hint="">
+              {s.denoiseError ? <span className="text-neutral-200" data-vp-denoise-error="">{S.denoiseError}</span> : S.denoiseHint}
+            </p>
+          </div>
           {s.error && (
             <p className="rounded-lg border border-neutral-600 bg-neutral-800/70 px-3 py-2 text-xs text-neutral-200" data-vp-render-error="">{S.error}</p>
           )}
@@ -582,7 +615,7 @@ function Card({ sess, direction = null, isSessionRecording, phone = false }) {
             <div className="mb-1 flex items-baseline justify-between gap-2">
               <p id={id("play")} className="text-xs text-neutral-300">{S.play}</p>
               {/* the setting the Preview button plays (st and %), beside the buttons in every layout */}
-              {s.rendering
+              {updating
                 ? <p className="text-xs text-neutral-200 text-right" data-vp-updating="">{S.updating}</p>
                 : settingLine && <p id={id("setting")} className="text-xs text-neutral-200 text-right" data-vp-preview-setting="">{settingLine}</p>}
             </div>
@@ -638,6 +671,7 @@ function diagLine(s) {
     const stages = ["check", "resample", "frontEnd", "stonemask", "cheaptrick", "d4c", "synth", "finish"]
       .filter((k) => m[k] != null).map((k) => `${k} ${m[k].toFixed(0)}`).join(", ");
     parts.push(`analysis + rebuild ${m.total?.toFixed(0) ?? "?"} ms${stages ? ` (${stages})` : ""}`);
+    if (m.denoise != null) parts.push(`noise reduction ${m.denoise.toFixed(0)} ms`);
     parts.push(`margin ${a.check.marginDb.toFixed(1)} dB`, `voiced ${a.check.voicedS.toFixed(2)} s`);
     if (a.hops) parts.push(`hops ${a.hops.received}/${a.hops.recorded}`);
     if (a.memBytes != null) parts.push(`wasm after ${(a.memBytes / 1048576).toFixed(1)} MB`);

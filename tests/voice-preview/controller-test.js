@@ -7,14 +7,17 @@
 // (one in flight, one waiting, newest wins, repeats ignored), listening stopping during a
 // recording, and the worker lifecycle: discard / record again terminate the worker (its
 // thread exits, so all of its WebAssembly memory is gone) and a fresh worker starts
-// with the initial memory. measurements/voice-preview-phase1-2026-10-19.md §3, §4.
+// with the initial memory. Noise reduction: switching it with a preview on screen analyses
+// the same recording again, keeps the original, re-renders the setting that was showing (or
+// the one asked for meanwhile), survives Discard, and goes off when RNNoise cannot load.
+// measurements/voice-preview-phase1-2026-10-19.md §3, §4; measurements/voice-shaper-denoise-2026-10-23.md.
 //
 //   node tests/voice-preview/controller-test.js
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { Worker } from "node:worker_threads";
-import { PARITY_JSON, GLUE_URL, WASM_URLS, REPO, cellKey, makeInput, chunkFor, sha256, makeChecker } from "./vp-test-lib.js";
+import { PARITY_JSON, GLUE_URL, WASM_URLS, RNNOISE_URL, REPO, cellKey, makeInput, chunkFor, sha256, makeChecker } from "./vp-test-lib.js";
 import { setVoicePreviewCapture, voicePreviewPitchTap } from "../../src/voice-preview/bridge.js";
 import * as controller from "../../src/voice-preview/controller.js";
 const { createVoicePreviewController, LISTEN_BEFORE_RECORD_MS } = controller;
@@ -92,7 +95,7 @@ async function recordClip(ctl) {
 }
 
 const ctl = createVoicePreviewController({
-  createWorker: () => new NodeWorker(), glueUrl: GLUE_URL, wasmUrls: WASM_URLS, now: () => clock,
+  createWorker: () => new NodeWorker(), glueUrl: GLUE_URL, wasmUrls: WASM_URLS, rnnoiseUrl: RNNOISE_URL, now: () => clock,
 });
 const phases = [];
 ctl.subscribe((s) => { if (phases.at(-1) !== s.phase) phases.push(s.phase); });
@@ -130,9 +133,33 @@ T.check("the latest preview is the spike's (0, +6) render", sha256(ctl.getState(
 T.check("a commit equal to the last render does nothing", ctl.render(0, 6) === false);
 unsub();
 
+console.log("\nnoise reduction with a preview on screen");
+{
+  const before = ctl.getState();
+  T.check("off by default", before.denoise === false && before.analysis.denoised === false);
+  T.check("setDenoise(true) -> re-analysing", ctl.setDenoise(true) === true && ctl.getState().denoise === true && ctl.getState().reanalysing === true);
+  T.check("a render asked for while re-analysing waits (nothing in flight)", ctl.render(2, 3) === true && ctl.getState().rendering === null);
+  let st = await until(ctl, (x) => !x.reanalysing && x.preview?.st === 2 && x.preview?.pct === 3 && !x.rendering, "denoised preview");
+  T.check("analysed again with RNNoise: same take, same original, phase stays preview",
+    st.analysis.denoised === true && st.analysis.take === before.analysis.take && st.original === before.original && st.phase === "preview"
+    && phases.at(-1) === "preview");
+  T.check("…a new rebuild, and the waiting setting rendered on it", sha256(st.rebuild) !== f.expected.simd[cellKey(0, 0)] && sha256(st.preview.pcm) !== f.expected.simd[cellKey(2, 3)]);
+  T.check("setDenoise(true) again does nothing", ctl.setDenoise(true) === false);
+  T.check("setDenoise(false) -> re-analysing", ctl.setDenoise(false) === true && ctl.getState().reanalysing === true);
+  st = await until(ctl, (x) => !x.reanalysing && x.preview && !x.rendering, "plain preview again");
+  T.check("off again: the spike's rebuild, and the showing setting (+2, +3) re-rendered: the spike's bytes",
+    st.analysis.denoised === false && sha256(st.rebuild) === f.expected.simd[cellKey(0, 0)] && st.preview.st === 2 && st.preview.pct === 3
+    && sha256(st.preview.pcm) === f.expected.simd[cellKey(2, 3)]);
+  T.check("…the original is still the recording", sha256(st.original) === f.pcmSha256);
+  s = st;
+}
+
 console.log("\ndiscard: the worker is terminated and a fresh one starts");
 const w1 = workers.at(-1);
+ctl.setDenoise(true);
+await until(ctl, (x) => !x.reanalysing, "re-analysed before discard");
 ctl.discard();
+T.check("discard keeps the noise-reduction setting", ctl.getState().denoise === true && ctl.getState().reanalysing === false && ctl.getState().denoiseError === false);
 T.check("discard clears the recording and its renders", ctl.getState().original === null && ctl.getState().rebuild === null && ctl.getState().preview === null && ctl.getState().analysis === null);
 T.check("the old worker's thread exits (its WebAssembly memory is gone)", w1.terminated && await Promise.race([w1.exited, new Promise((r) => setTimeout(() => r(false), 5000))]));
 s = await until(ctl, (st) => st.phase === "ready", "fresh ready");
@@ -141,6 +168,7 @@ T.check("a fresh worker is ready", w2 !== w1 && !w2.terminated);
 T.check("…with the initial WebAssembly memory, below the analysed worker's", s.memBytes === memInitial && s.memBytes < memAnalysed,
   `fresh ${(s.memBytes / 1e6).toFixed(1)} MB, analysed ${(memAnalysed / 1e6).toFixed(1)} MB`);
 T.check("render() without a preview does nothing", ctl.render(2, 3) === false);
+T.check("setDenoise(false) without a recording: just the setting", ctl.setDenoise(false) === true && ctl.getState().denoise === false && !ctl.getState().reanalysing);
 
 console.log("\nlistening stops during a recording");
 T.check("record() again", ctl.record() === true);
@@ -177,6 +205,23 @@ T.check("each analysis grew its worker's memory from the initial size", memAnaly
 
 ctl.dispose();
 T.check("dispose terminates the worker", workers.at(-1).terminated);
+
+console.log("\nRNNoise cannot load");
+{
+  const bad = createVoicePreviewController({
+    createWorker: () => new NodeWorker(), glueUrl: GLUE_URL, wasmUrls: WASM_URLS,
+    rnnoiseUrl: pathToFileURL(path.join(REPO, "tests/voice-preview/no-such.wasm")).href, now: () => clock,
+  });
+  await until(bad, (x) => x.phase === "ready", "ready (bad RNNoise URL)");
+  T.check("setDenoise(true) before recording", bad.setDenoise(true) === true);
+  const st = await recordClip(bad);
+  const fin = await until(bad, (x) => !x.reanalysing, "final analysis");
+  T.check("-> preview without noise reduction: the setting off, denoiseError set, the spike's rebuild",
+    fin.phase === "preview" && fin.denoise === false && fin.denoiseError === true && fin.analysis.denoised === false
+    && sha256(fin.rebuild) === f.expected.simd[cellKey(0, 0)], `${st.phase} ${fin.denoise} ${fin.denoiseError}`);
+  T.check("…setDenoise(true) is refused while it is unavailable", bad.setDenoise(true) === false && bad.getState().reanalysing === false);
+  bad.dispose();
+}
 await Promise.all(workers.map((w) => w.exited));
 setVoicePreviewCapture(null);
 T.done();

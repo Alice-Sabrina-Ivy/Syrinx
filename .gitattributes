@@ -4,3 +4,5 @@
 src/voice-preview/wasm/** -text
 licenses/world/** -text
 licenses/emscripten/** -text
+src/voice-preview/rnnoise/** -text
+licenses/rnnoise/** -text

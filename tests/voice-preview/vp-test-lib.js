@@ -16,6 +16,23 @@ export const WASM_URLS = {
   nosimd: pathToFileURL(path.join(WASM_DIR, "nosimd/vp_world.wasm")).href,
 };
 export const PARITY_JSON = path.join(REPO, "tests/voice-preview/fixtures/spike-parity.json");
+export const RNNOISE_URL = pathToFileURL(path.join(REPO, "src/voice-preview/rnnoise/rnnoise.wasm")).href;
+
+/**
+ * Node's fetch() has no file: URLs; the worker fetches the RNNoise module with fetch(). For the
+ * tests, file: URLs are read from disk (a missing file answers 404); other URLs go to the real fetch.
+ */
+export function installFileFetch() {
+  if (globalThis.fetch?.__vpFile) return;
+  const real = globalThis.fetch;
+  const fileFetch = async (url, init) => {
+    const u = String(url);
+    if (!u.startsWith("file:")) return real(url, init);
+    try { return new Response(readFileSync(new URL(u)), { status: 200 }); } catch { return new Response(null, { status: 404 }); }
+  };
+  fileFetch.__vpFile = true;
+  globalThis.fetch = fileFetch;
+}
 
 /** The parity cells: (st, pct). */
 export const CELLS = [[0, 0], [2, 3], [-2, -3], [4, 0], [0, 6], [12, 26], [-12, -21]];

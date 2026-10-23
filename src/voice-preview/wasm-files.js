@@ -9,9 +9,13 @@
 import glue from "./wasm/vp_world.mjs?url";
 import simd from "./wasm/simd/vp_world.wasm?url";
 import nosimd from "./wasm/nosimd/vp_world.wasm?url";
+// RNNoise 0.2 (background-noise reduction, ./denoise.js): fetched by the worker only when the
+// switch is first used; its licence texts come with a module id under src/voice-preview/rnnoise/.
+import rnnoise from "./rnnoise/rnnoise.wasm?url";
 
 // Absolute: the worker imports the glue and fetches the .wasm from its own scope.
 const abs = (u) => new URL(u, self.location.href).href;
 
 export const VP_GLUE_URL = abs(glue);
 export const VP_WASM_URLS = Object.freeze({ simd: abs(simd), nosimd: abs(nosimd) });
+export const VP_RNNOISE_URL = abs(rnnoise);

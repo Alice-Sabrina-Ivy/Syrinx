@@ -30,6 +30,9 @@
 // src/voice-preview/wasm/, their texts (licenses/world/, licenses/emscripten/) are
 // appended to THIRD_PARTY_NOTICES.txt like the npm packages'; the dev server's
 // notices always include them. measurements/voice-preview-phase1-2026-10-19.md §12.
+// Since 2026-10-23 Voice Shaper also ships RNNoise (src/voice-preview/rnnoise/, BSD-3-Clause,
+// compiled by Jitsi with Emscripten 3.1.14): licenses/rnnoise/ and Emscripten's licence text.
+// measurements/voice-shaper-denoise-2026-10-23.md.
 //
 // tests/site/third-party-notices-test.js covers the assembly.
 
@@ -55,7 +58,7 @@ export const NON_NPM_COMPONENTS = Object.freeze([
   {
     name: "Emscripten",
     title: "Emscripten 6.0.10 runtime and system libraries (musl, dlmalloc, LLVM compiler-rt, libc++, libc++abi) — in Voice Shaper's WebAssembly module and its JavaScript glue",
-    idPattern: /\/src\/voice-preview\/wasm\//,
+    idPattern: /\/src\/voice-preview\/(wasm|rnnoise)\//,
     files: [
       "licenses/emscripten/LICENSE",
       "licenses/emscripten/musl-COPYRIGHT",
@@ -64,6 +67,12 @@ export const NON_NPM_COMPONENTS = Object.freeze([
       "licenses/emscripten/libcxx-LICENSE.TXT",
       "licenses/emscripten/libcxxabi-LICENSE.TXT",
     ],
+  },
+  {
+    name: "RNNoise",
+    title: "RNNoise 0.2 (J.-M. Valin, Xiph.Org; xiph/rnnoise 372f7b4b76cde4ca1ec4605353dd17898a99de38), compiled to WebAssembly by @jitsi/rnnoise-wasm 0.2.1 — Voice Shaper's background-noise reduction",
+    idPattern: /\/src\/voice-preview\/rnnoise\//,
+    files: ["licenses/rnnoise/COPYING", "licenses/rnnoise/jitsi-rnnoise-wasm-LICENSE"],
   },
 ]);
 

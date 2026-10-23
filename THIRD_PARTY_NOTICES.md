@@ -14,6 +14,7 @@ their own licences; the MIT License does not apply to them.
 | ONNX Runtime Web 1.26.0-dev.20260416-b7804b056c (`onnxruntime-web`): the JavaScript bundled with Transformers.js, plus its WebAssembly runtime files shipped with the app since 2026-10-07 (`ort-wasm-simd-threaded.asyncify.{mjs,wasm}`, and `ort-wasm-simd-threaded.{mjs,wasm}` for Safari, copied unmodified from the npm package into the build's `assets/`) | MIT — Copyright (c) Microsoft Corporation. The WebAssembly binaries also contain third-party components that ONNX Runtime lists in its [ThirdPartyNotices.txt](https://github.com/microsoft/onnxruntime/blob/main/ThirdPartyNotices.txt) | https://github.com/microsoft/onnxruntime |
 | WORLD (M. Morise), commit `8d79b88b7dd92e8a132996cf74080b2d6f881b98`, compiled to WebAssembly for the experimental Voice Shaper only (`src/voice-preview/wasm/{simd,nosimd}/vp_world.wasm`, built by `scripts/voice-preview/build.mjs`; fetched only when the Voice Shaper tab is opened). WORLD's `fft.cpp` includes T. Ooura's FFT routines (http://www.kurims.kyoto-u.ac.jp/~ooura/), as credited in that file | Modified BSD — Copyright (c) 2010 M. Morise; full text in [licenses/world/LICENSE.txt](licenses/world/LICENSE.txt) | https://github.com/mmorise/World |
 | Emscripten 6.0.10 runtime and system libraries inside Voice Shaper's `vp_world.{mjs,wasm}`: the JavaScript glue, musl libc, dlmalloc, LLVM compiler-rt, libc++ and libc++abi | Emscripten: MIT / University of Illinois NCSA; musl: MIT; dlmalloc: public domain (CC0); LLVM: Apache-2.0 WITH LLVM-exception — texts in [licenses/emscripten/](licenses/emscripten/) | https://github.com/emscripten-core/emscripten |
+| RNNoise 0.2 (J.-M. Valin, Xiph.Org), commit `372f7b4b76cde4ca1ec4605353dd17898a99de38`, with its model weights, compiled to WebAssembly by `@jitsi/rnnoise-wasm` 0.2.1 (taken out of its `dist/rnnoise-sync.js` unchanged: `src/voice-preview/rnnoise/rnnoise.wasm`, `scripts/voice-preview/extract-rnnoise.mjs`) for Voice Shaper's optional background-noise reduction; fetched only when that switch is first turned on. The module also contains Emscripten 3.1.14's emmalloc and libc routines | RNNoise: BSD 3-clause — full text in [licenses/rnnoise/COPYING](licenses/rnnoise/COPYING); the package's build scripts: Apache-2.0 ([licenses/rnnoise/jitsi-rnnoise-wasm-LICENSE](licenses/rnnoise/jitsi-rnnoise-wasm-LICENSE)); Emscripten: MIT / NCSA ([licenses/emscripten/LICENSE](licenses/emscripten/LICENSE)) | https://github.com/xiph/rnnoise, https://github.com/jitsi/rnnoise-wasm |
 
 Build-time tools (Vite, Tailwind CSS, ESLint and plugins) are MIT-licensed and
 are not shipped in the built app.
@@ -28,9 +29,9 @@ ships no licence file, so `licenses/onnxruntime-web/` holds the `LICENSE` and
 `ThirdPartyNotices.txt` of microsoft/onnxruntime at commit
 `b7804b056c30aa35c1748f8e4e239d0e2ff25d6d`, the one the shipped runtime was
 built from (`scripts/third-party-notices.mjs`).
-WORLD and the Emscripten runtime are not npm packages: when the build contains
-Voice Shaper's WebAssembly module, `THIRD_PARTY_NOTICES.txt` also carries
-the texts in `licenses/world/` and `licenses/emscripten/`.
+WORLD, RNNoise and the Emscripten runtime are not npm packages: when the build contains
+Voice Shaper's WebAssembly modules, `THIRD_PARTY_NOTICES.txt` also carries
+the texts in `licenses/world/`, `licenses/rnnoise/` and `licenses/emscripten/`.
 
 ## Models
 

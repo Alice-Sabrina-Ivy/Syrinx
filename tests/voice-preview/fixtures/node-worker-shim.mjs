@@ -5,5 +5,7 @@
 import { parentPort, workerData } from "node:worker_threads";
 
 globalThis.self = { postMessage: (m, transfer) => parentPort.postMessage(m, transfer) };
+// the RNNoise module is fetched with fetch(), which has no file: URLs in Node
+(await import("../vp-test-lib.js")).installFileFetch();
 await import(workerData.url);
 parentPort.on("message", (data) => globalThis.self.onmessage({ data }));
