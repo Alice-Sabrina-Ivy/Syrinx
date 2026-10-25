@@ -150,3 +150,100 @@ automatic modes built from them with the 45 dB rule (and 28 dB, the notice's thr
 reference). Sung set (vocadito, clean and 10 dB): `none|posted`, `rnn|posted`, `rnn|re`.
 The decision rule of §1 is applied to `auto[45]~rnn|re` and the always-on candidates as written;
 G3 uses the sung set.
+
+## 3. Test set (read once, after §2 was committed)
+
+95 held-out clips (RAVDESS 35, OpenSLR 83 Northern English women 30, Irish English men 30) ×
+(clean, 0 / 5 / 10 / 20 dB × 2 noise draws, 30 / 40 dB) = 1 045 mixtures, held-out noise (DEMAND
+OMEETING, PRESTO, TCAR, NPARK, OHALLWAY; MS-SNSD `noise_test`), all three cells: 25 080 scored
+renders. Paired change vs `none|posted`; "worse sex" = the smaller of the women's and men's means.
+
+| candidate | noisy PESQ, worse sex (F / M) | clean PESQ, worse sex (G1) | quiet 30/40 dB | noisy DNSMOS OVRL |
+|---|---|---|---|---|
+| `rnn\|posted` (the fork) | +0.20 (+0.29 / +0.20) | −0.98 | −0.04 | +0.52 |
+| `rnn\|re` | +0.29 (+0.46 / +0.29) | −1.39 | −0.13 | +0.55 |
+| `ext:gtcrn\|re` | +0.31 | −1.79 | −0.26 | +0.46 |
+| `ext:dfn3\|re` (~8 MB) | +0.50 (+0.70 / +0.50) | −2.17 | −0.32 | +0.68 |
+| `mmse:…\|re` (no download) | +0.19 | −0.68 | +0.10 | +0.27 |
+| **`auto[45]~rnn\|re`** | **+0.28 (+0.44 / +0.28)** | **−0.13 (F −0.07, M −0.13)** | **+0.00** | **+0.54** |
+| `auto[45]~ext:dfn3\|re` | +0.47 | −0.19 | −0.06 | +0.66 |
+| `auto[28]~rnn\|re` (reference rule) | +0.23 | 0.00 | 0.00 | +0.48 |
+| `auto[28]~ext:gtcrn\|re` | +0.27 | 0.00 | 0.00 | +0.39 |
+| `auto[28]~ext:dfn3\|re` | +0.40 | 0.00 | 0.00 | +0.57 |
+| `none\|oracle` (diagnostic) | +0.12 | 0.00 | +0.22 | +0.02 |
+| `rnn\|oracle` (diagnostic) | +0.49 | −0.98 | +0.20 | +0.58 |
+
+By SNR (all sexes, `auto[45]~rnn|re` / `auto[28]~rnn|re`): 0 dB +0.28 / +0.27, 5 dB +0.36 / +0.32,
+10 dB +0.44 / +0.39, 20 dB +0.37 / +0.10, 30 dB +0.07 / 0, 40 dB −0.01 / 0. By noise class every
+held-out class gains (PESQ +0.22 babble … +0.78 car; DNSMOS OVRL +0.28 … +0.87); talking and
+announcements gain least.
+
+**Where G1 fails.** The 45 dB rule fired on 5 of the 95 clean test clips, all RAVDESS recordings
+whose own room tone puts their margin near 42 dB. On those five the render's PESQ against the
+as-captured reference drops (women −1.56, men −2.06: the reference keeps the room tone the
+denoiser removes) while DNSMOS rises (OVRL +0.25 / +0.09, BAK +0.36 / +0.04). Over the 95 clips
+that is −0.07 (women) / −0.13 (men), against the −0.10 guard.
+
+**G3, sung (vocadito, clean and 10 dB).** Neither rule fires on the clean sung clips (margins
+61–79 dB): change 0.00. At 10 dB: `rnn|re` +0.47 PESQ, DNSMOS OVRL +0.73; `auto[45]~rnn|re` +0.43.
+
+**G2** (noisy DNSMOS not below `none`): every candidate passes.
+
+**G5** (download ≤ 2 MB): RNNoise 1.4 MB, GTCRN 0.35 MB pass; DeepFilterNet 3 (~8 MB) beats the best
+small candidate by +0.19 (always on) / +0.19 (auto 45) — under the 0.3 bar: information only.
+
+### Verdict under the §1 rule
+
+**No candidate passes every guard.** The decision set frozen in §2 (`auto[45]~rnn|re` and the
+always-on candidates): every always-on candidate fails G1 by 0.68–2.17; `auto[45]~rnn|re` fails
+G1 by 0.03 for men, from the five room-tone clips above. The 28 dB automatic variants pass every
+guard but were frozen as reference rows, not as decision candidates. The choice between them is
+left to the user (§5).
+
+## 4. What was built (branch `voice-shaper-noise`)
+
+On top of the fork's commit (cherry-picked, authorship kept):
+
+- **Automatic mode** (`checks.js` `DENOISE_MARGIN_DB` 45, `autoDenoise`): the setting is "auto"
+  until the user flips the switch; a recording whose level margin is below 45 dB is noise-reduced
+  and the switch shows it ("Turned on because the recording has background noise."); flipping it
+  re-analyses the same take and is kept for the page visit.
+- **Re-tracking** (`retrack.js`): when noise-reduced, WORLD's F0 track is re-made from the cleaned
+  audio by a fresh instance of the app's pitch worker (unchanged, without the voice detector),
+  started by the voice-preview worker; the posted track stays the source of the pitch statistics,
+  the slider limits and the recording check. If it fails, the posted track is used.
+- **While recording** (`denoise-stream.js`, streaming `createRetracker`): unless the setting is
+  "off", Record fetches the RNNoise module and starts the pitch worker, and every chunk is
+  noise-reduced and re-tracked as it arrives; the result is bit-identical to the whole-recording
+  computation (`denoise-test.js`, 16 / 44.1 / 48 / 96 kHz; `worker-test.js`). If "auto" decides
+  against it, that work is dropped.
+
+**Cost (G4).** Headless Chrome on the development PC, an 8 s recording at 44.1 kHz: at Stop, noise
+reduction 6 ms + re-tracking 4 ms (whole-recording: 920 + 435 ms). During the recording RNNoise
+costs ~95 ms of CPU per audio second in the voice-preview worker on this PC (36.7 ms in Node on
+the fork author's machine). **Phone not measured** — the open item before main: CPU while
+recording on the phone (with the pitch, DSP and resonance workers running) and the analysis time.
+Download: every first recording (setting not "off") fetches the 1.4 MB module, cached afterwards.
+
+**Checks.** `npm run lint`, `npm run test:unit` (73/73), `npm run build`, `bundle-budget.mjs`
+(6/6), `voice-preview-smoke.mjs` all parts: 332/333 — the one failure, the Resonance lab's
+"worker stopped" check at 360 px, fails 1 in 3 on the fork's commit too (timing flake).
+
+**Known issue.** Once a worker holds the RNNoise module, Chrome's DevTools heap queries
+(`Runtime.queryObjects`) on that worker close it (reproduced with a worker that only loads
+`rnnoise.wasm`; the fork's switch has the same effect). Normal use is not affected (analysis,
+renders, playback, Discard all pass); heap inspection of the voice-preview worker is. The smoke's
+worker-memory check now reads the worker's own WORLD-heap report instead.
+
+## 5. Decision for the user
+
+1. **Automatic at 45 dB (built).** Noisy +0.28 PESQ worse sex (women +0.44), DNSMOS +0.54; at
+   20 dB +0.37. Misses G1 by 0.03 because it also cleans recordings with audible room tone (5 % of
+   the clean test clips), where DNSMOS improves and PESQ, scored against the room tone, drops.
+2. **Automatic at 28 dB** (the noise notice's own threshold; one constant). Passes every guard;
+   noisy +0.23, but at 20 dB only +0.10, since the notice rarely fires there.
+
+Either way: re-tracking stays (it is most of the gain over the fork); FireRedVAD track gating,
+MMSE, GTCRN and WORLD-domain subtraction are not used; DeepFilterNet 3 is the candidate for a
+later "higher quality" option if its 8 MB and phone cost are acceptable. Listening page with ten
+held-out clips (blind mode): built from `scripts/voice-preview/noise-study/listen.mjs`.

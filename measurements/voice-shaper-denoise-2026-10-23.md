@@ -1,5 +1,10 @@
 # Voice Shaper: optional background-noise reduction (RNNoise) — 2026-10-23
 
+> **2026-10-25:** superseded by [voice-shaper-noise-2026-10-25.md](voice-shaper-noise-2026-10-25.md), which measures
+> every candidate through the real chain (the pitch track the app posts for the *noisy* recording, held-out real
+> noise, 30 / 40 dB quiet rooms, both sexes). §4 below scores the noisy mixes with the *clean* clip's track, which
+> overstates the benefit; the switch is now automatic (45 dB) and re-tracks the cleaned audio.
+
 Branch `voice-shaper-denoise`. User request: "is there a way to filter the recorded sample to
 remove bg noise?" → "implement RNNoise". Public data only (the committed LibriSpeech clips,
 CC BY 4.0, and seeded synthetic noise); no recording of the user's voice was used.
