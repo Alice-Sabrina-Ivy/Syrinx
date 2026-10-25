@@ -268,6 +268,11 @@ console.log("\nnoise reduction (RNNoise; ls_man_hi8_f105 at 48 kHz with white no
   const eng = new (await import("../../src/voice-preview/engine/preview.js")).PreviewEngine(await (await import("./vp-test-lib.js")).loadWorld("simd"));
   T.check("record { denoise: true } -> analysed { denoised: true } with RNNoise time", on.denoised === true && on.ms.denoise > 0, `${on.ms.denoise?.toFixed(0)} ms`);
   T.check("…its rebuild = the engine's rebuild of denoiseClip(recording), bit for bit", sha256(on.rebuild) === sha256(eng.analyse(expected, rate, track).rebuild));
+  // (this test feeds every chunk at once, before the module has loaded, so part of the work is
+  // left for the end; with chunks arriving every 25 ms almost none is — voice-preview-smoke.mjs)
+  T.check("…noise-reduced while recording (denoise-stream.js)", on.ms.denoiseLive > 0,
+    `${on.ms.denoiseLive?.toFixed(0)} ms while recording, ${on.ms.denoise?.toFixed(0)} ms at the end`);
+  T.check("…no pitch worker in Node's main thread: the posted track (retracked false)", on.retracked === false);
   T.check("…original, the recording check and the pitch stay the recording's as captured",
     sha256(on.original) === sha256(off.original) && sha256(on.original) === sha256(pcm)
     && JSON.stringify(on.check) === JSON.stringify(off.check) && on.pitch.medianHz === off.pitch.medianHz && on.limits.stMin === off.limits.stMin);

@@ -12,6 +12,7 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { REPO, makeInput, sha256, makeChecker } from "./vp-test-lib.js";
 import { RNNOISE_PINS, EXPORTS, RNNOISE_DELAY, FRAME, createRnnoise, denoiseClip } from "../../src/voice-preview/denoise.js";
+import { createDenoiseStream } from "../../src/voice-preview/denoise-stream.js";
 import { extractRnnoise, PACKAGE_DIR, OUT } from "../../scripts/voice-preview/extract-rnnoise.mjs";
 
 const T = makeChecker();
@@ -102,6 +103,22 @@ for (const rate of [44100, 16000]) {
 {
   const inp = makeInput({ clip: "ls_man_low", rate: 48000 }).pcm;
   T.check("48 kHz: denoiseClip = denoise48 (no resampling)", sha256(denoiseClip(rn, inp, 48000)) === sha256(rn.denoise48(inp)));
+}
+
+console.log("\nwhile recording (denoise-stream.js): the same bytes as denoiseClip, chunk by chunk");
+for (const rate of [48000, 44100, 16000, 96000]) {
+  const inp = makeInput({ clip: "ls_woman_high", rate }).pcm;
+  const C = Math.floor(0.025 * rate);
+  const s = createDenoiseStream(rn, rate);
+  const parts = [];
+  for (let k = 0; k < inp.length; k += C) parts.push(s.push(inp.subarray(k, Math.min(inp.length, k + C))));
+  const tail = s.finish();
+  parts.push(tail);
+  const y = new Float32Array(parts.reduce((a, p) => a + p.length, 0));
+  let o = 0;
+  for (const p of parts) { y.set(p, o); o += p.length; }
+  T.check(`${rate} Hz: streamed = denoiseClip, bit for bit; under 40 ms left at the end`, sha256(y) === sha256(denoiseClip(rn, inp, rate)) && tail.length < 0.04 * rate,
+    `${tail.length} samples at the end`);
 }
 
 T.done();

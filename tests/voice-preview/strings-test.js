@@ -90,8 +90,9 @@ const DESIGN = {
   quieterSpot: "A quieter spot gives a cleaner preview.",
   caveat: "A rough sketch from a vocoder; crackle or buzz comes from the processing, not your voice.",
   denoise: "Reduce background noise",
-  denoiseHint: "Cleans up the recording before the preview is made. “Original” stays as recorded. The first use downloads about 1.4 MB.",
+  denoiseHint: "Cleans up the recording before the preview is made. “Original” stays as recorded. Your first recording downloads it (about 1.4 MB).",
   denoiseError: "Noise reduction couldn't load, so the preview uses the recording as captured.",
+  denoiseAutoOn: "Turned on because the recording has background noise.",
   denoiseTry: "“Reduce background noise” below can help.",
 };
 const off = Object.entries(DESIGN).filter(([k, v]) => S[k] !== v).map(([k]) => k);

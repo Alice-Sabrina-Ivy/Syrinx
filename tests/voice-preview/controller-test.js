@@ -13,6 +13,7 @@
 // measurements/voice-preview-phase1-2026-10-19.md §3, §4; measurements/voice-shaper-denoise-2026-10-23.md.
 //
 //   node tests/voice-preview/controller-test.js
+import { autoDenoise } from "../../src/voice-preview/checks.js";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -111,6 +112,8 @@ clock += LISTEN_BEFORE_RECORD_MS - 2000;
 T.check("after 6 s of listening: ready", ctl.readyInMs() === 0);
 
 console.log("\nrecord -> preview");
+T.check("noise reduction: auto by default", ctl.getState().denoiseMode === "auto" && ctl.getState().denoise === false);
+T.check("setDenoise(false) while the switch shows off: no change for the take, the setting becomes off", ctl.setDenoise(false) === false && ctl.getState().denoiseMode === "off");
 s = await recordClip(ctl);
 const port1 = disconnected.at(-1);
 T.check("the capture consumer is released when the recording ends", disconnected.length === 1 && port1 !== undefined);
@@ -136,7 +139,7 @@ unsub();
 console.log("\nnoise reduction with a preview on screen");
 {
   const before = ctl.getState();
-  T.check("off by default", before.denoise === false && before.analysis.denoised === false);
+  T.check("off (the setting): not noise-reduced", before.denoise === false && before.analysis.denoised === false && before.analysis.auto === false);
   T.check("setDenoise(true) -> re-analysing", ctl.setDenoise(true) === true && ctl.getState().denoise === true && ctl.getState().reanalysing === true);
   T.check("a render asked for while re-analysing waits (nothing in flight)", ctl.render(2, 3) === true && ctl.getState().rendering === null);
   let st = await until(ctl, (x) => !x.reanalysing && x.preview?.st === 2 && x.preview?.pct === 3 && !x.rendering, "denoised preview");
@@ -205,6 +208,29 @@ T.check("each analysis grew its worker's memory from the initial size", memAnaly
 
 ctl.dispose();
 T.check("dispose terminates the worker", workers.at(-1).terminated);
+
+console.log("\nauto: noise reduction when the level margin is below DENOISE_MARGIN_DB, the track re-made");
+{
+  const auto = createVoicePreviewController({
+    createWorker: () => new NodeWorker(), glueUrl: GLUE_URL, wasmUrls: WASM_URLS, rnnoiseUrl: RNNOISE_URL, now: () => clock,
+  });
+  await until(auto, (x) => x.phase === "ready", "ready (auto)");
+  const st = await recordClip(auto);
+  const want = autoDenoise(st.analysis.check.marginDb);
+  T.check("auto decided by the recording's margin; the switch shows it", st.analysis.auto === true && st.analysis.denoised === want && st.denoise === want && st.denoiseMode === "auto",
+    `margin ${st.analysis.check.marginDb.toFixed(1)} dB -> ${want}`);
+  if (want) {
+    T.check("…noise-reduced with the track re-made by the pitch worker", st.analysis.retracked === true && st.analysis.ms.retrack > 0 && sha256(st.rebuild) !== f.expected.simd[cellKey(0, 0)]);
+    T.check("…the original is the recording", sha256(st.original) === f.pcmSha256);
+    T.check("switching it off: the user's setting", auto.setDenoise(false) === true && auto.getState().denoiseMode === "off");
+    const off = await until(auto, (x) => !x.reanalysing && x.rebuild && x.analysis.denoised === false, "auto -> off");
+    T.check("…not noise-reduced, not re-tracked: the spike's rebuild", off.analysis.retracked === false && sha256(off.rebuild) === f.expected.simd[cellKey(0, 0)]);
+  }
+  await until(auto, (x) => !x.rearming, "re-armed (auto)", REARM_MS + 2000);
+  auto.discard();
+  T.check("discard keeps the user's setting", auto.getState().denoiseMode === (want ? "off" : "auto"));
+  auto.dispose();
+}
 
 console.log("\nRNNoise cannot load");
 {

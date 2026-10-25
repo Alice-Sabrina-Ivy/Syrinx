@@ -5,9 +5,12 @@
 // .wasm). Record a 3–8 s
 // phrase, then hear it with a different pitch or resonance: record -> analyse once in the
 // worker -> re-render on slider release -> three-way playback (preview / unchanged
-// rebuild / original) with loop. Record, then play only; never live. Optional background-noise
-// reduction (RNNoise on the recording before the analysis; "Original" stays as recorded).
-// measurements/voice-preview-phase1-2026-10-19.md §6–§10, §13; voice-shaper-denoise-2026-10-23.md.
+// rebuild / original) with loop. Record, then play only; never live. Background-noise
+// reduction (RNNoise on the recording before the analysis, the F0 track re-made from the
+// cleaned audio; "Original" stays as recorded): automatic when the recording is noisy, or the
+// user's choice.
+// measurements/voice-preview-phase1-2026-10-19.md §6–§10, §13; voice-shaper-denoise-2026-10-23.md,
+// voice-shaper-noise-2026-10-25.md.
 //
 // State lives outside React, for the page visit (it survives tab switches, like the lab):
 // the controller (worker lifecycle, recording, render queue), the playback
@@ -439,6 +442,8 @@ function Card({ sess, direction = null, isSessionRecording, phone = false }) {
       data-vp-margin={check ? check.marginDb.toFixed(1) : ""}
       data-vp-analysis-ms={a?.ms?.total != null ? a.ms.total.toFixed(1) : ""}
       data-vp-denoise-ms={a?.ms?.denoise != null ? a.ms.denoise.toFixed(1) : ""}
+      data-vp-retrack-ms={a?.ms?.retrack != null ? a.ms.retrack.toFixed(1) : ""}
+      data-vp-wasm-bytes={(a?.memBytes ?? s.memBytes) != null ? String(a?.memBytes ?? s.memBytes) : ""}
       data-vp-hops={a?.hops ? `${a.hops.received}/${a.hops.recorded}` : ""}
       data-vp-render-ms={s.preview?.ms?.render != null ? s.preview.ms.render.toFixed(1) : ""}
       data-vp-rendered={s.preview ? `${s.preview.st},${s.preview.pct}` : ""}
@@ -446,6 +451,8 @@ function Card({ sess, direction = null, isSessionRecording, phone = false }) {
       data-vp-reanalysing={s.reanalysing ? "1" : "0"}
       data-vp-denoise={s.denoise ? "1" : "0"}
       data-vp-denoised={a ? (a.denoised ? "1" : "0") : ""}
+      data-vp-denoise-mode={s.denoiseMode}
+      data-vp-retracked={a ? (a.retracked ? "1" : "0") : ""}
       data-vp-playing={pb.playing ?? ""}
       data-vp-audio={pb.audio ?? ""}
     >
@@ -530,7 +537,9 @@ function Card({ sess, direction = null, isSessionRecording, phone = false }) {
               {S.denoise}
             </label>
             <p id={id("dnhint")} className="text-[11px] leading-snug text-neutral-400" data-vp-denoise-hint="">
-              {s.denoiseError ? <span className="text-neutral-200" data-vp-denoise-error="">{S.denoiseError}</span> : S.denoiseHint}
+              {s.denoiseError
+                ? <span className="text-neutral-200" data-vp-denoise-error="">{S.denoiseError}</span>
+                : <>{a?.auto && a?.denoised && s.denoise && <span className="block text-neutral-200" data-vp-denoise-auto="">{S.denoiseAutoOn}</span>}{S.denoiseHint}</>}
             </p>
           </div>
           {s.error && (
@@ -671,7 +680,8 @@ function diagLine(s) {
     const stages = ["check", "resample", "frontEnd", "stonemask", "cheaptrick", "d4c", "synth", "finish"]
       .filter((k) => m[k] != null).map((k) => `${k} ${m[k].toFixed(0)}`).join(", ");
     parts.push(`analysis + rebuild ${m.total?.toFixed(0) ?? "?"} ms${stages ? ` (${stages})` : ""}`);
-    if (m.denoise != null) parts.push(`noise reduction ${m.denoise.toFixed(0)} ms`);
+    if (m.denoise != null) parts.push(`noise reduction ${m.denoise.toFixed(0)} ms${a.auto ? " (auto)" : ""}`);
+    if (m.retrack != null) parts.push(`re-track ${m.retrack.toFixed(0)} ms`);
     parts.push(`margin ${a.check.marginDb.toFixed(1)} dB`, `voiced ${a.check.voicedS.toFixed(2)} s`);
     if (a.hops) parts.push(`hops ${a.hops.received}/${a.hops.recorded}`);
     if (a.memBytes != null) parts.push(`wasm after ${(a.memBytes / 1048576).toFixed(1)} MB`);

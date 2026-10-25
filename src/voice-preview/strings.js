@@ -80,8 +80,9 @@ export const S = Object.freeze({
 
   // background-noise reduction (2026-10-23; measurements/voice-shaper-denoise-2026-10-23.md)
   denoise: "Reduce background noise",
-  denoiseHint: "Cleans up the recording before the preview is made. “Original” stays as recorded. The first use downloads about 1.4 MB.",
+  denoiseHint: "Cleans up the recording before the preview is made. “Original” stays as recorded. Your first recording downloads it (about 1.4 MB).",
   denoiseError: "Noise reduction couldn't load, so the preview uses the recording as captured.",
+  denoiseAutoOn: "Turned on because the recording has background noise.",
   denoiseTry: "“Reduce background noise” below can help.",
 
   caveat: "A rough sketch from a vocoder; crackle or buzz comes from the processing, not your voice.",
@@ -110,7 +111,7 @@ export const S = Object.freeze({
     "Compare the preview with “Unchanged (rebuilt)”: both go through the same vocoder, so the difference you hear is the setting. “Original” is your recording as captured.",
     "Lowered previews may sound buzzier: the vocoder is weakest at low pitch.",
     "A steady hum or loud background noise can make the preview rougher, and a hum can move with the pitch slider.",
-    "“Reduce background noise” cleans up the recording with RNNoise before the preview is made. It helps most with loud background noise such as a fan, hiss or traffic. With little noise it can make the preview slightly rougher, more so for low voices, and it can soften quiet or breathy parts of your voice, so compare it on and off.",
+    "“Reduce background noise” cleans up the recording with RNNoise before the preview is made, and the pitch is measured again on the cleaned recording. It turns on by itself when the recording has noticeable background noise, and you can switch it either way. It helps most with steady noise such as a fan, an air conditioner or traffic, less with talking or other changing sounds, and a little less for lower voices. It can soften quiet or breathy parts of your voice, so compare it on and off.",
     "Your recording stays on this device, in memory only. It is deleted when you press Discard, record again or close the tab, and saved only if you press Download.",
     "Built on WORLD, a speech vocoder by M. Morise (modified BSD licence).",
     "Noise reduction: RNNoise by J.-M. Valin and Xiph.Org (BSD licence).",

@@ -22,6 +22,15 @@
 // Enough voice: at least MIN_VOICED_HOPS voiced posted hops (1.0 s).
 
 export const NOISE_MARGIN_DB = 28;
+/**
+ * Background-noise reduction in "auto" turns on below this level margin (2026-10-25). On the
+ * noise study's development mixtures 40–50 dB is a plateau for RNNoise + re-tracking; 45 dB
+ * fires on 94 % of 20 dB, 82 % of 30 dB and 8 % of 40 dB recordings and on no clean one
+ * (measurements/voice-shaper-noise-2026-10-25.md §2).
+ */
+export const DENOISE_MARGIN_DB = 45;
+/** Whether "auto" reduces the noise of a recording with this level margin. */
+export const autoDenoise = (marginDb) => marginDb < DENOISE_MARGIN_DB;
 /** The percentile of the 20 ms frame energies taken as the noise floor. */
 export const FLOOR_PERCENTILE = 0.05;
 export const MIN_VOICED_HOPS = 40;

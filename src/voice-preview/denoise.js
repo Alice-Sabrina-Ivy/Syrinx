@@ -12,6 +12,7 @@
 //   loadRnnoise(url) -> Promise<rnnoise>        fetch + compile + instantiate (the worker)
 //   createRnnoise(bytes | WebAssembly.Module)   the same, synchronous (Node tests)
 //   rnnoise.denoise48(pcm)   Float32Array at 48 kHz (±1) -> denoised, same length, delay-compensated
+//   rnnoise.createState()    one RNNoise state, frame by frame (./denoise-stream.js streams with it)
 //   denoiseClip(rnnoise, pcm, sr)   any capture rate: sr -> 48 kHz -> RNNoise -> sr (the engine's
 //                                   zero-phase sinc resampler), same length as pcm
 //
@@ -90,7 +91,36 @@ function instantiate(module) {
     }
   }
 
-  return { denoise48, memoryBytes: () => memory.buffer.byteLength };
+  /**
+   * Frame-level use (./denoise-stream.js): a fresh RNNoise state; frame(in, out) runs one 480-sample
+   * frame (±1 floats in, ±1 floats out, the output RNNOISE_DELAY samples late); free() releases it.
+   */
+  function createState() {
+    const st = fn("create")(0);
+    if (!st) throw Object.assign(new Error("rnnoise_create failed"), { kind: "memory" });
+    const pin = fn("malloc")(FRAME * 4);
+    const pout = fn("malloc")(FRAME * 4);
+    if (!pin || !pout) throw Object.assign(new Error("RNNoise malloc failed"), { kind: "memory" });
+    let alive = true;
+    return {
+      frame(inp, out) {
+        let heap = new Float32Array(memory.buffer, pin, FRAME);
+        for (let i = 0; i < FRAME; i++) heap[i] = inp[i] * SCALE;
+        fn("process")(st, pout, pin);
+        heap = new Float32Array(memory.buffer, pout, FRAME);
+        for (let i = 0; i < FRAME; i++) out[i] = heap[i] / SCALE;
+      },
+      free() {
+        if (!alive) return;
+        alive = false;
+        fn("free")(pin);
+        fn("free")(pout);
+        fn("destroy")(st);
+      },
+    };
+  }
+
+  return { denoise48, createState, memoryBytes: () => memory.buffer.byteLength };
 }
 
 /** Synchronous: bytes (ArrayBuffer / typed array) or a compiled WebAssembly.Module. */
