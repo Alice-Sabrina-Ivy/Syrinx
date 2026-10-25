@@ -109,7 +109,6 @@ const WELCOME_KEY = "syrinx_welcomed";
 // the question from appearing.
 const DIRECTION_LOAD_TIMEOUT_MS = 1500;
 
-
 function App() {
   const [activeTab, setActiveTab] = useState("dashboard");
   // Read localStorage in the lazy initializer instead of via a mount-time
@@ -163,6 +162,12 @@ function App() {
   const [savedToast, setSavedToast] = useState(null);
   const [openSessionId, setOpenSessionId] = useState(null);
   const closeSavedToast = useCallback(() => setSavedToast(null), []);
+  // A tab change by the user ends the toast's "Show session" request, so
+  // History doesn't reopen that card on every later visit.
+  const selectTab = useCallback((t) => {
+    setOpenSessionId(null);
+    setActiveTab(t);
+  }, []);
   const showSavedSession = useCallback(() => {
     if (savedToast) setOpenSessionId(savedToast.sessionId);
     setSavedToast(null);
@@ -421,7 +426,7 @@ function App() {
         {status === "idle" && activeTab !== "history" && (
           <div className="flex-1 flex flex-col w-full max-w-6xl min-h-0">
             {/* Tab navigation even when idle */}
-            <TabNav activeTab={activeTab} setActiveTab={setActiveTab} tabs={tabs} />
+            <TabNav activeTab={activeTab} setActiveTab={selectTab} tabs={tabs} />
             <div className="flex-1 flex items-center justify-center">
               <button
                 onClick={requestStart}
@@ -435,7 +440,7 @@ function App() {
 
         {status === "idle" && activeTab === "history" && (
           <div className="flex-1 flex flex-col w-full max-w-6xl min-h-0">
-            <TabNav activeTab={activeTab} setActiveTab={setActiveTab} tabs={tabs} />
+            <TabNav activeTab={activeTab} setActiveTab={selectTab} tabs={tabs} />
             <SessionHistory openSessionId={openSessionId} />
           </div>
         )}
@@ -465,12 +470,12 @@ function App() {
         {status === "running" && (
           <div className="flex-1 flex flex-col w-full max-w-6xl min-h-0">
             {/* Tab navigation */}
-            <TabNav activeTab={activeTab} setActiveTab={setActiveTab} tabs={tabs} />
+            <TabNav activeTab={activeTab} setActiveTab={selectTab} tabs={tabs} />
 
             {/* Tab content. Scrolls below lg: on a phone the trace and the
-                cue strip fit the first screen, the experimental panel and
-                the session row may need a scroll (small phones, landscape).
-                At lg the side-by-side layout fills the height. */}
+                cue strip fit the first screen above the practice dock, the
+                experimental panel may need a scroll (small phones,
+                landscape). At lg the side-by-side layout fills the height. */}
             <div className="flex-1 flex flex-col min-h-0 overflow-y-auto lg:overflow-y-visible">
               {/* Always mounted while the pipeline runs: it owns the
                   session recording, and unmounting it finalizes the
@@ -553,12 +558,16 @@ function App() {
           </div>
         )}
       </div>
+      {/* Inert with the page while a sheet (goal question, Settings) is
+          open: it sits under the sheet's backdrop and must not take focus. */}
       {savedToast && (
-        <SavedToast
-          durationSeconds={savedToast.durationSeconds}
-          onShow={showSavedSession}
-          onClose={closeSavedToast}
-        />
+        <div inert={blocked}>
+          <SavedToast
+            durationSeconds={savedToast.durationSeconds}
+            onShow={showSavedSession}
+            onClose={closeSavedToast}
+          />
+        </div>
       )}
     </div>
   );
