@@ -9,8 +9,8 @@
 //
 // Per viewport, one fresh profile (Chrome relaunched on it per WAV, since the
 // fake-capture file is a launch flag):
-//   1 speech-woman  first visit: welcome, the direction question (masculine),
-//                   Continue starts listening. LAYOUT (the hard requirement):
+//   1 speech-woman  first visit: the welcome sheet's direction question (masculine),
+//                   "Start — allow the microphone" starts listening. LAYOUT (the hard requirement):
 //                   at scrollTop 0 the pitch trace and the whole cue strip are
 //                   inside the viewport, no horizontal page scroll, no clipped
 //                   strip header (horizontally or vertically — descenders).
@@ -206,8 +206,11 @@ const clickButton = (page, texts, scope = "") => page.evaluate((ts, scope) => {
   if (b) b.click();
   return !!b;
 }, texts, scope);
-const pickDirection = (page, id, scope = "[role=dialog]") => page.evaluate((id, scope) => {
+const pickDirection = (page, id, scope = "[role=dialog]") => page.evaluate(async (id, scope) => {
   const root = scope ? document.querySelector(scope) : document;
+  // The return-visit goal sheet shows last time's goal only until "Change goal".
+  const more = root?.querySelector("[data-change-goal]");
+  if (more) { more.click(); await new Promise((r) => setTimeout(r, 100)); }
   const input = root?.querySelector(`input[data-direction="${id}"]`);
   if (!input) return false;
   input.closest("label").click();
@@ -325,12 +328,11 @@ const probePopover = (page, label) => page.evaluate(async (label) => {
 
 let directionDialogText = "";
 async function startFirstVisit(page, direction) {
-  await page.waitForFunction(() => document.body.innerText.includes("Welcome to Syrinx"), { timeout: 60000 });
-  await clickButton(page, ["Get Started"]);
+  await page.waitForFunction(() => !!document.querySelector("[data-dialog=direction]"), { timeout: 60000 });
   await page.waitForFunction(() => document.body.innerText.includes("What are you trying to sound like?"), { timeout: 30000 });
   directionDialogText = await page.evaluate(() => document.querySelector("[role=dialog]")?.innerText ?? "");
   await pickDirection(page, direction);
-  await clickButton(page, ["Continue"], "[role=dialog]");
+  await clickButton(page, ["Start — allow the microphone", "Start practicing"], "[role=dialog]");
   return waitListening(page);
 }
 async function waitListening(page, ms = 20000) {
@@ -341,10 +343,10 @@ async function waitListening(page, ms = 20000) {
   }
   return false;
 }
-// Reload: the question again; Continue confirms and starts listening.
+// Reload: the return-visit goal sheet; "Start practicing" confirms and starts listening.
 async function continueAfterReload(page) {
   await page.waitForFunction(() => document.body.innerText.includes("What are you trying to sound like?"), { timeout: 30000 });
-  await clickButton(page, ["Continue"], "[role=dialog]");
+  await clickButton(page, ["Start — allow the microphone", "Start practicing"], "[role=dialog]");
   return waitListening(page);
 }
 async function openSettings(page) {
@@ -611,7 +613,7 @@ for (const label of ["About the pitch cue", "About the resonance cue", "What doe
 // reload: persists
 {
   await page.reload({ waitUntil: "domcontentloaded" });
-  check("reload: listening again after Continue", await continueAfterReload(page));
+  check("reload: listening again after Start practicing", await continueAfterReload(page));
   await sleep(1000);
   const s = await state(page);
   check("reload: heard-as is still on", !heardAsOff(s) && gw(page) === 1, `${s.heardAs?.mode}, ${gw(page)} workers`);

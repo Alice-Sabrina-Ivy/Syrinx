@@ -125,8 +125,7 @@ async function run(url, { lab, tabFirst = false, viewport = null, wait = SECONDS
   };
   let labTab = null;
   if (tabFirst) {
-    // Get Started first if the welcome overlay is up, then the setting, the tab, then start.
-    await clickText(["Get Started"]);
+    // The first-visit goal sheet is up: the setting, the tab, then start.
     await sleep(1000);
     log("lab switched on in Settings:", await enableLab());
     log("lab tab clicked before listening:", await clickText(["Resonance lab"]));
@@ -135,7 +134,13 @@ async function run(url, { lab, tabFirst = false, viewport = null, wait = SECONDS
   // click until the pipeline is running (a click before hydration is a no-op)
   let running = false;
   for (let attempt = 0; attempt < 5 && !running; attempt++) {
-    log("start clicked:", await clickText(["Get Started", "Start Listening"]));
+    // The goal sheet (if up) needs a goal before its Start button.
+    await page.evaluate(() => {
+      const l = [...document.querySelectorAll('[role="dialog"] label')].find((x) => x.textContent.includes("Just exploring"));
+      if (l && !l.querySelector("input")?.checked) l.click();
+    });
+    await sleep(200);
+    log("start clicked:", await clickText(["Start — allow the microphone", "Start practicing", "Start Listening"]));
     running = await page.waitForFunction(() => document.body.innerText.includes("Stop Listening"), { timeout: 4000 })
       .then(() => true, () => false);
   }
@@ -152,7 +157,7 @@ async function run(url, { lab, tabFirst = false, viewport = null, wait = SECONDS
       if (l) l.click();
       return !!l;
     });
-    if (picked) { await sleep(300); log("direction dialog dismissed:", await clickText(["Continue"])); await sleep(1500); }
+    if (picked) { await sleep(300); log("direction dialog dismissed:", await clickText(["Start — allow the microphone", "Start practicing"])); await sleep(1500); }
     log("lab tab clicked:", await clickText(["Resonance lab"]));
     await sleep(3000);
     const before = requests.filter(isWeightAsset).length;

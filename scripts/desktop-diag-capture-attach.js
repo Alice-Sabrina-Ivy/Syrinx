@@ -324,8 +324,12 @@ class CdpClient {
   // running.
   const btn = await cdp.eval(`
     (() => {
+      // The goal sheet (first visit / return visit) needs a goal first.
+      const goal = document.querySelector('[role=dialog] input[data-direction="exploring"]');
+      if (goal && !goal.checked) goal.closest("label").click();
       const el = [...document.querySelectorAll("button")].find((b) =>
-        b.textContent.includes("Get Started") || b.textContent.includes("Start Listening"));
+        b.textContent.includes("Start — allow the microphone") || b.textContent.includes("Start practicing") ||
+        b.textContent.includes("Start Listening"));
       if (!el) return null;
       const r = el.getBoundingClientRect();
       return { text: el.textContent.trim(), x: Math.round(r.x + r.width/2), y: Math.round(r.y + r.height/2) };
