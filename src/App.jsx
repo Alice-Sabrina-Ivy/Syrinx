@@ -1,8 +1,9 @@
-import { Component, useState, useRef, useEffect, lazy, Suspense } from "react";
+import { Component, useState, useRef, useEffect, useCallback, lazy, Suspense } from "react";
 import { useAudioPipeline } from "./audio/useAudioPipeline";
 import { PitchTrace } from "./components/PitchTrace";
 import { CombinedDashboard } from "./components/CombinedDashboard";
 import { SessionHistory } from "./components/SessionHistory";
+import { SavedToast } from "./components/PracticeDock";
 import { DataManagement } from "./components/DataManagement";
 import { DirectionPrompt } from "./components/DirectionPrompt";
 import { DIAG_ENABLED } from "./diag/diag";
@@ -108,9 +109,6 @@ const WELCOME_KEY = "syrinx_welcomed";
 // the question from appearing.
 const DIRECTION_LOAD_TIMEOUT_MS = 1500;
 
-// The voice status beside Stop Listening (laid out at the widest one's width).
-const VOICE_STATUS_TEXTS = ["Voice detected", "Listening...", "Waiting for voice..."];
-
 // First visit only. A modal like the direction question (App makes the page
 // behind it inert): focus starts on Get Started, Escape also continues,
 // and the panel scrolls on short (landscape) viewports.
@@ -197,6 +195,19 @@ function App() {
   // Ref for session metadata (notes, elapsed, recording state) —
   // kept in sync by CombinedDashboard, readable by a future save/export feature.
   const sessionRef = useRef({ recording: false, elapsed: 0, notes: "" });
+  // The practice dock's slot (CombinedDashboard portals the dock into it
+  // on every tab), the recording in progress (History's "Recording now"
+  // card), the saved toast and the session History should open.
+  const [dockSlot, setDockSlot] = useState(null);
+  const [liveRecording, setLiveRecording] = useState(null);
+  const [savedToast, setSavedToast] = useState(null);
+  const [openSessionId, setOpenSessionId] = useState(null);
+  const closeSavedToast = useCallback(() => setSavedToast(null), []);
+  const showSavedSession = useCallback(() => {
+    if (savedToast) setOpenSessionId(savedToast.sessionId);
+    setSavedToast(null);
+    setActiveTab("history");
+  }, [savedToast]);
   const {
     status,
     error,
@@ -445,7 +456,7 @@ function App() {
         {status === "idle" && activeTab === "history" && (
           <div className="flex-1 flex flex-col w-full max-w-6xl min-h-0">
             <TabNav activeTab={activeTab} setActiveTab={setActiveTab} tabs={tabs} />
-            <SessionHistory />
+            <SessionHistory openSessionId={openSessionId} />
           </div>
         )}
 
@@ -513,6 +524,10 @@ function App() {
                 sessionRef={sessionRef}
                 frameCallbackRef={frameCallbackRef}
                 streamRef={streamRef}
+                dockSlot={dockSlot}
+                onMicOff={stop}
+                onRecordingChange={setLiveRecording}
+                onSessionSaved={setSavedToast}
               />
 
               {activeTab === "pitch" && (
@@ -533,7 +548,7 @@ function App() {
                 </div>
               )}
 
-              {activeTab === "history" && <SessionHistory />}
+              {activeTab === "history" && <SessionHistory liveRecording={liveRecording} openSessionId={openSessionId} />}
 
               {activeTab === "shaper" && (
                 <ShaperBoundary>
@@ -552,54 +567,19 @@ function App() {
               )}
             </div>
 
-            {/* Voice status + mic toggle (hidden on history tab) */}
-            {activeTab !== "history" && (
-              <div className="flex-shrink-0 mt-3 flex items-center justify-center gap-4" data-listen-bar="">
-                <div className="flex items-center gap-2">
-                  {/* Three stacked dots cross-fading by opacity (composited)
-                      instead of one dot transitioning colour + shadow, which
-                      ran on the main thread every display frame
-                      (measurements/main-thread-cpu-2026-10-08.md). */}
-                  {/* pitchVoiced / pitchHolding: the pitch display's flags (=
-                      voiced / holding unless the voice gate hides
-                      the pitch). */}
-                  <div className="relative w-2 h-2" data-voice-status={pitchVoiced ? "voiced" : pitchHolding ? "holding" : "waiting"}>
-                    <div className={`absolute inset-0 rounded-full bg-green-400 shadow-[0_0_6px_rgba(74,222,128,0.5)] transition-opacity duration-300 ${pitchVoiced ? "opacity-100" : "opacity-0"}`} />
-                    <div className={`absolute inset-0 rounded-full bg-yellow-400/60 transition-opacity duration-300 ${!pitchVoiced && pitchHolding ? "opacity-100" : "opacity-0"}`} />
-                    <div className={`absolute inset-0 rounded-full bg-neutral-600 transition-opacity duration-300 ${!pitchVoiced && !pitchHolding ? "opacity-100" : "opacity-0"}`} />
-                  </div>
-                  {/* One width for all three texts, so the centred Stop
-                      Listening button beside it doesn't slide left and right
-                      as the voice comes and goes (2026-10-20). */}
-                  <span className="inline-grid text-[11px] text-neutral-500">
-                    {VOICE_STATUS_TEXTS.map((t) => <span key={t} aria-hidden="true" className="invisible col-start-1 row-start-1 whitespace-nowrap">{t}</span>)}
-                    <span className="col-start-1 row-start-1 whitespace-nowrap">
-                      {pitchVoiced
-                        ? "Voice detected"
-                        : pitchHolding
-                          ? "Listening..."
-                          : "Waiting for voice..."}
-                    </span>
-                  </span>
-                </div>
-
-                <button
-                  onClick={stop}
-                  className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-400 text-xs transition-colors cursor-pointer"
-                >
-                  {/* Mic-off icon (inline SVG) */}
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
-                    <path d="M7.5 2a2.5 2.5 0 0 0-2.5 2.5v4a2.5 2.5 0 0 0 5 0v-4A2.5 2.5 0 0 0 7.5 2z" opacity="0.5" />
-                    <path fillRule="evenodd" d="M3.5 7.5a.5.5 0 0 1 .5.5 3.5 3.5 0 1 0 7 0 .5.5 0 0 1 1 0 4.5 4.5 0 0 1-4 4.473V14.5h2a.5.5 0 0 1 0 1h-5a.5.5 0 0 1 0-1h2v-2.027A4.5 4.5 0 0 1 3 8a.5.5 0 0 1 .5-.5z" clipRule="evenodd" opacity="0.5" />
-                    <path d="M1.646 1.646a.5.5 0 0 1 .708 0l12 12a.5.5 0 0 1-.708.708l-12-12a.5.5 0 0 1 0-.708z" />
-                  </svg>
-                  Stop Listening
-                </button>
-              </div>
-            )}
+            {/* The practice dock on every tab (record / note / Mic off;
+                PracticeDock.jsx, rendered by CombinedDashboard) */}
+            <div ref={setDockSlot} className="flex-shrink-0" data-dock-slot="" />
           </div>
         )}
       </div>
+      {savedToast && (
+        <SavedToast
+          durationSeconds={savedToast.durationSeconds}
+          onShow={showSavedSession}
+          onClose={closeSavedToast}
+        />
+      )}
     </div>
   );
 }

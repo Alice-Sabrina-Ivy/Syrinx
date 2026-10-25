@@ -33,6 +33,8 @@
 // while the recording state, timer, and flush interval keep running.
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
+import { PracticeDock } from "./PracticeDock";
 import { PitchTrace } from "./PitchTrace";
 import { CueStrip } from "./CueStrip";
 import { HeardAsPanel } from "./HeardAsPanel";
@@ -84,6 +86,16 @@ export function CombinedDashboard({
   sessionRef,
   frameCallbackRef,
   streamRef,
+  // The practice dock (record / note / Mic off) is portalled into App's
+  // dock slot on every tab while listening — also while inactive.
+  dockSlot = null,
+  onMicOff,
+  // { sessionId, startedAt } while recording, null otherwise (History's
+  // "Recording now" card).
+  onRecordingChange,
+  // { sessionId, durationSeconds } after a recording is finalized (the
+  // saved toast; also after Mic off ends a recording).
+  onSessionSaved,
 }) {
   const [recording, setRecording] = useState(false);
   const [elapsed, setElapsed] = useState(0);
@@ -302,6 +314,8 @@ export function CombinedDashboard({
   // endedAt + summary stats written. Sets sessionIdRef.current = null up
   // front so concurrent calls (button + unmount race) deduplicate.
   // Resolves true only for the call that actually finalized.
+  const onSessionSavedRef = useRef(onSessionSaved);
+  useEffect(() => { onSessionSavedRef.current = onSessionSaved; });
   const finalizeRecordingDb = useCallback(async () => {
     const sessionId = sessionIdRef.current;
     if (!sessionId) return false;
@@ -380,6 +394,7 @@ export function CombinedDashboard({
     // async finalize re-queries and picks up the endedAt + stats it read
     // too early.
     window.dispatchEvent(new CustomEvent("syrinx:session-finalized"));
+    onSessionSavedRef.current?.({ sessionId, durationSeconds });
     return true;
   }, [frameCallbackRef]);
 
@@ -425,6 +440,17 @@ export function CombinedDashboard({
     db.sessions.update(sessionId, { directionLog: next })
       .catch((err) => console.error("Failed to record direction change:", err));
   }, [direction]);
+
+  // Tell App when a recording starts / ends (History's "Recording now"
+  // card); null again on unmount (Mic off finalizes the recording).
+  const onRecordingChangeRef = useRef(onRecordingChange);
+  useEffect(() => { onRecordingChangeRef.current = onRecordingChange; });
+  useEffect(() => {
+    onRecordingChangeRef.current?.(recording && sessionIdRef.current !== null
+      ? { sessionId: sessionIdRef.current, startedAt: recordingStartRef.current }
+      : null);
+  }, [recording]);
+  useEffect(() => () => onRecordingChangeRef.current?.(null), []);
 
   // Keep sessionRef in sync
   useEffect(() => {
@@ -500,18 +526,30 @@ export function CombinedDashboard({
     };
   }, [flushFrames]);
 
-  const formatTime = (secs) => {
-    const m = Math.floor(secs / 60);
-    const s = secs % 60;
-    return `${m}:${s.toString().padStart(2, "0")}`;
-  };
-
   // null = no target (exploring / not chosen): neutral readout.
   const pitchTarget = pitchTargetFor(direction);
 
+  // The dock shows on every tab (portalled into App's slot).
+  const dock = dockSlot && createPortal(
+    <PracticeDock
+      recording={recording}
+      stopping={stopping}
+      elapsed={elapsed}
+      notes={notes}
+      onNotesChange={setNotes}
+      onRecord={startRecording}
+      onStopAndSave={stopRecording}
+      onMicOff={onMicOff}
+      pitchVoiced={pitchVoiced}
+      pitchHolding={pitchHolding}
+      recordError={recordError}
+    />,
+    dockSlot,
+  );
+
   // Another tab is showing: stay mounted (recording continues), render
-  // nothing. After all hooks — the hook order must not change.
-  if (!active) return null;
+  // only the dock. After all hooks — the hook order must not change.
+  if (!active) return dock || null;
 
   return (
     // min-h-0 only at lg: below lg the parent scrolls, and these must not
@@ -581,47 +619,7 @@ export function CombinedDashboard({
         />
       )}
 
-      {/* Session row: Save, timer, notes — one line */}
-      <div className="flex-shrink-0 pb-1" data-session-row="">
-        <div className="flex items-center gap-2 w-full">
-          <button
-            onClick={recording ? stopRecording : startRecording}
-            disabled={stopping}
-            className={`shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm font-medium transition-colors cursor-pointer border disabled:opacity-60 disabled:cursor-wait ${
-              recording
-                ? "bg-red-500/15 text-red-400 border-red-500/30 hover:bg-red-500/25"
-                : "bg-neutral-800/60 text-neutral-300 border-neutral-700 hover:bg-neutral-700/60"
-            }`}
-          >
-            <span
-              className={`w-2.5 h-2.5 rounded-full ${
-                recording ? "bg-red-400 animate-pulse" : "bg-neutral-500"
-              }`}
-            />
-            {stopping ? "Saving…" : recording ? "Stop & Save" : "Save Session"}
-          </button>
-          {recording && (
-            <span className="shrink-0 flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-              <span className="text-xs text-red-400 font-medium">REC</span>
-            </span>
-          )}
-          <span className="shrink-0 text-sm tabular-nums text-neutral-400 font-mono">
-            {formatTime(elapsed)}
-          </span>
-          <input
-            type="text"
-            placeholder="Session notes..."
-            aria-label="Session notes"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            className="flex-1 min-w-0 bg-neutral-800/60 border border-neutral-700 rounded-lg px-3 py-1.5 text-sm text-neutral-300 placeholder:text-neutral-600 focus:outline-none focus:border-neutral-500"
-          />
-        </div>
-        {recordError && (
-          <p role="alert" className="text-xs text-red-400 text-center mt-2">{recordError}</p>
-        )}
-      </div>
+      {dock}
     </div>
   );
 }
