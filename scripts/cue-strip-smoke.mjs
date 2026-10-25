@@ -359,6 +359,18 @@ const settingsSwitch = (page) => page.evaluate(() => {
   const b = document.querySelector("[data-settings-heard-as] [role=switch]");
   return b ? b.getAttribute("aria-checked") : null;
 });
+// "Likely heard as" is on by default and has no turn-on button (user decision 2026-10-25): Settings' switch is
+// its only control, and switched off the panel is not rendered at all (state().heardAs === null).
+async function setHeardAs(page, on) {
+  await openSettings(page);
+  if ((await settingsSwitch(page)) !== String(on)) await page.evaluate(() => document.querySelector("[data-settings-heard-as] [role=switch]")?.click());
+  await sleep(300);
+  const ok = (await settingsSwitch(page)) === String(on);
+  await closeSettings(page);
+  return ok;
+}
+const heardAsOff = (s) => s.heardAs === null;
+const turnOnButtons = (page) => page.evaluate(() => [...document.querySelectorAll("button")].filter((b) => /turn on/i.test(b.textContent)).length);
 
 // Samples state every 250 ms for ms, calling fn(s, tSec) each time.
 async function sample(page, ms, fn) {
@@ -477,7 +489,7 @@ await sleep(600);
   check("layout: whole cue strip in the first screen", inView(L.strip, L), `${JSON.stringify(L.strip)} vh ${L.vh}`);
   check("layout: no horizontal page scroll", L.scrollW <= L.vw, `${L.scrollW} vs ${L.vw}`);
   check("layout: no clipped strip header text", L.clipped.length === 0, L.clipped.join(" | "));
-  log(`  panel off: trace ${L.trace?.top}-${L.trace?.bottom}, strip ${L.strip?.top}-${L.strip?.bottom}, panel ${L.panel?.top}-${L.panel?.bottom}, session ${L.session?.top}-${L.session?.bottom}, vh ${L.vh}, scrollH ${L.scrollH}`);
+  log(`  first visit (panel on by default): trace ${L.trace?.top}-${L.trace?.bottom}, strip ${L.strip?.top}-${L.strip?.bottom}, panel ${L.panel?.top}-${L.panel?.bottom}, session ${L.session?.top}-${L.session?.bottom}, vh ${L.vh}, scrollH ${L.scrollH}`);
 }
 // Info popovers (the honest caveats live there): readable and visible.
 {
@@ -502,8 +514,10 @@ for (const label of ["About the pitch cue", "About the resonance cue", "What doe
 }
 {
   const s = await state(page);
-  check("heard-as: off at first visit", s.heardAs?.mode === "off");
-  check("heard-as off: no gender worker", gw(page) === 0, `${gw(page)} workers`);
+  check("heard-as: on at first visit (on by default)", !heardAsOff(s), `${s.heardAs?.mode}/${s.heardAs?.reason}`);
+  check("heard-as: no turn-on button anywhere", (await turnOnButtons(page)) === 0);
+  for (let i = 0; i < 12 && gw(page) !== 1; i++) await sleep(250);
+  check("heard-as on by default: the gender worker runs", gw(page) === 1, `${gw(page)} workers`);
 }
 // speech: states over time
 {
@@ -570,12 +584,10 @@ for (const label of ["About the pitch cue", "About the resonance cue", "What doe
   // back to masculine for the rest
   await openSettings(page); await pickDirection(page, "masculine", "[data-dialog=settings]"); await closeSettings(page);
 }
-// heard-as on
+// heard-as on (by default; nothing to press)
 {
-  await page.evaluate(() => [...document.querySelectorAll("[data-heard-as] button")].find((b) => b.textContent.includes("Turn on"))?.click());
-  await sleep(800);
   let s = await state(page);
-  check("heard-as: turning it on starts the gender worker", s.heardAs?.mode !== "off" && gw(page) === 1, `${s.heardAs?.mode}/${s.heardAs?.reason}, ${gw(page)} workers`);
+  check("heard-as: still on, the gender worker runs", !heardAsOff(s) && gw(page) === 1, `${s.heardAs?.mode}/${s.heardAs?.reason}, ${gw(page)} workers`);
   await openSettings(page);
   check("Settings' switch agrees (on)", (await settingsSwitch(page)) === "true");
   await closeSettings(page);
@@ -602,7 +614,7 @@ for (const label of ["About the pitch cue", "About the resonance cue", "What doe
   check("reload: listening again after Continue", await continueAfterReload(page));
   await sleep(1000);
   const s = await state(page);
-  check("reload: heard-as is still on", s.heardAs?.mode !== "off" && gw(page) === 1, `${s.heardAs?.mode}, ${gw(page)} workers`);
+  check("reload: heard-as is still on", !heardAsOff(s) && gw(page) === 1, `${s.heardAs?.mode}, ${gw(page)} workers`);
 }
 // off via Settings
 {
@@ -615,9 +627,10 @@ for (const label of ["About the pitch cue", "About the resonance cue", "What doe
   // that can take over 0.5 s (review round 2), so wait up to 3 s for it.
   for (let i = 0; i < 12 && gw(page) !== 0; i++) await sleep(250);
   const s = await state(page);
-  check("panel agrees (off) and the gender worker is gone", s.heardAs?.mode === "off" && gw(page) === 0, `${s.heardAs?.mode}, ${gw(page)} workers`);
-  // back on for the other voices
-  await page.evaluate(() => [...document.querySelectorAll("[data-heard-as] button")].find((b) => b.textContent.includes("Turn on"))?.click());
+  check("panel gone (off) and the gender worker is gone", heardAsOff(s) && gw(page) === 0, `${s.heardAs?.mode}, ${gw(page)} workers`);
+  check("off: still no turn-on button on the dashboard", (await turnOnButtons(page)) === 0);
+  // back on (in Settings) for the other voices
+  check("back on via Settings", await setHeardAs(page, true));
   await sleep(300);
 }
 // After the reload a fresh resonance engine withholds its position until the
@@ -771,15 +784,15 @@ for (const who of PITCH_ONLY_LATE) {
   check(`pitch-only late ${who}: listening`, listening);
   await sleep(300);
   check(`pitch-only late ${who}: the panel is off when listening starts (switched off in Settings before)`,
-    offSaved && (await state(page)).heardAs?.mode === "off" && gw(page) === 0, `${(await state(page)).heardAs?.mode}, ${gw(page)} workers`);
+    offSaved && heardAsOff(await state(page)) && gw(page) === 0, `${(await state(page)).heardAs?.mode}, ${gw(page)} workers`);
   let offOk = true, startBefore = false;
-  await sample(page, PANEL_ON_AT_S * 1000 - (Date.now() - t0), (s) => { if (s.heardAs?.mode !== "off" || gw(page) !== 0) offOk = false; startBefore = s.cueStart; });
+  await sample(page, PANEL_ON_AT_S * 1000 - (Date.now() - t0), (s) => { if (!heardAsOff(s) || gw(page) !== 0) offOk = false; startBefore = s.cueStart; });
   check(`pitch-only late ${who}: the panel stayed off (no gender worker) until ${PANEL_ON_AT_S} s`, offOk);
   check(`pitch-only late ${who}: the cue's start window had closed before switch-on (start marker shown)`, startBefore);
   const onAt = (Date.now() - t0) / 1000;
-  await page.evaluate(() => [...document.querySelectorAll("[data-heard-as] button")].find((b) => b.textContent.includes("Turn on"))?.click());
-  await sleep(500);
-  check(`pitch-only late ${who}: turned on at ${onAt.toFixed(1)} s, the gender worker starts`, (await state(page)).heardAs?.mode !== "off" && gw(page) === 1);
+  const onOk = await setHeardAs(page, true);   // Settings is the only switch since 2026-10-25
+  for (let i = 0; i < 12 && gw(page) !== 1; i++) await sleep(250);
+  check(`pitch-only late ${who}: turned on in Settings at ${onAt.toFixed(1)} s, the gender worker starts`, onOk && !heardAsOff(await state(page)) && gw(page) === 1);
   let before = 0, first = null, firstState = null, shownTicks = 0, firstShown = null;
   await sample(page, Math.max(0, (meta.shiftS + 25) * 1000 - (Date.now() - t0)), (s) => {
     const t = (Date.now() - t0) / 1000;

@@ -1,6 +1,6 @@
 # "Likely heard as" tooling
 
-The experimental, opt-in "Likely heard as" panel
+The experimental "Likely heard as" panel (on by default since 2026-10-25)
 (`src/components/HeardAsPanel.jsx`) pools the gender worker's per-window
 classifier logits and the posted pitch with `src/ml/heard-as.js` and maps
 them to listener shares with the constants in `src/ml/heardAsCalibration.js`.

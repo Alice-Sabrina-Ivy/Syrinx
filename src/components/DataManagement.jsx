@@ -22,6 +22,7 @@ import { HeardAsSwitch } from "./HeardAsPanel";
 import { HEARD_AS_DOWNLOAD_MB } from "../ml/heard-as-download";
 import { FIRERED_MODEL, fireredModelSource, probeModel } from "../dsp/firered-vad";
 import { voiceGateStatusText } from "../utils/voiceGateSetting";
+import { HEARD_AS_DEFAULT } from "../utils/heardAsSetting";
 
 // Export assembly: frame lines are concatenated into ~1 MB strings, and
 // every ~32 MB of those are folded into a Blob (the browser's blob store,
@@ -38,7 +39,7 @@ function announceDataChanged() {
 }
 
 export function DataManagement({
-  onClose, direction = null, onDirectionChange, heardAsEnabled = false, onHeardAsChange,
+  onClose, direction = null, onDirectionChange, heardAsEnabled = HEARD_AS_DEFAULT, onHeardAsChange,
   voiceGateEnabled = true, onVoiceGateChange, voiceGateStatus = "idle",
   labEnabled = false, onLabChange,
 }) {
@@ -223,9 +224,9 @@ export function DataManagement({
     }
     // The settings row (and its recordAudio flag) is gone — reflect the
     // default in the toggle instead of a stale "on". Same for the
-    // experimental panel (default off).
+    // experimental "Likely heard as" panel (default on since 2026-10-25).
     setRecordAudio(false);
-    if (heardAsEnabled) onHeardAsChange?.(false);
+    if (heardAsEnabled !== HEARD_AS_DEFAULT) onHeardAsChange?.(HEARD_AS_DEFAULT);
     if (!voiceGateEnabled) onVoiceGateChange?.(true); // the default (on)
     if (labEnabled) onLabChange?.(false); // the default (off)
     setStatus("All data deleted");
@@ -297,7 +298,8 @@ export function DataManagement({
           </label>
         </div>
 
-        {/* Experimental "Likely heard as" panel (off by default) */}
+        {/* Experimental "Likely heard as" panel (on by default since
+            2026-10-25; this switch is the only way to turn it off) */}
         {onHeardAsChange && (
           <div className="mb-4" data-settings-heard-as="">
             <div className="flex items-center justify-between gap-3">
@@ -306,7 +308,7 @@ export function DataManagement({
                   Show the experimental &lsquo;Likely heard as&rsquo; estimate
                 </span>
                 <p className="text-[11px] text-neutral-400 mt-0.5">
-                  A rough, research-based guess shown as ranges, not a verdict. When first turned on it downloads a voice model, a speech detector and their engine (up to {HEARD_AS_DOWNLOAD_MB} MB).
+                  A rough, research-based guess shown as ranges, not a verdict. On by default: the first time it runs it downloads a voice model, a speech detector and their engine (up to {HEARD_AS_DOWNLOAD_MB} MB).
                 </p>
               </div>
               <HeardAsSwitch on={heardAsEnabled} onChange={onHeardAsChange} label="Show the experimental 'Likely heard as' estimate" />

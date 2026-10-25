@@ -10,6 +10,7 @@ import {
   RESONANCE_TRACE_SECONDS,
 } from "../utils/constants";
 import { createHeardAsAggregator } from "../ml/heard-as";
+import { HEARD_AS_DEFAULT } from "../utils/heardAsSetting";
 import { createPitchOnlyWarning } from "../ml/pitch-only-warning";
 import {
   pushAndMedianPitch,
@@ -161,8 +162,8 @@ export function useAudioPipeline() {
     // No `vocalWeight` (CPP clarity) slice since 2026-10-11: its only reader,
     // the cue strip's Clarity row, is hidden and the CPP pipeline is retired
     // (measurements/vocal-weight-pipeline-retire-2026-10-11.md).
-    // Gender worker (only while the opt-in "Likely heard as" panel is on —
-    // see setHeardAsEnabled): idle (not running) | loading | ready | error.
+    // Gender worker (only while the "Likely heard as" panel is on — on by
+    // default since 2026-10-25; see setHeardAsEnabled): idle (not running) | loading | ready | error.
     modelStatus: "idle",
     modelError: null,
     modelProgress: null,       // { loaded, total, file } during download
@@ -197,11 +198,12 @@ export function useAudioPipeline() {
   // clamp, verdict, startU, framesDropped } (null until the first one).
   const resonanceWorkerRef = useRef(null);
   const resonanceRef = useRef(null);
-  // Experimental "Likely heard as" panel (opt-in, off by default): whether it
-  // is on (the gender worker runs only then), and its aggregator
-  // (src/ml/heard-as.js) fed by the gender worker's scored windows and the
-  // posted pitch frames, on the audio clock.
-  const heardAsEnabledRef = useRef(false);
+  // Experimental "Likely heard as" panel (on by default since 2026-10-25;
+  // switched off only in Settings): whether it is on (the gender worker runs
+  // only then), and its aggregator (src/ml/heard-as.js) fed by the gender
+  // worker's scored windows and the posted pitch frames, on the audio clock.
+  // App sets the saved value (setHeardAsEnabled) once Settings has loaded.
+  const heardAsEnabledRef = useRef(HEARD_AS_DEFAULT);
   const heardAsRef = useRef(null);
   if (heardAsRef.current === null) heardAsRef.current = createHeardAsAggregator();
   // The panel's pitch-only-change warning (src/ml/pitch-only-warning.js):
@@ -626,11 +628,11 @@ export function useAudioPipeline() {
       const resonancePort = captureSrc.connectConsumer();
       resonanceWorker.postMessage({ type: "audioPort", port: resonancePort }, [resonancePort]);
 
-      // Gender (ML) worker: started only while the opt-in "Likely heard
-      // as" panel is on — now, or later in this session through
-      // setHeardAsEnabled (startMlWorkerRef). Saves ~0.3 s of CPU per
-      // second of speech and the first-time download (voice model + speech
-      // detector + ONNX Runtime engine, src/ml/heard-as-download.js) for everyone else
+      // Gender (ML) worker: started only while the "Likely heard as" panel
+      // is on (on by default since 2026-10-25) — now, or later in this
+      // session through setHeardAsEnabled (startMlWorkerRef). Saves ~0.3 s of
+      // CPU per second of speech and the first-time download (voice model +
+      // speech detector + ONNX Runtime engine, src/ml/heard-as-download.js) for anyone who switched it off
       // (measurements/heard-as-window-logit-2026-10-07.md §4).
       startMlWorkerRef.current = () => {
         if (mlWorkerRef.current || !genAlive() || captureSrcRef.current !== captureSrc) return;

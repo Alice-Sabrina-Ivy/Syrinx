@@ -90,11 +90,25 @@ await page.waitForFunction(() => document.body.innerText.includes("Welcome to Sy
 await click("Get Started");
 await page.waitForFunction(() => document.body.innerText.includes("What are you trying to sound like?"), { timeout: 30000 });
 await page.evaluate(() => document.querySelector('input[data-direction="exploring"]')?.closest("label").click());
-await click("Continue");
+if (PANEL) {
+  await click("Continue");
+} else {
+  // "Likely heard as" is on by default since 2026-10-25 (no turn-on button): a panel-off run answers the question
+  // with Escape, switches the panel off in Settings, then starts listening — the gender worker never starts.
+  await page.evaluate(() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+  await page.waitForFunction(() => !document.body.innerText.includes("What are you trying to sound like?"), { timeout: 10000 });
+  await page.evaluate(() => document.querySelector('[aria-label="Settings & Data"]')?.click());
+  await page.waitForSelector("[data-dialog=settings]", { timeout: 5000 });
+  await page.evaluate(() => { const s = document.querySelector("[data-settings-heard-as] [role=switch]"); if (s?.getAttribute("aria-checked") === "true") s.click(); });
+  await page.evaluate(() => document.querySelector('[aria-label="Close settings"]')?.click());
+  await page.waitForFunction(() => !document.querySelector("[data-dialog=settings]"), { timeout: 5000 });
+  await click("Start Listening");
+}
 await page.waitForFunction(() => document.body.innerText.includes("Stop Listening"), { timeout: 30000 });
 if (PANEL) {
-  await page.evaluate(() => [...document.querySelectorAll("[data-heard-as] button")].find((b) => b.textContent.includes("Turn on"))?.click());
   await page.waitForFunction(() => document.querySelector("[data-heard-as]")?.dataset.modelWorker === "ready", { timeout: 180000 });
+} else if (page.workers().some((w) => w.url().includes("gender-worker"))) {
+  throw new Error("panel-off run: the gender worker is running");
 }
 const ua = await browser.version();
 const t0 = Date.now();

@@ -387,8 +387,8 @@ if (PANEL) {
     const listening = await startListening(page);
     check(vp, "panel: listening", listening);
     if (!listening) { await page.close(); continue; }
+    // The panel is on by default (2026-10-25: no turn-on button): it is there as soon as listening starts.
     await page.waitForSelector("[data-heard-as]", { timeout: 20000 }).catch(() => {});
-    await page.evaluate(() => [...document.querySelectorAll("[data-heard-as] button")].find((b) => b.textContent.includes("Turn on"))?.click());
     const t0 = Date.now();
     const ready = await page.waitForFunction(() => document.querySelector("[data-heard-as]")?.dataset.modelWorker === "ready", { timeout: 300000 })
       .then(() => true, () => false);
@@ -434,8 +434,7 @@ if (FORCED) {
     const listening = await startListening(page);
     check(vp, "forced: listening", listening);
     if (!listening) { await page.close(); continue; }
-    await page.waitForSelector("[data-heard-as]", { timeout: 20000 }).catch(() => {});
-    await page.evaluate(() => [...document.querySelectorAll("[data-heard-as] button")].find((b) => b.textContent.includes("Turn on"))?.click());
+    await page.waitForSelector("[data-heard-as]", { timeout: 20000 }).catch(() => {});   // on by default
     await page.waitForFunction(() => ["error", "ready"].includes(document.querySelector("[data-heard-as]")?.dataset.modelWorker), { timeout: 60000 }).catch(() => {});
     const inst = await installPanelForce(page);
     check(vp, "forced: panel states can be set", inst.ok, inst.why ?? "");

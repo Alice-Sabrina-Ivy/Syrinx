@@ -240,19 +240,26 @@ const clickButton = (page, texts, scope = "") => page.evaluate((ts, scope) => {
   if (b) b.click();
   return !!b;
 }, texts, scope);
-// First visit: the welcome, then the direction question; Continue answers and
-// starts listening, Escape only answers (start: false).
+// First visit: the welcome, then the direction question, answered with Escape
+// (answers without starting). The "Likely heard as" panel is on by default
+// since 2026-10-25, so it is switched off in Settings before listening: these
+// runs measure the voice gate without the gender worker and its model
+// download, as before. Then Start Listening, unless start: false.
 async function startListening(page, { start = true } = {}) {
   await page.waitForFunction(() => document.body.innerText.includes("Welcome to Syrinx"), { timeout: 60000 });
   await clickButton(page, ["Get Started"]);
   await page.waitForFunction(() => document.body.innerText.includes("What are you trying to sound like?"), { timeout: 30000 });
   await page.evaluate(() => document.querySelector('[role=dialog] input[data-direction="exploring"]')?.closest("label")?.click());
-  if (!start) {
-    await page.evaluate(() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
-    await page.waitForFunction(() => !document.body.innerText.includes("What are you trying to sound like?"), { timeout: 10000 });
-    return;
-  }
-  await clickButton(page, ["Continue"], "[role=dialog]");
+  await page.evaluate(() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+  await page.waitForFunction(() => !document.body.innerText.includes("What are you trying to sound like?"), { timeout: 10000 });
+  await openSettings(page);
+  await page.evaluate(() => {
+    const s = document.querySelector("[data-settings-heard-as] [role=switch]");
+    if (s?.getAttribute("aria-checked") === "true") s.click();
+  });
+  await closeSettings(page);
+  if (!start) return;
+  await clickButton(page, ["Start Listening"]);
   await page.waitForFunction(() => document.body.innerText.includes("Stop Listening"), { timeout: 30000 });
 }
 async function openSettings(page) {

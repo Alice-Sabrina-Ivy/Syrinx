@@ -3,7 +3,8 @@
 // Pitch and Resonance · approx., each on a neutral axis with typical-speaker
 // bands, a dot and a trail (CueStrip.jsx; the Clarity row is hidden since
 // 2026-10-11, measurements/clarity-cue-2026-10-08.md) — then the
-// opt-in "Likely heard as · Experimental" panel (HeardAsPanel.jsx) and one
+// "Likely heard as · Experimental" panel (HeardAsPanel.jsx; on by default
+// since 2026-10-25, switched off only in Settings) and one
 // session row. Replaced the Perceived-voice bar, the F2 readout and the
 // stats row (F0 + steadiness live in the pitch row, HNR in the strip
 // caption). Handles session recording: buffers frames and writes to
@@ -35,6 +36,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { PitchTrace } from "./PitchTrace";
 import { CueStrip } from "./CueStrip";
 import { HeardAsPanel } from "./HeardAsPanel";
+import { HEARD_AS_DEFAULT } from "../utils/heardAsSetting";
 import { pitchTargetFor, appendDirection } from "../utils/trainingDirection";
 import { computeSummaryStats } from "../utils/sessionStats";
 import { holdRecordingLock } from "../utils/sessionRepair";
@@ -77,8 +79,7 @@ export function CombinedDashboard({
   heardAsRef,
   pitchOnlyRef,
   audioClockRef,
-  heardAsEnabled = false,
-  onHeardAsChange,
+  heardAsEnabled = HEARD_AS_DEFAULT,
   direction = null,
   sessionRef,
   frameCallbackRef,
@@ -554,7 +555,6 @@ export function CombinedDashboard({
           {wide && (
             <HeardAsPanel
               enabled={heardAsEnabled}
-              onToggle={onHeardAsChange}
               modelStatus={modelStatus}
               modelProgress={modelProgress}
               heardAsRef={heardAsRef}
@@ -571,7 +571,6 @@ export function CombinedDashboard({
       {!wide && (
         <HeardAsPanel
           enabled={heardAsEnabled}
-          onToggle={onHeardAsChange}
           modelStatus={modelStatus}
           modelProgress={modelProgress}
           heardAsRef={heardAsRef}

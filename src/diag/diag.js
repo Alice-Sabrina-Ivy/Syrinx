@@ -444,8 +444,8 @@ export function setVoiceGate(info) {
 
 // Resonance cue worker (src/resonance/resonance-worker.js, diag mode): its
 // latest perf block ({ msPerAudioS (EMA), meanMsPerAudioS, audioS, bins… })
-// and status, plus whether the lazy gender worker (the opt-in "Likely heard
-// as" panel) currently exists — the smoke harness reads these through
+// and status, plus whether the lazy gender worker (the "Likely heard as"
+// panel, on by default since 2026-10-25) currently exists — the smoke harness reads these through
 // window.__syrinxDiag.
 export function setResonancePerf(perf) {
   if (!diagState) return;

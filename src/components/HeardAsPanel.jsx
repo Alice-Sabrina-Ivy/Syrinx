@@ -1,6 +1,9 @@
-// HeardAsPanel.jsx — "Likely heard as · Experimental" (opt-in, OFF by
-// default; the user chose to ship it as a clearly labelled experiment with
-// its known weaknesses disclosed). Shows how listeners in published studies
+// HeardAsPanel.jsx — "Likely heard as · Experimental" (ON by default since
+// 2026-10-25, user decision: it downloads by itself and has no turn-on button;
+// until then it was opt-in with an off row and a "Turn on · up to N MB"
+// button). Settings' switch is the only way to turn it off; off, the panel
+// renders nothing. The user chose to ship it as a clearly labelled
+// experiment with its known weaknesses disclosed. Shows how listeners in published studies
 // might hear the voice on ONE SPLIT BAR (user decision 2026-10-20; it
 // replaced the 2026-10-07 axis with a shaded range and a ring): ten tenths of
 // listeners, "would say man" filling from the left (the cue strip's
@@ -80,9 +83,9 @@
 // measurements/heard-as-panel-review-2-2026-10-07.md
 //
 // The gender worker runs only while this is on (useAudioPipeline
-// setHeardAsEnabled); off, nothing runs and nothing downloads. Turning it on
-// downloads up to HEARD_AS_DOWNLOAD_MB (src/ml/heard-as-download.js) the
-// first time. Hidden reasons come from heard-as.js estimate(); "short" is
+// setHeardAsEnabled); off, nothing runs and nothing downloads. On, the first
+// listen downloads up to HEARD_AS_DOWNLOAD_MB (src/ml/heard-as-download.js),
+// shown as "Loading voice model… N %" in the panel. Hidden reasons come from heard-as.js estimate(); "short" is
 // split into "short" / "unvoiced" (whisper) by heardAsAxisModel.js
 // shortReason. Since 2026-10-08 only voiced windows count toward the reading
 // (heard-as.js logitMinVoicedMs; measurements/heard-as-voiced-windows-2026-10-08.md).
@@ -92,14 +95,9 @@ import { heardAsShares } from "../ml/heard-as";
 import { heardAsAxis, AXIS_ENDS, shortReason, quickCheck } from "./heardAsAxisModel";
 import { HEARD_AS_CALIBRATION } from "../ml/heardAsCalibration";
 import { PITCH_ONLY_TEXT } from "../ml/pitch-only-warning";
-import { HEARD_AS_DOWNLOAD_MB } from "../ml/heard-as-download";
 
 const STALE_MS = 2000;
 const HIDE_CHECK_MS = 250;
-// What turning it on downloads the first time: the voice model, the speech
-// detector and the ONNX Runtime engine (src/ml/heard-as-download.js; an
-// upper bound — GitHub Pages compresses the engine).
-export const MODEL_DOWNLOAD_MB = HEARD_AS_DOWNLOAD_MB;
 
 // The caveat: its first sentence stays on screen, the rest opens with "More"
 // (user decision 2026-10-20: the long explanation behind "More"). Words
@@ -289,10 +287,9 @@ const LEGEND_CLS = "mt-0.5 text-[11px] leading-snug";
 const NOTE_CLS = "mt-1.5 text-[11px] leading-snug";
 const REASON_CLS = "mt-1.5 text-sm leading-snug";
 
-export function HeardAsSwitch({ on, onChange, label = "Likely heard as · Experimental", ref = null }) {
+export function HeardAsSwitch({ on, onChange, label = "Likely heard as · Experimental" }) {
   return (
     <button
-      ref={ref}
       type="button"
       role="switch"
       aria-checked={on}
@@ -386,7 +383,6 @@ function EmptyAxis() {
 
 export function HeardAsPanel({
   enabled,
-  onToggle,
   modelStatus,
   modelProgress,
   heardAsRef,
@@ -402,18 +398,6 @@ export function HeardAsPanel({
   useEffect(() => { statusRef.current = modelStatus; });
   const shownRef = useRef(false);
   const computeRef = useRef(null);
-  // Turning the panel on or off here swaps the off row for the panel, so the
-  // pressed control unmounts: focus moves to the control that replaces it
-  // instead of dropping to <body> (2026-10-19 review S-4d). Only for a press
-  // in the panel (the state it asked for), not for the Settings switch.
-  const turnOnRef = useRef(null);
-  const switchRef = useRef(null);
-  const refocusFor = useRef(null);
-  const toggleHere = (on) => { refocusFor.current = on; onToggle(on); };
-  useEffect(() => {
-    if (refocusFor.current === enabled) (enabled ? switchRef : turnOnRef).current?.focus();
-    refocusFor.current = null;
-  }, [enabled]);
 
   useEffect(() => {
     if (!enabled) return undefined;
@@ -492,8 +476,7 @@ export function HeardAsPanel({
   const progress = modelProgress?.total
     ? Math.min(100, Math.floor((100 * modelProgress.loaded) / modelProgress.total))
     : null;
-  const reason = !enabled ? null
-    : modelStatus === "error" ? "error"
+  const reason = modelStatus === "error" ? "error"
       : modelStatus !== "ready" ? "loading"
         : view.hidden ?? null;
   const stale = !reason && view.ageMs > STALE_MS;
@@ -501,21 +484,9 @@ export function HeardAsPanel({
   // its run), so screen readers are not re-told after every "Keep talking".
   const liveOn = view.live === true;
 
-  if (!enabled) {
-    return (
-      <div className="w-full flex items-center justify-between gap-2 min-h-8 px-3 py-1 rounded-xl border border-neutral-800 bg-neutral-900/40"
-        data-heard-as="off" data-model-worker="off">
-        {/* Wraps rather than truncating: at 360 px the ellipsis ate "off" (review N-5). */}
-        <span className="min-w-0 text-[11px] leading-4 text-neutral-400">Likely heard as · <span className="whitespace-nowrap">Experimental — off</span></span>
-        {/* The accessible name starts with the visible text (WCAG 2.5.3, review N-9). */}
-        <button ref={turnOnRef} type="button" onClick={() => toggleHere(true)}
-          aria-label={`Turn on · up to ${MODEL_DOWNLOAD_MB} MB — the experimental "Likely heard as" estimate; the first time it downloads a voice model, a speech detector and their engine`}
-          className="shrink-0 text-[11px] min-h-6 px-2.5 py-1 rounded-md bg-neutral-800 hover:bg-neutral-700 text-neutral-300 cursor-pointer transition-colors">
-          Turn on · up to {MODEL_DOWNLOAD_MB} MB
-        </button>
-      </div>
-    );
-  }
+  // Switched off in Settings: nothing on the dashboard (no off row and no
+  // turn-on button since 2026-10-25; Settings turns it back on).
+  if (!enabled) return null;
 
   return (
     <section
@@ -529,7 +500,6 @@ export function HeardAsPanel({
         <h3 className="text-[11px] font-medium text-neutral-300">
           Likely heard as <span className="text-amber-300/80">· Experimental</span>
         </h3>
-        <HeardAsSwitch ref={switchRef} on onChange={toggleHere} />
       </div>
       {/* One grid cell: the tallest shown state and the tallest hidden state
           (both invisible), and on top of them what is showing now. */}

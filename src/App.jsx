@@ -12,7 +12,7 @@ import {
   saveTrainingDirection,
   pitchTargetFor,
 } from "./utils/trainingDirection";
-import { loadHeardAsEnabled, saveHeardAsEnabled } from "./utils/heardAsSetting";
+import { loadHeardAsEnabled, saveHeardAsEnabled, HEARD_AS_DEFAULT } from "./utils/heardAsSetting";
 import { loadVoiceGateEnabled, saveVoiceGateEnabled, VOICE_GATE_DEFAULT } from "./utils/voiceGateSetting";
 import { loadLabEnabled, saveLabEnabled } from "./utils/labSetting";
 import { withdrawResonanceLab } from "./resonance-lab/labRequest";
@@ -181,9 +181,10 @@ function App() {
   const [savedDirection, setSavedDirection] = useState(null);
   const [directionLoaded, setDirectionLoaded] = useState(false);
   const [showDirectionPrompt, setShowDirectionPrompt] = useState(true);
-  // Experimental "Likely heard as" panel: OFF by default (missing / blocked
-  // storage = off); the panel's switch and Settings' row share this state.
-  const [heardAsEnabled, setHeardAsEnabledState] = useState(false);
+  // Experimental "Likely heard as" panel: ON by default since 2026-10-25
+  // (missing / blocked storage = on; user decision: no turn-on button, it
+  // downloads by itself); Settings' switch is the only way to turn it off.
+  const [heardAsEnabled, setHeardAsEnabledState] = useState(HEARD_AS_DEFAULT);
   // "Hide pitch when no voice is heard (experimental)" — the voice gate: ON
   // by default (utils/voiceGateSetting.js).
   const [voiceGateEnabled, setVoiceGateEnabledState] = useState(VOICE_GATE_DEFAULT);
@@ -240,20 +241,20 @@ function App() {
     return () => clearTimeout(timer);
   }, []);
 
-  // The "Likely heard as" switch: same load / timeout pattern as the
-  // direction (a hung IndexedDB leaves it off). A user toggle before the
-  // load resolves wins.
+  // The "Likely heard as" switch. No timeout (unlike the direction): the
+  // default, on, is in place from the first render, so a slow IndexedDB only
+  // delays applying a saved "off" — however late it arrives, it still wins
+  // (worst case the gender worker has started, and setHeardAsEnabled(false)
+  // terminates it). A user toggle before the load resolves wins.
   const heardAsTouchedRef = useRef(false);
   useEffect(() => {
-    let done = false;
+    let live = true;
     loadHeardAsEnabled(db.settings).then((on) => {
-      if (done || heardAsTouchedRef.current) return;
-      done = true;
+      if (!live || heardAsTouchedRef.current) return;
       setHeardAsEnabledState(on);
       setHeardAsEnabled(on);
     });
-    const timer = setTimeout(() => { done = true; }, DIRECTION_LOAD_TIMEOUT_MS);
-    return () => clearTimeout(timer);
+    return () => { live = false; };
   }, [setHeardAsEnabled]);
 
   function changeHeardAs(on) {
@@ -508,7 +509,6 @@ function App() {
                 pitchOnlyRef={pitchOnlyRef}
                 audioClockRef={audioClockRef}
                 heardAsEnabled={heardAsEnabled}
-                onHeardAsChange={changeHeardAs}
                 direction={direction}
                 sessionRef={sessionRef}
                 frameCallbackRef={frameCallbackRef}

@@ -109,8 +109,7 @@ for (const [vp, viewport] of Object.entries(VIEWPORTS)) {
   await page.goto(`http://localhost:${PORT}/Syrinx/`, { waitUntil: "domcontentloaded", timeout: 120000 });
   await page.bringToFront();
   if (!(await startListening(page))) { console.log(`FAIL  [${vp}] listening`); failed++; await page.close(); continue; }
-  await page.waitForSelector("[data-heard-as]", { timeout: 20000 });
-  await page.evaluate(() => [...document.querySelectorAll("[data-heard-as] button")].find((b) => b.textContent.includes("Turn on"))?.click());
+  await page.waitForSelector("[data-heard-as]", { timeout: 20000 });   // on by default since 2026-10-25
   // The blocked download fails fast; wait for the worker to settle.
   await page.waitForFunction(() => ["error", "ready"].includes(document.querySelector("[data-heard-as]")?.dataset.modelWorker), { timeout: 90000 }).catch(() => {});
   const inst = await installPanelForce(page);

@@ -6,7 +6,8 @@
 //   npm run build && node scripts/resonance-lab/lab-smoke.mjs --wav=<48 kHz speech wav> [--seconds=40] [--shot=out.png]
 //
 // Run 1 (the setting left off, the default): asserts that there is no lab tab, that no lab
-// chunk / worker / asset is requested and only the three production workers start. Run 2: opens the "Resonance lab" tab while
+// chunk / worker / asset is requested and only the three production workers start (plus the
+// gender worker of the "Likely heard as" panel, on by default since 2026-10-25). Run 2: opens the "Resonance lab" tab while
 // listening, waits, prints the lab's readout text and saves a screenshot. Run 3: opens the
 // tab BEFORE listening, then starts — the lab must start with the pipeline. Run 4: the lab
 // on a phone (402x750 CSS px — an iPhone 16 Pro with Safari's toolbars showing; mobile
@@ -239,7 +240,10 @@ console.log("TAB NOT OPENED: workers", offWorkers);
 console.log("TAB NOT OPENED: lab requests", labHits.length ? labHits : "none");
 console.log("TAB NOT OPENED: page errors", off.errors.length ? off.errors : "none");
 console.log("SETTING OFF (default): lab tab shown", off.labTab);
-const offOk = off.labTab === false && labHits.length === 0 && off.workers.length === 3 && !off.workers.some((u) => u.includes("lab-worker"));
+// Three production workers, plus the "Likely heard as" panel's gender worker: the panel is on by
+// default since 2026-10-25, so that worker starts with the others.
+const offOk = off.labTab === false && labHits.length === 0 && !off.workers.some((u) => u.includes("lab-worker"))
+  && off.workers.filter((u) => !u.includes("gender-worker")).length === 3 && off.workers.filter((u) => u.includes("gender-worker")).length === 1;
 
 const on = await run(base, { lab: true });
 console.log("TAB OPENED: workers", on.workers.map((u) => u.split("/").pop()));

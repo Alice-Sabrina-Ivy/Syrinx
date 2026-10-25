@@ -294,7 +294,7 @@ async function _createAudioContextSource(stream, opts) {
     },
     // Stop sending chunks to a consumer (the port connectConsumer returned,
     // even after it was transferred to a worker): the worklet drops it from
-    // its broadcast list. Used when the opt-in gender worker is switched off.
+    // its broadcast list. Used when the gender worker is switched off (Settings' "Likely heard as" switch).
     disconnectConsumer(port) {
       const id = portIds.get(port);
       if (id === undefined) return false;
