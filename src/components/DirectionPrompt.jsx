@@ -163,6 +163,12 @@ export function DirectionPrompt({ initial, onConfirm, onDismiss, variant = "firs
     target?.focus();
   }, [initial]);
 
+  // "Change goal" unmounts itself: keep keyboard focus in the list (on the
+  // chosen goal) instead of losing it to the page.
+  useEffect(() => {
+    if (expanded) formRef.current?.querySelector("input[type=radio]:checked")?.focus();
+  }, [expanded]);
+
   const choiceRef = useRef(choice);
   useEffect(() => { choiceRef.current = choice; }, [choice]);
   const notNowRef = useRef(null);
