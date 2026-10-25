@@ -97,3 +97,56 @@ Among candidates that pass every guard, the winner has the largest mean **test**
 If the winner also passes G1 at ≥ −0.05 and is never below `none` at 20 dB on either group, it is
 proposed as **on by default**; otherwise as a switch. The objective scores are proxies; the
 result ends with an A/B listening page on public clips for the user.
+
+## 2. Development rounds (dev subset: 20 clips, 10 women / 10 men, one noise draw per SNR, cell 0 st / 0 %)
+
+Recorded before the test set was scored. Paired PESQ-WB change vs `none|posted`, worse sex.
+
+**Deviations from §1, decided on dev data:**
+
+- **Quiet-room controls (30 / 40 dB SNR) added.** The clean mixtures' padding is near-digital
+  silence (level margins 61–77 dB), which no room gives; 30 / 40 dB of the same noise classes
+  stand in for a quiet room. Appended to the mixture list after the plan's SNRs (earlier draws
+  unchanged).
+- **Automatic mode added as a candidate**: the denoiser runs only when the recording's level
+  margin (`checks.js` `levelMargin`, the noise notice's measure) is below a threshold; otherwise
+  the recording is used as captured. The hum flag is not used as a trigger: it fires on 15–22 %
+  of the 30 / 40 dB recordings.
+- **PESQ on vocoded renders is dominated by the F0 contour.** `none|oracle` (the clean track on
+  the noisy audio) gains +0.54 PESQ at 30 / 40 dB from track agreement alone. DNSMOS and the
+  track error rates are therefore read next to PESQ.
+
+| candidate | noisy 0–20 dB | clean (G1) | quiet 30/40 dB | DNSMOS OVRL noisy |
+|---|---|---|---|---|
+| `rnn\|posted` (the fork, as shipped there) | +0.33 | −0.81 | +0.08 | +0.46 |
+| `rnn\|re` (RNNoise, track re-run on the cleaned audio) | +0.51 | −1.12 | +0.29 | +0.52 |
+| `rnn\|oracle` (diagnostic: the clean track) | +0.68 | −0.81 | +0.53 | +0.50 |
+| `ext:dfn3\|re` (DeepFilterNet 3, ~8 MB) | +0.70 | −2.58 | −0.26 | +0.63 |
+| `ext:gtcrn\|re` (GTCRN, 0.35 MB) | +0.44 | −1.54 | +0.03 | +0.38 |
+| `mmse:vad:0.98:-18:1:0.3:median\|re` (no download) | +0.25 | −0.40 | +0.23 | +0.23 |
+| `none\|posted\|wsub:1:-15` (WORLD-domain subtraction) | +0.06 | −0.10 | +0.00 | +0.01 |
+| `none\|vad:0.2` (FireRedVAD track gating) | +0.00 | −0.12 | — | −0.00 |
+| `rnn+pre\|re` (RNNoise over the 2 s pre-roll + recording) | +0.52 | −1.17 | +0.23 | +0.53 |
+| **`auto[45]~rnn\|re`** | **+0.51** | **0.00** | **+0.18** | +0.51 |
+
+Findings on dev:
+
+- FireRedVAD gating of the track does nothing for noisy recordings and hurts clean ones (the
+  detector misses voice, those frames are rebuilt unvoiced) — rejected.
+- Re-running the real pitch worker on the cleaned audio recovers about half of the gap between the
+  noisy posted track and the clean track (+0.33 → +0.51 of +0.68); warming it with the pre-roll,
+  gating it with FireRedVAD, or denoising the pre-roll too adds nothing.
+- DeepFilterNet 3 is the strongest on noisy audio but leaves residue in near-silence and costs
+  women PESQ in quiet rooms; at ~8 MB it is information only (G5: +0.19 over RNNoise < 0.3).
+- RNNoise 0.2 distorts clean speech slightly (LSD +1.4 dB; DNSMOS −0.01) — the automatic mode
+  keeps it off clean recordings. Thresholds 40–50 dB form a plateau (+0.513 worse sex); 60 dB
+  starts to fire on clean recordings. **Frozen: 45 dB.**
+
+### Frozen for the test set (before any test score)
+
+Candidates, all three cells: `none|posted`, `rnn|posted`, `rnn|re`, `ext:gtcrn|re`,
+`ext:dfn3|re`, `mmse:vad:0.98:-18:1:0.3:median|re`, `none|oracle`, `rnn|oracle` (diagnostics);
+automatic modes built from them with the 45 dB rule (and 28 dB, the notice's threshold, for
+reference). Sung set (vocadito, clean and 10 dB): `none|posted`, `rnn|posted`, `rnn|re`.
+The decision rule of §1 is applied to `auto[45]~rnn|re` and the always-on candidates as written;
+G3 uses the sung set.
