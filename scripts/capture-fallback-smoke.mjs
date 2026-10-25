@@ -18,7 +18,7 @@
 //   no-frame           reader.read() never resolves (5 s first-frame timeout)
 //   control            no stub — the real MSTP
 // Welcome → Get Started → direction → Continue starts listening, then checks:
-// listening ("Stop Listening"), no error / "denied" text, getUserMedia called
+// listening ("Mic off"), no error / "denied" text, getUserMedia called
 // exactly once, diag audio info (?diag=1) captureKind = audiocontext with
 // captureFallback {kind: "mstp"} (control: mstp, no captureFallback), the diag
 // overlay's fallback line, the console warning, frames arrive with pitch near
@@ -152,7 +152,7 @@ async function runMode(mode) {
   let listening = false;
   const t0 = Date.now();
   while (Date.now() - t0 < 25000) {
-    if (await page.evaluate(() => document.body.innerText.includes("Stop Listening"))) { listening = true; break; }
+    if (await page.evaluate(() => document.body.innerText.includes("Mic off"))) { listening = true; break; }
     await sleep(250);
   }
   const startMs = Date.now() - t0;

@@ -10,7 +10,7 @@
 //        [--forced-colors=1] [--css=<extra css to inject, e.g. to hide a part>] [--suffix=]
 //
 // Writes <out>/<viewport>-<scheme>-<state>.png (the viewport, panel centred)
-// and <out>/panel-boxes.json (the panel's height and the Save Session row's
+// and <out>/panel-boxes.json (the panel's height and the practice dock's
 // top per state — the one-height check is in lab-layout-smoke.mjs).
 //
 // Process hygiene (CLAUDE.md hard rule 2): Chrome is launched by puppeteer with
@@ -92,7 +92,7 @@ async function startListening(page) {
       await page.evaluate(() => document.querySelector('[role=dialog] input[data-direction="exploring"]')?.closest("label")?.click());
       await sleep(200);
       await clickText(page, ["Continue"], "[role=dialog]");
-    } else if (s.text.includes("Stop Listening")) return true;
+    } else if (s.text.includes("Mic off")) return true;
     else await clickText(page, ["Get Started", "Start Listening"]);
     await sleep(700);
   }
@@ -125,7 +125,7 @@ for (const [vp, viewport] of Object.entries(VIEWPORTS)) {
       const b = await page.evaluate(() => {
         const p = document.querySelector("[data-heard-as]");
         p?.scrollIntoView({ block: "center" });
-        const r = p?.getBoundingClientRect(), s = document.querySelector("[data-session-row]")?.getBoundingClientRect();
+        const r = p?.getBoundingClientRect(), s = document.querySelector("[data-practice-dock]")?.getBoundingClientRect();
         return { panelH: r ? Math.round(r.height * 100) / 100 : null, rowTop: s ? Math.round((s.top - r.top) * 100) / 100 : null,
           reason: p?.dataset.reason ?? null, mode: p?.dataset.heardAs ?? null };
       });

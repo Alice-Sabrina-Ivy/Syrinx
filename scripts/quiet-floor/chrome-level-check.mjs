@@ -81,7 +81,7 @@ for (const kind of ["mstp", "audiocontext"]) {
   // First visit: welcome -> direction question -> Continue starts listening;
   // a returning profile gets the question again (Continue) or Start Listening.
   for (let i = 0; i < 120; i++) {
-    if (await page.evaluate(() => document.body.innerText.includes("Stop Listening"))) break;
+    if (await page.evaluate(() => document.body.innerText.includes("Mic off"))) break;
     if (!(await clickButton(page, ["Get Started"]))) {
       // the direction question needs a choice before Continue (first visit)
       await page.evaluate(() => {
