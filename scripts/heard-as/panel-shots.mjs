@@ -91,9 +91,9 @@ async function startListening(page) {
     if (s.dialog) {
       await page.evaluate(() => document.querySelector('[role=dialog] input[data-direction="exploring"]')?.closest("label")?.click());
       await sleep(200);
-      await clickText(page, ["Continue"], "[role=dialog]");
+      await clickText(page, ["Start — allow the microphone", "Start practicing"], "[role=dialog]");
     } else if (s.text.includes("Stop Listening")) return true;
-    else await clickText(page, ["Get Started", "Start Listening"]);
+    else await clickText(page, ["Start Listening"]);
     await sleep(700);
   }
   return false;

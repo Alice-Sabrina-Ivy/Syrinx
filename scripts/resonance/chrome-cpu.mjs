@@ -86,12 +86,11 @@ const cdp = await page.createCDPSession();
 await cdp.send("Emulation.setFocusEmulationEnabled", { enabled: true });
 await page.goto(`http://localhost:${PORT}/Syrinx/${DIAG ? "?diag=1" : ""}`, { waitUntil: "domcontentloaded" });
 const click = (t) => page.evaluate((t) => { const b = [...document.querySelectorAll("button")].find((x) => x.textContent.includes(t)); b?.click(); return !!b; }, t);
-await page.waitForFunction(() => document.body.innerText.includes("Welcome to Syrinx"), { timeout: 60000 });
-await click("Get Started");
+await page.waitForFunction(() => !!document.querySelector("[data-dialog=direction]"), { timeout: 60000 });
 await page.waitForFunction(() => document.body.innerText.includes("What are you trying to sound like?"), { timeout: 30000 });
 await page.evaluate(() => document.querySelector('input[data-direction="exploring"]')?.closest("label").click());
 if (PANEL) {
-  await click("Continue");
+  await click("Start — allow the microphone");
 } else {
   // "Likely heard as" is on by default since 2026-10-25 (no turn-on button): a panel-off run answers the question
   // with Escape, switches the panel off in Settings, then starts listening — the gender worker never starts.

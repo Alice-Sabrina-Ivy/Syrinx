@@ -246,8 +246,7 @@ const clickButton = (page, texts, scope = "") => page.evaluate((ts, scope) => {
 // runs measure the voice gate without the gender worker and its model
 // download, as before. Then Start Listening, unless start: false.
 async function startListening(page, { start = true } = {}) {
-  await page.waitForFunction(() => document.body.innerText.includes("Welcome to Syrinx"), { timeout: 60000 });
-  await clickButton(page, ["Get Started"]);
+  await page.waitForFunction(() => !!document.querySelector("[data-dialog=direction]"), { timeout: 60000 });
   await page.waitForFunction(() => document.body.innerText.includes("What are you trying to sound like?"), { timeout: 30000 });
   await page.evaluate(() => document.querySelector('[role=dialog] input[data-direction="exploring"]')?.closest("label")?.click());
   await page.evaluate(() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));

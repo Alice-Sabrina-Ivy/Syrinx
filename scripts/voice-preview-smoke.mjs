@@ -239,14 +239,14 @@ const clickButton = (page, texts, sel = "button") => page.evaluate((ts, sel) => 
 const clickSel = (page, sel) => page.evaluate((sel) => { const b = document.querySelector(sel); if (b) b.click(); return !!b; }, sel);
 
 async function startListening(page, direction = "exploring") {
-  await page.waitForFunction(() => /Welcome to Syrinx|What are you trying to sound like/.test(document.body.innerText), { timeout: 60000 });
-  if (await page.evaluate(() => document.body.innerText.includes("Welcome to Syrinx"))) {
-    await clickButton(page, ["Get Started"]);
-    await page.waitForFunction(() => document.body.innerText.includes("What are you trying to sound like?"), { timeout: 30000 });
-  }
+  // The goal sheet: first visit (all four goals) or a return visit (last
+  // time's goal; "Change goal" shows the others).
+  await page.waitForSelector("[data-dialog=direction]", { timeout: 60000 });
+  await page.evaluate(() => document.querySelector("[role=dialog] [data-change-goal]")?.click());
+  await sleep(200);
   await page.evaluate((id) => { document.querySelector(`[role=dialog] input[data-direction="${id}"]`)?.closest("label")?.click(); }, direction);
   await sleep(200);
-  await clickButton(page, ["Continue"], "[role=dialog] button");
+  await clickButton(page, ["Start — allow the microphone", "Start practicing"], "[role=dialog]");
   await page.waitForFunction(() => document.body.innerText.includes("Stop Listening"), { timeout: 30000 });
   return Date.now();
 }
