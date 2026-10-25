@@ -89,7 +89,7 @@ function TabNav({ activeTab, setActiveTab, tabs = TABS }) {
 
 // A Voice Shaper chunk that fails to download (a deploy replaced the hashed chunks
 // while the page stayed open, a flaky phone connection) must not take the app down:
-// without a boundary React removes the whole root (tabs, Stop Listening, a running
+// without a boundary React removes the whole root (tabs, the practice dock, a running
 // session recording). The texts equal strings.js S.loading / S.loadError
 // (tests/voice-preview/strings-test.js checks them).
 class ShaperBoundary extends Component {
@@ -377,7 +377,7 @@ function App() {
   const blocked = showWelcome || showDirectionPrompt || showSettings;
 
   // h-dvh, not h-screen: on phones 100vh is the viewport with the URL bar
-  // HIDDEN, so with it showing the bottom row (Stop Listening) sat below
+  // HIDDEN, so with it showing the bottom row (the practice dock) sat below
   // the fold of a page that can't scroll. Every browser Tailwind 4
   // supports (Safari 16.4+, Chrome 111+, Firefox 128+) has dvh, so no
   // vh fallback is needed.

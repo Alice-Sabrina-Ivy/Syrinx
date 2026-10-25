@@ -134,7 +134,7 @@ export function CombinedDashboard({
   const startingRef = useRef(false);
 
   // Same guard for stopRecording: `recording` stays true (button still
-  // reads "Stop & Save") for the whole async finalize — a frames
+  // reads "Stop & save") for the whole async finalize — a frames
   // read-back that takes hundreds of ms on a long session. A second
   // click would otherwise run stopRecording again: its finalize returns
   // early, it clears the notes before the first finalize has written
@@ -336,10 +336,10 @@ export function CombinedDashboard({
     // Stop audio recording and capture the blob.
     //
     // Two paths arrive here:
-    //   1. Stop & Save button — recorder is still active, we call stop()
+    //   1. Stop & save button (practice dock) — recorder is still active, we call stop()
     //      and await onstop. The browser flushes any pending data via a
     //      final dataavailable event before firing onstop.
-    //   2. Audio pipeline torn down first (Stop Listening, status→error
+    //   2. Audio pipeline torn down first (Mic off, status→error
     //      unmount) — useAudioPipeline.stop() ends the mic
     //      tracks, the recorder auto-transitions to "inactive", and the
     //      browser dispatches its final dataavailable event before
@@ -411,7 +411,7 @@ export function CombinedDashboard({
     } finally {
       // finalize tore the recording down (intervals, frame callback)
       // before anything could throw — never leave the button on
-      // "Stop & Save" for a recording that no longer exists.
+      // "Stop & save" for a recording that no longer exists.
       stoppingRef.current = false;
       if (mountedRef.current) {
         setStopping(false);

@@ -77,7 +77,7 @@ export function PracticeDock({
   const time = formatElapsed(elapsed);
 
   return (
-    <div className="relative flex-shrink-0 mt-2 pt-2 border-t border-neutral-800/80" data-practice-dock="" data-recording={recording ? "1" : "0"}>
+    <div className="relative flex-shrink-0 mt-1.5 pt-1.5 border-t border-neutral-800/80" data-practice-dock="" data-recording={recording ? "1" : "0"}>
       {noteOpen && (
         <div className="sm:hidden absolute bottom-full left-0 right-0 mb-2 rounded-xl border border-neutral-700 bg-neutral-900 p-3 shadow-xl" data-dock-note-popover="">
           <div className="flex items-center justify-between mb-2">
