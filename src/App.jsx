@@ -111,56 +111,15 @@ const DIRECTION_LOAD_TIMEOUT_MS = 1500;
 // The voice status beside Stop Listening (laid out at the widest one's width).
 const VOICE_STATUS_TEXTS = ["Voice detected", "Listening...", "Waiting for voice..."];
 
-// First visit only. A modal like the direction question (App makes the page
-// behind it inert): focus starts on Get Started, Escape also continues,
-// and the panel scrolls on short (landscape) viewports.
-function WelcomeOverlay({ onDismiss }) {
-  const buttonRef = useRef(null);
-  const dismissRef = useRef(onDismiss);
-  useEffect(() => { dismissRef.current = onDismiss; }, [onDismiss]);
-  useEffect(() => {
-    buttonRef.current?.focus();
-    const onKey = (e) => {
-      if (e.key === "Escape") { e.preventDefault(); dismissRef.current(); }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4 py-4"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="welcome-title"
-      data-dialog="welcome"
-    >
-      <div className="bg-neutral-900 border border-neutral-700 rounded-2xl p-6 max-w-sm w-full text-center shadow-xl max-h-full overflow-y-auto">
-        <h2 id="welcome-title" className="text-xl font-light text-white mb-3">Welcome to Syrinx</h2>
-        <p className="text-sm text-neutral-300 leading-relaxed mb-5">
-          Syrinx gives you real-time visual feedback on your voice pitch and
-          resonance — it needs microphone access to work.{" "}
-          Next, choose what you&apos;re aiming for — that sets the targets highlighted on the pitch trace and in the pitch and resonance rows under it.
-        </p>
-        <button
-          ref={buttonRef}
-          onClick={onDismiss}
-          className="px-6 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-300"
-        >
-          Get Started
-        </button>
-      </div>
-    </div>
-  );
-}
-
 function App() {
   const [activeTab, setActiveTab] = useState("dashboard");
   // Read localStorage in the lazy initializer instead of via a mount-time
   // useEffect: the effect path triggered an extra render (idle → welcome)
   // and React 19's compiler-hint rule flagged the useEffect-then-setState
   // pattern as a cascading-render risk. The initializer runs once before
-  // first paint, so first-visit users see the welcome overlay
-  // immediately rather than after a render-then-update flicker.
+  // first paint, so first-visit users see the welcome sheet (the goal
+  // question's "first" variant) immediately rather than after a
+  // render-then-update flicker.
   // localStorage access THROWS (SecurityError) when site data is blocked
   // — uncaught here it white-screened the app (no error boundary). Then
   // there is nowhere to remember the dismissal: show the welcome once per
@@ -314,15 +273,30 @@ function App() {
   }
   const tabs = labEnabled ? TABS : TABS_NO_LAB;
 
-  // The load-time question. Continue confirms AND starts listening (one
-  // tap per load, as Start Listening alone was before the question
-  // existed); Escape only confirms.
+  // The load-time question. Its primary button confirms AND starts
+  // listening (one tap per load, as Start Listening alone was before the
+  // question existed); "Not now" / Escape only confirm a chosen goal.
   function confirmDirection(next, { start: startListening = true } = {}) {
     setDirection(next);
     setSavedDirection(next);
     setShowDirectionPrompt(false);
+    markWelcomed();
     saveTrainingDirection(db.settings, next);
     if (startListening && status === "idle") start();
+  }
+
+  // "Not now" with no goal chosen: close, the goal stays unset.
+  function dismissDirection() {
+    setShowDirectionPrompt(false);
+    markWelcomed();
+  }
+
+  // Start Listening / Try Again: a goal is never assumed — with none set
+  // (the first visit's "Not now") the question comes back first and its
+  // primary button starts the microphone.
+  function requestStart() {
+    if (direction == null) setShowDirectionPrompt(true);
+    else start();
   }
 
   // Settings panel, any time (also mid-session): applies at once.
@@ -342,11 +316,13 @@ function App() {
     });
   }, []);
 
-  function dismissWelcome() {
+  // The first-visit sheet has been answered or put off: later loads get
+  // the return-visit sheet (when a goal is saved).
+  function markWelcomed() {
     try {
       localStorage.setItem(WELCOME_KEY, "1");
     } catch {
-      // Site data blocked — dismissal lasts for this page load only.
+      // Site data blocked — lasts for this page load only.
     }
     setShowWelcome(false);
   }
@@ -359,11 +335,11 @@ function App() {
     }
   }, [showSettings]);
 
-  // While the welcome, the direction question (also while the saved
-  // answer is still loading) or Settings is open, everything behind it is
-  // inert: no focus, no clicks — so the microphone can't be started and
-  // Settings can't be opened behind the question.
-  const blocked = showWelcome || showDirectionPrompt || showSettings;
+  // While the goal question (also while the saved answer is still
+  // loading) or Settings is open, everything behind it is inert: no focus,
+  // no clicks — so the microphone can't be started and Settings can't be
+  // opened behind the question.
+  const blocked = showDirectionPrompt || showSettings;
 
   // h-dvh, not h-screen: on phones 100vh is the viewport with the URL bar
   // HIDDEN, so with it showing the bottom row (Stop Listening) sat below
@@ -379,12 +355,15 @@ function App() {
         </Suspense>
       )}
 
-      {/* Welcome overlay (first visit only) */}
-      {showWelcome && <WelcomeOverlay onDismiss={dismissWelcome} />}
-
-      {/* Training-direction question (every load; after the welcome) */}
-      {!showWelcome && showDirectionPrompt && directionLoaded && (
-        <DirectionPrompt initial={savedDirection} onConfirm={confirmDirection} />
+      {/* Training-direction question (every load): the welcome sheet on a
+          first visit (or with no saved goal), else the return-visit sheet */}
+      {showDirectionPrompt && directionLoaded && (
+        <DirectionPrompt
+          initial={savedDirection}
+          variant={!showWelcome && savedDirection != null ? "return" : "first"}
+          onConfirm={confirmDirection}
+          onDismiss={dismissDirection}
+        />
       )}
 
       {/* Settings overlay */}
@@ -433,7 +412,7 @@ function App() {
             <TabNav activeTab={activeTab} setActiveTab={setActiveTab} tabs={tabs} />
             <div className="flex-1 flex items-center justify-center">
               <button
-                onClick={start}
+                onClick={requestStart}
                 className="px-8 py-4 rounded-2xl bg-purple-600 hover:bg-purple-500 text-white text-lg font-medium transition-colors cursor-pointer"
               >
                 Start Listening
@@ -462,7 +441,7 @@ function App() {
             <div className="text-center">
               <p className="text-red-400 mb-4">{error}</p>
               <button
-                onClick={start}
+                onClick={requestStart}
                 className="px-6 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-white transition-colors cursor-pointer"
               >
                 Try Again
