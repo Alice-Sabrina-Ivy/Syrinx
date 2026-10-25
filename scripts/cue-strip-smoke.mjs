@@ -274,7 +274,7 @@ const state = (page) => page.evaluate(() => {
       })(),
       live: (() => { const l = p.querySelector("[data-heard-as-live]"); return l ? { role: l.getAttribute("role"), text: l.textContent.trim() } : null; })(),
       wide: p.querySelector("[data-heard-as-axis]")?.dataset.axisWide === "1" } : null,
-    listening: document.body.innerText.includes("Stop Listening"),
+    listening: document.body.innerText.includes("Mic off"),
     cueStart: !!document.querySelector('[data-cue="resonance"] [data-cue-start]'),
     stripText: document.querySelector("[data-cue-strip]")?.textContent ?? "",
     clarityNote: document.querySelector("[data-clarity-note]")?.textContent ?? null,
@@ -300,9 +300,10 @@ const layout = (page) => page.evaluate(() => {
     .map((e) => e.textContent);
   return { vh: innerHeight, vw: innerWidth, trace, strip, scrollW: document.documentElement.scrollWidth, clipped,
     scrollH: Math.max(document.documentElement.scrollHeight, ...[...document.querySelectorAll("main, [data-dashboard]")].map((e) => e.scrollHeight)),
-    panel: r("[data-heard-as]"), session: r("[data-session-row]") };
+    panel: r("[data-heard-as]"), session: r("[data-practice-dock]") };
 });
-const inView = (b, L) => b && b.top >= 0 && b.bottom <= L.vh && b.left >= 0 && b.right <= L.vw;
+// In the first screen = above the practice dock pinned at the bottom.
+const inView = (b, L) => b && b.top >= 0 && b.bottom <= (L.session ? L.session.top + 0.5 : L.vh) && b.left >= 0 && b.right <= L.vw;
 
 // Opens one info toggle (by its aria-label), measures its popover, closes it.
 const probePopover = (page, label) => page.evaluate(async (label) => {
@@ -338,7 +339,7 @@ async function startFirstVisit(page, direction) {
 async function waitListening(page, ms = 20000) {
   const t0 = Date.now();
   while (Date.now() - t0 < ms) {
-    if (await page.evaluate(() => document.body.innerText.includes("Stop Listening"))) return true;
+    if (await page.evaluate(() => document.body.innerText.includes("Mic off"))) return true;
     await sleep(250);
   }
   return false;
@@ -727,13 +728,14 @@ for (const who of PITCH_ONLY) {
   check(`pitch-only ${who}: the only note while it is on (no extra note beside it)`, !!w && w.otherNotes === 0, JSON.stringify(w));
   check(`pitch-only ${who}: the always-mounted live region carries the same words`, firstState?.heardAs?.live?.role === "status" && firstState.heardAs.live.text === PITCH_ONLY_TEXT, JSON.stringify(firstState?.heardAs?.live));
   if (first !== null) {
-    // First screen: the warning's box at scrollTop 0, above the fixed bottom bar.
+    // First screen: the warning's box at scrollTop 0, above the practice dock.
     const fold = await page.evaluate(() => {
       window.scrollTo(0, 0);
       for (const e of document.querySelectorAll("*")) if (e.scrollTop > 0) e.scrollTop = 0;
       const n = document.querySelector("[data-pitch-only]"), a = document.querySelector("[data-heard-as-axis]");
       if (!n) return null;
-      const bar = [...document.querySelectorAll("body *")].find((e) => getComputedStyle(e).position === "fixed" && /Stop Listening/.test(e.textContent ?? "") && e.getBoundingClientRect().top > innerHeight / 2);
+      // the practice dock pinned under the tab content
+      const bar = document.querySelector("[data-practice-dock]");
       const limit = bar ? bar.getBoundingClientRect().top : innerHeight;
       const r = n.getBoundingClientRect(), ra = a?.getBoundingClientRect();
       return { top: Math.round(r.top), bottom: Math.round(r.bottom), limit: Math.round(limit), inView: r.top >= 0 && r.bottom <= limit + 0.5,

@@ -11,7 +11,7 @@
 // listening, waits, prints the lab's readout text and saves a screenshot. Run 3: opens the
 // tab BEFORE listening, then starts — the lab must start with the pipeline. Run 4: the lab
 // on a phone (402x750 CSS px — an iPhone 16 Pro with Safari's toolbars showing; mobile
-// emulation, DPR 3): the phone layout must show all four cards above the Stop Listening
+// emulation, DPR 3): the phone layout must show all four cards above the Mic off
 // row with neither the lab area nor the page scrolling, and no horizontal overflow.
 // Run 5: the experimental "Weight × clarity" view (measurements/weight-lab-prototype-2026-10-08.md):
 // opens it, maps the voice (prompts advanced with Next / Done), waits for readings, checks
@@ -72,11 +72,11 @@ async function startServer() {
 }
 
 // Runs in the page: does the phone lab fit? (the lab's own scroll area, each card vs the
-// top of the Stop Listening row, page overflow both ways)
+// top of the practice dock, page overflow both ways)
 function measurePhoneFit() {
   const area = document.querySelector("[data-lab-phone]");
   const cards = [...document.querySelectorAll("[data-lab-phone] section")];
-  const stop = [...document.querySelectorAll("button")].find((b) => b.textContent.includes("Stop Listening"));
+  const stop = [...document.querySelectorAll("button")].find((b) => b.textContent.includes("Mic off"));
   const barTop = stop ? stop.parentElement.getBoundingClientRect().top : null;
   const de = document.documentElement;
   return {
@@ -141,7 +141,7 @@ async function run(url, { lab, tabFirst = false, viewport = null, wait = SECONDS
     });
     await sleep(200);
     log("start clicked:", await clickText(["Start — allow the microphone", "Start practicing", "Start Listening"]));
-    running = await page.waitForFunction(() => document.body.innerText.includes("Stop Listening"), { timeout: 4000 })
+    running = await page.waitForFunction(() => document.body.innerText.includes("Mic off"), { timeout: 4000 })
       .then(() => true, () => false);
   }
   log("pipeline running:", running);
@@ -194,7 +194,7 @@ async function run(url, { lab, tabFirst = false, viewport = null, wait = SECONDS
         const de = document.documentElement;
         const plot = document.querySelector("[data-weight-plot]")?.getBoundingClientRect();
         const axis = document.querySelector("[data-weight-axis-bottom]")?.getBoundingClientRect();
-        const stop = [...document.querySelectorAll("button")].find((b) => b.textContent.includes("Stop Listening"))?.getBoundingClientRect();
+        const stop = [...document.querySelectorAll("button")].find((b) => b.textContent.includes("Mic off"))?.getBoundingClientRect();
         const layout = document.querySelector("[data-weight-view]")?.dataset.weightLayout ?? null;
         return { scrollW: de.scrollWidth, innerW: innerWidth, innerH: innerHeight, layout, stopTop: stop ? +stop.top.toFixed(0) : null,
           axisB: axis ? +axis.bottom.toFixed(0) : null,
@@ -202,7 +202,7 @@ async function run(url, { lab, tabFirst = false, viewport = null, wait = SECONDS
       });
       // Horizontally inside, and (2026-10-11 review) the whole plot visible in the
       // first screen (with its bottom axis word): below the top edge and above the
-      // Stop Listening row.
+      // practice dock.
       const floor = Math.min(m.innerH, m.stopTop ?? m.innerH);
       m.vertical = !!m.plot && m.plot.t >= -0.5 && Math.max(m.plot.b, m.axisB ?? 0) <= floor + 0.5;
       layouts.push({ vp: `${w}x${h}`, ...m, ok: m.scrollW <= m.innerW && !!m.plot && m.plot.r <= m.innerW + 0.5 && m.plot.l >= -0.5 && m.vertical });
@@ -271,7 +271,7 @@ console.log(`PHONE ${PHONE.width}x${PHONE.height}: page errors`, phone.errors.le
 console.log(`PHONE ${PHONE.width}x${PHONE.height}: fit`, JSON.stringify(f));
 const phoneOk = f.phoneLayout && f.cardBottoms.length === 4 && f.barTop !== null
   && f.area.scrollH <= f.area.clientH + 1 // the lab area does not scroll
-  && f.cardBottoms.every((b) => b <= f.barTop + 0.5) // every card ends above the Stop Listening row
+  && f.cardBottoms.every((b) => b <= f.barTop + 0.5) // every card ends above the practice dock
   && f.doc.scrollH <= f.doc.innerH + 1 && f.doc.scrollW <= f.doc.innerW // nor does the page, either way
   && /Voiced so far [1-9]/.test(phone.text);
 // The weight x clarity model is fetched only when its view is opened.

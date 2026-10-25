@@ -82,7 +82,7 @@ for (const kind of ["mstp", "audiocontext"]) {
   // listening; a returning profile gets the goal check (Start practicing)
   // or Start Listening.
   for (let i = 0; i < 120; i++) {
-    if (await page.evaluate(() => document.body.innerText.includes("Stop Listening"))) break;
+    if (await page.evaluate(() => document.body.innerText.includes("Mic off"))) break;
     // the direction question needs a choice before Start (first visit)
     await page.evaluate(() => {
       const input = document.querySelector('[role=dialog] input[data-direction="exploring"]');

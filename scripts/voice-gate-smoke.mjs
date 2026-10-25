@@ -259,7 +259,7 @@ async function startListening(page, { start = true } = {}) {
   await closeSettings(page);
   if (!start) return;
   await clickButton(page, ["Start Listening"]);
-  await page.waitForFunction(() => document.body.innerText.includes("Stop Listening"), { timeout: 30000 });
+  await page.waitForFunction(() => document.body.innerText.includes("Mic off"), { timeout: 30000 });
 }
 async function openSettings(page) {
   await page.evaluate(() => document.querySelector('[aria-label="Settings & Data"]')?.click());
@@ -441,12 +441,12 @@ console.log(`preview on :${PORT}`);
 
   // Reload (same profile): the model comes from Cache Storage.
   console.log("\n== reload, same profile: the model from Cache Storage");
-  await clickButton(page, ["Stop Listening"]);
+  await clickButton(page, ["Mic off"]);
   const before = net.length;
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.waitForFunction(() => [...document.querySelectorAll("button")].some((b) => b.textContent.includes("Start Listening")), { timeout: 30000 });
   await clickButton(page, ["Start Listening"]);
-  await page.waitForFunction(() => document.body.innerText.includes("Stop Listening"), { timeout: 30000 });
+  await page.waitForFunction(() => document.body.innerText.includes("Mic off"), { timeout: 30000 });
   const readyAgain = await waitReady(page);
   const again = net.slice(before);
   const onnxAgain = again.filter((e) => e.url.includes(FIRERED_MODEL.files.find((f) => f.key === "onnx").name));
@@ -464,7 +464,7 @@ console.log(`preview on :${PORT}`);
   await startListening(page, { start: false });
   await setGate(page, false);
   await clickButton(page, ["Start Listening"]);
-  await page.waitForFunction(() => document.body.innerText.includes("Stop Listening"), { timeout: 30000 });
+  await page.waitForFunction(() => document.body.innerText.includes("Mic off"), { timeout: 30000 });
   const st = await sampleStrip(page, 20000);
   const pos = st.filter(hasPos).length;
   check("noise, gate off from the start: the ungated resonance row gets a position on this clip (the case is real)", pos > 0,
@@ -505,7 +505,7 @@ console.log(`preview on :${PORT}`);
   await startListening(page, { start: false });
   await setGate(page, false);
   await clickButton(page, ["Start Listening"]);
-  await page.waitForFunction(() => document.body.innerText.includes("Stop Listening"), { timeout: 30000 });
+  await page.waitForFunction(() => document.body.innerText.includes("Mic off"), { timeout: 30000 });
   await sleep(1500); // the gate-on run waited this long for the model
   const st = await sampleStrip(page, 16000);
   const on = report.runs.speech.row, off = rowShares(st);
@@ -550,7 +550,7 @@ console.log(`preview on :${PORT}`);
       /starts when you start listening/.test(before.text ?? "") && !/node |scripts\/|npm /.test(before.text ?? ""), before.text);
     await closeSettings(page);
     await clickButton(page, ["Start Listening"]);
-    await page.waitForFunction(() => document.body.innerText.includes("Stop Listening"), { timeout: 30000 });
+    await page.waitForFunction(() => document.body.innerText.includes("Mic off"), { timeout: 30000 });
     check("unavailable: detector reports unavailable", await waitReady(page, "unavailable"), JSON.stringify((await gateStatus(page)).diag));
     const s0 = await now(page);
     await sleep(8000);

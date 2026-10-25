@@ -103,7 +103,7 @@ if (PANEL) {
   await page.waitForFunction(() => !document.querySelector("[data-dialog=settings]"), { timeout: 5000 });
   await click("Start Listening");
 }
-await page.waitForFunction(() => document.body.innerText.includes("Stop Listening"), { timeout: 30000 });
+await page.waitForFunction(() => document.body.innerText.includes("Mic off"), { timeout: 30000 });
 if (PANEL) {
   await page.waitForFunction(() => document.querySelector("[data-heard-as]")?.dataset.modelWorker === "ready", { timeout: 180000 });
 } else if (page.workers().some((w) => w.url().includes("gender-worker"))) {

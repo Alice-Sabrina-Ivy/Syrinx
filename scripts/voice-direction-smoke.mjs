@@ -343,11 +343,11 @@ async function sampleMeter(page, ms) {
 const share = (counts, key) => (counts[key] ?? 0) / Object.values(counts).reduce((a, b) => a + b, 0);
 async function startListening(page) {
   for (let i = 0; i < 6; i++) {
-    if (await page.evaluate(() => document.body.innerText.includes("Stop Listening"))) return true;
+    if (await page.evaluate(() => document.body.innerText.includes("Mic off"))) return true;
     await clickButton(page, ["Start Listening"]);
     await sleep(1500);
   }
-  return page.evaluate(() => document.body.innerText.includes("Stop Listening"));
+  return page.evaluate(() => document.body.innerText.includes("Mic off"));
 }
 
 log("preview server");
@@ -383,7 +383,7 @@ if (VIEWPORT === "landscape") {
   await reachable(page, "Start — allow the microphone");
   await shot(page, "03-question-landscape-scrolled");
   await clickButton(page, ["Start — allow the microphone"], "[role=dialog]");
-  const running = await page.waitForFunction(() => document.body.innerText.includes("Stop Listening"), { timeout: 30000 })
+  const running = await page.waitForFunction(() => document.body.innerText.includes("Mic off"), { timeout: 30000 })
     .then(() => true, () => false);
   check("landscape: Start starts listening", running);
   await sleep(3000);
@@ -466,23 +466,23 @@ await launch(WAV.speech);
   await sleep(600);
   check("the page behind the question can't be focused or tapped (no mic start, no Settings)",
     behind.found && !behind.startFocus && !behind.gearFocus
-      && !(await page.evaluate(() => document.body.innerText.includes("Stop Listening")))
+      && !(await page.evaluate(() => document.body.innerText.includes("Mic off")))
       && !(await page.evaluate(() => !!document.querySelector("[data-dialog=settings]"))), JSON.stringify(behind));
   await page.keyboard.press("Escape");
   await sleep(200);
   check("Escape (= Not now) with nothing chosen closes the sheet without the mic",
-    (await promptState(page)) === null && !(await page.evaluate(() => document.body.innerText.includes("Stop Listening"))));
+    (await promptState(page)) === null && !(await page.evaluate(() => document.body.innerText.includes("Mic off"))));
   // No goal is assumed: Start Listening asks the question first.
   await clickButton(page, ["Start Listening"]);
   await sleep(300);
   const asked = await promptState(page);
   check("Start Listening with no goal re-opens the question before the mic starts",
-    !!asked && asked.checked === null && !(await page.evaluate(() => document.body.innerText.includes("Stop Listening"))), JSON.stringify(asked));
+    !!asked && asked.checked === null && !(await page.evaluate(() => document.body.innerText.includes("Mic off"))), JSON.stringify(asked));
   await pickDirection(page, "masculine");
   await sleep(200);
   await shot(page, "03-question-masculine-picked");
   await clickButton(page, ["Start — allow the microphone"], "[role=dialog]");
-  const running = await page.waitForFunction(() => document.body.innerText.includes("Stop Listening"), { timeout: 30000 })
+  const running = await page.waitForFunction(() => document.body.innerText.includes("Mic off"), { timeout: 30000 })
     .then(() => true, () => false);
   check("Start — allow the microphone starts listening", running);
   check("model ready", await waitModel(page));
@@ -642,7 +642,7 @@ await launch(WAV.speech);
   check("reload: no welcome sheet on the second visit", !(await again.page.evaluate(() => !!document.querySelector("[data-privacy-line]"))));
   await shot(again.page, "10-reload-preselected");
   await clickButton(again.page, ["Start practicing"], "[role=dialog]");
-  const started = await again.page.waitForFunction(() => document.body.innerText.includes("Stop Listening"), { timeout: 30000 })
+  const started = await again.page.waitForFunction(() => document.body.innerText.includes("Mic off"), { timeout: 30000 })
     .then(() => true, () => false);
   check("reload: Start practicing confirms AND starts listening (one tap per load)", started && (await promptState(again.page)) === null);
   await waitModel(again.page);
