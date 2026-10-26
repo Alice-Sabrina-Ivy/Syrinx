@@ -142,5 +142,6 @@ export function createRecorder({ sampleRate, maxS = 8, minS = 3 }) {
     received: () => (got ? got.reduce((s, v) => s + v, 0) : 0),
     chunkTimes: () => times.slice(),
     chunkStarts: () => starts.slice(),
+    chunkLens: () => lens.slice(),
   };
 }

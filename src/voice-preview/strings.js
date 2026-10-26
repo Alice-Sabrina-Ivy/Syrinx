@@ -26,6 +26,8 @@ export const S = Object.freeze({
   tooShort: "That was under 3 seconds. Please record at least 3 seconds.",
   cancelled: "Recording stopped because listening was turned off.",
   analysing: "Preparing the preview…",
+  analysingModel: "Downloading noise reduction (about 8 MB, first time only)…",
+  analysingDenoise: "Reducing background noise…",
   noVoice: "There wasn't enough voice in that recording for a preview. Try again and speak for a few seconds.",
   updating: "Updating the preview…",
   error: "Something went wrong while making the preview. Record again to try once more.",
@@ -78,6 +80,13 @@ export const S = Object.freeze({
   noiseNotice: "There's a lot of background noise. The preview may sound rougher.",
   quieterSpot: "A quieter spot gives a cleaner preview.",
 
+  // background-noise reduction (2026-10-23; measurements/voice-shaper-denoise-2026-10-23.md)
+  denoise: "Reduce background noise",
+  denoiseHint: "Cleans up the recording before the preview is made. “Original” stays as recorded. The first time, it downloads about 8 MB.",
+  denoiseError: "Noise reduction couldn't load, so the preview uses the recording as captured.",
+  denoiseAutoOn: "Turned on because the recording has background noise.",
+  denoiseTry: "“Reduce background noise” below can help.",
+
   caveat: "A rough sketch from a vocoder; crackle or buzz comes from the processing, not your voice.",
 
   // polite live region
@@ -94,6 +103,8 @@ export const S = Object.freeze({
     loopOff: "Loop off.",
     stopped: "Stopped.",
     discarded: "Recording discarded.",
+    denoiseOn: "Noise reduction on. Updating the preview…",
+    denoiseOff: "Noise reduction off. Updating the preview…",
   }),
 
   about: Object.freeze([
@@ -102,8 +113,10 @@ export const S = Object.freeze({
     "Compare the preview with “Unchanged (rebuilt)”: both go through the same vocoder, so the difference you hear is the setting. “Original” is your recording as captured.",
     "Lowered previews may sound buzzier: the vocoder is weakest at low pitch.",
     "A steady hum or loud background noise can make the preview rougher, and a hum can move with the pitch slider.",
+    "“Reduce background noise” cleans up the recording with DeepFilterNet 3 when you stop recording, and the pitch is measured again on the cleaned recording, so the preview takes a few seconds longer. It turns on by itself when the recording has noticeable background noise, and you can switch it either way. It helps with steady noise such as a fan, an air conditioner or traffic and with talking or other changing sounds, a little less for lower voices. It can soften quiet or breathy parts of your voice, so compare it on and off.",
     "Your recording stays on this device, in memory only. It is deleted when you press Discard, record again or close the tab, and saved only if you press Download.",
     "Built on WORLD, a speech vocoder by M. Morise (modified BSD licence).",
+    "Noise reduction: DeepFilterNet 3 by H. Schröter et al. (MIT or Apache 2.0 licence).",
   ]),
 });
 
@@ -173,6 +186,9 @@ export function previewUpdatedAnnouncement(st, pct, medianHz) {
   return `Preview updated: pitch ${pitchValueText(st, medianHz)}; resonance ${resonanceValueText(pct)}.`;
 }
 
-/** Download name: syrinx-voice-shaper-{plus|minus}{n}st-{plus|minus}{m}pct.wav (no date, no name). */
-export const downloadName = (st, pct) =>
-  `syrinx-voice-shaper-${st < 0 ? "minus" : "plus"}${Math.abs(st)}st-${pct < 0 ? "minus" : "plus"}${Math.abs(pct)}pct.wav`;
+/**
+ * Download name: syrinx-voice-shaper-{plus|minus}{n}st-{plus|minus}{m}pct.wav (no date, no name),
+ * with "-noise-reduced" before ".wav" when the preview was made from the denoised recording.
+ */
+export const downloadName = (st, pct, denoised = false) =>
+  `syrinx-voice-shaper-${st < 0 ? "minus" : "plus"}${Math.abs(st)}st-${pct < 0 ? "minus" : "plus"}${Math.abs(pct)}pct${denoised ? "-noise-reduced" : ""}.wav`;

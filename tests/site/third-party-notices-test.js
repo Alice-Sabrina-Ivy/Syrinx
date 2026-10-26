@@ -62,6 +62,7 @@ check("FireRedVAD's Apache-2.0 text ships (voice gate model)",
 console.log("\nnon-npm components (Voice Shaper: WORLD + Emscripten)");
 const vpIds = ["C:\\r\\src\\voice-preview\\wasm\\vp_world.mjs?url", "/r/src/voice-preview/wasm/simd/vp_world.wasm?url"];
 check("voice-preview wasm module ids -> WORLD + Emscripten", vpIds.every((id) => componentsOfModuleId(id).join() === "WORLD,Emscripten"));
+check("Voice Shaper's noise reduction module ids -> DeepFilterNet", ["/r/src/voice-preview/dfn3.js", "C:\\r\\src\\voice-preview\\dfn3-model.js"].every((id) => componentsOfModuleId(id).join() === "DeepFilterNet"));
 check("other modules -> none", componentsOfModuleId("/r/src/voice-preview/vp-worker.js").length === 0
   && componentsOfModuleId("/r/src/ml/gender-worker.js").length === 0 && componentsOfModuleId("C:/x/node_modules/react/index.js").length === 0);
 const sha = (buf) => createHash("sha256").update(buf).digest("hex");
@@ -91,6 +92,14 @@ check("with Voice Shaper: Emscripten, musl, dlmalloc and LLVM texts", withVp.inc
 check("without Voice Shaper: none of them", !withoutVp.includes(worldStr) && !withoutVp.includes(emsLicence) && !withoutVp.includes(musl));
 const md = readFileSync(path.join(repo, "THIRD_PARTY_NOTICES.md"), "utf8");
 check("THIRD_PARTY_NOTICES.md lists WORLD and the Emscripten runtime", md.includes("| WORLD (M. Morise)") && md.includes("| Emscripten 6.0.10 runtime"));
+const dfMit = readFileSync(path.join(repo, "licenses/deepfilternet/LICENSE-MIT"), "utf8").trimEnd();
+const dfApache = readFileSync(path.join(repo, "licenses/deepfilternet/LICENSE-APACHE"), "utf8").trimEnd();
+check("licenses/deepfilternet/ = DeepFilterNet's LICENSE-MIT and LICENSE-APACHE at d375b2d (sha256)",
+  sha(readFileSync(path.join(repo, "licenses/deepfilternet/LICENSE-MIT"))) === "d38482491663ee5c55bb9fd4a7a193f1652157ba85a4be5d4e8a50649b2cbc3d"
+  && sha(readFileSync(path.join(repo, "licenses/deepfilternet/LICENSE-APACHE"))) === "2d71d2472ae6446e986cc9ad3ec6182b91868c639734f838aa1d03888838ef56");
+const withDf = buildNoticesText(["react"], { components: ["DeepFilterNet"] });
+check("with the noise reduction: both DeepFilterNet texts; without: not", withDf.includes(dfMit) && withDf.includes(dfApache) && !withoutVp.includes(dfMit) && !withVp.includes(dfMit));
+check("THIRD_PARTY_NOTICES.md lists DeepFilterNet (table and Models)", md.includes("| DeepFilterNet 3 (H. Schröter et al.)") && md.includes("**Background-noise reduction in Voice Shaper**"));
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);

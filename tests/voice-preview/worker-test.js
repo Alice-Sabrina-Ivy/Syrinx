@@ -3,16 +3,20 @@
 // controller sends them. record -> analysed -> render gives the same bytes as
 // parity-test.js (the spike's renders) for the same input; too-short, cancel, the 8 s cap,
 // no-voice, the track timeout, the hum flag, load errors with the SIMD -> non-SIMD retry,
-// render before analysis and a forced memory error give the right replies.
+// render before analysis and a forced memory error give the right replies; noise reduction
+// (DeepFilterNet 3; skipped without the gitignored graphs) for a recording, switched on / off
+// with a preview, and a model that cannot load.
 // measurements/voice-preview-phase1-2026-10-19.md §3, §4, §14 item 6.
 //
 //   node tests/voice-preview/worker-test.js
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { PARITY_JSON, GLUE_URL, WASM_URLS, REPO, cellKey, makeInput, chunkFor, sha256, makeChecker } from "./vp-test-lib.js";
+import { PARITY_JSON, GLUE_URL, WASM_URLS, DFN3_SOURCE, DFN3_MISSING, DFN3_HINT, ORT_WASM_PATHS, REPO, cellKey, makeInput, chunkFor, sha256, makeChecker, installFileFetch } from "./vp-test-lib.js";
+import { loadDfn3Files, createDfn3Sessions, createDfn3, denoiseClipDfn3 } from "../../src/voice-preview/dfn3.js";
 
 const T = makeChecker();
+installFileFetch();
 const fx = JSON.parse(readFileSync(PARITY_JSON, "utf8"));
 const WORKER = pathToFileURL(path.join(REPO, "src/voice-preview/vp-worker.js")).href;
 const OOM_GLUE = pathToFileURL(path.join(REPO, "tests/voice-preview/fixtures/oom-glue.mjs")).href;
@@ -45,8 +49,10 @@ async function freshWorker() {
   };
 }
 
-async function ready(w, glueUrl = GLUE_URL, wasmUrls = WASM_URLS) {
-  w.send({ type: "init", glueUrl, wasmUrls });
+async function ready(w, glueUrl = GLUE_URL, wasmUrls = WASM_URLS, dfn3Source = DFN3_SOURCE) {
+  // retrack: false — this worker runs in the test's own thread, where onnxruntime's glue installs
+  // worker_threads' Worker as a global (controller-test.js covers re-tracking in a real thread)
+  w.send({ type: "init", glueUrl, wasmUrls, dfn3Source, ortWasmPaths: ORT_WASM_PATHS, retrack: false });
   return w.waitFor("ready").catch(() => null);
 }
 
@@ -57,10 +63,10 @@ const ctOf = (k, C, rate) => BASE_CT + (k + 1) * C / rate;
  * Feed `nChunks` chunks of pcm (cycled) to a recording and forward the posted track with
  * the decode lag (value for chunk k after chunk k + lag). Returns the port and the chunk count fed.
  */
-function feed(w, pcm, rate, track, { nChunks, lag = 2, pitchOf = (k) => (track[k % track.length] > 0 ? track[k % track.length] : null), notchedAt = new Set(), ctJitter = () => 0 }) {
+function feed(w, pcm, rate, track, { nChunks, lag = 2, pitchOf = (k) => (track[k % track.length] > 0 ? track[k % track.length] : null), notchedAt = new Set(), ctJitter = () => 0, denoise }) {
   const C = chunkFor(rate);
   const port = fakePort();
-  w.send({ type: "record", port, sampleRate: rate, maxS: 8, minS: 3 });
+  w.send({ type: "record", port, sampleRate: rate, maxS: 8, minS: 3, ...(denoise === undefined ? {} : { denoise }) });
   // a pre-recording posted message (chunk -1, notched): ignored
   w.send({ type: "pitch", contextTime: ctOf(-1, C, rate), pitch: 200, notched: true });
   const nAvail = pcm.length / C;
@@ -229,6 +235,100 @@ const track16 = Float32Array.from(fx.inputs.find((i) => i.name === "ls_man_low@1
   const a = await w.waitFor("analysed");
   T.check("missing posted values: analysed after the track timeout, missing hops = 0", a.m.hops.received === 150 && a.m.hops.recorded === 160 && Date.now() - t0 >= 100,
     `${a.m.hops.received}/${a.m.hops.recorded} after ${Date.now() - t0} ms`);
+}
+
+// ---------------------------------------------------------------------------
+console.log("\nnoise reduction (DeepFilterNet 3; ls_man_hi8_f105 at 48 kHz with white noise at 10 dB SNR)");
+if (!DFN3_SOURCE) console.log(`  SKIP the graphs are not in build/models/dfn3 (${DFN3_HINT})`);
+else {
+  const f = fx.inputs.find((i) => i.name === "ls_man_hi8_f105@48000");
+  const { pcm: clean, rate } = makeInput({ clip: "ls_man_hi8_f105", rate: 48000 });
+  let s = 3;
+  const rnd = () => { s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0; return s / 4294967296 * 2 - 1; };
+  const rms = (x) => Math.sqrt(x.reduce((a, v) => a + v * v, 0) / x.length);
+  const noise = Float32Array.from({ length: clean.length }, rnd);
+  const g = rms(clean) / rms(noise) / Math.sqrt(10);
+  const pcm = clean.map((v, i) => v + g * noise[i]);
+  const track = Float32Array.from(f.track);
+  const n = pcm.length / chunkFor(rate);
+  const run = async (w, denoise) => {
+    feed(w, pcm, rate, track, { nChunks: n, denoise });
+    w.send({ type: "stop" });
+    flushPitch(w, rate, track, n - 2, n);
+    return (await w.waitFor("analysed", 60000)).m;
+  };
+  const wOff = await freshWorker();
+  await ready(wOff);
+  const off = await run(wOff);
+  T.check("noise reduction off (the default): denoised false, no noise-reduction time", off.denoised === false && off.ms.denoise === undefined && off.take === 1);
+  // (the worker module replies through the global `self`: one worker in use at a time)
+  wOff.send({ type: "render", id: 7, st: 2, pct: 3 });
+  const offRender = sha256(wOff.last("rendered").m.pcm);
+
+  const wOn = await freshWorker();
+  await ready(wOn);
+  const on = await run(wOn, true);
+  const ort = await import("onnxruntime-web/wasm");
+  const dfn = createDfn3(ort, await createDfn3Sessions(ort, await loadDfn3Files(DFN3_SOURCE)));
+  const expected = await denoiseClipDfn3(dfn, pcm, rate);
+  const eng = new (await import("../../src/voice-preview/engine/preview.js")).PreviewEngine(await (await import("./vp-test-lib.js")).loadWorld("simd"));
+  T.check("record { denoise: true } -> analysed { denoised: true } with its time", on.denoised === true && on.ms.denoise > 0, `${on.ms.denoise?.toFixed(0)} ms`);
+  T.check("…progress: model (loading), then denoise (re-tracking is off here)", ["model", "denoise"].join() === wOn.posted.filter((p) => p.m.type === "progress").map((p) => p.m.stage).join());
+  T.check("…its rebuild = the engine's rebuild of denoiseClipDfn3(recording), bit for bit", sha256(on.rebuild) === sha256(eng.analyse(expected, rate, track).rebuild));
+  T.check("…re-tracking off: the posted track (retracked false)", on.retracked === false);
+  T.check("…original, the recording check and the pitch stay the recording's as captured",
+    sha256(on.original) === sha256(off.original) && sha256(on.original) === sha256(pcm)
+    && JSON.stringify(on.check) === JSON.stringify(off.check) && on.pitch.medianHz === off.pitch.medianHz && on.limits.stMin === off.limits.stMin);
+  T.check("…the noise flag came from the noisy recording", on.check.noise === true, `margin ${on.check.marginDb.toFixed(1)} dB`);
+
+  // the same take switched off and on again with the preview on screen
+  wOn.posted.length = 0;
+  wOn.send({ type: "denoise", on: false });
+  const a2 = await wOn.waitFor("analysed");
+  T.check("denoise { on: false } with a preview -> analysed again: same take, denoised false, no original",
+    a2.m.take === 1 && a2.m.denoised === false && a2.m.original === undefined && !a2.transfer.some((b) => b === undefined));
+  T.check("…its rebuild = the rebuild without noise reduction, bit for bit", sha256(a2.m.rebuild) === sha256(off.rebuild));
+  wOn.posted.length = 0;
+  wOn.send({ type: "render", id: 7, st: 2, pct: 3 });
+  T.check("…renders after the re-analysis = the same renders without noise reduction", sha256(wOn.last("rendered")?.m.pcm ?? new Float32Array(1)) === offRender);
+  wOn.posted.length = 0;
+  wOn.send({ type: "denoise", on: true });
+  const a3 = await wOn.waitFor("analysed");
+  T.check("on again: the take's cleaned recording is reused (no progress, the same rebuild)",
+    a3.m.denoised === true && !wOn.types().includes("progress") && sha256(a3.m.rebuild) === sha256(on.rebuild), wOn.types().join());
+  wOn.posted.length = 0;
+  wOn.send({ type: "denoise", on: false });
+  wOn.send({ type: "denoise", on: true }); // changed back while it runs: applied right after
+  const seen = [];
+  for (let t0 = Date.now(); seen.length < 2 && Date.now() - t0 < 30000;) {
+    seen.splice(0, seen.length, ...wOn.posted.filter((p) => p.m.type === "analysed"));
+    await new Promise((r) => setTimeout(r, 5));
+  }
+  T.check("off then on before the first finishes -> two analyses, the last noise-reduced",
+    seen.length === 2 && seen[0].m.denoised === false && seen[1].m.denoised === true && sha256(seen[1].m.rebuild) === sha256(on.rebuild),
+    seen.map((p) => p.m.denoised).join(","));
+  wOn.send({ type: "denoise", on: true });
+  await new Promise((r) => setTimeout(r, 50));
+  T.check("a setting equal to the current one does nothing", wOn.posted.filter((p) => p.m.type === "analysed").length === 2);
+}
+{
+  const { pcm, rate } = makeInput({ clip: "ls_man_low", rate: 16000 });
+  const track = Float32Array.from(fx.inputs.find((i) => i.name === "ls_man_low@16000").track);
+  const n = pcm.length / chunkFor(rate);
+  const w = await freshWorker();
+  await ready(w, GLUE_URL, WASM_URLS, DFN3_MISSING);
+  feed(w, pcm, rate, track, { nChunks: n, denoise: true });
+  w.send({ type: "stop" });
+  flushPitch(w, rate, track, n - 2, n);
+  const a = await w.waitFor("analysed", 60000);
+  const f = fx.inputs.find((i) => i.name === "ls_man_low@16000");
+  T.check("the model cannot load -> denoise-error, then analysed without it (the spike's rebuild)",
+    w.types().indexOf("denoise-error") >= 0 && w.types().indexOf("denoise-error") < w.types().indexOf("analysed")
+    && a.m.denoised === false && sha256(a.m.rebuild) === f.expected.simd[cellKey(0, 0)], w.types().filter((t) => t !== "level").join(","));
+  w.posted.length = 0;
+  w.send({ type: "denoise", on: true });
+  await new Promise((r) => setTimeout(r, 50));
+  T.check("…switching it on again answers denoise-error and re-analyses nothing", w.types().join() === "denoise-error", w.types().join());
 }
 
 // ---------------------------------------------------------------------------

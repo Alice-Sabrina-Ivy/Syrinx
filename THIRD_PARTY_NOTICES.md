@@ -14,6 +14,7 @@ their own licences; the MIT License does not apply to them.
 | ONNX Runtime Web 1.26.0-dev.20260416-b7804b056c (`onnxruntime-web`): the JavaScript bundled with Transformers.js, plus its WebAssembly runtime files shipped with the app since 2026-10-07 (`ort-wasm-simd-threaded.asyncify.{mjs,wasm}`, and `ort-wasm-simd-threaded.{mjs,wasm}` for Safari, copied unmodified from the npm package into the build's `assets/`) | MIT — Copyright (c) Microsoft Corporation. The WebAssembly binaries also contain third-party components that ONNX Runtime lists in its [ThirdPartyNotices.txt](https://github.com/microsoft/onnxruntime/blob/main/ThirdPartyNotices.txt) | https://github.com/microsoft/onnxruntime |
 | WORLD (M. Morise), commit `8d79b88b7dd92e8a132996cf74080b2d6f881b98`, compiled to WebAssembly for the experimental Voice Shaper only (`src/voice-preview/wasm/{simd,nosimd}/vp_world.wasm`, built by `scripts/voice-preview/build.mjs`; fetched only when the Voice Shaper tab is opened). WORLD's `fft.cpp` includes T. Ooura's FFT routines (http://www.kurims.kyoto-u.ac.jp/~ooura/), as credited in that file | Modified BSD — Copyright (c) 2010 M. Morise; full text in [licenses/world/LICENSE.txt](licenses/world/LICENSE.txt) | https://github.com/mmorise/World |
 | Emscripten 6.0.10 runtime and system libraries inside Voice Shaper's `vp_world.{mjs,wasm}`: the JavaScript glue, musl libc, dlmalloc, LLVM compiler-rt, libc++ and libc++abi | Emscripten: MIT / University of Illinois NCSA; musl: MIT; dlmalloc: public domain (CC0); LLVM: Apache-2.0 WITH LLVM-exception — texts in [licenses/emscripten/](licenses/emscripten/) | https://github.com/emscripten-core/emscripten |
+| DeepFilterNet 3 (H. Schröter et al.), commit `d375b2d8309e0935d165700c91da9de862a99c31`: libDF's signal processing (STFT, ERB / complex features, deep filtering) ported to JavaScript for Voice Shaper's background-noise reduction (`src/voice-preview/dfn3.js`); its official ONNX graphs (`models/DeepFilterNet3_onnx.tar.gz`: `enc.onnx`, `erb_dec.onnx`, `df_dec.onnx`, 8.6 MB) are fetched at run time, see Models | MIT OR Apache-2.0 — both texts in [licenses/deepfilternet/](licenses/deepfilternet/) | https://github.com/Rikorose/DeepFilterNet |
 
 Build-time tools (Vite, Tailwind CSS, ESLint and plugins) are MIT-licensed and
 are not shipped in the built app.
@@ -28,9 +29,9 @@ ships no licence file, so `licenses/onnxruntime-web/` holds the `LICENSE` and
 `ThirdPartyNotices.txt` of microsoft/onnxruntime at commit
 `b7804b056c30aa35c1748f8e4e239d0e2ff25d6d`, the one the shipped runtime was
 built from (`scripts/third-party-notices.mjs`).
-WORLD and the Emscripten runtime are not npm packages: when the build contains
-Voice Shaper's WebAssembly module, `THIRD_PARTY_NOTICES.txt` also carries
-the texts in `licenses/world/` and `licenses/emscripten/`.
+WORLD, DeepFilterNet and the Emscripten runtime are not npm packages: when the build contains
+Voice Shaper's WebAssembly module or its noise reduction, `THIRD_PARTY_NOTICES.txt` also carries
+the texts in `licenses/world/`, `licenses/deepfilternet/` and `licenses/emscripten/`.
 
 ## Models
 
@@ -72,6 +73,25 @@ the texts in `licenses/world/` and `licenses/emscripten/`.
   upstream commit for the Node tests and harnesses. The Kaldi-style filterbank front end in `firered-vad.js` is
   this project's own JavaScript, written to match the official Python front
   end's settings.
+- **Background-noise reduction in Voice Shaper** (`src/voice-preview/dfn3.js`).
+  [DeepFilterNet 3](https://github.com/Rikorose/DeepFilterNet) by H. Schröter et
+  al.: the official ONNX export `models/DeepFilterNet3_onnx.tar.gz` at commit
+  `d375b2d8309e0935d165700c91da9de862a99c31` (7,983,136 bytes, sha256
+  `c94d91f70911001c946e0fabb4aa9adc37045f45a03b56008cb0c8244cb63616`), whose
+  members `enc.onnx`, `erb_dec.onnx` and `df_dec.onnx` (sizes and sha256 in
+  `DFN3_MODEL`, `src/voice-preview/dfn3-model.js`) the app runs with
+  onnxruntime-web — MIT OR Apache-2.0 (both texts in `licenses/deepfilternet/`
+  and in the shipped `THIRD_PARTY_NOTICES.txt`). The files are not in this
+  repository or in the build. The app loads them at runtime from a
+  byte-identical mirror on the project's Hugging Face account
+  (`Alice-Sabrina-Ivy/deepfilternet3-onnx`, with both licence files and a
+  README that credits the authors), pinned to the mirror's commit
+  `a3c9b36fade2bf23123e7a2671c2f00b83b69229` (`DFN3_MODEL.mirrorCommit`),
+  checks size and sha256 before use, and keeps them in the browser's Cache
+  Storage. `scripts/fetch-dfn3-model.mjs` extracts the same files from the
+  upstream archive for the Node tests and development. The STFT,
+  feature and deep-filtering code in `dfn3.js` is a JavaScript port of the
+  project's `libDF` (same licence).
 - **Resonance lab models** (`public/resonance-lab/`: `vtln_warp.json`,
   `le_ens_h64.json`, `pnml_head.json`, `fv_model.json`) were trained or fitted
   on LibriSpeech dev-clean, and the reference bands in `reference.json` come

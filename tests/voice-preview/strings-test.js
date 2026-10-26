@@ -8,7 +8,8 @@
 // fallback and the load-error fallback) equal strings.js, the tab sits between History and
 // Resonance lab, and the Resonance lab is back to its two views (no Voice Shaper in it).
 // measurements/voice-preview-phase1-2026-10-19.md §6, §9, §10, §13, §14 item 7; fix step;
-// "Renamed and moved 2026-10-20" (the feature's user-facing name is Voice Shaper).
+// "Renamed and moved 2026-10-20" (the feature's user-facing name is Voice Shaper);
+// measurements/voice-shaper-denoise-2026-10-23.md (the noise-reduction switch, 2026-10-23).
 //
 //   node tests/voice-preview/strings-test.js
 import { readFileSync } from "node:fs";
@@ -42,7 +43,7 @@ for (const m of [75, 98.4, 147.6, 210, 399]) {
   for (const hz of [75, 120, 165, 205, 400]) all.push(targetResult(targetSetting(hz, m, lim)));
 }
 for (let pct = -21; pct <= 26; pct++) all.push(resonanceValueLabel(pct), resonanceValueText(pct));
-all.push(downloadName(2, 3), downloadName(-12, -21), downloadName(0, 0));
+all.push(downloadName(2, 3), downloadName(-12, -21), downloadName(0, 0), downloadName(2, 3, true));
 for (const st of [-12, -2, 0, 2, 12]) for (const pct of [-21, -3, 0, 3, 26]) all.push(previewSettingLine(st, pct), previewUpdatedAnnouncement(st, pct, 147.6));
 for (const hum of [false, true]) for (const noise of [false, true]) all.push(previewReadyAnnouncement({ hum, noise }));
 
@@ -68,6 +69,8 @@ const DESIGN = {
   tooShort: "That was under 3 seconds. Please record at least 3 seconds.",
   cancelled: "Recording stopped because listening was turned off.",
   analysing: "Preparing the preview…",
+  analysingModel: "Downloading noise reduction (about 8 MB, first time only)…",
+  analysingDenoise: "Reducing background noise…",
   noVoice: "There wasn't enough voice in that recording for a preview. Try again and speak for a few seconds.",
   updating: "Updating the preview…",
   error: "Something went wrong while making the preview. Record again to try once more.",
@@ -88,6 +91,11 @@ const DESIGN = {
   noiseNotice: "There's a lot of background noise. The preview may sound rougher.",
   quieterSpot: "A quieter spot gives a cleaner preview.",
   caveat: "A rough sketch from a vocoder; crackle or buzz comes from the processing, not your voice.",
+  denoise: "Reduce background noise",
+  denoiseHint: "Cleans up the recording before the preview is made. “Original” stays as recorded. The first time, it downloads about 8 MB.",
+  denoiseError: "Noise reduction couldn't load, so the preview uses the recording as captured.",
+  denoiseAutoOn: "Turned on because the recording has background noise.",
+  denoiseTry: "“Reduce background noise” below can help.",
 };
 const off = Object.entries(DESIGN).filter(([k, v]) => S[k] !== v).map(([k]) => k);
 T.check("every listed string verbatim", off.length === 0, off.join(", "));
@@ -99,10 +107,15 @@ T.check("presets verbatim", JSON.stringify(S.presets) === JSON.stringify({
 T.check("live-region announcements verbatim", Object.values(S.announce).join("|") === [
   "Recording.", "Recording stopped.", "Preview ready.", "Updating the preview…", "Preview updated.", "Playing the preview.",
   "Playing the unchanged rebuild.", "Playing the original.", "Loop on.", "Loop off.", "Stopped.", "Recording discarded.",
+  "Noise reduction on. Updating the preview…", "Noise reduction off. Updating the preview…",
 ].join("|"));
-T.check("about: seven paragraphs, the vocoder credit last", S.about.length === 7 && S.about[6] === "Built on WORLD, a speech vocoder by M. Morise (modified BSD licence)."
+T.check("about: nine paragraphs, the vocoder and noise-reduction credits last", S.about.length === 9
+  && S.about[7] === "Built on WORLD, a speech vocoder by M. Morise (modified BSD licence)."
+  && S.about[8] === "Noise reduction: DeepFilterNet 3 by H. Schröter et al. (MIT or Apache 2.0 licence)."
   && S.about[3] === "Lowered previews may sound buzzier: the vocoder is weakest at low pitch."
-  && S.about[2].includes("“Unchanged (rebuilt)”") && S.about[5].startsWith("Your recording stays on this device, in memory only."));
+  && S.about[5].startsWith(`“${S.denoise}”`) && S.about[5].includes("compare it on and off")
+  && S.about[2].includes("“Unchanged (rebuilt)”") && S.about[6].startsWith("Your recording stays on this device, in memory only."));
+T.check("the noise-reduction hint and the noise notice's pointer name the switch", S.denoiseHint.includes("“Original” stays as recorded") && S.denoiseTry.includes(`“${S.denoise}”`));
 
 // ---- value labels (§6, §10)
 console.log("\nvalue labels and aria-valuetext");
@@ -143,6 +156,7 @@ T.check("\"Preview updated:\" with the setting in words, buzzier when lowered",
   previewUpdatedAnnouncement(-2, -3, 178.6));
 T.check("download name (no date, no name)", downloadName(2, 3) === "syrinx-voice-shaper-plus2st-plus3pct.wav"
   && downloadName(-12, -21) === "syrinx-voice-shaper-minus12st-minus21pct.wav" && downloadName(0, 0) === "syrinx-voice-shaper-plus0st-plus0pct.wav");
+T.check("download name with noise reduction", downloadName(2, 3, true) === "syrinx-voice-shaper-plus2st-plus3pct-noise-reduced.wav");
 
 // ---- App.jsx's own copies (the tab, its loading line and its error boundary are in the
 // main bundle, which must not import strings.js)

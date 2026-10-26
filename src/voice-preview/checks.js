@@ -22,6 +22,16 @@
 // Enough voice: at least MIN_VOICED_HOPS voiced posted hops (1.0 s).
 
 export const NOISE_MARGIN_DB = 28;
+/**
+ * Background-noise reduction in "auto" turns on below this level margin (2026-10-25). On the
+ * noise study's development mixtures 40–50 dB was a plateau; on the held-out test set, with
+ * DeepFilterNet 3 + re-tracking, 40 dB keeps all but 0.007 PESQ of 45 dB's gain and passes the
+ * clean-recording guard that 45 dB misses (it also cleans clips with audible room tone)
+ * (measurements/voice-shaper-noise-2026-10-25.md §2, §7).
+ */
+export const DENOISE_MARGIN_DB = 40;
+/** Whether "auto" reduces the noise of a recording with this level margin. */
+export const autoDenoise = (marginDb) => marginDb < DENOISE_MARGIN_DB;
 /** The percentile of the 20 ms frame energies taken as the noise floor. */
 export const FLOOR_PERCENTILE = 0.05;
 export const MIN_VOICED_HOPS = 40;

@@ -2,7 +2,7 @@
 // for scripts/voice-preview/make-spike-parity.mjs, which writes the fixtures the tests
 // compare against. measurements/voice-preview-phase1-2026-10-19.md §5, §14.
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createWorld } from "../../src/voice-preview/engine/world.js";
@@ -16,6 +16,38 @@ export const WASM_URLS = {
   nosimd: pathToFileURL(path.join(WASM_DIR, "nosimd/vp_world.wasm")).href,
 };
 export const PARITY_JSON = path.join(REPO, "tests/voice-preview/fixtures/spike-parity.json");
+// Background-noise reduction (DeepFilterNet 3, src/voice-preview/dfn3.js): the graphs from the
+// gitignored build/models/dfn3/ (node scripts/fetch-dfn3-model.mjs), the app's source kind "app";
+// null where they are absent (CI): the tests then skip the parts that need them.
+export const DFN3_DIR = path.join(REPO, "build", "models", "dfn3");
+export const DFN3_SOURCE = ["enc.onnx", "erb_dec.onnx", "df_dec.onnx"].every((f) => existsSync(path.join(DFN3_DIR, f)))
+  ? { kind: "app", base: pathToFileURL(DFN3_DIR).href + "/" }
+  : null;
+export const DFN3_HINT = "node scripts/fetch-dfn3-model.mjs";
+/** A source whose files are not there (the "cannot load" cases). */
+export const DFN3_MISSING = { kind: "app", base: pathToFileURL(path.join(REPO, "tests", "voice-preview", "no-such-dir")).href + "/" };
+// onnxruntime-web's plain runtime files, as the app passes its self-hosted copies (ortWasmPaths)
+const ORT_DIST = path.join(REPO, "node_modules", "onnxruntime-web", "dist");
+export const ORT_WASM_PATHS = {
+  mjs: pathToFileURL(path.join(ORT_DIST, "ort-wasm-simd-threaded.mjs")).href,
+  wasm: pathToFileURL(path.join(ORT_DIST, "ort-wasm-simd-threaded.wasm")).href,
+};
+
+/**
+ * Node's fetch() has no file: URLs; the worker fetches the model files with fetch(). For the
+ * tests, file: URLs are read from disk (a missing file answers 404); other URLs go to the real fetch.
+ */
+export function installFileFetch() {
+  if (globalThis.fetch?.__vpFile) return;
+  const real = globalThis.fetch;
+  const fileFetch = async (url, init) => {
+    const u = String(url);
+    if (!u.startsWith("file:")) return real(url, init);
+    try { return new Response(readFileSync(new URL(u)), { status: 200 }); } catch { return new Response(null, { status: 404 }); }
+  };
+  fileFetch.__vpFile = true;
+  globalThis.fetch = fileFetch;
+}
 
 /** The parity cells: (st, pct). */
 export const CELLS = [[0, 0], [2, 3], [-2, -3], [4, 0], [0, 6], [12, 26], [-12, -21]];
