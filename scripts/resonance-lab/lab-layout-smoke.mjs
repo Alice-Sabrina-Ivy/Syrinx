@@ -38,7 +38,7 @@
 //     range (both "nearly all" ends, "can't tell yet", with and without the
 //     unsure line, fresh and "Older reading", each with and without the
 //     pitch-only note — its room is reserved from switch-on, review
-//     2026-10-20): the bar is on screen in every state, and the panel's box,
+//     2026-10-20): the dome (the bar until 2026-10-25) is on screen in every state, and the panel's box,
 //     its buttons, the practice dock (record, notes, Mic off) keep
 //     their boxes (<= 0.5 px).
 // Screenshots of each part in both states go to <out>/<viewport>-<part>-<state>.png.
@@ -460,7 +460,7 @@ if (FORCED) {
     check(vp, "forced: every hide reason, wide and narrow estimates, fresh and older, each with and without the pitch-only note, were shown",
       wantReasons.every((r) => reasons.has(r)) && [...wantShown, ...wantShown.map((k) => `${k}+pitch-only`)].every((k) => seen.includes(k)),
       JSON.stringify([...new Set(seen)]));
-    check(vp, "forced: the bar is on screen in every state (empty and greyed without an estimate)", noBar.length === 0, noBar.join(", "));
+    check(vp, "forced: the dome is on screen in every state (empty and greyed without an estimate)", noBar.length === 0, noBar.join(", "));
     const m = maxMove(samples);
     check(vp, `forced: ${STATES.length} states, ${m.n} buttons / inputs / boxes (panel, practice dock), none moved (max ${m.worst.d.toFixed(2)} px <= ${TOL})`,
       m.n > 0 && m.worst.d <= TOL && m.missing.length === 0,

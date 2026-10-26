@@ -43,27 +43,31 @@
 //                   panel -> the worker starts, Settings' switch agrees, three
 //                   ranges appear with no "%" in the panel; reload -> still on;
 //                   switched off in Settings -> the panel agrees, the worker is
-//                   gone. The panel is ONE man <-> woman SPLIT BAR (user
-//                   decision 2026-10-20; no bracket rows, no ring axis): the
-//                   deep part from the left = the low end of "would say man",
-//                   the light part from the right = the low end of "would
-//                   say woman", striped between (the range line's one-side
-//                   "About N in 10 listeners would say …" is the best guess s,
-//                   data-split-guess, to the nearest tenth, 2026-10-21), no
-//                   best-guess mark (review 2026-10-20), a deep / light key
-//                   beside each end word, the range line and (unless "could go
-//                   either way") the unsure line, end words and bar inside the
-//                   panel, screen-reader label = the bar's own description and
+//                   gone. The panel is ONE man <-> woman DOME (owner's choice
+//                   2026-10-25: the split bar of user decision 2026-10-20 bent
+//                   into a semicircle of ten tenth-segments; no bracket rows,
+//                   no ring axis): the deep tenths from the left foot = the
+//                   low end of "would say man", the light tenths from the
+//                   right foot = the low end of "would say woman", striped
+//                   between (the range line's one-side "About N in 10
+//                   listeners would say …", drawn inside the dome's hollow,
+//                   is the best guess s, data-split-guess, to the nearest
+//                   tenth, 2026-10-21), no best-guess mark (review
+//                   2026-10-20), a deep / striped / light key beside "would
+//                   say man" / "could go either way" / "would say woman", the
+//                   range line and (unless "could go either way") the unsure
+//                   line, key row and dome inside the panel, the sentence
+//                   inside the dome's hollow, screen-reader label = the bar's own description and
 //                   the sentence announced once (2026-10-21: the label repeated
 //                   it); contrast: text >= 4.5:1, both shades >=
 //                   3:1 against the panel and each other, no green / red /
-//                   amber / pink / blue hue in the bar (both shades 244-270°,
+//                   amber / pink / blue hue in the dome (both shades 244-270°,
 //                   on the violet side of 240° blue).
 //   2 speech-man    (heard-as back on) pitch / resonance live, resonance reads
-//                   lower than the woman's; the bar is shown and the man's
+//                   lower than the woman's; the dome is shown and the man's
 //                   best guess (data-split-guess; not drawn) is above the
-//                   woman's (more of the bar would say man, which fills
-//                   from the left). The
+//                   woman's (more of the dome would say man, which fills
+//                   from the left foot). The
 //                   panel's "More" list opens and carries the pitch-only
 //                   late-switch-on line and false-alarm line (no "turn it on
 //                   before you start talking" line; measurement note §8.9,
@@ -96,8 +100,10 @@
 //                   estimate in its own slot directly under the axis, with the
 //                   shipped words, as the only note, mirrored in the
 //                   always-mounted live region; on the first screen at
-//                   scrollTop 0 (phone, desktop; elsewhere wherever the axis
-//                   is); kept on >= 80 % of shown estimates in the next 20 s.
+//                   scrollTop 0 (desktop; elsewhere wherever the dome is —
+//                   on phones the dome may follow the twin columns below the
+//                   first screen since 2026-10-25); kept on >= 80 % of shown
+//                   estimates in the next 20 s.
 //   (--pitch-only-late=man,woman) pitch-only-late-<who>  a §8.8 hcsL session
 //                   (>= 170 s natural reading, then the pitch moved with the
 //                   resonance kept; scripts/cue-strip-smoke-wavs.mjs
@@ -261,27 +267,44 @@ const state = (page) => page.evaluate(() => {
         const a = p.querySelector("[data-heard-as-axis]");
         if (!a) return null;
         const pr = p.getBoundingClientRect();
+        // the key row: three items (would say man / could go either way / would say woman), one or two rows
         const ends = [...a.querySelectorAll("[data-axis-ends] > span")].map((e) => e.getBoundingClientRect());
+        // the dome (data-split-bar, the SVG; viewBox 300 x 157, centre (150, 156), radii 144 / 118 —
+        // src/components/heardAsDome.js): each kind's share = its tenth-segments / 10
         const bar = a.querySelector("[data-split-bar]")?.getBoundingClientRect();
-        const parts = Object.fromEntries([...a.querySelectorAll("[data-split-part]")].map((e) => {
-          const r = e.getBoundingClientRect();
-          return [e.dataset.splitPart, bar ? Math.round(((r.width + (r.left > bar.left + 0.5 ? 1 : 0) + (r.right < bar.right - 0.5 ? 1 : 0)) / bar.width) * 1000) / 1000 : null];
-        }));
+        const parts = Object.fromEntries([...a.querySelectorAll("[data-split-part]")].map((e) => [e.dataset.splitPart, e.querySelectorAll("[data-tenth]").length / 10]));
+        const tenths = [...a.querySelectorAll("[data-tenth]")].sort((x, y) => x.dataset.tenth - y.dataset.tenth).map((e) => e.dataset.tenthKind[0]).join("");
+        // the sentence inside the dome's hollow: every line's box within the inner radius (1 px slack), above the base
+        const sentenceInDome = (() => {
+          const lines = [...p.querySelectorAll("[data-heard-as-range] > span")].map((e) => { const g = document.createRange(); g.selectNodeContents(e); return g.getBoundingClientRect(); });
+          if (!bar || !lines.length) return false;
+          const k = bar.width / 300, cx = bar.left + 150 * k, cy = bar.top + 156 * k, r = 118 * k;
+          // the text's ink, not the line box: half the leading off the top (line-height 1.35)
+          return lines.every((l) => {
+            const inkTop = l.top + (l.height * 0.35) / 2.7;
+            return l.bottom <= cy + 0.5 && Math.hypot(l.left - cx, inkTop - cy) <= r + 1 && Math.hypot(l.right - cx, inkTop - cy) <= r + 1;
+          });
+        })();
+        // the three key items: inside the panel, and two on the same row never overlap
+        const keysApart = ends.every((x, i) => ends.every((y, j) => i >= j || x.bottom <= y.top + 0.5 || y.bottom <= x.top + 0.5 || x.right <= y.left + 0.5 || y.right <= x.left + 0.5));
         return { wide: a.dataset.axisWide === "1", man: Number(a.dataset.splitMan), woman: Number(a.dataset.splitWoman), guess: Number(a.dataset.splitGuess),
-          parts, barH: bar ? Math.round(bar.height * 10) / 10 : null,
+          parts, tenths, domeW: bar ? Math.round(bar.width * 10) / 10 : null, domeH: bar ? Math.round(bar.height * 10) / 10 : null, sentenceInDome,
           dotShown: !!a.querySelector("[data-split-guess-mark]"), keys: [...a.querySelectorAll("[data-axis-ends] [data-axis-key]")].map((e) => e.dataset.axisKey).join(","),
           sr: a.querySelector("[role=img]")?.getAttribute("aria-label") ?? "",
           range: p.querySelector("[data-heard-as-range]")?.textContent ?? "", unsure: p.querySelector("[data-heard-as-unsure]")?.textContent ?? "",
-          // how often a screen reader meets the sentence: aria-labels that contain it + leaf text equal to it outside aria-hidden
+          // how often a screen reader meets the sentence: aria-labels that contain it + the innermost elements whose
+          // text is the whole sentence, outside aria-hidden (the dome draws it on two lines, one span each: their
+          // parent is the innermost element with all of it)
           rangeAnnounced: (() => {
             const t = p.querySelector("[data-heard-as-range]")?.textContent ?? "";
             if (!t) return 0;
             const labels = [...p.querySelectorAll("[aria-label]")].filter((e) => e.getAttribute("aria-label").includes(t)).length;
-            const texts = [...p.querySelectorAll("*")].filter((e) => e.children.length === 0 && e.textContent.trim() === t && !e.closest('[aria-hidden="true"]')).length;
+            const texts = [...p.querySelectorAll("*")].filter((e) => e.textContent.trim() === t && ![...e.children].some((c) => c.textContent.trim() === t)
+              && !e.closest('[aria-hidden="true"]')).length;
             return labels + texts;
           })(),
-          fits: p.scrollWidth <= p.clientWidth + 1 && ends.length === 2 && ends.every((e) => e.left >= pr.left - 0.5 && e.right <= pr.right + 0.5)
-            && ends[0].right <= ends[1].left && !!bar && bar.left >= pr.left - 0.5 && bar.right <= pr.right + 0.5 };
+          fits: p.scrollWidth <= p.clientWidth + 1 && ends.length === 3 && ends.every((e) => e.left >= pr.left - 0.5 && e.right <= pr.right + 0.5)
+            && keysApart && !!bar && bar.left >= pr.left - 0.5 && bar.right <= pr.right + 0.5 };
       })(),
       pitchOnly: (() => {
         const n = p.querySelector("[data-pitch-only]");
@@ -422,7 +445,8 @@ async function sample(page, ms, fn) {
   return false;
 }
 
-// The heard-as split bar, whenever it is shown.
+// The heard-as dome (the split bar bent into ten tenth-segments, owner's
+// choice 2026-10-25), whenever it is shown.
 let womanGuess = null;
 function axisChecks(who, s) {
   const a = s.heardAs?.axis;
@@ -433,25 +457,29 @@ function axisChecks(who, s) {
   // rounding at a tenth boundary.
   const wants = a ? new Set([-0.0005, 0, 0.0005].map((d) => sayText(a.guess + d, a.wide))) : new Set();
   const want = [...wants].join(" / ");
-  check(`${who}: split bar parts match the data (deep = low end of man, light = low end of woman, striped between), no best-guess mark, a deep key by "would say man" and a light one by "would say woman"`,
-    !!a && !a.dotShown && a.keys === "man,woman" && a.barH >= 16 && a.barH <= 20
+  check(`${who}: dome tenths match the data (deep = low end of man from the left foot, light = low end of woman from the right foot, striped between), no best-guess mark, a deep / striped / light key by "would say man" / "could go either way" / "would say woman"`,
+    !!a && !a.dotShown && a.keys === "man,either,woman" && /^m*e*w*$/.test(a.tenths) && a.tenths.length === 10
+    && a.domeW >= 240 && a.domeW <= 300.5 && Math.abs(a.domeW / a.domeH - 300 / 157) < 0.03
     && Math.abs((a.parts.man ?? 0) - a.man) < 0.02 && Math.abs((a.parts.woman ?? 0) - a.woman) < 0.02
     && Math.abs((a.parts.either ?? 0) - (1 - a.man - a.woman)) < 0.02
     && a.guess >= a.man - 1e-6 && a.guess <= 1 - a.woman + 1e-6, JSON.stringify(a));
-  check(`${who}: bar words — range line = one side, the best guess to the nearest tenth ("could go either way" when wide) and unsure line (one tenth value; none when wide)`, !!a
+  check(`${who}: the sentence is drawn inside the dome's hollow (every line within the inner radius, above the base)`, !!a && a.sentenceInDome, JSON.stringify(a));
+  check(`${who}: dome words — range line = one side, the best guess to the nearest tenth ("could go either way" when wide) and unsure line (one tenth value; none when wide)`, !!a
     && wants.has(a.range) && !a.range.includes(" · ")
     && (a.wide ? /^Could go either way/.test(a.range) && a.unsure === ""
       : /^(About \d|Nearly all)( in 10)? listeners would say (man|woman)$|^Could go either way/.test(a.range) && /^(About \d+|Fewer than 1) in 10 might be unsure or say neither$/.test(a.unsure)), `${a?.range} | want ${want} | ${a?.unsure}`);
-  check(`${who}: bar screen-reader label = the bar's own description, without the sentence; the sentence announced once (the visible line, not aria-hidden)`,
+  check(`${who}: dome screen-reader label = the bar's own description, without the sentence; the sentence announced once (the visible line, not aria-hidden)`,
     !!a && a.sr === BAR_DESCRIPTION && !a.sr.includes(a.range) && a.rangeAnnounced === 1, `${a?.sr} | sentence announced ${a?.rangeAnnounced}x`);
-  check(`${who}: bar, end words and parts fit inside the panel`, !!a && a.fits);
+  check(`${who}: dome and the three key items fit inside the panel, key items never overlap`, !!a && a.fits, JSON.stringify(a));
 }
 
 // WCAG contrast inside the heard-as panel (adapted from the review round 2
-// probe): every text node >= 4.5:1; the bar's two shades >= 3:1 against the
+// probe): every text node >= 4.5:1 (incl. the sentence's two lines inside the
+// dome and the three key items); the dome's two shades >= 3:1 against the
 // panel background and against each other (1.4.11), all against the
-// composited background and with every ancestor's opacity applied. And the
-// user's colour rule (decision 2026-10-20): the bar is two shades of one
+// composited background and with every ancestor's opacity applied, and the
+// dome's segments and stripes drawn in exactly those shades. And the
+// user's colour rule (decision 2026-10-20): the dome is two shades of one
 // colour — indigo, hue 244–270° (review 2026-10-20: the lower limit was 225°,
 // which let blue, 240°, through) — never green / red / amber (the app's on /
 // off target / experimental) or pink / blue.
@@ -488,14 +516,20 @@ async function contrastCheck(page, who) {
     const panelBg = bar ? bgOf(bar.parentElement) : null;
     const tok = (n) => { const c = rgba(getComputedStyle(document.documentElement).getPropertyValue(n).trim()); return over({ ...c, a: c.a * (bar ? opOf(bar) : 1) }, panelBg ?? { r: 0, g: 0, b: 0, a: 1 }); };
     const man = tok("--color-heard-man"), woman = tok("--color-heard-woman");
-    return { minText, worst,
+    // The dome draws exactly these two shades: the solid groups' fills and the stripe pattern's two rects.
+    const same = (x, y) => { const a = rgba(x), b = rgba(y); return Math.abs(a.r - b.r) + Math.abs(a.g - b.g) + Math.abs(a.b - b.b) <= 3; };
+    const tokRaw = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+    const fills = [...p.querySelectorAll("[data-split-part='man'], [data-split-part='woman'], [data-split-bar] pattern rect")]
+      .map((e) => ({ want: e.matches(".heard-seg-man, .heard-pat-man") ? "--color-heard-man" : "--color-heard-woman", fill: getComputedStyle(e).fill }));
+    const drawn = fills.length >= 2 && fills.every((f) => same(f.fill, tokRaw(f.want)));
+    return { minText, worst, drawn,
       man: panelBg ? ratio(man, panelBg) : null, woman: panelBg ? ratio(woman, panelBg) : null, manWoman: ratio(man, woman),
       hues: [hue(man), hue(woman)].map((h) => (h === null ? null : Math.round(h))) };
   });
   log(`  contrast (${who}): ${JSON.stringify(r)}`);
-  check(`${who}: heard-as panel text >= 4.5:1; bar shades >= 3:1 against the panel and each other`,
-    !!r && r.minText >= 4.5 && r.man >= 3 && r.woman >= 3 && r.manWoman >= 3, JSON.stringify(r));
-  check(`${who}: the bar is two shades of one colour (indigo, hue 244–270°), no green / red / amber / pink / blue`,
+  check(`${who}: heard-as panel text >= 4.5:1; dome shades >= 3:1 against the panel and each other, and the dome draws exactly those two shades`,
+    !!r && r.minText >= 4.5 && r.man >= 3 && r.woman >= 3 && r.manWoman >= 3 && r.drawn, JSON.stringify(r));
+  check(`${who}: the dome is two shades of one colour (indigo, hue 244–270°), no green / red / amber / pink / blue`,
     !!r && r.hues.every((h) => h !== null && h >= 244 && h <= 270) && Math.abs(r.hues[0] - r.hues[1]) <= 15, JSON.stringify(r?.hues));
 }
 
@@ -653,7 +687,7 @@ for (const label of ["About the pitch cue", "About the resonance cue", "What doe
   await closeSettings(page);
   const shown = await sample(page, 120000, (st) => st.heardAs?.mode === "shown");
   s = await state(page);
-  check("heard-as: one man <-> woman bar appears on speech (no bracket rows)", shown && s.heardAs.axes === 1 && s.heardAs.legacyRows === 0, `${s.heardAs?.mode}/${s.heardAs?.reason}`);
+  check("heard-as: one man <-> woman dome appears on speech (no bracket rows)", shown && s.heardAs.axes === 1 && s.heardAs.legacyRows === 0, `${s.heardAs?.mode}/${s.heardAs?.reason}`);
   axisChecks("woman", s);
   await contrastCheck(page, "woman");
   womanGuess = s.heardAs?.axis?.guess ?? null;
@@ -714,11 +748,11 @@ check("man: listening", await continueAfterReload(page));
   const s = await state(page);
   check("man: pitch and resonance live", pitchLive && resLive);
   check("man: resonance reads lower than the woman's", manU !== null && womanU !== null && manU < womanU, `man ${manU} vs woman ${womanU}`);
-  check("man: one man <-> woman bar, no '%'", s.heardAs?.mode === "shown" && s.heardAs.axes === 1 && s.heardAs.legacyRows === 0 && !s.heardAs.text.includes("%"), `${s.heardAs?.mode}/${s.heardAs?.reason}`);
+  check("man: one man <-> woman dome, no '%'", s.heardAs?.mode === "shown" && s.heardAs.axes === 1 && s.heardAs.legacyRows === 0 && !s.heardAs.text.includes("%"), `${s.heardAs?.mode}/${s.heardAs?.reason}`);
   axisChecks("man", s);
   await contrastCheck(page, "man");
   const manGuess = s.heardAs?.axis?.guess ?? null;
-  check("orientation: more of the bar would say man (from the left) for the man than for the woman — his best guess (data-split-guess) is above hers",
+  check("orientation: more of the dome would say man (from the left foot) for the man than for the woman — his best guess (data-split-guess) is above hers",
     manGuess !== null && womanGuess !== null && manGuess > womanGuess, `man ${manGuess} vs woman ${womanGuess}`);
   await shot(page, "05-man-live");
   // the panel itself (below the first screen on short / narrow viewports)
@@ -801,10 +835,12 @@ for (const who of PITCH_ONLY) {
     await sleep(150);
     await shot(page, `05c-pitch-only-${who}-first-screen`);
     log(`  pitch-only ${who} at scrollTop 0: ${JSON.stringify(fold)}`);
-    if (VIEWPORT === "phone" || VIEWPORT === "desktop") {
+    // Phones since 2026-10-25: the twin columns fill the first screen and the dome may follow below it (owner's
+    // choice), so on every phone size the rule is the conditional one; desktop keeps the dome in the right column.
+    if (VIEWPORT === "desktop") {
       check(`pitch-only ${who}: the warning is on the first screen (scrollTop 0, above the bottom bar)`, !!fold?.inView, JSON.stringify(fold));
     } else {
-      check(`pitch-only ${who}: wherever the axis is on the first screen, so is the warning`, !!fold && (!fold.axisInView || fold.inView), JSON.stringify(fold));
+      check(`pitch-only ${who}: wherever the dome (with its key row) is on the first screen, so is the warning`, !!fold && (!fold.axisInView || fold.inView), JSON.stringify(fold));
     }
     // Hold through brief hides: shown estimates in the next 20 s that carry it.
     let shownAfter = 0, warnedAfter = 0, wideWarned = 0;
