@@ -28,6 +28,34 @@ T.check("source: the mirror at a pinned commit when set", dfn3ModelSource({ mode
 T.check("source: the app's own folder without a mirror, null without either",
   dfn3ModelSource({ appBaseUrl: "http://x/models/dfn3/", model: { ...DFN3_MODEL, mirrorCommit: null } })?.kind === "app"
   && dfn3ModelSource({ model: { ...DFN3_MODEL, mirrorCommit: null } }) === null);
+T.check("the mirror is pinned to a full commit; the default source is that mirror",
+  /^[0-9a-f]{40}$/.test(DFN3_MODEL.mirrorCommit) && dfn3ModelSource({ appBaseUrl: "http://x/" }).base === `https://huggingface.co/${DFN3_MODEL.mirror}/resolve/${DFN3_MODEL.mirrorCommit}/`);
+{
+  // the mirror path: through Cache Storage (loadVerifiedModel), sha256-checked; synthetic files
+  const files = ["a", "b", "c"].map((k, i) => ({ key: k, name: `${k}.onnx`, bytes: 64 + i, data: new Uint8Array(64 + i).map((_, j) => (j * 7 + i) & 255) }));
+  const model = { ...DFN3_MODEL, files: files.map(({ data, ...f }) => ({ ...f, sha256: sha(data) })) };
+  const stores = new Map(); // one cache per name, as Cache Storage (one per graph: DFN3_CACHE_PREFIX + key)
+  const cachesApi = { open: async (name) => {
+    if (!stores.has(name)) stores.set(name, new Map());
+    const store = stores.get(name);
+    return {
+      match: async (k) => store.get(k)?.clone(), put: async (k, r) => { store.set(k, r); }, delete: async (k) => store.delete(typeof k === "string" ? k : k.url),
+      keys: async () => [...store.keys()].map((url) => ({ url })),
+    };
+  } };
+  let fetched = [];
+  const fetchFn = async (url) => { fetched.push(url); const f = files.find((x) => url.endsWith(x.name)); return f ? new Response(f.data, { status: 200 }) : new Response(null, { status: 404 }); };
+  const src = { kind: "mirror", base: "https://huggingface.co/x/resolve/abc/" };
+  const got = await loadDfn3Files(src, { fetchFn, cachesApi, model });
+  T.check("mirror: the three files fetched from the mirror URL and returned", fetched.length === 3 && fetched.every((u) => u.startsWith(src.base)) && files.every((f) => sha(got[f.key]) === sha(f.data)));
+  fetched = [];
+  await loadDfn3Files(src, { fetchFn, cachesApi, model });
+  T.check("mirror: the second load comes from Cache Storage (no fetch)", fetched.length === 0, `${fetched.length} fetches`);
+  const bad = { ...model, files: model.files.map((f, i) => (i === 1 ? { ...f, sha256: "0".repeat(64) } : f)) };
+  let code = null;
+  try { await loadDfn3Files(src, { fetchFn, cachesApi: null, model: bad }); } catch (err) { code = err.code; }
+  T.check("mirror: a file whose sha256 differs -> code \"unavailable\"", code === "unavailable");
+}
 {
   // a server that answers a different file (a dev server's HTML fallback) is refused
   const fake = async () => new Response(new Uint8Array(100), { status: 200 });

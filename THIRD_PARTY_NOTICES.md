@@ -82,8 +82,14 @@ the texts in `licenses/world/`, `licenses/deepfilternet/` and `licenses/emscript
   `DFN3_MODEL`, `src/voice-preview/dfn3-model.js`) the app runs with
   onnxruntime-web — MIT OR Apache-2.0 (both texts in `licenses/deepfilternet/`
   and in the shipped `THIRD_PARTY_NOTICES.txt`). The files are not in this
-  repository or in the build; `scripts/fetch-dfn3-model.mjs` extracts them
-  from the upstream archive for the Node tests and development. The STFT,
+  repository or in the build. The app loads them at runtime from a
+  byte-identical mirror on the project's Hugging Face account
+  (`Alice-Sabrina-Ivy/deepfilternet3-onnx`, with both licence files and a
+  README that credits the authors), pinned to the mirror's commit
+  `a3c9b36fade2bf23123e7a2671c2f00b83b69229` (`DFN3_MODEL.mirrorCommit`),
+  checks size and sha256 before use, and keeps them in the browser's Cache
+  Storage. `scripts/fetch-dfn3-model.mjs` extracts the same files from the
+  upstream archive for the Node tests and development. The STFT,
   feature and deep-filtering code in `dfn3.js` is a JavaScript port of the
   project's `libDF` (same licence).
 - **Resonance lab models** (`public/resonance-lab/`: `vtln_warp.json`,

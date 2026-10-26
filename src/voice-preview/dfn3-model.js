@@ -8,14 +8,15 @@ export const DFN3_MODEL = Object.freeze({
   // models/DeepFilterNet3_onnx.tar.gz at the commit: 7,983,136 B, sha256 c94d91f7…; the three
   // graphs below are its members, byte for byte (tests/voice-preview/dfn3-test.js).
   archive: Object.freeze({ path: "models/DeepFilterNet3_onnx.tar.gz", bytes: 7983136, sha256: "c94d91f70911001c946e0fabb4aa9adc37045f45a03b56008cb0c8244cb63616" }),
-  // Hosting, as FireRedVAD's (src/dsp/firered-vad.js): the project's Hugging Face mirror of the
-  // three graphs at a pinned commit, checked against the sha256 below and kept in Cache Storage.
-  // null until the mirror exists: the app then loads them from `dir` under its base URL
-  // (public/models/dfn3/ in a development tree: node scripts/fetch-dfn3-model.mjs
-  // --out=public/models/dfn3); a deployed build without them reports noise reduction as
-  // unavailable.
+  // Hosting, as FireRedVAD's (src/dsp/firered-vad.js; user decision 2026-10-25): the project's
+  // Hugging Face mirror of the three graphs (byte-identical to the archive members, plus
+  // LICENSE-MIT, LICENSE-APACHE and a README crediting the authors), uploaded by the repo owner
+  // and verified at this commit on 2026-10-25 (sizes, sha256, CORS for the Pages origin), checked
+  // against the sha256 below at every load and kept in Cache Storage. Offline development: set
+  // mirrorCommit to null and the app loads them from `dir` under its base URL (public/models/dfn3/
+  // in a development tree: node scripts/fetch-dfn3-model.mjs --out=public/models/dfn3).
   mirror: "Alice-Sabrina-Ivy/deepfilternet3-onnx",
-  mirrorCommit: null,
+  mirrorCommit: "a3c9b36fade2bf23123e7a2671c2f00b83b69229",
   dir: "models/dfn3/",
   files: Object.freeze([
     Object.freeze({ key: "enc", name: "enc.onnx", member: "tmp/export/enc.onnx", bytes: 1954042, sha256: "7c5399d3da8a50ebef1c1a0ae421b33376aa5e45d0e92df16da7e83c9c131916" }),

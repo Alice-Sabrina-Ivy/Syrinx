@@ -332,8 +332,11 @@ recording is reused when the switch goes off and on again.
 15/15 in headless Chrome (the three graphs requested once each; DeepFilterNet 3 836 ms + re-track
 425 ms for an 8 s, 44.1 kHz recording on a busy PC).
 
-**Open.** Hosting: `DFN3_MODEL.mirrorCommit` is null, so a deployed build has no graphs and shows
-noise reduction as unavailable until the project's Hugging Face mirror (`Alice-Sabrina-Ivy/
-deepfilternet3-onnx`, the three graphs + LICENSE files, as FireRedVAD's mirror) exists and its
-commit is pinned. Phone timing and memory (onnxruntime + three sessions in the voice-preview
+**Hosting** (user decision, same day): the project's Hugging Face mirror
+`Alice-Sabrina-Ivy/deepfilternet3-onnx` — the three graphs byte for byte, LICENSE-MIT,
+LICENSE-APACHE and a README crediting the authors — uploaded at commit
+`a3c9b36fade2bf23123e7a2671c2f00b83b69229`, pinned in `DFN3_MODEL.mirrorCommit`; verified by an
+unauthenticated download at that commit (sizes and sha256 equal the pins; CORS allows the Pages
+origin) and by the smoke against the built app (the graphs land in Cache Storage, no console
+errors). **Open.** Phone timing and memory (onnxruntime + three sessions in the voice-preview
 worker) unmeasured, by the user's decision.

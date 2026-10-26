@@ -62,11 +62,12 @@
 //         field does not focus the field (no phone keyboard over the tab's area).
 // denoise (noise.wav, 448 x 890, touch; 2026-10-23, measurements/voice-shaper-denoise-2026-10-23.md;
 //         auto + DeepFilterNet 3 since 2026-10-25, measurements/voice-shaper-noise-2026-10-25.md;
-//         needs the graphs in public/models/dfn3/ before the build while DFN3_MODEL.mirrorCommit is
-//         null: node scripts/fetch-dfn3-model.mjs --out=public/models/dfn3): the noisy recording is
+//         the graphs come from the Hugging Face mirror pinned in DFN3_MODEL — network access needed;
+//         with mirrorCommit null, from public/models/dfn3/ in the build): the noisy recording is
 //         noise-reduced by itself (the switch on, the "Turned on because…" line, the track re-made
-//         by a nested pitch worker, the three graphs requested once each; noise-reduction, re-track
-//         and analysis times printed); Original plays; off: the same recording analysed
+//         by a nested pitch worker, the three graphs in Cache Storage — mirror — or requested once
+//         each — app folder; noise-reduction, re-track and analysis times printed); Original
+//         plays; off: the same recording analysed
 //         again ("Noise reduction off. …" announced) with the quick setting that was showing, the
 //         notice points to the switch; on again: no new request; Record again keeps the user's
 //         choice (on) and the new take is analysed with it. No console errors. Screenshot phone-dark-denoise.
@@ -1195,7 +1196,9 @@ async function partDenoise() {
   check("noise.wav: a preview with the noise notice, noise-reduced automatically (switch on, the auto line, the track re-made)",
     rec.ok && rec.st.notices.includes("noise") && r.present && r.checked === true && r.denoised === "1" && dn.auto && dn.retracked === "1" && r.hint.includes("Original") && !r.tryLine,
     `DeepFilterNet 3 ${dn.ms} ms + re-track ${dn.re} ms, analysis ${dn.total} ms for ${dn.s} s at ${dn.rate} Hz; ${JSON.stringify(r)}`);
-  check("the three DeepFilterNet 3 graphs requested once each", req.length === 3 && new Set(req).size === 3, req.join());
+  const cached = await page.evaluate(async () => (await caches.keys()).filter((n) => n.startsWith("syrinx-noise-reduction-")).sort());
+  check("the three DeepFilterNet 3 graphs loaded once each (mirror: one Cache Storage entry per graph; app folder: one request each)",
+    (cached.length === 3 && req.length === 0) || (req.length === 3 && new Set(req).size === 3), `${cached.join()} ${req.join()}`);
   // a quick setting showing, then the switch off
   await clickSel(page, '[data-vp-preset="higherBrighter"]');
   await waitVp(page, () => document.querySelector("[data-voice-preview]")?.dataset.vpRendered !== "" && document.querySelector("[data-voice-preview]")?.dataset.vpRendering === "0", "preset rendered", 15000);
@@ -1216,7 +1219,7 @@ async function partDenoise() {
   await clickSel(page, "[data-vp-denoise-toggle]");
   await done();
   r = await row();
-  check("on again: no new request, noise-reduced with the same setting", served.filter(isDfn3).length === 3 && r.checked === true && r.denoised === "1" && r.rendered === setting, JSON.stringify(r));
+  check("on again: no new request, noise-reduced with the same setting", served.filter(isDfn3).length === req.length && r.checked === true && r.denoised === "1" && r.rendered === setting, JSON.stringify(r));
   await waitVp(page, () => !document.querySelector("[data-vp-record]")?.getAttribute("aria-disabled"), "record again armed", 5000);
   await clickSel(page, "[data-vp-record]"); // Record again
   await phaseIs(page, "recording", 15000);
