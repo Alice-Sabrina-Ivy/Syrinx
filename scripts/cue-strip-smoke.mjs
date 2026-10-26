@@ -420,7 +420,12 @@ const desktopColumn = (page) => page.evaluate(() => {
   return { vw: innerWidth, vh: innerHeight, sh: col?.scrollHeight ?? null, ch: col?.clientHeight ?? null,
     meters: [...document.querySelectorAll("[data-cue-meter]")].map((m) => Math.round(m.getBoundingClientRect().height)),
     more: mr ? Math.round(mr.bottom) : null, dock: dock ? Math.round(dock.top) : null,
-    row: document.querySelector("[data-heard-as] [data-heard-as-body]") ? getComputedStyle(document.querySelector("[data-heard-as] [data-heard-as-body] > div")).display : null };
+    // the panel's row layout: the dome at the left, 200 px wide (220 from 1180 px wide), its key beside it
+    row: (() => {
+      const dome = document.querySelector("[data-heard-as] [data-split-bar]")?.getBoundingClientRect();
+      const key = document.querySelector("[data-heard-as] [data-axis-key=man]")?.getBoundingClientRect();
+      return dome && key ? { domeW: Math.round(dome.width), keyRightOfDome: key.left >= dome.right } : null;
+    })() };
 });
 
 // Opens one info toggle (by its aria-label), measures its popover, closes it.
@@ -618,6 +623,8 @@ check("direction options: pitch targets only, no vocal-weight side", /Pitch targ
   directionDialogText.replace(/\s+/g, " ").slice(0, 200));
 await sleep(600);
 {
+  // the resonance bands come from cue-bands.json: wait for them, so "reads upwards" checks both columns
+  await page.waitForSelector('[data-cue="resonance"] [data-cue-band="men"]', { timeout: 15000 }).catch(() => {});
   const L = await layout(page);
   await shot(page, "01-start");
   check("layout: pitch trace fully in the first screen", inView(L.trace, L), JSON.stringify(L.trace));
@@ -630,19 +637,22 @@ await sleep(600);
       !!p && !!r && p.right <= r.left + 0.5 && Math.abs(p.top - r.top) < 1 && p.meterH >= minH && r.meterH >= minH, JSON.stringify(L.cols));
     const up = (c) => !!c && c.endTop < c.trackTop && c.endBottom > c.trackBottom && c.women !== null && c.men !== null && c.women < c.men;
     check("layout: both columns read upwards ('higher' / 'brighter' above the track, the typical women's band above the men's)",
-      up(p) && (up(r) || (r && r.men === null)), JSON.stringify(L.cols));
+      up(p) && up(r), JSON.stringify(L.cols));
     const hits = await hitAreas(page);
     check("touch targets: every strip and heard-as panel button's hit area >= 44 x 44 px, every point of it hit-tested on the button",
       hits.length >= 4 && hits.every((b) => b.w >= 44 && b.h >= 44 && b.hit === 1), JSON.stringify(hits));
   }
   if (VIEWPORT === "desktop") {
-    for (const [w, h] of [[1366, 657], [1280, 690], [1280, 720]]) {
+    // 1100 x 768 / 1024 x 628: the column at its 420 px floor, the 200 px dome (2026-10-26 review: 220 px there
+    // overflowed the column by 14 px); 628 px is the lowest height whose meters (100 px floor) still fit
+    for (const [w, h] of [[1366, 657], [1280, 690], [1280, 720], [1100, 768], [1024, 628]]) {
       await page.setViewport({ ...VIEWPORTS.desktop, width: w, height: h });
       await sleep(600);
       const d = await desktopColumn(page);
       await shot(page, `01c-desktop-${w}x${h}`);
-      check(`desktop ${w} x ${h}: the right-hand column has no inner scroll (heard-as panel in its row layout), More above the dock, meters >= 120 px`,
-        d.sh !== null && d.sh <= d.ch + 1 && d.more !== null && d.dock !== null && d.more <= d.dock && d.meters.length === 2 && d.meters.every((m) => m >= 120), JSON.stringify(d));
+      check(`desktop ${w} x ${h}: the right-hand column has no inner scroll, the heard-as panel in its row layout (dome ${w >= 1180 ? 220 : 200} px, key beside it), More above the dock, meters >= 100 px`,
+        d.sh !== null && d.sh <= d.ch + 1 && d.more !== null && d.dock !== null && d.more <= d.dock && d.meters.length === 2 && d.meters.every((m) => m >= 100)
+        && !!d.row && Math.abs(d.row.domeW - (w >= 1180 ? 220 : 200)) <= 1 && d.row.keyRightOfDome, JSON.stringify(d));
     }
     await page.setViewport({ ...VIEWPORTS.desktop, width: 1280, height: 460 });
     await sleep(600);
