@@ -15,9 +15,12 @@
 // sentence names the bigger side with its drawn tenths ("About N in 10
 // listeners would say woman", N 10 = "Nearly all listeners would say …");
 // the line under it names the rest so the stated numbers add up to 10
-// ("About U in 10 might be unsure or say neither" / "Fewer than 1 in 10
-// might be unsure or say neither", plus " · about M in 10 would say man"
-// when the other side has ≥ 1 tenth; two balanced lines on a 360 px phone).
+// ("About U in 10 unsure or neither" / "Fewer than 1 in 10 unsure or
+// neither" — the key's words — plus " · about M in 10 would say man" when
+// the other side has ≥ 1 tenth). Measured in the built app: one line at
+// 448 px and on desktops, two balanced lines at 360 px; the longer "… might
+// be unsure or say neither · …" wrapped at 448 px too and made the panel
+// 17 px taller there.
 //
 // THE UNCERTAINTY is drawn separately as a thin BRACKET just outside the
 // dome, over where the bigger side's inner edge could fall: for woman, from
@@ -69,7 +72,10 @@ const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
  * tenths would break is never broken one way — one missing tenth goes to
  * unsure, two go to man and woman — and unsure wins a tie against a side.
  * So swapping man and woman swaps their tenths exactly, and the result is
- * deterministic.
+ * deterministic. Each part is its share's floor or ceiling, except when man
+ * and woman are both exactly x.5 tenths and unsure a whole number of tenths:
+ * the missing tenth then goes to unsure (the calibration's unsure floor,
+ * 0.02, keeps a real reading from having unsure exactly 0 there).
  */
 export function threeTenths({ man, unsure, woman }) {
   const v = { man: 10 * man, unsure: 10 * unsure, woman: 10 * woman };
@@ -105,7 +111,7 @@ export function sayText(t, wide) {
 export function restText(t, wide) {
   if (sayText(t, wide) === WIDE_TEXT) return null;
   const other = t.man > t.woman ? "woman" : "man";
-  const u = `${cap(unsureWords(t.unsure))} might be unsure or say neither`;
+  const u = `${cap(unsureWords(t.unsure))} unsure or neither`;
   return t[other] >= 1 ? `${u} · about ${t[other]} in 10 would say ${other}` : u;
 }
 

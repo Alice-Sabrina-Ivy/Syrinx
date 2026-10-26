@@ -117,7 +117,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { heardAsShares } from "../ml/heard-as";
-import { heardAsAxis, restText, AXIS_ENDS, shortReason, quickCheck } from "./heardAsAxisModel";
+import { heardAsAxis, AXIS_ENDS, shortReason, quickCheck } from "./heardAsAxisModel";
 import { DOME, DOME_PATHS, domeKinds, domeLines, domeBracketPath, UNSURE_WORDS, BRACKET_WORDS } from "./heardAsDome";
 import { HEARD_AS_CALIBRATION } from "../ml/heardAsCalibration";
 import { PITCH_ONLY_TEXT } from "../ml/pitch-only-warning";
@@ -276,22 +276,26 @@ const REASONS = {
 const legendText = (stale) => `${stale ? "Older reading — waiting for more speech · " : ""}From your last ~8 s of speech · updates every 2 s`;
 
 // Every text each line can show, from the same word functions the panel uses
-// (restText on every three-part split of 10; every reason), laid out invisibly so the
+// (heardAsAxis over every reading the model can give; every reason), laid out invisibly so the
 // panel's height never depends on which one is showing. All of them, not just
 // the longest: italic and medium text differ in width, so the longest string
 // is not always the tallest. (The sentence needs no reserve since the dome,
 // 2026-10-25: it sits inside the dome, whose box is fixed.)
 const RESERVE = (() => {
-  // The line under the sentence for every three-part split of 10 (and either
-  // wide flag): every text it can show.
+  // The line under the sentence for every reading the model can give: the
+  // three-way shares depend on eta alone (heard-as.js), so a fine eta sweep
+  // (the fit range of F0 fixed; the meter logit solved for each eta) reaches
+  // every text. Unreachable splits of 10 (e.g. no unsure tenth but two on the
+  // other side, longer) are left out so they don't add a line at 448 px.
   const unsure = new Set();
-  for (let m = 0; m <= 10; m++) for (let u = 0; u <= 10 - m; u++) {
-    const t = restText({ man: m, unsure: u, woman: 10 - m - u }, false);
+  const lnF0 = Math.log(150), C = HEARD_AS_CALIBRATION;
+  for (let k = -12000; k <= 12000; k++) {
+    const eta = k / 1000;
+    const t = heardAsAxis(heardAsShares((eta - C.a - C.bLnF0 * lnF0) / C.bMeter, lnF0)).unsureText;
     if (t) unsure.add(t);
   }
   return {
     unsure: [...unsure].map((t) => ({ t })),
-    legend: legendText(true),
     note: PITCH_ONLY_TEXT,
     reasons: [...new Set(Object.entries(REASONS).flatMap(([k, f]) => (k === "loading" ? [f(null), f(99), f(100)] : [f()])))].map((t) => ({ t })),
   };
@@ -314,17 +318,20 @@ const Reserve = ({ texts, className = "", render = (x) => x.t }) => (
 // scroll of the right-hand column, and in short landscape the panel was
 // taller than the screen): the dome at the left (200 px wide; 220 px on
 // desktop windows >= 1180 px wide, deskwide, where its key column beside it
-// is taller anyway), its key (one item per line in a narrow column), unsure line and legend beside it, the
-// pitch-only note and the caveat full width under them. A grid whose first
-// three rows the dome spans (the axis element a subgrid, so the dome and its
-// key stay one element and the note still follows it directly in the DOM);
-// every layer of the one-height grid uses the same grid, so the reserve still
-// holds.
-const ROW_GRID = "heardrow:grid heardrow:grid-cols-[200px_minmax(0,1fr)] deskwide:grid-cols-[220px_minmax(0,1fr)] heardrow:grid-rows-[auto_auto_1fr_auto_auto] heardrow:gap-x-3 heardrow:items-start";
-const ROW_AXIS = "heardrow:col-[1/-1] heardrow:row-[1/4] heardrow:grid heardrow:grid-cols-subgrid heardrow:grid-rows-subgrid";
-const UNSURE_CLS = "mt-1 text-xs leading-snug tabular-nums text-center text-balance heardrow:col-start-2 heardrow:row-start-2 heardrow:text-left";
-const LEGEND_CLS = "mt-0.5 text-[11px] leading-snug text-center text-balance heardrow:col-start-2 heardrow:row-start-3 heardrow:text-left";
-const NOTE_CLS = "mt-1.5 text-[11px] leading-snug text-center text-balance heardrow:col-[1/-1] heardrow:row-start-4 heardrow:text-left";
+// is taller anyway), its key (one item per line in a narrow column) and the
+// legend beside it; the pitch-only note, then the line naming the rest of the
+// tenths, full width under them, then the caveat. (Until the three-part dome,
+// 2026-10-26, the unsure line sat beside the dome too; the longer line naming
+// the rest took three lines there and overflowed the short-desktop column.)
+// A grid whose first two rows the dome spans (the axis element a subgrid, so
+// the dome and its key stay one element and the note still follows it
+// directly in the DOM); every layer of the one-height grid uses the same
+// grid, so the reserve still holds.
+const ROW_GRID = "heardrow:grid heardrow:grid-cols-[200px_minmax(0,1fr)] deskwide:grid-cols-[220px_minmax(0,1fr)] heardrow:grid-rows-[auto_1fr_auto_auto_auto] heardrow:gap-x-3 heardrow:items-start";
+const ROW_AXIS = "heardrow:col-[1/-1] heardrow:row-[1/3] heardrow:grid heardrow:grid-cols-subgrid heardrow:grid-rows-subgrid";
+const UNSURE_CLS = "mt-1 text-xs leading-snug tabular-nums text-center text-balance heardrow:col-[1/-1] heardrow:row-start-4 heardrow:text-left";
+const LEGEND_CLS = "mt-0.5 text-[11px] leading-snug text-center text-balance heardrow:col-start-2 heardrow:row-start-2 heardrow:text-left";
+const NOTE_CLS = "mt-1.5 text-[11px] leading-snug text-center text-balance heardrow:col-[1/-1] heardrow:row-start-3 heardrow:text-left";
 const REASON_CLS = "mt-1.5 text-sm leading-snug text-center text-balance heardrow:col-start-2 heardrow:row-start-2 heardrow:text-left heardrow:mt-1";
 
 export function HeardAsSwitch({ on, onChange, label = "Likely heard as · Experimental" }) {
@@ -345,8 +352,8 @@ export function HeardAsSwitch({ on, onChange, label = "Likely heard as · Experi
 // The dome's box: at most 300 px wide (the mockup's size on a 448-px phone),
 // the full width of narrower panels, centred; its height follows the viewBox.
 // Row layout: at the left (200 / 220 px, the grid's first column), over the
-// grid's first three rows.
-const DOME_BOX = "block w-full max-w-[300px] mx-auto aspect-[300/157] h-auto heardrow:col-start-1 heardrow:row-[1/4] heardrow:mx-0";
+// grid's first two rows.
+const DOME_BOX = "block w-full max-w-[300px] mx-auto aspect-[300/157] h-auto heardrow:col-start-1 heardrow:row-[1/3] heardrow:mx-0";
 const VIEWBOX = `0 0 ${DOME.w} ${DOME.h}`;
 
 // The tick above the top of the dome: the middle, 5 in 10.
@@ -355,12 +362,15 @@ const DomeTick = ({ grey = false }) => (
     className={grey ? "heard-dome-tick-grey stroke-neutral-700" : "heard-dome-tick stroke-neutral-500"} />
 );
 
-// The key row under the dome (user decision 2026-10-26): the end words on the
-// first row — a deep key by "would say man" (left), a light one by "would say
-// woman" (right) — and under them, centred, a grey key by "unsure or neither"
-// and a small bracket by "likely range"; greyed under the empty dome. In the
-// row layout's narrow column (under 230 px: a container query on the row's
-// own width, which never changes while speaking) one item per line, each key
+// The key row under the dome (user decision 2026-10-26): a small key in each
+// shade beside its words — deep by "would say man" (left), grey by "unsure or
+// neither" (middle), light by "would say woman" (right); greyed outlines under
+// the empty dome; the bracket's key beside "unsure or neither" only where this
+// row wraps anyway (BracketKey). One row while there is room for it
+// (>= 330 px), else the end words on the first row and "unsure or neither"
+// centred under them (a container query on the row's own width: the panel's
+// width never changes while speaking, so neither does the row's height). In
+// the row layout's narrow column (under 230 px) one item per line, each key
 // at the left. Windows high contrast: keys like the dome (src/index.css).
 const KEY_CLS = "heard-key inline-block w-2.5 h-2.5 rounded-sm shrink-0";
 const KEY_ITEM = "inline-flex items-center gap-1 whitespace-nowrap";
@@ -368,25 +378,49 @@ function DomeKey({ grey = false }) {
   const key = (kind) => (grey
     ? <span className={`${KEY_CLS} heard-key-empty border border-neutral-700`} />
     : <span className={`${KEY_CLS} heard-${kind}`} data-axis-key={kind} />);
-  const bracketKey = (
-    <svg className="heard-key shrink-0" width="12" height="8" viewBox="0 0 12 8" data-axis-key={grey ? undefined : "bracket"}>
-      <path d="M1 7.5V4.5A5 3.5 0 0 1 11 4.5V7.5" fill="none" strokeWidth="1.5"
-        className={grey ? "heard-key-empty stroke-neutral-700" : "heard-bracket-key"} />
-    </svg>
-  );
   return (
     <div className="@container mx-auto mt-1 max-w-[360px] heardrow:col-start-2 heardrow:row-start-1 heardrow:mx-0 heardrow:mt-0.5" aria-hidden="true">
-      <div className="grid grid-cols-[auto_auto] justify-between gap-x-2 gap-y-0.5 text-[11px] leading-4 text-neutral-400 @max-[230px]:grid-cols-1 @max-[230px]:gap-y-1" data-axis-ends="">
-        <span className={KEY_ITEM}>{key("man")}{AXIS_ENDS.left}</span>
-        <span className={`${KEY_ITEM} justify-self-end @max-[230px]:justify-self-start @max-[230px]:flex-row-reverse`}>{AXIS_ENDS.right}{key("woman")}</span>
-        <span className="col-span-2 flex justify-center gap-x-3 @max-[230px]:col-span-1 @max-[230px]:flex-col @max-[230px]:gap-y-1">
-          <span className={KEY_ITEM}>{key("unsure")}{UNSURE_WORDS}</span>
-          <span className={KEY_ITEM}>{bracketKey}{BRACKET_WORDS}</span>
+      <div className="grid grid-cols-[auto_auto_auto] justify-between gap-x-2 gap-y-0.5 text-[11px] leading-4 text-neutral-400 @max-[330px]:grid-cols-[auto_auto] @max-[230px]:grid-cols-1 @max-[230px]:gap-y-1" data-axis-ends="">
+        <span className={KEY_ITEM} data-axis-item="man">{key("man")}{AXIS_ENDS.left}</span>
+        <span className="inline-flex gap-x-3 @max-[330px]:col-span-2 @max-[330px]:row-start-2 @max-[330px]:justify-self-center @max-[230px]:col-span-1 @max-[230px]:row-start-auto @max-[230px]:justify-self-start">
+          <span className={KEY_ITEM} data-axis-item="unsure">{key("unsure")}{UNSURE_WORDS}</span>
+          {!grey && <BracketKey where="key" />}
         </span>
+        <span className={`${KEY_ITEM} justify-self-end @max-[230px]:justify-self-start @max-[230px]:flex-row-reverse`} data-axis-item="woman">{AXIS_ENDS.right}{key("woman")}</span>
       </div>
     </div>
   );
 }
+
+// The bracket's key, a small arc and "likely range" (user decision
+// 2026-10-26: "⌒ likely range"), shown in exactly one place, chosen by
+// container queries on widths that never change while speaking: in the key
+// row's second line beside "unsure or neither" where the key row wraps
+// (230-330 px: portrait phones under ~380 px, where the legend line would
+// wrap with it), else leading the legend line (wider panels, and the row
+// layout's narrow key column, where a fourth key line overflowed the
+// short-desktop column by ~35 px). aria-hidden: the dome's own description
+// names the bracket. (The key-row copy does not use KEY_ITEM: its inline-flex
+// would override `hidden`.)
+const BRACKET_SVG = (
+  <svg className="heard-key inline-block shrink-0" width="12" height="8" viewBox="0 0 12 8" data-axis-key="bracket">
+    <path d="M1 7.5V4.5A5 3.5 0 0 1 11 4.5V7.5" fill="none" strokeWidth="1.5" className="heard-bracket-key" />
+  </svg>
+);
+function BracketKey({ where }) {
+  return where === "key" ? (
+    <span aria-hidden="true" className="hidden items-center gap-1 whitespace-nowrap @max-[330px]:inline-flex @max-[230px]:hidden" data-axis-item="bracket" data-bracket-key="key">
+      {BRACKET_SVG}{BRACKET_WORDS}
+    </span>
+  ) : (
+    <span aria-hidden="true" className="whitespace-nowrap @min-[230px]:@max-[330px]:hidden [&>svg]:mr-1 [&>svg]:align-[-1px]" data-bracket-key="legend">
+      {BRACKET_SVG}{BRACKET_WORDS} ·{" "}
+    </span>
+  );
+}
+const Legend = ({ stale, className, ...rest }) => (
+  <p className={`@container ${className}`} {...rest}><BracketKey where="legend" />{legendText(stale)}</p>
+);
 
 // The man <-> woman dome (owner's choice 2026-10-25; three parts adding to
 // 10 and a bracket, user decision 2026-10-26): ten tenth-segments — deep
@@ -593,7 +627,7 @@ export function HeardAsPanel({
           <EmptyAxis />
           <div className={NOTE_CLS}>{RESERVE.note}</div>
           <Reserve className={UNSURE_CLS} texts={RESERVE.unsure} />
-          <div className={LEGEND_CLS}>{RESERVE.legend}</div>
+          <Legend stale className={LEGEND_CLS} />
         </div>
         <div aria-hidden="true" className={`invisible col-start-1 row-start-1 ${ROW_GRID}`}>
           <EmptyAxis />
@@ -625,9 +659,7 @@ export function HeardAsPanel({
               {!view.pitchOnly && extraNote != null && extraNote !== false && (
                 <div className="mt-1 text-[11px] leading-snug text-amber-200/80 heardrow:col-[1/-1] heardrow:row-start-5" data-heard-as-note="extra">{extraNote}</div>
               )}
-              <p className={`${LEGEND_CLS} text-neutral-400`} data-heard-as-legend="">
-                {legendText(stale)}
-              </p>
+              <Legend stale={stale} className={`${LEGEND_CLS} text-neutral-400`} data-heard-as-legend="" />
             </div>
           )}
         </div>

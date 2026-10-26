@@ -44,7 +44,14 @@
 //     desktop) and 890 x 448 (short landscape), where the panel is in its row
 //     layout (the dome at the left, its key, unsure line and legend beside
 //     it; 2026-10-26), so the one-height rule is checked there too; every
-//     shown estimate's sentence must sit inside the dome's hollow.
+//     shown estimate's sentence must sit inside the dome's hollow. And the
+//     meaning (three parts adding to 10, user decision 2026-10-26), in every
+//     shown state: the drawn segments per kind = the tenths in the words
+//     (data-tenths-*, the sentence and the line under it — sayText /
+//     restText), summing to 10; all ten striped and no bracket when split;
+//     otherwise the bracket's ends on segment boundaries, containing the
+//     bigger side's edge; each estimate and its mirror (eta and -eta) draw
+//     mirrored domes and say the same words with man / woman swapped.
 // Screenshots of each part in both states go to <out>/<viewport>-<part>-<state>.png.
 //
 // Process hygiene (CLAUDE.md hard rule 2): Chrome is launched by puppeteer with a fresh
@@ -59,6 +66,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import puppeteer from "puppeteer-core";
 import { CHROME_BLOCK_MODEL_ARGS, allPanelStates, installPanelForce, forcePanel } from "../heard-as/panel-force.mjs";
+import { sayText, restText } from "../../src/components/heardAsAxisModel.js";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const arg = (k, d) => (process.argv.find((a) => a.startsWith(`--${k}=`)) ?? `=${d}`).split("=").slice(1).join("=");
@@ -449,7 +457,7 @@ if (FORCED) {
     check(vp, "forced: panel states can be set", inst.ok, inst.why ?? "");
     if (!inst.ok) { await page.close(); continue; }
     const scope = `[data-heard-as], ${BAR}`;
-    const samples = [], seen = [], noBar = [], outOfDome = [];
+    const samples = [], seen = [], noBar = [], outOfDome = [], badMeaning = [], drawnByName = {};
     let inDomeChecked = 0;
     for (const st of STATES) {
       await forcePanel(page, st);
@@ -475,6 +483,30 @@ if (FORCED) {
           return l.bottom <= cy + 0.5 && Math.hypot(l.left - cx, inkTop - cy) <= r + 1 && Math.hypot(l.right - cx, inkTop - cy) <= r + 1;
         });
       });
+      // The meaning (2026-10-26): what is drawn = what is said.
+      const drawn = await page.evaluate(() => {
+        const a = document.querySelector("[data-heard-as] [data-heard-as-axis]");
+        if (!a) return null;
+        const kinds = [...a.querySelectorAll("[data-tenth]")].sort((x, y) => x.dataset.tenth - y.dataset.tenth).map((e) => e.dataset.tenthKind[0]).join("");
+        const b = a.querySelector("[data-bracket]");
+        const angle = (q) => (Math.atan2(156 - q.y, q.x - 150) * 180) / Math.PI;
+        return { kinds, wide: a.dataset.axisWide === "1", split: a.dataset.axisSplit === "1",
+          t: { man: Number(a.dataset.tenthsMan), unsure: Number(a.dataset.tenthsUnsure), woman: Number(a.dataset.tenthsWoman) },
+          range: document.querySelector("[data-heard-as] [data-heard-as-range]")?.textContent ?? "",
+          unsure: document.querySelector("[data-heard-as] [data-heard-as-unsure]")?.textContent ?? null,
+          bracket: b ? { lo: Number(b.dataset.bracketLo), hi: Number(b.dataset.bracketHi), side: b.dataset.bracketSide,
+            a0: angle(b.getPointAtLength(0)), a1: angle(b.getPointAtLength(b.getTotalLength())) } : null };
+      });
+      if (drawn) {
+        const { t, kinds } = drawn, n = (c) => kinds.split("").filter((x) => x === c).length;
+        const edge = t.man > t.woman ? t.man : 10 - t.woman, onB = (deg, k) => Math.abs(deg - (180 - 18 * k)) < 0.5;
+        const ok = kinds.length === 10 && t.man + t.unsure + t.woman === 10 && drawn.range === sayText(t, drawn.wide)
+          && (drawn.split ? kinds === "ssssssssss" && drawn.bracket === null && drawn.unsure === null
+            : /^m*u*w*$/.test(kinds) && n("m") === t.man && n("u") === t.unsure && n("w") === t.woman && drawn.unsure === restText(t, drawn.wide)
+              && !!drawn.bracket && drawn.bracket.lo <= edge && edge <= drawn.bracket.hi && onB(drawn.bracket.a0, drawn.bracket.lo) && onB(drawn.bracket.a1, drawn.bracket.hi));
+        if (!ok) badMeaning.push(`${st.name}: ${JSON.stringify(drawn)}`);
+        drawnByName[st.name] = drawn;
+      }
       if (inDome !== null) inDomeChecked++;
       if (inDome === false) outOfDome.push(st.name);
       samples.push({ ...one, state: `${st.name} -> ${one.state}` });
@@ -487,6 +519,19 @@ if (FORCED) {
       wantReasons.every((r) => reasons.has(r)) && [...wantShown, ...wantShown.map((k) => `${k}+pitch-only`)].every((k) => seen.includes(k)),
       JSON.stringify([...new Set(seen)]));
     check(vp, "forced: the dome is on screen in every state (empty and greyed without an estimate)", noBar.length === 0, noBar.join(", "));
+    check(vp, `forced: in every shown state (${Object.keys(drawnByName).length}) the drawn segments per kind = the tenths in the words, summing to 10; split = all striped, no bracket, no line under it; else the bracket's ends on segment boundaries, containing the bigger side's edge`,
+      Object.keys(drawnByName).length > 0 && badMeaning.length === 0, badMeaning.slice(0, 2).join(" | "));
+    const swapW = (x) => x == null ? x : x.replace(/would say (man|woman)\b/g, (m0, w) => `would say ${w === "man" ? "woman" : "man"}`);
+    const mirrorBad = [];
+    for (const [name, A] of Object.entries(drawnByName)) {
+      const mm = name.match(/^eta(\d[\d.]*)(.*)$/);
+      const B = mm ? drawnByName[`eta-${mm[1]}${mm[2]}`] : null;
+      if (!B) continue;
+      const mk = A.kinds.split("").reverse().map((c) => (c === "m" ? "w" : c === "w" ? "m" : c)).join("");
+      if (!(mk === B.kinds && swapW(A.range) === B.range && swapW(A.unsure) === B.unsure
+        && (A.bracket ? !!B.bracket && A.bracket.lo === 10 - B.bracket.hi && A.bracket.hi === 10 - B.bracket.lo : B.bracket === null))) mirrorBad.push(name);
+    }
+    check(vp, "forced: mirrored estimates (eta / -eta) draw mirrored domes and say the same words with man / woman swapped", mirrorBad.length === 0, mirrorBad.join(", "));
     check(vp, `forced: every shown estimate's sentence is drawn inside the dome's hollow (${inDomeChecked} checked)`, inDomeChecked > 0 && outOfDome.length === 0, outOfDome.join(", "));
     const m = maxMove(samples);
     check(vp, `forced: ${STATES.length} states, ${m.n} buttons / inputs / boxes (panel, practice dock), none moved (max ${m.worst.d.toFixed(2)} px <= ${TOL})`,
