@@ -406,13 +406,16 @@ const CueColumn = memo(function CueColumn({ cue, title, titleNote, info, side, s
             runs on the main thread at the display rate
             (measurements/main-thread-cpu-2026-10-08.md). Hollow = a 1.5 px
             ring (off target). A chevron inside it when the value is pinned
-            at an end of the scale. No transition under
-            prefers-reduced-motion: the thumb jumps (review N-7). */}
+            at an end of the scale. Its colours are inline backgrounds, kept
+            as authored under Windows high contrast (forced-color-adjust:
+            none), where they would otherwise be flattened to the page
+            colour. No transition under prefers-reduced-motion: the thumb
+            jumps (review N-7). */}
         {G && dotPos && (
           <span
             data-cue-dot-mark=""
             aria-hidden="true"
-            className="absolute left-0 top-0 flex items-center justify-center rounded-full box-border pointer-events-none motion-safe:transition-transform motion-safe:duration-200 motion-safe:ease-out"
+            className="absolute left-0 top-0 flex items-center justify-center rounded-full box-border pointer-events-none forced-color-adjust-none motion-safe:transition-transform motion-safe:duration-200 motion-safe:ease-out"
             style={{
               width: G.thumbW,
               height: G.thumbH,
@@ -565,7 +568,7 @@ export function CueStrip({
       <span className={`flex items-center gap-1 h-4 text-[length:var(--cue-sub)] leading-4 font-semibold whitespace-nowrap ${statusTextClass(levelStatus)}`}>
         {pitchWord && (
           <>
-            <span aria-hidden="true" className="w-[7px] h-[7px] rounded-full box-border shrink-0"
+            <span aria-hidden="true" className="w-[7px] h-[7px] rounded-full box-border shrink-0 forced-color-adjust-none"
               style={pHollow ? { border: `1.5px solid ${pColor}` } : { background: pColor }} />
             <span data-cue-word="">{pitchWord}</span>
           </>

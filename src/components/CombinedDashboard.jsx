@@ -1,8 +1,9 @@
 // CombinedDashboard.jsx — Default practice view (Design A "cue strip",
 // 2026-10-07): the 15 s pitch trace with the cue strip directly under it —
-// Pitch and Resonance · approx., each on a neutral axis with typical-speaker
-// bands, a dot and a trail (CueStrip.jsx; the Clarity row is hidden since
-// 2026-10-11, measurements/clarity-cue-2026-10-08.md) — then the
+// Pitch and Resonance · approx. as twin vertical meters side by side with
+// typical-speaker bands, a thumb and a trail (CueStrip.jsx; one horizontal
+// row each until 2026-10-25; the Clarity cue is hidden since 2026-10-11,
+// measurements/clarity-cue-2026-10-08.md) — then the
 // "Likely heard as · Experimental" panel (HeardAsPanel.jsx; on by default
 // since 2026-10-25, switched off only in Settings) and one
 // session row. Replaced the Perceived-voice bar, the F2 readout and the
@@ -10,12 +11,14 @@
 // caption). Handles session recording: buffers frames and writes to
 // IndexedDB every ~1s (no cue values are recorded).
 //
-// Layout: phones (portrait) stack trace / strip / panel / session row, the
-// trace sized clamp(150px, 26dvh, 240px) so trace + strip fit the first
-// screen at 448 × 890 (Pixel 8 Pro) down to 360 × 690; short landscape
-// (≤ 480 px tall, ≥ 640 px wide) puts trace and strip side by side; desktop
-// (lg) puts the trace left and a 38 % column (420–540 px: strip + panel)
-// right, the strip drawn larger there (read at arm's length).
+// Layout: phones (portrait) stack trace / strip / panel, the trace sized
+// clamp(150px, 26dvh, 240px) and each meter clamp(150px, 74dvh − 285px,
+// 232px) (CueStrip.jsx) so the trace and both columns fit the first screen
+// at 448 × 890 (Pixel 8 Pro) down to 360 × 690; short landscape (≤ 480 px
+// tall, ≥ 640 px wide) puts trace and strip side by side, the meters filling
+// the strip's height; desktop (lg) puts the trace left and a 38 % column
+// (420–540 px: strip + panel) right, the strip drawn larger there (read at
+// arm's length).
 //
 // The pitch target follows the user's training direction
 // (utils/trainingDirection.js) and judges the pitch LEVEL (running 1.5 s
