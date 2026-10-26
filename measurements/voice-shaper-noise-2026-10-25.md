@@ -247,3 +247,37 @@ Either way: re-tracking stays (it is most of the gain over the fork); FireRedVAD
 MMSE, GTCRN and WORLD-domain subtraction are not used; DeepFilterNet 3 is the candidate for a
 later "higher quality" option if its 8 MB and phone cost are acceptable. Listening page with ten
 held-out clips (blind mode): built from `scripts/voice-preview/noise-study/listen.mjs`.
+
+## 6. DeepFilterNet 3 in the browser — feasibility (2026-10-25, after the user OK'd an 8 MB download)
+
+**Route 1, the official WebAssembly build** (`libDF/src/wasm.rs`, `wasm-pack build --features wasm`,
+tract inside; built here at d375b2d with `default-model` dropped from the `wasm` feature so the
+model is passed at runtime): works frame by frame, but costs **370–410 ms of CPU per audio
+second** in Node WebAssembly (SIMD build no faster) — ~4× the native CLI; a phone could not keep
+up while recording, and an 8 s clip would take seconds after Stop. Its binding also runs libDF's
+`RuntimeParams` default stage thresholds (−10 / 30 / 20 dB), not the CLI's (−15 / 35 / 35) that §3
+scored. Not pursued.
+
+**Route 2, a JS port + onnxruntime-web** (`scripts/voice-preview/noise-study/dfn3.js`): libDF's signal
+processing ported to JS (Vorbis-window STFT with a mixed-radix 960-point FFT, ERB / complex features
+with exponential normalisation, the per-frame stage thresholds, ERB gains, deep filtering over
+frames τ−2 … τ+2, inverse STFT), and the official ONNX graphs run **once over the whole recording**
+with onnxruntime-web (the app already ships it for FireRedVAD).
+
+- Faithfulness: vs the official wasm with its thresholds, −26 … −29 dB difference; vs the CLI with
+  the CLI's thresholds, −18 … −36 dB (the two references differ from each other by −10 … +0.7 dB:
+  per-frame stage decisions flip on float differences).
+- Quality through the real engine (280 held-out mixtures: the first 20 women's and 20 men's test
+  clips, one draw per SNR, all three cells), paired against the CLI scores of §3 on the same
+  mixtures: noisy PESQ +0.80 vs +0.74, clean −1.14 vs −1.85, quiet rooms +0.20 vs +0.05, DNSMOS OVRL
+  +0.76 vs +0.73 — the port is at least as good (whole-sequence processing has no streaming warm-up).
+  Worse sex, automatic: 45 dB +0.58 (RNNoise + re-track +0.35 on the same mixtures), 28 dB +0.48
+  (+0.29). The subset has no RAVDESS clip, so it does not exercise the room-tone cases of §3.
+- Speed: Node 65 ms per audio second (RNNoise on the same PC ~95); **desktop Chrome** (headless,
+  dev PC, `dfbench/run-desktop.mjs`): a 7.4 s recording in 0.44–0.65 s, sessions 0.40–0.46 s (can
+  be created during the recording); output bit-identical to Node's.
+- Download: the three graphs 8.6 MB (8.0 MB gzip); onnxruntime-web's WASM (3.4 MB gzip) is the
+  file the app already self-hosts for FireRedVAD.
+- **Not streaming**: the exported graphs keep no recurrent state between calls, so the whole
+  recording is processed at Stop: desktop ~0.5–0.65 s plus re-tracking, over the 0.5 s G4 budget;
+  **phone not measured** (`dfbench/run-phone.mjs`, needs the phone on USB).
