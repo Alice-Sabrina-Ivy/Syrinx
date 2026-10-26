@@ -356,8 +356,11 @@ const CueColumn = memo(function CueColumn({ cue, title, titleNote, info, side, s
         className="relative h-[clamp(150px,calc(74dvh-285px),270px)] lg:h-[clamp(180px,calc(100dvh-620px),300px)] deskshort:h-[clamp(120px,calc(100dvh-528px),300px)] max-lg:shortland:h-auto max-lg:shortland:flex-1 max-lg:shortland:min-h-0"
         data-cue-meter=""
       >
+        {/* pointer-events-none: the SVG is decoration, and its overflow
+            reached over the pitch column's steadiness "i" at 360 px
+            (2026-10-26 review: ~9 % of its 44 px hit area did nothing). */}
         {G && (
-          <svg width={G.svgW} height={h} className="absolute left-0 top-0 block overflow-visible" aria-hidden="true">
+          <svg width={G.svgW} height={h} className="absolute left-0 top-0 block overflow-visible pointer-events-none" aria-hidden="true">
             <defs>
               {/* darker at the bottom, lighter at the top (the "lower / darker"
                   end is down) */}
