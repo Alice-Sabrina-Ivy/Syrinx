@@ -61,10 +61,12 @@
 //         (448 x 890, touch, direction "More feminine"): opening the target row with a prefilled
 //         field does not focus the field (no phone keyboard over the tab's area).
 // denoise (noise.wav, 448 x 890, touch; 2026-10-23, measurements/voice-shaper-denoise-2026-10-23.md;
-//         auto since 2026-10-25, measurements/voice-shaper-noise-2026-10-25.md): the noisy
-//         recording is noise-reduced by itself (the switch on, the "Turned on because…" line, the
-//         track re-made by a nested pitch worker, exactly one rnnoise .wasm request; RNNoise,
-//         re-track and analysis times printed); Original plays; off: the same recording analysed
+//         auto + DeepFilterNet 3 since 2026-10-25, measurements/voice-shaper-noise-2026-10-25.md;
+//         needs the graphs in public/models/dfn3/ before the build while DFN3_MODEL.mirrorCommit is
+//         null: node scripts/fetch-dfn3-model.mjs --out=public/models/dfn3): the noisy recording is
+//         noise-reduced by itself (the switch on, the "Turned on because…" line, the track re-made
+//         by a nested pitch worker, the three graphs requested once each; noise-reduction, re-track
+//         and analysis times printed); Original plays; off: the same recording analysed
 //         again ("Noise reduction off. …" announced) with the quick setting that was showing, the
 //         notice points to the switch; on again: no new request; Record again keeps the user's
 //         choice (on) and the new take is analysed with it. No console errors. Screenshot phone-dark-denoise.
@@ -214,8 +216,8 @@ function startStatic() {
   });
   return new Promise((r) => httpServer.listen(PORT, "127.0.0.1", r));
 }
-const isVp = (p) => /VoiceShaperView|VoicePreviewCard|vp-worker|vp_world|rnnoise/.test(p);
-const isRnnoise = (p) => /\/rnnoise-[\w-]+\.wasm$/.test(p);
+const isVp = (p) => /VoiceShaperView|VoicePreviewCard|vp-worker|vp_world|models\/dfn3\//.test(p);
+const isDfn3 = (p) => /\/models\/dfn3\/\w+\.onnx$/.test(p);
 // the Resonance lab's own files (its view chunk, pipeline, worker): opening Voice Shaper must not start the lab
 const isLab = (p) => /LabView|labPipeline|lab-worker/.test(p);
 const wasmName = (p) => p.split("/").pop();
@@ -374,9 +376,9 @@ async function pageMem(cdp) {
 const vpWorkers = (page) => page.workers().filter((w) => /vp-worker/.test(w.url()));
 // The worker's WORLD heap as the worker reports it (ready / analysed memBytes, on the card as
 // data-vp-wasm-bytes). Until 2026-10-25 this was a CDP Runtime.queryObjects census of the
-// worker's WebAssembly.Memory instances, but once the worker holds the RNNoise module (fetched at
-// Record since noise reduction became automatic) any queryObjects on the worker closes its target
-// in Chrome 155 (reproduced with a worker that only loads rnnoise.wasm; measurements/
+// worker's WebAssembly.Memory instances, but once the worker held the RNNoise module (2026-10-25,
+// fetched at Record) any queryObjects on the worker closed its target in Chrome 155 (reproduced
+// with a worker that only loads rnnoise.wasm; measurements/
 // voice-shaper-noise-2026-10-25.md); the page census below is unaffected.
 async function workerMem(page) {
   const ws = vpWorkers(page);
@@ -1187,13 +1189,13 @@ async function partDenoise() {
       denoise: c.dataset.vpDenoise, denoised: c.dataset.vpDenoised, reanalysing: c.dataset.vpReanalysing, rendered: c.dataset.vpRendered, phase: c.dataset.vpPhase };
   });
   let r = await row();
-  const req = served.filter(isRnnoise);
+  const req = served.filter(isDfn3);
   const dn = await page.evaluate(() => { const c = document.querySelector("[data-voice-preview]"); return { ms: c.dataset.vpDenoiseMs, re: c.dataset.vpRetrackMs, total: c.dataset.vpAnalysisMs, s: c.dataset.vpSeconds, rate: c.dataset.vpCaptureRate, retracked: c.dataset.vpRetracked, auto: !!c.querySelector("[data-vp-denoise-auto]") }; });
   // auto (2026-10-25): the noisy recording is noise-reduced by itself, the track re-made
   check("noise.wav: a preview with the noise notice, noise-reduced automatically (switch on, the auto line, the track re-made)",
     rec.ok && rec.st.notices.includes("noise") && r.present && r.checked === true && r.denoised === "1" && dn.auto && dn.retracked === "1" && r.hint.includes("Original") && !r.tryLine,
-    `RNNoise ${dn.ms} ms + re-track ${dn.re} ms, analysis ${dn.total} ms for ${dn.s} s at ${dn.rate} Hz; ${JSON.stringify(r)}`);
-  check("exactly one rnnoise .wasm request", req.length === 1, req.join());
+    `DeepFilterNet 3 ${dn.ms} ms + re-track ${dn.re} ms, analysis ${dn.total} ms for ${dn.s} s at ${dn.rate} Hz; ${JSON.stringify(r)}`);
+  check("the three DeepFilterNet 3 graphs requested once each", req.length === 3 && new Set(req).size === 3, req.join());
   // a quick setting showing, then the switch off
   await clickSel(page, '[data-vp-preset="higherBrighter"]');
   await waitVp(page, () => document.querySelector("[data-voice-preview]")?.dataset.vpRendered !== "" && document.querySelector("[data-voice-preview]")?.dataset.vpRendering === "0", "preset rendered", 15000);
@@ -1214,7 +1216,7 @@ async function partDenoise() {
   await clickSel(page, "[data-vp-denoise-toggle]");
   await done();
   r = await row();
-  check("on again: no new request, noise-reduced with the same setting", served.filter(isRnnoise).length === 1 && r.checked === true && r.denoised === "1" && r.rendered === setting, JSON.stringify(r));
+  check("on again: no new request, noise-reduced with the same setting", served.filter(isDfn3).length === 3 && r.checked === true && r.denoised === "1" && r.rendered === setting, JSON.stringify(r));
   await waitVp(page, () => !document.querySelector("[data-vp-record]")?.getAttribute("aria-disabled"), "record again armed", 5000);
   await clickSel(page, "[data-vp-record]"); // Record again
   await phaseIs(page, "recording", 15000);

@@ -10,10 +10,13 @@
 // Node tests drive this file with file URLs (tests/voice-preview/worker-test.js).
 //
 // Main thread -> worker:
-//   init    { glueUrl, wasmUrls: { simd, nosimd }, rnnoiseUrl?, retrack = true }
+//   init    { glueUrl, wasmUrls: { simd, nosimd }, dfn3Source?, ortWasmPaths?, retrack = true }
 //             SIMD build where the SIMD probe validates, else non-SIMD; a SIMD build that
 //             fails to compile or instantiate is retried once with the non-SIMD build.
-//             The RNNoise module (rnnoiseUrl) is fetched only when noise reduction is first used.
+//             dfn3Source: where DeepFilterNet 3's graphs come from (./dfn3-model.js
+//             dfn3ModelSource; absent: noise reduction unavailable); ortWasmPaths: the app's own
+//             onnxruntime-web runtime files (src/ml/ort-runtime-files.js). Fetched at the first
+//             Record whose setting is not "off" (so they are usually there by the end of it).
 //             retrack: when a recording is noise-reduced, re-make its F0 track from the cleaned
 //             audio with a fresh instance of the app's pitch worker (./retrack.js); false keeps
 //             the posted track (tests).
@@ -28,7 +31,7 @@
 //   cancel  -> cancelled { seconds } (the recording is dropped)
 //   pitch   { contextTime, pitch (Hz | null), notched } — one forwarded posted value
 //   render  { id, st, pct } -> rendered { id, st, pct, pcm (transferred), rate, ms }
-//   denoise { on } — background-noise reduction (RNNoise, ./denoise.js) for the engine's input,
+//   denoise { on } — background-noise reduction (DeepFilterNet 3, ./dfn3.js) for the engine's input,
 //             the user's choice (it replaces "auto" for the rest of this worker's life):
 //             during a recording it applies to that recording's analysis; with a preview it
 //             re-analyses the same recording and posts `analysed` again (no `original`). A
@@ -39,14 +42,16 @@
 //              pitch { medianHz, p5Hz }, limits { stMin, stMax, pctMin, pctMax },
 //              hops { recorded, received }, ms, memBytes, original?, rebuild }
 //            (take: the recording's number in this worker, the same on a re-analysis;
-//             denoised: the engine's input went through RNNoise; auto: "auto" decided it;
+//             denoised: the engine's input went through DeepFilterNet 3; auto: "auto" decided it;
 //             retracked: WORLD's F0 track was re-made from the cleaned audio. The recording
 //             check, the pitch statistics / limits and `original` always come from the
 //             recording as captured and its posted track.
 //             original: float32 at the capture rate — at the engine rate above 96 kHz — on
 //             a take's first analysis only; rebuild: the unchanged rebuild, float32 at the
 //             engine rate; both transferred)
-//   denoise-error { message } — RNNoise could not load or run: the analysis went ahead
+//   progress { stage: "model" | "denoise" | "retrack" } — a noise-reduced analysis is waiting for
+//             the model files (first use), running DeepFilterNet 3, or re-tracking
+//   denoise-error { message } — noise reduction could not load or run: the analysis went ahead
 //             without it (denoised: false) and noise reduction is off in this worker
 //   no-voice { voicedS, check }
 //   error    { stage: "load" | "record" | "analyse" | "render", kind: "memory" | "other", message, id? }
@@ -56,9 +61,7 @@ import { createRecorder } from "./recorder.js";
 import { recordingCheck, autoDenoise } from "./checks.js";
 import { pitchStats, pitchLimits } from "./controls.js";
 import { resampleClip, engineRateFor } from "./engine/preview.js";
-import { loadRnnoise, denoiseClip } from "./denoise.js";
-import { createDenoiseStream } from "./denoise-stream.js";
-import { createRetracker, retrack } from "./retrack.js";
+import { retrack } from "./retrack.js";
 
 const now = () => performance.now();
 const ORIGINAL_MAX_RATE = 96000;
@@ -71,15 +74,17 @@ let port = null;
 let trackTimer = null;
 let trackTimeoutMs = 500;
 let phase = "loading"; // loading | idle | recording | waiting | analysing | ready | failed
-let rnnoiseUrl = null;
-let rnnoise = null;     // Promise of the loaded RNNoise module (first use)
+let dfn3Source = null;  // where the DeepFilterNet 3 graphs come from (init)
+let ortWasmPaths = null;
+let dfn3Files = null;   // Promise of the three graphs' bytes (fetched from the first Record that may need them)
+let dfn3 = null;        // Promise of { dfn, clip } (sessions created when a recording first needs them)
+let dfn3Ready = false;
 let denoiseMode = "off"; // "auto" | "on" | "off": the setting for the next take
 let denoiseOn = false;  // noise reduction for the engine's input (this take)
 let denoiseAuto = false; // denoiseOn was decided by "auto"
 let retrackOn = true;
 let denoiseBroken = false;
 let take = 0;
-let live = null;        // noise reduction + re-tracking while recording (startLive)
 let last = null;        // the take being previewed: what a re-analysis needs (recording as captured)
 
 function send(msg, transfer) {
@@ -115,7 +120,8 @@ async function loadBuild(glueUrl, wasmUrl) {
 
 async function init(m) {
   const t0 = now();
-  rnnoiseUrl = m.rnnoiseUrl ?? null;
+  dfn3Source = m.dfn3Source ?? null;
+  ortWasmPaths = m.ortWasmPaths ?? null;
   retrackOn = m.retrack !== false;
   const order = simdSupported() ? ["simd", "nosimd"] : ["nosimd"];
   let lastErr = null;
@@ -145,68 +151,11 @@ function closePort() {
   port = null;
 }
 
-// ---- noise reduction while recording ----
-// Unless the setting is "off", Record also starts RNNoise (fetched now, if it is not yet) and a
-// pitch worker for re-tracking, and every recorded chunk is noise-reduced and re-tracked as it
-// arrives (./denoise-stream.js, ./retrack.js), so that when "auto" (or "on") wants the
-// noise-reduced version at the end, only the last few frames are left. If "auto" decides
-// against it, the work is dropped. The result equals the whole-recording computation.
-const LIVE_CATCH_UP = 4; // chunks processed per arriving chunk while catching up (the module came late)
-
-function startLive(sr) {
-  const L = { sr, stream: null, retracker: null, next: 0, offset: 0, parts: [], busyMs: 0, dead: false };
-  if (retrackOn) {
-    try { L.retracker = createRetracker(sr, createPitchWorker); } catch { L.retracker = null; }
-  }
-  getRnnoise().then((rn) => {
-    if (L.dead || !rn) return;
-    try { L.stream = createDenoiseStream(rn, sr); } catch { L.stream = null; return; }
-    pumpLive(L, LIVE_CATCH_UP);
-  });
-  return L;
-}
-
-/** Noise-reduce the recorded chunks not processed yet (at most `max`). */
-function pumpLive(L, max = Infinity, rec = recorder) {
-  if (!L || L.dead || !L.stream || !rec) return;
-  const t = now();
-  const pcm = rec.pcm();
-  const lens = rec.chunkLens();
-  for (let n = 0; n < max && L.next < lens.length; n++) {
-    const len = lens[L.next];
-    const y = L.stream.push(pcm.subarray(L.offset, L.offset + len));
-    L.offset += len;
-    L.next++;
-    if (y.length) {
-      L.parts.push(y);
-      if (L.retracker) L.retracker.push(y);
-    }
-  }
-  L.busyMs += now() - t;
-}
-
-function stopLive(L) {
-  if (!L) return;
-  L.dead = true;
-  try { if (L.stream) L.stream.free(); } catch { /* freed */ }
-  try { if (L.retracker) L.retracker.cancel(); } catch { /* gone */ }
-}
-
-function dropLive() {
-  stopLive(live);
-  live = null;
-}
-
 function onChunk(e) {
   const d = e.data;
   if (!d || !d.buffer || phase !== "recording") return;
-  const samples = new Float32Array(d.buffer);
-  const r = recorder.pushChunk(samples, d.contextTime);
+  const r = recorder.pushChunk(new Float32Array(d.buffer), d.contextTime);
   if (r.level) send({ type: "level", ...r.level });
-  if (live && r.accepted) {
-    if (live.retracker) live.retracker.chunk(samples.length);
-    pumpLive(live, 1 + LIVE_CATCH_UP);
-  }
   if (r.stopped === "max") ended("max");
 }
 
@@ -225,8 +174,10 @@ function record(m) {
   }
   trackTimeoutMs = m.trackTimeoutMs ?? 500;
   denoiseMode = m.denoise === true ? "on" : m.denoise === "auto" || m.denoise === "on" ? m.denoise : "off";
-  dropLive();
-  if (denoiseMode !== "off" && rnnoiseUrl && !denoiseBroken) live = startLive(m.sampleRate);
+  // the model may be needed when this recording ends: download its files now (network only, once
+  // per worker; onnxruntime and the sessions are set up after the recording, so nothing heavy runs
+  // in this thread while its chunks arrive)
+  if (denoiseMode !== "off" && dfn3Source && !denoiseBroken) setTimeout(fetchDfn3Files, 0);
   port = m.port;
   port.onmessage = onChunk;
   if (typeof port.start === "function") port.start();
@@ -245,7 +196,6 @@ function ended(reason) {
   if (reason === "user") recorder.stop("user");
   if (recorder.tooShort()) {
     recorder = null;
-    dropLive();
     phase = "idle";
     send({ type: "too-short", seconds });
     return;
@@ -262,7 +212,6 @@ function cancel() {
   const seconds = recorder ? recorder.seconds : 0;
   if (phase === "recording" || phase === "waiting") {
     recorder = null;
-    dropLive();
     phase = "idle";
   }
   send({ type: "cancelled", seconds });
@@ -297,20 +246,17 @@ function analyse() {
   const seconds = rec.seconds;
   const checkOut = { hum: check.hum, noise: check.noise, marginDb: check.marginDb, voicedS: check.voicedS };
   if (!check.enoughVoice) {
-    dropLive();
     phase = "idle";
     send({ type: "no-voice", voicedS: check.voicedS, check: checkOut, hops });
     return;
   }
   denoiseAuto = denoiseMode === "auto";
   denoiseOn = denoiseMode === "on" || (denoiseAuto && autoDenoise(check.marginDb));
-  last = { take: ++take, pcm, sr, track, lens: rec.chunkLens(), seconds, check: checkOut, hops, checkMs, rec, live: denoiseOn ? live : null, cleaned: null };
-  if (!denoiseOn) stopLive(live); // "auto" decided against it: drop the work done while recording
-  live = null;
+  last = { take: ++take, pcm, sr, track, lens: rec.chunkLens(), seconds, check: checkOut, hops, checkMs, cleaned: null };
   return guarded(runAnalysis(true));
 }
 
-/** An analysis runs asynchronously once RNNoise is involved: its failures still end in `error`. */
+/** An analysis runs asynchronously once noise reduction is involved: its failures still end in `error`. */
 function guarded(p) {
   return p.catch((err) => {
     phase = "failed";
@@ -318,15 +264,40 @@ function guarded(p) {
   });
 }
 
-/** The RNNoise module, loaded on first use; null when it cannot load (reported once). */
-async function getRnnoise() {
-  if (denoiseBroken || !rnnoiseUrl) return null;
-  if (!rnnoise) rnnoise = loadRnnoise(rnnoiseUrl);
-  try {
-    return await rnnoise;
-  } catch (err) {
+/** The three graphs' bytes, downloaded once (size + sha256 checked); failures surface in getDfn3. */
+function fetchDfn3Files() {
+  if (!dfn3Files) {
+    dfn3Files = import("./dfn3.js").then((mod) => mod.loadDfn3Files(dfn3Source));
+    dfn3Files.catch(() => {}); // reported when an analysis needs it
+  }
+  return dfn3Files;
+}
+
+/** onnxruntime-web (the app's own runtime files) and sessions for the three graphs. */
+async function loadDfn3() {
+  const [ort, mod, files] = await Promise.all([import("onnxruntime-web/wasm"), import("./dfn3.js"), fetchDfn3Files()]);
+  ort.env.wasm.numThreads = 1;
+  if (ortWasmPaths) ort.env.wasm.wasmPaths = ortWasmPaths;
+  const sessions = await mod.createDfn3Sessions(ort, files);
+  dfn3Ready = true;
+  return { dfn: mod.createDfn3(ort, sessions), clip: mod.denoiseClipDfn3 };
+}
+
+/** DeepFilterNet 3, loaded once; null when it is unavailable or cannot load (reported once). */
+async function getDfn3() {
+  if (denoiseBroken) return null;
+  if (!dfn3Source) {
     denoiseBroken = true;
-    send({ type: "denoise-error", message: String((err && err.message) || err) });
+    send({ type: "denoise-error", message: "noise reduction is unavailable (no model source)" });
+    return null;
+  }
+  if (!dfn3) dfn3 = loadDfn3();
+  try {
+    return await dfn3;
+  } catch (err) {
+    // two analyses may be waiting (a switch flipped meanwhile): report it once
+    if (!denoiseBroken) send({ type: "denoise-error", message: String((err && err.message) || err) });
+    denoiseBroken = true;
     return null;
   }
 }
@@ -338,7 +309,7 @@ function createPitchWorker() {
 
 /**
  * The engine part of an analysis of `last`: the recording as captured with its posted track,
- * or (noise reduction on) RNNoise's version of it with the track re-made from it (the posted
+ * or (noise reduction on) DeepFilterNet 3's version of it with the track re-made from it (the posted
  * track if re-tracking is off or fails). first: the take's first analysis (it sends
  * `original`). A noise-reduction change that came in meanwhile runs right after.
  */
@@ -355,71 +326,33 @@ async function runAnalysis(first) {
     ({ input, f0, retracked } = L.cleaned);
     denoised = true;
   } else if (denoiseOn) {
-    const LV = L.live;
-    L.live = null;
-    if (LV && !LV.stream) {
-      // the module was still loading when the recording ended
-      await getRnnoise();
-      if (L !== last) { stopLive(LV); return; }
-    }
-    if (LV && LV.stream && !LV.dead) {
-      // finish what was done while recording
+    if (!dfn3Ready) send({ type: "progress", stage: "model" });
+    const d = await getDfn3();
+    if (L !== last) return; // a newer take replaced this one while the model loaded
+    if (d) {
+      send({ type: "progress", stage: "denoise" });
       try {
         const t = now();
-        pumpLive(LV, Infinity, L.rec);
-        const tail = LV.stream.finish();
-        if (tail.length) {
-          LV.parts.push(tail);
-          if (LV.retracker) LV.retracker.push(tail);
-        }
-        input = new Float32Array(L.pcm.length);
-        let o = 0;
-        for (const a of LV.parts) { input.set(a, o); o += a.length; }
+        input = await d.clip(d.dfn, L.pcm, L.sr);
         ms.denoise = now() - t;
-        ms.denoiseLive = LV.busyMs;
         denoised = true;
       } catch (err) {
         denoiseBroken = true;
         send({ type: "denoise-error", message: String((err && err.message) || err) });
       }
-      if (denoised && LV.retracker) {
-        try {
-          const t = now();
-          f0 = await LV.retracker.finish();
-          ms.retrack = now() - t;
-          retracked = true;
-        } catch {
-          f0 = L.track; // the posted track: the preview is still made
-        }
-        if (L !== last) return;
-      } else if (LV.retracker) LV.retracker.cancel();
-    } else stopLive(LV);
-    if (!denoised && !denoiseBroken) {
-      // the whole recording at once (the switch turned on afterwards, or nothing was streamed)
-      const rn = await getRnnoise();
-      if (L !== last) return; // a newer take replaced this one while the module loaded
-      if (rn) {
-        try {
-          const t = now();
-          input = denoiseClip(rn, L.pcm, L.sr);
-          ms.denoise = now() - t;
-          denoised = true;
-        } catch (err) {
-          denoiseBroken = true;
-          send({ type: "denoise-error", message: String((err && err.message) || err) });
-        }
+      if (L !== last) return;
+    }
+    if (denoised && retrackOn) {
+      send({ type: "progress", stage: "retrack" });
+      try {
+        const t = now();
+        f0 = await retrack(input, L.sr, L.lens, createPitchWorker);
+        ms.retrack = now() - t;
+        retracked = true;
+      } catch {
+        f0 = L.track; // the posted track: the preview is still made
       }
-      if (denoised && retrackOn) {
-        try {
-          const t = now();
-          f0 = await retrack(input, L.sr, L.lens, createPitchWorker);
-          ms.retrack = now() - t;
-          retracked = true;
-        } catch {
-          f0 = L.track;
-        }
-        if (L !== last) return;
-      }
+      if (L !== last) return;
     }
     if (!denoised) {
       denoiseOn = false;

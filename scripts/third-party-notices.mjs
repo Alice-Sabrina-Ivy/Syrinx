@@ -30,9 +30,11 @@
 // src/voice-preview/wasm/, their texts (licenses/world/, licenses/emscripten/) are
 // appended to THIRD_PARTY_NOTICES.txt like the npm packages'; the dev server's
 // notices always include them. measurements/voice-preview-phase1-2026-10-19.md §12.
-// Since 2026-10-23 Voice Shaper also ships RNNoise (src/voice-preview/rnnoise/, BSD-3-Clause,
-// compiled by Jitsi with Emscripten 3.1.14): licenses/rnnoise/ and Emscripten's licence text.
-// measurements/voice-shaper-denoise-2026-10-23.md.
+// Since 2026-10-25 Voice Shaper's background-noise reduction (src/voice-preview/dfn3.js) is a JS
+// port of DeepFilterNet's libDF signal processing (MIT OR Apache-2.0); the three graphs it runs
+// are fetched at run time (src/voice-preview/dfn3-model.js) and come under the same licence:
+// licenses/deepfilternet/. measurements/voice-shaper-noise-2026-10-25.md. (RNNoise, shipped
+// 2026-10-23 to 2026-10-25, was replaced by it.)
 //
 // tests/site/third-party-notices-test.js covers the assembly.
 
@@ -58,7 +60,7 @@ export const NON_NPM_COMPONENTS = Object.freeze([
   {
     name: "Emscripten",
     title: "Emscripten 6.0.10 runtime and system libraries (musl, dlmalloc, LLVM compiler-rt, libc++, libc++abi) — in Voice Shaper's WebAssembly module and its JavaScript glue",
-    idPattern: /\/src\/voice-preview\/(wasm|rnnoise)\//,
+    idPattern: /\/src\/voice-preview\/wasm\//,
     files: [
       "licenses/emscripten/LICENSE",
       "licenses/emscripten/musl-COPYRIGHT",
@@ -69,10 +71,10 @@ export const NON_NPM_COMPONENTS = Object.freeze([
     ],
   },
   {
-    name: "RNNoise",
-    title: "RNNoise 0.2 (J.-M. Valin, Xiph.Org; xiph/rnnoise 372f7b4b76cde4ca1ec4605353dd17898a99de38), compiled to WebAssembly by @jitsi/rnnoise-wasm 0.2.1 — Voice Shaper's background-noise reduction",
-    idPattern: /\/src\/voice-preview\/rnnoise\//,
-    files: ["licenses/rnnoise/COPYING", "licenses/rnnoise/jitsi-rnnoise-wasm-LICENSE"],
+    name: "DeepFilterNet",
+    title: "DeepFilterNet 3 (H. Schröter et al.; Rikorose/DeepFilterNet d375b2d8309e0935d165700c91da9de862a99c31) — libDF's signal processing ported to JS for Voice Shaper's background-noise reduction, and its ONNX graphs (fetched at run time); MIT OR Apache-2.0, both texts",
+    idPattern: /\/src\/voice-preview\/dfn3(-model)?\.js$/,
+    files: ["licenses/deepfilternet/LICENSE-MIT", "licenses/deepfilternet/LICENSE-APACHE"],
   },
 ]);
 

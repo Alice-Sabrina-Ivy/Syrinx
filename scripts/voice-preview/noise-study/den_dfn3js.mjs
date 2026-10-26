@@ -4,7 +4,7 @@
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, existsSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import path from "node:path";
-import { createDfn3 } from "./dfn3.js";
+import { createDfn3, denoiseClipDfn3 } from "./dfn3.js";
 const args = Object.fromEntries(process.argv.slice(2).map((a) => { const m = a.match(/^--([^=]+)(?:=(.*))?$/); return [m[1], m[2] ?? "1"]; }));
 const DATA = path.resolve(args.data ?? "build/vsn/data"), SET = args.set ?? "test";
 const ORT_DIST = path.resolve("node_modules/onnxruntime-web/dist");
@@ -21,10 +21,12 @@ for (const id of ids) {
   const p = path.join(out, `${id}.f32`);
   if (existsSync(p)) continue;
   const meta = JSON.parse(readFileSync(path.join(dir, `${id}.json`), "utf8"));
-  if (meta.rate !== 48000) continue;
   const b = readFileSync(path.join(dir, `${id}.f32`)); const x = new Float32Array(b.buffer, b.byteOffset, b.byteLength / 4).slice();
-  const r = await dfn.denoise48(x);
-  writeFileSync(p, Buffer.from(r.y.buffer));
+  // exactly the app's path (src/voice-preview/dfn3.js denoiseClipDfn3: level normalisation, 48 kHz)
+  const t0 = performance.now();
+  const y = await denoiseClipDfn3(dfn, x, meta.rate);
+  const r = { ms: { total: performance.now() - t0 } };
+  writeFileSync(p, Buffer.from(y.buffer, y.byteOffset, y.byteLength));
   n++; ms += r.ms.total; sec += x.length / 48000;
 }
 console.log(`${n} mixtures, ${(ms / Math.max(sec, 1e-9)).toFixed(0)} ms per audio s`);

@@ -69,6 +69,8 @@ const DESIGN = {
   tooShort: "That was under 3 seconds. Please record at least 3 seconds.",
   cancelled: "Recording stopped because listening was turned off.",
   analysing: "Preparing the preview…",
+  analysingModel: "Downloading noise reduction (about 8 MB, first time only)…",
+  analysingDenoise: "Reducing background noise…",
   noVoice: "There wasn't enough voice in that recording for a preview. Try again and speak for a few seconds.",
   updating: "Updating the preview…",
   error: "Something went wrong while making the preview. Record again to try once more.",
@@ -90,7 +92,7 @@ const DESIGN = {
   quieterSpot: "A quieter spot gives a cleaner preview.",
   caveat: "A rough sketch from a vocoder; crackle or buzz comes from the processing, not your voice.",
   denoise: "Reduce background noise",
-  denoiseHint: "Cleans up the recording before the preview is made. “Original” stays as recorded. Your first recording downloads it (about 1.4 MB).",
+  denoiseHint: "Cleans up the recording before the preview is made. “Original” stays as recorded. The first time, it downloads about 8 MB.",
   denoiseError: "Noise reduction couldn't load, so the preview uses the recording as captured.",
   denoiseAutoOn: "Turned on because the recording has background noise.",
   denoiseTry: "“Reduce background noise” below can help.",
@@ -109,7 +111,7 @@ T.check("live-region announcements verbatim", Object.values(S.announce).join("|"
 ].join("|"));
 T.check("about: nine paragraphs, the vocoder and noise-reduction credits last", S.about.length === 9
   && S.about[7] === "Built on WORLD, a speech vocoder by M. Morise (modified BSD licence)."
-  && S.about[8] === "Noise reduction: RNNoise by J.-M. Valin and Xiph.Org (BSD licence)."
+  && S.about[8] === "Noise reduction: DeepFilterNet 3 by H. Schröter et al. (MIT or Apache 2.0 licence)."
   && S.about[3] === "Lowered previews may sound buzzier: the vocoder is weakest at low pitch."
   && S.about[5].startsWith(`“${S.denoise}”`) && S.about[5].includes("compare it on and off")
   && S.about[2].includes("“Unchanged (rebuilt)”") && S.about[6].startsWith("Your recording stays on this device, in memory only."));

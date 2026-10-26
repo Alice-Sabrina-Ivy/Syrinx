@@ -17,9 +17,11 @@ class WebWorker {
   postMessage(m, transfer) { this.t.postMessage(m, transfer); }
   terminate() { this.t.terminate(); }
 }
-globalThis.Worker = WebWorker;
+// onnxruntime-web's Emscripten glue runs `global.Worker = worker_threads.Worker` when it loads in
+// Node (DeepFilterNet 3 loads it in this thread): a getter with a no-op setter keeps WebWorker.
+Object.defineProperty(globalThis, "Worker", { get: () => WebWorker, set: () => {}, configurable: true });
 globalThis.self = { postMessage: (m, transfer) => parentPort.postMessage(m, transfer) };
-// the RNNoise module is fetched with fetch(), which has no file: URLs in Node
+// the model files are fetched with fetch(), which has no file: URLs in Node
 (await import("../vp-test-lib.js")).installFileFetch();
 await import(workerData.url);
 parentPort.on("message", (data) => globalThis.self.onmessage({ data }));

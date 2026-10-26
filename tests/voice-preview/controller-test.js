@@ -9,7 +9,8 @@
 // thread exits, so all of its WebAssembly memory is gone) and a fresh worker starts
 // with the initial memory. Noise reduction: switching it with a preview on screen analyses
 // the same recording again, keeps the original, re-renders the setting that was showing (or
-// the one asked for meanwhile), survives Discard, and goes off when RNNoise cannot load.
+// the one asked for meanwhile), survives Discard, and goes off when the model cannot load
+// (DeepFilterNet 3; the parts that need its gitignored graphs are skipped without them).
 // measurements/voice-preview-phase1-2026-10-19.md §3, §4; measurements/voice-shaper-denoise-2026-10-23.md.
 //
 //   node tests/voice-preview/controller-test.js
@@ -18,7 +19,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { Worker } from "node:worker_threads";
-import { PARITY_JSON, GLUE_URL, WASM_URLS, RNNOISE_URL, REPO, cellKey, makeInput, chunkFor, sha256, makeChecker } from "./vp-test-lib.js";
+import { PARITY_JSON, GLUE_URL, WASM_URLS, DFN3_SOURCE, DFN3_MISSING, DFN3_HINT, ORT_WASM_PATHS, REPO, cellKey, makeInput, chunkFor, sha256, makeChecker } from "./vp-test-lib.js";
 import { setVoicePreviewCapture, voicePreviewPitchTap } from "../../src/voice-preview/bridge.js";
 import * as controller from "../../src/voice-preview/controller.js";
 const { createVoicePreviewController, LISTEN_BEFORE_RECORD_MS } = controller;
@@ -89,6 +90,10 @@ async function recordClip(ctl) {
     if (k % 50 === 49) await tick();
   }
   await tick();
+  // wait until the worker has taken in the chunks before Stop: Stop travels on the worker's own
+  // port, the chunks on the capture port, and two ports keep no order between them (a recording
+  // in the app lasts >= 3 s; this one is fed in ~0.1 s)
+  await until(ctl, (s) => (s.level?.seconds ?? 0) >= (N - 4) * C / rate, "chunks taken in");
   ctl.stop();
   await until(ctl, (s) => s.phase === "analysing", "analysing");
   posted(N - 2); posted(N - 1);
@@ -96,7 +101,7 @@ async function recordClip(ctl) {
 }
 
 const ctl = createVoicePreviewController({
-  createWorker: () => new NodeWorker(), glueUrl: GLUE_URL, wasmUrls: WASM_URLS, rnnoiseUrl: RNNOISE_URL, now: () => clock,
+  createWorker: () => new NodeWorker(), glueUrl: GLUE_URL, wasmUrls: WASM_URLS, dfn3Source: DFN3_SOURCE, ortWasmPaths: ORT_WASM_PATHS, now: () => clock,
 });
 const phases = [];
 ctl.subscribe((s) => { if (phases.at(-1) !== s.phase) phases.push(s.phase); });
@@ -137,13 +142,14 @@ T.check("a commit equal to the last render does nothing", ctl.render(0, 6) === f
 unsub();
 
 console.log("\nnoise reduction with a preview on screen");
-{
+if (!DFN3_SOURCE) console.log(`  SKIP the DeepFilterNet 3 graphs are not in build/models/dfn3 (${DFN3_HINT})`);
+else {
   const before = ctl.getState();
   T.check("off (the setting): not noise-reduced", before.denoise === false && before.analysis.denoised === false && before.analysis.auto === false);
   T.check("setDenoise(true) -> re-analysing", ctl.setDenoise(true) === true && ctl.getState().denoise === true && ctl.getState().reanalysing === true);
   T.check("a render asked for while re-analysing waits (nothing in flight)", ctl.render(2, 3) === true && ctl.getState().rendering === null);
   let st = await until(ctl, (x) => !x.reanalysing && x.preview?.st === 2 && x.preview?.pct === 3 && !x.rendering, "denoised preview");
-  T.check("analysed again with RNNoise: same take, same original, phase stays preview",
+  T.check("analysed again with DeepFilterNet 3: same take, same original, phase stays preview",
     st.analysis.denoised === true && st.analysis.take === before.analysis.take && st.original === before.original && st.phase === "preview"
     && phases.at(-1) === "preview");
   T.check("…a new rebuild, and the waiting setting rendered on it", sha256(st.rebuild) !== f.expected.simd[cellKey(0, 0)] && sha256(st.preview.pcm) !== f.expected.simd[cellKey(2, 3)]);
@@ -159,10 +165,12 @@ console.log("\nnoise reduction with a preview on screen");
 
 console.log("\ndiscard: the worker is terminated and a fresh one starts");
 const w1 = workers.at(-1);
-ctl.setDenoise(true);
-await until(ctl, (x) => !x.reanalysing, "re-analysed before discard");
+if (DFN3_SOURCE) {
+  ctl.setDenoise(true);
+  await until(ctl, (x) => !x.reanalysing, "re-analysed before discard");
+}
 ctl.discard();
-T.check("discard keeps the noise-reduction setting", ctl.getState().denoise === true && ctl.getState().reanalysing === false && ctl.getState().denoiseError === false);
+if (DFN3_SOURCE) T.check("discard keeps the noise-reduction setting", ctl.getState().denoise === true && ctl.getState().reanalysing === false && ctl.getState().denoiseError === false);
 T.check("discard clears the recording and its renders", ctl.getState().original === null && ctl.getState().rebuild === null && ctl.getState().preview === null && ctl.getState().analysis === null);
 T.check("the old worker's thread exits (its WebAssembly memory is gone)", w1.terminated && await Promise.race([w1.exited, new Promise((r) => setTimeout(() => r(false), 5000))]));
 s = await until(ctl, (st) => st.phase === "ready", "fresh ready");
@@ -171,7 +179,7 @@ T.check("a fresh worker is ready", w2 !== w1 && !w2.terminated);
 T.check("…with the initial WebAssembly memory, below the analysed worker's", s.memBytes === memInitial && s.memBytes < memAnalysed,
   `fresh ${(s.memBytes / 1e6).toFixed(1)} MB, analysed ${(memAnalysed / 1e6).toFixed(1)} MB`);
 T.check("render() without a preview does nothing", ctl.render(2, 3) === false);
-T.check("setDenoise(false) without a recording: just the setting", ctl.setDenoise(false) === true && ctl.getState().denoise === false && !ctl.getState().reanalysing);
+if (DFN3_SOURCE) T.check("setDenoise(false) without a recording: just the setting", ctl.setDenoise(false) === true && ctl.getState().denoise === false && !ctl.getState().reanalysing);
 
 console.log("\nlistening stops during a recording");
 T.check("record() again", ctl.record() === true);
@@ -210,9 +218,10 @@ ctl.dispose();
 T.check("dispose terminates the worker", workers.at(-1).terminated);
 
 console.log("\nauto: noise reduction when the level margin is below DENOISE_MARGIN_DB, the track re-made");
-{
+if (!DFN3_SOURCE) console.log(`  SKIP the DeepFilterNet 3 graphs are not in build/models/dfn3 (${DFN3_HINT})`);
+else {
   const auto = createVoicePreviewController({
-    createWorker: () => new NodeWorker(), glueUrl: GLUE_URL, wasmUrls: WASM_URLS, rnnoiseUrl: RNNOISE_URL, now: () => clock,
+    createWorker: () => new NodeWorker(), glueUrl: GLUE_URL, wasmUrls: WASM_URLS, dfn3Source: DFN3_SOURCE, ortWasmPaths: ORT_WASM_PATHS, now: () => clock,
   });
   await until(auto, (x) => x.phase === "ready", "ready (auto)");
   const st = await recordClip(auto);
@@ -221,6 +230,7 @@ console.log("\nauto: noise reduction when the level margin is below DENOISE_MARG
     `margin ${st.analysis.check.marginDb.toFixed(1)} dB -> ${want}`);
   if (want) {
     T.check("…noise-reduced with the track re-made by the pitch worker", st.analysis.retracked === true && st.analysis.ms.retrack > 0 && sha256(st.rebuild) !== f.expected.simd[cellKey(0, 0)]);
+    T.check("…the worker reported its stages (the analysis stage cleared after)", st.analysingStage === null);
     T.check("…the original is the recording", sha256(st.original) === f.pcmSha256);
     T.check("switching it off: the user's setting", auto.setDenoise(false) === true && auto.getState().denoiseMode === "off");
     const off = await until(auto, (x) => !x.reanalysing && x.rebuild && x.analysis.denoised === false, "auto -> off");
@@ -232,13 +242,13 @@ console.log("\nauto: noise reduction when the level margin is below DENOISE_MARG
   auto.dispose();
 }
 
-console.log("\nRNNoise cannot load");
+console.log("\nthe model cannot load");
 {
   const bad = createVoicePreviewController({
     createWorker: () => new NodeWorker(), glueUrl: GLUE_URL, wasmUrls: WASM_URLS,
-    rnnoiseUrl: pathToFileURL(path.join(REPO, "tests/voice-preview/no-such.wasm")).href, now: () => clock,
+    dfn3Source: DFN3_MISSING, ortWasmPaths: ORT_WASM_PATHS, now: () => clock,
   });
-  await until(bad, (x) => x.phase === "ready", "ready (bad RNNoise URL)");
+  await until(bad, (x) => x.phase === "ready", "ready (missing model files)");
   T.check("setDenoise(true) before recording", bad.setDenoise(true) === true);
   const st = await recordClip(bad);
   const fin = await until(bad, (x) => !x.reanalysing, "final analysis");

@@ -4,7 +4,7 @@
 // and kept for the page visit (it survives view and tab switches).
 // measurements/voice-preview-phase1-2026-10-19.md §3, §4.
 //
-// createVoicePreviewController({ createWorker, glueUrl, wasmUrls, rnnoiseUrl }) — the card
+// createVoicePreviewController({ createWorker, glueUrl, wasmUrls, dfn3Source, ortWasmPaths }) — the card
 // passes a factory for the module Worker (src/voice-preview/vp-worker.js) and the asset URLs
 // (wasm-files.js); Node tests pass a worker_threads adapter and file URLs.
 // Noise reduction (2026-10-23, measurements/voice-shaper-denoise-2026-10-23.md; "auto" since
@@ -14,8 +14,8 @@
 // through Discard / Record again). A recording is analysed with the setting it had when it
 // ended; changing it with a preview on screen
 // re-analyses the same recording (`reanalysing`), keeps the original, and renders the setting
-// that was showing (or the newest one asked for meanwhile) again. When the worker reports that
-// RNNoise cannot load, the setting goes off and `denoiseError` stays set for that worker.
+// that was showing (or the newest one asked for meanwhile) again. When the worker reports that the
+// model cannot load or run, the setting goes off and `denoiseError` stays set for that worker.
 //
 // Phases: loading -> ready -> recording -> analysing -> preview
 //   (too-short | no-voice | cancelled lead back to a recordable state with the same
@@ -44,6 +44,8 @@ export const LISTEN_BEFORE_RECORD_MS = 6000;
 export const LOAD_TIMEOUT_MS = 30000;
 /** `recorded` -> `analysed` longer than this (500 ms track wait + analysis, ~2.3 s for 8 s on the gate phone) is an error. */
 export const ANALYSE_TIMEOUT_MS = 20000;
+/** While a noise-reduced analysis waits for the model files (the first time: ~8 MB), the watchdog allows this much. */
+export const MODEL_TIMEOUT_MS = 120000;
 /** After a recording ends, Record / Record again ignore presses this long (the press that stopped it). */
 export const REARM_MS = 1000;
 
@@ -70,12 +72,13 @@ function initialState() {
     denoiseMode: "auto",  // the noise-reduction setting: "auto" until the user switches it (kept by discard)
     denoise: false,       // noise reduction for the take on screen (the switch; adopted from each analysis)
     reanalysing: false,   // the preview's recording is being analysed again (noise reduction changed)
-    denoiseError: false,  // RNNoise could not load or run in this worker
+    analysingStage: null, // "model" | "denoise" | "retrack" while a noise-reduced analysis runs (worker progress)
+    denoiseError: false,  // noise reduction could not load or run in this worker
   };
 }
 
 export function createVoicePreviewController({
-  createWorker, glueUrl, wasmUrls, rnnoiseUrl = null, now = () => performance.now(),
+  createWorker, glueUrl, wasmUrls, dfn3Source = null, ortWasmPaths = null, now = () => performance.now(), modelTimeoutMs = MODEL_TIMEOUT_MS,
   loadTimeoutMs = LOAD_TIMEOUT_MS, analyseTimeoutMs = ANALYSE_TIMEOUT_MS, rearmMs = REARM_MS,
   setTimer = (fn, ms) => setTimeout(fn, ms), clearTimer = (t) => clearTimeout(t),
 }) {
@@ -148,7 +151,7 @@ export function createVoicePreviewController({
       releaseCapture();
       set({ phase: state.phase === "loading" ? "load-error" : "error", error: { stage: "worker", kind: "other", message: e?.message || "Voice Shaper worker failed" } });
     };
-    w.postMessage({ type: "init", glueUrl, wasmUrls, rnnoiseUrl });
+    w.postMessage({ type: "init", glueUrl, wasmUrls, dfn3Source, ortWasmPaths });
     watch(loadTimeoutMs, "loading", "load-error", "load");
   }
 
@@ -192,6 +195,7 @@ export function createVoicePreviewController({
       case "analysed": {
         unwatch();
         removeTap();
+        if (state.analysingStage) set({ analysingStage: null });
         const { original, rebuild, type: _t, ...analysis } = m;
         if (state.phase === "preview" && state.analysis && analysis.take === state.analysis.take) {
           // the worker analyses again until its input matches the switch: only that one is final
@@ -210,6 +214,14 @@ export function createVoicePreviewController({
         break;
       }
       case "denoise-error": set({ denoise: false, denoiseError: true }); break;
+      case "progress": {
+        // a noise-reduced analysis moves on: the watchdog restarts, longer while the model downloads
+        set({ analysingStage: m.stage });
+        const ms = m.stage === "model" ? modelTimeoutMs : analyseTimeoutMs;
+        if (state.phase === "analysing") watch(ms, "analysing", "error", "analyse");
+        else if (state.phase === "preview" && state.reanalysing) watch(ms, "preview", "error", "analyse");
+        break;
+      }
       case "rendered": {
         // a successful render clears an earlier render error's notice
         set({ preview: { st: m.st, pct: m.pct, pcm: m.pcm, rate: m.rate, ms: m.ms }, rendering: null, error: null });
@@ -301,7 +313,7 @@ export function createVoicePreviewController({
 
   /**
    * Noise reduction on / off: the user's choice, which replaces "auto" for the page visit.
-   * Refused (false) when it changes nothing for the take on screen, while RNNoise is
+   * Refused (false) when it changes nothing for the take on screen, while noise reduction is
    * unavailable in this worker, or while nothing could use it yet (loading). With a preview the
    * recording is analysed again.
    */

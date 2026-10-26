@@ -6,7 +6,7 @@
 // phrase, then hear it with a different pitch or resonance: record -> analyse once in the
 // worker -> re-render on slider release -> three-way playback (preview / unchanged
 // rebuild / original) with loop. Record, then play only; never live. Background-noise
-// reduction (RNNoise on the recording before the analysis, the F0 track re-made from the
+// reduction (DeepFilterNet 3 on the recording when it ends, the F0 track re-made from the
 // cleaned audio; "Original" stays as recorded): automatic when the recording is noisy, or the
 // user's choice.
 // measurements/voice-preview-phase1-2026-10-19.md §6–§10, §13; voice-shaper-denoise-2026-10-23.md,
@@ -32,7 +32,7 @@ import { useEffect, useId, useRef, useSyncExternalStore } from "react";
 import { createVoicePreviewController, RECORD_MAX_S } from "./controller.js";
 import { onVoicePreviewCapture } from "./bridge.js";
 import { createPlayback } from "./playback.js";
-import { VP_GLUE_URL, VP_WASM_URLS, VP_RNNOISE_URL } from "./wasm-files.js";
+import { VP_GLUE_URL, VP_WASM_URLS, VP_ORT_WASM_PATHS, vpDfn3Source } from "./wasm-files.js";
 import { applyPreset, targetSetting, targetPrefillHz } from "./controls.js";
 import { encodeWav } from "./wav.js";
 import {
@@ -75,7 +75,8 @@ function makeSession() {
     createWorker: () => new Worker(new URL("./vp-worker.js", import.meta.url), { type: "module" }),
     glueUrl: VP_GLUE_URL,
     wasmUrls: VP_WASM_URLS,
-    rnnoiseUrl: VP_RNNOISE_URL,
+    dfn3Source: vpDfn3Source(),
+    ortWasmPaths: VP_ORT_WASM_PATHS,
   });
 
   // Controller -> playback sources, slider reset, announcements.
@@ -336,7 +337,7 @@ function Card({ sess, direction = null, isSessionRecording, phone = false }) {
     unsupported: S.unsupported,
     "load-error": S.loadError,
     recording: recordingFor(s.level?.seconds ?? 0, RECORD_MAX_S),
-    analysing: S.analysing,
+    analysing: s.analysingStage === "model" ? S.analysingModel : s.analysingStage === "denoise" ? S.analysingDenoise : S.analysing,
     "too-short": S.tooShort,
     cancelled: S.cancelled,
     "no-voice": S.noVoice,
@@ -449,6 +450,7 @@ function Card({ sess, direction = null, isSessionRecording, phone = false }) {
       data-vp-rendered={s.preview ? `${s.preview.st},${s.preview.pct}` : ""}
       data-vp-rendering={s.rendering ? "1" : "0"}
       data-vp-reanalysing={s.reanalysing ? "1" : "0"}
+      data-vp-stage={s.analysingStage ?? ""}
       data-vp-denoise={s.denoise ? "1" : "0"}
       data-vp-denoised={a ? (a.denoised ? "1" : "0") : ""}
       data-vp-denoise-mode={s.denoiseMode}
