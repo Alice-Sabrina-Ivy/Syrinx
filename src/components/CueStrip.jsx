@@ -39,13 +39,21 @@
 // Review fixes: measurements/cue-strip-review-fixes-2026-10-07.md.
 //
 // Sizes: every box has a fixed reserved size (nothing moves while speaking):
-// phones (portrait) give each meter clamp(150px, 74dvh − 285px, 232px), so the
+// phones (portrait) give each meter clamp(150px, 74dvh − 285px, 270px), so the
 // trace and both columns fit the first screen from 448 × 890 down to
-// 360 × 690; short landscape (phones held sideways, below lg — a desktop
-// window both lg and short keeps the desktop sizes, its column scrolling)
-// lets the meters fill the height beside the trace; desktop (lg) a taller meter, clamp(180px, 100dvh − 620px, 300px), so
-// the strip and the heard-as dome under it fit the right-hand column without
-// scrolling from 1280 × 800 up (280 px at 1440 × 900). The meter's
+// 360 × 690 and the first screen ends cleanly above the heard-as dome's
+// sentence (with the trace at 26dvh the panel's top sits a fixed 4 px above
+// the dock until the 270 px cap; at 448 × 890 the panel title and the top of
+// the arc show — 2026-10-26 review: with a 232 px cap the dock cut through
+// the sentence's first line); short landscape (phones held sideways, below
+// lg — a desktop window both lg and short keeps the desktop sizes, its
+// column scrolling) lets the meters fill the height beside the trace;
+// desktop (lg) a taller meter, clamp(180px, 100dvh − 620px, 300px), so the
+// strip and the heard-as dome under it fit the right-hand column without
+// scrolling from 1280 × 800 up (280 px at 1440 × 900); under 800 px tall
+// (deskshort, with the heard-as panel in its row layout) clamp(120px,
+// 100dvh − 528px, 300px), which fills the column exactly from 1366 × 657 up
+// (129 px there, 240 px at 1366 × 768). The meter's
 // own geometry (track width, label and number sizes) follows its measured
 // width in four tiers.
 
@@ -327,7 +335,7 @@ const CueColumn = memo(function CueColumn({ cue, title, titleNote, info, side, s
       <span className="sr-only" data-cue-sr="">{srText}</span>
       <div
         ref={areaRef}
-        className="relative h-[clamp(150px,calc(74dvh-285px),232px)] lg:h-[clamp(180px,calc(100dvh-620px),300px)] deskshort:h-[clamp(120px,calc(100dvh-528px),300px)] max-lg:shortland:h-auto max-lg:shortland:flex-1 max-lg:shortland:min-h-0"
+        className="relative h-[clamp(150px,calc(74dvh-285px),270px)] lg:h-[clamp(180px,calc(100dvh-620px),300px)] deskshort:h-[clamp(120px,calc(100dvh-528px),300px)] max-lg:shortland:h-auto max-lg:shortland:flex-1 max-lg:shortland:min-h-0"
         data-cue-meter=""
       >
         {G && (

@@ -13,12 +13,15 @@
 //
 // Layout: phones (portrait) stack trace / strip / panel, the trace sized
 // clamp(150px, 26dvh, 240px) and each meter clamp(150px, 74dvh − 285px,
-// 232px) (CueStrip.jsx) so the trace and both columns fit the first screen
-// at 448 × 890 (Pixel 8 Pro) down to 360 × 690; short landscape (≤ 480 px
-// tall, ≥ 640 px wide) puts trace and strip side by side, the meters filling
-// the strip's height; desktop (lg) puts the trace left and a 38 % column
-// (420–540 px: strip + panel) right, the strip drawn larger there (read at
-// arm's length).
+// 270px) (CueStrip.jsx) so the trace and both columns fit the first screen
+// at 448 × 890 (Pixel 8 Pro) down to 360 × 690, the heard-as dome following
+// below it (its sentence never cut by the dock); short landscape (≤ 480 px
+// tall, ≥ 640 px wide, below lg) puts trace and strip side by side, filling
+// the scroll area's height, the panel below in its row layout; desktop (lg)
+// puts the trace left and a 38 % column (420–540 px: strip + panel) right,
+// the strip drawn larger there (read at arm's length) — under 800 px tall
+// with the panel in its row layout and lower meters, so the column never
+// scrolls from 1366 × 657 up.
 //
 // The pitch target follows the user's training direction
 // (utils/trainingDirection.js) and judges the pitch LEVEL (running 1.5 s
