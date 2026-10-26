@@ -6,21 +6,28 @@
 // experiment with its known weaknesses disclosed.
 //
 // THE DOME (owner's choice 2026-10-25, the "Gauges" mockup's panel beside the
-// "Twin columns" meters): the split bar below, bent into a semicircle of ten
-// tenth-segments — "would say man" from the LEFT foot in deep indigo, "would
-// say woman" from the RIGHT foot in light indigo, the tenths between striped
-// (could go either way), 2 px of panel between segments, a tick above the
-// top at the middle; the sentence centred INSIDE the dome on two lines; under
-// it a key row (would say man / could go either way / would say woman), then
-// the pitch-only note's slot, the unsure line, the legend, the caveat + More.
-// Drawing only: numbers, words, colours and every state are the split bar's
-// (heardAsAxisModel.js unchanged); geometry in heardAsDome.js. The sentence is
-// drawn over the dome by an overlay placed after the pitch-only note in the
-// DOM, so screen readers still meet the bar's description, the note (when on)
-// and then the sentence, as with the bar. Hidden states keep the dome on
-// screen, its segments empty and greyed, with the reason under it.
+// "Twin columns" meters; THREE PARTS ADDING TO 10 and a bracket since user
+// decision 2026-10-26): a semicircle of ten tenth-segments — "would say man"
+// from the LEFT foot in deep indigo, "would say woman" from the RIGHT foot in
+// light indigo, "unsure or neither" in neutral grey between, exactly the
+// tenths the words state (heardAsAxisModel.js threeTenths of the three-way
+// shares at the best guess); a thin bracket just outside the arc over where
+// the bigger side's edge could fall (the estimate's range); a split reading
+// ("Could go either way") striped as a whole with no bracket. 2 px of panel
+// between segments, a tick above the top at the middle; the sentence centred
+// INSIDE the dome on two lines; under it a key row (would say man / would say
+// woman, then unsure or neither / likely range), then the pitch-only note's
+// slot, the line naming the rest (so the numbers add up to 10), the legend,
+// the caveat + More. Numbers and words: heardAsAxisModel.js; geometry:
+// heardAsDome.js. The sentence is drawn over the dome by an overlay placed
+// after the pitch-only note in the DOM, so screen readers meet the dome's
+// description, the note (when on) and then the sentence. Hidden states keep
+// the dome on screen, its segments empty and greyed, with the reason under it.
+// (2026-10-25 … 2026-10-26 the dome drew the split bar below: solid ends =
+// the low ends of the two-way range, stripes between = the range's width.)
 //
-// Until 2026-10-25 (the text below describes that bar; its rules all hold):
+// Until 2026-10-25 (the text below describes that bar; its states, hides and
+// one-height rules still hold — its drawing and words are superseded above):
 // Shows how listeners in published studies
 // might hear the voice on ONE SPLIT BAR (user decision 2026-10-20; it
 // replaced the 2026-10-07 axis with a shaded range and a ring): ten tenths of
@@ -110,8 +117,8 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { heardAsShares } from "../ml/heard-as";
-import { heardAsAxis, AXIS_ENDS, shortReason, quickCheck } from "./heardAsAxisModel";
-import { DOME, DOME_PATHS, domeKinds, domeLines, EITHER_WORDS } from "./heardAsDome";
+import { heardAsAxis, restText, AXIS_ENDS, shortReason, quickCheck } from "./heardAsAxisModel";
+import { DOME, DOME_PATHS, domeKinds, domeLines, domeBracketPath, UNSURE_WORDS, BRACKET_WORDS } from "./heardAsDome";
 import { HEARD_AS_CALIBRATION } from "../ml/heardAsCalibration";
 import { PITCH_ONLY_TEXT } from "../ml/pitch-only-warning";
 
@@ -269,23 +276,19 @@ const REASONS = {
 const legendText = (stale) => `${stale ? "Older reading — waiting for more speech · " : ""}From your last ~8 s of speech · updates every 2 s`;
 
 // Every text each line can show, from the same word functions the panel uses
-// (heardAsAxis on a grid of ranges; every reason), laid out invisibly so the
+// (restText on every three-part split of 10; every reason), laid out invisibly so the
 // panel's height never depends on which one is showing. All of them, not just
 // the longest: italic and medium text differ in width, so the longest string
 // is not always the tallest. (The sentence needs no reserve since the dome,
 // 2026-10-25: it sits inside the dome, whose box is fixed.)
 const RESERVE = (() => {
+  // The line under the sentence for every three-part split of 10 (and either
+  // wide flag): every text it can show.
   const unsure = new Set();
-  const v = [0.001, 0.049, 0.051, 0.949, 0.951, 0.999];
-  for (let k = 0; k <= 40; k++) v.push(k / 40);
-  for (const lo of v) for (const hi of v) {
-    if (hi < lo) continue;
-    for (const u of [0, 1]) {
-      const a = heardAsAxis({ s: (lo + hi) / 2, sLow: lo, sHigh: hi, centre: { unsure: u } });
-      if (a.unsureText) unsure.add(a.unsureText);
-    }
+  for (let m = 0; m <= 10; m++) for (let u = 0; u <= 10 - m; u++) {
+    const t = restText({ man: m, unsure: u, woman: 10 - m - u }, false);
+    if (t) unsure.add(t);
   }
-  for (let n = 1; n <= 9; n++) unsure.add(`About ${n} in 10 might be unsure or say neither`);
   return {
     unsure: [...unsure].map((t) => ({ t })),
     legend: legendText(true),
@@ -352,64 +355,84 @@ const DomeTick = ({ grey = false }) => (
     className={grey ? "heard-dome-tick-grey stroke-neutral-700" : "heard-dome-tick stroke-neutral-500"} />
 );
 
-// The key row under the dome: a small key in each shade beside its words —
-// deep by "would say man" (left), striped by "could go either way" (middle),
-// light by "would say woman" (right); greyed outlines under the empty dome.
-// One row while there is room for it (>= 330 px), else the end words on the
-// first row and "could go either way" centred under them (a container query
-// on the row's own width: the panel's width never changes while speaking, so
-// neither does the row's height). In the row layout's narrow column (under
-// 230 px) one item per line, each key at the left. Windows high contrast:
-// keys solid / striped / hollow like the dome (src/index.css).
+// The key row under the dome (user decision 2026-10-26): the end words on the
+// first row — a deep key by "would say man" (left), a light one by "would say
+// woman" (right) — and under them, centred, a grey key by "unsure or neither"
+// and a small bracket by "likely range"; greyed under the empty dome. In the
+// row layout's narrow column (under 230 px: a container query on the row's
+// own width, which never changes while speaking) one item per line, each key
+// at the left. Windows high contrast: keys like the dome (src/index.css).
 const KEY_CLS = "heard-key inline-block w-2.5 h-2.5 rounded-sm shrink-0";
 const KEY_ITEM = "inline-flex items-center gap-1 whitespace-nowrap";
 function DomeKey({ grey = false }) {
   const key = (kind) => (grey
     ? <span className={`${KEY_CLS} heard-key-empty border border-neutral-700`} />
     : <span className={`${KEY_CLS} heard-${kind}`} data-axis-key={kind} />);
+  const bracketKey = (
+    <svg className="heard-key shrink-0" width="12" height="8" viewBox="0 0 12 8" data-axis-key={grey ? undefined : "bracket"}>
+      <path d="M1 7.5V4.5A5 3.5 0 0 1 11 4.5V7.5" fill="none" strokeWidth="1.5"
+        className={grey ? "heard-key-empty stroke-neutral-700" : "heard-bracket-key"} />
+    </svg>
+  );
   return (
     <div className="@container mx-auto mt-1 max-w-[360px] heardrow:col-start-2 heardrow:row-start-1 heardrow:mx-0 heardrow:mt-0.5" aria-hidden="true">
-      <div className="grid grid-cols-[auto_auto_auto] justify-between gap-x-2 gap-y-0.5 text-[11px] leading-4 text-neutral-400 @max-[330px]:grid-cols-[auto_auto] @max-[230px]:grid-cols-1 @max-[230px]:gap-y-1" data-axis-ends="">
+      <div className="grid grid-cols-[auto_auto] justify-between gap-x-2 gap-y-0.5 text-[11px] leading-4 text-neutral-400 @max-[230px]:grid-cols-1 @max-[230px]:gap-y-1" data-axis-ends="">
         <span className={KEY_ITEM}>{key("man")}{AXIS_ENDS.left}</span>
-        <span className={`${KEY_ITEM} @max-[330px]:col-span-2 @max-[330px]:row-start-2 @max-[330px]:justify-self-center @max-[230px]:col-span-1 @max-[230px]:row-start-auto @max-[230px]:justify-self-start`}>{key("either")}{EITHER_WORDS}</span>
         <span className={`${KEY_ITEM} justify-self-end @max-[230px]:justify-self-start @max-[230px]:flex-row-reverse`}>{AXIS_ENDS.right}{key("woman")}</span>
+        <span className="col-span-2 flex justify-center gap-x-3 @max-[230px]:col-span-1 @max-[230px]:flex-col @max-[230px]:gap-y-1">
+          <span className={KEY_ITEM}>{key("unsure")}{UNSURE_WORDS}</span>
+          <span className={KEY_ITEM}>{bracketKey}{BRACKET_WORDS}</span>
+        </span>
       </div>
     </div>
   );
 }
 
-// The man <-> woman dome (owner's choice 2026-10-25; the split bar of user
-// decision 2026-10-20 bent into a semicircle): ten tenth-segments — deep
-// indigo from the left foot (the low end of "would say man"), light indigo
-// from the right foot (the low end of "would say woman"), striped between
-// them (could go either way); the key row under it. No best-guess mark (see
-// the top of this file). Colours: src/index.css (.heard-*). Purely visual
-// (role img labelled with the bar's own description only; the sentence drawn
-// inside the dome is plain text placed after the pitch-only note, so it is
-// read once). The segments change between tenths with no transition (an SVG
+// The man <-> woman dome (owner's choice 2026-10-25; three parts adding to
+// 10 and a bracket, user decision 2026-10-26): ten tenth-segments — deep
+// indigo from the left foot ("would say man"), light indigo from the right
+// foot ("would say woman"), neutral grey between ("unsure or neither"),
+// exactly the tenths in the words; a thin bracket just outside the arc over
+// where the bigger side's edge could fall. A split reading ("Could go either
+// way") stripes all ten in the two indigos and has no bracket. The key row
+// under it. Colours: src/index.css (.heard-*). Purely visual (role img
+// labelled with the dome's own description only; the sentence drawn inside
+// the dome is plain text placed after the pitch-only note, so it is read
+// once). The segments change between tenths with no transition (an SVG
 // transition re-runs the main-thread pipeline every frame;
 // main-thread-cpu-2026-10-08.md §3 F6). data-split-part groups the tenths of
-// each kind (empty kinds left out), each tenth data-tenth / data-tenth-kind.
+// each kind (empty kinds left out), each tenth data-tenth / data-tenth-kind;
+// data-tenths-man / -unsure / -woman = the tenths in the words, the bracket
+// data-bracket (its tenth boundaries lo / hi, data-bracket-lo / -hi /
+// -side).
 function HeardAsAxis({ axis }) {
-  const pid = `heard-either-${useId().replace(/[^A-Za-z0-9_-]/g, "")}`;
+  const pid = `heard-split-${useId().replace(/[^A-Za-z0-9_-]/g, "")}`;
   const kinds = domeKinds(axis);
-  const groups = ["man", "either", "woman"].map((k) => [k, kinds.flatMap((x, i) => (x === k ? [i] : []))]).filter(([, ix]) => ix.length > 0);
+  const groups = ["man", "unsure", "split", "woman"].map((k) => [k, kinds.flatMap((x, i) => (x === k ? [i] : []))]).filter(([, ix]) => ix.length > 0);
+  const bracket = domeBracketPath(axis.bracket);
   return (
-    <div className={ROW_AXIS} data-heard-as-axis="" data-axis-wide={axis.wide ? "1" : "0"} data-split-man={axis.man.toFixed(1)}
-      data-split-woman={axis.woman.toFixed(1)} data-split-guess={axis.guess.toFixed(3)}>
+    <div className={ROW_AXIS} data-heard-as-axis="" data-axis-wide={axis.wide ? "1" : "0"} data-axis-split={axis.split ? "1" : "0"}
+      data-split-man={axis.man.toFixed(1)} data-split-woman={axis.woman.toFixed(1)} data-split-guess={axis.guess.toFixed(3)}
+      data-tenths-man={axis.tenths.man} data-tenths-unsure={axis.tenths.unsure} data-tenths-woman={axis.tenths.woman}>
       <svg className={`heard-dome ${DOME_BOX}`} viewBox={VIEWBOX} role="img" aria-label={axis.srText} data-split-bar="">
-        <defs>
-          <pattern id={pid} width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-            <rect width="6" height="6" className="heard-pat-woman" />
-            <rect width="3" height="6" className="heard-pat-man" />
-          </pattern>
-        </defs>
+        {axis.split && (
+          <defs>
+            <pattern id={pid} width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+              <rect width="6" height="6" className="heard-pat-woman" />
+              <rect width="3" height="6" className="heard-pat-man" />
+            </pattern>
+          </defs>
+        )}
         <DomeTick />
         {groups.map(([k, ix]) => (
-          <g key={k} className={`heard-seg-${k}`} fill={k === "either" ? `url(#${pid})` : undefined} data-split-part={k}>
+          <g key={k} className={`heard-seg-${k}`} fill={k === "split" ? `url(#${pid})` : undefined} data-split-part={k}>
             {ix.map((i) => <path key={i} d={DOME_PATHS[i]} data-tenth={i} data-tenth-kind={k} />)}
           </g>
         ))}
+        {bracket && (
+          <path d={bracket} className="heard-bracket" strokeWidth={DOME.bW} strokeLinecap="butt" data-bracket=""
+            data-bracket-lo={axis.bracket[0]} data-bracket-hi={axis.bracket[1]} data-bracket-side={axis.side} />
+        )}
       </svg>
       <DomeKey />
     </div>
@@ -635,7 +658,7 @@ export function HeardAsPanel({
           <li>Within clearly feminine or clearly masculine voices it does not track small changes — use the pitch and resonance meters for those.</li>
           <li>It uses only your pitch and a voice classifier; it ignores intonation, vocal weight and articulation.</li>
           <li data-heard-as-range-limits="">{RANGE_LIMITS_TEXT}</li>
-          <li>The striped part of the arc is the range where about 8 in 10 published listener groups fell for clearly feminine or clearly masculine voices; less is known for in-between voices. The sentence inside the arc gives the panel&apos;s best guess for the side more listeners would choose, rounded to a whole tenth (halfway values toward 5 in 10); the best guess always lies inside the striped part. The scale is listeners choosing between man and woman: those who might be unsure or say neither are counted half on each side. The &ldquo;unsure or neither&rdquo; line counts listeners who answered &ldquo;another gender&rdquo; as well as those who weren&apos;t sure, and depends on how listeners are asked.</li>
+          <li data-heard-as-arc-more="">The arc shows the panel&apos;s best guess in tenths of listeners that add up to 10: would say man from the left, would say woman from the right, and those who might be unsure or say neither in grey between — the words give the same numbers. The thin bracket outside the arc marks where the edge of the larger part could fall: about 8 in 10 published listener groups fell inside it for clearly feminine or clearly masculine voices; less is known for in-between voices. When the two sides are within a tenth of each other, or the range covers most of the arc, the arc is striped and says &ldquo;Could go either way&rdquo;. The &ldquo;unsure or neither&rdquo; part counts listeners who answered &ldquo;another gender&rdquo; as well as those who weren&apos;t sure, and depends on how listeners are asked.</li>
           <li data-heard-as-noise="">{NOISE_TEXT}</li>
           <li>Nothing is stored or sent anywhere; it is computed on this device and forgotten when you stop.</li>
         </ul>

@@ -6,20 +6,31 @@
 // checks them in Node.
 //
 // A semicircle from "would say man" (LEFT foot) to "would say woman" (RIGHT
-// foot) made of ten tenth-segments of listeners, in the cue strip's / split
-// bar's orientation: the man tenths solid deep indigo from the left (the low
-// end of "would say man", A tenths = axis.man · 10), the woman tenths solid
-// light indigo from the right (the low end of "would say woman", C tenths =
-// axis.woman · 10), the tenths between them striped (could go either way, the
-// range's width). 2 px of panel show between two segments; a small tick above
-// the top marks the middle (5 in 10). The panel's sentence sits centred inside
+// foot) made of ten tenth-segments of listeners, in the cue strip's
+// orientation. Since user decision 2026-10-26 ("3 parts, add to 10") the
+// segments are the model's THREE PARTS (heardAsAxisModel.js threeTenths):
+// "would say man" deep indigo from the left, "would say woman" light indigo
+// from the right, "unsure or neither" neutral grey between — counting
+// segments gives the numbers in the words. A thin BRACKET just outside the
+// outer edge (domeBracketPath) spans where the bigger side's edge could fall;
+// split readings ("Could go either way") stripe the whole dome and have no
+// bracket. 2 px of panel show between two segments; a small tick above the
+// top marks the middle (5 in 10). The panel's sentence sits centred inside
 // the dome, on two lines (domeLines).
+// (2026-10-25 … 2026-10-26: solid man / woman = the low ends of the two-way
+// range, stripes between = "could go either way", the range's width.)
 //
 // Geometry: viewBox DOME.w × DOME.h, centre (cx, cy) on the base line, outer
 // radius R, inner radius r — the mockup's 144 / 118 (its 392-px-wide drawing
 // had 52 px of margin each side; here the box is the dome, 300 px at most).
 
-export const DOME = Object.freeze({ w: 300, h: 157, cx: 150, cy: 156, R: 144, r: 118, gap: 2, tickTop: 3, tickBottom: 9 });
+// The bracket: radius bR (outer edge + bR − R − stroke / 2 of gap), stroke bW,
+// radial end caps from bCapIn to bCapOut; the middle tick sits above it
+// (tickTop … tickBottom, shortened from 3 … 9 for the bracket in 2026-10-26).
+export const DOME = Object.freeze({
+  w: 300, h: 157, cx: 150, cy: 156, R: 144, r: 118, gap: 2, tickTop: 0.5, tickBottom: 4.5,
+  bR: 149, bW: 1.5, bCapIn: 146, bCapOut: 150,
+});
 
 const r2 = (v) => Math.round(v * 100) / 100;
 const pt = (deg, rho) => {
@@ -42,11 +53,24 @@ export function domeSegmentPath(i) {
 export const DOME_PATHS = Object.freeze(Array.from({ length: 10 }, (_, i) => domeSegmentPath(i)));
 
 /** The kind of each tenth from the left, for an axis from heardAsAxis():
- * "man" for the first A (= axis.man · 10), "woman" for the last C
- * (= axis.woman · 10), "either" between. */
+ * "man" for the first tenths.man, "woman" for the last tenths.woman,
+ * "unsure" between; all "split" when the reading is split. */
 export function domeKinds(axis) {
-  const a = Math.round(axis.man * 10), c = Math.round(axis.woman * 10);
-  return Array.from({ length: 10 }, (_, i) => (i < a ? "man" : i >= 10 - c ? "woman" : "either"));
+  if (axis.split) return Array(10).fill("split");
+  const { man, woman } = axis.tenths;
+  return Array.from({ length: 10 }, (_, i) => (i < man ? "man" : i >= 10 - woman ? "woman" : "unsure"));
+}
+
+/** The bracket's SVG path for [lo, hi] in tenths from the left foot (null
+ * for none): an arc at radius bR from boundary lo to boundary hi, with a
+ * short radial cap at each end (ends exactly on the segment boundaries). */
+export function domeBracketPath(bracket) {
+  if (!bracket) return null;
+  const [lo, hi] = bracket;
+  const { bR, bCapIn, bCapOut } = DOME;
+  const a0 = 180 - 18 * lo, a1 = 180 - 18 * hi;
+  const large = a0 - a1 > 180 ? 1 : 0;
+  return `M${pt(a0, bCapIn)}L${pt(a0, bCapOut)}M${pt(a0, bR)}A${bR} ${bR} 0 ${large} 1 ${pt(a1, bR)}M${pt(a1, bCapIn)}L${pt(a1, bCapOut)}`;
 }
 
 /** The sentence inside the dome on two lines, broken before "listeners" (the
@@ -59,6 +83,7 @@ export function domeLines(text) {
   return i > 0 ? [text.slice(0, i), text.slice(i + 1)] : [text];
 }
 
-/** The words beside the striped key under the dome (the end words are
- * heardAsAxisModel.js's AXIS_ENDS). */
-export const EITHER_WORDS = "could go either way";
+/** The words beside the grey and bracket keys under the dome (the end words
+ * are heardAsAxisModel.js's AXIS_ENDS). */
+export const UNSURE_WORDS = "unsure or neither";
+export const BRACKET_WORDS = "likely range";
