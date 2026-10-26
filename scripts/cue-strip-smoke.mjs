@@ -11,9 +11,18 @@
 // fake-capture file is a launch flag):
 //   1 speech-woman  first visit: the welcome sheet's direction question (masculine),
 //                   "Start — allow the microphone" starts listening. LAYOUT (the hard requirement):
-//                   at scrollTop 0 the pitch trace and the whole cue strip are
-//                   inside the viewport, no horizontal page scroll, no clipped
-//                   strip header (horizontally or vertically — descenders).
+//                   at scrollTop 0 the pitch trace and the whole cue strip —
+//                   both meter columns — are inside the viewport, no horizontal
+//                   page scroll, no clipped strip header (horizontally or
+//                   vertically — descenders). TWIN COLUMNS (the owner's pick,
+//                   2026-10-25): pitch left, resonance right, tops level, each
+//                   meter >= 150 px tall (>= 100 px in short landscape, where
+//                   the meters share the height beside the trace); each reads
+//                   upwards ("higher" / "brighter" above the track, "lower" /
+//                   "darker" below, the typical women's band above the men's);
+//                   every strip button's hit area >= 44 x 44 px. While live, a
+//                   thumb sits inside the target outline exactly when its value
+//                   is inside the target range (both columns).
 //                   INFO POPOVERS: each row's "i" and the steadiness "i" open a
 //                   popover whose text wraps inside it (scrollWidth <=
 //                   clientWidth) and that is on top at its centre and inside
@@ -233,6 +242,14 @@ const state = (page) => page.evaluate(() => {
       word: el.querySelector("[data-cue-word]")?.textContent ?? null,
       title: el.querySelector("[data-cue-title]")?.textContent ?? "",
       sr: el.querySelector("[data-cue-sr]")?.textContent ?? "",
+      // the thumb's resting centre (its inline transform, not the 200 ms
+      // transition's current frame) and the target outline, in the meter's px
+      thumbY: (() => {
+        const mk = el.querySelector("[data-cue-dot-mark]");
+        const m = mk?.style.transform.match(/translate\(([-\d.e]+)px,\s*([-\d.e]+)px\)/);
+        return m ? Number(m[2]) + mk.offsetHeight / 2 : null;
+      })(),
+      hlY: h ? [Number(h.getAttribute("y")), Number(h.getAttribute("y")) + Number(h.getAttribute("height"))] : null,
     };
   }
   const p = document.querySelector("[data-heard-as]");
@@ -298,7 +315,24 @@ const layout = (page) => page.evaluate(() => {
     .filter((e) => { const cs = getComputedStyle(e);
       return (cs.overflowX !== "visible" && e.scrollWidth > e.clientWidth + 1) || (cs.overflowY !== "visible" && e.scrollHeight > e.clientHeight + 1); })
     .map((e) => e.textContent);
-  return { vh: innerHeight, vw: innerWidth, trace, strip, scrollW: document.documentElement.scrollWidth, clipped,
+  // The twin columns: each column's meter box, its track and end words, and
+  // the centres of its two bands (screen px).
+  const cols = Object.fromEntries([...document.querySelectorAll("[data-cue-strip] [data-cue]")].map((c) => {
+    const rb = (e) => (e ? e.getBoundingClientRect() : null);
+    const mid = (e) => { const b = rb(e); return b ? (b.top + b.bottom) / 2 : null; };
+    const m = rb(c.querySelector("[data-cue-meter]")), t = rb(c.querySelector("[data-cue-track]"));
+    return [c.dataset.cue, { left: rb(c).left, right: rb(c).right, top: m?.top ?? null, meterH: m ? Math.round(m.height) : 0,
+      trackTop: t?.top ?? null, trackBottom: t?.bottom ?? null,
+      endTop: mid(c.querySelector('[data-cue-end="top"]')), endBottom: mid(c.querySelector('[data-cue-end="bottom"]')),
+      men: mid(c.querySelector('[data-cue-band="men"] rect')), women: mid(c.querySelector('[data-cue-band="women"] rect')) }];
+  }));
+  // Hit areas: the button's box grown by its ::before overhang (the "i" toggles).
+  const hits = [...document.querySelectorAll("[data-cue-strip] button")].map((b) => {
+    const r = b.getBoundingClientRect(), cs = getComputedStyle(b, "::before");
+    const px = (v) => (cs.content && cs.content !== "none" && cs.position === "absolute" ? -parseFloat(v) || 0 : 0);
+    return { label: b.getAttribute("aria-label") ?? b.textContent.trim(), w: Math.round(r.width + px(cs.left) + px(cs.right)), h: Math.round(r.height + px(cs.top) + px(cs.bottom)) };
+  });
+  return { vh: innerHeight, vw: innerWidth, trace, strip, cols, hits, scrollW: document.documentElement.scrollWidth, clipped,
     scrollH: Math.max(document.documentElement.scrollHeight, ...[...document.querySelectorAll("main, [data-dashboard]")].map((e) => e.scrollHeight)),
     panel: r("[data-heard-as]"), session: r("[data-practice-dock]") };
 });
@@ -494,6 +528,15 @@ await sleep(600);
   check("layout: whole cue strip in the first screen", inView(L.strip, L), `${JSON.stringify(L.strip)} vh ${L.vh}`);
   check("layout: no horizontal page scroll", L.scrollW <= L.vw, `${L.scrollW} vs ${L.vw}`);
   check("layout: no clipped strip header text", L.clipped.length === 0, L.clipped.join(" | "));
+  {
+    const p = L.cols.pitch, r = L.cols.resonance, minH = VIEWPORT === "landscape" ? 100 : 150;
+    check(`layout: twin columns side by side — pitch left, resonance right, tops level, each meter >= ${minH} px tall`,
+      !!p && !!r && p.right <= r.left + 0.5 && Math.abs(p.top - r.top) < 1 && p.meterH >= minH && r.meterH >= minH, JSON.stringify(L.cols));
+    const up = (c) => !!c && c.endTop < c.trackTop && c.endBottom > c.trackBottom && c.women !== null && c.men !== null && c.women < c.men;
+    check("layout: both columns read upwards ('higher' / 'brighter' above the track, the typical women's band above the men's)",
+      up(p) && (up(r) || (r && r.men === null)), JSON.stringify(L.cols));
+    check("touch targets: every strip button's hit area >= 44 x 44 px", L.hits.length >= 3 && L.hits.every((b) => b.w >= 44 && b.h >= 44), JSON.stringify(L.hits));
+  }
   log(`  first visit (panel on by default): trace ${L.trace?.top}-${L.trace?.bottom}, strip ${L.strip?.top}-${L.strip?.bottom}, panel ${L.panel?.top}-${L.panel?.bottom}, session ${L.session?.top}-${L.session?.bottom}, vh ${L.vh}, scrollH ${L.scrollH}`);
 }
 // Info popovers (the honest caveats live there): readable and visible.
@@ -531,7 +574,17 @@ for (const label of ["About the pitch cue", "About the resonance cue", "What doe
   const maxTrail = { pitch: 0, resonance: 0 };
   let weightWordsLive = 0, clarityWordsLive = 0, extraRows = 0;
   let hollowBad = 0, hollowSeen = 0;
+  const outline = { pitch: { n: 0, bad: 0, ex: null }, resonance: { n: 0, bad: 0, ex: null } };
   await sample(page, 75000, (s, t) => {
+    for (const cue of ["pitch", "resonance"]) {
+      const r = s.rows[cue];
+      if (!r?.dot || r.thumbY === null || !r.hlY || r.value === null || r.low === null) continue;
+      const lo = Number(r.low), hi = Number(r.high), tol = cue === "pitch" ? 0.01 : 0.002;
+      if (Math.min(Math.abs(r.value - lo), Math.abs(r.value - hi)) < tol) continue; // data-value is rounded
+      const inRange = r.value >= lo && r.value <= hi, inBox = r.thumbY >= r.hlY[0] - 0.01 && r.thumbY <= r.hlY[1] + 0.01;
+      outline[cue].n++;
+      if (inRange !== inBox) { outline[cue].bad++; outline[cue].ex ??= { value: r.value, lo, hi, thumbY: r.thumbY, hlY: r.hlY }; }
+    }
     const pr = s.rows.pitch;
     if (pr?.dot) { if (pr.hollow) hollowSeen++; if (pr.hollow !== /higher|lower/.test(pr.word ?? "")) hollowBad++; }
     if (WEIGHT_WORDS.test(s.stripText)) weightWordsLive++;
@@ -556,6 +609,8 @@ for (const label of ["About the pitch cue", "About the resonance cue", "What doe
   check("while live: two rows only, never clarity / weight words in the strip", extraRows === 0 && clarityWordsLive === 0 && weightWordsLive === 0,
     `extra rows ${extraRows}x, clarity words ${clarityWordsLive}x, weight words ${weightWordsLive}x`);
   check("pitch off target: hollow dot exactly when the row says higher / lower (not colour alone)", hollowBad === 0, `${hollowBad} mismatches, ${hollowSeen} hollow samples`);
+  check("both columns: the thumb sits inside the target outline exactly when its value is inside the target range",
+    outline.pitch.n > 0 && outline.resonance.n > 0 && outline.pitch.bad === 0 && outline.resonance.bad === 0, JSON.stringify(outline));
   await shot(page, "02-woman-live-masculine");
 }
 // directions via Settings

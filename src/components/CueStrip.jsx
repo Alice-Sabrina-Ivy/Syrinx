@@ -224,7 +224,7 @@ function meterGeometry(w, h, roomy) {
     svgW: trackX + trackW + OVERHANG, trackTop, trackBot,
     y: (f) => axisBot - f * (axisBot - axisTop),
     thumbW: trackW + 2 * OVERHANG, thumbH: roomy ? 16 : 14,
-    numFs: [22, 26, 30, 34][tier], subFs: [11, 12, 12, 13][tier],
+    numFs: [22, 26, 30, 34][tier], subFs: [11, 12, 12, 13][tier], resFs: [12, 13, 14, 15][tier],
   };
 }
 
@@ -312,7 +312,7 @@ const CueColumn = memo(function CueColumn({ cue, title, titleNote, info, side, s
       data-trail={trail.length}
       data-value={value === null || value === undefined ? "" : String(Math.round(value * 1000) / 1000)}
       {...(highlight ? { "data-target-low": String(Math.round(highlight.low * 1000) / 1000), "data-target-high": String(Math.round(highlight.high * 1000) / 1000) } : {})}
-      style={G ? { "--cue-num": `${G.numFs}px`, "--cue-sub": `${G.subFs}px` } : undefined}
+      style={G ? { "--cue-num": `${G.numFs}px`, "--cue-sub": `${G.subFs}px`, "--cue-res": `${G.resFs}px` } : undefined}
     >
       <div className="flex items-center h-[22px] text-xs min-[400px]:text-[13px] lg:text-sm leading-[22px] whitespace-nowrap">
         {/* The title and its "i" never shrink, so the "i" stays put. */}
@@ -337,15 +337,15 @@ const CueColumn = memo(function CueColumn({ cue, title, titleNote, info, side, s
                 <stop offset="1" stopColor="#2c2c2c" />
               </linearGradient>
             </defs>
-            <text x={G.trackCx} y={G.fs} textAnchor="middle" fontSize={G.fs} className="fill-neutral-400">{ends[1]}</text>
-            <rect x={G.trackX} y={G.trackTop} width={G.trackW} height={G.trackBot - G.trackTop} rx={G.trackW / 2}
+            <text x={G.trackCx} y={G.fs} textAnchor="middle" fontSize={G.fs} className="fill-neutral-400" data-cue-end="top">{ends[1]}</text>
+            <rect data-cue-track="" x={G.trackX} y={G.trackTop} width={G.trackW} height={G.trackBot - G.trackTop} rx={G.trackW / 2}
               fill={`url(#${gradId})`} stroke={TRACK_STROKE} strokeWidth="1" />
             {bands && ["men", "women"].map((k) => {
               const b = bands[k];
               if (!b) return null;
               const { y0, y1 } = band(b);
               return (
-                <g key={k} data-cue-band="">
+                <g key={k} data-cue-band={k}>
                   {/* ≥ 3:1 against the strip: a neutral-400 outline (dashed for
                       the approximate resonance bands) over a light fill. */}
                   <rect x={G.trackX + 3} y={y0} width={G.trackW - 6} height={Math.max(1, y1 - y0)} rx="3"
@@ -398,7 +398,7 @@ const CueColumn = memo(function CueColumn({ cue, title, titleNote, info, side, s
                   style={{ transform: `translateY(${G.y(p.x)}px)` }} />
               ) : null;
             })}
-            <text x={G.trackCx} y={h - 2} textAnchor="middle" fontSize={G.fs} className="fill-neutral-400">{ends[0]}</text>
+            <text x={G.trackCx} y={h - 2} textAnchor="middle" fontSize={G.fs} className="fill-neutral-400" data-cue-end="bottom">{ends[0]}</text>
           </svg>
         )}
         {/* The thumb: an HTML element over the SVG so its 200 ms transform
@@ -434,8 +434,11 @@ const CueColumn = memo(function CueColumn({ cue, title, titleNote, info, side, s
         )}
         {G && (
           <div className="absolute right-0 min-w-0" style={{ left: G.svgW + 6, top: sideTop }}>
+            {/* A text value (resonance) starts level with the middle of the
+                pitch number beside it and wraps downwards. */}
             {typeof side === "string"
-              ? <div className={`text-[length:var(--cue-sub)] leading-snug break-words hyphens-auto ${sideClass}`} data-cue-value="">{side}</div>
+              ? <div className={`text-[length:var(--cue-res)] leading-snug font-medium break-words hyphens-auto ${sideClass}`}
+                  style={{ paddingTop: Math.max(0, Math.round((G.numFs - G.resFs * 1.375) / 2)) }} data-cue-value="">{side}</div>
               : side}
           </div>
         )}
@@ -555,7 +558,8 @@ export function CueStrip({
   const pitchSide = useMemo(() => (
     <div className="flex flex-col items-start gap-1" data-cue-value="">
       <span className={`text-[length:var(--cue-num)] leading-none font-light tracking-tight ${pitchLevel != null ? statusTextClass(levelStatus) : "text-neutral-400"}`} data-cue-f0="">
-        <Fixed widest={["000"]}>{pitchLevel != null ? Math.round(pitchLevel) : "—"}</Fixed>
+        {/* no voice: a short dash, not a bar the width of the number */}
+        <Fixed widest={["000"]}>{pitchLevel != null ? Math.round(pitchLevel) : <span className="text-[0.6em] align-middle">—</span>}</Fixed>
         <span className="text-[11px] lg:text-xs tracking-normal text-neutral-400 ml-0.5">Hz</span>
       </span>
       <span className={`flex items-center gap-1 h-4 text-[length:var(--cue-sub)] leading-4 font-semibold whitespace-nowrap ${statusTextClass(levelStatus)}`}>
