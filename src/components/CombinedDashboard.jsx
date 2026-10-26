@@ -574,9 +574,14 @@ export function CombinedDashboard({
           spare), so the meters use the whole first screen and the heard-as
           panel starts just below it, never sliced by the dock. */}
       <div className="flex flex-col gap-2 lg:flex-1 lg:flex-row lg:min-h-0 max-lg:shortland:flex-row max-lg:shortland:h-[calc(100dvh-176px)] max-lg:shortland:min-h-[180px]">
-        {/* Pitch trace: the moment-to-moment pitch */}
+        {/* Pitch trace: the moment-to-moment pitch. phonefold (portrait
+            phones ~921-963 px tall, src/index.css): taller than its 240 px
+            cap, so the first screen ends just above the heard-as dome's
+            sentence instead of through it (the panel's top sits 478 px below
+            the trace's top, the sentence 129.5 px into the panel, the fold
+            73 px above the viewport's bottom). */}
         <div
-          className="h-[clamp(150px,26dvh,240px)] shrink-0 lg:h-auto lg:flex-1 lg:min-h-0 max-lg:shortland:h-auto max-lg:shortland:flex-1 max-lg:shortland:min-h-0"
+          className="h-[clamp(150px,26dvh,240px)] phonefold:h-[calc(100dvh-678px)] shrink-0 lg:h-auto lg:flex-1 lg:min-h-0 max-lg:shortland:h-auto max-lg:shortland:flex-1 max-lg:shortland:min-h-0"
           data-pitch-trace-box=""
         >
           <PitchTrace

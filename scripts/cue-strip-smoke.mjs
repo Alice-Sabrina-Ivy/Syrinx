@@ -511,7 +511,7 @@ function axisChecks(who, s) {
   const want = [...wants].join(" / ");
   check(`${who}: dome tenths match the data (deep = low end of man from the left foot, light = low end of woman from the right foot, striped between), no best-guess mark, a deep / striped / light key by "would say man" / "could go either way" / "would say woman"`,
     !!a && !a.dotShown && a.keys === "man,either,woman" && /^m*e*w*$/.test(a.tenths) && a.tenths.length === 10
-    // the dome: 240-300 px centred; 200 px (220 on short desktops) in the panel's row layout (short landscape, 2026-10-26)
+    // the dome: 240-300 px centred; 200 px (220 on short desktops ≥ 1180 px wide) in the panel's row layout (short landscape, 2026-10-26)
     && a.domeW >= (VIEWPORT === "landscape" ? 195 : 240) && a.domeW <= 300.5 && Math.abs(a.domeW / a.domeH - 300 / 157) < 0.03
     && Math.abs((a.parts.man ?? 0) - a.man) < 0.02 && Math.abs((a.parts.woman ?? 0) - a.woman) < 0.02
     && Math.abs((a.parts.either ?? 0) - (1 - a.man - a.woman)) < 0.02

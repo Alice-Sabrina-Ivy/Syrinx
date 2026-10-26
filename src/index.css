@@ -24,6 +24,19 @@ body {
    the meters, so strip and panel fit the right-hand column (CueStrip.jsx).
    Declared after heardrow so its utilities win where both apply. */
 @custom-variant deskshort (@media (min-width: 1024px) and (max-height: 799px));
+/* Portrait phones (below lg) whose visible height puts the first screen's
+   end inside the heard-as dome's sentence: from ~921 px the trace stops
+   growing (26dvh, 240 px cap) and the meters are capped (270 px), so the
+   panel's top stays put while the fold walks down through the sentence
+   until ~964 px. In this band the trace takes the extra height instead
+   (CombinedDashboard.jsx), keeping the sentence just below the fold
+   (2026-10-26 review, measurements/twin-columns-review-2026-10-26.md). */
+@custom-variant phonefold (@media (max-width: 1023.98px) and (min-height: 921px) and (max-height: 963.98px));
+/* The 220 px dome of the row layout, from 1180 px wide only: below that the
+   desktop column sits at its 420 px floor and the text beside a 220 px dome
+   wrapped one more line, so strip and panel overflowed the column by 14 px
+   (2026-10-26 review, measurements/twin-columns-review-2026-10-26.md). */
+@custom-variant deskwide (@media (min-width: 1180px) and (max-height: 799px));
 
 /* "Likely heard as" dome (HeardAsPanel.jsx; the split bar of user decision
    2026-10-20 bent into a semicircle of ten tenths, owner's choice 2026-10-25):

@@ -51,9 +51,11 @@
 // desktop (lg) a taller meter, clamp(180px, 100dvh − 620px, 300px), so the
 // strip and the heard-as dome under it fit the right-hand column without
 // scrolling from 1280 × 800 up (280 px at 1440 × 900); under 800 px tall
-// (deskshort, with the heard-as panel in its row layout) clamp(120px,
-// 100dvh − 528px, 300px), which fills the column exactly from 1366 × 657 up
-// (129 px there, 240 px at 1366 × 768). The meter's
+// (deskshort, with the heard-as panel in its row layout) clamp(100px,
+// 100dvh − 528px, 300px), which fills the column exactly from 1024 px wide
+// and 628 px tall up (129 px at 1366 × 657, 240 px at 1366 × 768; the floor
+// was 120 px until the 2026-10-26 twin-columns review: a 1366 × 768 laptop
+// with a bookmarks bar shows ~620 px, and the column scrolled). The meter's
 // own geometry (track width, label and number sizes) follows its measured
 // width in four tiers.
 
@@ -353,12 +355,11 @@ const CueColumn = memo(function CueColumn({ cue, title, titleNote, info, side, s
       <span className="sr-only" data-cue-sr="">{srText}</span>
       <div
         ref={areaRef}
-        className="relative h-[clamp(150px,calc(74dvh-285px),270px)] lg:h-[clamp(180px,calc(100dvh-620px),300px)] deskshort:h-[clamp(120px,calc(100dvh-528px),300px)] max-lg:shortland:h-auto max-lg:shortland:flex-1 max-lg:shortland:min-h-0"
+        className="relative h-[clamp(150px,calc(74dvh-285px),270px)] lg:h-[clamp(180px,calc(100dvh-620px),300px)] deskshort:h-[clamp(100px,calc(100dvh-528px),300px)] max-lg:shortland:h-auto max-lg:shortland:flex-1 max-lg:shortland:min-h-0"
         data-cue-meter=""
       >
-        {/* pointer-events-none: the SVG is decoration, and its overflow
-            reached over the pitch column's steadiness "i" at 360 px
-            (2026-10-26 review: ~9 % of its 44 px hit area did nothing). */}
+        {/* pointer-events-none: the SVG is decoration; its visible overflow
+            should never take a tap meant for a control beside it. */}
         {G && (
           <svg width={G.svgW} height={h} className="absolute left-0 top-0 block overflow-visible pointer-events-none" aria-hidden="true">
             <defs>

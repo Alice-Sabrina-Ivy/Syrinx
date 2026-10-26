@@ -310,14 +310,14 @@ const Reserve = ({ texts, className = "", render = (x) => x.t }) => (
 // laptops the centred dome pushed the panel's lower half into an inner
 // scroll of the right-hand column, and in short landscape the panel was
 // taller than the screen): the dome at the left (200 px wide; 220 px on
-// desktop, where its key column beside it is taller anyway), its key (one
-// item per line in a narrow column), unsure line and legend beside it, the
+// desktop windows >= 1180 px wide, deskwide, where its key column beside it
+// is taller anyway), its key (one item per line in a narrow column), unsure line and legend beside it, the
 // pitch-only note and the caveat full width under them. A grid whose first
 // three rows the dome spans (the axis element a subgrid, so the dome and its
 // key stay one element and the note still follows it directly in the DOM);
 // every layer of the one-height grid uses the same grid, so the reserve still
 // holds.
-const ROW_GRID = "heardrow:grid heardrow:grid-cols-[200px_minmax(0,1fr)] deskshort:grid-cols-[220px_minmax(0,1fr)] heardrow:grid-rows-[auto_auto_1fr_auto_auto] heardrow:gap-x-3 heardrow:items-start";
+const ROW_GRID = "heardrow:grid heardrow:grid-cols-[200px_minmax(0,1fr)] deskwide:grid-cols-[220px_minmax(0,1fr)] heardrow:grid-rows-[auto_auto_1fr_auto_auto] heardrow:gap-x-3 heardrow:items-start";
 const ROW_AXIS = "heardrow:col-[1/-1] heardrow:row-[1/4] heardrow:grid heardrow:grid-cols-subgrid heardrow:grid-rows-subgrid";
 const UNSURE_CLS = "mt-1 text-xs leading-snug tabular-nums text-center text-balance heardrow:col-start-2 heardrow:row-start-2 heardrow:text-left";
 const LEGEND_CLS = "mt-0.5 text-[11px] leading-snug text-center text-balance heardrow:col-start-2 heardrow:row-start-3 heardrow:text-left";
@@ -440,7 +440,7 @@ function EmptyAxis() {
 // follow the dome's width (cqw of the overlay, a size container), 16 px at the
 // full 300 px. Placed after the pitch-only note in the DOM (see the top of
 // this file); pointer-events none so it never covers anything.
-const DOME_TEXT_BOX = "@container pointer-events-none absolute inset-x-0 top-0 mx-auto w-full max-w-[300px] aspect-[300/157] flex flex-col items-center justify-end heardrow:right-auto heardrow:mx-0 heardrow:w-[200px] deskshort:w-[220px]";
+const DOME_TEXT_BOX = "@container pointer-events-none absolute inset-x-0 top-0 mx-auto w-full max-w-[300px] aspect-[300/157] flex flex-col items-center justify-end heardrow:right-auto heardrow:mx-0 heardrow:w-[200px] deskwide:w-[220px]";
 const DOME_TEXT_STYLE = { fontSize: "min(16px, 5.4cqw)", marginBottom: "4.6cqw", lineHeight: 1.35 };
 
 export function HeardAsPanel({

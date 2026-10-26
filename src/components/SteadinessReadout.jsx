@@ -54,7 +54,9 @@ export function SteadinessReadout({
   );
   // Hit area: 44 px in the cue strip (before:-inset-[16px] around the 12 px
   // inside the 1 px border: the ::before is placed from the padding box), 28 px
-  // elsewhere.
+  // elsewhere. z-10 in the strip (as its InfoToggle): at 360 px the hit area
+  // reaches ~4 px into the resonance column, whose meter box (a later
+  // positioned sibling) otherwise took those taps (2026-10-26 review).
   const infoButton = (
     <button
       ref={buttonRef}
@@ -64,7 +66,7 @@ export function SteadinessReadout({
       aria-controls={tipId}
       aria-label="What does steadiness measure?"
       title={EXPLAINER}
-      className={`relative ml-1 inline-flex items-center justify-center w-3.5 h-3.5 rounded-full border border-neutral-500 text-[9px] leading-none text-neutral-400 hover:text-neutral-200 hover:border-neutral-300 transition-colors cursor-pointer align-middle before:absolute ${variant === "compact" ? "before:-inset-[16px]" : "before:-inset-2"} before:content-['']`}
+      className={`relative ml-1 inline-flex items-center justify-center w-3.5 h-3.5 rounded-full border border-neutral-500 text-[9px] leading-none text-neutral-400 hover:text-neutral-200 hover:border-neutral-300 transition-colors cursor-pointer align-middle before:absolute ${variant === "compact" ? "z-10 before:-inset-[16px]" : "before:-inset-2"} before:content-['']`}
     >
       i
     </button>
