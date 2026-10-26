@@ -4,3 +4,4 @@
 src/voice-preview/wasm/** -text
 licenses/world/** -text
 licenses/emscripten/** -text
+licenses/deepfilternet/** -text

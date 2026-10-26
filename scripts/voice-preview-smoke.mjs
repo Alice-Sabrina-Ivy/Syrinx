@@ -5,8 +5,12 @@
 // measurements/voice-preview-phase1-2026-10-19.md §14 "Smoke", "Renamed and moved 2026-10-20".
 //
 //   npm run build && node scripts/voice-preview-smoke-wavs.mjs &&
-//   node scripts/voice-preview-smoke.mjs [--parts=layout,flow,checks,touchstop,dev,preview,fallback,chunkfail] [--out=<dir>]
-//        [--viewports=p360,p402,phone,landscape,desktop] [--chrome=<exe>]
+//   node scripts/voice-preview-smoke.mjs [--parts=layout,flow,checks,denoise,touchstop,dev,preview,fallback,chunkfail] [--out=<dir>]
+//        [--viewports=p360,p402,phone,landscape,desktop] [--chrome=<exe>] [--inject-wav=0|1]
+//
+// --inject-wav (default on macOS): Chrome's --use-file-for-fake-audio-capture delivers digital
+// silence there (Chrome 154 on macOS, 2026-10-23), so the page's getUserMedia is replaced by
+// a looping Web Audio stream of the same WAV (served by the static server under /__wav/).
 //        [--port=4193] [--dev-port=5193] [--preview-port=4194]
 //
 // layout  (clean.wav) per viewport, one page: listening on the Dashboard and then the lab
@@ -56,6 +60,17 @@
 //         preview, and "Preview ready." is announced WITH the notice (fix step). The noise run
 //         (448 x 890, touch, direction "More feminine"): opening the target row with a prefilled
 //         field does not focus the field (no phone keyboard over the tab's area).
+// denoise (noise.wav, 448 x 890, touch; 2026-10-23, measurements/voice-shaper-denoise-2026-10-23.md;
+//         auto + DeepFilterNet 3 since 2026-10-25, measurements/voice-shaper-noise-2026-10-25.md;
+//         the graphs come from the Hugging Face mirror pinned in DFN3_MODEL — network access needed;
+//         with mirrorCommit null, from public/models/dfn3/ in the build): the noisy recording is
+//         noise-reduced by itself (the switch on, the "Turned on because…" line, the track re-made
+//         by a nested pitch worker, the three graphs in Cache Storage — mirror — or requested once
+//         each — app folder; noise-reduction, re-track and analysis times printed); Original
+//         plays; off: the same recording analysed
+//         again ("Noise reduction off. …" announced) with the quick setting that was showing, the
+//         notice points to the switch; on again: no new request; Record again keeps the user's
+//         choice (on) and the new take is analysed with it. No console errors. Screenshot phone-dark-denoise.
 // touchstop (speech-then-silence.wav, 448 x 890, touch; 2026-10-21 phone report "pressing
 //         Stop keeps popping up 'There wasn't enough voice…'"): a recording of ~3.5 s of
 //         speech is stopped by a touch held 300 ms on Stop (touchstart … touchend, with the
@@ -110,7 +125,7 @@ import { applyPreset } from "../src/voice-preview/controls.js";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const arg = (k, d) => (process.argv.find((a) => a.startsWith(`--${k}=`)) ?? `=${d}`).split("=").slice(1).join("=");
-const PARTS = new Set(arg("parts", "layout,flow,checks,touchstop,dev,preview,fallback,chunkfail").split(",").filter(Boolean));
+const PARTS = new Set(arg("parts", "layout,flow,checks,denoise,touchstop,dev,preview,fallback,chunkfail").split(",").filter(Boolean));
 const WAVDIR = arg("wavs", path.join(repo, "build", "voice-preview-smoke", "wavs"));
 const OUT = arg("out", path.join(repo, "build", "voice-preview-smoke", "shots"));
 const PORT = Number(arg("port", "4193"));
@@ -118,7 +133,8 @@ const DEV_PORT = Number(arg("dev-port", "5193"));
 const PREVIEW_PORT = Number(arg("preview-port", "4194"));
 const CFT = path.join(P.browsers, "chrome", "win64-154.0.8037.57", "chrome-win64", "chrome.exe"); // the spike's timing browser
 const CHROME = arg("chrome", "") || (PARTS.has("timing") && existsSync(CFT) ? CFT : "") || ["C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
-  "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe"].find(existsSync);
+  "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"].find(existsSync);
+const INJECT_WAV = arg("inject-wav", process.platform === "darwin" ? "1" : "0") === "1";
 const WAV = Object.fromEntries(["clean", "hum", "noise", "speech-then-silence"].map((k) => [k, path.join(WAVDIR, `${k}.wav`)]));
 const TIMING_WAV = path.join(WAVDIR, "timing.wav");
 const TIMING_N = Number(arg("timing-n", "10"));
@@ -182,6 +198,13 @@ function startStatic() {
   httpServer = createServer((req, res) => {
     const u = new URL(req.url, "http://x");
     served.push(u.pathname);
+    if (u.pathname.startsWith("/__wav/")) {
+      const w = path.join(WAVDIR, path.basename(decodeURIComponent(u.pathname)));
+      if (!existsSync(w)) { res.writeHead(404); res.end(); return; }
+      res.writeHead(200, { "Content-Type": "audio/wav", "Cache-Control": "no-store" });
+      res.end(readFileSync(w));
+      return;
+    }
     let p = decodeURIComponent(u.pathname.replace(/^\/Syrinx\/?/, "/"));
     let f = path.join(root, p);
     if (!f.startsWith(root)) { res.writeHead(403); res.end(); return; }
@@ -194,7 +217,8 @@ function startStatic() {
   });
   return new Promise((r) => httpServer.listen(PORT, "127.0.0.1", r));
 }
-const isVp = (p) => /VoiceShaperView|VoicePreviewCard|vp-worker|vp_world/.test(p);
+const isVp = (p) => /VoiceShaperView|VoicePreviewCard|vp-worker|vp_world|models\/dfn3\//.test(p);
+const isDfn3 = (p) => /\/models\/dfn3\/\w+\.onnx$/.test(p);
 // the Resonance lab's own files (its view chunk, pipeline, worker): opening Voice Shaper must not start the lab
 const isLab = (p) => /LabView|labPipeline|lab-worker/.test(p);
 const wasmName = (p) => p.split("/").pop();
@@ -202,7 +226,9 @@ const distWasm = readdirSync(path.join(repo, "dist", "assets")).filter((f) => /^
   .map((f) => ({ f, size: statSync(path.join(repo, "dist", "assets", f)).size }));
 const simdWasm = distWasm.sort((a, b) => b.size - a.size)[0]?.f; // the SIMD build is the larger (115 874 B vs 111 276 B)
 
+let currentWav = null;
 async function launch(wav) {
+  currentWav = wav;
   if (browser) { await browser.close().catch(() => {}); closeBrowserHard(); }
   profile = mkdtempSync(path.join(tmpdir(), "vp-smoke-"));
   browser = await puppeteer.launch({
@@ -223,6 +249,27 @@ async function open(viewport, base = `http://127.0.0.1:${PORT}/Syrinx/`) {
   // worker console errors: puppeteer reports worker exceptions as pageerror; console.error
   // calls inside workers are collected here explicitly
   page.on("workercreated", (w) => w.on("console", (m) => { if (m.type() === "error") errors.push(`[worker ${w.url().split("/").pop()}] ${m.text()}`); }));
+  if (INJECT_WAV && currentWav) {
+    await page.evaluateOnNewDocument((url) => {
+      const md = navigator.mediaDevices;
+      if (!md) return;
+      const orig = md.getUserMedia.bind(md);
+      md.getUserMedia = async (c) => {
+        if (!c || !c.audio) return orig(c);
+        const ctx = new AudioContext({ sampleRate: 48000 });
+        const buf = await ctx.decodeAudioData(await (await fetch(url)).arrayBuffer());
+        const src = ctx.createBufferSource();
+        src.buffer = buf;
+        src.loop = true;
+        const dst = ctx.createMediaStreamDestination();
+        dst.channelCount = 1;
+        src.connect(dst);
+        src.start();
+        if (ctx.state !== "running") await ctx.resume().catch(() => {});
+        return dst.stream;
+      };
+    }, `http://127.0.0.1:${PORT}/__wav/${encodeURIComponent(path.basename(currentWav))}`);
+  }
   const cdp = await page.createCDPSession();
   await cdp.send("Emulation.setFocusEmulationEnabled", { enabled: true });
   await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "dark" }]);
@@ -328,11 +375,17 @@ async function pageMem(cdp) {
   return { audio, heap: hu.usedSize, backing: hu.backingStorageSize ?? null };
 }
 const vpWorkers = (page) => page.workers().filter((w) => /vp-worker/.test(w.url()));
+// The worker's WORLD heap as the worker reports it (ready / analysed memBytes, on the card as
+// data-vp-wasm-bytes). Until 2026-10-25 this was a CDP Runtime.queryObjects census of the
+// worker's WebAssembly.Memory instances, but once the worker held the RNNoise module (2026-10-25,
+// fetched at Record) any queryObjects on the worker closed its target in Chrome 155 (reproduced
+// with a worker that only loads rnnoise.wasm; measurements/
+// voice-shaper-noise-2026-10-25.md); the page census below is unaffected.
 async function workerMem(page) {
   const ws = vpWorkers(page);
   if (ws.length !== 1) return { workers: ws.length, n: null, bytes: null };
-  const r = await census(ws[0].client, "WebAssembly.Memory.prototype", "function () { return { n: this.length, bytes: this.reduce((s, m) => s + m.buffer.byteLength, 0) }; }");
-  return { workers: 1, ...r };
+  const bytes = await page.evaluate(() => Number(document.querySelector("[data-voice-preview]")?.dataset.vpWasmBytes || NaN));
+  return { workers: 1, n: 1, bytes };
 }
 const MB = (b) => (b / 1048576).toFixed(1);
 const memLine = (m) => `AudioBuffers ${m.audio.n} (${MB(m.audio.bytes)} MB), V8 heap ${MB(m.heap)} MB, array-buffer backing ${m.backing != null ? `${MB(m.backing)} MB` : "n/a"}`;
@@ -839,20 +892,22 @@ async function partFlow() {
       if (!card.contains(a)) break;
       seq.push(a.dataset.vpRecord !== undefined ? "record" : a.type === "range" ? `range:${a.closest("[data-vp-slider]").dataset.vpSlider}`
         : a.dataset.vpPreset ? `preset:${a.dataset.vpPreset}` : a.dataset.vpPlayVersion ? `play:${a.dataset.vpPlayVersion}`
-          : a.dataset.vpLoop !== undefined ? "loop" : a.dataset.vpStop !== undefined ? "stop" : a.dataset.vpDiscard !== undefined ? "discard" : a.dataset.vpDownload !== undefined ? "download" : a.tagName);
+          : a.dataset.vpLoop !== undefined ? "loop" : a.dataset.vpStop !== undefined ? "stop" : a.dataset.vpDiscard !== undefined ? "discard" : a.dataset.vpDownload !== undefined ? "download"
+            : a.dataset.vpDenoiseToggle !== undefined ? "denoise" : a.tagName);
       // move focus as Tab does: the next focusable element in document order
       const all = [...document.querySelectorAll("button, input, [tabindex]")].filter((e) => e.tabIndex >= 0 && !e.disabled && e.getClientRects().length);
       all[all.indexOf(a) + 1]?.focus();
     }
     return seq;
   });
-  const want = ["record", "range:pitch", "range:resonance", "preset:higherBrighter", "preset:lowerDarker", "preset:pitchOnly", "preset:resonanceOnly", "preset:target", "preset:unchanged",
+  const want = ["record", "denoise", "range:pitch", "range:resonance", "preset:higherBrighter", "preset:lowerDarker", "preset:pitchOnly", "preset:resonanceOnly", "preset:target", "preset:unchanged",
     "play:rebuild", "play:preview", "play:original", "loop", "stop", "discard", "download"];
-  check("Tab order: Record, sliders, quick settings, Play group, Discard / Download", JSON.stringify(order) === JSON.stringify(want), order.join(" > "));
+  check("Tab order: Record, the noise-reduction switch, sliders, quick settings, Play group, Discard / Download", JSON.stringify(order) === JSON.stringify(want), order.join(" > "));
   // real Tab key presses from Record reach the pitch slider next
   await page.focus("[data-vp-record]");
   await page.keyboard.press("Tab");
-  check("Tab from Record lands on the pitch slider", await page.evaluate(() => document.activeElement?.closest("[data-vp-slider]")?.dataset.vpSlider === "pitch"));
+  check("Tab from Record lands on the noise-reduction switch, then the pitch slider", await page.evaluate(() => document.activeElement?.dataset.vpDenoiseToggle !== undefined)
+    && (await page.keyboard.press("Tab"), await page.evaluate(() => document.activeElement?.closest("[data-vp-slider]")?.dataset.vpSlider === "pitch")));
 
   // arrow keys: labels follow at once, ONE render 400 ms after the last key
   const median = Number((await page.$eval("[data-vp-median]", (e) => e.textContent)).match(/about (\d+) Hz/)[1]);
@@ -918,7 +973,7 @@ async function partFlow() {
   // the about toggle: Escape closes it and returns focus
   await clickSel(page, "[data-vp-about-toggle]");
   await sleep(150);
-  check("About: seven paragraphs", await page.$$eval("[data-vp-about] p", (ps) => ps.length) === 7);
+  check("About: nine paragraphs", await page.$$eval("[data-vp-about] p", (ps) => ps.length) === 9);
   await page.focus("[data-vp-about-toggle]");
   await page.keyboard.press("Escape");
   await sleep(150);
@@ -1116,6 +1171,64 @@ async function partChecks() {
     check("no console errors", errors.length === 0, errors.slice(0, 3).join(" | "));
     await page.close();
   }
+}
+
+// The "Reduce background noise" switch with a noisy recording (2026-10-23).
+async function partDenoise() {
+  scope = "denoise";
+  await launch(WAV.noise);
+  const { page, errors } = await open("phone");
+  await startListening(page);
+  await openShaper(page);
+  await watchLive(page);
+  served.length = 0;
+  const rec = await recordToPreview(page);
+  const row = () => page.evaluate(() => {
+    const c = document.querySelector("[data-voice-preview]");
+    const t = c.querySelector("[data-vp-denoise-toggle]");
+    return { present: !!t, checked: t?.checked, hint: c.querySelector("[data-vp-denoise-hint]")?.textContent ?? "", tryLine: !!c.querySelector("[data-vp-denoise-try]"),
+      denoise: c.dataset.vpDenoise, denoised: c.dataset.vpDenoised, reanalysing: c.dataset.vpReanalysing, rendered: c.dataset.vpRendered, phase: c.dataset.vpPhase };
+  });
+  let r = await row();
+  const req = served.filter(isDfn3);
+  const dn = await page.evaluate(() => { const c = document.querySelector("[data-voice-preview]"); return { ms: c.dataset.vpDenoiseMs, re: c.dataset.vpRetrackMs, total: c.dataset.vpAnalysisMs, s: c.dataset.vpSeconds, rate: c.dataset.vpCaptureRate, retracked: c.dataset.vpRetracked, auto: !!c.querySelector("[data-vp-denoise-auto]") }; });
+  // auto (2026-10-25): the noisy recording is noise-reduced by itself, the track re-made
+  check("noise.wav: a preview with the noise notice, noise-reduced automatically (switch on, the auto line, the track re-made)",
+    rec.ok && rec.st.notices.includes("noise") && r.present && r.checked === true && r.denoised === "1" && dn.auto && dn.retracked === "1" && r.hint.includes("Original") && !r.tryLine,
+    `DeepFilterNet 3 ${dn.ms} ms + re-track ${dn.re} ms, analysis ${dn.total} ms for ${dn.s} s at ${dn.rate} Hz; ${JSON.stringify(r)}`);
+  const cached = await page.evaluate(async () => (await caches.keys()).filter((n) => n.startsWith("syrinx-noise-reduction-")).sort());
+  check("the three DeepFilterNet 3 graphs loaded once each (mirror: one Cache Storage entry per graph; app folder: one request each)",
+    (cached.length === 3 && req.length === 0) || (req.length === 3 && new Set(req).size === 3), `${cached.join()} ${req.join()}`);
+  // a quick setting showing, then the switch off
+  await clickSel(page, '[data-vp-preset="higherBrighter"]');
+  await waitVp(page, () => document.querySelector("[data-voice-preview]")?.dataset.vpRendered !== "" && document.querySelector("[data-voice-preview]")?.dataset.vpRendering === "0", "preset rendered", 15000);
+  const setting = (await row()).rendered;
+  await shotCard(page, "phone-dark-denoise");
+  await clickSel(page, '[data-vp-play-version="original"]');
+  await sleep(300);
+  check("Original still plays", (await vp(page)).vpPlaying === "original");
+  await clickSel(page, "[data-vp-stop]");
+  await clickSel(page, "[data-vp-denoise-toggle]");
+  const done = () => waitVp(page, () => { const c = document.querySelector("[data-voice-preview]"); return c?.dataset.vpReanalysing === "0" && c.dataset.vpRendering === "0" && c.dataset.vpRendered !== ""; }, "re-analysed", 30000);
+  await done();
+  r = await row();
+  check("off: the plain analysis with the same setting, the notice points to the switch",
+    r.checked === false && r.denoised === "0" && r.rendered === setting && r.phase === "preview" && r.tryLine, JSON.stringify(r));
+  check("\"Noise reduction off. Updating the preview…\" announced, then the setting in words",
+    (await liveLog(page)).some((t) => t === "Noise reduction off. Updating the preview…") && (await liveLog(page)).at(-1)?.startsWith("Preview updated:"), (await liveLog(page)).slice(-3).join(" | "));
+  await clickSel(page, "[data-vp-denoise-toggle]");
+  await done();
+  r = await row();
+  check("on again: no new request, noise-reduced with the same setting", served.filter(isDfn3).length === req.length && r.checked === true && r.denoised === "1" && r.rendered === setting, JSON.stringify(r));
+  await waitVp(page, () => !document.querySelector("[data-vp-record]")?.getAttribute("aria-disabled"), "record again armed", 5000);
+  await clickSel(page, "[data-vp-record]"); // Record again
+  await phaseIs(page, "recording", 15000);
+  await phaseIs(page, "analysing", 15000);
+  await phaseIs(page, "preview", 30000);
+  r = await row();
+  check("Record again keeps the switch on: the new take is analysed with noise reduction", r.checked === true && r.denoised === "1", JSON.stringify(r));
+  check("no console errors", errors.length === 0, errors.slice(0, 3).join(" | "));
+  await page.close();
 }
 
 // A lingering touch on Stop, and the finger touching down again as the button turns into
@@ -1412,6 +1525,7 @@ try {
   if (PARTS.has("layout")) await partLayout();
   if (PARTS.has("flow")) await partFlow();
   if (PARTS.has("checks")) await partChecks();
+  if (PARTS.has("denoise")) await partDenoise();
   if (PARTS.has("touchstop")) await partTouchStop();
   if (PARTS.has("dev")) await partDev();
   if (PARTS.has("preview")) await partPreview();

@@ -7,14 +7,19 @@
 // (one in flight, one waiting, newest wins, repeats ignored), listening stopping during a
 // recording, and the worker lifecycle: discard / record again terminate the worker (its
 // thread exits, so all of its WebAssembly memory is gone) and a fresh worker starts
-// with the initial memory. measurements/voice-preview-phase1-2026-10-19.md §3, §4.
+// with the initial memory. Noise reduction: switching it with a preview on screen analyses
+// the same recording again, keeps the original, re-renders the setting that was showing (or
+// the one asked for meanwhile), survives Discard, and goes off when the model cannot load
+// (DeepFilterNet 3; the parts that need its gitignored graphs are skipped without them).
+// measurements/voice-preview-phase1-2026-10-19.md §3, §4; measurements/voice-shaper-denoise-2026-10-23.md.
 //
 //   node tests/voice-preview/controller-test.js
+import { autoDenoise } from "../../src/voice-preview/checks.js";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { Worker } from "node:worker_threads";
-import { PARITY_JSON, GLUE_URL, WASM_URLS, REPO, cellKey, makeInput, chunkFor, sha256, makeChecker } from "./vp-test-lib.js";
+import { PARITY_JSON, GLUE_URL, WASM_URLS, DFN3_SOURCE, DFN3_MISSING, DFN3_HINT, ORT_WASM_PATHS, REPO, cellKey, makeInput, chunkFor, sha256, makeChecker } from "./vp-test-lib.js";
 import { setVoicePreviewCapture, voicePreviewPitchTap } from "../../src/voice-preview/bridge.js";
 import * as controller from "../../src/voice-preview/controller.js";
 const { createVoicePreviewController, LISTEN_BEFORE_RECORD_MS } = controller;
@@ -60,8 +65,8 @@ function listen({ sinceMs = 10000 } = {}) {
   });
 }
 const ct = (k) => 50 + (k + 1) * C / rate;
-function chunk(k) {
-  const b = Float32Array.from(pcm.subarray(k * C, (k + 1) * C)).buffer;
+function chunk(k, src = pcm) {
+  const b = Float32Array.from(src.subarray(k * C, (k + 1) * C)).buffer;
   consumers.at(-1).postMessage({ buffer: b, contextTime: ct(k) }, [b]);
 }
 // what useAudioPipeline's handlePitchMessage passes on (the posted message itself)
@@ -77,14 +82,18 @@ async function until(ctl, pred, label, timeoutMs = 30000) {
 }
 const tick = () => new Promise((r) => setTimeout(r, 20));
 
-async function recordClip(ctl) {
+async function recordClip(ctl, src = pcm) {
   T.check("record() starts a recording", ctl.record() === true && ctl.getState().phase === "recording");
   for (let k = 0; k < N; k++) {
-    chunk(k);
+    chunk(k, src);
     if (k >= 2) posted(k - 2, k - 2 === 10 ? { notchedFreqs: [120] } : {});
     if (k % 50 === 49) await tick();
   }
   await tick();
+  // wait until the worker has taken in the chunks before Stop: Stop travels on the worker's own
+  // port, the chunks on the capture port, and two ports keep no order between them (a recording
+  // in the app lasts >= 3 s; this one is fed in ~0.1 s)
+  await until(ctl, (s) => (s.level?.seconds ?? 0) >= (N - 4) * C / rate, "chunks taken in");
   ctl.stop();
   await until(ctl, (s) => s.phase === "analysing", "analysing");
   posted(N - 2); posted(N - 1);
@@ -92,7 +101,7 @@ async function recordClip(ctl) {
 }
 
 const ctl = createVoicePreviewController({
-  createWorker: () => new NodeWorker(), glueUrl: GLUE_URL, wasmUrls: WASM_URLS, now: () => clock,
+  createWorker: () => new NodeWorker(), glueUrl: GLUE_URL, wasmUrls: WASM_URLS, dfn3Source: DFN3_SOURCE, ortWasmPaths: ORT_WASM_PATHS, now: () => clock,
 });
 const phases = [];
 ctl.subscribe((s) => { if (phases.at(-1) !== s.phase) phases.push(s.phase); });
@@ -108,6 +117,8 @@ clock += LISTEN_BEFORE_RECORD_MS - 2000;
 T.check("after 6 s of listening: ready", ctl.readyInMs() === 0);
 
 console.log("\nrecord -> preview");
+T.check("noise reduction: auto by default", ctl.getState().denoiseMode === "auto" && ctl.getState().denoise === false);
+T.check("setDenoise(false) while the switch shows off: no change for the take, the setting becomes off", ctl.setDenoise(false) === false && ctl.getState().denoiseMode === "off");
 s = await recordClip(ctl);
 const port1 = disconnected.at(-1);
 T.check("the capture consumer is released when the recording ends", disconnected.length === 1 && port1 !== undefined);
@@ -130,9 +141,36 @@ T.check("the latest preview is the spike's (0, +6) render", sha256(ctl.getState(
 T.check("a commit equal to the last render does nothing", ctl.render(0, 6) === false);
 unsub();
 
+console.log("\nnoise reduction with a preview on screen");
+if (!DFN3_SOURCE) console.log(`  SKIP the DeepFilterNet 3 graphs are not in build/models/dfn3 (${DFN3_HINT})`);
+else {
+  const before = ctl.getState();
+  T.check("off (the setting): not noise-reduced", before.denoise === false && before.analysis.denoised === false && before.analysis.auto === false);
+  T.check("setDenoise(true) -> re-analysing", ctl.setDenoise(true) === true && ctl.getState().denoise === true && ctl.getState().reanalysing === true);
+  T.check("a render asked for while re-analysing waits (nothing in flight)", ctl.render(2, 3) === true && ctl.getState().rendering === null);
+  let st = await until(ctl, (x) => !x.reanalysing && x.preview?.st === 2 && x.preview?.pct === 3 && !x.rendering, "denoised preview");
+  T.check("analysed again with DeepFilterNet 3: same take, same original, phase stays preview",
+    st.analysis.denoised === true && st.analysis.take === before.analysis.take && st.original === before.original && st.phase === "preview"
+    && phases.at(-1) === "preview");
+  T.check("…a new rebuild, and the waiting setting rendered on it", sha256(st.rebuild) !== f.expected.simd[cellKey(0, 0)] && sha256(st.preview.pcm) !== f.expected.simd[cellKey(2, 3)]);
+  T.check("setDenoise(true) again does nothing", ctl.setDenoise(true) === false);
+  T.check("setDenoise(false) -> re-analysing", ctl.setDenoise(false) === true && ctl.getState().reanalysing === true);
+  st = await until(ctl, (x) => !x.reanalysing && x.preview && !x.rendering, "plain preview again");
+  T.check("off again: the spike's rebuild, and the showing setting (+2, +3) re-rendered: the spike's bytes",
+    st.analysis.denoised === false && sha256(st.rebuild) === f.expected.simd[cellKey(0, 0)] && st.preview.st === 2 && st.preview.pct === 3
+    && sha256(st.preview.pcm) === f.expected.simd[cellKey(2, 3)]);
+  T.check("…the original is still the recording", sha256(st.original) === f.pcmSha256);
+  s = st;
+}
+
 console.log("\ndiscard: the worker is terminated and a fresh one starts");
 const w1 = workers.at(-1);
+if (DFN3_SOURCE) {
+  ctl.setDenoise(true);
+  await until(ctl, (x) => !x.reanalysing, "re-analysed before discard");
+}
 ctl.discard();
+if (DFN3_SOURCE) T.check("discard keeps the noise-reduction setting", ctl.getState().denoise === true && ctl.getState().reanalysing === false && ctl.getState().denoiseError === false);
 T.check("discard clears the recording and its renders", ctl.getState().original === null && ctl.getState().rebuild === null && ctl.getState().preview === null && ctl.getState().analysis === null);
 T.check("the old worker's thread exits (its WebAssembly memory is gone)", w1.terminated && await Promise.race([w1.exited, new Promise((r) => setTimeout(() => r(false), 5000))]));
 s = await until(ctl, (st) => st.phase === "ready", "fresh ready");
@@ -141,6 +179,7 @@ T.check("a fresh worker is ready", w2 !== w1 && !w2.terminated);
 T.check("…with the initial WebAssembly memory, below the analysed worker's", s.memBytes === memInitial && s.memBytes < memAnalysed,
   `fresh ${(s.memBytes / 1e6).toFixed(1)} MB, analysed ${(memAnalysed / 1e6).toFixed(1)} MB`);
 T.check("render() without a preview does nothing", ctl.render(2, 3) === false);
+if (DFN3_SOURCE) T.check("setDenoise(false) without a recording: just the setting", ctl.setDenoise(false) === true && ctl.getState().denoise === false && !ctl.getState().reanalysing);
 
 console.log("\nlistening stops during a recording");
 T.check("record() again", ctl.record() === true);
@@ -177,6 +216,55 @@ T.check("each analysis grew its worker's memory from the initial size", memAnaly
 
 ctl.dispose();
 T.check("dispose terminates the worker", workers.at(-1).terminated);
+
+console.log("\nauto: noise reduction when the level margin is below DENOISE_MARGIN_DB, the track re-made");
+if (!DFN3_SOURCE) console.log(`  SKIP the DeepFilterNet 3 graphs are not in build/models/dfn3 (${DFN3_HINT})`);
+else {
+  const auto = createVoicePreviewController({
+    createWorker: () => new NodeWorker(), glueUrl: GLUE_URL, wasmUrls: WASM_URLS, dfn3Source: DFN3_SOURCE, ortWasmPaths: ORT_WASM_PATHS, now: () => clock,
+  });
+  await until(auto, (x) => x.phase === "ready", "ready (auto)");
+  // the clip with white noise at 10 dB SNR (level margin well under DENOISE_MARGIN_DB)
+  let sd = 5;
+  const rnd = () => { sd ^= sd << 13; sd >>>= 0; sd ^= sd >>> 17; sd ^= sd << 5; sd >>>= 0; return sd / 4294967296 * 2 - 1; };
+  const r = (x) => Math.sqrt(x.reduce((a, v) => a + v * v, 0) / x.length);
+  const wn = Float32Array.from({ length: pcm.length }, rnd);
+  const kk = r(pcm) / r(wn) / Math.sqrt(10);
+  const noisy = pcm.map((v, i) => v + kk * wn[i]);
+  const st = await recordClip(auto, noisy);
+  const want = autoDenoise(st.analysis.check.marginDb);
+  T.check("auto decided by the recording's margin; the switch shows it", st.analysis.auto === true && st.analysis.denoised === want && st.denoise === want && st.denoiseMode === "auto",
+    `margin ${st.analysis.check.marginDb.toFixed(1)} dB -> ${want}`);
+  if (want) {
+    T.check("…noise-reduced with the track re-made by the pitch worker", st.analysis.retracked === true && st.analysis.ms.retrack > 0 && sha256(st.rebuild) !== f.expected.simd[cellKey(0, 0)]);
+    T.check("…the worker reported its stages (the analysis stage cleared after)", st.analysingStage === null);
+    T.check("…the original is the recording", sha256(st.original) === sha256(noisy));
+    T.check("switching it off: the user's setting", auto.setDenoise(false) === true && auto.getState().denoiseMode === "off");
+    const off = await until(auto, (x) => !x.reanalysing && x.rebuild && x.analysis.denoised === false, "auto -> off");
+    T.check("…not noise-reduced, not re-tracked: a different rebuild", off.analysis.retracked === false && off.analysis.denoised === false && sha256(off.rebuild) !== sha256(st.rebuild));
+  }
+  await until(auto, (x) => !x.rearming, "re-armed (auto)", REARM_MS + 2000);
+  auto.discard();
+  T.check("discard keeps the user's setting", auto.getState().denoiseMode === (want ? "off" : "auto"));
+  auto.dispose();
+}
+
+console.log("\nthe model cannot load");
+{
+  const bad = createVoicePreviewController({
+    createWorker: () => new NodeWorker(), glueUrl: GLUE_URL, wasmUrls: WASM_URLS,
+    dfn3Source: DFN3_MISSING, ortWasmPaths: ORT_WASM_PATHS, now: () => clock,
+  });
+  await until(bad, (x) => x.phase === "ready", "ready (missing model files)");
+  T.check("setDenoise(true) before recording", bad.setDenoise(true) === true);
+  const st = await recordClip(bad);
+  const fin = await until(bad, (x) => !x.reanalysing, "final analysis");
+  T.check("-> preview without noise reduction: the setting off, denoiseError set, the spike's rebuild",
+    fin.phase === "preview" && fin.denoise === false && fin.denoiseError === true && fin.analysis.denoised === false
+    && sha256(fin.rebuild) === f.expected.simd[cellKey(0, 0)], `${st.phase} ${fin.denoise} ${fin.denoiseError}`);
+  T.check("…setDenoise(true) is refused while it is unavailable", bad.setDenoise(true) === false && bad.getState().reanalysing === false);
+  bad.dispose();
+}
 await Promise.all(workers.map((w) => w.exited));
 setVoicePreviewCapture(null);
 T.done();

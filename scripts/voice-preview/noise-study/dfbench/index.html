@@ -1,0 +1,10 @@
+<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>DFN3 bench</title><pre id="o">running… keep this tab in front</pre>
+<script type="module">
+const w = new Worker("worker.js", { type: "module" });
+w.onmessage = async (e) => {
+  window.result = e.data;
+  document.getElementById("o").textContent = JSON.stringify(e.data, null, 1);
+  try { await fetch("result", { method: "POST", body: JSON.stringify(e.data) }); } catch { /* desktop run reads window.result */ }
+};
+w.postMessage("go");
+</script>

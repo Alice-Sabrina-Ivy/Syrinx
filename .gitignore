@@ -74,3 +74,6 @@ public/jaesunghuh-gender/
 # --out=public/models/firered, with FIRERED_MODEL.mirrorCommit null); the
 # Node tests' copy lives in build/models/firered/ (build/ is ignored above).
 public/models/firered/
+# DeepFilterNet 3 graphs for offline development of Voice Shaper's noise reduction (node
+# scripts/fetch-dfn3-model.mjs --out=public/models/dfn3, with DFN3_MODEL.mirrorCommit null)
+public/models/dfn3/
