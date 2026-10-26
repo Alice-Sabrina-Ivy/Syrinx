@@ -24,6 +24,14 @@ const subscribeShort = (cb) => {
   return () => mq.removeEventListener("change", cb);
 };
 const isShort = () => window.matchMedia(SHORT_LANDSCAPE).matches;
+// Phones: the plot gives up height (never text size) so that it and its bottom
+// axis word end above the practice dock on short screens (360x690: 220 -> 194 px).
+const subscribeHeight = (cb) => {
+  window.addEventListener("resize", cb);
+  return () => window.removeEventListener("resize", cb);
+};
+const viewHeight = () => window.innerHeight;
+const phonePlotSize = (h) => Math.max(160, Math.min(220, h - 496));
 
 // Every number here is measured (AVID test speakers, Hillenbrand vowels, the
 // clarity study) — measurements/weight-lab-prototype-2026-10-08.md §2 and §8.
@@ -155,6 +163,7 @@ function Mapping({ snap, blocked }) {
 export default function WeightClarityView({ s, phone = false }) {
   useEffect(() => { enableWeight(); }, []);
   const short = useSyncExternalStore(subscribeShort, isShort, () => false);
+  const height = useSyncExternalStore(subscribeHeight, viewHeight, () => 800);
   const snap = s.weightSnap;
   const agcBlocked = snap ? !snap.captureOk : false;
   const r = snap?.reading;
@@ -188,7 +197,7 @@ export default function WeightClarityView({ s, phone = false }) {
       <div className="text-[10px] leading-3 uppercase tracking-wide text-neutral-500">clearer</div>
       <div className="flex items-center gap-1">
         <div className="text-[10px] leading-3 uppercase tracking-wide text-neutral-500 [writing-mode:vertical-rl] rotate-180">lighter</div>
-        <DotPlot snap={snap} size={short ? 116 : phone ? 220 : 240} />
+        <DotPlot snap={snap} size={short ? 116 : phone ? phonePlotSize(height) : 240} />
         <div className="text-[10px] leading-3 uppercase tracking-wide text-neutral-500 [writing-mode:vertical-rl]">heavier</div>
       </div>
       <div className="text-[10px] leading-3 uppercase tracking-wide text-neutral-500" data-weight-axis-bottom="">breathier</div>
