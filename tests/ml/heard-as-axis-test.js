@@ -186,7 +186,7 @@ console.log("\nwords");
   check("the old outward-rounded range is gone (it read 'About 0–5 in 10' on typical voices)", !/–/.test(heardAsAxis(sharesAt(2.6)).unsureText ?? ""), formatShare(sharesAt(2.6).unsure));
   const ax = heardAsAxis(sharesAt(2.6));
   check("screen-reader text is the bar's own description (man from the left, woman from the right, striped between), not the visible sentence — no best guess (none is drawn)",
-    ax.srText === BAR_DESCRIPTION && BAR_DESCRIPTION === "Bar of listeners in tenths: would say man fills from the left, would say woman from the right, and the striped part between could go either way."
+    ax.srText === BAR_DESCRIPTION && BAR_DESCRIPTION === "Arc of listeners in tenths: would say man fills from the left end, would say woman from the right end, and the striped part between could go either way."
     && ax.rangeText === "About 9 in 10 listeners would say man" && !ax.srText.includes(ax.rangeText), ax.srText);
   let once = true, onceDetail = "";
   for (let k = -140; k <= 140; k++) {
