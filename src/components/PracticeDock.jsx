@@ -179,8 +179,8 @@ export function PracticeDock({
           className="shrink-0 min-h-[44px] flex items-center gap-1.5 px-3 sm:px-4 rounded-xl border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-sm transition-colors cursor-pointer"
         >
           <MicOffIcon />
-          {/* icon-only below 400 px wide; the words stay the accessible name */}
-          <span className="whitespace-nowrap max-[399px]:sr-only">Mic off</span>
+          {/* icon-only below 400 px wide; the words stay the accessible name ("Turn Mic off", user decision 2026-10-26; "Mic off" before) */}
+          <span className="whitespace-nowrap max-[399px]:sr-only">Turn Mic off</span>
         </button>
       </div>
       {recordError && (
