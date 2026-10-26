@@ -87,3 +87,18 @@ The full browser smokes need the LibriSpeech speech WAVs (`scripts/cue-strip-smo
 - `cue-strip-smoke.mjs` at every viewport (phone, p402, p360, landscape, desktop), including `--pitch-only` and `--pitch-only-late`. These exercise the new on-screen-order, warning-under-dome, row-layout and band-wait assertions with live voices.
 - `lab-layout-smoke.mjs` parts 1–4 (live speech, model download).
 - The phone check of the `phonefold` band on a real device whose visible height falls in 921–963 px.
+
+## Owner's PC run (2026-10-26, after the fixes above)
+
+Full browser smokes with the LibriSpeech speech WAVs, built `dist/` of 931c2d5, run one after another:
+
+| Smoke | Result |
+|---|---|
+| `cue-strip-smoke --viewport=phone --pitch-only=man,woman` | 123/123 |
+| `cue-strip-smoke --viewport=p402 --pitch-only=man,woman` | 123/123 |
+| `cue-strip-smoke --viewport=p360 --pitch-only=man,woman` | 123/123 |
+| `cue-strip-smoke --viewport=landscape` | 95/95 |
+| `cue-strip-smoke --viewport=desktop` | 95/101 at first, then **101/101** |
+| `lab-layout-smoke` (parts 1–5, live speech + forced states) | 83/83 |
+
+The six desktop failures were in the smoke, not the app. #10's new row-layout assertion ran at the start of the first visit, before the heard-as panel had an estimate, so the dome and key it measures did not exist yet (`row: null` at all five laptop sizes). The two extra laptop sizes also pushed the start of the 75 s speech sample past the resonance row's short warming state ("resonance warming → settling → live" saw `settling` first). The laptop-size checks now run after the speech sample, once the dome is shown. The phone check of the `phonefold` band on a real device whose visible height is 921–963 px is still open.

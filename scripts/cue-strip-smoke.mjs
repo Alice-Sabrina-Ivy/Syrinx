@@ -642,29 +642,6 @@ await sleep(600);
     check("touch targets: every strip and heard-as panel button's hit area >= 44 x 44 px, every point of it hit-tested on the button",
       hits.length >= 4 && hits.every((b) => b.w >= 44 && b.h >= 44 && b.hit === 1), JSON.stringify(hits));
   }
-  if (VIEWPORT === "desktop") {
-    // 1100 x 768 / 1024 x 628: the column at its 420 px floor, the 200 px dome (2026-10-26 review: 220 px there
-    // overflowed the column by 14 px); 628 px is the lowest height whose meters (100 px floor) still fit
-    for (const [w, h] of [[1366, 657], [1280, 690], [1280, 720], [1100, 768], [1024, 628]]) {
-      await page.setViewport({ ...VIEWPORTS.desktop, width: w, height: h });
-      await sleep(600);
-      const d = await desktopColumn(page);
-      await shot(page, `01c-desktop-${w}x${h}`);
-      check(`desktop ${w} x ${h}: the right-hand column has no inner scroll, the heard-as panel in its row layout (dome ${w >= 1180 ? 220 : 200} px, key beside it), More above the dock, meters >= 100 px`,
-        d.sh !== null && d.sh <= d.ch + 1 && d.more !== null && d.dock !== null && d.more <= d.dock && d.meters.length === 2 && d.meters.every((m) => m >= 100)
-        && !!d.row && Math.abs(d.row.domeW - (w >= 1180 ? 220 : 200)) <= 1 && d.row.keyRightOfDome, JSON.stringify(d));
-    }
-    await page.setViewport({ ...VIEWPORTS.desktop, width: 1280, height: 460 });
-    await sleep(600);
-    {
-      const d = await desktopColumn(page);
-      await shot(page, "01c-desktop-1280x460");
-      check("desktop 1280 x 460 (lg and short landscape at once): both meters drawn, >= 100 px tall (the column may scroll)",
-        d.meters.length === 2 && d.meters.every((m) => m >= 100), JSON.stringify(d));
-    }
-    await page.setViewport(VIEWPORTS.desktop);
-    await sleep(600);
-  }
   log(`  first visit (panel on by default): trace ${L.trace?.top}-${L.trace?.bottom}, strip ${L.strip?.top}-${L.strip?.bottom}, panel ${L.panel?.top}-${L.panel?.bottom}, session ${L.session?.top}-${L.session?.bottom}, vh ${L.vh}, scrollH ${L.scrollH}`);
 }
 // Info popovers (the honest caveats live there): readable and visible.
@@ -740,6 +717,33 @@ for (const label of ["About the pitch cue", "About the resonance cue", "What doe
   check("both columns: the thumb sits inside the target outline exactly when its value is inside the target range",
     outline.pitch.n > 0 && outline.resonance.n > 0 && outline.pitch.bad === 0 && outline.resonance.bad === 0, JSON.stringify(outline));
   await shot(page, "02-woman-live-masculine");
+  // Desktop at laptop sizes: measured after the speech sample (2026-10-26), so that the
+  // heard-as panel shows an estimate (its dome and key exist) and the resonance row's
+  // warming state is sampled from the start instead of after six resizes.
+  if (VIEWPORT === "desktop") {
+    await page.waitForSelector("[data-heard-as] [data-split-bar]", { timeout: 15000 }).catch(() => {});
+    // 1100 x 768 / 1024 x 628: the column at its 420 px floor, the 200 px dome (2026-10-26 review: 220 px there
+    // overflowed the column by 14 px); 628 px is the lowest height whose meters (100 px floor) still fit
+    for (const [w, h] of [[1366, 657], [1280, 690], [1280, 720], [1100, 768], [1024, 628]]) {
+      await page.setViewport({ ...VIEWPORTS.desktop, width: w, height: h });
+      await sleep(600);
+      const d = await desktopColumn(page);
+      await shot(page, `01c-desktop-${w}x${h}`);
+      check(`desktop ${w} x ${h}: the right-hand column has no inner scroll, the heard-as panel in its row layout (dome ${w >= 1180 ? 220 : 200} px, key beside it), More above the dock, meters >= 100 px`,
+        d.sh !== null && d.sh <= d.ch + 1 && d.more !== null && d.dock !== null && d.more <= d.dock && d.meters.length === 2 && d.meters.every((m) => m >= 100)
+        && !!d.row && Math.abs(d.row.domeW - (w >= 1180 ? 220 : 200)) <= 1 && d.row.keyRightOfDome, JSON.stringify(d));
+    }
+    await page.setViewport({ ...VIEWPORTS.desktop, width: 1280, height: 460 });
+    await sleep(600);
+    {
+      const d = await desktopColumn(page);
+      await shot(page, "01c-desktop-1280x460");
+      check("desktop 1280 x 460 (lg and short landscape at once): both meters drawn, >= 100 px tall (the column may scroll)",
+        d.meters.length === 2 && d.meters.every((m) => m >= 100), JSON.stringify(d));
+    }
+    await page.setViewport(VIEWPORTS.desktop);
+    await sleep(600);
+  }
 }
 // directions via Settings
 {
