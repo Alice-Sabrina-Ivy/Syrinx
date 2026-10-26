@@ -42,7 +42,9 @@
 // phones (portrait) give each meter clamp(150px, 74dvh − 285px, 232px), so the
 // trace and both columns fit the first screen from 448 × 890 down to
 // 360 × 690; short landscape lets the meters fill the height beside the
-// trace; desktop (lg) a taller meter in the right-hand column. The meter's
+// trace; desktop (lg) a taller meter, clamp(180px, 100dvh − 620px, 300px), so
+// the strip and the heard-as dome under it fit the right-hand column without
+// scrolling from 1280 × 800 up (280 px at 1440 × 900). The meter's
 // own geometry (track width, label and number sizes) follows its measured
 // width in four tiers.
 
@@ -324,7 +326,7 @@ const CueColumn = memo(function CueColumn({ cue, title, titleNote, info, side, s
       <span className="sr-only" data-cue-sr="">{srText}</span>
       <div
         ref={areaRef}
-        className="relative h-[clamp(150px,calc(74dvh-285px),232px)] lg:h-[clamp(200px,calc(100dvh-600px),300px)] shortland:h-auto shortland:flex-1 shortland:min-h-0"
+        className="relative h-[clamp(150px,calc(74dvh-285px),232px)] lg:h-[clamp(180px,calc(100dvh-620px),300px)] shortland:h-auto shortland:flex-1 shortland:min-h-0"
         data-cue-meter=""
       >
         {G && (
