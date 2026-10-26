@@ -31,9 +31,12 @@ export function SteadinessReadout({
   const { open, toggle, wrapRef, buttonRef, tipId, onBlur } = useInfoPopover();
   const text = formatSteadiness(value);
 
-  const dim = text === null ? "opacity-40" : held ? "opacity-50" : "";
-  const shown = text === null ? "—" : `±${text}`;
-  const unit = <span className="text-xs text-neutral-500 ml-0.5">st</span>;
+  // No reading: a neutral-400 "—" at full opacity (7:1 on the strip; it was
+  // neutral-300 at 40 % opacity, ~3:1, and its unit ~1.6:1 — 2026-10-26
+  // review); the unit neutral-400 (it was neutral-500, 3.9:1 at 11-12 px).
+  const dim = text !== null && held ? "opacity-50" : "";
+  const shown = text === null ? <span className="text-neutral-400">—</span> : `±${text}`;
+  const unit = <span className="text-xs text-neutral-400 ml-0.5">st</span>;
   // In the cue strip the value and its unit keep the width of the widest text
   // ("±<0.1 st"), so the F0 number beside it and the "i" after it never shift
   // (2026-10-19): a number sits at the right of that space, "— st" at its left,
