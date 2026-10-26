@@ -409,13 +409,13 @@ export function DataManagement({
                   This removes {sessionsText}, their recordings and your settings. It can&rsquo;t be undone.
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <button type="button" onClick={exportData} className={`${DATA_BUTTON} flex-1 justify-center`}>
+                  <button type="button" onClick={exportData} className={`${DATA_BUTTON} flex-1 justify-center whitespace-nowrap`}>
                     Export first
                   </button>
                   <button
                     type="button"
                     onClick={() => { setConfirmDelete(false); deleteAllData(); setTimeout(() => deleteButtonRef.current?.focus(), 0); }}
-                    className="flex-1 min-h-11 px-3 rounded-lg bg-red-600 hover:bg-red-500 text-sm font-medium text-white cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-300"
+                    className="flex-1 min-h-11 px-3 rounded-lg bg-red-600 hover:bg-red-500 text-sm font-medium text-white whitespace-nowrap cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-300"
                     data-settings-delete-everything=""
                   >
                     Delete everything
@@ -424,7 +424,7 @@ export function DataManagement({
                     type="button"
                     ref={cancelDeleteRef}
                     onClick={closeDeleteConfirm}
-                    className={`${DATA_BUTTON} flex-1 justify-center`}
+                    className={`${DATA_BUTTON} flex-1 justify-center whitespace-nowrap`}
                   >
                     Cancel
                   </button>
