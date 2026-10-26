@@ -281,11 +281,15 @@ export function CombinedDashboard({
       }
 
       // Timer
+      // Counted from the session's own startedAt — the same clock as
+      // History's "Recording now" card and the saved duration — and
+      // sampled at 4 Hz (an unchanged value doesn't re-render) so the two
+      // displays never sit a second apart.
       setElapsed(0);
-      startTimeRef.current = Date.now();
+      startTimeRef.current = recordingStartRef.current ?? Date.now();
       timerRef.current = setInterval(() => {
-        setElapsed(Math.floor((Date.now() - startTimeRef.current) / 1000));
-      }, 1000);
+        setElapsed(Math.max(0, Math.floor((Date.now() - startTimeRef.current) / 1000)));
+      }, 250);
       setRecording(true);
     } catch (err) {
       // Only the two IndexedDB awaits above can reject, and both run

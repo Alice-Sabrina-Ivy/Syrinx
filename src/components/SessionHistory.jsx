@@ -80,12 +80,14 @@ function coverageNote(session) {
 // The recording in progress (practice dock): a card at the top of the
 // list; the session itself joins the list when it is stopped and saved.
 function RecordingNowCard({ startedAt }) {
-  const [now, setNow] = useState(() => Date.now());
+  // Sampled at 4 Hz like the dock's timer (same startedAt), so the card
+  // and the dock show the same m:ss; an unchanged value doesn't re-render.
+  const [secs, setSecs] = useState(() => Math.max(0, Math.floor((Date.now() - startedAt) / 1000)));
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 1000);
+    const at = (t) => Math.max(0, Math.floor((t - startedAt) / 1000));
+    const t = setInterval(() => setSecs(at(Date.now())), 250);
     return () => clearInterval(t);
-  }, []);
-  const secs = Math.max(0, Math.floor((now - startedAt) / 1000));
+  }, [startedAt]);
   return (
     <div className="flex items-start gap-3 rounded-xl border border-dashed border-red-500/40 bg-red-500/5 px-4 py-3" data-recording-now="">
       <span className="mt-1.5 w-2.5 h-2.5 rounded-full bg-red-400 shrink-0" aria-hidden="true" />
