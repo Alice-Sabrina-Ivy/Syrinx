@@ -286,6 +286,15 @@ const state = (page) => page.evaluate(() => {
         const bar = a.querySelector("[data-split-bar]")?.getBoundingClientRect();
         const parts = Object.fromEntries([...a.querySelectorAll("[data-split-part]")].map((e) => [e.dataset.splitPart, e.querySelectorAll("[data-tenth]").length / 10]));
         const tenths = [...a.querySelectorAll("[data-tenth]")].sort((x, y) => x.dataset.tenth - y.dataset.tenth).map((e) => e.dataset.tenthKind[0]).join("");
+        // on screen, not just in the DOM (2026-10-26 review: beta compared the end words' rects; a CSS mirror or a
+        // reordered key row passed the attribute checks): tenth 0 drawn left of tenth 9, and the "would say man" key
+        // before "would say woman" in reading order (same row: to its left; stacked, in the row layout: above it)
+        const cxOf = (e) => { const r = e?.getBoundingClientRect(); return r ? r.left + r.width / 2 : NaN; };
+        const onScreenOrder = (() => {
+          const km = a.querySelector("[data-axis-key=man]")?.getBoundingClientRect(), kw = a.querySelector("[data-axis-key=woman]")?.getBoundingClientRect();
+          const keys = !!km && !!kw && (km.bottom <= kw.top + 0.5 || (Math.abs(km.top - kw.top) < 2 && km.right <= kw.left + 0.5));
+          return cxOf(a.querySelector("[data-tenth='0']")) < cxOf(a.querySelector("[data-tenth='9']")) && keys;
+        })();
         // the sentence inside the dome's hollow: every line's box within the inner radius (1 px slack), above the base
         const sentenceInDome = (() => {
           const lines = [...p.querySelectorAll("[data-heard-as-range] > span")].map((e) => { const g = document.createRange(); g.selectNodeContents(e); return g.getBoundingClientRect(); });
@@ -300,7 +309,7 @@ const state = (page) => page.evaluate(() => {
         // the three key items: inside the panel, and two on the same row never overlap
         const keysApart = ends.every((x, i) => ends.every((y, j) => i >= j || x.bottom <= y.top + 0.5 || y.bottom <= x.top + 0.5 || x.right <= y.left + 0.5 || y.right <= x.left + 0.5));
         return { wide: a.dataset.axisWide === "1", man: Number(a.dataset.splitMan), woman: Number(a.dataset.splitWoman), guess: Number(a.dataset.splitGuess),
-          parts, tenths, domeW: bar ? Math.round(bar.width * 10) / 10 : null, domeH: bar ? Math.round(bar.height * 10) / 10 : null, sentenceInDome,
+          parts, tenths, onScreenOrder, domeW: bar ? Math.round(bar.width * 10) / 10 : null, domeH: bar ? Math.round(bar.height * 10) / 10 : null, sentenceInDome,
           dotShown: !!a.querySelector("[data-split-guess-mark]"), keys: [...a.querySelectorAll("[data-axis-ends] [data-axis-key]")].map((e) => e.dataset.axisKey).join(","),
           sr: a.querySelector("[role=img]")?.getAttribute("aria-label") ?? "",
           range: p.querySelector("[data-heard-as-range]")?.textContent ?? "", unsure: p.querySelector("[data-heard-as-unsure]")?.textContent ?? "",
@@ -510,7 +519,7 @@ function axisChecks(who, s) {
   const wants = a ? new Set([-0.0005, 0, 0.0005].map((d) => sayText(a.guess + d, a.wide))) : new Set();
   const want = [...wants].join(" / ");
   check(`${who}: dome tenths match the data (deep = low end of man from the left foot, light = low end of woman from the right foot, striped between), no best-guess mark, a deep / striped / light key by "would say man" / "could go either way" / "would say woman"`,
-    !!a && !a.dotShown && a.keys === "man,either,woman" && /^m*e*w*$/.test(a.tenths) && a.tenths.length === 10
+    !!a && !a.dotShown && a.keys === "man,either,woman" && a.onScreenOrder && /^m*e*w*$/.test(a.tenths) && a.tenths.length === 10
     // the dome: 240-300 px centred; 200 px (220 on short desktops ≥ 1180 px wide) in the panel's row layout (short landscape, 2026-10-26)
     && a.domeW >= (VIEWPORT === "landscape" ? 195 : 240) && a.domeW <= 300.5 && Math.abs(a.domeW / a.domeH - 300 / 157) < 0.03
     && Math.abs((a.parts.man ?? 0) - a.man) < 0.02 && Math.abs((a.parts.woman ?? 0) - a.woman) < 0.02
@@ -908,8 +917,13 @@ for (const who of PITCH_ONLY) {
       const r = n.getBoundingClientRect();
       // any line of the dome's sentence (its text, not the line box) above the fold
       const lines = [...document.querySelectorAll("[data-heard-as-range] > span")].map((e) => { const g = document.createRange(); g.selectNodeContents(e); return g.getBoundingClientRect(); });
+      const dome = document.querySelector("[data-split-bar]")?.getBoundingClientRect();
       return { top: Math.round(r.top), bottom: Math.round(r.bottom), limit: Math.round(limit), inView: r.top >= 0 && r.bottom <= limit + 0.5,
-        sentenceLines: lines.map((l) => [Math.round(l.top), Math.round(l.bottom)]), sentenceShows: lines.some((l) => l.top + 3 < limit && l.bottom > 0) };
+        sentenceLines: lines.map((l) => [Math.round(l.top), Math.round(l.bottom)]), sentenceShows: lines.some((l) => l.top + 3 < limit && l.bottom > 0),
+        // a sentence line sliced by the fold (the first screen ends through it)
+        sentenceCut: lines.some((l) => l.top + 1 < limit && l.bottom - 1 > limit),
+        // the warning right under the dome (6-44 px below its box at 360-1366 px wide, 2026-10-26)
+        underDome: !!dome && r.top >= dome.bottom - 0.5 && r.top - dome.bottom <= 60, gapBelowDome: dome ? Math.round(r.top - dome.bottom) : null };
     });
     await sleep(150);
     await shot(page, `05c-pitch-only-${who}-first-screen`);
@@ -918,11 +932,16 @@ for (const who of PITCH_ONLY) {
     // choice), so on every phone size the rule is the conditional one — wherever users can read any of the
     // sentence at scrollTop 0, they can read the warning too (2026-10-26: it asked for the whole dome and key row,
     // so a sentence line sliced by the dock with the warning below passed); desktop keeps the dome in the right column.
+    // On phones that rule alone is vacuous (the sentence never shows at scrollTop 0 by design — 2026-10-26 review),
+    // so they also check what the design promises: no sentence line sliced by the fold; every viewport, the
+    // warning directly under the dome.
     if (VIEWPORT === "desktop") {
       check(`pitch-only ${who}: the warning is on the first screen (scrollTop 0, above the bottom bar)`, !!fold?.inView, JSON.stringify(fold));
     } else {
       check(`pitch-only ${who}: whenever any line of the dome's sentence is on the first screen, so is the warning`, !!fold && (!fold.sentenceShows || fold.inView), JSON.stringify(fold));
+      check(`pitch-only ${who}: no line of the dome's sentence is sliced by the first screen's end`, !!fold && !fold.sentenceCut, JSON.stringify(fold));
     }
+    check(`pitch-only ${who}: the warning sits directly under the dome (<= 60 px below its box)`, !!fold?.underDome, JSON.stringify(fold));
     // Hold through brief hides: shown estimates in the next 20 s that carry it.
     let shownAfter = 0, warnedAfter = 0, wideWarned = 0;
     await sample(page, 20000, (s) => {

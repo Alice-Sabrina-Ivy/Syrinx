@@ -43,7 +43,8 @@
 //     their boxes (<= 0.5 px). Part 5 also runs at 1366 x 657 (a short
 //     desktop) and 890 x 448 (short landscape), where the panel is in its row
 //     layout (the dome at the left, its key, unsure line and legend beside
-//     it; 2026-10-26), so the one-height rule is checked there too.
+//     it; 2026-10-26), so the one-height rule is checked there too; every
+//     shown estimate's sentence must sit inside the dome's hollow.
 // Screenshots of each part in both states go to <out>/<viewport>-<part>-<state>.png.
 //
 // Process hygiene (CLAUDE.md hard rule 2): Chrome is launched by puppeteer with a fresh
@@ -448,7 +449,8 @@ if (FORCED) {
     check(vp, "forced: panel states can be set", inst.ok, inst.why ?? "");
     if (!inst.ok) { await page.close(); continue; }
     const scope = `[data-heard-as], ${BAR}`;
-    const samples = [], seen = [], noBar = [];
+    const samples = [], seen = [], noBar = [], outOfDome = [];
+    let inDomeChecked = 0;
     for (const st of STATES) {
       await forcePanel(page, st);
       await sleep(120);
@@ -459,6 +461,22 @@ if (FORCED) {
         return !!r && r.width > 0 && r.height > 0;
       });
       if (!bar) noBar.push(st.name);
+      // A shown estimate's sentence inside the dome's hollow (every line within the inner radius, above the
+      // base; the same rule as cue-strip-smoke's), in every forced state — the cue strip smoke sees only the
+      // two live voices' readings at its one viewport (2026-10-26 review).
+      const inDome = await page.evaluate(() => {
+        const p = document.querySelector("[data-heard-as]");
+        const lines = [...(p?.querySelectorAll("[data-heard-as-range] > span") ?? [])].map((e) => { const g = document.createRange(); g.selectNodeContents(e); return g.getBoundingClientRect(); });
+        const dome = p?.querySelector("[data-heard-as-axis] [data-split-bar]")?.getBoundingClientRect();
+        if (!lines.length || !dome) return null;   // no estimate shown
+        const k = dome.width / 300, cx = dome.left + 150 * k, cy = dome.top + 156 * k, r = 118 * k;
+        return lines.every((l) => {
+          const inkTop = l.top + (l.height * 0.35) / 2.7;
+          return l.bottom <= cy + 0.5 && Math.hypot(l.left - cx, inkTop - cy) <= r + 1 && Math.hypot(l.right - cx, inkTop - cy) <= r + 1;
+        });
+      });
+      if (inDome !== null) inDomeChecked++;
+      if (inDome === false) outOfDome.push(st.name);
       samples.push({ ...one, state: `${st.name} -> ${one.state}` });
       seen.push(one.state);
     }
@@ -469,6 +487,7 @@ if (FORCED) {
       wantReasons.every((r) => reasons.has(r)) && [...wantShown, ...wantShown.map((k) => `${k}+pitch-only`)].every((k) => seen.includes(k)),
       JSON.stringify([...new Set(seen)]));
     check(vp, "forced: the dome is on screen in every state (empty and greyed without an estimate)", noBar.length === 0, noBar.join(", "));
+    check(vp, `forced: every shown estimate's sentence is drawn inside the dome's hollow (${inDomeChecked} checked)`, inDomeChecked > 0 && outOfDome.length === 0, outOfDome.join(", "));
     const m = maxMove(samples);
     check(vp, `forced: ${STATES.length} states, ${m.n} buttons / inputs / boxes (panel, practice dock), none moved (max ${m.worst.d.toFixed(2)} px <= ${TOL})`,
       m.n > 0 && m.worst.d <= TOL && m.missing.length === 0,
