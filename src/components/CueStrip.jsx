@@ -213,15 +213,17 @@ function InfoToggle({ label, children }) {
 
 // ---- one meter's geometry, from its measured box (px). Four width tiers:
 // desktop (roomy), >= 180 px (448-wide phones), >= 156 px (402), narrower
-// (360: single-word band labels). The value along the meter follows
+// (360). The value along the meter follows
 // axisPos() (cueStripModel.js): fraction 0 at the bottom, 1 at the top.
-const LABEL_WORDS = { full: ["typical", "women", "men"], short: ["women", "men"] };
+// The label column is sized for the full words at every tier ("typical" is
+// narrower than "women", so the full labels cost no width; 2026-10-26 review:
+// at 360 px the labels dropped "typical" for nothing).
+const LABEL_WORDS = ["typical", "women", "men"];
 function meterGeometry(w, h, roomy) {
   const tier = roomy ? 3 : w >= 180 ? 2 : w >= 156 ? 1 : 0;
   const fs = [10, 11, 11, 12][tier];
   const trackW = [24, 28, 32, 36][tier];
-  const short = tier === 0;
-  const labelW = Math.ceil(Math.max(textWidth("target", fs, 600), ...LABEL_WORDS[short ? "short" : "full"].map((t) => textWidth(t, fs))));
+  const labelW = Math.ceil(Math.max(textWidth("target", fs, 600), ...LABEL_WORDS.map((t) => textWidth(t, fs))));
   const trackX = labelW + 5 + OVERHANG;
   const endH = fs + 7; // the end word above / below the track
   const trackTop = endH;
@@ -231,7 +233,7 @@ function meterGeometry(w, h, roomy) {
   const inset = Math.max(9, trackW / 2 - 3);
   const axisTop = trackTop + inset, axisBot = trackBot - inset;
   return {
-    tier, fs, lh: fs + 2, short, labelW, trackW, trackX, trackCx: trackX + trackW / 2,
+    tier, fs, lh: fs + 2, labelW, trackW, trackX, trackCx: trackX + trackW / 2,
     svgW: trackX + trackW + OVERHANG, trackTop, trackBot,
     y: (f) => axisBot - f * (axisBot - axisTop),
     thumbW: trackW + 2 * OVERHANG, thumbH: roomy ? 16 : 14, streakW: Math.round(trackW / 2),
@@ -269,7 +271,7 @@ function bandLabels(G, bands, highlight) {
     if (highlight && !merged) items.push({ key: "target", cy: mid(highlight), lines: [{ t: "target", strong: true }] });
     return stackLabels(items, G.trackTop, G.trackBot, G.lh);
   };
-  const full = G.short ? null : build(false);
+  const full = build(false);
   return full?.fits ? full.items : build(true).items;
 }
 
