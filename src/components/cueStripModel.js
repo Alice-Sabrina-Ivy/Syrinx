@@ -235,7 +235,9 @@ export function createTrail(n = TRAIL_LEN, everyTicks = 1) {
     tick(state, value) {
       const intoOut = lastState !== null && ((state === "sustained") !== (lastState === "sustained")
         || (state === "narrowband") !== (lastState === "narrowband"));
-      if (state === "idle" || intoOut) { pts = []; ticks = 0; }
+      // An already-empty trail stays the same array, so the memoised
+      // columns do not re-render on every idle tick.
+      if (state === "idle" || intoOut) { if (pts.length) pts = []; ticks = 0; }
       lastState = state;
       if (state === "live" && value != null && Number.isFinite(value)) {
         if (ticks % everyTicks === 0) {

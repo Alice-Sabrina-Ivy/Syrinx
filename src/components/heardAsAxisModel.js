@@ -111,7 +111,11 @@ export function quickCheck(shown, voiceState) {
   return "first";
 }
 
-export const BAR_DESCRIPTION = "Bar of listeners in tenths: would say man fills from the left, would say woman from the right, and the striped part between could go either way.";
+// The dome's screen-reader label (the drawing's own description; the
+// sentence is read from its visible line). "Arc" since the dome (2026-10-25:
+// the split bar bent into a semicircle; it said "Bar of listeners …", while the
+// drawing and the More text say "arc" — 2026-10-26 review); content unchanged.
+export const BAR_DESCRIPTION = "Arc of listeners in tenths: would say man fills from the left end, would say woman from the right end, and the striped part between could go either way.";
 
 export const AXIS_ENDS = Object.freeze({ left: "would say man", right: "would say woman" });
 

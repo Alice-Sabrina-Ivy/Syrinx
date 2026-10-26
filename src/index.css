@@ -11,12 +11,40 @@ body {
    and the cue strip side by side (CombinedDashboard). */
 @custom-variant shortland (@media (max-height: 480px) and (min-width: 640px));
 
-/* "Likely heard as" split bar (HeardAsPanel.jsx, user decision 2026-10-20):
+/* The heard-as panel's row layout (the dome at the left, its key, unsure line
+   and legend beside it; HeardAsPanel.jsx): desktop windows shorter than
+   800 px (lg) and short landscape. */
+@custom-variant heardrow {
+  @media (min-width: 1024px) and (max-height: 799px) { @slot; }
+  @media (max-height: 480px) and (min-width: 640px) { @slot; }
+}
+/* Desktop windows shorter than 800 px (lg; a 1366 x 768 laptop shows about
+   1366 x 657, a 1280 x 800 one about 1280 x 690 once the browser's own bars
+   are off): the row layout above with a wider dome, and a lower floor for
+   the meters, so strip and panel fit the right-hand column (CueStrip.jsx).
+   Declared after heardrow so its utilities win where both apply. */
+@custom-variant deskshort (@media (min-width: 1024px) and (max-height: 799px));
+/* Portrait phones (below lg) whose visible height puts the first screen's
+   end inside the heard-as dome's sentence: from ~921 px the trace stops
+   growing (26dvh, 240 px cap) and the meters are capped (270 px), so the
+   panel's top stays put while the fold walks down through the sentence
+   until ~964 px. In this band the trace takes the extra height instead
+   (CombinedDashboard.jsx), keeping the sentence just below the fold
+   (2026-10-26 review, measurements/twin-columns-review-2026-10-26.md). */
+@custom-variant phonefold (@media (max-width: 1023.98px) and (min-height: 921px) and (max-height: 963.98px));
+/* The 220 px dome of the row layout, from 1180 px wide only: below that the
+   desktop column sits at its 420 px floor and the text beside a 220 px dome
+   wrapped one more line, so strip and panel overflowed the column by 14 px
+   (2026-10-26 review, measurements/twin-columns-review-2026-10-26.md). */
+@custom-variant deskwide (@media (min-width: 1180px) and (max-height: 799px));
+
+/* "Likely heard as" dome (HeardAsPanel.jsx; the split bar of user decision
+   2026-10-20 bent into a semicircle of ten tenths, owner's choice 2026-10-25):
    two shades of ONE colour, indigo — never the app's green / red (on / off
    target) or amber (experimental / warning), never pink / blue.
-   --color-heard-man (deep): the solid left part, the low end of "would say
-   man"; --color-heard-woman (light): the solid right part, the low end of
-   "would say woman"; the striped part between them alternates the two, so it
+   --color-heard-man (deep): the solid left tenths, the low end of "would say
+   man"; --color-heard-woman (light): the solid right tenths, the low end of
+   "would say woman"; the striped tenths between them alternate the two, so it
    leans neither way and reads as a pattern, not a third colour. The same
    shades key the end words. Hue 252° for both (review 2026-10-20: the first
    pair, 238° / 230°, sat on the blue side of indigo; scripts/cue-strip-smoke.mjs
@@ -32,27 +60,49 @@ body {
   --color-heard-man: #745dd0;
   --color-heard-woman: #dfd7fe;
 }
+/* The keys under the dome (HTML spans) */
 .heard-man { background-color: var(--color-heard-man); }
 .heard-woman { background-color: var(--color-heard-woman); }
 .heard-either {
   background-image: repeating-linear-gradient(135deg, var(--color-heard-man) 0 3px, var(--color-heard-woman) 3px 6px);
 }
+/* The dome's tenth-segments (SVG, owner's choice 2026-10-25): the same two
+   shades; the striped tenths are an SVG pattern of the two (3 px each, at
+   45°) whose rects carry .heard-pat-man / .heard-pat-woman. */
+.heard-seg-man { fill: var(--color-heard-man); }
+.heard-seg-woman { fill: var(--color-heard-woman); }
+.heard-pat-man { fill: var(--color-heard-man); }
+.heard-pat-woman { fill: var(--color-heard-woman); }
 /* Windows high contrast (forced colours): the parts keep three different
-   fills in the system colours — solid, striped, hollow — and so do the end
-   words' keys; the tenth ticks are drawn in CanvasText (GrayText on the empty
-   bar). The on / off switches (.hc-switch: the panel's, Settings' two) get a
+   fills in the system colours — solid, striped, hollow — on the dome's
+   segments and on the keys (forced-color-adjust: none on both, so these
+   system colours are what is drawn); the middle tick in CanvasText, the empty
+   dome in GrayText outlines. The on / off switches (.hc-switch: the panel's, Settings' two) get a
    ButtonText outline and thumb, the track filled with Highlight when on (with
    forced colours the UA otherwise paints track and thumb in the background
    colour, so only the focus ring showed). */
 @media (forced-colors: active) {
-  .heard-bar-wrap, .heard-key, .heard-tick, .heard-tick-grey, .hc-switch { forced-color-adjust: none; }
+  .heard-dome, .heard-key, .hc-switch { forced-color-adjust: none; }
   .heard-man { background-color: CanvasText; }
   .heard-woman { background-color: Canvas; box-shadow: inset 0 0 0 2px CanvasText; }
   .heard-either { background-image: repeating-linear-gradient(135deg, CanvasText 0 2px, Canvas 2px 6px); }
-  .heard-empty { border-color: GrayText; background-color: Canvas; }
   .heard-key-empty { border-color: GrayText; background-color: Canvas; }
-  .heard-tick { background-color: CanvasText; }
-  .heard-tick-grey { background-color: GrayText; }
+  .heard-seg-man { fill: CanvasText; }
+  .heard-seg-woman { fill: Canvas; stroke: CanvasText; stroke-width: 1.5px; }
+  .heard-seg-either { stroke: CanvasText; stroke-width: 1px; }
+  .heard-pat-man { fill: CanvasText; }
+  .heard-pat-woman { fill: Canvas; }
+  .heard-seg-empty { fill: Canvas; stroke: GrayText; }
+  .heard-dome-tick { stroke: CanvasText; }
+  .heard-dome-tick-grey { stroke: GrayText; }
+  /* The cue strip's SVG words (band labels, the meters' end words) keep their
+     author colours under forced colours (SVG fill is not forced), so on a
+     light contrast theme's white Canvas they fell to 1.8-2.6:1: drawn in
+     CanvasText, the target's word and outline in Highlight (2026-10-26
+     review). */
+  [data-cue-strip] svg text, [data-cue-strip] svg tspan { fill: CanvasText; }
+  [data-cue-strip] svg .cue-target-word { fill: Highlight; }
+  [data-cue-strip] [data-cue-highlight] { fill: none; stroke: Highlight; stroke-width: 2px; }
   .hc-switch { background-color: ButtonFace; box-shadow: inset 0 0 0 1px ButtonText; }
   .hc-switch-thumb { background-color: ButtonText; }
   .hc-switch[aria-checked="true"] { background-color: Highlight; box-shadow: none; }

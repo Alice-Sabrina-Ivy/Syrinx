@@ -13,7 +13,7 @@
 // unvoiced text ("Pitch 276 Hz" in bright / grey, "— Hz", "—" st …).
 // The Resonance lab tab is hidden by default (2026-10-21); each page switches it on in
 // Settings first. Per viewport, every button's (and input's) box is sampled every 100 ms in:
-//   1 the Dashboard cue strip      (the row "i"s, the steadiness "i")
+//   1 the Dashboard cue strip      (the column "i"s, the steadiness "i")
 //   2 the Resonance lab            (header buttons, view switch, card "i"s)
 //   3 the lab's Weight × clarity   (header buttons, view switch, map button)
 // each together with the practice dock under it (its voice status text
@@ -38,9 +38,13 @@
 //     range (both "nearly all" ends, "can't tell yet", with and without the
 //     unsure line, fresh and "Older reading", each with and without the
 //     pitch-only note — its room is reserved from switch-on, review
-//     2026-10-20): the bar is on screen in every state, and the panel's box,
+//     2026-10-20): the dome (the bar until 2026-10-25) is on screen in every state, and the panel's box,
 //     its buttons, the practice dock (record, notes, Mic off) keep
-//     their boxes (<= 0.5 px).
+//     their boxes (<= 0.5 px). Part 5 also runs at 1366 x 657 (a short
+//     desktop) and 890 x 448 (short landscape), where the panel is in its row
+//     layout (the dome at the left, its key, unsure line and legend beside
+//     it; 2026-10-26), so the one-height rule is checked there too; every
+//     shown estimate's sentence must sit inside the dome's hollow.
 // Screenshots of each part in both states go to <out>/<viewport>-<part>-<state>.png.
 //
 // Process hygiene (CLAUDE.md hard rule 2): Chrome is launched by puppeteer with a fresh
@@ -76,6 +80,11 @@ const VIEWPORTS = {
   p360: { width: 360, height: 690, deviceScaleFactor: 2, isMobile: true, hasTouch: true },
   p448: { width: 448, height: 890, deviceScaleFactor: 2, isMobile: true, hasTouch: true },
   desktop: { width: 1280, height: 800, deviceScaleFactor: 1 },
+};
+// Part 5 only: the heard-as panel's row layout (HeardAsPanel.jsx, heardrow).
+const FORCED_ONLY_VIEWPORTS = {
+  dshort: { width: 1366, height: 657, deviceScaleFactor: 1 },
+  land: { width: 890, height: 448, deviceScaleFactor: 2, isMobile: true, hasTouch: true },
 };
 
 // speechS of speech / gapS of silence, repeated, from the source WAV (PCM 16-bit mono).
@@ -428,7 +437,7 @@ if (FORCED) {
     args: ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream", "--autoplay-policy=no-user-gesture-required", ...CHROME_BLOCK_MODEL_ARGS],
   });
   const STATES = allPanelStates();
-  for (const [vp, viewport] of Object.entries(VIEWPORTS)) {
+  for (const [vp, viewport] of Object.entries({ ...VIEWPORTS, ...FORCED_ONLY_VIEWPORTS })) {
     const errors = [];
     const page = await openPage(viewport, errors);
     const listening = await startListening(page);
@@ -440,7 +449,8 @@ if (FORCED) {
     check(vp, "forced: panel states can be set", inst.ok, inst.why ?? "");
     if (!inst.ok) { await page.close(); continue; }
     const scope = `[data-heard-as], ${BAR}`;
-    const samples = [], seen = [], noBar = [];
+    const samples = [], seen = [], noBar = [], outOfDome = [];
+    let inDomeChecked = 0;
     for (const st of STATES) {
       await forcePanel(page, st);
       await sleep(120);
@@ -451,6 +461,22 @@ if (FORCED) {
         return !!r && r.width > 0 && r.height > 0;
       });
       if (!bar) noBar.push(st.name);
+      // A shown estimate's sentence inside the dome's hollow (every line within the inner radius, above the
+      // base; the same rule as cue-strip-smoke's), in every forced state — the cue strip smoke sees only the
+      // two live voices' readings at its one viewport (2026-10-26 review).
+      const inDome = await page.evaluate(() => {
+        const p = document.querySelector("[data-heard-as]");
+        const lines = [...(p?.querySelectorAll("[data-heard-as-range] > span") ?? [])].map((e) => { const g = document.createRange(); g.selectNodeContents(e); return g.getBoundingClientRect(); });
+        const dome = p?.querySelector("[data-heard-as-axis] [data-split-bar]")?.getBoundingClientRect();
+        if (!lines.length || !dome) return null;   // no estimate shown
+        const k = dome.width / 300, cx = dome.left + 150 * k, cy = dome.top + 156 * k, r = 118 * k;
+        return lines.every((l) => {
+          const inkTop = l.top + (l.height * 0.35) / 2.7;
+          return l.bottom <= cy + 0.5 && Math.hypot(l.left - cx, inkTop - cy) <= r + 1 && Math.hypot(l.right - cx, inkTop - cy) <= r + 1;
+        });
+      });
+      if (inDome !== null) inDomeChecked++;
+      if (inDome === false) outOfDome.push(st.name);
       samples.push({ ...one, state: `${st.name} -> ${one.state}` });
       seen.push(one.state);
     }
@@ -460,7 +486,8 @@ if (FORCED) {
     check(vp, "forced: every hide reason, wide and narrow estimates, fresh and older, each with and without the pitch-only note, were shown",
       wantReasons.every((r) => reasons.has(r)) && [...wantShown, ...wantShown.map((k) => `${k}+pitch-only`)].every((k) => seen.includes(k)),
       JSON.stringify([...new Set(seen)]));
-    check(vp, "forced: the bar is on screen in every state (empty and greyed without an estimate)", noBar.length === 0, noBar.join(", "));
+    check(vp, "forced: the dome is on screen in every state (empty and greyed without an estimate)", noBar.length === 0, noBar.join(", "));
+    check(vp, `forced: every shown estimate's sentence is drawn inside the dome's hollow (${inDomeChecked} checked)`, inDomeChecked > 0 && outOfDome.length === 0, outOfDome.join(", "));
     const m = maxMove(samples);
     check(vp, `forced: ${STATES.length} states, ${m.n} buttons / inputs / boxes (panel, practice dock), none moved (max ${m.worst.d.toFixed(2)} px <= ${TOL})`,
       m.n > 0 && m.worst.d <= TOL && m.missing.length === 0,
