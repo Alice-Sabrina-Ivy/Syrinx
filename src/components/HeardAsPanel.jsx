@@ -264,7 +264,9 @@ const REASONS = {
   outside: () => "Outside the range it was tested on — no guess shown",
 };
 
-const legendText = (stale) => `${stale ? "Older reading — waiting for more speech · " : ""}From your last ~8 s of speech · updates every 2 s · striped = could go either way`;
+// (Until the dome, 2026-10-25, it ended "· striped = could go either way";
+// the key row under the dome now says that with its striped key.)
+const legendText = (stale) => `${stale ? "Older reading — waiting for more speech · " : ""}From your last ~8 s of speech · updates every 2 s`;
 
 // Every text each line can show, from the same word functions the panel uses
 // (heardAsAxis on a grid of ranges; every reason), laid out invisibly so the
