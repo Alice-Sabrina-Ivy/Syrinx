@@ -37,6 +37,19 @@
 // formants still move 0.7–0.9 u — measurements/cue-strip-review-fixes-
 // 2026-10-07.md §3). startU stays null until then.
 //
+// Shown start (shownStartU; 2026-10-26, measurements/resonance-start-
+// reference-2026-10-26.md): 12 s of admitted voiced speech is ~22 s of
+// reading after the readout fills (reading is ~45 % voiced), so the row said
+// "finding your start…" until a median 31 / 34 s after listening began
+// (LibriSpeech, women / men). The header and the start ring now use the
+// median of the readouts collected so far while startU is still null — the
+// same samples startU will be the median of, so it becomes startU exactly
+// when startU is set. startU itself (the pitch-only warning's reference) is
+// unchanged. Pre-registered pick P0
+// (measurements/resonance-start-prereg-2026-10-26.md): the first word with
+// the dot (median 9–11 s), false "brighter / darker than your start" on an
+// unchanged voice not more often than before.
+//
 // Resume after a long idle (2026-10-07 review): the readout itself freezes
 // through silence (it is a window of voiced time), so after ≥ IDLE_RESET_S
 // of audio with no admitted bin the snapshot's sinceResumeS restarts at 0
@@ -62,14 +75,28 @@
 // with the same sign on RESTART.confirmN (4) admitted bins in a row, the
 // window drops its bins older than the short window: the shown value
 // becomes the short median and grows back to 5 s. A change of resonance is
-// followed in ~3 s instead of ~6 s, up and down alike. Every value shown is
-// still a median of admitted bins. Only u / raw / clamp come from this
+// followed in ~3 s instead of ~6 s, up and down alike. (Every value shown
+// was a median of admitted bins; since 2026-10-26 a weighted one, below.) Only u / raw / clamp come from this
 // readout; fill, voicedS, n, sinceResumeS and the start collection (startU)
 // come from the plain 5 s readout, so a position exists exactly when it did
 // before. Cost (user decision 2026-10-21, shipped despite the failed
 // guard): on an unchanged voice the restart also fires ~0.5 times a minute,
 // and "about where you started" held 83.1 % of live time vs 85.6 % before.
 // restart: null gives the plain 5 s median (the readout before 2026-10-21).
+//
+// Shown value, recent bins weighted (2026-10-26,
+// measurements/resonance-faster-2026-10-26.md §6): the value shown is the
+// weighted median of the window's admitted bins, each weighted
+// 2^(−age / SHOWN_HALF_LIFE_S) with its age in voiced seconds (the same
+// clock as the window), so a change shows halfway sooner. The restart test
+// still compares the plain short and 5 s medians, as before. The study's
+// candidate E-ewm2.5 (scripts/resonance/faster-candidates.mjs), owner
+// decision 2026-10-26: E-ewm2.5 adopted despite failing G1 (men, women;
+// marginal) and G2 (men) — on dev the dot's SD on an unchanged voice 0.179 /
+// 0.144 u vs bars 0.178 / 0.144 (men / women), false "brighter / darker than
+// your start" 13.9 % vs 13.9 (men). Every value shown is still one of the
+// admitted bins. uPlain, fill, voicedS, n, sinceResumeS and the start stay
+// on the plain 5 s readout. halfLifeS: null = the median (before 2026-10-26).
 //
 // Units: u = (readout − LibriSpeech men's median) / (women's − men's
 // median) (reference.json "vtln"): 0 = typical adult man in that corpus,
@@ -84,6 +111,7 @@ export const VTLN_CLAMP_EDGE = 0.2395;
 export const IDLE_RESET_S = 10;
 export const START_COLLECT_S = 12;
 export const RESTART = Object.freeze({ shortS: 1.5, jumpU: 0.6, confirmN: 4 });
+export const SHOWN_HALF_LIFE_S = 2.5;
 const DROP_VERDICTS = new Set(["sustained", "warming"]);
 
 function median(vals) {
@@ -94,13 +122,29 @@ function median(vals) {
 }
 
 /**
- * The shown readout: the median over the trailing horizonS of voiced time,
- * restarted on a confirmed change (see the header). restart: null = the
- * plain median, value for value equal to readout.js's median readout.
- * (The same code as the switch pass's display readout,
- * scripts/resonance/switch-candidates.mjs createDisplayReadout.)
+ * The weighted median of vals: the smallest value (in sorted order; equal
+ * values keep their input order) whose cumulative weight reaches half the
+ * total. Not averaged between two values, so it is always one of vals.
  */
-export function createRestartReadout({ ref, horizonS = 5, restart = RESTART }) {
+export function weightedMedian(vals, ws) {
+  const idx = vals.map((_, i) => i).sort((a, b) => vals[a] - vals[b]);
+  const tot = ws.reduce((a, b) => a + b, 0);
+  let acc = 0;
+  for (const i of idx) { acc += ws[i]; if (acc >= tot / 2) return vals[i]; }
+  return vals[idx[idx.length - 1]];
+}
+
+/**
+ * The shown readout: the median over the trailing horizonS of voiced time,
+ * restarted on a confirmed change (see the header), shown as the
+ * recency-weighted median (halfLifeS). restart: null and halfLifeS: null =
+ * the plain median, value for value equal to readout.js's median readout;
+ * halfLifeS: null alone = the restart readout of 2026-10-21 (the switch
+ * pass's display readout, scripts/resonance/switch-candidates.mjs
+ * createDisplayReadout). With restart RESTART and halfLifeS 2.5 it equals
+ * the study's E-ewm2.5 (faster-candidates.mjs createShown) value for value.
+ */
+export function createRestartReadout({ ref, horizonS = 5, restart = RESTART, halfLifeS = restart ? SHOWN_HALF_LIFE_S : null }) {
   const gap = ref.womenMedian - ref.menMedian;
   let items = [];
   let raw = null;
@@ -130,6 +174,7 @@ export function createRestartReadout({ ref, horizonS = 5, restart = RESTART }) {
           streak = 0; sign = 0; restarts++;
         }
       }
+      if (halfLifeS) raw = weightedMedian(items.map((x) => x.s), items.map((x) => 2 ** (-(stampS - x.v) / halfLifeS)));
       return true;
     },
     snapshot() {
@@ -144,11 +189,13 @@ export function createRestartReadout({ ref, horizonS = 5, restart = RESTART }) {
  * gate:      false = admit every bin (tests: equals the engine's own readout
  *            when restart is null)
  * restart:   RESTART (default) or null = the plain 5 s median shown
+ * halfLifeS: SHOWN_HALF_LIFE_S (default with a restart) or null = shown as
+ *            the median (the restart readout of 2026-10-21)
  */
-export function createResonanceCue({ reference, horizonS = 5, gate = true, restart = RESTART } = {}) {
+export function createResonanceCue({ reference, horizonS = 5, gate = true, restart = RESTART, halfLifeS = restart ? SHOWN_HALF_LIFE_S : null } = {}) {
   const ref = reference.vtln;
   const readout = createReadout({ agg: "median", horizonS, ref });
-  const shown = createRestartReadout({ ref, horizonS, restart });
+  const shown = createRestartReadout({ ref, horizonS, restart, halfLifeS });
   const g = gate ? createUtteranceGate() : null;
   let verdict = gate ? "silent" : "score";
   let startU = null;
@@ -230,6 +277,8 @@ export function createResonanceCue({ reference, horizonS = 5, gate = true, resta
         clamp,
         verdict,
         startU,
+        // the header's and the start ring's start (see the header)
+        shownStartU: startU !== null ? startU : median(startSamples),
         startProgress: startU !== null ? 1 : Math.min(1, startVoicedS / START_COLLECT_S),
         binsAdmitted,
         binsDropped,

@@ -1,8 +1,9 @@
-import { Component, useState, useRef, useEffect, lazy, Suspense } from "react";
+import { Component, useState, useRef, useEffect, useCallback, lazy, Suspense } from "react";
 import { useAudioPipeline } from "./audio/useAudioPipeline";
 import { PitchTrace } from "./components/PitchTrace";
 import { CombinedDashboard } from "./components/CombinedDashboard";
 import { SessionHistory } from "./components/SessionHistory";
+import { SavedToast } from "./components/PracticeDock";
 import { DataManagement } from "./components/DataManagement";
 import { DirectionPrompt } from "./components/DirectionPrompt";
 import { DIAG_ENABLED } from "./diag/diag";
@@ -12,7 +13,7 @@ import {
   saveTrainingDirection,
   pitchTargetFor,
 } from "./utils/trainingDirection";
-import { loadHeardAsEnabled, saveHeardAsEnabled } from "./utils/heardAsSetting";
+import { loadHeardAsEnabled, saveHeardAsEnabled, HEARD_AS_DEFAULT } from "./utils/heardAsSetting";
 import { loadVoiceGateEnabled, saveVoiceGateEnabled, VOICE_GATE_DEFAULT } from "./utils/voiceGateSetting";
 import { loadLabEnabled, saveLabEnabled } from "./utils/labSetting";
 import { withdrawResonanceLab } from "./resonance-lab/labRequest";
@@ -88,7 +89,7 @@ function TabNav({ activeTab, setActiveTab, tabs = TABS }) {
 
 // A Voice Shaper chunk that fails to download (a deploy replaced the hashed chunks
 // while the page stayed open, a flaky phone connection) must not take the app down:
-// without a boundary React removes the whole root (tabs, Stop Listening, a running
+// without a boundary React removes the whole root (tabs, the practice dock, a running
 // session recording). The texts equal strings.js S.loading / S.loadError
 // (tests/voice-preview/strings-test.js checks them).
 class ShaperBoundary extends Component {
@@ -108,59 +109,15 @@ const WELCOME_KEY = "syrinx_welcomed";
 // the question from appearing.
 const DIRECTION_LOAD_TIMEOUT_MS = 1500;
 
-// The voice status beside Stop Listening (laid out at the widest one's width).
-const VOICE_STATUS_TEXTS = ["Voice detected", "Listening...", "Waiting for voice..."];
-
-// First visit only. A modal like the direction question (App makes the page
-// behind it inert): focus starts on Get Started, Escape also continues,
-// and the panel scrolls on short (landscape) viewports.
-function WelcomeOverlay({ onDismiss }) {
-  const buttonRef = useRef(null);
-  const dismissRef = useRef(onDismiss);
-  useEffect(() => { dismissRef.current = onDismiss; }, [onDismiss]);
-  useEffect(() => {
-    buttonRef.current?.focus();
-    const onKey = (e) => {
-      if (e.key === "Escape") { e.preventDefault(); dismissRef.current(); }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4 py-4"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="welcome-title"
-      data-dialog="welcome"
-    >
-      <div className="bg-neutral-900 border border-neutral-700 rounded-2xl p-6 max-w-sm w-full text-center shadow-xl max-h-full overflow-y-auto">
-        <h2 id="welcome-title" className="text-xl font-light text-white mb-3">Welcome to Syrinx</h2>
-        <p className="text-sm text-neutral-300 leading-relaxed mb-5">
-          Syrinx gives you real-time visual feedback on your voice pitch and
-          resonance — it needs microphone access to work.{" "}
-          Next, choose what you&apos;re aiming for — that sets the targets highlighted on the pitch trace and in the pitch and resonance rows under it.
-        </p>
-        <button
-          ref={buttonRef}
-          onClick={onDismiss}
-          className="px-6 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-300"
-        >
-          Get Started
-        </button>
-      </div>
-    </div>
-  );
-}
-
 function App() {
   const [activeTab, setActiveTab] = useState("dashboard");
   // Read localStorage in the lazy initializer instead of via a mount-time
   // useEffect: the effect path triggered an extra render (idle → welcome)
   // and React 19's compiler-hint rule flagged the useEffect-then-setState
   // pattern as a cascading-render risk. The initializer runs once before
-  // first paint, so first-visit users see the welcome overlay
-  // immediately rather than after a render-then-update flicker.
+  // first paint, so first-visit users see the welcome sheet (the goal
+  // question's "first" variant) immediately rather than after a
+  // render-then-update flicker.
   // localStorage access THROWS (SecurityError) when site data is blocked
   // — uncaught here it white-screened the app (no error boundary). Then
   // there is nowhere to remember the dismissal: show the welcome once per
@@ -181,9 +138,10 @@ function App() {
   const [savedDirection, setSavedDirection] = useState(null);
   const [directionLoaded, setDirectionLoaded] = useState(false);
   const [showDirectionPrompt, setShowDirectionPrompt] = useState(true);
-  // Experimental "Likely heard as" panel: OFF by default (missing / blocked
-  // storage = off); the panel's switch and Settings' row share this state.
-  const [heardAsEnabled, setHeardAsEnabledState] = useState(false);
+  // Experimental "Likely heard as" panel: ON by default since 2026-10-25
+  // (missing / blocked storage = on; user decision: no turn-on button, it
+  // downloads by itself); Settings' switch is the only way to turn it off.
+  const [heardAsEnabled, setHeardAsEnabledState] = useState(HEARD_AS_DEFAULT);
   // "Hide pitch when no voice is heard (experimental)" — the voice gate: ON
   // by default (utils/voiceGateSetting.js).
   const [voiceGateEnabled, setVoiceGateEnabledState] = useState(VOICE_GATE_DEFAULT);
@@ -196,6 +154,25 @@ function App() {
   // Ref for session metadata (notes, elapsed, recording state) —
   // kept in sync by CombinedDashboard, readable by a future save/export feature.
   const sessionRef = useRef({ recording: false, elapsed: 0, notes: "" });
+  // The practice dock's slot (CombinedDashboard portals the dock into it
+  // on every tab), the recording in progress (History's "Recording now"
+  // card), the saved toast and the session History should open.
+  const [dockSlot, setDockSlot] = useState(null);
+  const [liveRecording, setLiveRecording] = useState(null);
+  const [savedToast, setSavedToast] = useState(null);
+  const [openSessionId, setOpenSessionId] = useState(null);
+  const closeSavedToast = useCallback(() => setSavedToast(null), []);
+  // A tab change by the user ends the toast's "Show session" request, so
+  // History doesn't reopen that card on every later visit.
+  const selectTab = useCallback((t) => {
+    setOpenSessionId(null);
+    setActiveTab(t);
+  }, []);
+  const showSavedSession = useCallback(() => {
+    if (savedToast) setOpenSessionId(savedToast.sessionId);
+    setSavedToast(null);
+    setActiveTab("history");
+  }, [savedToast]);
   const {
     status,
     error,
@@ -240,20 +217,20 @@ function App() {
     return () => clearTimeout(timer);
   }, []);
 
-  // The "Likely heard as" switch: same load / timeout pattern as the
-  // direction (a hung IndexedDB leaves it off). A user toggle before the
-  // load resolves wins.
+  // The "Likely heard as" switch. No timeout (unlike the direction): the
+  // default, on, is in place from the first render, so a slow IndexedDB only
+  // delays applying a saved "off" — however late it arrives, it still wins
+  // (worst case the gender worker has started, and setHeardAsEnabled(false)
+  // terminates it). A user toggle before the load resolves wins.
   const heardAsTouchedRef = useRef(false);
   useEffect(() => {
-    let done = false;
+    let live = true;
     loadHeardAsEnabled(db.settings).then((on) => {
-      if (done || heardAsTouchedRef.current) return;
-      done = true;
+      if (!live || heardAsTouchedRef.current) return;
       setHeardAsEnabledState(on);
       setHeardAsEnabled(on);
     });
-    const timer = setTimeout(() => { done = true; }, DIRECTION_LOAD_TIMEOUT_MS);
-    return () => clearTimeout(timer);
+    return () => { live = false; };
   }, [setHeardAsEnabled]);
 
   function changeHeardAs(on) {
@@ -313,15 +290,30 @@ function App() {
   }
   const tabs = labEnabled ? TABS : TABS_NO_LAB;
 
-  // The load-time question. Continue confirms AND starts listening (one
-  // tap per load, as Start Listening alone was before the question
-  // existed); Escape only confirms.
+  // The load-time question. Its primary button confirms AND starts
+  // listening (one tap per load, as Start Listening alone was before the
+  // question existed); "Not now" / Escape only confirm a chosen goal.
   function confirmDirection(next, { start: startListening = true } = {}) {
     setDirection(next);
     setSavedDirection(next);
     setShowDirectionPrompt(false);
+    markWelcomed();
     saveTrainingDirection(db.settings, next);
     if (startListening && status === "idle") start();
+  }
+
+  // "Not now" with no goal chosen: close, the goal stays unset.
+  function dismissDirection() {
+    setShowDirectionPrompt(false);
+    markWelcomed();
+  }
+
+  // Start Listening / Try Again: a goal is never assumed — with none set
+  // (the first visit's "Not now") the question comes back first and its
+  // primary button starts the microphone.
+  function requestStart() {
+    if (direction == null) setShowDirectionPrompt(true);
+    else start();
   }
 
   // Settings panel, any time (also mid-session): applies at once.
@@ -341,11 +333,13 @@ function App() {
     });
   }, []);
 
-  function dismissWelcome() {
+  // The first-visit sheet has been answered or put off: later loads get
+  // the return-visit sheet (when a goal is saved).
+  function markWelcomed() {
     try {
       localStorage.setItem(WELCOME_KEY, "1");
     } catch {
-      // Site data blocked — dismissal lasts for this page load only.
+      // Site data blocked — lasts for this page load only.
     }
     setShowWelcome(false);
   }
@@ -358,19 +352,21 @@ function App() {
     }
   }, [showSettings]);
 
-  // While the welcome, the direction question (also while the saved
-  // answer is still loading) or Settings is open, everything behind it is
-  // inert: no focus, no clicks — so the microphone can't be started and
-  // Settings can't be opened behind the question.
-  const blocked = showWelcome || showDirectionPrompt || showSettings;
+  // While the goal question (also while the saved answer is still
+  // loading) or Settings is open, everything behind it is inert: no focus,
+  // no clicks — so the microphone can't be started and Settings can't be
+  // opened behind the question.
+  const blocked = showDirectionPrompt || showSettings;
 
   // h-dvh, not h-screen: on phones 100vh is the viewport with the URL bar
-  // HIDDEN, so with it showing the bottom row (Stop Listening) sat below
+  // HIDDEN, so with it showing the bottom row (the practice dock) sat below
   // the fold of a page that can't scroll. Every browser Tailwind 4
   // supports (Safari 16.4+, Chrome 111+, Firefox 128+) has dvh, so no
-  // vh fallback is needed.
+  // vh fallback is needed. Short landscape phones (shortland) get a smaller
+  // bottom padding: the practice dock's 44 px buttons cost the content ~16 px
+  // over the old Stop Listening bar.
   return (
-    <div className="h-dvh flex flex-col px-4 py-4 overflow-hidden">
+    <div className="h-dvh flex flex-col px-4 py-4 shortland:pb-2 overflow-hidden">
       {/* Diagnostic overlay (only when ?diag=1) */}
       {DiagnosticOverlay && (
         <Suspense fallback={null}>
@@ -378,12 +374,15 @@ function App() {
         </Suspense>
       )}
 
-      {/* Welcome overlay (first visit only) */}
-      {showWelcome && <WelcomeOverlay onDismiss={dismissWelcome} />}
-
-      {/* Training-direction question (every load; after the welcome) */}
-      {!showWelcome && showDirectionPrompt && directionLoaded && (
-        <DirectionPrompt initial={savedDirection} onConfirm={confirmDirection} />
+      {/* Training-direction question (every load): the welcome sheet on a
+          first visit (or with no saved goal), else the return-visit sheet */}
+      {showDirectionPrompt && directionLoaded && (
+        <DirectionPrompt
+          initial={savedDirection}
+          variant={!showWelcome && savedDirection != null ? "return" : "first"}
+          onConfirm={confirmDirection}
+          onDismiss={dismissDirection}
+        />
       )}
 
       {/* Settings overlay */}
@@ -410,11 +409,12 @@ function App() {
         <p className="text-neutral-500 text-xs mt-0.5">
           Voice training toolkit
         </p>
-        {/* Gear icon */}
+        {/* Gear icon: a 44 px tap target centred where the 20 px icon always sat
+            (-right-3 / -top-2 offset the padding; the page's 16 px gutter holds it). */}
         <button
           ref={gearRef}
           onClick={() => setShowSettings(true)}
-          className="absolute right-0 top-1 text-neutral-600 hover:text-neutral-400 transition-colors cursor-pointer"
+          className="absolute -right-3 -top-2 w-11 h-11 flex items-center justify-center text-neutral-600 hover:text-neutral-400 transition-colors cursor-pointer"
           title="Settings & Data"
           aria-label="Settings & Data"
         >
@@ -429,10 +429,12 @@ function App() {
         {status === "idle" && activeTab !== "history" && (
           <div className="flex-1 flex flex-col w-full max-w-6xl min-h-0">
             {/* Tab navigation even when idle */}
-            <TabNav activeTab={activeTab} setActiveTab={setActiveTab} tabs={tabs} />
-            <div className="flex-1 flex items-center justify-center">
+            <TabNav activeTab={activeTab} setActiveTab={selectTab} tabs={tabs} />
+            {/* Hidden while the goal sheet is up: half of it peeked over
+                the return sheet's top edge as a second start button. */}
+            <div className={`flex-1 flex items-center justify-center ${showDirectionPrompt ? "invisible" : ""}`}>
               <button
-                onClick={start}
+                onClick={requestStart}
                 className="px-8 py-4 rounded-2xl bg-purple-600 hover:bg-purple-500 text-white text-lg font-medium transition-colors cursor-pointer"
               >
                 Start Listening
@@ -443,8 +445,8 @@ function App() {
 
         {status === "idle" && activeTab === "history" && (
           <div className="flex-1 flex flex-col w-full max-w-6xl min-h-0">
-            <TabNav activeTab={activeTab} setActiveTab={setActiveTab} tabs={tabs} />
-            <SessionHistory />
+            <TabNav activeTab={activeTab} setActiveTab={selectTab} tabs={tabs} />
+            <SessionHistory openSessionId={openSessionId} />
           </div>
         )}
 
@@ -461,7 +463,7 @@ function App() {
             <div className="text-center">
               <p className="text-red-400 mb-4">{error}</p>
               <button
-                onClick={start}
+                onClick={requestStart}
                 className="px-6 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-white transition-colors cursor-pointer"
               >
                 Try Again
@@ -473,12 +475,12 @@ function App() {
         {status === "running" && (
           <div className="flex-1 flex flex-col w-full max-w-6xl min-h-0">
             {/* Tab navigation */}
-            <TabNav activeTab={activeTab} setActiveTab={setActiveTab} tabs={tabs} />
+            <TabNav activeTab={activeTab} setActiveTab={selectTab} tabs={tabs} />
 
             {/* Tab content. Scrolls below lg: on a phone the trace and the
-                cue strip fit the first screen, the experimental panel and
-                the session row may need a scroll (small phones, landscape).
-                At lg the side-by-side layout fills the height. */}
+                cue strip fit the first screen above the practice dock, the
+                experimental panel may need a scroll (small phones,
+                landscape). At lg the side-by-side layout fills the height. */}
             <div className="flex-1 flex flex-col min-h-0 overflow-y-auto lg:overflow-y-visible">
               {/* Always mounted while the pipeline runs: it owns the
                   session recording, and unmounting it finalizes the
@@ -508,11 +510,14 @@ function App() {
                 pitchOnlyRef={pitchOnlyRef}
                 audioClockRef={audioClockRef}
                 heardAsEnabled={heardAsEnabled}
-                onHeardAsChange={changeHeardAs}
                 direction={direction}
                 sessionRef={sessionRef}
                 frameCallbackRef={frameCallbackRef}
                 streamRef={streamRef}
+                dockSlot={dockSlot}
+                onMicOff={stop}
+                onRecordingChange={setLiveRecording}
+                onSessionSaved={setSavedToast}
               />
 
               {activeTab === "pitch" && (
@@ -533,7 +538,7 @@ function App() {
                 </div>
               )}
 
-              {activeTab === "history" && <SessionHistory />}
+              {activeTab === "history" && <SessionHistory liveRecording={liveRecording} openSessionId={openSessionId} />}
 
               {activeTab === "shaper" && (
                 <ShaperBoundary>
@@ -552,54 +557,24 @@ function App() {
               )}
             </div>
 
-            {/* Voice status + mic toggle (hidden on history tab) */}
-            {activeTab !== "history" && (
-              <div className="flex-shrink-0 mt-3 flex items-center justify-center gap-4" data-listen-bar="">
-                <div className="flex items-center gap-2">
-                  {/* Three stacked dots cross-fading by opacity (composited)
-                      instead of one dot transitioning colour + shadow, which
-                      ran on the main thread every display frame
-                      (measurements/main-thread-cpu-2026-10-08.md). */}
-                  {/* pitchVoiced / pitchHolding: the pitch display's flags (=
-                      voiced / holding unless the voice gate hides
-                      the pitch). */}
-                  <div className="relative w-2 h-2" data-voice-status={pitchVoiced ? "voiced" : pitchHolding ? "holding" : "waiting"}>
-                    <div className={`absolute inset-0 rounded-full bg-green-400 shadow-[0_0_6px_rgba(74,222,128,0.5)] transition-opacity duration-300 ${pitchVoiced ? "opacity-100" : "opacity-0"}`} />
-                    <div className={`absolute inset-0 rounded-full bg-yellow-400/60 transition-opacity duration-300 ${!pitchVoiced && pitchHolding ? "opacity-100" : "opacity-0"}`} />
-                    <div className={`absolute inset-0 rounded-full bg-neutral-600 transition-opacity duration-300 ${!pitchVoiced && !pitchHolding ? "opacity-100" : "opacity-0"}`} />
-                  </div>
-                  {/* One width for all three texts, so the centred Stop
-                      Listening button beside it doesn't slide left and right
-                      as the voice comes and goes (2026-10-20). */}
-                  <span className="inline-grid text-[11px] text-neutral-500">
-                    {VOICE_STATUS_TEXTS.map((t) => <span key={t} aria-hidden="true" className="invisible col-start-1 row-start-1 whitespace-nowrap">{t}</span>)}
-                    <span className="col-start-1 row-start-1 whitespace-nowrap">
-                      {pitchVoiced
-                        ? "Voice detected"
-                        : pitchHolding
-                          ? "Listening..."
-                          : "Waiting for voice..."}
-                    </span>
-                  </span>
-                </div>
-
-                <button
-                  onClick={stop}
-                  className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-400 text-xs transition-colors cursor-pointer"
-                >
-                  {/* Mic-off icon (inline SVG) */}
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
-                    <path d="M7.5 2a2.5 2.5 0 0 0-2.5 2.5v4a2.5 2.5 0 0 0 5 0v-4A2.5 2.5 0 0 0 7.5 2z" opacity="0.5" />
-                    <path fillRule="evenodd" d="M3.5 7.5a.5.5 0 0 1 .5.5 3.5 3.5 0 1 0 7 0 .5.5 0 0 1 1 0 4.5 4.5 0 0 1-4 4.473V14.5h2a.5.5 0 0 1 0 1h-5a.5.5 0 0 1 0-1h2v-2.027A4.5 4.5 0 0 1 3 8a.5.5 0 0 1 .5-.5z" clipRule="evenodd" opacity="0.5" />
-                    <path d="M1.646 1.646a.5.5 0 0 1 .708 0l12 12a.5.5 0 0 1-.708.708l-12-12a.5.5 0 0 1 0-.708z" />
-                  </svg>
-                  Stop Listening
-                </button>
-              </div>
-            )}
+            {/* The practice dock on every tab (record / note / Mic off;
+                PracticeDock.jsx, rendered by CombinedDashboard) */}
+            <div ref={setDockSlot} className="flex-shrink-0" data-dock-slot="" />
           </div>
         )}
       </div>
+      {/* Inert with the page while a sheet (goal question, Settings) is
+          open: it sits under the sheet's backdrop and must not take focus. */}
+      {savedToast && (
+        <div inert={blocked}>
+          <SavedToast
+            key={savedToast.sessionId}
+            durationSeconds={savedToast.durationSeconds}
+            onShow={showSavedSession}
+            onClose={closeSavedToast}
+          />
+        </div>
+      )}
     </div>
   );
 }

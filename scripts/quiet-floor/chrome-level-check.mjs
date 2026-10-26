@@ -78,18 +78,17 @@ for (const kind of ["mstp", "audiocontext"]) {
   await cdp.send("Emulation.setFocusEmulationEnabled", { enabled: true });
   await page.goto(`http://localhost:${PORT}/Syrinx/?diag=1&capture=${kind}`, { waitUntil: "domcontentloaded", timeout: 180000 });
   await page.bringToFront();
-  // First visit: welcome -> direction question -> Continue starts listening;
-  // a returning profile gets the question again (Continue) or Start Listening.
+  // First visit: the welcome sheet's direction question -> Start starts
+  // listening; a returning profile gets the goal check (Start practicing)
+  // or Start Listening.
   for (let i = 0; i < 120; i++) {
-    if (await page.evaluate(() => document.body.innerText.includes("Stop Listening"))) break;
-    if (!(await clickButton(page, ["Get Started"]))) {
-      // the direction question needs a choice before Continue (first visit)
-      await page.evaluate(() => {
-        const input = document.querySelector('[role=dialog] input[data-direction="exploring"]');
-        if (input && !input.checked) input.closest("label").click();
-      });
-      if (!(await clickButton(page, ["Continue"], "[role=dialog]"))) await clickButton(page, ["Start Listening"]);
-    }
+    if (await page.evaluate(() => document.body.innerText.includes("Mic off"))) break;
+    // the direction question needs a choice before Start (first visit)
+    await page.evaluate(() => {
+      const input = document.querySelector('[role=dialog] input[data-direction="exploring"]');
+      if (input && !input.checked) input.closest("label").click();
+    });
+    if (!(await clickButton(page, ["Start — allow the microphone", "Start practicing"], "[role=dialog]"))) await clickButton(page, ["Start Listening"]);
     await sleep(500);
   }
   const t0 = Date.now();

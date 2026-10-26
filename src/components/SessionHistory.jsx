@@ -30,6 +30,7 @@ import {
   formatTarget,
 } from "../utils/trainingDirection";
 import { pitchLevels } from "../utils/pitchLevel";
+import { formatElapsed } from "../utils/formatElapsed";
 
 // The fixed ranges sessions recorded before training directions existed
 // were scored against (their stored pctTimeIn* figures) — labels only.
@@ -76,9 +77,47 @@ function coverageNote(session) {
   return c != null && c < 100 ? `over the ${c}% of voiced time with a target` : null;
 }
 
-export function SessionHistory() {
-  const [sessions, setSessions] = useState([]);
-  const [expandedId, setExpandedId] = useState(null);
+// The recording in progress (practice dock): a card at the top of the
+// list; the session itself joins the list when it is stopped and saved.
+function RecordingNowCard({ startedAt }) {
+  // Sampled at 4 Hz like the dock's timer (same startedAt), so the card
+  // and the dock show the same m:ss; an unchanged value doesn't re-render.
+  const [secs, setSecs] = useState(() => Math.max(0, Math.floor((Date.now() - startedAt) / 1000)));
+  useEffect(() => {
+    const at = (t) => Math.max(0, Math.floor((t - startedAt) / 1000));
+    const t = setInterval(() => setSecs(at(Date.now())), 250);
+    return () => clearInterval(t);
+  }, [startedAt]);
+  return (
+    <div className="flex items-start gap-3 rounded-xl border border-dashed border-red-500/40 bg-red-500/5 px-4 py-3" data-recording-now="">
+      <span className="mt-1.5 w-2.5 h-2.5 rounded-full bg-red-400 shrink-0" aria-hidden="true" />
+      <div>
+        <p className="text-neutral-100 font-medium">Recording now · <span className="tabular-nums">{formatElapsed(secs)}</span></p>
+        <p className="text-sm text-neutral-400">It appears in this list when you stop and save.</p>
+      </div>
+    </div>
+  );
+}
+
+export function SessionHistory({ liveRecording = null, openSessionId = null } = {}) {
+  const [allSessions, setSessions] = useState([]);
+  // The session the saved toast's "Show session" asked for starts open.
+  const [expandedId, setExpandedId] = useState(openSessionId);
+  // Already on History when "Show session" is pressed: open it now
+  // (state adjusted during render, not in an effect).
+  const [openedFor, setOpenedFor] = useState(openSessionId);
+  if (openSessionId !== openedFor) {
+    setOpenedFor(openSessionId);
+    if (openSessionId != null) setExpandedId(openSessionId);
+  }
+  useEffect(() => {
+    if (openSessionId == null) return;
+    requestAnimationFrame(() => {
+      document.querySelector(`[data-session-id="${openSessionId}"]`)?.scrollIntoView({ block: "nearest" });
+    });
+  }, [openSessionId]);
+  const liveId = liveRecording?.sessionId ?? null;
+  const sessions = liveId == null ? allSessions : allSessions.filter((s) => s.id !== liveId);
   const [loading, setLoading] = useState(true);
   // IndexedDB can be unavailable (site data blocked, some private modes):
   // without a catch the query rejected silently and the list showed
@@ -157,14 +196,19 @@ export function SessionHistory() {
     );
   }
 
+  const liveCard = liveRecording && <RecordingNowCard startedAt={liveRecording.startedAt} />;
+
   if (sessions.length === 0) {
     return (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-neutral-400 mb-1">No sessions recorded yet</p>
-          <p className="text-neutral-600 text-sm">
-            Go to Dashboard and click &quot;Save Session&quot; to start recording
-          </p>
+      <div className="flex-1 flex flex-col px-2 pb-4">
+        {liveCard && <div className="max-w-2xl w-full mx-auto">{liveCard}</div>}
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <p className="text-neutral-400 mb-1">No sessions recorded yet</p>
+            <p className="text-neutral-600 text-sm">
+              Start listening, then press &quot;Record session&quot; at the bottom of the screen
+            </p>
+          </div>
         </div>
       </div>
     );
@@ -173,6 +217,7 @@ export function SessionHistory() {
   return (
     <div className="flex-1 overflow-y-auto px-2 pb-4">
       <div className="max-w-2xl mx-auto space-y-3">
+        {liveCard}
         {sessions.map((session) => (
           <SessionCard
             key={session.id}
@@ -219,6 +264,7 @@ function SessionCard({ session, expanded, onToggle, onDelete }) {
 
   return (
     <div
+      data-session-id={session.id}
       className={`rounded-xl border transition-colors ${
         expanded
           ? "border-neutral-600 bg-neutral-800/60"

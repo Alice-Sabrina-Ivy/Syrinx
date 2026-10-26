@@ -17,12 +17,13 @@
 //
 // One fresh profile per run; Chrome is relaunched (same profile) for each
 // WAV because the fake-capture file is a launch flag:
-//   1 speech  first visit: welcome (a modal, focus on Get Started), then
-//             the question with nothing preselected — a real modal: the
+//   1 speech  first visit: the welcome sheet with the question, nothing
+//             preselected, Start disabled — a real modal: the
 //             page behind is inert (Tab, clicks on Start Listening / the
 //             gear do nothing), focus starts on the question, a Tab-focused option shows an outline,
-//             Escape needs an answer; pick "More masculine", Continue
-//             starts listening; Settings mid-session (focus moves in,
+//             Escape (= Not now) closes it without the mic, Start
+//             Listening asks again; pick "More masculine", Start starts
+//             listening; Settings mid-session (focus moves in,
 //             Escape closes it and returns focus to the gear) — the pitch
 //             band must follow at once (canvas data-target), "Just
 //             exploring" must draw none; F0 colour judges the pitch level;
@@ -32,8 +33,8 @@
 //             whenever a zone is in effect, nothing clipped or overflowing
 //             (gauge screenshots 04b / 07b / 07c / 08b);
 //             History: old sessions neutral, a changed session lists its
-//             goals in order; reload: the question again, last choice
-//             preselected, Continue confirms and starts listening (one
+//             goals in order; reload: the goal check, last choice
+//             preselected, Start practicing confirms and starts listening (one
 //             tap); another reload: Escape confirms without the mic.
 //   2 held    a held vowel: the meter must show "needs running speech",
 //             not a number, for most of the hold.
@@ -220,20 +221,24 @@ const clickButton = (page, texts) => page.evaluate((ts) => {
   return !!b;
 }, texts);
 // Picks a direction in the question or the settings panel.
-const pickDirection = (page, id, scope = "[role=dialog]") => page.evaluate((id, scope) => {
+const pickDirection = (page, id, scope = "[role=dialog]") => page.evaluate(async (id, scope) => {
   const root = scope ? document.querySelector(scope) : document;
+  const more = root?.querySelector("[data-change-goal]");
+  if (more) { more.click(); await new Promise((r) => setTimeout(r, 100)); }
   const input = root?.querySelector(`input[data-direction="${id}"]`);
   if (!input) return false;
   input.closest("label").click();
   return true;
 }, id, scope);
+// The goal sheet ("first" = the welcome sheet with the question, "return" =
+// the later-visit goal check); `continue*` = its primary (Start) button.
 const promptState = (page) => page.evaluate(() => {
-  const dlg = document.querySelector("[role=dialog]");
-  if (!dlg || !dlg.textContent.includes("What are you trying to sound like?")) return null;
+  const dlg = document.querySelector("[data-dialog=direction]");
+  if (!dlg) return null;
   const checked = dlg.querySelector("input[type=radio]:checked");
-  const cont = [...dlg.querySelectorAll("button")].find((b) => b.textContent.includes("Continue"));
-  return { checked: checked?.dataset.direction ?? null, continueEnabled: !!cont && !cont.disabled,
-    continueFocused: document.activeElement === cont };
+  const cont = dlg.querySelector("[data-start-listening]");
+  return { variant: dlg.dataset.variant ?? null, checked: checked?.dataset.direction ?? null,
+    continueEnabled: !!cont && !cont.disabled, continueFocused: document.activeElement === cont };
 });
 const pitchTarget = (page) => page.evaluate(() => {
   const c = [...document.querySelectorAll("canvas[data-target]")];
@@ -338,11 +343,11 @@ async function sampleMeter(page, ms) {
 const share = (counts, key) => (counts[key] ?? 0) / Object.values(counts).reduce((a, b) => a + b, 0);
 async function startListening(page) {
   for (let i = 0; i < 6; i++) {
-    if (await page.evaluate(() => document.body.innerText.includes("Stop Listening"))) return true;
+    if (await page.evaluate(() => document.body.innerText.includes("Mic off"))) return true;
     await clickButton(page, ["Start Listening"]);
     await sleep(1500);
   }
-  return page.evaluate(() => document.body.innerText.includes("Stop Listening"));
+  return page.evaluate(() => document.body.innerText.includes("Mic off"));
 }
 
 log("preview server");
@@ -358,30 +363,29 @@ const reachable = (page, text) => page.evaluate((text) => {
   return { found: true, top: Math.round(r.top), bottom: Math.round(r.bottom), vh: innerHeight, inView: r.top >= 0 && r.bottom <= innerHeight };
 }, text);
 if (VIEWPORT === "landscape") {
-  log("landscape: welcome + question");
+  log("landscape: the welcome sheet with the question");
   await launch(WAV.speech);
   const { page, errors } = await open();
-  await page.waitForFunction(() => document.body.innerText.includes("Welcome to Syrinx"), { timeout: 30000 });
-  await shot(page, "01-welcome-landscape");
-  const g = await reachable(page, "Get Started");
-  check("landscape: Get Started can be scrolled fully into view", g.inView, JSON.stringify(g));
-  await clickButton(page, ["Get Started"]);
-  await page.waitForFunction(() => document.body.innerText.includes("What are you trying to sound like?"), { timeout: 30000 });
+  await page.waitForSelector("[data-dialog=direction]", { timeout: 30000 });
   await sleep(300);
+  await shot(page, "01-welcome-landscape");
   const title = await page.evaluate(() => {
-    const r = document.getElementById("direction-title").getBoundingClientRect();
+    const r = document.querySelector("[data-dialog=direction] form").getBoundingClientRect();
     return { top: Math.round(r.top), inView: r.top >= 0 };
   });
-  check("landscape: the question's title is not clipped", title.inView, JSON.stringify(title));
+  check("landscape: the sheet's top (logo) is not clipped", title.inView, JSON.stringify(title));
   await shot(page, "02-question-landscape-top");
   await pickDirection(page, "androgynous");
-  const c = await reachable(page, "Continue");
-  check("landscape: Continue can be scrolled fully into view", c.inView, JSON.stringify(c));
+  const c = await reachable(page, "Start — allow the microphone");
+  check("landscape: Start can be scrolled fully into view", c.inView, JSON.stringify(c));
+  const nn = await reachable(page, "Not now");
+  check("landscape: Not now can be scrolled fully into view", nn.inView, JSON.stringify(nn));
+  await reachable(page, "Start — allow the microphone");
   await shot(page, "03-question-landscape-scrolled");
-  await clickButton(page, ["Continue"]);
-  const running = await page.waitForFunction(() => document.body.innerText.includes("Stop Listening"), { timeout: 30000 })
+  await clickButton(page, ["Start — allow the microphone"], "[role=dialog]");
+  const running = await page.waitForFunction(() => document.body.innerText.includes("Mic off"), { timeout: 30000 })
     .then(() => true, () => false);
-  check("landscape: Continue starts listening", running);
+  check("landscape: Start starts listening", running);
   await sleep(3000);
   await shot(page, "04-listening-landscape");
   check("no page errors (landscape)", errors.length === 0, errors.slice(0, 3).join(" | "));
@@ -399,18 +403,20 @@ log("run 1: speech");
 await launch(WAV.speech);
 {
   const { page, errors, vadFetches } = await open();
-  await page.waitForFunction(() => document.body.innerText.includes("Welcome to Syrinx"), { timeout: 30000 });
-  check("first visit: welcome shown first, question not yet", (await promptState(page)) === null);
-  const w = await dialogInfo(page);
-  check("welcome is a modal dialog, focus on Get Started, page behind inert",
-    w.dialog === "welcome" && w.modal && /Get Started/.test(w.focus) && w.inert, JSON.stringify(w));
-  await shot(page, "01-welcome");
-  await clickButton(page, ["Get Started"]);
-  await page.waitForFunction(() => document.body.innerText.includes("What are you trying to sound like?"), { timeout: 30000 });
+  await page.waitForSelector("[data-dialog=direction]", { timeout: 30000 });
   await sleep(200);
+  const sheet = await page.evaluate(() => {
+    const d = document.querySelector("[data-dialog=direction]");
+    const t = d?.textContent ?? "";
+    return { welcomeOverlay: !!document.querySelector("[data-dialog=welcome]"), privacy: !!d?.querySelector("[data-privacy-line]"),
+      preview: t.includes("Preview · your pitch and resonance will show here"), notNow: t.includes("Not now — look around first") };
+  });
+  check("first visit: one welcome sheet (privacy line, preview, Not now), no separate welcome overlay",
+    !sheet.welcomeOverlay && sheet.privacy && sheet.preview && sheet.notNow, JSON.stringify(sheet));
+  await shot(page, "01-welcome");
   const first = await promptState(page);
-  check("first visit: question after welcome, nothing preselected", first && first.checked === null && !first.continueEnabled,
-    JSON.stringify(first));
+  check("first visit: the question in the welcome sheet, nothing preselected, Start disabled",
+    first && first.variant === "first" && first.checked === null && !first.continueEnabled, JSON.stringify(first));
   const q = await dialogInfo(page);
   // Focus starts on the question, not an option (review S-4c: the first
   // option's ring read as a preselected answer); Tab reaches the options.
@@ -460,18 +466,25 @@ await launch(WAV.speech);
   await sleep(600);
   check("the page behind the question can't be focused or tapped (no mic start, no Settings)",
     behind.found && !behind.startFocus && !behind.gearFocus
-      && !(await page.evaluate(() => document.body.innerText.includes("Stop Listening")))
+      && !(await page.evaluate(() => document.body.innerText.includes("Mic off")))
       && !(await page.evaluate(() => !!document.querySelector("[data-dialog=settings]"))), JSON.stringify(behind));
   await page.keyboard.press("Escape");
   await sleep(200);
-  check("Escape with nothing chosen keeps the question open (an answer is required)", (await promptState(page)) !== null);
+  check("Escape (= Not now) with nothing chosen closes the sheet without the mic",
+    (await promptState(page)) === null && !(await page.evaluate(() => document.body.innerText.includes("Mic off"))));
+  // No goal is assumed: Start Listening asks the question first.
+  await clickButton(page, ["Start Listening"]);
+  await sleep(300);
+  const asked = await promptState(page);
+  check("Start Listening with no goal re-opens the question before the mic starts",
+    !!asked && asked.checked === null && !(await page.evaluate(() => document.body.innerText.includes("Mic off"))), JSON.stringify(asked));
   await pickDirection(page, "masculine");
   await sleep(200);
   await shot(page, "03-question-masculine-picked");
-  await clickButton(page, ["Continue"]);
-  const running = await page.waitForFunction(() => document.body.innerText.includes("Stop Listening"), { timeout: 30000 })
+  await clickButton(page, ["Start — allow the microphone"], "[role=dialog]");
+  const running = await page.waitForFunction(() => document.body.innerText.includes("Mic off"), { timeout: 30000 })
     .then(() => true, () => false);
-  check("Continue starts listening", running);
+  check("Start — allow the microphone starts listening", running);
   check("model ready", await waitModel(page));
   await sleep(6000);
   check("masculine: pitch band 85–155 Hz", (await pitchTarget(page)).includes("85-155"), JSON.stringify(await pitchTarget(page)));
@@ -620,17 +633,18 @@ await launch(WAV.speech);
   await page.close();
 
   const again = await open();
-  await again.page.waitForFunction(() => document.body.innerText.includes("What are you trying to sound like?"), { timeout: 30000 });
+  await again.page.waitForSelector("[data-dialog=direction]", { timeout: 30000 });
   await sleep(300);
   const re = await promptState(again.page);
-  check("reload: question asked again, last choice preselected, Continue focused (one tap)",
-    re && re.checked === "exploring" && re.continueEnabled && re.continueFocused, JSON.stringify(re));
-  check("reload: no welcome on the second visit", !(await again.page.evaluate(() => document.body.innerText.includes("Welcome to Syrinx"))));
+  const pill = await again.page.evaluate(() => !!document.querySelector("[data-dialog=direction] [data-last-time]"));
+  check("reload: the goal check (return sheet), last choice preselected with a Last time pill, Start focused (one tap)",
+    re && re.variant === "return" && re.checked === "exploring" && re.continueEnabled && re.continueFocused && pill, JSON.stringify(re));
+  check("reload: no welcome sheet on the second visit", !(await again.page.evaluate(() => !!document.querySelector("[data-privacy-line]"))));
   await shot(again.page, "10-reload-preselected");
-  await clickButton(again.page, ["Continue"]);
-  const started = await again.page.waitForFunction(() => document.body.innerText.includes("Stop Listening"), { timeout: 30000 })
+  await clickButton(again.page, ["Start practicing"], "[role=dialog]");
+  const started = await again.page.waitForFunction(() => document.body.innerText.includes("Mic off"), { timeout: 30000 })
     .then(() => true, () => false);
-  check("reload: Continue confirms AND starts listening (one tap per load)", started && (await promptState(again.page)) === null);
+  check("reload: Start practicing confirms AND starts listening (one tap per load)", started && (await promptState(again.page)) === null);
   await waitModel(again.page);
   await sleep(3000);
   check("reload: speech detector model read from Cache Storage (no download)", again.vadFetches.length === 0, JSON.stringify(again.vadFetches));
@@ -638,11 +652,11 @@ await launch(WAV.speech);
   await again.page.close();
 
   const third = await open();
-  await third.page.waitForFunction(() => document.body.innerText.includes("What are you trying to sound like?"), { timeout: 30000 });
+  await third.page.waitForSelector("[data-dialog=direction]", { timeout: 30000 });
   await sleep(300);
   await third.page.keyboard.press("Escape");
   await sleep(300);
-  check("reload: Escape confirms the preselected answer without starting the mic",
+  check("reload: Escape (= Not now) confirms the preselected answer without starting the mic",
     (await promptState(third.page)) === null && (await third.page.evaluate(() => document.body.innerText.includes("Start Listening"))));
   await third.page.close();
 }
@@ -652,9 +666,9 @@ for (const [run, wav, name] of [[2, WAV.held, "held"], [3, WAV.noise, "noise"], 
   log(`run ${run}: ${name}`);
   await launch(wav);
   const { page, errors, vadFetches } = await open();
-  await page.waitForFunction(() => document.body.innerText.includes("What are you trying to sound like?"), { timeout: 30000 });
+  await page.waitForSelector("[data-dialog=direction]", { timeout: 30000 });
   await pickDirection(page, "feminine");
-  await clickButton(page, ["Continue"]);
+  await clickButton(page, ["Start — allow the microphone", "Start practicing"], "[role=dialog]");
   check(`${name}: listening`, await startListening(page));
   check(`${name}: model ready`, await waitModel(page));
   await sleep(2000);

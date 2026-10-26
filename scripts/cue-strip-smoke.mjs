@@ -9,11 +9,29 @@
 //
 // Per viewport, one fresh profile (Chrome relaunched on it per WAV, since the
 // fake-capture file is a launch flag):
-//   1 speech-woman  first visit: welcome, the direction question (masculine),
-//                   Continue starts listening. LAYOUT (the hard requirement):
-//                   at scrollTop 0 the pitch trace and the whole cue strip are
-//                   inside the viewport, no horizontal page scroll, no clipped
-//                   strip header (horizontally or vertically — descenders).
+//   1 speech-woman  first visit: the welcome sheet's direction question (masculine),
+//                   "Start — allow the microphone" starts listening. LAYOUT (the hard requirement):
+//                   at scrollTop 0 the pitch trace and the whole cue strip —
+//                   both meter columns — are inside the viewport, no horizontal
+//                   page scroll, no clipped strip header (horizontally or
+//                   vertically — descenders). TWIN COLUMNS (the owner's pick,
+//                   2026-10-25): pitch left, resonance right, tops level, each
+//                   meter >= 150 px tall (>= 100 px in short landscape, where
+//                   the meters share the height beside the trace); each reads
+//                   upwards ("higher" / "brighter" above the track, "lower" /
+//                   "darker" below, the typical women's band above the men's);
+//                   every strip and heard-as panel button's hit area >= 44 x 44
+//                   px, hit-tested (elementFromPoint over every point of its
+//                   ::before box; 2026-10-26: the sum of the insets missed the
+//                   meter box covering the "i" buttons' lower rows and the
+//                   ::before being placed from the padding box). While live, a
+//                   thumb sits inside the target outline exactly when its value
+//                   is inside the target range (both columns). DESKTOP ALSO
+//                   (2026-10-26 review): at laptop sizes 1366 x 657, 1280 x 690
+//                   and 1280 x 720 (the heard-as panel in its row layout) the
+//                   right-hand column has no inner scroll and the caveat's More
+//                   is above the dock; at 1280 x 460 (lg and short landscape at
+//                   once) both meters are >= 100 px tall.
 //                   INFO POPOVERS: each row's "i" and the steadiness "i" open a
 //                   popover whose text wraps inside it (scrollWidth <=
 //                   clientWidth) and that is on top at its centre and inside
@@ -34,27 +52,30 @@
 //                   panel -> the worker starts, Settings' switch agrees, three
 //                   ranges appear with no "%" in the panel; reload -> still on;
 //                   switched off in Settings -> the panel agrees, the worker is
-//                   gone. The panel is ONE man <-> woman SPLIT BAR (user
-//                   decision 2026-10-20; no bracket rows, no ring axis): the
-//                   deep part from the left = the low end of "would say man",
-//                   the light part from the right = the low end of "would
-//                   say woman", striped between (the range line's one-side
-//                   "About N in 10 listeners would say …" is the best guess s,
-//                   data-split-guess, to the nearest tenth, 2026-10-21), no
-//                   best-guess mark (review 2026-10-20), a deep / light key
-//                   beside each end word, the range line and (unless "could go
-//                   either way") the unsure line, end words and bar inside the
-//                   panel, screen-reader label = the bar's own description and
-//                   the sentence announced once (2026-10-21: the label repeated
-//                   it); contrast: text >= 4.5:1, both shades >=
-//                   3:1 against the panel and each other, no green / red /
-//                   amber / pink / blue hue in the bar (both shades 244-270°,
-//                   on the violet side of 240° blue).
+//                   gone. The panel is ONE man <-> woman DOME (owner's choice
+//                   2026-10-25; three parts adding to 10 and a bracket, user
+//                   decision 2026-10-26): deep tenths from the left foot =
+//                   "would say man", light from the right foot = "would say
+//                   woman", grey between = "unsure or neither"; counted
+//                   segments = data-tenths-* = the numbers in the sentence and
+//                   the line under it, summing to 10 (sayText / restText, the
+//                   panel's own words); split ("Could go either way"): all ten
+//                   striped, no bracket, no line under it; otherwise a bracket
+//                   just outside the arc whose ends sit on segment boundaries
+//                   and contain the bigger side's edge; a deep / light / grey /
+//                   key by "would say man" / "would say woman" / "unsure or
+//                   neither", "likely range" once (key row or legend), key row and dome
+//                   inside the panel, the sentence inside the dome's hollow,
+//                   screen-reader label = the dome's own description and the
+//                   sentence announced once; contrast: text >= 4.5:1, the
+//                   three shades >= 3:1 against the panel and the two indigos
+//                   against each other, both indigos 244-270° (no green / red
+//                   / amber / pink / blue), the grey without hue.
 //   2 speech-man    (heard-as back on) pitch / resonance live, resonance reads
-//                   lower than the woman's; the bar is shown and the man's
+//                   lower than the woman's; the dome is shown and the man's
 //                   best guess (data-split-guess; not drawn) is above the
-//                   woman's (more of the bar would say man, which fills
-//                   from the left). The
+//                   woman's (more of the dome would say man, which fills
+//                   from the left foot). The
 //                   panel's "More" list opens and carries the pitch-only
 //                   late-switch-on line and false-alarm line (no "turn it on
 //                   before you start talking" line; measurement note §8.9,
@@ -87,8 +108,13 @@
 //                   estimate in its own slot directly under the axis, with the
 //                   shipped words, as the only note, mirrored in the
 //                   always-mounted live region; on the first screen at
-//                   scrollTop 0 (phone, desktop; elsewhere wherever the axis
-//                   is); kept on >= 80 % of shown estimates in the next 20 s.
+//                   scrollTop 0 (desktop; elsewhere whenever any line of the
+//                   dome's sentence is — on phones the dome follows the twin
+//                   columns below the first screen since 2026-10-25, its
+//                   sentence below the dock; 2026-10-26: the rule asked for
+//                   the whole dome, so a sentence line sliced by the dock with
+//                   the warning below passed); kept on >= 80 % of shown
+//                   estimates in the next 20 s.
 //   (--pitch-only-late=man,woman) pitch-only-late-<who>  a §8.8 hcsL session
 //                   (>= 170 s natural reading, then the pitch moved with the
 //                   resonance kept; scripts/cue-strip-smoke-wavs.mjs
@@ -113,7 +139,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import puppeteer from "puppeteer-core";
 import { PITCH_ONLY_TEXT } from "../src/ml/pitch-only-warning.js";
-import { sayText, BAR_DESCRIPTION } from "../src/components/heardAsAxisModel.js";
+import { sayText, restText, BAR_DESCRIPTION, SPLIT_DESCRIPTION } from "../src/components/heardAsAxisModel.js";
 import { NARROWBAND_NOTICE, NARROWBAND_INFO } from "../src/components/cueStripModel.js";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -206,8 +232,11 @@ const clickButton = (page, texts, scope = "") => page.evaluate((ts, scope) => {
   if (b) b.click();
   return !!b;
 }, texts, scope);
-const pickDirection = (page, id, scope = "[role=dialog]") => page.evaluate((id, scope) => {
+const pickDirection = (page, id, scope = "[role=dialog]") => page.evaluate(async (id, scope) => {
   const root = scope ? document.querySelector(scope) : document;
+  // The return-visit goal sheet shows last time's goal only until "Change goal".
+  const more = root?.querySelector("[data-change-goal]");
+  if (more) { more.click(); await new Promise((r) => setTimeout(r, 100)); }
   const input = root?.querySelector(`input[data-direction="${id}"]`);
   if (!input) return false;
   input.closest("label").click();
@@ -230,6 +259,14 @@ const state = (page) => page.evaluate(() => {
       word: el.querySelector("[data-cue-word]")?.textContent ?? null,
       title: el.querySelector("[data-cue-title]")?.textContent ?? "",
       sr: el.querySelector("[data-cue-sr]")?.textContent ?? "",
+      // the thumb's resting centre (its inline transform, not the 200 ms
+      // transition's current frame) and the target outline, in the meter's px
+      thumbY: (() => {
+        const mk = el.querySelector("[data-cue-dot-mark]");
+        const m = mk?.style.transform.match(/translate\(([-\d.e]+)px,\s*([-\d.e]+)px\)/);
+        return m ? Number(m[2]) + mk.offsetHeight / 2 : null;
+      })(),
+      hlY: h ? [Number(h.getAttribute("y")), Number(h.getAttribute("y")) + Number(h.getAttribute("height"))] : null,
     };
   }
   const p = document.querySelector("[data-heard-as]");
@@ -241,27 +278,70 @@ const state = (page) => page.evaluate(() => {
         const a = p.querySelector("[data-heard-as-axis]");
         if (!a) return null;
         const pr = p.getBoundingClientRect();
-        const ends = [...a.querySelectorAll("[data-axis-ends] > span")].map((e) => e.getBoundingClientRect());
+        // the key row: three items (would say man / unsure or neither / would say woman), one or two rows, plus the
+        // bracket's "likely range" beside "unsure or neither" where the row wraps (else it leads the legend)
+        const shown = (e) => e.getClientRects().length > 0 && getComputedStyle(e).visibility !== "hidden";
+        const ends = [...a.querySelectorAll("[data-axis-ends] [data-axis-item]")].filter(shown).map((e) => e.getBoundingClientRect());
+        // the dome (data-split-bar, the SVG; viewBox 300 x 157, centre (150, 156), radii 144 / 118 —
+        // src/components/heardAsDome.js): each kind's share = its tenth-segments / 10
         const bar = a.querySelector("[data-split-bar]")?.getBoundingClientRect();
-        const parts = Object.fromEntries([...a.querySelectorAll("[data-split-part]")].map((e) => {
-          const r = e.getBoundingClientRect();
-          return [e.dataset.splitPart, bar ? Math.round(((r.width + (r.left > bar.left + 0.5 ? 1 : 0) + (r.right < bar.right - 0.5 ? 1 : 0)) / bar.width) * 1000) / 1000 : null];
-        }));
-        return { wide: a.dataset.axisWide === "1", man: Number(a.dataset.splitMan), woman: Number(a.dataset.splitWoman), guess: Number(a.dataset.splitGuess),
-          parts, barH: bar ? Math.round(bar.height * 10) / 10 : null,
-          dotShown: !!a.querySelector("[data-split-guess-mark]"), keys: [...a.querySelectorAll("[data-axis-ends] [data-axis-key]")].map((e) => e.dataset.axisKey).join(","),
+        const parts = Object.fromEntries([...a.querySelectorAll("[data-split-part]")].map((e) => [e.dataset.splitPart, e.querySelectorAll("[data-tenth]").length / 10]));
+        const tenths = [...a.querySelectorAll("[data-tenth]")].sort((x, y) => x.dataset.tenth - y.dataset.tenth).map((e) => e.dataset.tenthKind[0]).join("");
+        // on screen, not just in the DOM (2026-10-26 review: beta compared the end words' rects; a CSS mirror or a
+        // reordered key row passed the attribute checks): tenth 0 drawn left of tenth 9, and the "would say man" key
+        // before "would say woman" in reading order (same row: to its left; stacked, in the row layout: above it)
+        const cxOf = (e) => { const r = e?.getBoundingClientRect(); return r ? r.left + r.width / 2 : NaN; };
+        const onScreenOrder = (() => {
+          const km = a.querySelector("[data-axis-key=man]")?.getBoundingClientRect(), kw = a.querySelector("[data-axis-key=woman]")?.getBoundingClientRect();
+          const keys = !!km && !!kw && (km.bottom <= kw.top + 0.5 || (Math.abs(km.top - kw.top) < 2 && km.right <= kw.left + 0.5));
+          return cxOf(a.querySelector("[data-tenth='0']")) < cxOf(a.querySelector("[data-tenth='9']")) && keys;
+        })();
+        // the sentence inside the dome's hollow: every line's box within the inner radius (1 px slack), above the base
+        const sentenceInDome = (() => {
+          const lines = [...p.querySelectorAll("[data-heard-as-range] > span")].map((e) => { const g = document.createRange(); g.selectNodeContents(e); return g.getBoundingClientRect(); });
+          if (!bar || !lines.length) return false;
+          const k = bar.width / 300, cx = bar.left + 150 * k, cy = bar.top + 156 * k, r = 118 * k;
+          // the text's ink, not the line box: half the leading off the top (line-height 1.35)
+          return lines.every((l) => {
+            const inkTop = l.top + (l.height * 0.35) / 2.7;
+            return l.bottom <= cy + 0.5 && Math.hypot(l.left - cx, inkTop - cy) <= r + 1 && Math.hypot(l.right - cx, inkTop - cy) <= r + 1;
+          });
+        })();
+        // the bracket (2026-10-26): its first point (a cap at boundary lo) and last point (a cap at boundary hi), in the
+        // dome's own units; every sampled point outside the outer radius
+        const bracket = (() => {
+          const b = a.querySelector("[data-bracket]");
+          if (!b) return null;
+          const L = b.getTotalLength(), at = (t) => b.getPointAtLength(t);
+          const angle = (q) => (Math.atan2(156 - q.y, q.x - 150) * 180) / Math.PI;
+          const pts = Array.from({ length: 41 }, (_, i) => at((L * i) / 40));
+          return { lo: Number(b.dataset.bracketLo), hi: Number(b.dataset.bracketHi), side: b.dataset.bracketSide,
+            a0: angle(at(0)), a1: angle(at(L)), outside: pts.every((q) => Math.hypot(q.x - 150, q.y - 156) > 144 + 1) };
+        })();
+        // the key items: inside the panel, and two on the same row never overlap
+        const keysApart = ends.every((x, i) => ends.every((y, j) => i >= j || x.bottom <= y.top + 0.5 || y.bottom <= x.top + 0.5 || x.right <= y.left + 0.5 || y.right <= x.left + 0.5));
+        return { wide: a.dataset.axisWide === "1", split: a.dataset.axisSplit === "1", man: Number(a.dataset.splitMan), woman: Number(a.dataset.splitWoman), guess: Number(a.dataset.splitGuess),
+          t: { man: Number(a.dataset.tenthsMan), unsure: Number(a.dataset.tenthsUnsure), woman: Number(a.dataset.tenthsWoman) }, bracket,
+          parts, tenths, onScreenOrder, domeW: bar ? Math.round(bar.width * 10) / 10 : null, domeH: bar ? Math.round(bar.height * 10) / 10 : null, sentenceInDome,
+          dotShown: !!a.querySelector("[data-split-guess-mark]"),
+          keys: [...a.querySelectorAll("[data-axis-ends] [data-axis-key]")].filter((e) => shown(e) && e.dataset.axisKey !== "bracket").map((e) => e.dataset.axisKey).join(","),
+          // the bracket's key ("likely range", 2026-10-26): drawn exactly once, in the key row or leading the legend
+          bracketKeys: [...p.querySelectorAll("[data-heard-as-shares] [data-bracket-key]")].filter(shown).length,
           sr: a.querySelector("[role=img]")?.getAttribute("aria-label") ?? "",
           range: p.querySelector("[data-heard-as-range]")?.textContent ?? "", unsure: p.querySelector("[data-heard-as-unsure]")?.textContent ?? "",
-          // how often a screen reader meets the sentence: aria-labels that contain it + leaf text equal to it outside aria-hidden
+          // how often a screen reader meets the sentence: aria-labels that contain it + the innermost elements whose
+          // text is the whole sentence, outside aria-hidden (the dome draws it on two lines, one span each: their
+          // parent is the innermost element with all of it)
           rangeAnnounced: (() => {
             const t = p.querySelector("[data-heard-as-range]")?.textContent ?? "";
             if (!t) return 0;
             const labels = [...p.querySelectorAll("[aria-label]")].filter((e) => e.getAttribute("aria-label").includes(t)).length;
-            const texts = [...p.querySelectorAll("*")].filter((e) => e.children.length === 0 && e.textContent.trim() === t && !e.closest('[aria-hidden="true"]')).length;
+            const texts = [...p.querySelectorAll("*")].filter((e) => e.textContent.trim() === t && ![...e.children].some((c) => c.textContent.trim() === t)
+              && !e.closest('[aria-hidden="true"]')).length;
             return labels + texts;
           })(),
-          fits: p.scrollWidth <= p.clientWidth + 1 && ends.length === 2 && ends.every((e) => e.left >= pr.left - 0.5 && e.right <= pr.right + 0.5)
-            && ends[0].right <= ends[1].left && !!bar && bar.left >= pr.left - 0.5 && bar.right <= pr.right + 0.5 };
+          fits: p.scrollWidth <= p.clientWidth + 1 && ends.length >= 3 && ends.length <= 4 && ends.every((e) => e.left >= pr.left - 0.5 && e.right <= pr.right + 0.5)
+            && keysApart && !!bar && bar.left >= pr.left - 0.5 && bar.right <= pr.right + 0.5 };
       })(),
       pitchOnly: (() => {
         const n = p.querySelector("[data-pitch-only]");
@@ -271,7 +351,7 @@ const state = (page) => page.evaluate(() => {
       })(),
       live: (() => { const l = p.querySelector("[data-heard-as-live]"); return l ? { role: l.getAttribute("role"), text: l.textContent.trim() } : null; })(),
       wide: p.querySelector("[data-heard-as-axis]")?.dataset.axisWide === "1" } : null,
-    listening: document.body.innerText.includes("Stop Listening"),
+    listening: document.body.innerText.includes("Mic off"),
     cueStart: !!document.querySelector('[data-cue="resonance"] [data-cue-start]'),
     stripText: document.querySelector("[data-cue-strip]")?.textContent ?? "",
     clarityNote: document.querySelector("[data-clarity-note]")?.textContent ?? null,
@@ -295,11 +375,74 @@ const layout = (page) => page.evaluate(() => {
     .filter((e) => { const cs = getComputedStyle(e);
       return (cs.overflowX !== "visible" && e.scrollWidth > e.clientWidth + 1) || (cs.overflowY !== "visible" && e.scrollHeight > e.clientHeight + 1); })
     .map((e) => e.textContent);
-  return { vh: innerHeight, vw: innerWidth, trace, strip, scrollW: document.documentElement.scrollWidth, clipped,
+  // The twin columns: each column's meter box, its track and end words, and
+  // the centres of its two bands (screen px).
+  const cols = Object.fromEntries([...document.querySelectorAll("[data-cue-strip] [data-cue]")].map((c) => {
+    const rb = (e) => (e ? e.getBoundingClientRect() : null);
+    const mid = (e) => { const b = rb(e); return b ? (b.top + b.bottom) / 2 : null; };
+    const m = rb(c.querySelector("[data-cue-meter]")), t = rb(c.querySelector("[data-cue-track]"));
+    return [c.dataset.cue, { left: rb(c).left, right: rb(c).right, top: m?.top ?? null, meterH: m ? Math.round(m.height) : 0,
+      trackTop: t?.top ?? null, trackBottom: t?.bottom ?? null,
+      endTop: mid(c.querySelector('[data-cue-end="top"]')), endBottom: mid(c.querySelector('[data-cue-end="bottom"]')),
+      men: mid(c.querySelector('[data-cue-band="men"] rect')), women: mid(c.querySelector('[data-cue-band="women"] rect')) }];
+  }));
+  return { vh: innerHeight, vw: innerWidth, trace, strip, cols, scrollW: document.documentElement.scrollWidth, clipped,
     scrollH: Math.max(document.documentElement.scrollHeight, ...[...document.querySelectorAll("main, [data-dashboard]")].map((e) => e.scrollHeight)),
-    panel: r("[data-heard-as]"), session: r("[data-session-row]") };
+    panel: r("[data-heard-as]"), session: r("[data-practice-dock]") };
 });
-const inView = (b, L) => b && b.top >= 0 && b.bottom <= L.vh && b.left >= 0 && b.right <= L.vw;
+// In the first screen = above the practice dock pinned at the bottom.
+const inView = (b, L) => b && b.top >= 0 && b.bottom <= (L.session ? L.session.top + 0.5 : L.vh) && b.left >= 0 && b.right <= L.vw;
+
+// Hit areas, hit-tested: each strip / heard-as panel button scrolled into
+// view, its ::before box (placed from the button's padding box, grown by the
+// insets) sampled at every pixel centre with elementFromPoint; every point
+// must land on the button. Scrolls back to the top afterwards.
+const hitAreas = (page) => page.evaluate(() => {
+  const out = [...document.querySelectorAll("[data-cue-strip] button, [data-heard-as] button")].map((b) => {
+    b.scrollIntoView({ block: "center" });
+    const r = b.getBoundingClientRect(), cs = getComputedStyle(b, "::before"), bs = getComputedStyle(b);
+    const on = cs.content && cs.content !== "none" && cs.position === "absolute";
+    const ins = (v) => (on ? -parseFloat(v) || 0 : 0), bw = (k) => parseFloat(bs[k]) || 0;
+    const box = on
+      ? { l: r.left + bw("borderLeftWidth") - ins(cs.left), r: r.right - bw("borderRightWidth") + ins(cs.right), t: r.top + bw("borderTopWidth") - ins(cs.top), b: r.bottom - bw("borderBottomWidth") + ins(cs.bottom) }
+      : { l: r.left, r: r.right, t: r.top, b: r.bottom };
+    let n = 0, hit = 0;
+    const miss = new Set();
+    for (let y = Math.ceil(box.t) + 0.5; y < box.b; y += 1) {
+      for (let x = Math.ceil(box.l) + 0.5; x < box.r; x += 1) {
+        n++;
+        const e = document.elementFromPoint(x, y);
+        if (e && (e === b || b.contains(e))) hit++;
+        else miss.add(e ? `${e.tagName.toLowerCase()}${e.getAttributeNames().filter((a) => a.startsWith("data-")).map((a) => `[${a}]`).join("")}` : "outside");
+      }
+    }
+    return { label: b.getAttribute("aria-label") ?? b.textContent.trim(), w: Math.round(box.r - box.l), h: Math.round(box.b - box.t), hit: n ? hit / n : 0, miss: [...miss].slice(0, 3) };
+  });
+  for (const e of document.querySelectorAll("*")) if (e.scrollTop > 0) e.scrollTop = 0;
+  window.scrollTo(0, 0);
+  return out;
+});
+
+// Desktop at laptop sizes: the right-hand column (data-cue-column) never
+// scrolls inside, the caveat's More is above the practice dock, the meters'
+// heights. (The panel keeps one height in every state, so whatever it shows
+// now stands for all of them.)
+const desktopColumn = (page) => page.evaluate(() => {
+  for (const e of document.querySelectorAll("*")) if (e.scrollTop > 0) e.scrollTop = 0;
+  const col = document.querySelector("[data-cue-column]");
+  const more = [...document.querySelectorAll("[data-heard-as] button")].find((b) => /More|Less/.test(b.textContent));
+  const dock = document.querySelector("[data-practice-dock]")?.getBoundingClientRect();
+  const mr = more?.getBoundingClientRect();
+  return { vw: innerWidth, vh: innerHeight, sh: col?.scrollHeight ?? null, ch: col?.clientHeight ?? null,
+    meters: [...document.querySelectorAll("[data-cue-meter]")].map((m) => Math.round(m.getBoundingClientRect().height)),
+    more: mr ? Math.round(mr.bottom) : null, dock: dock ? Math.round(dock.top) : null,
+    // the panel's row layout: the dome at the left, 200 px wide (220 from 1180 px wide), its key beside it
+    row: (() => {
+      const dome = document.querySelector("[data-heard-as] [data-split-bar]")?.getBoundingClientRect();
+      const key = document.querySelector("[data-heard-as] [data-axis-key=man]")?.getBoundingClientRect();
+      return dome && key ? { domeW: Math.round(dome.width), keyRightOfDome: key.left >= dome.right } : null;
+    })() };
+});
 
 // Opens one info toggle (by its aria-label), measures its popover, closes it.
 const probePopover = (page, label) => page.evaluate(async (label) => {
@@ -325,26 +468,27 @@ const probePopover = (page, label) => page.evaluate(async (label) => {
 
 let directionDialogText = "";
 async function startFirstVisit(page, direction) {
-  await page.waitForFunction(() => document.body.innerText.includes("Welcome to Syrinx"), { timeout: 60000 });
-  await clickButton(page, ["Get Started"]);
+  await page.waitForFunction(() => !!document.querySelector("[data-dialog=direction]"), { timeout: 60000 });
   await page.waitForFunction(() => document.body.innerText.includes("What are you trying to sound like?"), { timeout: 30000 });
   directionDialogText = await page.evaluate(() => document.querySelector("[role=dialog]")?.innerText ?? "");
   await pickDirection(page, direction);
-  await clickButton(page, ["Continue"], "[role=dialog]");
+  await clickButton(page, ["Start — allow the microphone", "Start practicing"], "[role=dialog]");
   return waitListening(page);
 }
 async function waitListening(page, ms = 20000) {
   const t0 = Date.now();
   while (Date.now() - t0 < ms) {
-    if (await page.evaluate(() => document.body.innerText.includes("Stop Listening"))) return true;
+    if (await page.evaluate(() => document.body.innerText.includes("Mic off"))) return true;
     await sleep(250);
   }
   return false;
 }
-// Reload: the question again; Continue confirms and starts listening.
+// Reload: the return-visit goal sheet; "Start practicing" confirms and starts listening.
 async function continueAfterReload(page) {
-  await page.waitForFunction(() => document.body.innerText.includes("What are you trying to sound like?"), { timeout: 30000 });
-  await clickButton(page, ["Continue"], "[role=dialog]");
+  // the return sheet asks "Same goal as last time?" (the first-visit question's
+  // words are only its radiogroup's aria-label there)
+  await page.waitForSelector("[data-dialog=direction][data-variant=return] [data-start-listening]", { timeout: 30000 });
+  await clickButton(page, ["Start — allow the microphone", "Start practicing"], "[role=dialog]");
   return waitListening(page);
 }
 async function openSettings(page) {
@@ -359,6 +503,18 @@ const settingsSwitch = (page) => page.evaluate(() => {
   const b = document.querySelector("[data-settings-heard-as] [role=switch]");
   return b ? b.getAttribute("aria-checked") : null;
 });
+// "Likely heard as" is on by default and has no turn-on button (user decision 2026-10-25): Settings' switch is
+// its only control, and switched off the panel is not rendered at all (state().heardAs === null).
+async function setHeardAs(page, on) {
+  await openSettings(page);
+  if ((await settingsSwitch(page)) !== String(on)) await page.evaluate(() => document.querySelector("[data-settings-heard-as] [role=switch]")?.click());
+  await sleep(300);
+  const ok = (await settingsSwitch(page)) === String(on);
+  await closeSettings(page);
+  return ok;
+}
+const heardAsOff = (s) => s.heardAs === null;
+const turnOnButtons = (page) => page.evaluate(() => [...document.querySelectorAll("button")].filter((b) => /turn on/i.test(b.textContent)).length);
 
 // Samples state every 250 ms for ms, calling fn(s, tSec) each time.
 async function sample(page, ms, fn) {
@@ -371,36 +527,48 @@ async function sample(page, ms, fn) {
   return false;
 }
 
-// The heard-as split bar, whenever it is shown.
+// The heard-as dome (three parts adding to 10 and a bracket, user decision
+// 2026-10-26), whenever it is shown.
 let womanGuess = null;
 function axisChecks(who, s) {
   const a = s.heardAs?.axis;
-  // The range line (2026-10-21): one side, the panel's best guess s (drawn
-  // nowhere; data-split-guess, 3 decimals) to the nearest tenth — "About N in
-  // 10 listeners would say …" / "Nearly all …", or "Could go either way"
-  // (sayText, the panel's own words). ±0.0005 covers data-split-guess's
-  // rounding at a tenth boundary.
-  const wants = a ? new Set([-0.0005, 0, 0.0005].map((d) => sayText(a.guess + d, a.wide))) : new Set();
-  const want = [...wants].join(" / ");
-  check(`${who}: split bar parts match the data (deep = low end of man, light = low end of woman, striped between), no best-guess mark, a deep key by "would say man" and a light one by "would say woman"`,
-    !!a && !a.dotShown && a.keys === "man,woman" && a.barH >= 16 && a.barH <= 20
-    && Math.abs((a.parts.man ?? 0) - a.man) < 0.02 && Math.abs((a.parts.woman ?? 0) - a.woman) < 0.02
-    && Math.abs((a.parts.either ?? 0) - (1 - a.man - a.woman)) < 0.02
-    && a.guess >= a.man - 1e-6 && a.guess <= 1 - a.woman + 1e-6, JSON.stringify(a));
-  check(`${who}: bar words — range line = one side, the best guess to the nearest tenth ("could go either way" when wide) and unsure line (one tenth value; none when wide)`, !!a
-    && wants.has(a.range) && !a.range.includes(" · ")
-    && (a.wide ? /^Could go either way/.test(a.range) && a.unsure === ""
-      : /^(About \d|Nearly all)( in 10)? listeners would say (man|woman)$|^Could go either way/.test(a.range) && /^(About \d+|Fewer than 1) in 10 might be unsure or say neither$/.test(a.unsure)), `${a?.range} | want ${want} | ${a?.unsure}`);
-  check(`${who}: bar screen-reader label = the bar's own description, without the sentence; the sentence announced once (the visible line, not aria-hidden)`,
-    !!a && a.sr === BAR_DESCRIPTION && !a.sr.includes(a.range) && a.rangeAnnounced === 1, `${a?.sr} | sentence announced ${a?.rangeAnnounced}x`);
-  check(`${who}: bar, end words and parts fit inside the panel`, !!a && a.fits);
+  const t = a?.t;
+  const want = a ? sayText(t, a.wide) : "", wantRest = a ? restText(t, a.wide) : null;
+  const count = (k) => (a?.tenths.match(new RegExp(k, "g")) ?? []).length;
+  check(`${who}: dome segments = the tenths in the words (deep "would say man" from the left foot, grey "unsure or neither" between, light "would say woman" from the right foot; all striped when split), summing to 10; a deep / grey / light key by "would say man" / "unsure or neither" / "would say woman" and the bracket's "likely range" key drawn once (key row or legend); split: a striped "could go either way" key instead of the grey one, no bracket key`,
+    !!a && !a.dotShown && a.keys === (a.split ? "man,split,woman" : "man,unsure,woman") && a.bracketKeys === (a.split ? 0 : 1) && a.onScreenOrder && a.tenths.length === 10
+    && t.man + t.unsure + t.woman === 10 && [t.man, t.unsure, t.woman].every(Number.isInteger)
+    && (a.split ? a.tenths === "ssssssssss" : /^m*u*w*$/.test(a.tenths) && count("m") === t.man && count("u") === t.unsure && count("w") === t.woman)
+    // the dome: 240-300 px centred; 200 px (220 on short desktops ≥ 1180 px wide) in the panel's row layout (short landscape, 2026-10-26)
+    && a.domeW >= (VIEWPORT === "landscape" ? 195 : 240) && a.domeW <= 300.5 && Math.abs(a.domeW / a.domeH - 300 / 157) < 0.03
+    && Math.abs(a.man - t.man / 10) < 1e-6 && Math.abs(a.woman - t.woman / 10) < 1e-6, JSON.stringify(a));
+  check(`${who}: the sentence is drawn inside the dome's hollow (every line within the inner radius, above the base)`, !!a && a.sentenceInDome, JSON.stringify(a));
+  // the numbers the words state ("Nearly all" = 10, "Fewer than 1" = 0) add up to 10 and match the drawn tenths
+  const stated = a && !a.split ? [...`${a.range} ${a.unsure}`.replace("Nearly all", "About 10 in 10").replace(/Fewer than 1 in 10/i, "About 0 in 10").matchAll(/(\d+) in 10/g)].reduce((x, m) => x + Number(m[1]), 0) : null;
+  check(`${who}: dome words = the drawn tenths — the sentence names the bigger side, the line under it the rest, the stated numbers add up to 10; split: "Could go either way", no line under it`, !!a
+    && a.range === want && (a.split ? /^Could go either way/.test(a.range) && a.unsure === ""
+      : /^(About \d in 10|Nearly all) listeners would say (man|woman)$/.test(a.range) && a.unsure === wantRest && stated === 10),
+    `${a?.range} | ${a?.unsure} | want ${want} | ${wantRest} | stated ${stated}`);
+  const edge = a && !a.split ? (a.bracket?.side === "man" ? t.man : 10 - t.woman) : null;
+  const boundary = (deg, k) => Math.abs(deg - (180 - 18 * k)) < 0.5;
+  check(`${who}: the bracket — none when split; else just outside the arc, its ends on the segment boundaries of its tenths, containing the bigger side's edge`, !!a
+    && (a.split ? a.bracket === null
+      : !!a.bracket && a.bracket.side === (t.man > t.woman ? "man" : "woman") && a.bracket.outside && Number.isInteger(a.bracket.lo) && Number.isInteger(a.bracket.hi)
+        && a.bracket.lo < a.bracket.hi && a.bracket.lo <= edge && edge <= a.bracket.hi && boundary(a.bracket.a0, a.bracket.lo) && boundary(a.bracket.a1, a.bracket.hi)),
+    JSON.stringify(a?.bracket));
+  check(`${who}: dome screen-reader label = the dome's own description, without the sentence; the sentence announced once (the visible line, not aria-hidden)`,
+    !!a && a.sr === (a.split ? SPLIT_DESCRIPTION : BAR_DESCRIPTION) && !a.sr.includes(a.range) && a.rangeAnnounced === 1, `${a?.sr} | sentence announced ${a?.rangeAnnounced}x`);
+  check(`${who}: dome and the key items fit inside the panel, key items never overlap`, !!a && a.fits, JSON.stringify(a));
 }
 
 // WCAG contrast inside the heard-as panel (adapted from the review round 2
-// probe): every text node >= 4.5:1; the bar's two shades >= 3:1 against the
-// panel background and against each other (1.4.11), all against the
-// composited background and with every ancestor's opacity applied. And the
-// user's colour rule (decision 2026-10-20): the bar is two shades of one
+// probe): every text node >= 4.5:1 (incl. the sentence's two lines inside the
+// dome and the three key items); the dome's three shades >= 3:1 against the
+// panel background and the two indigos against each other (1.4.11), all
+// against the composited background and with every ancestor's opacity
+// applied, and the dome's segments and stripes drawn in exactly those shades
+// (the grey has no hue; 2026-10-26). And the
+// user's colour rule (decision 2026-10-20): the dome is two shades of one
 // colour — indigo, hue 244–270° (review 2026-10-20: the lower limit was 225°,
 // which let blue, 240°, through) — never green / red / amber (the app's on /
 // off target / experimental) or pink / blue.
@@ -424,7 +592,7 @@ async function contrastCheck(page, who) {
     const p = document.querySelector("[data-heard-as]");
     if (!p) return null;
     let minText = Infinity, worst = "";
-    for (const el of p.querySelectorAll("h3, h3 span, p, li, button, [data-axis-ends] > span, [data-heard-as-range] span")) {
+    for (const el of p.querySelectorAll("h3, h3 span, p, li, button, [data-axis-ends] [data-axis-item], [data-heard-as-range] span")) {
       if (el.closest(".sr-only")) continue;
       const t = [...el.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join("").trim();
       if (!t) continue;
@@ -436,16 +604,22 @@ async function contrastCheck(page, who) {
     const bar = p.querySelector("[data-split-bar]");
     const panelBg = bar ? bgOf(bar.parentElement) : null;
     const tok = (n) => { const c = rgba(getComputedStyle(document.documentElement).getPropertyValue(n).trim()); return over({ ...c, a: c.a * (bar ? opOf(bar) : 1) }, panelBg ?? { r: 0, g: 0, b: 0, a: 1 }); };
-    const man = tok("--color-heard-man"), woman = tok("--color-heard-woman");
-    return { minText, worst,
-      man: panelBg ? ratio(man, panelBg) : null, woman: panelBg ? ratio(woman, panelBg) : null, manWoman: ratio(man, woman),
-      hues: [hue(man), hue(woman)].map((h) => (h === null ? null : Math.round(h))) };
+    const man = tok("--color-heard-man"), woman = tok("--color-heard-woman"), unsure = tok("--color-heard-unsure");
+    // The dome draws exactly these shades: the groups' fills and (split) the stripe pattern's two rects.
+    const same = (x, y) => { const a = rgba(x), b = rgba(y); return Math.abs(a.r - b.r) + Math.abs(a.g - b.g) + Math.abs(a.b - b.b) <= 3; };
+    const tokRaw = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+    const fills = [...p.querySelectorAll("[data-split-part='man'], [data-split-part='woman'], [data-split-part='unsure'], [data-split-bar] pattern rect")]
+      .map((e) => ({ want: e.matches(".heard-seg-man, .heard-pat-man") ? "--color-heard-man" : e.matches(".heard-seg-unsure") ? "--color-heard-unsure" : "--color-heard-woman", fill: getComputedStyle(e).fill }));
+    const drawn = fills.length >= 1 && fills.every((f) => same(f.fill, tokRaw(f.want)));
+    return { minText, worst, drawn,
+      man: panelBg ? ratio(man, panelBg) : null, woman: panelBg ? ratio(woman, panelBg) : null, unsure: panelBg ? ratio(unsure, panelBg) : null, manWoman: ratio(man, woman),
+      greyHue: hue(unsure), hues: [hue(man), hue(woman)].map((h) => (h === null ? null : Math.round(h))) };
   });
   log(`  contrast (${who}): ${JSON.stringify(r)}`);
-  check(`${who}: heard-as panel text >= 4.5:1; bar shades >= 3:1 against the panel and each other`,
-    !!r && r.minText >= 4.5 && r.man >= 3 && r.woman >= 3 && r.manWoman >= 3, JSON.stringify(r));
-  check(`${who}: the bar is two shades of one colour (indigo, hue 244–270°), no green / red / amber / pink / blue`,
-    !!r && r.hues.every((h) => h !== null && h >= 244 && h <= 270) && Math.abs(r.hues[0] - r.hues[1]) <= 15, JSON.stringify(r?.hues));
+  check(`${who}: heard-as panel text >= 4.5:1; the dome's three shades >= 3:1 against the panel, the two indigos >= 3:1 against each other, and the dome draws exactly those shades`,
+    !!r && r.minText >= 4.5 && r.man >= 3 && r.woman >= 3 && r.unsure >= 3 && r.manWoman >= 3 && r.drawn, JSON.stringify(r));
+  check(`${who}: the answers are two shades of one colour (indigo, hue 244–270°), no green / red / amber / pink / blue; "unsure or neither" a grey without hue`,
+    !!r && r.hues.every((h) => h !== null && h >= 244 && h <= 270) && Math.abs(r.hues[0] - r.hues[1]) <= 15 && r.greyHue === null, JSON.stringify([r?.hues, r?.greyHue]));
 }
 
 const SPEC_HL = {
@@ -471,13 +645,26 @@ check("direction options: pitch targets only, no vocal-weight side", /Pitch targ
   directionDialogText.replace(/\s+/g, " ").slice(0, 200));
 await sleep(600);
 {
+  // the resonance bands come from cue-bands.json: wait for them, so "reads upwards" checks both columns
+  await page.waitForSelector('[data-cue="resonance"] [data-cue-band="men"]', { timeout: 15000 }).catch(() => {});
   const L = await layout(page);
   await shot(page, "01-start");
   check("layout: pitch trace fully in the first screen", inView(L.trace, L), JSON.stringify(L.trace));
   check("layout: whole cue strip in the first screen", inView(L.strip, L), `${JSON.stringify(L.strip)} vh ${L.vh}`);
   check("layout: no horizontal page scroll", L.scrollW <= L.vw, `${L.scrollW} vs ${L.vw}`);
   check("layout: no clipped strip header text", L.clipped.length === 0, L.clipped.join(" | "));
-  log(`  panel off: trace ${L.trace?.top}-${L.trace?.bottom}, strip ${L.strip?.top}-${L.strip?.bottom}, panel ${L.panel?.top}-${L.panel?.bottom}, session ${L.session?.top}-${L.session?.bottom}, vh ${L.vh}, scrollH ${L.scrollH}`);
+  {
+    const p = L.cols.pitch, r = L.cols.resonance, minH = VIEWPORT === "landscape" ? 100 : 150;
+    check(`layout: twin columns side by side — pitch left, resonance right, tops level, each meter >= ${minH} px tall`,
+      !!p && !!r && p.right <= r.left + 0.5 && Math.abs(p.top - r.top) < 1 && p.meterH >= minH && r.meterH >= minH, JSON.stringify(L.cols));
+    const up = (c) => !!c && c.endTop < c.trackTop && c.endBottom > c.trackBottom && c.women !== null && c.men !== null && c.women < c.men;
+    check("layout: both columns read upwards ('higher' / 'brighter' above the track, the typical women's band above the men's)",
+      up(p) && up(r), JSON.stringify(L.cols));
+    const hits = await hitAreas(page);
+    check("touch targets: every strip and heard-as panel button's hit area >= 44 x 44 px, every point of it hit-tested on the button",
+      hits.length >= 4 && hits.every((b) => b.w >= 44 && b.h >= 44 && b.hit === 1), JSON.stringify(hits));
+  }
+  log(`  first visit (panel on by default): trace ${L.trace?.top}-${L.trace?.bottom}, strip ${L.strip?.top}-${L.strip?.bottom}, panel ${L.panel?.top}-${L.panel?.bottom}, session ${L.session?.top}-${L.session?.bottom}, vh ${L.vh}, scrollH ${L.scrollH}`);
 }
 // Info popovers (the honest caveats live there): readable and visible.
 {
@@ -502,8 +689,10 @@ for (const label of ["About the pitch cue", "About the resonance cue", "What doe
 }
 {
   const s = await state(page);
-  check("heard-as: off at first visit", s.heardAs?.mode === "off");
-  check("heard-as off: no gender worker", gw(page) === 0, `${gw(page)} workers`);
+  check("heard-as: on at first visit (on by default)", !heardAsOff(s), `${s.heardAs?.mode}/${s.heardAs?.reason}`);
+  check("heard-as: no turn-on button anywhere", (await turnOnButtons(page)) === 0);
+  for (let i = 0; i < 12 && gw(page) !== 1; i++) await sleep(250);
+  check("heard-as on by default: the gender worker runs", gw(page) === 1, `${gw(page)} workers`);
 }
 // speech: states over time
 {
@@ -512,7 +701,17 @@ for (const label of ["About the pitch cue", "About the resonance cue", "What doe
   const maxTrail = { pitch: 0, resonance: 0 };
   let weightWordsLive = 0, clarityWordsLive = 0, extraRows = 0;
   let hollowBad = 0, hollowSeen = 0;
+  const outline = { pitch: { n: 0, bad: 0, ex: null }, resonance: { n: 0, bad: 0, ex: null } };
   await sample(page, 75000, (s, t) => {
+    for (const cue of ["pitch", "resonance"]) {
+      const r = s.rows[cue];
+      if (!r?.dot || r.thumbY === null || !r.hlY || r.value === null || r.low === null) continue;
+      const lo = Number(r.low), hi = Number(r.high), tol = cue === "pitch" ? 0.01 : 0.002;
+      if (Math.min(Math.abs(r.value - lo), Math.abs(r.value - hi)) < tol) continue; // data-value is rounded
+      const inRange = r.value >= lo && r.value <= hi, inBox = r.thumbY >= r.hlY[0] - 0.01 && r.thumbY <= r.hlY[1] + 0.01;
+      outline[cue].n++;
+      if (inRange !== inBox) { outline[cue].bad++; outline[cue].ex ??= { value: r.value, lo, hi, thumbY: r.thumbY, hlY: r.hlY }; }
+    }
     const pr = s.rows.pitch;
     if (pr?.dot) { if (pr.hollow) hollowSeen++; if (pr.hollow !== /higher|lower/.test(pr.word ?? "")) hollowBad++; }
     if (WEIGHT_WORDS.test(s.stripText)) weightWordsLive++;
@@ -537,7 +736,36 @@ for (const label of ["About the pitch cue", "About the resonance cue", "What doe
   check("while live: two rows only, never clarity / weight words in the strip", extraRows === 0 && clarityWordsLive === 0 && weightWordsLive === 0,
     `extra rows ${extraRows}x, clarity words ${clarityWordsLive}x, weight words ${weightWordsLive}x`);
   check("pitch off target: hollow dot exactly when the row says higher / lower (not colour alone)", hollowBad === 0, `${hollowBad} mismatches, ${hollowSeen} hollow samples`);
+  check("both columns: the thumb sits inside the target outline exactly when its value is inside the target range",
+    outline.pitch.n > 0 && outline.resonance.n > 0 && outline.pitch.bad === 0 && outline.resonance.bad === 0, JSON.stringify(outline));
   await shot(page, "02-woman-live-masculine");
+  // Desktop at laptop sizes: measured after the speech sample (2026-10-26), so that the
+  // heard-as panel shows an estimate (its dome and key exist) and the resonance row's
+  // warming state is sampled from the start instead of after six resizes.
+  if (VIEWPORT === "desktop") {
+    await page.waitForSelector("[data-heard-as] [data-split-bar]", { timeout: 15000 }).catch(() => {});
+    // 1100 x 768 / 1024 x 628: the column at its 420 px floor, the 200 px dome (2026-10-26 review: 220 px there
+    // overflowed the column by 14 px); 628 px is the lowest height whose meters (100 px floor) still fit
+    for (const [w, h] of [[1366, 657], [1280, 690], [1280, 720], [1100, 768], [1024, 628]]) {
+      await page.setViewport({ ...VIEWPORTS.desktop, width: w, height: h });
+      await sleep(600);
+      const d = await desktopColumn(page);
+      await shot(page, `01c-desktop-${w}x${h}`);
+      check(`desktop ${w} x ${h}: the right-hand column has no inner scroll, the heard-as panel in its row layout (dome ${w >= 1180 ? 220 : 200} px, key beside it), More above the dock, meters >= 100 px`,
+        d.sh !== null && d.sh <= d.ch + 1 && d.more !== null && d.dock !== null && d.more <= d.dock && d.meters.length === 2 && d.meters.every((m) => m >= 100)
+        && !!d.row && Math.abs(d.row.domeW - (w >= 1180 ? 220 : 200)) <= 1 && d.row.keyRightOfDome, JSON.stringify(d));
+    }
+    await page.setViewport({ ...VIEWPORTS.desktop, width: 1280, height: 460 });
+    await sleep(600);
+    {
+      const d = await desktopColumn(page);
+      await shot(page, "01c-desktop-1280x460");
+      check("desktop 1280 x 460 (lg and short landscape at once): both meters drawn, >= 100 px tall (the column may scroll)",
+        d.meters.length === 2 && d.meters.every((m) => m >= 100), JSON.stringify(d));
+    }
+    await page.setViewport(VIEWPORTS.desktop);
+    await sleep(600);
+  }
 }
 // directions via Settings
 {
@@ -570,18 +798,16 @@ for (const label of ["About the pitch cue", "About the resonance cue", "What doe
   // back to masculine for the rest
   await openSettings(page); await pickDirection(page, "masculine", "[data-dialog=settings]"); await closeSettings(page);
 }
-// heard-as on
+// heard-as on (by default; nothing to press)
 {
-  await page.evaluate(() => [...document.querySelectorAll("[data-heard-as] button")].find((b) => b.textContent.includes("Turn on"))?.click());
-  await sleep(800);
   let s = await state(page);
-  check("heard-as: turning it on starts the gender worker", s.heardAs?.mode !== "off" && gw(page) === 1, `${s.heardAs?.mode}/${s.heardAs?.reason}, ${gw(page)} workers`);
+  check("heard-as: still on, the gender worker runs", !heardAsOff(s) && gw(page) === 1, `${s.heardAs?.mode}/${s.heardAs?.reason}, ${gw(page)} workers`);
   await openSettings(page);
   check("Settings' switch agrees (on)", (await settingsSwitch(page)) === "true");
   await closeSettings(page);
   const shown = await sample(page, 120000, (st) => st.heardAs?.mode === "shown");
   s = await state(page);
-  check("heard-as: one man <-> woman bar appears on speech (no bracket rows)", shown && s.heardAs.axes === 1 && s.heardAs.legacyRows === 0, `${s.heardAs?.mode}/${s.heardAs?.reason}`);
+  check("heard-as: one man <-> woman dome appears on speech (no bracket rows)", shown && s.heardAs.axes === 1 && s.heardAs.legacyRows === 0, `${s.heardAs?.mode}/${s.heardAs?.reason}`);
   axisChecks("woman", s);
   await contrastCheck(page, "woman");
   womanGuess = s.heardAs?.axis?.guess ?? null;
@@ -599,10 +825,10 @@ for (const label of ["About the pitch cue", "About the resonance cue", "What doe
 // reload: persists
 {
   await page.reload({ waitUntil: "domcontentloaded" });
-  check("reload: listening again after Continue", await continueAfterReload(page));
+  check("reload: listening again after Start practicing", await continueAfterReload(page));
   await sleep(1000);
   const s = await state(page);
-  check("reload: heard-as is still on", s.heardAs?.mode !== "off" && gw(page) === 1, `${s.heardAs?.mode}, ${gw(page)} workers`);
+  check("reload: heard-as is still on", !heardAsOff(s) && gw(page) === 1, `${s.heardAs?.mode}, ${gw(page)} workers`);
 }
 // off via Settings
 {
@@ -615,9 +841,10 @@ for (const label of ["About the pitch cue", "About the resonance cue", "What doe
   // that can take over 0.5 s (review round 2), so wait up to 3 s for it.
   for (let i = 0; i < 12 && gw(page) !== 0; i++) await sleep(250);
   const s = await state(page);
-  check("panel agrees (off) and the gender worker is gone", s.heardAs?.mode === "off" && gw(page) === 0, `${s.heardAs?.mode}, ${gw(page)} workers`);
-  // back on for the other voices
-  await page.evaluate(() => [...document.querySelectorAll("[data-heard-as] button")].find((b) => b.textContent.includes("Turn on"))?.click());
+  check("panel gone (off) and the gender worker is gone", heardAsOff(s) && gw(page) === 0, `${s.heardAs?.mode}, ${gw(page)} workers`);
+  check("off: still no turn-on button on the dashboard", (await turnOnButtons(page)) === 0);
+  // back on (in Settings) for the other voices
+  check("back on via Settings", await setHeardAs(page, true));
   await sleep(300);
 }
 // After the reload a fresh resonance engine withholds its position until the
@@ -641,11 +868,11 @@ check("man: listening", await continueAfterReload(page));
   const s = await state(page);
   check("man: pitch and resonance live", pitchLive && resLive);
   check("man: resonance reads lower than the woman's", manU !== null && womanU !== null && manU < womanU, `man ${manU} vs woman ${womanU}`);
-  check("man: one man <-> woman bar, no '%'", s.heardAs?.mode === "shown" && s.heardAs.axes === 1 && s.heardAs.legacyRows === 0 && !s.heardAs.text.includes("%"), `${s.heardAs?.mode}/${s.heardAs?.reason}`);
+  check("man: one man <-> woman dome, no '%'", s.heardAs?.mode === "shown" && s.heardAs.axes === 1 && s.heardAs.legacyRows === 0 && !s.heardAs.text.includes("%"), `${s.heardAs?.mode}/${s.heardAs?.reason}`);
   axisChecks("man", s);
   await contrastCheck(page, "man");
   const manGuess = s.heardAs?.axis?.guess ?? null;
-  check("orientation: more of the bar would say man (from the left) for the man than for the woman — his best guess (data-split-guess) is above hers",
+  check("orientation: more of the dome would say man (from the left foot) for the man than for the woman — his best guess (data-split-guess) is above hers",
     manGuess !== null && womanGuess !== null && manGuess > womanGuess, `man ${manGuess} vs woman ${womanGuess}`);
   await shot(page, "05-man-live");
   // the panel itself (below the first screen on short / narrow viewports)
@@ -712,26 +939,45 @@ for (const who of PITCH_ONLY) {
   check(`pitch-only ${who}: the only note while it is on (no extra note beside it)`, !!w && w.otherNotes === 0, JSON.stringify(w));
   check(`pitch-only ${who}: the always-mounted live region carries the same words`, firstState?.heardAs?.live?.role === "status" && firstState.heardAs.live.text === PITCH_ONLY_TEXT, JSON.stringify(firstState?.heardAs?.live));
   if (first !== null) {
-    // First screen: the warning's box at scrollTop 0, above the fixed bottom bar.
+    // First screen: the warning's box at scrollTop 0, above the practice dock.
     const fold = await page.evaluate(() => {
       window.scrollTo(0, 0);
       for (const e of document.querySelectorAll("*")) if (e.scrollTop > 0) e.scrollTop = 0;
-      const n = document.querySelector("[data-pitch-only]"), a = document.querySelector("[data-heard-as-axis]");
+      const n = document.querySelector("[data-pitch-only]");
       if (!n) return null;
-      const bar = [...document.querySelectorAll("body *")].find((e) => getComputedStyle(e).position === "fixed" && /Stop Listening/.test(e.textContent ?? "") && e.getBoundingClientRect().top > innerHeight / 2);
-      const limit = bar ? bar.getBoundingClientRect().top : innerHeight;
-      const r = n.getBoundingClientRect(), ra = a?.getBoundingClientRect();
+      // the practice dock pinned under the tab content, or the scroll area's bottom if that is higher
+      const bar = document.querySelector("[data-practice-dock]");
+      let sc = n.parentElement;
+      while (sc && !["auto", "scroll"].includes(getComputedStyle(sc).overflowY)) sc = sc.parentElement;
+      const limit = Math.min(bar ? bar.getBoundingClientRect().top : innerHeight, sc ? sc.getBoundingClientRect().bottom : innerHeight);
+      const r = n.getBoundingClientRect();
+      // any line of the dome's sentence (its text, not the line box) above the fold
+      const lines = [...document.querySelectorAll("[data-heard-as-range] > span")].map((e) => { const g = document.createRange(); g.selectNodeContents(e); return g.getBoundingClientRect(); });
+      const dome = document.querySelector("[data-split-bar]")?.getBoundingClientRect();
       return { top: Math.round(r.top), bottom: Math.round(r.bottom), limit: Math.round(limit), inView: r.top >= 0 && r.bottom <= limit + 0.5,
-        axisInView: !!ra && ra.top >= 0 && ra.bottom <= limit + 0.5 };
+        sentenceLines: lines.map((l) => [Math.round(l.top), Math.round(l.bottom)]), sentenceShows: lines.some((l) => l.top + 3 < limit && l.bottom > 0),
+        // a sentence line sliced by the fold (the first screen ends through it)
+        sentenceCut: lines.some((l) => l.top + 1 < limit && l.bottom - 1 > limit),
+        // the warning right under the dome (6-44 px below its box at 360-1366 px wide, 2026-10-26)
+        underDome: !!dome && r.top >= dome.bottom - 0.5 && r.top - dome.bottom <= 60, gapBelowDome: dome ? Math.round(r.top - dome.bottom) : null };
     });
     await sleep(150);
     await shot(page, `05c-pitch-only-${who}-first-screen`);
     log(`  pitch-only ${who} at scrollTop 0: ${JSON.stringify(fold)}`);
-    if (VIEWPORT === "phone" || VIEWPORT === "desktop") {
+    // Phones since 2026-10-25: the twin columns fill the first screen and the dome follows below it (owner's
+    // choice), so on every phone size the rule is the conditional one — wherever users can read any of the
+    // sentence at scrollTop 0, they can read the warning too (2026-10-26: it asked for the whole dome and key row,
+    // so a sentence line sliced by the dock with the warning below passed); desktop keeps the dome in the right column.
+    // On phones that rule alone is vacuous (the sentence never shows at scrollTop 0 by design — 2026-10-26 review),
+    // so they also check what the design promises: no sentence line sliced by the fold; every viewport, the
+    // warning directly under the dome.
+    if (VIEWPORT === "desktop") {
       check(`pitch-only ${who}: the warning is on the first screen (scrollTop 0, above the bottom bar)`, !!fold?.inView, JSON.stringify(fold));
     } else {
-      check(`pitch-only ${who}: wherever the axis is on the first screen, so is the warning`, !!fold && (!fold.axisInView || fold.inView), JSON.stringify(fold));
+      check(`pitch-only ${who}: whenever any line of the dome's sentence is on the first screen, so is the warning`, !!fold && (!fold.sentenceShows || fold.inView), JSON.stringify(fold));
+      check(`pitch-only ${who}: no line of the dome's sentence is sliced by the first screen's end`, !!fold && !fold.sentenceCut, JSON.stringify(fold));
     }
+    check(`pitch-only ${who}: the warning sits directly under the dome (<= 60 px below its box)`, !!fold?.underDome, JSON.stringify(fold));
     // Hold through brief hides: shown estimates in the next 20 s that carry it.
     let shownAfter = 0, warnedAfter = 0, wideWarned = 0;
     await sample(page, 20000, (s) => {
@@ -771,15 +1017,15 @@ for (const who of PITCH_ONLY_LATE) {
   check(`pitch-only late ${who}: listening`, listening);
   await sleep(300);
   check(`pitch-only late ${who}: the panel is off when listening starts (switched off in Settings before)`,
-    offSaved && (await state(page)).heardAs?.mode === "off" && gw(page) === 0, `${(await state(page)).heardAs?.mode}, ${gw(page)} workers`);
+    offSaved && heardAsOff(await state(page)) && gw(page) === 0, `${(await state(page)).heardAs?.mode}, ${gw(page)} workers`);
   let offOk = true, startBefore = false;
-  await sample(page, PANEL_ON_AT_S * 1000 - (Date.now() - t0), (s) => { if (s.heardAs?.mode !== "off" || gw(page) !== 0) offOk = false; startBefore = s.cueStart; });
+  await sample(page, PANEL_ON_AT_S * 1000 - (Date.now() - t0), (s) => { if (!heardAsOff(s) || gw(page) !== 0) offOk = false; startBefore = s.cueStart; });
   check(`pitch-only late ${who}: the panel stayed off (no gender worker) until ${PANEL_ON_AT_S} s`, offOk);
   check(`pitch-only late ${who}: the cue's start window had closed before switch-on (start marker shown)`, startBefore);
   const onAt = (Date.now() - t0) / 1000;
-  await page.evaluate(() => [...document.querySelectorAll("[data-heard-as] button")].find((b) => b.textContent.includes("Turn on"))?.click());
-  await sleep(500);
-  check(`pitch-only late ${who}: turned on at ${onAt.toFixed(1)} s, the gender worker starts`, (await state(page)).heardAs?.mode !== "off" && gw(page) === 1);
+  const onOk = await setHeardAs(page, true);   // Settings is the only switch since 2026-10-25
+  for (let i = 0; i < 12 && gw(page) !== 1; i++) await sleep(250);
+  check(`pitch-only late ${who}: turned on in Settings at ${onAt.toFixed(1)} s, the gender worker starts`, onOk && !heardAsOff(await state(page)) && gw(page) === 1);
   let before = 0, first = null, firstState = null, shownTicks = 0, firstShown = null;
   await sample(page, Math.max(0, (meta.shiftS + 25) * 1000 - (Date.now() - t0)), (s) => {
     const t = (Date.now() - t0) / 1000;

@@ -17,8 +17,8 @@
 //   read-rejects       reader.read() rejects (the reader errors)
 //   no-frame           reader.read() never resolves (5 s first-frame timeout)
 //   control            no stub — the real MSTP
-// Welcome → Get Started → direction → Continue starts listening, then checks:
-// listening ("Stop Listening"), no error / "denied" text, getUserMedia called
+// First-visit sheet → direction → "Start — allow the microphone" starts listening, then checks:
+// listening ("Mic off"), no error / "denied" text, getUserMedia called
 // exactly once, diag audio info (?diag=1) captureKind = audiocontext with
 // captureFallback {kind: "mstp"} (control: mstp, no captureFallback), the diag
 // overlay's fallback line, the console warning, frames arrive with pitch near
@@ -141,22 +141,21 @@ async function runMode(mode) {
   await page.goto(`http://localhost:${PORT}/Syrinx/?diag=1`, { waitUntil: "domcontentloaded", timeout: 120000 });
   await page.bringToFront();
 
-  // Press Start: first visit → welcome → direction question → Continue.
-  await page.waitForFunction(() => document.body.innerText.includes("Welcome to Syrinx"), { timeout: 60000 });
-  await clickButton(page, ["Get Started"]);
+  // Press Start: first visit → the welcome sheet with the direction question → Start.
+  await page.waitForFunction(() => !!document.querySelector("[data-dialog=direction]"), { timeout: 60000 });
   await page.waitForFunction(() => document.body.innerText.includes("What are you trying to sound like?"), { timeout: 30000 });
   await page.evaluate(() => document.querySelector('[role=dialog] input[data-direction="feminine"]')?.closest("label")?.click());
-  await clickButton(page, ["Continue"], "[role=dialog]");
+  await clickButton(page, ["Start — allow the microphone", "Start practicing"], "[role=dialog]");
 
   // Listening (the no-frame mode waits out the 5 s first-frame timeout).
   let listening = false;
   const t0 = Date.now();
   while (Date.now() - t0 < 25000) {
-    if (await page.evaluate(() => document.body.innerText.includes("Stop Listening"))) { listening = true; break; }
+    if (await page.evaluate(() => document.body.innerText.includes("Mic off"))) { listening = true; break; }
     await sleep(250);
   }
   const startMs = Date.now() - t0;
-  check(mode, "listening after Continue", listening, `${(startMs / 1000).toFixed(1)} s`);
+  check(mode, "listening after Start", listening, `${(startMs / 1000).toFixed(1)} s`);
   if (listening) await sleep(6000); // let frames, pitch and the trace accumulate
 
   const s = await page.evaluate(() => {

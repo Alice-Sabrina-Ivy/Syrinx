@@ -6,11 +6,15 @@
 // panel's real drawing path; no network, the voice model is never fetched).
 //
 //   npm run build && node scripts/heard-as/panel-shots.mjs [--out=build/heard-as-panel-shots]
-//        [--states=mostly-man,mixed,...] [--viewports=p360,p448,desktop] [--schemes=dark,light]
+//        [--states=mostly-man,mixed,...] [--viewports=p360,p448,desktop,dshort,land] [--schemes=dark,light]
 //        [--forced-colors=1] [--css=<extra css to inject, e.g. to hide a part>] [--suffix=]
 //
+// dshort (1366 x 657) and land (890 x 448) show the panel's row layout (the
+// dome at the left, its key, unsure line and legend beside it; 2026-10-26).
+// --forced-colors=1 with --schemes=light is the light Windows contrast theme
+// (the cue strip's SVG words in CanvasText, its target in Highlight).
 // Writes <out>/<viewport>-<scheme>-<state>.png (the viewport, panel centred)
-// and <out>/panel-boxes.json (the panel's height and the Save Session row's
+// and <out>/panel-boxes.json (the panel's height and the practice dock's
 // top per state — the one-height check is in lab-layout-smoke.mjs).
 //
 // Process hygiene (CLAUDE.md hard rule 2): Chrome is launched by puppeteer with
@@ -40,6 +44,8 @@ const ALL_VIEWPORTS = {
   p360: { width: 360, height: 690, deviceScaleFactor: 2, isMobile: true, hasTouch: true },
   p448: { width: 448, height: 890, deviceScaleFactor: 2, isMobile: true, hasTouch: true },
   desktop: { width: 1280, height: 800, deviceScaleFactor: 1 },
+  dshort: { width: 1366, height: 657, deviceScaleFactor: 1 },
+  land: { width: 890, height: 448, deviceScaleFactor: 2, isMobile: true, hasTouch: true },
 };
 const VIEWPORTS = Object.fromEntries(arg("viewports", Object.keys(ALL_VIEWPORTS).join(",")).split(",").map((k) => [k, ALL_VIEWPORTS[k]]));
 const CHROME = ["C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
@@ -91,9 +97,9 @@ async function startListening(page) {
     if (s.dialog) {
       await page.evaluate(() => document.querySelector('[role=dialog] input[data-direction="exploring"]')?.closest("label")?.click());
       await sleep(200);
-      await clickText(page, ["Continue"], "[role=dialog]");
-    } else if (s.text.includes("Stop Listening")) return true;
-    else await clickText(page, ["Get Started", "Start Listening"]);
+      await clickText(page, ["Start — allow the microphone", "Start practicing"], "[role=dialog]");
+    } else if (s.text.includes("Mic off")) return true;
+    else await clickText(page, ["Start Listening"]);
     await sleep(700);
   }
   return false;
@@ -109,8 +115,7 @@ for (const [vp, viewport] of Object.entries(VIEWPORTS)) {
   await page.goto(`http://localhost:${PORT}/Syrinx/`, { waitUntil: "domcontentloaded", timeout: 120000 });
   await page.bringToFront();
   if (!(await startListening(page))) { console.log(`FAIL  [${vp}] listening`); failed++; await page.close(); continue; }
-  await page.waitForSelector("[data-heard-as]", { timeout: 20000 });
-  await page.evaluate(() => [...document.querySelectorAll("[data-heard-as] button")].find((b) => b.textContent.includes("Turn on"))?.click());
+  await page.waitForSelector("[data-heard-as]", { timeout: 20000 });   // on by default since 2026-10-25
   // The blocked download fails fast; wait for the worker to settle.
   await page.waitForFunction(() => ["error", "ready"].includes(document.querySelector("[data-heard-as]")?.dataset.modelWorker), { timeout: 90000 }).catch(() => {});
   const inst = await installPanelForce(page);
@@ -126,7 +131,7 @@ for (const [vp, viewport] of Object.entries(VIEWPORTS)) {
       const b = await page.evaluate(() => {
         const p = document.querySelector("[data-heard-as]");
         p?.scrollIntoView({ block: "center" });
-        const r = p?.getBoundingClientRect(), s = document.querySelector("[data-session-row]")?.getBoundingClientRect();
+        const r = p?.getBoundingClientRect(), s = document.querySelector("[data-practice-dock]")?.getBoundingClientRect();
         return { panelH: r ? Math.round(r.height * 100) / 100 : null, rowTop: s ? Math.round((s.top - r.top) * 100) / 100 : null,
           reason: p?.dataset.reason ?? null, mode: p?.dataset.heardAs ?? null };
       });

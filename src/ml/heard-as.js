@@ -1,5 +1,5 @@
-// heard-as.js — the experimental "Likely heard as" estimate (opt-in, off by
-// default): how listeners in published studies might hear a voice, as a
+// heard-as.js — the experimental "Likely heard as" estimate (on by default
+// since 2026-10-25; opt-in until then): how listeners in published studies might hear a voice, as a
 // RANGE of man / unsure / woman shares, never a verdict. Pure; used live
 // (HeardAsPanel via useAudioPipeline) and by the calibration tooling
 // (scripts/heard-as/), so the aggregation the constants were fitted on and

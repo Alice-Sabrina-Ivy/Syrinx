@@ -1,20 +1,27 @@
 // CombinedDashboard.jsx — Default practice view (Design A "cue strip",
 // 2026-10-07): the 15 s pitch trace with the cue strip directly under it —
-// Pitch and Resonance · approx., each on a neutral axis with typical-speaker
-// bands, a dot and a trail (CueStrip.jsx; the Clarity row is hidden since
-// 2026-10-11, measurements/clarity-cue-2026-10-08.md) — then the
-// opt-in "Likely heard as · Experimental" panel (HeardAsPanel.jsx) and one
+// Pitch and Resonance · approx. as twin vertical meters side by side with
+// typical-speaker bands, a thumb and a trail (CueStrip.jsx; one horizontal
+// row each until 2026-10-25; the Clarity cue is hidden since 2026-10-11,
+// measurements/clarity-cue-2026-10-08.md) — then the
+// "Likely heard as · Experimental" panel (HeardAsPanel.jsx; on by default
+// since 2026-10-25, switched off only in Settings) and one
 // session row. Replaced the Perceived-voice bar, the F2 readout and the
 // stats row (F0 + steadiness live in the pitch row, HNR in the strip
 // caption). Handles session recording: buffers frames and writes to
 // IndexedDB every ~1s (no cue values are recorded).
 //
-// Layout: phones (portrait) stack trace / strip / panel / session row, the
-// trace sized clamp(150px, 26dvh, 240px) so trace + strip fit the first
-// screen at 448 × 890 (Pixel 8 Pro) down to 360 × 690; short landscape
-// (≤ 480 px tall, ≥ 640 px wide) puts trace and strip side by side; desktop
-// (lg) puts the trace left and a 38 % column (420–540 px: strip + panel)
-// right, the strip drawn larger there (read at arm's length).
+// Layout: phones (portrait) stack trace / strip / panel, the trace sized
+// clamp(150px, 26dvh, 240px) and each meter clamp(150px, 74dvh − 285px,
+// 270px) (CueStrip.jsx) so the trace and both columns fit the first screen
+// at 448 × 890 (Pixel 8 Pro) down to 360 × 690, the heard-as dome following
+// below it (its sentence never cut by the dock); short landscape (≤ 480 px
+// tall, ≥ 640 px wide, below lg) puts trace and strip side by side, filling
+// the scroll area's height, the panel below in its row layout; desktop (lg)
+// puts the trace left and a 38 % column (420–540 px: strip + panel) right,
+// the strip drawn larger there (read at arm's length) — under 800 px tall
+// with the panel in its row layout and lower meters, so the column never
+// scrolls from 1366 × 657 up.
 //
 // The pitch target follows the user's training direction
 // (utils/trainingDirection.js) and judges the pitch LEVEL (running 1.5 s
@@ -32,9 +39,12 @@
 // while the recording state, timer, and flush interval keep running.
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
+import { PracticeDock } from "./PracticeDock";
 import { PitchTrace } from "./PitchTrace";
 import { CueStrip } from "./CueStrip";
 import { HeardAsPanel } from "./HeardAsPanel";
+import { HEARD_AS_DEFAULT } from "../utils/heardAsSetting";
 import { pitchTargetFor, appendDirection } from "../utils/trainingDirection";
 import { computeSummaryStats } from "../utils/sessionStats";
 import { holdRecordingLock } from "../utils/sessionRepair";
@@ -77,12 +87,21 @@ export function CombinedDashboard({
   heardAsRef,
   pitchOnlyRef,
   audioClockRef,
-  heardAsEnabled = false,
-  onHeardAsChange,
+  heardAsEnabled = HEARD_AS_DEFAULT,
   direction = null,
   sessionRef,
   frameCallbackRef,
   streamRef,
+  // The practice dock (record / note / Mic off) is portalled into App's
+  // dock slot on every tab while listening — also while inactive.
+  dockSlot = null,
+  onMicOff,
+  // { sessionId, startedAt } while recording, null otherwise (History's
+  // "Recording now" card).
+  onRecordingChange,
+  // { sessionId, durationSeconds } after a recording is finalized (the
+  // saved toast; also after Mic off ends a recording).
+  onSessionSaved,
 }) {
   const [recording, setRecording] = useState(false);
   const [elapsed, setElapsed] = useState(0);
@@ -121,7 +140,7 @@ export function CombinedDashboard({
   const startingRef = useRef(false);
 
   // Same guard for stopRecording: `recording` stays true (button still
-  // reads "Stop & Save") for the whole async finalize — a frames
+  // reads "Stop & save") for the whole async finalize — a frames
   // read-back that takes hundreds of ms on a long session. A second
   // click would otherwise run stopRecording again: its finalize returns
   // early, it clears the notes before the first finalize has written
@@ -268,11 +287,15 @@ export function CombinedDashboard({
       }
 
       // Timer
+      // Counted from the session's own startedAt — the same clock as
+      // History's "Recording now" card and the saved duration — and
+      // sampled at 4 Hz (an unchanged value doesn't re-render) so the two
+      // displays never sit a second apart.
       setElapsed(0);
-      startTimeRef.current = Date.now();
+      startTimeRef.current = recordingStartRef.current ?? Date.now();
       timerRef.current = setInterval(() => {
-        setElapsed(Math.floor((Date.now() - startTimeRef.current) / 1000));
-      }, 1000);
+        setElapsed(Math.max(0, Math.floor((Date.now() - startTimeRef.current) / 1000)));
+      }, 250);
       setRecording(true);
     } catch (err) {
       // Only the two IndexedDB awaits above can reject, and both run
@@ -301,6 +324,8 @@ export function CombinedDashboard({
   // endedAt + summary stats written. Sets sessionIdRef.current = null up
   // front so concurrent calls (button + unmount race) deduplicate.
   // Resolves true only for the call that actually finalized.
+  const onSessionSavedRef = useRef(onSessionSaved);
+  useEffect(() => { onSessionSavedRef.current = onSessionSaved; });
   const finalizeRecordingDb = useCallback(async () => {
     const sessionId = sessionIdRef.current;
     if (!sessionId) return false;
@@ -321,10 +346,10 @@ export function CombinedDashboard({
     // Stop audio recording and capture the blob.
     //
     // Two paths arrive here:
-    //   1. Stop & Save button — recorder is still active, we call stop()
+    //   1. Stop & save button (practice dock) — recorder is still active, we call stop()
     //      and await onstop. The browser flushes any pending data via a
     //      final dataavailable event before firing onstop.
-    //   2. Audio pipeline torn down first (Stop Listening, status→error
+    //   2. Audio pipeline torn down first (Mic off, status→error
     //      unmount) — useAudioPipeline.stop() ends the mic
     //      tracks, the recorder auto-transitions to "inactive", and the
     //      browser dispatches its final dataavailable event before
@@ -379,6 +404,7 @@ export function CombinedDashboard({
     // async finalize re-queries and picks up the endedAt + stats it read
     // too early.
     window.dispatchEvent(new CustomEvent("syrinx:session-finalized"));
+    onSessionSavedRef.current?.({ sessionId, durationSeconds });
     return true;
   }, [frameCallbackRef]);
 
@@ -395,7 +421,7 @@ export function CombinedDashboard({
     } finally {
       // finalize tore the recording down (intervals, frame callback)
       // before anything could throw — never leave the button on
-      // "Stop & Save" for a recording that no longer exists.
+      // "Stop & save" for a recording that no longer exists.
       stoppingRef.current = false;
       if (mountedRef.current) {
         setStopping(false);
@@ -424,6 +450,17 @@ export function CombinedDashboard({
     db.sessions.update(sessionId, { directionLog: next })
       .catch((err) => console.error("Failed to record direction change:", err));
   }, [direction]);
+
+  // Tell App when a recording starts / ends (History's "Recording now"
+  // card); null again on unmount (Mic off finalizes the recording).
+  const onRecordingChangeRef = useRef(onRecordingChange);
+  useEffect(() => { onRecordingChangeRef.current = onRecordingChange; });
+  useEffect(() => {
+    onRecordingChangeRef.current?.(recording && sessionIdRef.current !== null
+      ? { sessionId: sessionIdRef.current, startedAt: recordingStartRef.current }
+      : null);
+  }, [recording]);
+  useEffect(() => () => onRecordingChangeRef.current?.(null), []);
 
   // Keep sessionRef in sync
   useEffect(() => {
@@ -499,27 +536,52 @@ export function CombinedDashboard({
     };
   }, [flushFrames]);
 
-  const formatTime = (secs) => {
-    const m = Math.floor(secs / 60);
-    const s = secs % 60;
-    return `${m}:${s.toString().padStart(2, "0")}`;
-  };
-
   // null = no target (exploring / not chosen): neutral readout.
   const pitchTarget = pitchTargetFor(direction);
 
+  // The dock shows on every tab (portalled into App's slot).
+  const dock = dockSlot && createPortal(
+    <PracticeDock
+      recording={recording}
+      stopping={stopping}
+      elapsed={elapsed}
+      notes={notes}
+      onNotesChange={setNotes}
+      onRecord={startRecording}
+      onStopAndSave={stopRecording}
+      onMicOff={onMicOff}
+      pitchVoiced={pitchVoiced}
+      pitchHolding={pitchHolding}
+      recordError={recordError}
+    />,
+    dockSlot,
+  );
+
   // Another tab is showing: stay mounted (recording continues), render
-  // nothing. After all hooks — the hook order must not change.
-  if (!active) return null;
+  // only the dock. After all hooks — the hook order must not change.
+  if (!active) return dock || null;
 
   return (
     // min-h-0 only at lg: below lg the parent scrolls, and these must not
     // shrink below their content.
     <div className="flex-1 flex flex-col w-full max-w-6xl lg:min-h-0 gap-2" data-dashboard="">
-      <div className="flex flex-col gap-2 lg:flex-1 lg:flex-row lg:min-h-0 shortland:flex-row shortland:flex-1 shortland:min-h-[180px]">
-        {/* Pitch trace: the moment-to-moment pitch */}
+      {/* The short-landscape arrangement is for phones held sideways only
+          (max-lg): a desktop window both lg and short (e.g. 1280 × 460) keeps
+          the desktop layout, its right-hand column scrolling — with the
+          short-landscape flex sizing the meters collapsed to 0 px there.
+          Short landscape: trace and strip fill the scroll area's height
+          (100dvh − 176 px: the header, the practice dock and its gaps, 1 px
+          spare), so the meters use the whole first screen and the heard-as
+          panel starts just below it, never sliced by the dock. */}
+      <div className="flex flex-col gap-2 lg:flex-1 lg:flex-row lg:min-h-0 max-lg:shortland:flex-row max-lg:shortland:h-[calc(100dvh-176px)] max-lg:shortland:min-h-[180px]">
+        {/* Pitch trace: the moment-to-moment pitch. phonefold (portrait
+            phones ~921-963 px tall, src/index.css): taller than its 240 px
+            cap, so the first screen ends just above the heard-as dome's
+            sentence instead of through it (the panel's top sits 478 px below
+            the trace's top, the sentence 129.5 px into the panel, the fold
+            73 px above the viewport's bottom). */}
         <div
-          className="h-[clamp(150px,26dvh,240px)] shrink-0 lg:h-auto lg:flex-1 lg:min-h-0 shortland:h-auto shortland:flex-1 shortland:min-h-0"
+          className="h-[clamp(150px,26dvh,240px)] phonefold:h-[calc(100dvh-678px)] shrink-0 lg:h-auto lg:flex-1 lg:min-h-0 max-lg:shortland:h-auto max-lg:shortland:flex-1 max-lg:shortland:min-h-0"
           data-pitch-trace-box=""
         >
           <PitchTrace
@@ -535,7 +597,7 @@ export function CombinedDashboard({
         </div>
 
         {/* Cue strip (+ the experimental panel on desktop) */}
-        <div className="flex flex-col gap-2 lg:w-[clamp(420px,38%,540px)] lg:shrink-0 lg:overflow-y-auto shortland:w-[52%] shortland:shrink-0">
+        <div className="flex flex-col gap-2 lg:w-[clamp(420px,38%,540px)] lg:shrink-0 lg:overflow-y-auto max-lg:shortland:w-[52%] max-lg:shortland:shrink-0 max-lg:shortland:min-h-0" data-cue-column="">
           <CueStrip
             direction={direction}
             voiced={voiced}
@@ -549,12 +611,11 @@ export function CombinedDashboard({
             hnr={hnr}
             resonanceRef={resonanceRef}
             resonanceStatus={resonanceStatus}
-            shortLandscape={shortLandscape}
+            shortLandscape={shortLandscape && !wide}
           />
           {wide && (
             <HeardAsPanel
               enabled={heardAsEnabled}
-              onToggle={onHeardAsChange}
               modelStatus={modelStatus}
               modelProgress={modelProgress}
               heardAsRef={heardAsRef}
@@ -571,7 +632,6 @@ export function CombinedDashboard({
       {!wide && (
         <HeardAsPanel
           enabled={heardAsEnabled}
-          onToggle={onHeardAsChange}
           modelStatus={modelStatus}
           modelProgress={modelProgress}
           heardAsRef={heardAsRef}
@@ -582,47 +642,7 @@ export function CombinedDashboard({
         />
       )}
 
-      {/* Session row: Save, timer, notes — one line */}
-      <div className="flex-shrink-0 pb-1" data-session-row="">
-        <div className="flex items-center gap-2 w-full">
-          <button
-            onClick={recording ? stopRecording : startRecording}
-            disabled={stopping}
-            className={`shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm font-medium transition-colors cursor-pointer border disabled:opacity-60 disabled:cursor-wait ${
-              recording
-                ? "bg-red-500/15 text-red-400 border-red-500/30 hover:bg-red-500/25"
-                : "bg-neutral-800/60 text-neutral-300 border-neutral-700 hover:bg-neutral-700/60"
-            }`}
-          >
-            <span
-              className={`w-2.5 h-2.5 rounded-full ${
-                recording ? "bg-red-400 animate-pulse" : "bg-neutral-500"
-              }`}
-            />
-            {stopping ? "Saving…" : recording ? "Stop & Save" : "Save Session"}
-          </button>
-          {recording && (
-            <span className="shrink-0 flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-              <span className="text-xs text-red-400 font-medium">REC</span>
-            </span>
-          )}
-          <span className="shrink-0 text-sm tabular-nums text-neutral-400 font-mono">
-            {formatTime(elapsed)}
-          </span>
-          <input
-            type="text"
-            placeholder="Session notes..."
-            aria-label="Session notes"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            className="flex-1 min-w-0 bg-neutral-800/60 border border-neutral-700 rounded-lg px-3 py-1.5 text-sm text-neutral-300 placeholder:text-neutral-600 focus:outline-none focus:border-neutral-500"
-          />
-        </div>
-        {recordError && (
-          <p role="alert" className="text-xs text-red-400 text-center mt-2">{recordError}</p>
-        )}
-      </div>
+      {dock}
     </div>
   );
 }

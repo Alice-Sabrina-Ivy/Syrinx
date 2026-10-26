@@ -44,6 +44,14 @@ export function PitchTrace({
   // once even if no data is arriving).
   const redrawRef = useRef(null);
   useEffect(() => { targetRef.current = target; redrawRef.current?.(); }, [target]);
+  // Whether the readouts show a pitch now (the same props as the cue strip's
+  // Pitch meter): the glow dot at "now" is drawn only then. The hook clears
+  // the level at once when the paint gate holds back an octave jump or the
+  // voice gate hides a frame, while the last painted point is still < 500 ms
+  // old — the glow then showed a live pitch beside "— Hz" for 0.2–0.45 s
+  // (2026-10-26 review, measurements/twin-columns-review-2026-10-26.md).
+  const showsPitchRef = useRef(false);
+  useEffect(() => { showsPitchRef.current = (voiced || holding) && pitchLevel != null; }, [voiced, holding, pitchLevel]);
 
   // Sizing + drawing in one effect (main-thread pass 2026-10-08,
   // measurements/main-thread-cpu-2026-10-08.md). The backing store follows
@@ -303,7 +311,7 @@ export function PitchTrace({
       for (let i = data.length - 1; i >= 0; i--) {
         if (data[i].voiced && data[i].pitch !== null) { lastVoiced = data[i]; lastVoicedIdx = i; break; }
       }
-      if (lastVoiced && now - lastVoiced.time < 500) {
+      if (lastVoiced && now - lastVoiced.time < 500 && showsPitchRef.current) {
         const x = timeToX(lastVoiced.time, now);
         const y = hzToY(lastVoiced.pitch);
         const color = statusColor(pitchStatus(levelAt(data, lastVoicedIdx), target));

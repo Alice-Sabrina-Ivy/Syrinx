@@ -90,7 +90,7 @@
 //         the non-SIMD build (fetched once), which records, renders and plays.
 // chunkfail the static server answers 404 for the Voice Shaper tab's chunk (as after a deploy
 //         while the page stays open): opening the tab shows "Voice Shaper could not load…" in
-//         the tab; the app stays (tabs, Stop Listening), and the Resonance lab (switched on in
+//         the tab; the app stays (tabs, Mic off), and the Resonance lab (switched on in
 //         Settings first) still opens.
 // Every part also fails on console errors, the workers' included.
 // timing  (not in the default parts; needs timing.wav, i.e. $VP_CACHE) desktop timing in the
@@ -286,15 +286,15 @@ const clickButton = (page, texts, sel = "button") => page.evaluate((ts, sel) => 
 const clickSel = (page, sel) => page.evaluate((sel) => { const b = document.querySelector(sel); if (b) b.click(); return !!b; }, sel);
 
 async function startListening(page, direction = "exploring") {
-  await page.waitForFunction(() => /Welcome to Syrinx|What are you trying to sound like/.test(document.body.innerText), { timeout: 60000 });
-  if (await page.evaluate(() => document.body.innerText.includes("Welcome to Syrinx"))) {
-    await clickButton(page, ["Get Started"]);
-    await page.waitForFunction(() => document.body.innerText.includes("What are you trying to sound like?"), { timeout: 30000 });
-  }
+  // The goal sheet: first visit (all four goals) or a return visit (last
+  // time's goal; "Change goal" shows the others).
+  await page.waitForSelector("[data-dialog=direction]", { timeout: 60000 });
+  await page.evaluate(() => document.querySelector("[role=dialog] [data-change-goal]")?.click());
+  await sleep(200);
   await page.evaluate((id) => { document.querySelector(`[role=dialog] input[data-direction="${id}"]`)?.closest("label")?.click(); }, direction);
   await sleep(200);
-  await clickButton(page, ["Continue"], "[role=dialog] button");
-  await page.waitForFunction(() => document.body.innerText.includes("Stop Listening"), { timeout: 30000 });
+  await clickButton(page, ["Start — allow the microphone", "Start practicing"], "[role=dialog]");
+  await page.waitForFunction(() => document.body.innerText.includes("Mic off"), { timeout: 30000 });
   return Date.now();
 }
 const openLab = async (page) => {
@@ -524,11 +524,11 @@ async function shotCard(page, name) {
   await page.evaluate(() => { if (window.__vpSc) window.__vpSc.scrollTop = 0; });
 }
 
-// The lab's Resonance view at a phone viewport: all four cards above the Stop Listening row.
+// The lab's Resonance view at a phone viewport: all four cards above the practice dock.
 const phoneFit = (page) => page.evaluate(() => {
   const area = document.querySelector("[data-lab-phone]");
   const cards = [...document.querySelectorAll("[data-lab-phone] section")];
-  const stop = [...document.querySelectorAll("button")].find((b) => b.textContent.includes("Stop Listening"));
+  const stop = [...document.querySelectorAll("button")].find((b) => b.textContent.includes("Mic off"));
   const barTop = stop ? stop.parentElement.getBoundingClientRect().top : null;
   const de = document.documentElement;
   return { phone: !!area, scrollH: area?.scrollHeight, clientH: area?.clientHeight, barTop, bottoms: cards.map((c) => +c.getBoundingClientRect().bottom.toFixed(1)),
@@ -608,7 +608,7 @@ async function partLayout() {
       await page.waitForFunction(() => document.querySelectorAll("[data-lab-phone] section").length === 4, { timeout: 30000 }).catch(() => {});
       await sleep(1000);
       const f = await phoneFit(page);
-      check("the lab's Resonance view still fits its four cards above Stop Listening, no scroll",
+      check("the lab's Resonance view still fits its four cards above Mic off, no scroll",
         f.phone && f.bottoms.length === 4 && f.scrollH <= f.clientH + 1 && f.bottoms.every((b) => b <= f.barTop + 0.5) && f.doc.scrollH <= f.doc.innerH + 1 && f.doc.scrollW <= f.doc.innerW, JSON.stringify(f));
       await shot(page, `${v}-dark-lab-resonance`);
     }
@@ -1028,7 +1028,7 @@ async function partFlow() {
   // the Dashboard session guard
   await clickButton(page, ["Dashboard"]);
   await sleep(800);
-  check("Dashboard session recording started", await clickButton(page, ["Save Session"]));
+  check("Dashboard session recording started", await clickButton(page, ["Record session"]));
   await sleep(1500);
   await openShaper(page);
   await sleep(1500);
@@ -1045,7 +1045,7 @@ async function partFlow() {
   await shot(page, "desktop-dark-session-guard");
   await clickButton(page, ["Dashboard"]);
   await sleep(500);
-  await clickButton(page, ["Stop & Save"]);
+  await clickButton(page, ["Stop & save"]);
   await sleep(2500);
   await openShaper(page);
   await sleep(1500);
@@ -1088,10 +1088,10 @@ async function partFlow() {
   // a press during the wait used to discard the preview and record nothing)
   {
     const w0 = page.workers().filter((w) => /vp-worker/.test(w.url()));
-    await clickButton(page, ["Stop Listening"]);
+    await clickButton(page, ["Mic off"]);
     await sleep(1000);
     await clickButton(page, ["Start Listening"]);
-    await page.waitForFunction(() => document.body.innerText.includes("Stop Listening"), { timeout: 20000 });
+    await page.waitForFunction(() => document.body.innerText.includes("Mic off"), { timeout: 20000 });
     await page.waitForSelector("[data-voice-preview]", { timeout: 20000 });
     await sleep(500);
     const a = await vp(page);
@@ -1123,10 +1123,10 @@ async function partFlow() {
   await clickSel(page, "[data-vp-record]");
   await phaseIs(page, "recording", 5000);
   await sleep(1500);
-  await clickButton(page, ["Stop Listening"]);
+  await clickButton(page, ["Mic off"]);
   await sleep(1000);
   await clickButton(page, ["Start Listening"]);
-  await page.waitForFunction(() => document.body.innerText.includes("Stop Listening"), { timeout: 20000 });
+  await page.waitForFunction(() => document.body.innerText.includes("Mic off"), { timeout: 20000 });
   await page.waitForSelector("[data-voice-preview]", { timeout: 20000 });
   await sleep(500);
   const c = await vp(page);
@@ -1354,11 +1354,11 @@ async function partChunkFail() {
     const st = await page.evaluate(() => ({
       text: document.querySelector("[data-vp-load-error]")?.textContent ?? null,
       root: document.getElementById("root")?.children.length ?? 0,
-      stop: [...document.querySelectorAll("button")].some((b) => b.textContent.includes("Stop Listening")),
+      stop: [...document.querySelectorAll("button")].some((b) => b.textContent.includes("Mic off")),
       tabs: [...document.querySelectorAll("nav button")].map((b) => b.textContent.trim()),
     }));
     check("tab chunk 404: \"Voice Shaper could not load…\" in the tab", shown && st.text === "Voice Shaper could not load. Reload the page to try again.", JSON.stringify(st));
-    check("…the app stays: all five tabs and Stop Listening still there", st.root > 0 && st.stop && JSON.stringify(st.tabs) === JSON.stringify(TAB_ORDER), JSON.stringify(st));
+    check("…the app stays: all five tabs and Mic off still there", st.root > 0 && st.stop && JSON.stringify(st.tabs) === JSON.stringify(TAB_ORDER), JSON.stringify(st));
     await shot(page, "p360-dark-chunk-fail");
     await openLab(page);
     await sleep(500);

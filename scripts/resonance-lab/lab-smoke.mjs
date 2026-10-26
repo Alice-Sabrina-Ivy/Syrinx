@@ -6,11 +6,12 @@
 //   npm run build && node scripts/resonance-lab/lab-smoke.mjs --wav=<48 kHz speech wav> [--seconds=40] [--shot=out.png]
 //
 // Run 1 (the setting left off, the default): asserts that there is no lab tab, that no lab
-// chunk / worker / asset is requested and only the three production workers start. Run 2: opens the "Resonance lab" tab while
+// chunk / worker / asset is requested and only the three production workers start (plus the
+// gender worker of the "Likely heard as" panel, on by default since 2026-10-25). Run 2: opens the "Resonance lab" tab while
 // listening, waits, prints the lab's readout text and saves a screenshot. Run 3: opens the
 // tab BEFORE listening, then starts — the lab must start with the pipeline. Run 4: the lab
 // on a phone (402x750 CSS px — an iPhone 16 Pro with Safari's toolbars showing; mobile
-// emulation, DPR 3): the phone layout must show all four cards above the Stop Listening
+// emulation, DPR 3): the phone layout must show all four cards above the Mic off
 // row with neither the lab area nor the page scrolling, and no horizontal overflow.
 // Run 5: the experimental "Weight × clarity" view (measurements/weight-lab-prototype-2026-10-08.md):
 // opens it, maps the voice (prompts advanced with Next / Done), waits for readings, checks
@@ -71,11 +72,11 @@ async function startServer() {
 }
 
 // Runs in the page: does the phone lab fit? (the lab's own scroll area, each card vs the
-// top of the Stop Listening row, page overflow both ways)
+// top of the practice dock, page overflow both ways)
 function measurePhoneFit() {
   const area = document.querySelector("[data-lab-phone]");
   const cards = [...document.querySelectorAll("[data-lab-phone] section")];
-  const stop = [...document.querySelectorAll("button")].find((b) => b.textContent.includes("Stop Listening"));
+  const stop = [...document.querySelectorAll("button")].find((b) => b.textContent.includes("Mic off"));
   const barTop = stop ? stop.parentElement.getBoundingClientRect().top : null;
   const de = document.documentElement;
   return {
@@ -124,8 +125,7 @@ async function run(url, { lab, tabFirst = false, viewport = null, wait = SECONDS
   };
   let labTab = null;
   if (tabFirst) {
-    // Get Started first if the welcome overlay is up, then the setting, the tab, then start.
-    await clickText(["Get Started"]);
+    // The first-visit goal sheet is up: the setting, the tab, then start.
     await sleep(1000);
     log("lab switched on in Settings:", await enableLab());
     log("lab tab clicked before listening:", await clickText(["Resonance lab"]));
@@ -134,8 +134,14 @@ async function run(url, { lab, tabFirst = false, viewport = null, wait = SECONDS
   // click until the pipeline is running (a click before hydration is a no-op)
   let running = false;
   for (let attempt = 0; attempt < 5 && !running; attempt++) {
-    log("start clicked:", await clickText(["Get Started", "Start Listening"]));
-    running = await page.waitForFunction(() => document.body.innerText.includes("Stop Listening"), { timeout: 4000 })
+    // The goal sheet (if up) needs a goal before its Start button.
+    await page.evaluate(() => {
+      const l = [...document.querySelectorAll('[role="dialog"] label')].find((x) => x.textContent.includes("Just exploring"));
+      if (l && !l.querySelector("input")?.checked) l.click();
+    });
+    await sleep(200);
+    log("start clicked:", await clickText(["Start — allow the microphone", "Start practicing", "Start Listening"]));
+    running = await page.waitForFunction(() => document.body.innerText.includes("Mic off"), { timeout: 4000 })
       .then(() => true, () => false);
   }
   log("pipeline running:", running);
@@ -151,7 +157,7 @@ async function run(url, { lab, tabFirst = false, viewport = null, wait = SECONDS
       if (l) l.click();
       return !!l;
     });
-    if (picked) { await sleep(300); log("direction dialog dismissed:", await clickText(["Continue"])); await sleep(1500); }
+    if (picked) { await sleep(300); log("direction dialog dismissed:", await clickText(["Start — allow the microphone", "Start practicing"])); await sleep(1500); }
     log("lab tab clicked:", await clickText(["Resonance lab"]));
     await sleep(3000);
     const before = requests.filter(isWeightAsset).length;
@@ -188,7 +194,7 @@ async function run(url, { lab, tabFirst = false, viewport = null, wait = SECONDS
         const de = document.documentElement;
         const plot = document.querySelector("[data-weight-plot]")?.getBoundingClientRect();
         const axis = document.querySelector("[data-weight-axis-bottom]")?.getBoundingClientRect();
-        const stop = [...document.querySelectorAll("button")].find((b) => b.textContent.includes("Stop Listening"))?.getBoundingClientRect();
+        const stop = [...document.querySelectorAll("button")].find((b) => b.textContent.includes("Mic off"))?.getBoundingClientRect();
         const layout = document.querySelector("[data-weight-view]")?.dataset.weightLayout ?? null;
         return { scrollW: de.scrollWidth, innerW: innerWidth, innerH: innerHeight, layout, stopTop: stop ? +stop.top.toFixed(0) : null,
           axisB: axis ? +axis.bottom.toFixed(0) : null,
@@ -196,7 +202,7 @@ async function run(url, { lab, tabFirst = false, viewport = null, wait = SECONDS
       });
       // Horizontally inside, and (2026-10-11 review) the whole plot visible in the
       // first screen (with its bottom axis word): below the top edge and above the
-      // Stop Listening row.
+      // practice dock.
       const floor = Math.min(m.innerH, m.stopTop ?? m.innerH);
       m.vertical = !!m.plot && m.plot.t >= -0.5 && Math.max(m.plot.b, m.axisB ?? 0) <= floor + 0.5;
       layouts.push({ vp: `${w}x${h}`, ...m, ok: m.scrollW <= m.innerW && !!m.plot && m.plot.r <= m.innerW + 0.5 && m.plot.l >= -0.5 && m.vertical });
@@ -239,7 +245,10 @@ console.log("TAB NOT OPENED: workers", offWorkers);
 console.log("TAB NOT OPENED: lab requests", labHits.length ? labHits : "none");
 console.log("TAB NOT OPENED: page errors", off.errors.length ? off.errors : "none");
 console.log("SETTING OFF (default): lab tab shown", off.labTab);
-const offOk = off.labTab === false && labHits.length === 0 && off.workers.length === 3 && !off.workers.some((u) => u.includes("lab-worker"));
+// Three production workers, plus the "Likely heard as" panel's gender worker: the panel is on by
+// default since 2026-10-25, so that worker starts with the others.
+const offOk = off.labTab === false && labHits.length === 0 && !off.workers.some((u) => u.includes("lab-worker"))
+  && off.workers.filter((u) => !u.includes("gender-worker")).length === 3 && off.workers.filter((u) => u.includes("gender-worker")).length === 1;
 
 const on = await run(base, { lab: true });
 console.log("TAB OPENED: workers", on.workers.map((u) => u.split("/").pop()));
@@ -262,7 +271,7 @@ console.log(`PHONE ${PHONE.width}x${PHONE.height}: page errors`, phone.errors.le
 console.log(`PHONE ${PHONE.width}x${PHONE.height}: fit`, JSON.stringify(f));
 const phoneOk = f.phoneLayout && f.cardBottoms.length === 4 && f.barTop !== null
   && f.area.scrollH <= f.area.clientH + 1 // the lab area does not scroll
-  && f.cardBottoms.every((b) => b <= f.barTop + 0.5) // every card ends above the Stop Listening row
+  && f.cardBottoms.every((b) => b <= f.barTop + 0.5) // every card ends above the practice dock
   && f.doc.scrollH <= f.doc.innerH + 1 && f.doc.scrollW <= f.doc.innerW // nor does the page, either way
   && /Voiced so far [1-9]/.test(phone.text);
 // The weight x clarity model is fetched only when its view is opened.

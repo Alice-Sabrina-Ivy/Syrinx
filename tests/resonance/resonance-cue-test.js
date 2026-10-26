@@ -27,20 +27,25 @@ function* values(level, seed = 1) {
 
 console.log("resonanceCue — ungated equals the lab readout");
 {
-  const cue = createResonanceCue({ reference, gate: false });
+  // restart: null = the plain median shown; the shipped cue's uPlain is that readout too
+  const cue = createResonanceCue({ reference, gate: false, restart: null });
+  const shipped = createResonanceCue({ reference, gate: false });
   const ro = createReadout({ agg: "median", horizonS: 5, ref: reference.vtln });
   const v = values(0.03);
-  let ok = true;
+  let ok = true, okPlain = true;
   for (let i = 0; i < 120; i++) {
     const stamp = i * 0.12;
     const x = i % 7 === 3 ? null : v.next().value;
     cue.onStamped(i * 0.15, stamp, x);
+    shipped.onStamped(i * 0.15, stamp, x);
     ro.add(stamp, x);
-    const a = cue.snapshot(), b = ro.snapshot();
+    const a = cue.snapshot(), b = ro.snapshot(), c = shipped.snapshot();
     if (a.raw !== b.raw || a.n !== b.n || a.fill !== b.fill || a.voicedS !== b.voicedS) ok = false;
+    if (c.uPlain !== b.u || c.n !== b.n || c.fill !== b.fill || c.voicedS !== b.voicedS) okPlain = false;
   }
   check("every step: raw / n / fill / voicedS identical", ok);
-  const s = cue.snapshot();
+  check("every step: the shipped cue's uPlain / n / fill / voicedS = the lab readout", okPlain);
+  const s = shipped.snapshot();
   check("u in reference units", Math.abs(s.u - (s.raw - reference.vtln.menMedian) / G) < 1e-15);
 }
 
@@ -53,8 +58,8 @@ console.log("resonanceCue — startU and clamp");
     cue.onStamped(i * 0.15, i * 0.1, 0.02 + 0.03 * Math.sin(i / 7));
     const s = cue.snapshot();
     if (fullAt === null && s.fill >= 1) fullAt = i;
-    if (fullAt !== null && s.startU === null) us.push(s.u);
-    if (firstAt === null && s.startU !== null) firstAt = { i, startU: s.startU, startProgress: s.startProgress, u: s.u };
+    if (fullAt !== null && s.startU === null) us.push(s.uPlain);
+    if (firstAt === null && s.startU !== null) firstAt = { i, startU: s.startU, startProgress: s.startProgress, u: s.uPlain };
   }
   const med = (a) => { const q = [...a].sort((x, y) => x - y), h = q.length >> 1; return q.length % 2 ? q[h] : (q[h - 1] + q[h]) / 2; };
   check("startU null until 12 s of admitted voiced speech after the first fill", firstAt && fullAt !== null && Math.abs((firstAt.i - fullAt) * 0.1 - 12) < 0.15,
@@ -62,6 +67,37 @@ console.log("resonanceCue — startU and clamp");
   check("startU = the median of the readouts over that span (not the first readout)",
     firstAt && Math.abs(firstAt.startU - med([...us, firstAt.u])) < 1e-12 && firstAt.startU !== us[0] && firstAt.startProgress === 1);
   check("startU then held for the session", cue.snapshot().startU === firstAt.startU);
+}
+
+// The shown start (2026-10-26, measurements/resonance-start-reference-2026-10-26.md):
+// before startU, the median of the readouts collected so far; startU itself unchanged.
+console.log("resonanceCue — shownStartU");
+{
+  const cue = createResonanceCue({ reference, gate: false });
+  const med = (a) => { const q = [...a].sort((x, y) => x - y), h = q.length >> 1; return q.length % 2 ? q[h] : (q[h - 1] + q[h]) / 2; };
+  const us = [];
+  let beforeFill = true, tracks = true, firstShown = null, fullAt = null, setAt = null, atSet = true, after = true;
+  for (let i = 0; i < 300; i++) {
+    cue.onStamped(i * 0.15, i * 0.1, 0.02 + 0.03 * Math.sin(i / 7));
+    const s = cue.snapshot();
+    if (fullAt === null && s.fill >= 1) fullAt = i;
+    if (fullAt === null) { if (s.shownStartU !== null) beforeFill = false; continue; }
+    if (firstShown === null && s.shownStartU !== null) firstShown = i;
+    if (s.startU === null) {
+      us.push(s.uPlain);
+      if (Math.abs(s.shownStartU - med(us)) > 1e-12) tracks = false;
+    } else if (setAt === null) {
+      setAt = i;
+      atSet = s.shownStartU === s.startU && Math.abs(s.startU - med([...us, s.uPlain])) < 1e-12;
+    } else if (s.shownStartU !== s.startU) after = false;
+  }
+  check("shownStartU null before the readout fills", beforeFill);
+  check("shownStartU from the first full readout on (the dot and the first word together)", firstShown === fullAt, `${firstShown} vs ${fullAt}`);
+  check("shownStartU = the median of the readouts collected so far while startU is null", tracks && us.length > 50);
+  check("shownStartU = startU from the moment startU is set (no jump), and after", setAt !== null && atSet && after);
+  check("startU still set after 12 s of admitted voiced speech", setAt !== null && Math.abs((setAt - fullAt) * 0.1 - 12) < 0.15, `${setAt} ${fullAt}`);
+}
+{
   const hi = createResonanceCue({ reference, gate: false });
   for (let i = 0; i < 10; i++) hi.onStamped(i * 0.15, i * 0.1, 0.24);
   check("clamp +1 at the vtln ceiling", hi.snapshot().clamp === 1 && hi.snapshot().raw >= VTLN_CLAMP_EDGE);

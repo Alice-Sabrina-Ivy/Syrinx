@@ -1,5 +1,5 @@
 // heardAsCalibration.js — constants of the experimental "Likely heard as"
-// estimate (src/ml/heard-as.js). EXPERIMENT: opt-in, off by default.
+// estimate (src/ml/heard-as.js). EXPERIMENT: on by default since 2026-10-25 (opt-in before).
 // measurements/heard-as-calibration-2026-10-07.md (summary, errors, known
 // failures, licences) — fitted 2026-10-07 on public listener data only.
 //

@@ -63,7 +63,7 @@
 // (The main thread tears workers down via Worker.terminate(); there is
 // no graceful "stop" message — calls were never wired up.) Since the cue
 // strip (2026-10-07) the main thread creates this worker only while the
-// opt-in "Likely heard as" panel is on.
+// "Likely heard as" panel is on (on by default since 2026-10-25).
 //
 // `inferMs` is the wall-clock duration of the classifier(...) call only
 // (no VAD gate, no EMA, no postMessage). Always populated when the

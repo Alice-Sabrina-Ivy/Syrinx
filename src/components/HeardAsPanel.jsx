@@ -1,6 +1,34 @@
-// HeardAsPanel.jsx — "Likely heard as · Experimental" (opt-in, OFF by
-// default; the user chose to ship it as a clearly labelled experiment with
-// its known weaknesses disclosed). Shows how listeners in published studies
+// HeardAsPanel.jsx — "Likely heard as · Experimental" (ON by default since
+// 2026-10-25, user decision: it downloads by itself and has no turn-on button;
+// until then it was opt-in with an off row and a "Turn on · up to N MB"
+// button). Settings' switch is the only way to turn it off; off, the panel
+// renders nothing. The user chose to ship it as a clearly labelled
+// experiment with its known weaknesses disclosed.
+//
+// THE DOME (owner's choice 2026-10-25, the "Gauges" mockup's panel beside the
+// "Twin columns" meters; THREE PARTS ADDING TO 10 and a bracket since user
+// decision 2026-10-26): a semicircle of ten tenth-segments — "would say man"
+// from the LEFT foot in deep indigo, "would say woman" from the RIGHT foot in
+// light indigo, "unsure or neither" in neutral grey between, exactly the
+// tenths the words state (heardAsAxisModel.js threeTenths of the three-way
+// shares at the best guess); a thin bracket just outside the arc over where
+// the bigger side's edge could fall (the estimate's range); a split reading
+// ("Could go either way") striped as a whole with no bracket. 2 px of panel
+// between segments, a tick above the top at the middle; the sentence centred
+// INSIDE the dome on two lines; under it a key row (would say man / would say
+// woman, then unsure or neither / likely range), then the pitch-only note's
+// slot, the line naming the rest (so the numbers add up to 10), the legend,
+// the caveat + More. Numbers and words: heardAsAxisModel.js; geometry:
+// heardAsDome.js. The sentence is drawn over the dome by an overlay placed
+// after the pitch-only note in the DOM, so screen readers meet the dome's
+// description, the note (when on) and then the sentence. Hidden states keep
+// the dome on screen, its segments empty and greyed, with the reason under it.
+// (2026-10-25 … 2026-10-26 the dome drew the split bar below: solid ends =
+// the low ends of the two-way range, stripes between = the range's width.)
+//
+// Until 2026-10-25 (the text below describes that bar; its states, hides and
+// one-height rules still hold — its drawing and words are superseded above):
+// Shows how listeners in published studies
 // might hear the voice on ONE SPLIT BAR (user decision 2026-10-20; it
 // replaced the 2026-10-07 axis with a shaded range and a ring): ten tenths of
 // listeners, "would say man" filling from the left (the cue strip's
@@ -80,26 +108,22 @@
 // measurements/heard-as-panel-review-2-2026-10-07.md
 //
 // The gender worker runs only while this is on (useAudioPipeline
-// setHeardAsEnabled); off, nothing runs and nothing downloads. Turning it on
-// downloads up to HEARD_AS_DOWNLOAD_MB (src/ml/heard-as-download.js) the
-// first time. Hidden reasons come from heard-as.js estimate(); "short" is
+// setHeardAsEnabled); off, nothing runs and nothing downloads. On, the first
+// listen downloads up to HEARD_AS_DOWNLOAD_MB (src/ml/heard-as-download.js),
+// shown as "Loading voice model… N %" in the panel. Hidden reasons come from heard-as.js estimate(); "short" is
 // split into "short" / "unvoiced" (whisper) by heardAsAxisModel.js
 // shortReason. Since 2026-10-08 only voiced windows count toward the reading
 // (heard-as.js logitMinVoicedMs; measurements/heard-as-voiced-windows-2026-10-08.md).
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { heardAsShares } from "../ml/heard-as";
 import { heardAsAxis, AXIS_ENDS, shortReason, quickCheck } from "./heardAsAxisModel";
+import { DOME, DOME_PATHS, domeKinds, domeLines, domeBracketPath, UNSURE_WORDS, SPLIT_WORDS, BRACKET_WORDS } from "./heardAsDome";
 import { HEARD_AS_CALIBRATION } from "../ml/heardAsCalibration";
 import { PITCH_ONLY_TEXT } from "../ml/pitch-only-warning";
-import { HEARD_AS_DOWNLOAD_MB } from "../ml/heard-as-download";
 
 const STALE_MS = 2000;
 const HIDE_CHECK_MS = 250;
-// What turning it on downloads the first time: the voice model, the speech
-// detector and the ONNX Runtime engine (src/ml/heard-as-download.js; an
-// upper bound — GitHub Pages compresses the engine).
-export const MODEL_DOWNLOAD_MB = HEARD_AS_DOWNLOAD_MB;
 
 // The caveat: its first sentence stays on screen, the rest opens with "More"
 // (user decision 2026-10-20: the long explanation behind "More"). Words
@@ -247,30 +271,33 @@ const REASONS = {
   outside: () => "Outside the range it was tested on — no guess shown",
 };
 
-const legendText = (stale) => `${stale ? "Older reading — waiting for more speech · " : ""}From your last ~8 s of speech · updates every 2 s · striped = could go either way`;
+// (Until the dome, 2026-10-25, it ended "· striped = could go either way";
+// on split readings the key row now says that with its striped key, in the
+// grey key's slot, and the bracket's key keeps its box invisibly.)
+// No-break spaces keep "·" off the start of a line and "~8 s" / "2 s" whole.
+const legendText = (stale) => `${stale ? "Older reading — waiting for more speech\u00a0· " : ""}From your last ~8\u00a0s of speech\u00a0· updates every 2\u00a0s`;
 
 // Every text each line can show, from the same word functions the panel uses
-// (heardAsAxis on a grid of ranges; every reason), laid out invisibly so the
+// (heardAsAxis over every reading the model can give; every reason), laid out invisibly so the
 // panel's height never depends on which one is showing. All of them, not just
 // the longest: italic and medium text differ in width, so the longest string
-// is not always the tallest.
+// is not always the tallest. (The sentence needs no reserve since the dome,
+// 2026-10-25: it sits inside the dome, whose box is fixed.)
 const RESERVE = (() => {
-  const ranges = new Map(), unsure = new Set();
-  const v = [0.001, 0.049, 0.051, 0.949, 0.951, 0.999];
-  for (let k = 0; k <= 40; k++) v.push(k / 40);
-  for (const lo of v) for (const hi of v) {
-    if (hi < lo) continue;
-    for (const u of [0, 1]) {
-      const a = heardAsAxis({ s: (lo + hi) / 2, sLow: lo, sHigh: hi, centre: { unsure: u } });
-      ranges.set(a.rangeText, a.split);
-      if (a.unsureText) unsure.add(a.unsureText);
-    }
+  // The line under the sentence for every reading the model can give: the
+  // three-way shares depend on eta alone (heard-as.js), so a fine eta sweep
+  // (the fit range of F0 fixed; the meter logit solved for each eta) reaches
+  // every text. Unreachable splits of 10 (e.g. no unsure tenth but two on the
+  // other side, longer) are left out so they don't add a line at 448 px.
+  const unsure = new Set();
+  const lnF0 = Math.log(150), C = HEARD_AS_CALIBRATION;
+  for (let k = -12000; k <= 12000; k++) {
+    const eta = k / 1000;
+    const t = heardAsAxis(heardAsShares((eta - C.a - C.bLnF0 * lnF0) / C.bMeter, lnF0)).unsureText;
+    if (t) unsure.add(t);
   }
-  for (let n = 1; n <= 9; n++) unsure.add(`About ${n} in 10 might be unsure or say neither`);
   return {
-    range: [...ranges].map(([t, split]) => ({ t, split })),
     unsure: [...unsure].map((t) => ({ t })),
-    legend: legendText(true),
     note: PITCH_ONLY_TEXT,
     reasons: [...new Set(Object.entries(REASONS).flatMap(([k, f]) => (k === "loading" ? [f(null), f(99), f(100)] : [f()])))].map((t) => ({ t })),
   };
@@ -283,16 +310,35 @@ const Reserve = ({ texts, className = "", render = (x) => x.t }) => (
     {texts.map((x) => <div key={x.t} className="col-start-1 row-start-1">{render(x)}</div>)}
   </div>
 );
-const SUMMARY_CLS = "mt-1.5 text-sm leading-snug tabular-nums";
-const UNSURE_CLS = "mt-0.5 text-[11px] leading-snug tabular-nums";
-const LEGEND_CLS = "mt-0.5 text-[11px] leading-snug";
-const NOTE_CLS = "mt-1.5 text-[11px] leading-snug";
-const REASON_CLS = "mt-1.5 text-sm leading-snug";
+// Under the dome everything is centred, like the dome (the caveat and More
+// list stay left-aligned: running text). Balanced wrapping (text-wrap: balance
+// never changes the number of lines, so the reserve copies keep their height).
+//
+// ROW LAYOUT (heardrow: desktop windows under 800 px tall and short
+// landscape, src/index.css; 2026-10-26 review: on 1366 x 768 / 1280 x 800
+// laptops the centred dome pushed the panel's lower half into an inner
+// scroll of the right-hand column, and in short landscape the panel was
+// taller than the screen): the dome at the left (200 px wide; 220 px on
+// desktop windows >= 1180 px wide, deskwide, where its key column beside it
+// is taller anyway), its key (one item per line in a narrow column) and the
+// legend beside it; the pitch-only note, then the line naming the rest of the
+// tenths, full width under them, then the caveat. (Until the three-part dome,
+// 2026-10-26, the unsure line sat beside the dome too; the longer line naming
+// the rest took three lines there and overflowed the short-desktop column.)
+// A grid whose first two rows the dome spans (the axis element a subgrid, so
+// the dome and its key stay one element and the note still follows it
+// directly in the DOM); every layer of the one-height grid uses the same
+// grid, so the reserve still holds.
+const ROW_GRID = "heardrow:grid heardrow:grid-cols-[200px_minmax(0,1fr)] deskwide:grid-cols-[220px_minmax(0,1fr)] heardrow:grid-rows-[auto_1fr_auto_auto_auto] heardrow:gap-x-3 heardrow:items-start";
+const ROW_AXIS = "heardrow:col-[1/-1] heardrow:row-[1/3] heardrow:grid heardrow:grid-cols-subgrid heardrow:grid-rows-subgrid";
+const UNSURE_CLS = "mt-1 text-xs leading-snug tabular-nums text-center text-balance heardrow:col-[1/-1] heardrow:row-start-4 heardrow:text-left";
+const LEGEND_CLS = "mt-0.5 text-[11px] leading-snug text-center text-balance heardrow:col-start-2 heardrow:row-start-2 heardrow:text-left";
+const NOTE_CLS = "mt-1.5 text-[11px] leading-snug text-center text-balance heardrow:col-[1/-1] heardrow:row-start-3 heardrow:text-left";
+const REASON_CLS = "mt-1.5 text-sm leading-snug text-center text-balance heardrow:col-start-2 heardrow:row-start-2 heardrow:text-left heardrow:mt-1";
 
-export function HeardAsSwitch({ on, onChange, label = "Likely heard as · Experimental", ref = null }) {
+export function HeardAsSwitch({ on, onChange, label = "Likely heard as · Experimental" }) {
   return (
     <button
-      ref={ref}
       type="button"
       role="switch"
       aria-checked={on}
@@ -305,88 +351,164 @@ export function HeardAsSwitch({ on, onChange, label = "Likely heard as · Experi
   );
 }
 
-// The split bar's parts from the left, [kind, from, to] as fractions, empty
-// ones left out: "man" (deep, the low end of would say man), "either"
-// (striped), "woman" (light, the low end of would say woman). Each part stops
-// 1 px short of a boundary with the next, so 2 px of the panel show between
-// two parts.
-function barParts(axis) {
-  const m = axis.man, w = 1 - axis.woman;
-  return [["man", 0, m], ["either", m, w], ["woman", w, 1]].filter(([, a, b]) => b - a > 1e-9);
-}
-const inset = (f) => (f <= 1e-9 ? "0px" : `calc(${(f * 100).toFixed(1)}% + 1px)`);
+// The dome's box: at most 300 px wide (the mockup's size on a 448-px phone),
+// the full width of narrower panels, centred; its height follows the viewBox.
+// Row layout: at the left (200 / 220 px, the grid's first column), over the
+// grid's first two rows.
+const DOME_BOX = "block w-full max-w-[300px] mx-auto aspect-[300/157] h-auto heardrow:col-start-1 heardrow:row-[1/3] heardrow:mx-0";
+const VIEWBOX = `0 0 ${DOME.w} ${DOME.h}`;
 
-// Ticks in tenths under the bar (the middle one taller) and the end words,
-// each with a small key in its shade (deep beside "would say man", light
-// beside "would say woman"; greyed outlines on the empty bar). Windows high
-// contrast: ticks in CanvasText / GrayText, keys solid / hollow like the bar
-// (src/index.css).
+// The tick above the top of the dome: the middle, 5 in 10.
+const DomeTick = ({ grey = false }) => (
+  <line x1={DOME.cx} y1={DOME.tickTop} x2={DOME.cx} y2={DOME.tickBottom} strokeWidth={1.25}
+    className={grey ? "heard-dome-tick-grey stroke-neutral-700" : "heard-dome-tick stroke-neutral-500"} />
+);
+
+// The key row under the dome (user decision 2026-10-26): a small key in each
+// shade beside its words — deep by "would say man" (left), grey by "unsure or
+// neither" (middle), light by "would say woman" (right); greyed outlines under
+// the empty dome; the bracket's key beside "unsure or neither" only where this
+// row wraps anyway (BracketKey). One row while there is room for it
+// (>= 330 px), else the end words on the first row and "unsure or neither"
+// centred under them (a container query on the row's own width: the panel's
+// width never changes while speaking, so neither does the row's height). In
+// the row layout's narrow column (under 230 px) one item per line, each key
+// at the left. Windows high contrast: keys like the dome (src/index.css).
 const KEY_CLS = "heard-key inline-block w-2.5 h-2.5 rounded-sm shrink-0";
-function BarScale({ grey = false }) {
+const KEY_ITEM = "inline-flex items-center gap-1 whitespace-nowrap";
+function DomeKey({ grey = false, split = false }) {
   const key = (kind) => (grey
     ? <span className={`${KEY_CLS} heard-key-empty border border-neutral-700`} />
     : <span className={`${KEY_CLS} heard-${kind}`} data-axis-key={kind} />);
   return (
-    <>
-      <div className="relative h-1.5" aria-hidden="true">
-        {Array.from({ length: 11 }, (_, i) => (
-          <span key={i} className={`${grey ? "heard-tick-grey bg-neutral-700" : "heard-tick bg-neutral-500"} absolute top-0 w-px ${i === 5 ? "h-1.5" : "h-1"} ${i === 10 ? "-ml-px" : ""}`}
-            style={{ left: `${i * 10}%` }} />
-        ))}
+    <div className="@container mx-auto mt-1 max-w-[360px] heardrow:col-start-2 heardrow:row-start-1 heardrow:mx-0 heardrow:mt-0.5" aria-hidden="true">
+      <div className="grid grid-cols-[auto_auto_auto] justify-between gap-x-2 gap-y-0.5 text-[11px] leading-4 text-neutral-400 @max-[330px]:grid-cols-[auto_auto] @max-[230px]:grid-cols-1 @max-[230px]:gap-y-1" data-axis-ends="">
+        <span className={KEY_ITEM} data-axis-item="man">{key("man")}{AXIS_ENDS.left}</span>
+        <span className="inline-flex gap-x-3 @max-[330px]:col-span-2 @max-[330px]:row-start-2 @max-[330px]:justify-self-center @max-[230px]:col-span-1 @max-[230px]:row-start-auto @max-[230px]:justify-self-start">
+          {split
+            ? <span className={KEY_ITEM} data-axis-item="split">{key("split")}{SPLIT_WORDS}</span>
+            : <span className={KEY_ITEM} data-axis-item="unsure">{key("unsure")}{UNSURE_WORDS}</span>}
+          {!grey && <BracketKey where="key" hide={split} />}
+        </span>
+        <span className={`${KEY_ITEM} justify-self-end @max-[230px]:justify-self-start @max-[230px]:flex-row-reverse`} data-axis-item="woman">{AXIS_ENDS.right}{key("woman")}</span>
       </div>
-      <div className="flex justify-between gap-2 text-[11px] text-neutral-400 leading-4" aria-hidden="true" data-axis-ends="">
-        <span className="whitespace-nowrap inline-flex items-center gap-1">{key("man")}{AXIS_ENDS.left}</span>
-        <span className="whitespace-nowrap inline-flex items-center gap-1">{AXIS_ENDS.right}{key("woman")}</span>
-      </div>
-    </>
-  );
-}
-
-// The man <-> woman split bar (user decision 2026-10-20): a thick bar of ten
-// tenths of listeners — deep indigo from the left (the low end of "would say
-// man"), light indigo from the right (the low end of "would say woman"),
-// striped between them (could go either way); ticks in tenths and the end
-// words with their colour keys under it. No best-guess mark (see the top of
-// this file). Colours: src/index.css (.heard-*). Purely visual (role img
-// labelled with the bar's own description only; the visible sentence right
-// under it is read once — 2026-10-21: the label repeated it, so screen
-// readers read it twice). The parts jump between tenths, no transition: a left / width
-// transition re-ran style + layout every frame on the main thread (−8.9 ms/s
-// pooled with the panel on; main-thread-cpu-2026-10-08.md §3 F6).
-function HeardAsAxis({ axis }) {
-  return (
-    <div data-heard-as-axis="" data-axis-wide={axis.wide ? "1" : "0"} data-split-man={axis.man.toFixed(1)}
-      data-split-woman={axis.woman.toFixed(1)} data-split-guess={axis.guess.toFixed(3)}>
-      <div className="heard-bar-wrap relative pt-1.5" role="img" aria-label={axis.srText}>
-        <div className="relative h-[18px] rounded overflow-hidden" data-split-bar="">
-          {barParts(axis).map(([kind, a, b]) => (
-            <span key={kind} className={`heard-${kind} absolute inset-y-0`} style={{ left: inset(a), right: inset(1 - b) }} data-split-part={kind} />
-          ))}
-        </div>
-      </div>
-      <BarScale />
     </div>
   );
 }
 
-// The bar with no estimate on it (an empty, greyed outline, greyed ticks and
-// the end words): kept on screen while the panel says why it shows none, so
-// the panel keeps its height. Same boxes as HeardAsAxis; hidden from screen
-// readers (the reason text says it all).
+// The bracket's key, a small arc and "likely range" (user decision
+// 2026-10-26: "⌒ likely range"), shown in exactly one place, chosen by
+// container queries on widths that never change while speaking: in the key
+// row's second line beside "unsure or neither" where the key row wraps
+// (230-330 px: portrait phones under ~380 px, where the legend line would
+// wrap with it), else leading the legend line (wider panels, and the row
+// layout's narrow key column, where a fourth key line overflowed the
+// short-desktop column by ~35 px). aria-hidden: the dome's own description
+// names the bracket. (The key-row copy does not use KEY_ITEM: its inline-flex
+// would override `hidden`.)
+const BRACKET_SVG = (
+  <svg className="heard-key inline-block shrink-0" width="12" height="8" viewBox="0 0 12 8" data-axis-key="bracket">
+    <path d="M1 7.5V4.5A5 3.5 0 0 1 11 4.5V7.5" fill="none" strokeWidth="1.5" className="heard-bracket-key" />
+  </svg>
+);
+function BracketKey({ where, hide = false }) {
+  // hide: a split reading draws no bracket — the key keeps its box (invisible),
+  // so nothing moves.
+  const inv = hide ? " invisible" : "";
+  return where === "key" ? (
+    <span aria-hidden="true" className={`hidden items-center gap-1 whitespace-nowrap @max-[330px]:inline-flex @max-[230px]:hidden${inv}`} data-axis-item="bracket" data-bracket-key="key">
+      {BRACKET_SVG}{BRACKET_WORDS}
+    </span>
+  ) : (
+    <span aria-hidden="true" className={`whitespace-nowrap @min-[230px]:@max-[330px]:hidden [&>svg]:mr-1 [&>svg]:align-[-1px]${inv}`} data-bracket-key="legend">
+      {BRACKET_SVG}{BRACKET_WORDS}{"\u00a0· "}
+    </span>
+  );
+}
+const Legend = ({ stale, split = false, className, ...rest }) => (
+  <p className={`@container ${className}`} {...rest}><BracketKey where="legend" hide={split} />{legendText(stale)}</p>
+);
+
+// The man <-> woman dome (owner's choice 2026-10-25; three parts adding to
+// 10 and a bracket, user decision 2026-10-26): ten tenth-segments — deep
+// indigo from the left foot ("would say man"), light indigo from the right
+// foot ("would say woman"), neutral grey between ("unsure or neither"),
+// exactly the tenths in the words; a thin bracket just outside the arc over
+// where the bigger side's edge could fall. A split reading ("Could go either
+// way") stripes all ten in the two indigos and has no bracket. The key row
+// under it. Colours: src/index.css (.heard-*). Purely visual (role img
+// labelled with the dome's own description only; the sentence drawn inside
+// the dome is plain text placed after the pitch-only note, so it is read
+// once). The segments change between tenths with no transition (an SVG
+// transition re-runs the main-thread pipeline every frame;
+// main-thread-cpu-2026-10-08.md §3 F6). data-split-part groups the tenths of
+// each kind (empty kinds left out), each tenth data-tenth / data-tenth-kind;
+// data-tenths-man / -unsure / -woman = the tenths in the words, the bracket
+// data-bracket (its tenth boundaries lo / hi, data-bracket-lo / -hi /
+// -side).
+function HeardAsAxis({ axis }) {
+  const pid = `heard-split-${useId().replace(/[^A-Za-z0-9_-]/g, "")}`;
+  const kinds = domeKinds(axis);
+  const groups = ["man", "unsure", "split", "woman"].map((k) => [k, kinds.flatMap((x, i) => (x === k ? [i] : []))]).filter(([, ix]) => ix.length > 0);
+  const bracket = domeBracketPath(axis.bracket);
+  return (
+    <div className={ROW_AXIS} data-heard-as-axis="" data-axis-wide={axis.wide ? "1" : "0"} data-axis-split={axis.split ? "1" : "0"}
+      data-split-man={axis.man.toFixed(1)} data-split-woman={axis.woman.toFixed(1)} data-split-guess={axis.guess.toFixed(3)}
+      data-tenths-man={axis.tenths.man} data-tenths-unsure={axis.tenths.unsure} data-tenths-woman={axis.tenths.woman}>
+      <svg className={`heard-dome ${DOME_BOX}`} viewBox={VIEWBOX} role="img" aria-label={axis.srText} data-split-bar="">
+        {axis.split && (
+          <defs>
+            <pattern id={pid} width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+              <rect width="6" height="6" className="heard-pat-woman" />
+              <rect width="3" height="6" className="heard-pat-man" />
+            </pattern>
+          </defs>
+        )}
+        <DomeTick />
+        {groups.map(([k, ix]) => (
+          <g key={k} className={`heard-seg-${k}`} fill={k === "split" ? `url(#${pid})` : undefined} data-split-part={k}>
+            {ix.map((i) => <path key={i} d={DOME_PATHS[i]} data-tenth={i} data-tenth-kind={k} />)}
+          </g>
+        ))}
+        {bracket && (
+          <path d={bracket} className="heard-bracket" strokeWidth={DOME.bW} strokeLinecap="butt" data-bracket=""
+            data-bracket-lo={axis.bracket[0]} data-bracket-hi={axis.bracket[1]} data-bracket-side={axis.side} />
+        )}
+      </svg>
+      <DomeKey split={axis.split} />
+    </div>
+  );
+}
+
+// The dome with no estimate on it (ten empty, greyed segments, a grey tick
+// and greyed keys): kept on screen while the panel says why it shows none,
+// so the panel keeps its height. Same boxes as HeardAsAxis; hidden from
+// screen readers (the reason text says it all).
 function EmptyAxis() {
   return (
-    <div aria-hidden="true" data-heard-as-axis-empty="">
-      <div className="heard-bar-wrap relative pt-1.5">
-        <div className="heard-empty relative h-[18px] rounded border border-neutral-700 bg-neutral-800/30" />
-      </div>
-      <BarScale grey />
+    <div aria-hidden="true" className={ROW_AXIS} data-heard-as-axis-empty="">
+      <svg className={`heard-dome ${DOME_BOX}`} viewBox={VIEWBOX}>
+        <DomeTick grey />
+        {DOME_PATHS.map((d, i) => (
+          <path key={i} d={d} strokeWidth={1} className="heard-seg-empty fill-neutral-800/30 stroke-neutral-700" />
+        ))}
+      </svg>
+      <DomeKey grey />
     </div>
   );
 }
+
+// The sentence inside the dome: an overlay exactly over the dome's box (same
+// width rule and aspect ratio, at the top of the shown block), its two lines
+// (domeLines) at the bottom of the dome's hollow, centred. Font and spacing
+// follow the dome's width (cqw of the overlay, a size container), 16 px at the
+// full 300 px. Placed after the pitch-only note in the DOM (see the top of
+// this file); pointer-events none so it never covers anything.
+const DOME_TEXT_BOX = "@container pointer-events-none absolute inset-x-0 top-0 mx-auto w-full max-w-[300px] aspect-[300/157] flex flex-col items-center justify-end heardrow:right-auto heardrow:mx-0 heardrow:w-[200px] deskwide:w-[220px]";
+const DOME_TEXT_STYLE = { fontSize: "min(16px, 5.4cqw)", marginBottom: "4.6cqw", lineHeight: 1.35 };
 
 export function HeardAsPanel({
   enabled,
-  onToggle,
   modelStatus,
   modelProgress,
   heardAsRef,
@@ -402,18 +524,6 @@ export function HeardAsPanel({
   useEffect(() => { statusRef.current = modelStatus; });
   const shownRef = useRef(false);
   const computeRef = useRef(null);
-  // Turning the panel on or off here swaps the off row for the panel, so the
-  // pressed control unmounts: focus moves to the control that replaces it
-  // instead of dropping to <body> (2026-10-19 review S-4d). Only for a press
-  // in the panel (the state it asked for), not for the Settings switch.
-  const turnOnRef = useRef(null);
-  const switchRef = useRef(null);
-  const refocusFor = useRef(null);
-  const toggleHere = (on) => { refocusFor.current = on; onToggle(on); };
-  useEffect(() => {
-    if (refocusFor.current === enabled) (enabled ? switchRef : turnOnRef).current?.focus();
-    refocusFor.current = null;
-  }, [enabled]);
 
   useEffect(() => {
     if (!enabled) return undefined;
@@ -492,8 +602,7 @@ export function HeardAsPanel({
   const progress = modelProgress?.total
     ? Math.min(100, Math.floor((100 * modelProgress.loaded) / modelProgress.total))
     : null;
-  const reason = !enabled ? null
-    : modelStatus === "error" ? "error"
+  const reason = modelStatus === "error" ? "error"
       : modelStatus !== "ready" ? "loading"
         : view.hidden ?? null;
   const stale = !reason && view.ageMs > STALE_MS;
@@ -501,21 +610,9 @@ export function HeardAsPanel({
   // its run), so screen readers are not re-told after every "Keep talking".
   const liveOn = view.live === true;
 
-  if (!enabled) {
-    return (
-      <div className="w-full flex items-center justify-between gap-2 min-h-8 px-3 py-1 rounded-xl border border-neutral-800 bg-neutral-900/40"
-        data-heard-as="off" data-model-worker="off">
-        {/* Wraps rather than truncating: at 360 px the ellipsis ate "off" (review N-5). */}
-        <span className="min-w-0 text-[11px] leading-4 text-neutral-400">Likely heard as · <span className="whitespace-nowrap">Experimental — off</span></span>
-        {/* The accessible name starts with the visible text (WCAG 2.5.3, review N-9). */}
-        <button ref={turnOnRef} type="button" onClick={() => toggleHere(true)}
-          aria-label={`Turn on · up to ${MODEL_DOWNLOAD_MB} MB — the experimental "Likely heard as" estimate; the first time it downloads a voice model, a speech detector and their engine`}
-          className="shrink-0 text-[11px] min-h-6 px-2.5 py-1 rounded-md bg-neutral-800 hover:bg-neutral-700 text-neutral-300 cursor-pointer transition-colors">
-          Turn on · up to {MODEL_DOWNLOAD_MB} MB
-        </button>
-      </div>
-    );
-  }
+  // Switched off in Settings: nothing on the dashboard (no off row and no
+  // turn-on button since 2026-10-25; Settings turns it back on).
+  if (!enabled) return null;
 
   return (
     <section
@@ -529,50 +626,47 @@ export function HeardAsPanel({
         <h3 className="text-[11px] font-medium text-neutral-300">
           Likely heard as <span className="text-amber-300/80">· Experimental</span>
         </h3>
-        <HeardAsSwitch ref={switchRef} on onChange={toggleHere} />
       </div>
       {/* One grid cell: the tallest shown state and the tallest hidden state
           (both invisible), and on top of them what is showing now. */}
       <div className="grid grid-cols-1" data-heard-as-body="">
-        <div aria-hidden="true" className="invisible col-start-1 row-start-1">
+        <div aria-hidden="true" className={`invisible col-start-1 row-start-1 ${ROW_GRID}`}>
           <EmptyAxis />
           <div className={NOTE_CLS}>{RESERVE.note}</div>
-          <Reserve className={SUMMARY_CLS} texts={RESERVE.range}
-            render={(x) => <span className={x.split ? "italic" : "font-medium"}>{x.t}</span>} />
           <Reserve className={UNSURE_CLS} texts={RESERVE.unsure} />
-          <div className={LEGEND_CLS}>{RESERVE.legend}</div>
+          <Legend stale className={LEGEND_CLS} />
         </div>
-        <div aria-hidden="true" className="invisible col-start-1 row-start-1">
+        <div aria-hidden="true" className={`invisible col-start-1 row-start-1 ${ROW_GRID}`}>
           <EmptyAxis />
           <Reserve className={REASON_CLS} texts={RESERVE.reasons} />
         </div>
         <div className="col-start-1 row-start-1 self-start min-w-0">
           {reason ? (
-            <>
+            <div className={ROW_GRID}>
               <EmptyAxis />
               <p className={`${REASON_CLS} text-neutral-400`} data-heard-as-reason="">{REASONS[reason](progress)}</p>
-            </>
+            </div>
           ) : (
-            <div data-heard-as-shares="" data-stale={stale ? "1" : "0"}>
+            <div className={`relative ${ROW_GRID}`} data-heard-as-shares="" data-stale={stale ? "1" : "0"}>
               <HeardAsAxis axis={view.axis} />
               {view.pitchOnly && (
                 <p className={`${NOTE_CLS} text-amber-200/80`} data-heard-as-note="pitch-only" data-pitch-only="1">
                   {PITCH_ONLY_TEXT}
                 </p>
               )}
-              <p className={`${SUMMARY_CLS} ${view.axis.split ? "text-neutral-300 italic" : "text-neutral-100 font-medium"}`}
-                data-heard-as-range="" data-wide={view.axis.wide ? "1" : "0"} data-split={view.axis.split ? "1" : "0"}>
-                {view.axis.rangeText}
-              </p>
+              <div className={DOME_TEXT_BOX}>
+                <p className={`text-center tabular-nums ${view.axis.split ? "text-neutral-300 italic" : "text-neutral-100 font-semibold"}`} style={DOME_TEXT_STYLE}
+                  data-heard-as-range="" data-wide={view.axis.wide ? "1" : "0"} data-split={view.axis.split ? "1" : "0"}>
+                  {domeLines(view.axis.rangeText).map((line, k) => <span key={k} className="block whitespace-nowrap">{k ? " " : ""}{line}</span>)}
+                </p>
+              </div>
               {view.axis.unsureText && (
                 <p className={`${UNSURE_CLS} text-neutral-400`} data-heard-as-unsure="">{view.axis.unsureText}</p>
               )}
               {!view.pitchOnly && extraNote != null && extraNote !== false && (
-                <div className="mt-1 text-[11px] leading-snug text-amber-200/80" data-heard-as-note="extra">{extraNote}</div>
+                <div className="mt-1 text-[11px] leading-snug text-amber-200/80 heardrow:col-[1/-1] heardrow:row-start-5" data-heard-as-note="extra">{extraNote}</div>
               )}
-              <p className={`${LEGEND_CLS} text-neutral-400`} data-heard-as-legend="">
-                {legendText(stale)}
-              </p>
+              <Legend stale={stale} split={view.axis.split} className={`${LEGEND_CLS} text-neutral-400`} data-heard-as-legend="" />
             </div>
           )}
         </div>
@@ -582,8 +676,11 @@ export function HeardAsPanel({
       </div>
       <p className="mt-1.5 text-[11px] leading-snug text-neutral-400" data-heard-as-caveat="">
         {HEARD_AS_CAVEAT_SHORT}{" "}
+        {/* Hit area >= 44 x 44 px (the ::before), reaching further up (over the
+            caveat's text) than down, so it ends at the panel's edge and never
+            adds an inner scroll to the desktop column. */}
         <button type="button" onClick={() => setMore((m) => !m)} aria-expanded={more}
-          className="relative text-neutral-300 underline underline-offset-2 hover:text-neutral-100 cursor-pointer before:absolute before:-inset-x-2 before:-inset-y-2.5 before:content-['']">
+          className="relative text-neutral-300 underline underline-offset-2 hover:text-neutral-100 cursor-pointer before:absolute before:-inset-x-[10px] before:-top-[21px] before:-bottom-[9px] before:content-['']">
           {more ? "Less" : "More"}
         </button>
       </p>
@@ -597,10 +694,10 @@ export function HeardAsPanel({
           <li data-heard-as-pitch-only-false-alarms="">{PITCH_ONLY_FALSE_ALARM_TEXT}</li>
           <li>Typical voices are shown further from the ends than listeners put them: clearly feminine and clearly masculine voices look less clear-cut here than they are.</li>
           <li data-heard-as-cant-tell="">{CANT_TELL_TEXT}</li>
-          <li>Within clearly feminine or clearly masculine voices it does not track small changes — use the pitch and resonance rows under the pitch trace for those.</li>
+          <li>Within clearly feminine or clearly masculine voices it does not track small changes — use the pitch and resonance meters for those.</li>
           <li>It uses only your pitch and a voice classifier; it ignores intonation, vocal weight and articulation.</li>
           <li data-heard-as-range-limits="">{RANGE_LIMITS_TEXT}</li>
-          <li>The striped part of the bar is the range where about 8 in 10 published listener groups fell for clearly feminine or clearly masculine voices; less is known for in-between voices. The sentence under the bar gives the panel&apos;s best guess for the side more listeners would choose, rounded to a whole tenth (halfway values toward 5 in 10); the best guess always lies inside the striped part. The scale is listeners choosing between man and woman: those who might be unsure or say neither are counted half on each side. The &ldquo;unsure or neither&rdquo; line counts listeners who answered &ldquo;another gender&rdquo; as well as those who weren&apos;t sure, and depends on how listeners are asked.</li>
+          <li data-heard-as-arc-more="">The arc shows the panel&apos;s best guess in tenths of listeners that add up to 10: would say man from the left, would say woman from the right, and those who might be unsure or say neither in grey between — the words give the same numbers. The thin bracket outside the arc marks where the edge of the larger part could fall: about 8 in 10 published listener groups fell inside it for clearly feminine or clearly masculine voices; less is known for in-between voices. When the two sides are within a tenth of each other, or the estimate is too uncertain to lean either way, the arc is striped and says &ldquo;Could go either way&rdquo;. The &ldquo;unsure or neither&rdquo; part counts listeners who answered &ldquo;another gender&rdquo; as well as those who weren&apos;t sure, and depends on how listeners are asked.</li>
           <li data-heard-as-noise="">{NOISE_TEXT}</li>
           <li>Nothing is stored or sent anywhere; it is computed on this device and forgotten when you stop.</li>
         </ul>

@@ -425,8 +425,12 @@ async function phaseCapture(target, targetUrl, durationSec) {
   // — symptom: status.worklet/worker stay null, no error logged.
   const btn = await cdp.eval(`
     (() => {
+      // The goal sheet (first visit / return visit) needs a goal first.
+      const goal = document.querySelector('[role=dialog] input[data-direction="exploring"]');
+      if (goal && !goal.checked) goal.closest("label").click();
       const el = [...document.querySelectorAll("button")].find((b) =>
-        b.textContent.includes("Get Started") ||
+        b.textContent.includes("Start — allow the microphone") ||
+        b.textContent.includes("Start practicing") ||
         b.textContent.includes("Start Listening"));
       if (!el) return null;
       const r = el.getBoundingClientRect();

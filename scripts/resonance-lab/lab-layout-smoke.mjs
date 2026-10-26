@@ -13,10 +13,10 @@
 // unvoiced text ("Pitch 276 Hz" in bright / grey, "— Hz", "—" st …).
 // The Resonance lab tab is hidden by default (2026-10-21); each page switches it on in
 // Settings first. Per viewport, every button's (and input's) box is sampled every 100 ms in:
-//   1 the Dashboard cue strip      (the row "i"s, the steadiness "i")
+//   1 the Dashboard cue strip      (the column "i"s, the steadiness "i")
 //   2 the Resonance lab            (header buttons, view switch, card "i"s)
 //   3 the lab's Weight × clarity   (header buttons, view switch, map button)
-// each together with the Stop Listening bar under it (its voice status text
+// each together with the practice dock under it (its voice status text
 // changes with the voice). PASS when both states were seen (voiced and
 // unvoiced pitch text) and no box moved by more than 0.5 px between any two
 // samples. In the weight view it then starts "Map your voice" and steps
@@ -25,10 +25,10 @@
 //     voice model from Hugging Face): a second browser plays 9 s of speech +
 //     7 s of silence, so the panel cycles through "Can't tell yet — keep
 //     talking", "Could go either way", a range with its "unsure" line and "Older reading"; for
-//     --panel-seconds the panel's own buttons, Save Session, the notes box and
-//     the Stop Listening bar must not move (one panel height in every state),
+//     --panel-seconds the panel's own buttons, the practice dock (record, notes,
+//     Mic off) must not move (one panel height in every state),
 //     and neither may the boxes of the panel itself (its bottom edge), the
-//     Save Session row and the Stop Listening bar (user decision 2026-10-20 (2):
+//     practice dock (user decision 2026-10-20 (2):
 //     nothing below the panel moves more than 0.5 px).
 //   5 the same panel in EVERY state, forced (unless --forced=0; no network —
 //     the voice-model hosts are unreachable and the states are set with
@@ -38,9 +38,20 @@
 //     range (both "nearly all" ends, "can't tell yet", with and without the
 //     unsure line, fresh and "Older reading", each with and without the
 //     pitch-only note — its room is reserved from switch-on, review
-//     2026-10-20): the bar is on screen in every state, and the panel's box,
-//     its buttons, Save Session, the notes box and the Stop Listening bar keep
-//     their boxes (<= 0.5 px).
+//     2026-10-20): the dome (the bar until 2026-10-25) is on screen in every state, and the panel's box,
+//     its buttons, the practice dock (record, notes, Mic off) keep
+//     their boxes (<= 0.5 px). Part 5 also runs at 1366 x 657 (a short
+//     desktop) and 890 x 448 (short landscape), where the panel is in its row
+//     layout (the dome at the left, its key, unsure line and legend beside
+//     it; 2026-10-26), so the one-height rule is checked there too; every
+//     shown estimate's sentence must sit inside the dome's hollow. And the
+//     meaning (three parts adding to 10, user decision 2026-10-26), in every
+//     shown state: the drawn segments per kind = the tenths in the words
+//     (data-tenths-*, the sentence and the line under it — sayText /
+//     restText), summing to 10; all ten striped and no bracket when split;
+//     otherwise the bracket's ends on segment boundaries, containing the
+//     bigger side's edge; each estimate and its mirror (eta and -eta) draw
+//     mirrored domes and say the same words with man / woman swapped.
 // Screenshots of each part in both states go to <out>/<viewport>-<part>-<state>.png.
 //
 // Process hygiene (CLAUDE.md hard rule 2): Chrome is launched by puppeteer with a fresh
@@ -55,6 +66,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import puppeteer from "puppeteer-core";
 import { CHROME_BLOCK_MODEL_ARGS, allPanelStates, installPanelForce, forcePanel } from "../heard-as/panel-force.mjs";
+import { sayText, restText } from "../../src/components/heardAsAxisModel.js";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const arg = (k, d) => (process.argv.find((a) => a.startsWith(`--${k}=`)) ?? `=${d}`).split("=").slice(1).join("=");
@@ -76,6 +88,11 @@ const VIEWPORTS = {
   p360: { width: 360, height: 690, deviceScaleFactor: 2, isMobile: true, hasTouch: true },
   p448: { width: 448, height: 890, deviceScaleFactor: 2, isMobile: true, hasTouch: true },
   desktop: { width: 1280, height: 800, deviceScaleFactor: 1 },
+};
+// Part 5 only: the heard-as panel's row layout (HeardAsPanel.jsx, heardrow).
+const FORCED_ONLY_VIEWPORTS = {
+  dshort: { width: 1366, height: 657, deviceScaleFactor: 1 },
+  land: { width: 890, height: 448, deviceScaleFactor: 2, isMobile: true, hasTouch: true },
 };
 
 // speechS of speech / gapS of silence, repeated, from the source WAV (PCM 16-bit mono).
@@ -155,11 +172,11 @@ async function startListening(page) {
     if (s.dialog) {
       await page.evaluate(() => document.querySelector('[role=dialog] input[data-direction="exploring"]')?.closest("label")?.click());
       await sleep(200);
-      await clickText(page, ["Continue"], "[role=dialog]");
-    } else if (s.text.includes("Stop Listening")) {
+      await clickText(page, ["Start — allow the microphone", "Start practicing"], "[role=dialog]");
+    } else if (s.text.includes("Mic off")) {
       return true;
     } else {
-      await clickText(page, ["Get Started", "Start Listening"]);
+      await clickText(page, ["Start Listening"]);
     }
     await sleep(700);
   }
@@ -245,8 +262,8 @@ const LAB_STATE = `() => {
 // The lab root: both layouts carry data-lab-root (after this change); before it, the
 // phone layout had data-lab-phone and the full one only the header text.
 const LAB_SCOPE = "[data-lab-root], [data-lab-phone]";
-// The Stop Listening bar (its voice status text changes with the voice).
-const BAR = "[data-listen-bar]";
+// The practice dock (its voice status text changes with the voice).
+const BAR = "[data-practice-dock]";
 // The heard-as panel: shown (wide / narrow, older reading, pitch-only note) or hidden (reason).
 const PANEL_STATE = `() => {
   const p = document.querySelector("[data-heard-as]");
@@ -330,13 +347,13 @@ for (const [vp, viewport] of Object.entries(LAYOUT ? VIEWPORTS : {})) {
   await sleep(2500);
   await part(vp, page, "lab-weight", `${LAB_SCOPE}, ${BAR}`, LAB_STATE);
   // The whole plot (with its bottom axis word) must be in the first screen,
-  // above Stop Listening.
+  // above Mic off.
   const fit = await page.evaluate(() => {
     window.scrollTo(0, 0);
     for (const el of document.querySelectorAll("[data-lab-phone]")) el.scrollTop = 0;
     const plot = document.querySelector("[data-weight-plot]")?.getBoundingClientRect();
     const axis = document.querySelector("[data-weight-axis-bottom]")?.getBoundingClientRect();
-    const stop = [...document.querySelectorAll("button")].find((b) => b.textContent.includes("Stop Listening"))?.getBoundingClientRect();
+    const stop = [...document.querySelectorAll("button")].find((b) => b.textContent.includes("Mic off"))?.getBoundingClientRect();
     return plot ? { top: Math.round(plot.top), bottom: Math.round(Math.max(plot.bottom, axis?.bottom ?? 0)), floor: Math.round(Math.min(innerHeight, stop?.top ?? innerHeight)) } : null;
   });
   check(vp, "lab-weight: plot in the first screen", !!fit && fit.top >= 0 && fit.bottom <= fit.floor, JSON.stringify(fit));
@@ -387,8 +404,8 @@ if (PANEL) {
     const listening = await startListening(page);
     check(vp, "panel: listening", listening);
     if (!listening) { await page.close(); continue; }
+    // The panel is on by default (2026-10-25: no turn-on button): it is there as soon as listening starts.
     await page.waitForSelector("[data-heard-as]", { timeout: 20000 }).catch(() => {});
-    await page.evaluate(() => [...document.querySelectorAll("[data-heard-as] button")].find((b) => b.textContent.includes("Turn on"))?.click());
     const t0 = Date.now();
     const ready = await page.waitForFunction(() => document.querySelector("[data-heard-as]")?.dataset.modelWorker === "ready", { timeout: 300000 })
       .then(() => true, () => false);
@@ -397,14 +414,14 @@ if (PANEL) {
     const shownOnce = await page.waitForFunction(() => document.querySelector("[data-heard-as]")?.dataset.heardAs === "shown", { timeout: 60000 })
       .then(() => true, () => false);
     if (!shownOnce) log("panel: no estimate shown within 60 s of the model being ready");
-    const scope = `[data-heard-as], [data-session-row], ${BAR}`;
+    const scope = `[data-heard-as], ${BAR}`;
     const samples = await sampleButtons(page, scope, PANEL_STATE, PANEL_SECONDS * 1000, true);
     const counts = samples.reduce((a, s) => ((a[s.state] = (a[s.state] ?? 0) + 1), a), {});
     const shown = Object.keys(counts).some((k) => k.startsWith("shown:"));
     const hidden = Object.keys(counts).some((k) => k.startsWith("hidden:"));
     check(vp, "panel: shown and hidden states both seen", shown && hidden, JSON.stringify(counts));
     const m = maxMove(samples);
-    check(vp, `panel: ${m.n} buttons / inputs / boxes (panel, Save Session row, Stop Listening bar), none moved (max ${m.worst.d.toFixed(2)} px <= ${TOL})`, m.n > 0 && m.worst.d <= TOL && m.missing.length === 0,
+    check(vp, `panel: ${m.n} buttons / inputs / boxes (panel, practice dock), none moved (max ${m.worst.d.toFixed(2)} px <= ${TOL})`, m.n > 0 && m.worst.d <= TOL && m.missing.length === 0,
       m.worst.d > TOL ? `"${m.worst.key}" ${JSON.stringify(m.worst.a)} -> ${JSON.stringify(m.worst.b)}` : m.missing.length ? `appeared / disappeared: ${m.missing.join(", ")}` : "");
     const h = await page.evaluate(() => document.querySelector("[data-heard-as]")?.getBoundingClientRect().height ?? null);
     log(`  [${vp}] panel height ${h?.toFixed(1)} px; states ${JSON.stringify(counts)}`);
@@ -428,20 +445,20 @@ if (FORCED) {
     args: ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream", "--autoplay-policy=no-user-gesture-required", ...CHROME_BLOCK_MODEL_ARGS],
   });
   const STATES = allPanelStates();
-  for (const [vp, viewport] of Object.entries(VIEWPORTS)) {
+  for (const [vp, viewport] of Object.entries({ ...VIEWPORTS, ...FORCED_ONLY_VIEWPORTS })) {
     const errors = [];
     const page = await openPage(viewport, errors);
     const listening = await startListening(page);
     check(vp, "forced: listening", listening);
     if (!listening) { await page.close(); continue; }
-    await page.waitForSelector("[data-heard-as]", { timeout: 20000 }).catch(() => {});
-    await page.evaluate(() => [...document.querySelectorAll("[data-heard-as] button")].find((b) => b.textContent.includes("Turn on"))?.click());
+    await page.waitForSelector("[data-heard-as]", { timeout: 20000 }).catch(() => {});   // on by default
     await page.waitForFunction(() => ["error", "ready"].includes(document.querySelector("[data-heard-as]")?.dataset.modelWorker), { timeout: 60000 }).catch(() => {});
     const inst = await installPanelForce(page);
     check(vp, "forced: panel states can be set", inst.ok, inst.why ?? "");
     if (!inst.ok) { await page.close(); continue; }
-    const scope = `[data-heard-as], [data-session-row], ${BAR}`;
-    const samples = [], seen = [], noBar = [];
+    const scope = `[data-heard-as], ${BAR}`;
+    const samples = [], seen = [], noBar = [], outOfDome = [], badMeaning = [], drawnByName = {};
+    let inDomeChecked = 0;
     for (const st of STATES) {
       await forcePanel(page, st);
       await sleep(120);
@@ -452,6 +469,46 @@ if (FORCED) {
         return !!r && r.width > 0 && r.height > 0;
       });
       if (!bar) noBar.push(st.name);
+      // A shown estimate's sentence inside the dome's hollow (every line within the inner radius, above the
+      // base; the same rule as cue-strip-smoke's), in every forced state — the cue strip smoke sees only the
+      // two live voices' readings at its one viewport (2026-10-26 review).
+      const inDome = await page.evaluate(() => {
+        const p = document.querySelector("[data-heard-as]");
+        const lines = [...(p?.querySelectorAll("[data-heard-as-range] > span") ?? [])].map((e) => { const g = document.createRange(); g.selectNodeContents(e); return g.getBoundingClientRect(); });
+        const dome = p?.querySelector("[data-heard-as-axis] [data-split-bar]")?.getBoundingClientRect();
+        if (!lines.length || !dome) return null;   // no estimate shown
+        const k = dome.width / 300, cx = dome.left + 150 * k, cy = dome.top + 156 * k, r = 118 * k;
+        return lines.every((l) => {
+          const inkTop = l.top + (l.height * 0.35) / 2.7;
+          return l.bottom <= cy + 0.5 && Math.hypot(l.left - cx, inkTop - cy) <= r + 1 && Math.hypot(l.right - cx, inkTop - cy) <= r + 1;
+        });
+      });
+      // The meaning (2026-10-26): what is drawn = what is said.
+      const drawn = await page.evaluate(() => {
+        const a = document.querySelector("[data-heard-as] [data-heard-as-axis]");
+        if (!a) return null;
+        const kinds = [...a.querySelectorAll("[data-tenth]")].sort((x, y) => x.dataset.tenth - y.dataset.tenth).map((e) => e.dataset.tenthKind[0]).join("");
+        const b = a.querySelector("[data-bracket]");
+        const angle = (q) => (Math.atan2(156 - q.y, q.x - 150) * 180) / Math.PI;
+        return { kinds, wide: a.dataset.axisWide === "1", split: a.dataset.axisSplit === "1",
+          t: { man: Number(a.dataset.tenthsMan), unsure: Number(a.dataset.tenthsUnsure), woman: Number(a.dataset.tenthsWoman) },
+          range: document.querySelector("[data-heard-as] [data-heard-as-range]")?.textContent ?? "",
+          unsure: document.querySelector("[data-heard-as] [data-heard-as-unsure]")?.textContent ?? null,
+          bracket: b ? { lo: Number(b.dataset.bracketLo), hi: Number(b.dataset.bracketHi), side: b.dataset.bracketSide,
+            a0: angle(b.getPointAtLength(0)), a1: angle(b.getPointAtLength(b.getTotalLength())) } : null };
+      });
+      if (drawn) {
+        const { t, kinds } = drawn, n = (c) => kinds.split("").filter((x) => x === c).length;
+        const edge = t.man > t.woman ? t.man : 10 - t.woman, onB = (deg, k) => Math.abs(deg - (180 - 18 * k)) < 0.5;
+        const ok = kinds.length === 10 && t.man + t.unsure + t.woman === 10 && drawn.range === sayText(t, drawn.wide)
+          && (drawn.split ? kinds === "ssssssssss" && drawn.bracket === null && drawn.unsure === null
+            : /^m*u*w*$/.test(kinds) && n("m") === t.man && n("u") === t.unsure && n("w") === t.woman && drawn.unsure === restText(t, drawn.wide)
+              && !!drawn.bracket && drawn.bracket.lo <= edge && edge <= drawn.bracket.hi && onB(drawn.bracket.a0, drawn.bracket.lo) && onB(drawn.bracket.a1, drawn.bracket.hi));
+        if (!ok) badMeaning.push(`${st.name}: ${JSON.stringify(drawn)}`);
+        drawnByName[st.name] = drawn;
+      }
+      if (inDome !== null) inDomeChecked++;
+      if (inDome === false) outOfDome.push(st.name);
       samples.push({ ...one, state: `${st.name} -> ${one.state}` });
       seen.push(one.state);
     }
@@ -461,9 +518,23 @@ if (FORCED) {
     check(vp, "forced: every hide reason, wide and narrow estimates, fresh and older, each with and without the pitch-only note, were shown",
       wantReasons.every((r) => reasons.has(r)) && [...wantShown, ...wantShown.map((k) => `${k}+pitch-only`)].every((k) => seen.includes(k)),
       JSON.stringify([...new Set(seen)]));
-    check(vp, "forced: the bar is on screen in every state (empty and greyed without an estimate)", noBar.length === 0, noBar.join(", "));
+    check(vp, "forced: the dome is on screen in every state (empty and greyed without an estimate)", noBar.length === 0, noBar.join(", "));
+    check(vp, `forced: in every shown state (${Object.keys(drawnByName).length}) the drawn segments per kind = the tenths in the words, summing to 10; split = all striped, no bracket, no line under it; else the bracket's ends on segment boundaries, containing the bigger side's edge`,
+      Object.keys(drawnByName).length > 0 && badMeaning.length === 0, badMeaning.slice(0, 2).join(" | "));
+    const swapW = (x) => x == null ? x : x.replace(/would say (man|woman)\b/g, (m0, w) => `would say ${w === "man" ? "woman" : "man"}`);
+    const mirrorBad = [];
+    for (const [name, A] of Object.entries(drawnByName)) {
+      const mm = name.match(/^eta(\d[\d.]*)(.*)$/);
+      const B = mm ? drawnByName[`eta-${mm[1]}${mm[2]}`] : null;
+      if (!B) continue;
+      const mk = A.kinds.split("").reverse().map((c) => (c === "m" ? "w" : c === "w" ? "m" : c)).join("");
+      if (!(mk === B.kinds && swapW(A.range) === B.range && swapW(A.unsure) === B.unsure
+        && (A.bracket ? !!B.bracket && A.bracket.lo === 10 - B.bracket.hi && A.bracket.hi === 10 - B.bracket.lo : B.bracket === null))) mirrorBad.push(name);
+    }
+    check(vp, "forced: mirrored estimates (eta / -eta) draw mirrored domes and say the same words with man / woman swapped", mirrorBad.length === 0, mirrorBad.join(", "));
+    check(vp, `forced: every shown estimate's sentence is drawn inside the dome's hollow (${inDomeChecked} checked)`, inDomeChecked > 0 && outOfDome.length === 0, outOfDome.join(", "));
     const m = maxMove(samples);
-    check(vp, `forced: ${STATES.length} states, ${m.n} buttons / inputs / boxes (panel, Save Session row, Stop Listening bar), none moved (max ${m.worst.d.toFixed(2)} px <= ${TOL})`,
+    check(vp, `forced: ${STATES.length} states, ${m.n} buttons / inputs / boxes (panel, practice dock), none moved (max ${m.worst.d.toFixed(2)} px <= ${TOL})`,
       m.n > 0 && m.worst.d <= TOL && m.missing.length === 0,
       m.worst.d > TOL ? `"${m.worst.key}" ${JSON.stringify(m.worst.a)} -> ${JSON.stringify(m.worst.b)}` : m.missing.length ? `appeared / disappeared: ${m.missing.join(", ")}` : "");
     const h = samples[0]?.rects["box:data-heard-as"]?.[3];

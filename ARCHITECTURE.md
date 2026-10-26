@@ -121,7 +121,7 @@ was hidden: `measurements/vocal-weight-pipeline-retire-2026-10-11.md`), the **pi
 **resonance worker** (the Dashboard's spectral-warp resonance cue — it reuses
 the pitch worker's posted decisions, relayed by the main thread, instead of
 running its own pitch tracker), the **gender worker** (voice classifier, only
-while the opt-in "Likely heard as" panel is on) and, once its tab is opened,
+while the "Likely heard as" panel is on — on by default since 2026-10-25) and, once its tab is opened,
 the resonance-lab worker. The main-thread hook (`useAudioPipeline`) merges
 their outputs and relays each pitch decision to the DSP, resonance and (when
 running) gender workers. CLAUDE.md holds the current details.
@@ -599,7 +599,7 @@ The default practice mode — everything at a glance. **As built (Design A
   resonance; only pitch is judged on / off target
   (colour, a hollow dot and "↑ higher" / "↓ lower" — never colour alone). The
   pitch level and steadiness sit in the pitch row, HNR in the strip's caption.
-- **"Likely heard as · Experimental"** — opt-in, off by default: listener
+- **"Likely heard as · Experimental"** — on by default since 2026-10-25 (no turn-on button; Settings switches it off): listener
   shares on one man ↔ woman split bar in tenths (deep indigo from the left =
   the low end of "would say man", light indigo from the right = the low end
   of "would say woman", striped between = could go either way; under it one

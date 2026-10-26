@@ -240,20 +240,26 @@ const clickButton = (page, texts, scope = "") => page.evaluate((ts, scope) => {
   if (b) b.click();
   return !!b;
 }, texts, scope);
-// First visit: the welcome, then the direction question; Continue answers and
-// starts listening, Escape only answers (start: false).
+// First visit: the welcome, then the direction question, answered with Escape
+// (answers without starting). The "Likely heard as" panel is on by default
+// since 2026-10-25, so it is switched off in Settings before listening: these
+// runs measure the voice gate without the gender worker and its model
+// download, as before. Then Start Listening, unless start: false.
 async function startListening(page, { start = true } = {}) {
-  await page.waitForFunction(() => document.body.innerText.includes("Welcome to Syrinx"), { timeout: 60000 });
-  await clickButton(page, ["Get Started"]);
+  await page.waitForFunction(() => !!document.querySelector("[data-dialog=direction]"), { timeout: 60000 });
   await page.waitForFunction(() => document.body.innerText.includes("What are you trying to sound like?"), { timeout: 30000 });
   await page.evaluate(() => document.querySelector('[role=dialog] input[data-direction="exploring"]')?.closest("label")?.click());
-  if (!start) {
-    await page.evaluate(() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
-    await page.waitForFunction(() => !document.body.innerText.includes("What are you trying to sound like?"), { timeout: 10000 });
-    return;
-  }
-  await clickButton(page, ["Continue"], "[role=dialog]");
-  await page.waitForFunction(() => document.body.innerText.includes("Stop Listening"), { timeout: 30000 });
+  await page.evaluate(() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+  await page.waitForFunction(() => !document.body.innerText.includes("What are you trying to sound like?"), { timeout: 10000 });
+  await openSettings(page);
+  await page.evaluate(() => {
+    const s = document.querySelector("[data-settings-heard-as] [role=switch]");
+    if (s?.getAttribute("aria-checked") === "true") s.click();
+  });
+  await closeSettings(page);
+  if (!start) return;
+  await clickButton(page, ["Start Listening"]);
+  await page.waitForFunction(() => document.body.innerText.includes("Mic off"), { timeout: 30000 });
 }
 async function openSettings(page) {
   await page.evaluate(() => document.querySelector('[aria-label="Settings & Data"]')?.click());
@@ -435,12 +441,15 @@ console.log(`preview on :${PORT}`);
 
   // Reload (same profile): the model comes from Cache Storage.
   console.log("\n== reload, same profile: the model from Cache Storage");
-  await clickButton(page, ["Stop Listening"]);
+  await clickButton(page, ["Mic off"]);
   const before = net.length;
   await page.reload({ waitUntil: "domcontentloaded" });
-  await page.waitForFunction(() => [...document.querySelectorAll("button")].some((b) => b.textContent.includes("Start Listening")), { timeout: 30000 });
-  await clickButton(page, ["Start Listening"]);
-  await page.waitForFunction(() => document.body.innerText.includes("Stop Listening"), { timeout: 30000 });
+  // The return-visit goal sheet (2026-10-25): "Start practicing" confirms last
+  // time's goal and starts listening (Start Listening behind it is inert, and
+  // with no goal applied it would only reopen the question).
+  await page.waitForSelector("[data-dialog=direction] [data-start-listening]", { timeout: 30000 });
+  await clickButton(page, ["Start practicing", "Start — allow the microphone"], "[role=dialog]");
+  await page.waitForFunction(() => document.body.innerText.includes("Mic off"), { timeout: 30000 });
   const readyAgain = await waitReady(page);
   const again = net.slice(before);
   const onnxAgain = again.filter((e) => e.url.includes(FIRERED_MODEL.files.find((f) => f.key === "onnx").name));
@@ -458,7 +467,7 @@ console.log(`preview on :${PORT}`);
   await startListening(page, { start: false });
   await setGate(page, false);
   await clickButton(page, ["Start Listening"]);
-  await page.waitForFunction(() => document.body.innerText.includes("Stop Listening"), { timeout: 30000 });
+  await page.waitForFunction(() => document.body.innerText.includes("Mic off"), { timeout: 30000 });
   const st = await sampleStrip(page, 20000);
   const pos = st.filter(hasPos).length;
   check("noise, gate off from the start: the ungated resonance row gets a position on this clip (the case is real)", pos > 0,
@@ -499,7 +508,7 @@ console.log(`preview on :${PORT}`);
   await startListening(page, { start: false });
   await setGate(page, false);
   await clickButton(page, ["Start Listening"]);
-  await page.waitForFunction(() => document.body.innerText.includes("Stop Listening"), { timeout: 30000 });
+  await page.waitForFunction(() => document.body.innerText.includes("Mic off"), { timeout: 30000 });
   await sleep(1500); // the gate-on run waited this long for the model
   const st = await sampleStrip(page, 16000);
   const on = report.runs.speech.row, off = rowShares(st);
@@ -544,7 +553,7 @@ console.log(`preview on :${PORT}`);
       /starts when you start listening/.test(before.text ?? "") && !/node |scripts\/|npm /.test(before.text ?? ""), before.text);
     await closeSettings(page);
     await clickButton(page, ["Start Listening"]);
-    await page.waitForFunction(() => document.body.innerText.includes("Stop Listening"), { timeout: 30000 });
+    await page.waitForFunction(() => document.body.innerText.includes("Mic off"), { timeout: 30000 });
     check("unavailable: detector reports unavailable", await waitReady(page, "unavailable"), JSON.stringify((await gateStatus(page)).diag));
     const s0 = await now(page);
     await sleep(8000);
