@@ -32,7 +32,8 @@
 //                   header's and the start ring's start: startU, or before it
 //                   the median of the readouts collected so far (resonanceCue.js)
 //                   u / raw = the shown value (restarts on a confirmed change,
-//                   resonanceCue.js RESTART); uPlain = the plain 5 s median
+//                   resonanceCue.js RESTART; recent bins weighted since
+//                   2026-10-26, SHOWN_HALF_LIFE_S); uPlain = the plain 5 s median
 //                   (never restarted; what u was before 2026-10-21) — the
 //                   pitch-only warning reads uPlain, so its input is unchanged
 //                   narrowband = { on, decided, f, n }: the phone-quality audio
