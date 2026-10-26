@@ -300,11 +300,12 @@ const Reserve = ({ texts, className = "", render = (x) => x.t }) => (
   </div>
 );
 // Under the dome everything is centred, like the dome (the caveat and More
-// list stay left-aligned: running text).
-const UNSURE_CLS = "mt-1 text-xs leading-snug tabular-nums text-center";
-const LEGEND_CLS = "mt-0.5 text-[11px] leading-snug text-center";
-const NOTE_CLS = "mt-1.5 text-[11px] leading-snug text-center";
-const REASON_CLS = "mt-1.5 text-sm leading-snug text-center";
+// list stay left-aligned: running text). Balanced wrapping (text-wrap: balance
+// never changes the number of lines, so the reserve copies keep their height).
+const UNSURE_CLS = "mt-1 text-xs leading-snug tabular-nums text-center text-balance";
+const LEGEND_CLS = "mt-0.5 text-[11px] leading-snug text-center text-balance";
+const NOTE_CLS = "mt-1.5 text-[11px] leading-snug text-center text-balance";
+const REASON_CLS = "mt-1.5 text-sm leading-snug text-center text-balance";
 
 export function HeardAsSwitch({ on, onChange, label = "Likely heard as · Experimental" }) {
   return (
