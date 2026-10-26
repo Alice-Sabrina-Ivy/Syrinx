@@ -1,3 +1,10 @@
+> **Archived 2026-10-26 — not maintained.** This is the original build plan from
+> March 2026, with notes added until October 2026. Much of it no longer matches
+> the app: pitch detection, the worker layout, the resonance display, vocal
+> weight, the data model and the deploy workflow all changed. What the app does
+> today: [CLAUDE.md](../../CLAUDE.md) ("Current state"). Ideas not built yet:
+> [ROADMAP.md](../../ROADMAP.md).
+
 # Syrinx — Architecture Document
 
 ## Project Overview
