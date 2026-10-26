@@ -1,8 +1,8 @@
 // listen.mjs — Voice Shaper noise study: A/B listening material (measurements/voice-shaper-noise-2026-10-25.md).
 // For chosen test mixtures, full-band renders at one cell of: the recording as captured, the
-// preview with nothing done (`none|posted`), with the fork's RNNoise (`rnn|posted`), with the
-// chosen design (RNNoise + re-track; the automatic rule decides whether it applies), with
-// DeepFilterNet 3 + re-track (information), and the clean recording's preview (reference).
+// preview with nothing done (`none|posted`), with the fork's RNNoise (`rnn|posted`), with RNNoise
+// + re-track, with the shipped design (the app's DeepFilterNet 3 path + re-track; the automatic
+// rule decides whether it applies), and the clean recording's preview (reference).
 // Writes MP3s (ffmpeg) and a JSON index to <out>.
 //
 //   node --import ./scripts/session-oracle/lib/register.mjs scripts/voice-preview/noise-study/listen.mjs
@@ -32,8 +32,16 @@ function mp3(name, x, sr) {
 const WASM_DIR = path.join(REPO, "src/voice-preview/wasm");
 const { default: factory } = await import(pathToFileURL(path.join(WASM_DIR, "vp_world.mjs")).href);
 const engine = new PreviewEngine(createWorld(await factory({ locateFile: () => pathToFileURL(path.join(WASM_DIR, "simd/vp_world.wasm")).href })));
-const D = await import(pathToFileURL(path.join(REPO, "src/voice-preview/denoise.js")).href);
-const rn = D.createRnnoise(readFileSync(path.join(REPO, "src/voice-preview/rnnoise/rnnoise.wasm")));
+// RNNoise: the fork's module, as copied for the study (build/vsn/cand/rnn, render.mjs)
+const D = await import(pathToFileURL(path.join(REPO, "build/vsn/cand/rnn/denoise.mjs")).href);
+const rn = D.createRnnoise(readFileSync(path.join(REPO, "build/vsn/cand/rnn/src/voice-preview/rnnoise/rnnoise.wasm")));
+// DeepFilterNet 3: the app's own path (src/voice-preview/dfn3.js)
+const DF = await import(pathToFileURL(path.join(REPO, "src/voice-preview/dfn3.js")).href);
+const ORT_DIST = path.join(REPO, "node_modules/onnxruntime-web/dist");
+const ort = await import(pathToFileURL(path.join(ORT_DIST, "ort.wasm.bundle.min.mjs")).href);
+ort.env.wasm.numThreads = 1; ort.env.wasm.wasmBinary = readFileSync(path.join(ORT_DIST, "ort-wasm-simd-threaded.wasm"));
+const dfFiles = Object.fromEntries(DF.DFN3_MODEL.files.map((f) => [f.key, new Uint8Array(readFileSync(path.join(REPO, "build/models/dfn3", f.name)))]));
+const dfn = DF.createDfn3(ort, await DF.createDfn3Sessions(ort, dfFiles));
 
 // the real pitch worker, fresh, over the cleaned recording (render.mjs's "re")
 const P = { posts: [], postMessage(m) { this.posts.push(m); } };
@@ -60,15 +68,15 @@ for (const id of args.mix.split(",")) {
   const st = ST > 0 ? Math.min(ST, lim.stMax) : Math.max(ST, lim.stMin);
   const pcm = readF32(path.join(dir, `${id}.f32`));
   const den = D.denoiseClip(rn, pcm, sr);
-  const dfn = readF32(path.join(DATA, "den", "dfn3", "test", `${id}.f32`));
+  const dfc = await DF.denoiseClipDfn3(dfn, pcm, sr);
   const fire = autoDenoise(margins[id].margin);
   const make = (x, tr) => { engine.analyse(x, sr, tr); return engine.render(st, PCT).pcm; };
   const versions = {
     recording: mp3(`${id}.recording`, pcm, sr),
     none: mp3(`${id}.none`, make(pcm, Float32Array.from(mix.track)), engine.rate),
     fork: mp3(`${id}.fork`, make(den, Float32Array.from(mix.track)), engine.rate),
-    chosen: mp3(`${id}.chosen`, fire ? make(den, retrack(den, sr, mix.chunk)) : make(pcm, Float32Array.from(mix.track)), engine.rate),
-    dfn3: mp3(`${id}.dfn3`, make(dfn, retrack(dfn, sr, mix.chunk)), engine.rate),
+    rnnre: mp3(`${id}.rnnre`, make(den, retrack(den, sr, mix.chunk)), engine.rate),
+    chosen: mp3(`${id}.chosen`, fire ? make(dfc, retrack(dfc, sr, mix.chunk)) : make(pcm, Float32Array.from(mix.track)), engine.rate),
     reference: mp3(`${id}.reference`, make(readF32(path.join(dir, `${mix.speech.id}__clean.f32`)), Float32Array.from(clean.track)), engine.rate),
   };
   index.push({ id, sex: mix.speech.sex, source: mix.speech.source, snr: mix.snr, noise: mix.noise?.class, margin: margins[id].margin, autoFired: fire, st, pct: PCT, versions });
