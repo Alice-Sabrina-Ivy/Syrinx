@@ -37,6 +37,19 @@
 // formants still move 0.7–0.9 u — measurements/cue-strip-review-fixes-
 // 2026-10-07.md §3). startU stays null until then.
 //
+// Shown start (shownStartU; 2026-10-26, measurements/resonance-start-
+// reference-2026-10-26.md): 12 s of admitted voiced speech is ~22 s of
+// reading after the readout fills (reading is ~45 % voiced), so the row said
+// "finding your start…" until a median 31 / 34 s after listening began
+// (LibriSpeech, women / men). The header and the start ring now use the
+// median of the readouts collected so far while startU is still null — the
+// same samples startU will be the median of, so it becomes startU exactly
+// when startU is set. startU itself (the pitch-only warning's reference) is
+// unchanged. Pre-registered pick P0
+// (measurements/resonance-start-prereg-2026-10-26.md): the first word with
+// the dot (median 9–11 s), false "brighter / darker than your start" on an
+// unchanged voice not more often than before.
+//
 // Resume after a long idle (2026-10-07 review): the readout itself freezes
 // through silence (it is a window of voiced time), so after ≥ IDLE_RESET_S
 // of audio with no admitted bin the snapshot's sinceResumeS restarts at 0
@@ -230,6 +243,8 @@ export function createResonanceCue({ reference, horizonS = 5, gate = true, resta
         clamp,
         verdict,
         startU,
+        // the header's and the start ring's start (see the header)
+        shownStartU: startU !== null ? startU : median(startSamples),
         startProgress: startU !== null ? 1 : Math.min(1, startVoicedS / START_COLLECT_S),
         binsAdmitted,
         binsDropped,

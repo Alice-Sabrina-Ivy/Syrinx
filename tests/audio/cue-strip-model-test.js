@@ -22,6 +22,7 @@ import {
   pitchRowState,
   resonanceClamp,
   resonanceHeader,
+  shownStart,
   resonanceRowState,
   targetRangeFor,
   rowValue,
@@ -253,6 +254,13 @@ console.log("\nrow states");
     && resonanceHeader("live", snap({ u: 1.1, startU: 0.7 })) === "brighter than your start"
     && resonanceHeader("live", snap({ u: 0.3, startU: 0.7 })) === "darker than your start"
     && resonanceHeader("holding", snap({ u: 0.3, startU: 0.7 })) === "darker than your start");
+  check("resonance header: the shown start (shownStartU) before startU is set, startU once set; an old post without it uses startU",
+    resonanceHeader("live", snap({ u: 0.9, startU: null, shownStartU: 0.7 })) === "about where you started"
+    && resonanceHeader("live", snap({ u: 1.1, startU: null, shownStartU: 0.7 })) === "brighter than your start"
+    && resonanceHeader("live", snap({ u: 0.3, startU: null, shownStartU: 0.7 })) === "darker than your start"
+    && resonanceHeader("live", snap({ u: 0.9, startU: null, shownStartU: null })) === "finding your start…"
+    && resonanceHeader("live", snap({ u: 1.1, startU: 0.7, shownStartU: 0.7 })) === "brighter than your start"
+    && shownStart(snap({ startU: 0.7 })) === 0.7 && shownStart(snap({ startU: null, shownStartU: 0.4 })) === 0.4 && shownStart(null) === null);
   check("screen-reader summaries name the value and the target",
     cueSummary("pitch", { state: "live", direction: "feminine", pitchLevel: 168 }) === "Pitch level 168 Hz, on target (165 to 255 Hz)."
     && cueSummary("pitch", { state: "live", direction: "masculine", pitchLevel: 180 }) === "Pitch level 180 Hz, above your target 85 to 155 Hz."

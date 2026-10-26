@@ -25,7 +25,12 @@
 //                    "error" and carries reason: "load" — a page reload is
 //                    what fixes it)
 //                   { type: "state", u, raw, uPlain, n, fill, voicedS, clamp, verdict, startU,
-//                     startProgress, sinceResumeS, framesDropped, narrowband, perf? }    every 200 ms of audio
+//                     shownStartU, startProgress, sinceResumeS, framesDropped, narrowband, perf? }
+//                   every 200 ms of audio
+//                   startU = the start the pitch-only warning compares with
+//                   (set once, after 12 s of collection); shownStartU = the
+//                   header's and the start ring's start: startU, or before it
+//                   the median of the readouts collected so far (resonanceCue.js)
 //                   u / raw = the shown value (restarts on a confirmed change,
 //                   resonanceCue.js RESTART); uPlain = the plain 5 s median
 //                   (never restarted; what u was before 2026-10-21) — the
@@ -122,6 +127,7 @@ function post(force = false) {
     clamp: pos ? s.clamp : 0,
     verdict: s.verdict,
     startU: s.startU,
+    shownStartU: s.shownStartU,
     startProgress: s.startProgress,
     sinceResumeS: s.sinceResumeS,
     framesDropped: e.framesDropped,
