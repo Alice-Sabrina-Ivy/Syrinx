@@ -429,7 +429,9 @@ function App() {
           <div className="flex-1 flex flex-col w-full max-w-6xl min-h-0">
             {/* Tab navigation even when idle */}
             <TabNav activeTab={activeTab} setActiveTab={selectTab} tabs={tabs} />
-            <div className="flex-1 flex items-center justify-center">
+            {/* Hidden while the goal sheet is up: half of it peeked over
+                the return sheet's top edge as a second start button. */}
+            <div className={`flex-1 flex items-center justify-center ${showDirectionPrompt ? "invisible" : ""}`}>
               <button
                 onClick={requestStart}
                 className="px-8 py-4 rounded-2xl bg-purple-600 hover:bg-purple-500 text-white text-lg font-medium transition-colors cursor-pointer"
