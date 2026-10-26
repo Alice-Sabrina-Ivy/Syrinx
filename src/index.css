@@ -82,6 +82,14 @@ body {
   .heard-seg-empty { fill: Canvas; stroke: GrayText; }
   .heard-dome-tick { stroke: CanvasText; }
   .heard-dome-tick-grey { stroke: GrayText; }
+  /* The cue strip's SVG words (band labels, the meters' end words) keep their
+     author colours under forced colours (SVG fill is not forced), so on a
+     light contrast theme's white Canvas they fell to 1.8-2.6:1: drawn in
+     CanvasText, the target's word and outline in Highlight (2026-10-26
+     review). */
+  [data-cue-strip] svg text, [data-cue-strip] svg tspan { fill: CanvasText; }
+  [data-cue-strip] svg .cue-target-word { fill: Highlight; }
+  [data-cue-strip] [data-cue-highlight] { fill: none; stroke: Highlight; stroke-width: 2px; }
   .hc-switch { background-color: ButtonFace; box-shadow: inset 0 0 0 1px ButtonText; }
   .hc-switch-thumb { background-color: ButtonText; }
   .hc-switch[aria-checked="true"] { background-color: Highlight; box-shadow: none; }

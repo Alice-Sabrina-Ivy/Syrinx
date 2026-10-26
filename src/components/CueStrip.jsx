@@ -419,7 +419,7 @@ const CueColumn = memo(function CueColumn({ cue, title, titleNote, info, side, s
               <text key={l.key} textAnchor="end" fontSize={G.fs} data-cue-label={l.key}>
                 {l.lines.map((ln, i) => (
                   <tspan key={i} x={G.labelW} y={l.top + i * G.lh + G.fs * 0.82}
-                    className={ln.strong ? "fill-green-400" : "fill-neutral-400"} fontWeight={ln.strong ? 600 : undefined}>{ln.t}</tspan>
+                    className={ln.strong ? "fill-green-400 cue-target-word" : "fill-neutral-400"} fontWeight={ln.strong ? 600 : undefined}>{ln.t}</tspan>
                 ))}
               </text>
             ))}
