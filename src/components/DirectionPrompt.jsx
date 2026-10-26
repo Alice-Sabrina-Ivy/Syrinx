@@ -84,26 +84,44 @@ export function DirectionOptions({ value, onChange, compact = false, name = "tra
 
 
 // A dimmed, static picture of the cue strip for the first-visit sheet —
-// decoration only (aria-hidden); the caption under it says what it is.
+// decoration only (aria-hidden); the caption under it says what it is. Drawn
+// as the strip is since 2026-10-25 (the owner's "Twin columns"): two small
+// vertical meters side by side, Pitch | Resonance, each a pill track with the
+// typical women's band above the men's as soft fills (a hairline at the men's
+// lower edge, dashed on resonance), an outlined target, a pill thumb and the
+// "no voice yet" value beside it (2026-10-26 review: it still drew the old
+// horizontal rows with round dots). Same 400 x 104 box as before.
+function PreviewColumn({ ox, title, resonance = false }) {
+  const band = resonance ? "rgba(163,163,163,0.13)" : "rgba(163,163,163,0.24)";
+  return (
+    <g>
+      <text x={ox} y="11" fill="#d4d4d4">{title}</text>
+      <rect x={ox + 78} y="18" width="18" height="84" rx="9" fill="#262626" stroke="#404040" />
+      <rect x={ox + 78.5} y="34" width="17" height="18" fill={band} />
+      <rect x={ox + 78.5} y="58" width="17" height="24" fill={band} />
+      <line x1={ox + 78.5} x2={ox + 95.5} y1="82" y2="82" stroke="rgba(212,212,212,0.6)" strokeDasharray={resonance ? "3 2" : undefined} />
+      <rect x={ox + 73} y="32" width="28" height="22" rx="4"
+        fill={resonance ? "none" : "rgba(34,197,94,0.08)"} stroke={resonance ? "#737373" : "rgba(34,197,94,0.45)"} strokeDasharray={resonance ? "3 3" : undefined} />
+      <g fill="#a3a3a3" textAnchor="end">
+        <text x={ox + 68} y="41">typical</text>
+        <text x={ox + 68} y="52">women</text>
+        <text x={ox + 68} y="68">typical</text>
+        <text x={ox + 68} y="79">men</text>
+      </g>
+      <rect x={ox + 71} y={resonance ? 66 : 62} width="32" height="8" rx="4" fill={resonance ? "#c4b5fd" : "#a3a3a3"} />
+      <text x={ox + 110} y="64" fontSize="15" fill="#a3a3a3">{resonance ? "—" : "— Hz"}</text>
+    </g>
+  );
+}
 function CueStripPreview() {
   return (
     <figure className="opacity-60 select-none" data-cue-preview>
       <svg viewBox="0 0 400 104" className="w-full h-auto" aria-hidden="true" focusable="false">
-        <g fontSize="11" fill="#a3a3a3" fontFamily="inherit">
-          <text x="0" y="31">Pitch</text>
-          <text x="0" y="81">Resonance</text>
-          <text x="90" y="13">typical men</text>
-          <text x="302" y="44">typical women</text>
+        <g fontSize="11" fontFamily="inherit">
+          <PreviewColumn ox={0} title="Pitch" />
+          <line x1="200" x2="200" y1="2" y2="102" stroke="#262626" />
+          <PreviewColumn ox={212} title="Resonance" resonance />
         </g>
-        <line x1="70" y1="27" x2="400" y2="27" stroke="#525252" />
-        <rect x="88" y="17" width="112" height="7" rx="3.5" fill="none" stroke="#737373" />
-        <rect x="212" y="30" width="86" height="7" rx="3.5" fill="none" stroke="#737373" />
-        <rect x="186" y="12" width="34" height="30" rx="4" fill="rgba(34,197,94,0.08)" stroke="rgba(34,197,94,0.45)" />
-        <circle cx="194" cy="27" r="5.5" fill="#a3a3a3" />
-        <line x1="96" y1="77" x2="400" y2="77" stroke="#525252" />
-        <rect x="104" y="67" width="110" height="7" rx="3.5" fill="none" stroke="#737373" strokeDasharray="3 3" />
-        <rect x="230" y="62" width="86" height="28" rx="4" fill="none" stroke="#737373" strokeDasharray="3 3" />
-        <circle cx="205" cy="77" r="5.5" fill="#a3a3a3" />
       </svg>
       <figcaption className="text-[11px] text-neutral-400 text-center mt-1">
         Preview · your pitch and resonance will show here
