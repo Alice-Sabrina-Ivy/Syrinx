@@ -67,7 +67,8 @@ window.__dump = () => {
   return [...document.querySelectorAll("[data-cue]")].map((row) => {
     const svg = row.querySelector("svg");
     const dotEl = row.querySelector("[data-cue-dot-mark]") ?? row.querySelector("[data-cue-dot] circle");
-    const trail = svg ? [...svg.querySelectorAll("circle")].filter((c) => !c.closest("[data-cue-dot]") && !c.hasAttribute("data-cue-start"))
+    // the trail: circles in the row layout, rects with an opacity in the twin columns (2026-10-25)
+    const trail = svg ? [...svg.querySelectorAll("circle, rect[opacity]")].filter((c) => !c.closest("[data-cue-dot]") && !c.hasAttribute("data-cue-start"))
       .map((c) => [...centre(c), c.getAttribute("opacity")]) : [];
     const dotStyle = dotEl ? getComputedStyle(dotEl) : null;
     return {
@@ -77,7 +78,7 @@ window.__dump = () => {
       sr: row.querySelector("[data-cue-sr]")?.textContent ?? "",
       dotCentre: dotEl ? centre(dotEl) : null, dotOpacity: dotStyle ? dotStyle.opacity : null,
       start: (() => { const s = row.querySelector("[data-cue-start]"); return s ? centre(s) : null; })(),
-      change: (() => { const c = row.querySelector("[data-cue-change]"); return c ? [c.getAttribute("x1"), c.getAttribute("x2")].map(Number).map(r2) : null; })(),
+      change: (() => { const c = row.querySelector("[data-cue-change]"); return c ? ["x1", "x2", "y1", "y2"].map((k) => r2(Number(c.getAttribute(k)))) : null; })(),
       chevron: row.querySelector("[data-cue-dot] path")?.getAttribute("d") ?? null,
       trail,
     };
