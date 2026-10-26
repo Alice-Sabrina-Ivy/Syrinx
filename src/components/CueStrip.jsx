@@ -176,7 +176,10 @@ function directionNote(cue, direction) {
 // of the viewport (≤ 80 % of its height, scrolls inside): anchored to its
 // column it ran off the bottom of short screens (360 × 690, 890 × 360
 // landscape). whitespace-normal: the header row the toggle sits in is
-// nowrap. The hit area is 44 px (the ::before overhang).
+// nowrap. The hit area is 44 px (the ::before overhang, from the padding box:
+// 12 px inside the 1 px border + 2 x 16 px; 14 + 2 x 15 at lg), z-10 so the meter box
+// (a later positioned sibling) does not cover its lower rows (2026-10-26
+// review: taps there landed on the meter and did nothing).
 const INFO_POPOVER_CLASS =
   "fixed z-40 inset-x-4 top-1/2 -translate-y-1/2 mx-auto max-w-md max-h-[80dvh] overflow-y-auto whitespace-normal break-words " +
   "rounded-lg border border-neutral-600 bg-neutral-900 px-3 py-2 text-left text-xs lg:text-sm leading-relaxed font-normal normal-case " +
@@ -192,7 +195,7 @@ function InfoToggle({ label, children }) {
         aria-expanded={open}
         aria-controls={tipId}
         aria-label={label}
-        className="relative ml-1.5 inline-flex items-center justify-center w-3.5 h-3.5 lg:w-4 lg:h-4 rounded-full border border-neutral-500 text-[9px] lg:text-[10px] leading-none text-neutral-400 hover:text-neutral-200 hover:border-neutral-300 transition-colors cursor-pointer before:absolute before:-inset-[15px] lg:before:-inset-[14px] before:content-['']"
+        className="relative z-10 ml-1.5 inline-flex items-center justify-center w-3.5 h-3.5 lg:w-4 lg:h-4 rounded-full border border-neutral-500 text-[9px] lg:text-[10px] leading-none text-neutral-400 hover:text-neutral-200 hover:border-neutral-300 transition-colors cursor-pointer before:absolute before:-inset-[16px] lg:before:-inset-[15px] before:content-['']"
       >
         i
       </button>
@@ -631,7 +634,7 @@ export function CueStrip({
   return (
     <div
       data-cue-strip=""
-      className="w-full rounded-xl bg-neutral-900/60 border border-neutral-800 p-3 max-lg:shortland:p-2 flex flex-col gap-2 max-lg:shortland:flex-1 max-lg:shortland:min-h-0"
+      className="w-full rounded-xl bg-neutral-900/60 border border-neutral-800 p-3 max-lg:shortland:p-2 max-lg:shortland:pt-2.5 flex flex-col gap-2 max-lg:shortland:flex-1 max-lg:shortland:min-h-0"
     >
       <div className="relative grid grid-cols-2 gap-x-3.5 max-lg:shortland:flex-1 max-lg:shortland:min-h-0">
         <span aria-hidden="true" className="absolute left-1/2 top-0.5 bottom-0.5 w-px -translate-x-1/2 bg-neutral-800" />

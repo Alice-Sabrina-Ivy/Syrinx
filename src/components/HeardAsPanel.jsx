@@ -614,8 +614,11 @@ export function HeardAsPanel({
       </div>
       <p className="mt-1.5 text-[11px] leading-snug text-neutral-400" data-heard-as-caveat="">
         {HEARD_AS_CAVEAT_SHORT}{" "}
+        {/* Hit area >= 44 x 44 px (the ::before), reaching further up (over the
+            caveat's text) than down, so it ends at the panel's edge and never
+            adds an inner scroll to the desktop column. */}
         <button type="button" onClick={() => setMore((m) => !m)} aria-expanded={more}
-          className="relative text-neutral-300 underline underline-offset-2 hover:text-neutral-100 cursor-pointer before:absolute before:-inset-x-2 before:-inset-y-2.5 before:content-['']">
+          className="relative text-neutral-300 underline underline-offset-2 hover:text-neutral-100 cursor-pointer before:absolute before:-inset-x-[10px] before:-top-[21px] before:-bottom-[9px] before:content-['']">
           {more ? "Less" : "More"}
         </button>
       </p>
