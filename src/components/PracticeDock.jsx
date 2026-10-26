@@ -107,11 +107,11 @@ export function PracticeDock({
       )}
 
       <div className="flex items-center gap-2 w-full">
-        {/* Voice status: words from sm, an accessible dot on phones */}
+        {/* Voice status: words from sm (aria-hidden), one screen-reader copy at every width */}
         <div className="flex items-center gap-2 shrink-0" data-dock-voice="">
           <VoiceDot pitchVoiced={pitchVoiced} pitchHolding={pitchHolding} />
-          <span className="sr-only sm:hidden">{statusText}</span>
-          <span className="hidden sm:inline-grid text-[11px] text-neutral-500" aria-hidden="true">
+          <span className="sr-only">{statusText}</span>
+          <span className="hidden sm:inline-grid text-[11px] text-neutral-400" aria-hidden="true">
             {VOICE_STATUS_TEXTS.map((t) => <span key={t} className="invisible col-start-1 row-start-1 whitespace-nowrap">{t}</span>)}
             <span className="col-start-1 row-start-1 whitespace-nowrap">{statusText}</span>
           </span>
