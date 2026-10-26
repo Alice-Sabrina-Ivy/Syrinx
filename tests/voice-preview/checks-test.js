@@ -86,8 +86,8 @@ T.check("threshold 28 dB, floor at the 5th percentile", NOISE_MARGIN_DB === 28 &
   const a = twoLevel(28.5), b = twoLevel(27.5);
   T.check("margin 28.5 dB: not flagged; 27.5 dB: flagged", !noiseFlag(a) && noiseFlag(b), `${a.toFixed(3)} / ${b.toFixed(3)} dB`);
   T.check("exact boundary: 28 dB is not flagged, just below is", !noiseFlag(28) && noiseFlag(27.999999) && noiseFlag(NaN));
-  // auto noise reduction (2026-10-25): below 45 dB, a stricter bar than the notice
-  T.check("auto noise reduction below 45 dB: 44.999 on, 45 off, NaN off", DENOISE_MARGIN_DB === 45 && autoDenoise(44.999) && !autoDenoise(45) && !autoDenoise(NaN));
+  // auto noise reduction (2026-10-25): below 40 dB, a stricter bar than the notice
+  T.check("auto noise reduction below 40 dB: 39.999 on, 40 off, NaN off", DENOISE_MARGIN_DB === 40 && autoDenoise(39.999) && !autoDenoise(40) && !autoDenoise(NaN));
   T.check("…every recording the notice flags is noise-reduced in auto", DENOISE_MARGIN_DB > NOISE_MARGIN_DB && autoDenoise(b) && autoDenoise(a));
   // continuous speech with short gaps: 94 % of the frames loud (spread over 18 dB), 6 % quiet
   // gaps at the room floor 43 dB below the loudest: the floor comes from the gaps

@@ -65,8 +65,8 @@ function listen({ sinceMs = 10000 } = {}) {
   });
 }
 const ct = (k) => 50 + (k + 1) * C / rate;
-function chunk(k) {
-  const b = Float32Array.from(pcm.subarray(k * C, (k + 1) * C)).buffer;
+function chunk(k, src = pcm) {
+  const b = Float32Array.from(src.subarray(k * C, (k + 1) * C)).buffer;
   consumers.at(-1).postMessage({ buffer: b, contextTime: ct(k) }, [b]);
 }
 // what useAudioPipeline's handlePitchMessage passes on (the posted message itself)
@@ -82,10 +82,10 @@ async function until(ctl, pred, label, timeoutMs = 30000) {
 }
 const tick = () => new Promise((r) => setTimeout(r, 20));
 
-async function recordClip(ctl) {
+async function recordClip(ctl, src = pcm) {
   T.check("record() starts a recording", ctl.record() === true && ctl.getState().phase === "recording");
   for (let k = 0; k < N; k++) {
-    chunk(k);
+    chunk(k, src);
     if (k >= 2) posted(k - 2, k - 2 === 10 ? { notchedFreqs: [120] } : {});
     if (k % 50 === 49) await tick();
   }
@@ -224,17 +224,24 @@ else {
     createWorker: () => new NodeWorker(), glueUrl: GLUE_URL, wasmUrls: WASM_URLS, dfn3Source: DFN3_SOURCE, ortWasmPaths: ORT_WASM_PATHS, now: () => clock,
   });
   await until(auto, (x) => x.phase === "ready", "ready (auto)");
-  const st = await recordClip(auto);
+  // the clip with white noise at 10 dB SNR (level margin well under DENOISE_MARGIN_DB)
+  let sd = 5;
+  const rnd = () => { sd ^= sd << 13; sd >>>= 0; sd ^= sd >>> 17; sd ^= sd << 5; sd >>>= 0; return sd / 4294967296 * 2 - 1; };
+  const r = (x) => Math.sqrt(x.reduce((a, v) => a + v * v, 0) / x.length);
+  const wn = Float32Array.from({ length: pcm.length }, rnd);
+  const kk = r(pcm) / r(wn) / Math.sqrt(10);
+  const noisy = pcm.map((v, i) => v + kk * wn[i]);
+  const st = await recordClip(auto, noisy);
   const want = autoDenoise(st.analysis.check.marginDb);
   T.check("auto decided by the recording's margin; the switch shows it", st.analysis.auto === true && st.analysis.denoised === want && st.denoise === want && st.denoiseMode === "auto",
     `margin ${st.analysis.check.marginDb.toFixed(1)} dB -> ${want}`);
   if (want) {
     T.check("…noise-reduced with the track re-made by the pitch worker", st.analysis.retracked === true && st.analysis.ms.retrack > 0 && sha256(st.rebuild) !== f.expected.simd[cellKey(0, 0)]);
     T.check("…the worker reported its stages (the analysis stage cleared after)", st.analysingStage === null);
-    T.check("…the original is the recording", sha256(st.original) === f.pcmSha256);
+    T.check("…the original is the recording", sha256(st.original) === sha256(noisy));
     T.check("switching it off: the user's setting", auto.setDenoise(false) === true && auto.getState().denoiseMode === "off");
     const off = await until(auto, (x) => !x.reanalysing && x.rebuild && x.analysis.denoised === false, "auto -> off");
-    T.check("…not noise-reduced, not re-tracked: the spike's rebuild", off.analysis.retracked === false && sha256(off.rebuild) === f.expected.simd[cellKey(0, 0)]);
+    T.check("…not noise-reduced, not re-tracked: a different rebuild", off.analysis.retracked === false && off.analysis.denoised === false && sha256(off.rebuild) !== sha256(st.rebuild));
   }
   await until(auto, (x) => !x.rearming, "re-armed (auto)", REARM_MS + 2000);
   auto.discard();

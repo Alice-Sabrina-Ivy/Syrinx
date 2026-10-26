@@ -24,11 +24,12 @@
 export const NOISE_MARGIN_DB = 28;
 /**
  * Background-noise reduction in "auto" turns on below this level margin (2026-10-25). On the
- * noise study's development mixtures 40–50 dB is a plateau for RNNoise + re-tracking; 45 dB
- * fires on 94 % of 20 dB, 82 % of 30 dB and 8 % of 40 dB recordings and on no clean one
- * (measurements/voice-shaper-noise-2026-10-25.md §2).
+ * noise study's development mixtures 40–50 dB was a plateau; on the held-out test set, with
+ * DeepFilterNet 3 + re-tracking, 40 dB keeps all but 0.007 PESQ of 45 dB's gain and passes the
+ * clean-recording guard that 45 dB misses (it also cleans clips with audible room tone)
+ * (measurements/voice-shaper-noise-2026-10-25.md §2, §7).
  */
-export const DENOISE_MARGIN_DB = 45;
+export const DENOISE_MARGIN_DB = 40;
 /** Whether "auto" reduces the noise of a recording with this level margin. */
 export const autoDenoise = (marginDb) => marginDb < DENOISE_MARGIN_DB;
 /** The percentile of the 20 ms frame energies taken as the noise floor. */

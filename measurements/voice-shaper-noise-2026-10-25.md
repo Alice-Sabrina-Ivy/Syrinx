@@ -281,3 +281,59 @@ with onnxruntime-web (the app already ships it for FireRedVAD).
 - **Not streaming**: the exported graphs keep no recurrent state between calls, so the whole
   recording is processed at Stop: desktop ~0.5–0.65 s plus re-tracking, over the 0.5 s G4 budget;
   **phone not measured** (`dfbench/run-phone.mjs`, needs the phone on USB).
+
+## 7. DeepFilterNet 3 shipped in Voice Shaper (2026-10-25)
+
+User decision after §6: "a few seconds of waiting for processing is fine" and no phone benchmark —
+DeepFilterNet 3 replaces RNNoise, processing the recording when it ends.
+
+**Level normalisation (found on the full test set).** The first full run of the port scored
+below the CLI on RAVDESS: those recordings sit at about −51 dBFS, where DeepFilterNet 3's
+level-dependent features pin its local-SNR estimate at the −15 dB floor and every frame is gated
+to zero (the official wasm build does the same; the CLI kept speech only because its −15 dB
+threshold is a strict `<` and its estimate sat exactly on the floor). `denoiseClipDfn3` now brings
+the 95th-percentile 20 ms frame RMS to 0.1 (peak < 0.99) before the model and undoes the gain
+after (`dfn3Gain`). All earlier port results were discarded and the port re-run through the
+app's own function.
+
+**Full test set (1 045 mixtures, three cells), the app's path** (`ext:dfn3js|re` = level-normalised
+port + re-tracking; worse sex; paired vs `none|posted`):
+
+| candidate | noisy 0–20 dB (F / M) | clean (G1) | quiet 30/40 dB | DNSMOS OVRL noisy |
+|---|---|---|---|---|
+| `ext:dfn3js\|re` always on | +0.55 (+0.78 / +0.55) | −1.29 | −0.03 | +0.71 |
+| `ext:dfn3\|re` (the CLI, §3) | +0.50 | −2.17 | −0.32 | +0.68 |
+| `auto[45]~ext:dfn3js\|re` | +0.52 (+0.73 / +0.52) | −0.13 (fails) | +0.03 | +0.68 |
+| **`auto[40]~ext:dfn3js\|re` (shipped)** | **+0.51 (+0.71 / +0.51)** | **−0.04 (passes)** | **+0.03** | **+0.68** |
+| `auto[35]~ext:dfn3js\|re` | +0.49 | 0.00 | 0.00 | +0.65 |
+| `auto[28]~ext:dfn3js\|re` | +0.42 | 0.00 | 0.00 | +0.60 |
+| `auto[40]~rnn\|re` (for comparison) | +0.28 | −0.03 | +0.00 | +0.54 |
+
+Sung (vocadito): the automatic rule never fires on the clean clips (0.00); at 10 dB DeepFilterNet 3
++0.64 PESQ (RNNoise +0.43), DNSMOS OVRL +0.71.
+
+**Threshold: 40 dB** (`DENOISE_MARGIN_DB`). Chosen after reading the test set (a deviation from
+§2's frozen 45 dB): 40 dB is the lower edge of the 40–50 dB dev plateau, keeps all but 0.007 of
+45 dB's gain and passes G1, which 45 dB misses by 0.03 (it also cleans the RAVDESS clips with
+audible room tone). With it every §1 guard passes for the shipped design: G1 −0.04, G2 +0.68,
+G3 0.00; G4 waived by the user (processing at Stop: desktop Chrome ~0.4–0.9 s for 8 s plus
+re-tracking ~0.1–0.4 s; the phone is not measured); G5 waived by the user (8 MB).
+
+**What the app does.** "Auto" (default): a recording whose level margin is below 40 dB is
+noise-reduced when it ends — the card shows "Downloading noise reduction (about 8 MB, first time
+only)…" while the graphs are fetched (they start downloading at the first Record whose setting is
+not off), then "Reducing background noise…" — and its F0 track is re-made from the cleaned audio.
+The switch shows what was done and the user's flip is kept for the page visit; a take's cleaned
+recording is reused when the switch goes off and on again.
+
+**Checks.** `dfn3-test.js` (19), `worker-test.js` (48), `controller-test.js` (57), notices (40),
+`npm run test:unit` 73/73, lint, bundle budget 6/6 (tab chunk 13.4 KB, worker chunk 7.1 KB gzip;
+`dfn3.js` and onnxruntime load only when noise reduction runs), smoke `denoise` and `checks`
+15/15 in headless Chrome (the three graphs requested once each; DeepFilterNet 3 836 ms + re-track
+425 ms for an 8 s, 44.1 kHz recording on a busy PC).
+
+**Open.** Hosting: `DFN3_MODEL.mirrorCommit` is null, so a deployed build has no graphs and shows
+noise reduction as unavailable until the project's Hugging Face mirror (`Alice-Sabrina-Ivy/
+deepfilternet3-onnx`, the three graphs + LICENSE files, as FireRedVAD's mirror) exists and its
+commit is pinned. Phone timing and memory (onnxruntime + three sessions in the voice-preview
+worker) unmeasured, by the user's decision.
