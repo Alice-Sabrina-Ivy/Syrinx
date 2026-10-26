@@ -32,8 +32,10 @@
 //   whole row by design, and the comparison says nothing. Likewise both
 //   trees must be on the same side of the twin columns (2026-10-25, branch
 //   ui-twin-columns: one vertical meter per cue instead of one row; the
-//   trail is drawn as rects, the change line is vertical — the probe reads
-//   both layouts, but across the change every position differs by design).
+//   trail is drawn as rects — since 2026-10-26 as one streak, read as its
+//   top, bottom and the thumb's place in it — the change line is vertical;
+//   the probe reads every layout, but across a change every position
+//   differs by design).
 //
 // Process hygiene (CLAUDE.md hard rule 2): puppeteer with a temporary
 // --user-data-dir, browser.close() then taskkill of ITS pid only; the

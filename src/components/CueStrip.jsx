@@ -76,7 +76,6 @@ import {
   resonanceClamp,
   resonanceHeader,
   rowValue,
-  trailOpacity,
   RESONANCE_TRAIL,
   TRAIL_EVERY_MS,
 } from "./cueStripModel";
@@ -86,6 +85,7 @@ import { COLORS, statusTextClass } from "../utils/constants";
 const HALO = "#141414"; // the strip's background: rings the thumb, fills a hollow one
 const TRACK_STROKE = "#333333";
 const OVERHANG = 7; // px the thumb reaches past the track on each side (the target outline: 6)
+const STREAK_OPACITY = 0.55; // the streak at the thumb (the mockup's tail: 0.6 -> 0)
 
 // A number that keeps one width whatever it shows ("—" or digits): the widest
 // text is laid out invisibly in the same grid cell, right-aligned, so nothing
@@ -234,7 +234,7 @@ function meterGeometry(w, h, roomy) {
     tier, fs, lh: fs + 2, short, labelW, trackW, trackX, trackCx: trackX + trackW / 2,
     svgW: trackX + trackW + OVERHANG, trackTop, trackBot,
     y: (f) => axisBot - f * (axisBot - axisTop),
-    thumbW: trackW + 2 * OVERHANG, thumbH: roomy ? 16 : 14,
+    thumbW: trackW + 2 * OVERHANG, thumbH: roomy ? 16 : 14, streakW: Math.round(trackW / 2),
     numFs: [22, 26, 30, 34][tier], subFs: [11, 12, 12, 13][tier], resFs: [12, 13, 14, 15][tier],
   };
 }
@@ -301,6 +301,8 @@ const ENDS = { pitch: ["lower", "higher"], resonance: ["darker", "brighter"] };
 const CueColumn = memo(function CueColumn({ cue, title, titleNote, info, side, sideClass = "", state, value, beyond, trail, color, hollow, bands, dashed, highlight, startX, ends, roomy, srText }) {
   const titleId = useId();
   const gradId = useId();
+  const clipId = useId();
+  const streakId = useId();
   const areaRef = useRef(null);
   const { w, h } = useBoxSize(areaRef);
   const G = useMemo(() => (w > 0 && h > 0 ? meterGeometry(w, h, roomy) : null), [w, h, roomy]);
@@ -308,6 +310,17 @@ const CueColumn = memo(function CueColumn({ cue, title, titleNote, info, side, s
   const showDot = dotOpacity(state);
   const dotPos = showDot !== null && value !== null && value !== undefined ? axisPos(cue, value, { clamp: beyond }) : null;
   const band = (b) => ({ y0: G.y(b.x1), y1: G.y(b.x0) });
+  // The streak's span: from the thumb (or, with no thumb, the newest value)
+  // over every recent value; a = where the thumb sits in it (0 top, 1 bottom).
+  // (<= 15 values: computed each render.)
+  const streak = (() => {
+    if (!G) return null;
+    const ys = trail.map((v) => axisPos(cue, v)).filter(Boolean).map((p) => G.y(p.x));
+    if (!ys.length) return null;
+    const anchor = dotPos ? G.y(dotPos.x) : ys[ys.length - 1];
+    const y0 = Math.min(anchor, ...ys), y1 = Math.max(anchor, ...ys);
+    return y1 - y0 >= 3 ? { y0, y1, a: (anchor - y0) / (y1 - y0) } : null;
+  })();
   // The value block beside the meter: one fixed top (it never follows the
   // thumb), so nothing in it moves while speaking.
   const sideTop = G ? Math.max(0, Math.round(h / 2 - (G.numFs + 40) / 2)) : 0;
@@ -347,26 +360,40 @@ const CueColumn = memo(function CueColumn({ cue, title, titleNote, info, side, s
                 <stop offset="0" stopColor="#111111" />
                 <stop offset="1" stopColor="#2c2c2c" />
               </linearGradient>
+              <clipPath id={clipId}>
+                <rect x={G.trackX} y={G.trackTop} width={G.trackW} height={G.trackBot - G.trackTop} rx={G.trackW / 2} />
+              </clipPath>
             </defs>
             <text x={G.trackCx} y={G.fs} textAnchor="middle" fontSize={G.fs} className="fill-neutral-400" data-cue-end="top">{ends[1]}</text>
             <rect data-cue-track="" x={G.trackX} y={G.trackTop} width={G.trackW} height={G.trackBot - G.trackTop} rx={G.trackW / 2}
               fill={`url(#${gradId})`} stroke={TRACK_STROKE} strokeWidth="1" />
-            {bands && ["men", "women"].map((k) => {
-              const b = bands[k];
-              if (!b) return null;
-              const { y0, y1 } = band(b);
-              return (
-                <g key={k} data-cue-band={k}>
-                  {/* ≥ 3:1 against the strip: a neutral-400 outline (dashed for
-                      the approximate resonance bands) over a light fill. */}
-                  <rect x={G.trackX + 3} y={y0} width={G.trackW - 6} height={Math.max(1, y1 - y0)} rx="3"
-                    className={dashed ? "fill-neutral-500/15 stroke-neutral-400" : "fill-neutral-500/35 stroke-neutral-400"}
-                    strokeWidth="1" strokeDasharray={dashed ? "3 2" : undefined} />
-                  {/* the typical speaker */}
-                  <line x1={G.trackX + 3} x2={G.trackX + G.trackW - 3} y1={G.y(b.xm)} y2={G.y(b.xm)} className="stroke-neutral-300" strokeWidth="1" />
-                </g>
-              );
-            })}
+            {/* The bands as the mockup's soft fills (owner's "Twin columns"
+                pick; 2026-10-26 review: drawn as outlined boxes with a median
+                line they read as boxes stacked in a tube): neutral-400 at 24 %
+                (pitch) or 13 % (the approximate resonance bands) across the
+                track, clipped to its pill, no outline and no median line; one
+                hairline at the men's band's lower edge, dashed on resonance.
+                The fills are below 3:1 against the track by design (a soft
+                band); the words beside them name each band. */}
+            {bands && (
+              <g clipPath={`url(#${clipId})`}>
+                {["men", "women"].map((k) => {
+                  const b = bands[k];
+                  if (!b) return null;
+                  const { y0, y1 } = band(b);
+                  return (
+                    <g key={k} data-cue-band={k}>
+                      <rect x={G.trackX + 0.5} y={y0} width={G.trackW - 1} height={Math.max(1, y1 - y0)}
+                        className={dashed ? "fill-neutral-400/13" : "fill-neutral-400/24"} />
+                      {k === "men" && (
+                        <line x1={G.trackX + 0.5} x2={G.trackX + G.trackW - 0.5} y1={y1} y2={y1} className="stroke-neutral-300/60"
+                          strokeWidth="1" strokeDasharray={dashed ? "3 2" : undefined} data-cue-band-edge="" />
+                      )}
+                    </g>
+                  );
+                })}
+              </g>
+            )}
             {highlight && (() => {
               const { y0, y1 } = band(highlight);
               return (
@@ -400,15 +427,25 @@ const CueColumn = memo(function CueColumn({ cue, title, titleNote, info, side, s
                   style={{ transform: `translateY(${G.y(startX)}px)` }} data-cue-start="" />
               </>
             )}
-            {/* The streak: the recent values as faint marks along the track,
-                oldest faintest (where the voice dwelt, they merge). */}
-            {trail.map((v, i) => {
-              const p = axisPos(cue, v);
-              return p ? (
-                <rect key={i} x={G.trackX + 5} y={-2} width={G.trackW - 10} height="4" rx="2" fill={color} opacity={trailOpacity(i, trail.length)}
-                  style={{ transform: `translateY(${G.y(p.x)}px)` }} />
-              ) : null;
-            })}
+            {/* The streak (the mockup's tail): ONE narrow rounded bar behind
+                the thumb over the span of the recent values (the trail), in
+                the thumb's colour, strongest at the thumb and fading to
+                nothing away from it — both ways when the voice went above and
+                below (2026-10-26 review: one mark per value read as rungs or
+                scale ticks inside the column). */}
+            {streak && (
+              <>
+                <defs>
+                  <linearGradient id={streakId} gradientUnits="userSpaceOnUse" x1="0" x2="0" y1={streak.y0} y2={streak.y1}>
+                    <stop offset="0" stopColor={color} stopOpacity={streak.a > 0.001 ? 0 : STREAK_OPACITY} />
+                    <stop offset={streak.a} stopColor={color} stopOpacity={STREAK_OPACITY} />
+                    <stop offset="1" stopColor={color} stopOpacity={streak.a < 0.999 ? 0 : STREAK_OPACITY} />
+                  </linearGradient>
+                </defs>
+                <rect data-cue-streak={streak.a.toFixed(3)} x={G.trackCx - G.streakW / 2} y={streak.y0} width={G.streakW} height={streak.y1 - streak.y0}
+                  rx={G.streakW / 2} fill={`url(#${streakId})`} />
+              </>
+            )}
             <text x={G.trackCx} y={h - 2} textAnchor="middle" fontSize={G.fs} className="fill-neutral-400" data-cue-end="bottom">{ends[0]}</text>
           </svg>
         )}
