@@ -49,6 +49,7 @@ export function SteadinessReadout({
       {unit}
     </span>
   );
+  // Hit area: 44 px in the cue strip (before:-inset-[15px] on 14 px), 30 px elsewhere.
   const infoButton = (
     <button
       ref={buttonRef}
@@ -58,7 +59,7 @@ export function SteadinessReadout({
       aria-controls={tipId}
       aria-label="What does steadiness measure?"
       title={EXPLAINER}
-      className="relative ml-1 inline-flex items-center justify-center w-3.5 h-3.5 rounded-full border border-neutral-500 text-[9px] leading-none text-neutral-400 hover:text-neutral-200 hover:border-neutral-300 transition-colors cursor-pointer align-middle before:absolute before:-inset-2 before:content-['']"
+      className={`relative ml-1 inline-flex items-center justify-center w-3.5 h-3.5 rounded-full border border-neutral-500 text-[9px] leading-none text-neutral-400 hover:text-neutral-200 hover:border-neutral-300 transition-colors cursor-pointer align-middle before:absolute ${variant === "compact" ? "before:-inset-[15px]" : "before:-inset-2"} before:content-['']`}
     >
       i
     </button>

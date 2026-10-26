@@ -13,7 +13,7 @@
 // unvoiced text ("Pitch 276 Hz" in bright / grey, "— Hz", "—" st …).
 // The Resonance lab tab is hidden by default (2026-10-21); each page switches it on in
 // Settings first. Per viewport, every button's (and input's) box is sampled every 100 ms in:
-//   1 the Dashboard cue strip      (the row "i"s, the steadiness "i")
+//   1 the Dashboard cue strip      (the column "i"s, the steadiness "i")
 //   2 the Resonance lab            (header buttons, view switch, card "i"s)
 //   3 the lab's Weight × clarity   (header buttons, view switch, map button)
 // each together with the practice dock under it (its voice status text
