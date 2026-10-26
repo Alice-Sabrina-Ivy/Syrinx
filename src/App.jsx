@@ -409,11 +409,12 @@ function App() {
         <p className="text-neutral-500 text-xs mt-0.5">
           Voice training toolkit
         </p>
-        {/* Gear icon */}
+        {/* Gear icon: a 44 px tap target centred where the 20 px icon always sat
+            (-right-3 / -top-2 offset the padding; the page's 16 px gutter holds it). */}
         <button
           ref={gearRef}
           onClick={() => setShowSettings(true)}
-          className="absolute right-0 top-1 text-neutral-600 hover:text-neutral-400 transition-colors cursor-pointer"
+          className="absolute -right-3 -top-2 w-11 h-11 flex items-center justify-center text-neutral-600 hover:text-neutral-400 transition-colors cursor-pointer"
           title="Settings & Data"
           aria-label="Settings & Data"
         >

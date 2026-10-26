@@ -303,7 +303,7 @@ export function DataManagement({
               ref={closeRef}
               onClick={onClose}
               aria-label="Close settings"
-              className={`${ICON_BUTTON} w-11 h-11 lg:w-10 lg:h-10 text-xl`}
+              className={`${ICON_BUTTON} w-11 h-11 text-xl`}
             >
               &times;
             </button>
