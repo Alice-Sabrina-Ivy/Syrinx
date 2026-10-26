@@ -578,7 +578,7 @@ export function CombinedDashboard({
         </div>
 
         {/* Cue strip (+ the experimental panel on desktop) */}
-        <div className="flex flex-col gap-2 lg:w-[clamp(420px,38%,540px)] lg:shrink-0 lg:overflow-y-auto shortland:w-[52%] shortland:shrink-0">
+        <div className="flex flex-col gap-2 lg:w-[clamp(420px,38%,540px)] lg:shrink-0 lg:overflow-y-auto shortland:w-[52%] shortland:shrink-0 shortland:min-h-0">
           <CueStrip
             direction={direction}
             voiced={voiced}
