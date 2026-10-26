@@ -327,7 +327,7 @@ const CueColumn = memo(function CueColumn({ cue, title, titleNote, info, side, s
       <span className="sr-only" data-cue-sr="">{srText}</span>
       <div
         ref={areaRef}
-        className="relative h-[clamp(150px,calc(74dvh-285px),232px)] lg:h-[clamp(180px,calc(100dvh-620px),300px)] max-lg:shortland:h-auto max-lg:shortland:flex-1 max-lg:shortland:min-h-0"
+        className="relative h-[clamp(150px,calc(74dvh-285px),232px)] lg:h-[clamp(180px,calc(100dvh-620px),300px)] deskshort:h-[clamp(120px,calc(100dvh-528px),300px)] max-lg:shortland:h-auto max-lg:shortland:flex-1 max-lg:shortland:min-h-0"
         data-cue-meter=""
       >
         {G && (

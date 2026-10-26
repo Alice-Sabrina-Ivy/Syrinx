@@ -565,8 +565,12 @@ export function CombinedDashboard({
       {/* The short-landscape arrangement is for phones held sideways only
           (max-lg): a desktop window both lg and short (e.g. 1280 × 460) keeps
           the desktop layout, its right-hand column scrolling — with the
-          short-landscape flex sizing the meters collapsed to 0 px there. */}
-      <div className="flex flex-col gap-2 lg:flex-1 lg:flex-row lg:min-h-0 max-lg:shortland:flex-row max-lg:shortland:flex-1 max-lg:shortland:min-h-[180px]">
+          short-landscape flex sizing the meters collapsed to 0 px there.
+          Short landscape: trace and strip fill the scroll area's height
+          (100dvh − 176 px: the header, the practice dock and its gaps, 1 px
+          spare), so the meters use the whole first screen and the heard-as
+          panel starts just below it, never sliced by the dock. */}
+      <div className="flex flex-col gap-2 lg:flex-1 lg:flex-row lg:min-h-0 max-lg:shortland:flex-row max-lg:shortland:h-[calc(100dvh-176px)] max-lg:shortland:min-h-[180px]">
         {/* Pitch trace: the moment-to-moment pitch */}
         <div
           className="h-[clamp(150px,26dvh,240px)] shrink-0 lg:h-auto lg:flex-1 lg:min-h-0 max-lg:shortland:h-auto max-lg:shortland:flex-1 max-lg:shortland:min-h-0"

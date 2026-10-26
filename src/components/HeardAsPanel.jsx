@@ -304,10 +304,25 @@ const Reserve = ({ texts, className = "", render = (x) => x.t }) => (
 // Under the dome everything is centred, like the dome (the caveat and More
 // list stay left-aligned: running text). Balanced wrapping (text-wrap: balance
 // never changes the number of lines, so the reserve copies keep their height).
-const UNSURE_CLS = "mt-1 text-xs leading-snug tabular-nums text-center text-balance";
-const LEGEND_CLS = "mt-0.5 text-[11px] leading-snug text-center text-balance";
-const NOTE_CLS = "mt-1.5 text-[11px] leading-snug text-center text-balance";
-const REASON_CLS = "mt-1.5 text-sm leading-snug text-center text-balance";
+//
+// ROW LAYOUT (heardrow: desktop windows under 800 px tall and short
+// landscape, src/index.css; 2026-10-26 review: on 1366 x 768 / 1280 x 800
+// laptops the centred dome pushed the panel's lower half into an inner
+// scroll of the right-hand column, and in short landscape the panel was
+// taller than the screen): the dome at the left (200 px wide; 220 px on
+// desktop, where its key column beside it is taller anyway), its key (one
+// item per line in a narrow column), unsure line and legend beside it, the
+// pitch-only note and the caveat full width under them. A grid whose first
+// three rows the dome spans (the axis element a subgrid, so the dome and its
+// key stay one element and the note still follows it directly in the DOM);
+// every layer of the one-height grid uses the same grid, so the reserve still
+// holds.
+const ROW_GRID = "heardrow:grid heardrow:grid-cols-[200px_minmax(0,1fr)] deskshort:grid-cols-[220px_minmax(0,1fr)] heardrow:grid-rows-[auto_auto_1fr_auto_auto] heardrow:gap-x-3 heardrow:items-start";
+const ROW_AXIS = "heardrow:col-[1/-1] heardrow:row-[1/4] heardrow:grid heardrow:grid-cols-subgrid heardrow:grid-rows-subgrid";
+const UNSURE_CLS = "mt-1 text-xs leading-snug tabular-nums text-center text-balance heardrow:col-start-2 heardrow:row-start-2 heardrow:text-left";
+const LEGEND_CLS = "mt-0.5 text-[11px] leading-snug text-center text-balance heardrow:col-start-2 heardrow:row-start-3 heardrow:text-left";
+const NOTE_CLS = "mt-1.5 text-[11px] leading-snug text-center text-balance heardrow:col-[1/-1] heardrow:row-start-4 heardrow:text-left";
+const REASON_CLS = "mt-1.5 text-sm leading-snug text-center text-balance heardrow:col-start-2 heardrow:row-start-2 heardrow:text-left heardrow:mt-1";
 
 export function HeardAsSwitch({ on, onChange, label = "Likely heard as · Experimental" }) {
   return (
@@ -326,7 +341,9 @@ export function HeardAsSwitch({ on, onChange, label = "Likely heard as · Experi
 
 // The dome's box: at most 300 px wide (the mockup's size on a 448-px phone),
 // the full width of narrower panels, centred; its height follows the viewBox.
-const DOME_BOX = "block w-full max-w-[300px] mx-auto aspect-[300/157] h-auto";
+// Row layout: at the left (200 / 220 px, the grid's first column), over the
+// grid's first three rows.
+const DOME_BOX = "block w-full max-w-[300px] mx-auto aspect-[300/157] h-auto heardrow:col-start-1 heardrow:row-[1/4] heardrow:mx-0";
 const VIEWBOX = `0 0 ${DOME.w} ${DOME.h}`;
 
 // The tick above the top of the dome: the middle, 5 in 10.
@@ -341,8 +358,9 @@ const DomeTick = ({ grey = false }) => (
 // One row while there is room for it (>= 330 px), else the end words on the
 // first row and "could go either way" centred under them (a container query
 // on the row's own width: the panel's width never changes while speaking, so
-// neither does the row's height). Windows high contrast: keys solid / striped
-// / hollow like the dome (src/index.css).
+// neither does the row's height). In the row layout's narrow column (under
+// 230 px) one item per line, each key at the left. Windows high contrast:
+// keys solid / striped / hollow like the dome (src/index.css).
 const KEY_CLS = "heard-key inline-block w-2.5 h-2.5 rounded-sm shrink-0";
 const KEY_ITEM = "inline-flex items-center gap-1 whitespace-nowrap";
 function DomeKey({ grey = false }) {
@@ -350,11 +368,11 @@ function DomeKey({ grey = false }) {
     ? <span className={`${KEY_CLS} heard-key-empty border border-neutral-700`} />
     : <span className={`${KEY_CLS} heard-${kind}`} data-axis-key={kind} />);
   return (
-    <div className="@container mx-auto mt-1 max-w-[360px]" aria-hidden="true">
-      <div className="grid grid-cols-[auto_auto_auto] justify-between gap-x-2 gap-y-0.5 text-[11px] leading-4 text-neutral-400 @max-[330px]:grid-cols-[auto_auto]" data-axis-ends="">
+    <div className="@container mx-auto mt-1 max-w-[360px] heardrow:col-start-2 heardrow:row-start-1 heardrow:mx-0 heardrow:mt-0.5" aria-hidden="true">
+      <div className="grid grid-cols-[auto_auto_auto] justify-between gap-x-2 gap-y-0.5 text-[11px] leading-4 text-neutral-400 @max-[330px]:grid-cols-[auto_auto] @max-[230px]:grid-cols-1 @max-[230px]:gap-y-1" data-axis-ends="">
         <span className={KEY_ITEM}>{key("man")}{AXIS_ENDS.left}</span>
-        <span className={`${KEY_ITEM} @max-[330px]:col-span-2 @max-[330px]:row-start-2 @max-[330px]:justify-self-center`}>{key("either")}{EITHER_WORDS}</span>
-        <span className={`${KEY_ITEM} justify-self-end`}>{AXIS_ENDS.right}{key("woman")}</span>
+        <span className={`${KEY_ITEM} @max-[330px]:col-span-2 @max-[330px]:row-start-2 @max-[330px]:justify-self-center @max-[230px]:col-span-1 @max-[230px]:row-start-auto @max-[230px]:justify-self-start`}>{key("either")}{EITHER_WORDS}</span>
+        <span className={`${KEY_ITEM} justify-self-end @max-[230px]:justify-self-start @max-[230px]:flex-row-reverse`}>{AXIS_ENDS.right}{key("woman")}</span>
       </div>
     </div>
   );
@@ -377,7 +395,7 @@ function HeardAsAxis({ axis }) {
   const kinds = domeKinds(axis);
   const groups = ["man", "either", "woman"].map((k) => [k, kinds.flatMap((x, i) => (x === k ? [i] : []))]).filter(([, ix]) => ix.length > 0);
   return (
-    <div data-heard-as-axis="" data-axis-wide={axis.wide ? "1" : "0"} data-split-man={axis.man.toFixed(1)}
+    <div className={ROW_AXIS} data-heard-as-axis="" data-axis-wide={axis.wide ? "1" : "0"} data-split-man={axis.man.toFixed(1)}
       data-split-woman={axis.woman.toFixed(1)} data-split-guess={axis.guess.toFixed(3)}>
       <svg className={`heard-dome ${DOME_BOX}`} viewBox={VIEWBOX} role="img" aria-label={axis.srText} data-split-bar="">
         <defs>
@@ -404,7 +422,7 @@ function HeardAsAxis({ axis }) {
 // screen readers (the reason text says it all).
 function EmptyAxis() {
   return (
-    <div aria-hidden="true" data-heard-as-axis-empty="">
+    <div aria-hidden="true" className={ROW_AXIS} data-heard-as-axis-empty="">
       <svg className={`heard-dome ${DOME_BOX}`} viewBox={VIEWBOX}>
         <DomeTick grey />
         {DOME_PATHS.map((d, i) => (
@@ -422,7 +440,7 @@ function EmptyAxis() {
 // follow the dome's width (cqw of the overlay, a size container), 16 px at the
 // full 300 px. Placed after the pitch-only note in the DOM (see the top of
 // this file); pointer-events none so it never covers anything.
-const DOME_TEXT_BOX = "@container pointer-events-none absolute inset-x-0 top-0 mx-auto w-full max-w-[300px] aspect-[300/157] flex flex-col items-center justify-end";
+const DOME_TEXT_BOX = "@container pointer-events-none absolute inset-x-0 top-0 mx-auto w-full max-w-[300px] aspect-[300/157] flex flex-col items-center justify-end heardrow:right-auto heardrow:mx-0 heardrow:w-[200px] deskshort:w-[220px]";
 const DOME_TEXT_STYLE = { fontSize: "min(16px, 5.4cqw)", marginBottom: "4.6cqw", lineHeight: 1.35 };
 
 export function HeardAsPanel({
@@ -548,24 +566,24 @@ export function HeardAsPanel({
       {/* One grid cell: the tallest shown state and the tallest hidden state
           (both invisible), and on top of them what is showing now. */}
       <div className="grid grid-cols-1" data-heard-as-body="">
-        <div aria-hidden="true" className="invisible col-start-1 row-start-1">
+        <div aria-hidden="true" className={`invisible col-start-1 row-start-1 ${ROW_GRID}`}>
           <EmptyAxis />
           <div className={NOTE_CLS}>{RESERVE.note}</div>
           <Reserve className={UNSURE_CLS} texts={RESERVE.unsure} />
           <div className={LEGEND_CLS}>{RESERVE.legend}</div>
         </div>
-        <div aria-hidden="true" className="invisible col-start-1 row-start-1">
+        <div aria-hidden="true" className={`invisible col-start-1 row-start-1 ${ROW_GRID}`}>
           <EmptyAxis />
           <Reserve className={REASON_CLS} texts={RESERVE.reasons} />
         </div>
         <div className="col-start-1 row-start-1 self-start min-w-0">
           {reason ? (
-            <>
+            <div className={ROW_GRID}>
               <EmptyAxis />
               <p className={`${REASON_CLS} text-neutral-400`} data-heard-as-reason="">{REASONS[reason](progress)}</p>
-            </>
+            </div>
           ) : (
-            <div className="relative" data-heard-as-shares="" data-stale={stale ? "1" : "0"}>
+            <div className={`relative ${ROW_GRID}`} data-heard-as-shares="" data-stale={stale ? "1" : "0"}>
               <HeardAsAxis axis={view.axis} />
               {view.pitchOnly && (
                 <p className={`${NOTE_CLS} text-amber-200/80`} data-heard-as-note="pitch-only" data-pitch-only="1">
@@ -582,7 +600,7 @@ export function HeardAsPanel({
                 <p className={`${UNSURE_CLS} text-neutral-400`} data-heard-as-unsure="">{view.axis.unsureText}</p>
               )}
               {!view.pitchOnly && extraNote != null && extraNote !== false && (
-                <div className="mt-1 text-[11px] leading-snug text-amber-200/80" data-heard-as-note="extra">{extraNote}</div>
+                <div className="mt-1 text-[11px] leading-snug text-amber-200/80 heardrow:col-[1/-1] heardrow:row-start-5" data-heard-as-note="extra">{extraNote}</div>
               )}
               <p className={`${LEGEND_CLS} text-neutral-400`} data-heard-as-legend="">
                 {legendText(stale)}
