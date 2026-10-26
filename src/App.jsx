@@ -565,6 +565,7 @@ function App() {
       {savedToast && (
         <div inert={blocked}>
           <SavedToast
+            key={savedToast.sessionId}
             durationSeconds={savedToast.durationSeconds}
             onShow={showSavedSession}
             onClose={closeSavedToast}
