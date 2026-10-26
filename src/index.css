@@ -39,45 +39,56 @@ body {
 @custom-variant deskwide (@media (min-width: 1180px) and (max-height: 799px));
 
 /* "Likely heard as" dome (HeardAsPanel.jsx; the split bar of user decision
-   2026-10-20 bent into a semicircle of ten tenths, owner's choice 2026-10-25):
-   two shades of ONE colour, indigo — never the app's green / red (on / off
-   target) or amber (experimental / warning), never pink / blue.
-   --color-heard-man (deep): the solid left tenths, the low end of "would say
-   man"; --color-heard-woman (light): the solid right tenths, the low end of
-   "would say woman"; the striped tenths between them alternate the two, so it
-   leans neither way and reads as a pattern, not a third colour. The same
-   shades key the end words. Hue 252° for both (review 2026-10-20: the first
-   pair, 238° / 230°, sat on the blue side of indigo; scripts/cue-strip-smoke.mjs
-   now accepts 244-270°). Contrast on the panel's background (#121212, the
-   composite of the panel over the page): deep 3.8:1, light 13.6:1, deep vs
-   light 3.6:1 (>= 3:1, WCAG 1.4.11; checked in scripts/cue-strip-smoke.mjs).
-   With red-green colour blindness every violet / indigo pair reads as dark
-   and pale blue; the parts still differ (>= 3:1 lightness contrast, and the
-   stripes are a pattern). The app has one dark palette in both OS colour
-   schemes (the light scheme renders the same page), so these values hold in
-   light and dark; a light theme would need its own pair here. */
+   2026-10-20 bent into a semicircle of ten tenths, owner's choice 2026-10-25;
+   three parts adding to 10 and a bracket, user decision 2026-10-26):
+   two shades of ONE colour, indigo, for the two answers — never the app's
+   green / red (on / off target) or amber (experimental / warning), never
+   pink / blue — and a neutral grey for "unsure or neither".
+   --color-heard-man (deep): the "would say man" tenths from the left;
+   --color-heard-woman (light): the "would say woman" tenths from the right;
+   --color-heard-unsure (neutral grey, no hue): the tenths between. A split
+   reading ("Could go either way") stripes the whole dome in the two indigos.
+   The same shades key the words under the dome. Hue 252° for both indigos
+   (review 2026-10-20; scripts/cue-strip-smoke.mjs accepts 244-270°).
+   Contrast on the panel's background (#121212): deep 3.8:1, light 13.6:1,
+   grey 7.0:1; deep vs light 3.6:1 (>= 3:1, WCAG 1.4.11; checked in
+   scripts/cue-strip-smoke.mjs). The grey sits between the two in lightness
+   (1.9:1 against each, about the most a middle shade can have against both);
+   it differs from them by having no hue, the 2 px gaps separate every
+   segment, and the words carry the numbers. With red-green colour blindness
+   the indigos read as dark and pale blue, still apart from the grey. The
+   bracket is neutral-300 (#d4d4d4, 12.6:1). The app has one dark palette in
+   both OS colour schemes, so these values hold in light and dark. */
 :root {
   --color-heard-man: #745dd0;
   --color-heard-woman: #dfd7fe;
+  --color-heard-unsure: #9e9e9e;
+  --color-heard-bracket: #d4d4d4;
 }
 /* The keys under the dome (HTML spans) */
 .heard-man { background-color: var(--color-heard-man); }
 .heard-woman { background-color: var(--color-heard-woman); }
-.heard-either {
+.heard-unsure { background-color: var(--color-heard-unsure); }
+.heard-split {
   background-image: repeating-linear-gradient(135deg, var(--color-heard-man) 0 3px, var(--color-heard-woman) 3px 6px);
 }
-/* The dome's tenth-segments (SVG, owner's choice 2026-10-25): the same two
-   shades; the striped tenths are an SVG pattern of the two (3 px each, at
-   45°) whose rects carry .heard-pat-man / .heard-pat-woman. */
+.heard-bracket-key { stroke: var(--color-heard-bracket); }
+/* The dome's tenth-segments (SVG): the three shades; a split dome is an SVG
+   pattern of the two indigos (3 px each, at 45°) whose rects carry
+   .heard-pat-man / .heard-pat-woman. The bracket: a stroked path. */
 .heard-seg-man { fill: var(--color-heard-man); }
 .heard-seg-woman { fill: var(--color-heard-woman); }
+.heard-seg-unsure { fill: var(--color-heard-unsure); }
 .heard-pat-man { fill: var(--color-heard-man); }
 .heard-pat-woman { fill: var(--color-heard-woman); }
-/* Windows high contrast (forced colours): the parts keep three different
-   fills in the system colours — solid, striped, hollow — on the dome's
-   segments and on the keys (forced-color-adjust: none on both, so these
-   system colours are what is drawn); the middle tick in CanvasText, the empty
-   dome in GrayText outlines. The on / off switches (.hc-switch: the panel's, Settings' two) get a
+.heard-bracket { stroke: var(--color-heard-bracket); fill: none; }
+/* Windows high contrast (forced colours): the parts keep different fills in
+   the system colours — man solid CanvasText, woman hollow (Canvas with a
+   CanvasText outline), unsure solid GrayText, a split dome striped
+   CanvasText / Canvas — on the dome's segments and on the keys
+   (forced-color-adjust: none on both, so these system colours are what is
+   drawn); the bracket and the middle tick in CanvasText, the empty dome in
+   GrayText outlines. The on / off switches (.hc-switch: the panel's, Settings' two) get a
    ButtonText outline and thumb, the track filled with Highlight when on (with
    forced colours the UA otherwise paints track and thumb in the background
    colour, so only the focus ring showed). */
@@ -85,11 +96,14 @@ body {
   .heard-dome, .heard-key, .hc-switch { forced-color-adjust: none; }
   .heard-man { background-color: CanvasText; }
   .heard-woman { background-color: Canvas; box-shadow: inset 0 0 0 2px CanvasText; }
-  .heard-either { background-image: repeating-linear-gradient(135deg, CanvasText 0 2px, Canvas 2px 6px); }
+  .heard-unsure { background-color: GrayText; }
+  .heard-split { background-image: repeating-linear-gradient(135deg, CanvasText 0 2px, Canvas 2px 6px); }
+  .heard-bracket-key, .heard-bracket { stroke: CanvasText; }
   .heard-key-empty { border-color: GrayText; background-color: Canvas; }
   .heard-seg-man { fill: CanvasText; }
   .heard-seg-woman { fill: Canvas; stroke: CanvasText; stroke-width: 1.5px; }
-  .heard-seg-either { stroke: CanvasText; stroke-width: 1px; }
+  .heard-seg-unsure { fill: GrayText; }
+  .heard-seg-split { stroke: CanvasText; stroke-width: 1px; }
   .heard-pat-man { fill: CanvasText; }
   .heard-pat-woman { fill: Canvas; }
   .heard-seg-empty { fill: Canvas; stroke: GrayText; }

@@ -38,10 +38,18 @@ export function estimateAtEta(eta, { f0 = 150, ageMs = 0 } = {}) {
 }
 
 // The states screenshots are taken in (name -> { status, progress?, estimate, pitchOnly? }).
-// eta: 4 / -4 = about 8-10 in 10 one way; -2 = about 0-6 man / 4-10 woman;
-// 1.5 = about 3-10 man / 0-7 woman (the widest range that is not "can't tell
-// yet"); 0 = "can't tell yet" (calibration: range +/- 2.25 logit).
+// The panel draws three parts adding to 10 (user decision 2026-10-26; at
+// F0 150 Hz): eta -2.75 = man 0 / unsure 1 / woman 9 ("clear-woman"),
+// 2 = 8 / 2 / 0 ("clear-man"), -1.5 = 1 / 2 / 7 ("mixed-unsure": the line
+// under the sentence names all three), 0 = "Could go either way" (wide,
+// "split"); |eta| < ~1.40 is split (calibration: range +/- 2.25 logit). The
+// shares depend on eta alone (estimateAtEta fixes eta; F0 only changes the
+// meter logit); the older names are kept for panel-shots.mjs callers.
 export const PANEL_STATES = {
+  "clear-woman": { status: "ready", estimate: estimateAtEta(-2.75) },
+  "clear-man": { status: "ready", estimate: estimateAtEta(2.0) },
+  "mixed-unsure": { status: "ready", estimate: estimateAtEta(-1.5) },
+  split: { status: "ready", estimate: estimateAtEta(0) },
   "mostly-man": { status: "ready", estimate: estimateAtEta(4.0, { f0: 100 }) },
   mixed: { status: "ready", estimate: estimateAtEta(-2.0, { f0: 190 }) },
   "mostly-woman": { status: "ready", estimate: estimateAtEta(-4.0, { f0: 240 }) },
@@ -65,7 +73,8 @@ export function allPanelStates() {
   for (const h of ["listening", "sustained", "stale", "outside"]) out.push({ name: h, status: "ready", estimate: { hidden: h } });
   out.push({ name: "short", status: "ready", estimate: { hidden: "short", nWindows: 3, voicedMs: 500 } });
   out.push({ name: "unvoiced", status: "ready", estimate: { hidden: "short", nWindows: 50, voicedMs: 100 } });
-  for (const eta of [-4.4, -4, -3.5, -3, -2.5, -2, -1.5, -1, 0, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.6]) {
+  for (const eta of [-4.4, -4, -3.5, -3, -2.5, -2, -1.5, -1.41, -1, 0, 1, 1.41, 1.5, 2, 2.5, 3, 3.5, 4, 4.6]) {
+    // (every line-under-the-sentence form: "fewer than 1", 1 / 2 / 3 unsure — 3 only at |eta| ~1.40-1.42 —, with and without the other side)
     for (const ageMs of [0, 3200]) for (const pitchOnly of [false, true]) {
       out.push({ name: `eta${eta}${ageMs ? "-older" : ""}${pitchOnly ? "-pitch-only" : ""}`, status: "ready", estimate: estimateAtEta(eta, { ageMs }), pitchOnly });
     }
