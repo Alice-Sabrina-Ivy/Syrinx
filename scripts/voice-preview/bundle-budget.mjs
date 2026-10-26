@@ -4,7 +4,8 @@
 // 2026-10-20"): builds the base (default: the
 // merge base of HEAD and origin/cue-strip, i.e. the cue-strip commit this branch last
 // merged, else cue-strip at 811ebb8, the branch point; extracted with `git archive` into
-// build/vp-budget/) and this tree with the same Vite settings, and compares gzip sizes.
+// build/vp-budget/; since 2026-10-25 the integrated approved-UI commit UI_BASELINE when it
+// is newer — see below) and this tree with the same Vite settings, and compares gzip sizes.
 //
 //   node scripts/voice-preview/bundle-budget.mjs [--base=<rev>] [--keep]
 //
@@ -35,10 +36,25 @@ import { fileURLToPath } from "node:url";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const arg = (k, d) => (process.argv.find((a) => a.startsWith(`--${k}=`)) ?? `=${d}`).split("=").slice(1).join("=");
+// Baseline moved 2026-10-25: the approved UI refinements (boards A-D: the first-visit
+// and goal-check sheets, the practice dock + saved toast + History's Recording now card,
+// Settings as a side / bottom sheet) added +5.5 KB gzip to the entry chunk + stylesheet
+// on purpose (JS +4.3 KB, CSS +1.2 KB, measured against b3e2e9b). This budget guards
+// against Voice Shaper code reaching every page load, not against approved app UI, so the
+// integrated UI commit is the base whenever it is in HEAD's history and newer than the
+// merge base with origin/cue-strip (once cue-strip carries it, the merge base takes over).
+const UI_BASELINE = "70bab92a8c79";
+function git(args) {
+  return execFileSync("git", args, { cwd: repo, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+}
+function isAncestor(a, b) {
+  try { git(["merge-base", "--is-ancestor", a, b]); return true; } catch { return false; }
+}
 function defaultBase() {
-  try {
-    return execFileSync("git", ["merge-base", "HEAD", "origin/cue-strip"], { cwd: repo, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim().slice(0, 12);
-  } catch { return "811ebb8"; }
+  let mergeBase = null;
+  try { mergeBase = git(["merge-base", "HEAD", "origin/cue-strip"]).slice(0, 12); } catch { /* no origin/cue-strip */ }
+  if (isAncestor(UI_BASELINE, "HEAD") && (!mergeBase || isAncestor(mergeBase, UI_BASELINE))) return UI_BASELINE;
+  return mergeBase ?? "811ebb8";
 }
 const BASE_REV = arg("base", "") || defaultBase();
 const KEEP = process.argv.includes("--keep");
@@ -92,7 +108,7 @@ mkdirSync(WORK, { recursive: true });
 const baseSrc = path.join(WORK, "base");
 rmSync(baseSrc, { recursive: true, force: true });
 mkdirSync(baseSrc, { recursive: true });
-console.log(`base ${BASE_REV}${arg("base", "") ? "" : " (default: merge base with origin/cue-strip)"}; extracting -> build/vp-budget/base`);
+console.log(`base ${BASE_REV}${arg("base", "") ? "" : BASE_REV === UI_BASELINE ? " (default: UI_BASELINE, the approved UI of 2026-10-25)" : " (default: merge base with origin/cue-strip)"}; extracting -> build/vp-budget/base`);
 const tar = run("git", ["archive", "--format=tar", BASE_REV, "index.html", "src", "public"]);
 execFileSync("tar", ["-x", "-f", "-"], { cwd: baseSrc, input: tar, maxBuffer: 1 << 30 }); // cwd, not -C: GNU tar reads "C:\\" as a host
 if (!existsSync(path.join(baseSrc, "src", "main.jsx"))) throw new Error("base extraction failed");
