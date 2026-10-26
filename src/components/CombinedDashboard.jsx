@@ -562,10 +562,14 @@ export function CombinedDashboard({
     // min-h-0 only at lg: below lg the parent scrolls, and these must not
     // shrink below their content.
     <div className="flex-1 flex flex-col w-full max-w-6xl lg:min-h-0 gap-2" data-dashboard="">
-      <div className="flex flex-col gap-2 lg:flex-1 lg:flex-row lg:min-h-0 shortland:flex-row shortland:flex-1 shortland:min-h-[180px]">
+      {/* The short-landscape arrangement is for phones held sideways only
+          (max-lg): a desktop window both lg and short (e.g. 1280 × 460) keeps
+          the desktop layout, its right-hand column scrolling — with the
+          short-landscape flex sizing the meters collapsed to 0 px there. */}
+      <div className="flex flex-col gap-2 lg:flex-1 lg:flex-row lg:min-h-0 max-lg:shortland:flex-row max-lg:shortland:flex-1 max-lg:shortland:min-h-[180px]">
         {/* Pitch trace: the moment-to-moment pitch */}
         <div
-          className="h-[clamp(150px,26dvh,240px)] shrink-0 lg:h-auto lg:flex-1 lg:min-h-0 shortland:h-auto shortland:flex-1 shortland:min-h-0"
+          className="h-[clamp(150px,26dvh,240px)] shrink-0 lg:h-auto lg:flex-1 lg:min-h-0 max-lg:shortland:h-auto max-lg:shortland:flex-1 max-lg:shortland:min-h-0"
           data-pitch-trace-box=""
         >
           <PitchTrace
@@ -581,7 +585,7 @@ export function CombinedDashboard({
         </div>
 
         {/* Cue strip (+ the experimental panel on desktop) */}
-        <div className="flex flex-col gap-2 lg:w-[clamp(420px,38%,540px)] lg:shrink-0 lg:overflow-y-auto shortland:w-[52%] shortland:shrink-0 shortland:min-h-0">
+        <div className="flex flex-col gap-2 lg:w-[clamp(420px,38%,540px)] lg:shrink-0 lg:overflow-y-auto max-lg:shortland:w-[52%] max-lg:shortland:shrink-0 max-lg:shortland:min-h-0" data-cue-column="">
           <CueStrip
             direction={direction}
             voiced={voiced}
@@ -595,7 +599,7 @@ export function CombinedDashboard({
             hnr={hnr}
             resonanceRef={resonanceRef}
             resonanceStatus={resonanceStatus}
-            shortLandscape={shortLandscape}
+            shortLandscape={shortLandscape && !wide}
           />
           {wide && (
             <HeardAsPanel

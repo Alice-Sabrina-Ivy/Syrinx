@@ -41,8 +41,9 @@
 // Sizes: every box has a fixed reserved size (nothing moves while speaking):
 // phones (portrait) give each meter clamp(150px, 74dvh − 285px, 232px), so the
 // trace and both columns fit the first screen from 448 × 890 down to
-// 360 × 690; short landscape lets the meters fill the height beside the
-// trace; desktop (lg) a taller meter, clamp(180px, 100dvh − 620px, 300px), so
+// 360 × 690; short landscape (phones held sideways, below lg — a desktop
+// window both lg and short keeps the desktop sizes, its column scrolling)
+// lets the meters fill the height beside the trace; desktop (lg) a taller meter, clamp(180px, 100dvh − 620px, 300px), so
 // the strip and the heard-as dome under it fit the right-hand column without
 // scrolling from 1280 × 800 up (280 px at 1440 × 900). The meter's
 // own geometry (track width, label and number sizes) follows its measured
@@ -304,7 +305,7 @@ const CueColumn = memo(function CueColumn({ cue, title, titleNote, info, side, s
   const sideTop = G ? Math.max(0, Math.round(h / 2 - (G.numFs + 40) / 2)) : 0;
   return (
     <div
-      className="relative flex flex-col gap-1.5 shortland:gap-1 min-w-0 min-h-0"
+      className="relative flex flex-col gap-1.5 max-lg:shortland:gap-1 min-w-0 min-h-0"
       role="group"
       aria-labelledby={titleId}
       data-cue={cue}
@@ -326,7 +327,7 @@ const CueColumn = memo(function CueColumn({ cue, title, titleNote, info, side, s
       <span className="sr-only" data-cue-sr="">{srText}</span>
       <div
         ref={areaRef}
-        className="relative h-[clamp(150px,calc(74dvh-285px),232px)] lg:h-[clamp(180px,calc(100dvh-620px),300px)] shortland:h-auto shortland:flex-1 shortland:min-h-0"
+        className="relative h-[clamp(150px,calc(74dvh-285px),232px)] lg:h-[clamp(180px,calc(100dvh-620px),300px)] max-lg:shortland:h-auto max-lg:shortland:flex-1 max-lg:shortland:min-h-0"
         data-cue-meter=""
       >
         {G && (
@@ -583,9 +584,9 @@ export function CueStrip({
   return (
     <div
       data-cue-strip=""
-      className="w-full rounded-xl bg-neutral-900/60 border border-neutral-800 p-3 shortland:p-2 flex flex-col gap-2 shortland:flex-1 shortland:min-h-0"
+      className="w-full rounded-xl bg-neutral-900/60 border border-neutral-800 p-3 max-lg:shortland:p-2 flex flex-col gap-2 max-lg:shortland:flex-1 max-lg:shortland:min-h-0"
     >
-      <div className="relative grid grid-cols-2 gap-x-3.5 shortland:flex-1 shortland:min-h-0">
+      <div className="relative grid grid-cols-2 gap-x-3.5 max-lg:shortland:flex-1 max-lg:shortland:min-h-0">
         <span aria-hidden="true" className="absolute left-1/2 top-0.5 bottom-0.5 w-px -translate-x-1/2 bg-neutral-800" />
         <CueColumn
           cue="pitch"
