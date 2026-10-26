@@ -346,7 +346,9 @@ async function waitListening(page, ms = 20000) {
 }
 // Reload: the return-visit goal sheet; "Start practicing" confirms and starts listening.
 async function continueAfterReload(page) {
-  await page.waitForFunction(() => document.body.innerText.includes("What are you trying to sound like?"), { timeout: 30000 });
+  // the return sheet asks "Same goal as last time?" (the first-visit question's
+  // words are only its radiogroup's aria-label there)
+  await page.waitForSelector("[data-dialog=direction][data-variant=return] [data-start-listening]", { timeout: 30000 });
   await clickButton(page, ["Start — allow the microphone", "Start practicing"], "[role=dialog]");
   return waitListening(page);
 }

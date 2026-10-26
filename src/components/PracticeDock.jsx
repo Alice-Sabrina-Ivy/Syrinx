@@ -42,8 +42,10 @@ function PencilIcon() {
   );
 }
 
+// 16 px (text-base) below lg, text-sm at lg (iOS Safari
+// zooms the page into a smaller focused field).
 const NOTES_INPUT_CLASS =
-  "w-full min-w-0 bg-neutral-800/60 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-300 placeholder:text-neutral-600 focus:outline-none focus:border-neutral-500";
+  "w-full min-w-0 bg-neutral-800/60 border border-neutral-700 rounded-lg px-3 py-2 text-neutral-300 placeholder:text-neutral-600 focus:outline-none focus:border-neutral-500";
 
 export function PracticeDock({
   recording,
@@ -77,7 +79,7 @@ export function PracticeDock({
   const time = formatElapsed(elapsed);
 
   return (
-    <div className="relative flex-shrink-0 mt-1.5 pt-1.5 border-t border-neutral-800/80" data-practice-dock="" data-recording={recording ? "1" : "0"}>
+    <div className="relative flex-shrink-0 mt-1.5 pt-1.5 shortland:mt-1 shortland:pt-1 border-t border-neutral-800/80" data-practice-dock="" data-recording={recording ? "1" : "0"}>
       {noteOpen && (
         <div className="sm:hidden absolute bottom-full left-0 right-0 mb-2 rounded-xl border border-neutral-700 bg-neutral-900 p-3 shadow-xl" data-dock-note-popover="">
           <div className="flex items-center justify-between mb-2">
@@ -99,7 +101,7 @@ export function PracticeDock({
             aria-label="Session notes"
             value={notes}
             onChange={(e) => onNotesChange(e.target.value)}
-            className={NOTES_INPUT_CLASS}
+            className={`${NOTES_INPUT_CLASS} text-base`}
           />
         </div>
       )}
@@ -121,14 +123,18 @@ export function PracticeDock({
             onClick={onStopAndSave}
             disabled={stopping}
             data-dock-record=""
-            className="flex-1 sm:flex-none min-w-0 min-h-[44px] flex items-center gap-2 px-3 rounded-xl text-sm font-medium transition-colors cursor-pointer border bg-red-500/15 text-red-400 border-red-500/30 hover:bg-red-500/25 disabled:opacity-60 disabled:cursor-wait"
+            className="flex-1 sm:flex-none min-w-0 min-h-[44px] flex items-center gap-2 max-[399px]:gap-1.5 px-3 max-[399px]:px-2.5 rounded-xl text-sm font-medium transition-colors cursor-pointer border bg-red-500/15 text-red-400 border-red-500/30 hover:bg-red-500/25 disabled:opacity-60 disabled:cursor-wait"
           >
-            <span className="w-2.5 h-2.5 rounded-full bg-red-400 animate-pulse shrink-0" aria-hidden="true" />
+            <span className="w-2.5 h-2.5 rounded-full bg-red-400 motion-safe:animate-pulse shrink-0" aria-hidden="true" />
             <span className="text-xs font-semibold tracking-wide">REC</span>
             <span className="tabular-nums font-mono text-neutral-200" data-dock-timer="">{time}</span>
             <span className="w-px h-5 bg-red-500/30 shrink-0" aria-hidden="true" />
             <span className="w-2.5 h-2.5 rounded-[2px] bg-red-400 shrink-0" aria-hidden="true" />
-            <span className="whitespace-nowrap text-neutral-100">{stopping ? "Saving…" : "Stop & save"}</span>
+            {/* Below 400 px wide "Stop" (the board's narrow layout); the rest stays
+                in the accessible name and in innerText (sr-only). */}
+            <span className="min-w-0 truncate whitespace-nowrap text-neutral-100">
+              {stopping ? "Saving…" : <>Stop<span className="max-[399px]:sr-only"> &amp; save</span></>}
+            </span>
           </button>
         ) : (
           <button
@@ -162,7 +168,7 @@ export function PracticeDock({
             aria-label="Session notes"
             value={notes}
             onChange={(e) => onNotesChange(e.target.value)}
-            className={NOTES_INPUT_CLASS}
+            className={`${NOTES_INPUT_CLASS} text-base lg:text-sm`}
           />
         </div>
 
@@ -173,7 +179,8 @@ export function PracticeDock({
           className="shrink-0 min-h-[44px] flex items-center gap-1.5 px-3 sm:px-4 rounded-xl border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-sm transition-colors cursor-pointer"
         >
           <MicOffIcon />
-          <span className="whitespace-nowrap">Mic off</span>
+          {/* icon-only below 400 px wide; the words stay the accessible name */}
+          <span className="whitespace-nowrap max-[399px]:sr-only">Mic off</span>
         </button>
       </div>
       {recordError && (

@@ -444,8 +444,11 @@ console.log(`preview on :${PORT}`);
   await clickButton(page, ["Mic off"]);
   const before = net.length;
   await page.reload({ waitUntil: "domcontentloaded" });
-  await page.waitForFunction(() => [...document.querySelectorAll("button")].some((b) => b.textContent.includes("Start Listening")), { timeout: 30000 });
-  await clickButton(page, ["Start Listening"]);
+  // The return-visit goal sheet (2026-10-25): "Start practicing" confirms last
+  // time's goal and starts listening (Start Listening behind it is inert, and
+  // with no goal applied it would only reopen the question).
+  await page.waitForSelector("[data-dialog=direction] [data-start-listening]", { timeout: 30000 });
+  await clickButton(page, ["Start practicing", "Start — allow the microphone"], "[role=dialog]");
   await page.waitForFunction(() => document.body.innerText.includes("Mic off"), { timeout: 30000 });
   const readyAgain = await waitReady(page);
   const again = net.slice(before);

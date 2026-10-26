@@ -362,9 +362,11 @@ function App() {
   // HIDDEN, so with it showing the bottom row (the practice dock) sat below
   // the fold of a page that can't scroll. Every browser Tailwind 4
   // supports (Safari 16.4+, Chrome 111+, Firefox 128+) has dvh, so no
-  // vh fallback is needed.
+  // vh fallback is needed. Short landscape phones (shortland) get a smaller
+  // bottom padding: the practice dock's 44 px buttons cost the content ~16 px
+  // over the old Stop Listening bar.
   return (
-    <div className="h-dvh flex flex-col px-4 py-4 overflow-hidden">
+    <div className="h-dvh flex flex-col px-4 py-4 shortland:pb-2 overflow-hidden">
       {/* Diagnostic overlay (only when ?diag=1) */}
       {DiagnosticOverlay && (
         <Suspense fallback={null}>
