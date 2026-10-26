@@ -62,6 +62,37 @@ console.log("resonanceCue — startU and clamp");
   check("startU = the median of the readouts over that span (not the first readout)",
     firstAt && Math.abs(firstAt.startU - med([...us, firstAt.u])) < 1e-12 && firstAt.startU !== us[0] && firstAt.startProgress === 1);
   check("startU then held for the session", cue.snapshot().startU === firstAt.startU);
+}
+
+// The shown start (2026-10-26, measurements/resonance-start-reference-2026-10-26.md):
+// before startU, the median of the readouts collected so far; startU itself unchanged.
+console.log("resonanceCue — shownStartU");
+{
+  const cue = createResonanceCue({ reference, gate: false });
+  const med = (a) => { const q = [...a].sort((x, y) => x - y), h = q.length >> 1; return q.length % 2 ? q[h] : (q[h - 1] + q[h]) / 2; };
+  const us = [];
+  let beforeFill = true, tracks = true, firstShown = null, fullAt = null, setAt = null, atSet = true, after = true;
+  for (let i = 0; i < 300; i++) {
+    cue.onStamped(i * 0.15, i * 0.1, 0.02 + 0.03 * Math.sin(i / 7));
+    const s = cue.snapshot();
+    if (fullAt === null && s.fill >= 1) fullAt = i;
+    if (fullAt === null) { if (s.shownStartU !== null) beforeFill = false; continue; }
+    if (firstShown === null && s.shownStartU !== null) firstShown = i;
+    if (s.startU === null) {
+      us.push(s.u);
+      if (Math.abs(s.shownStartU - med(us)) > 1e-12) tracks = false;
+    } else if (setAt === null) {
+      setAt = i;
+      atSet = s.shownStartU === s.startU && Math.abs(s.startU - med([...us, s.u])) < 1e-12;
+    } else if (s.shownStartU !== s.startU) after = false;
+  }
+  check("shownStartU null before the readout fills", beforeFill);
+  check("shownStartU from the first full readout on (the dot and the first word together)", firstShown === fullAt, `${firstShown} vs ${fullAt}`);
+  check("shownStartU = the median of the readouts collected so far while startU is null", tracks && us.length > 50);
+  check("shownStartU = startU from the moment startU is set (no jump), and after", setAt !== null && atSet && after);
+  check("startU still set after 12 s of admitted voiced speech", setAt !== null && Math.abs((setAt - fullAt) * 0.1 - 12) < 0.15, `${setAt} ${fullAt}`);
+}
+{
   const hi = createResonanceCue({ reference, gate: false });
   for (let i = 0; i < 10; i++) hi.onStamped(i * 0.15, i * 0.1, 0.24);
   check("clamp +1 at the vtln ceiling", hi.snapshot().clamp === 1 && hi.snapshot().raw >= VTLN_CLAMP_EDGE);

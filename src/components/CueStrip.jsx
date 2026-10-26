@@ -77,6 +77,7 @@ import {
   pitchCueWord,
   resonanceClamp,
   resonanceHeader,
+  shownStart,
   rowValue,
   RESONANCE_TRAIL,
   TRAIL_EVERY_MS,
@@ -597,7 +598,7 @@ export function CueStrip({
           bands={resonanceBands}
           dashed
           highlight={resonanceHighlight}
-          startX={!rNarrow && snap?.startU != null ? axisPos("resonance", snap.startU)?.x : null}
+          startX={!rNarrow && shownStart(snap) != null ? axisPos("resonance", shownStart(snap))?.x : null}
           ends={ENDS.resonance}
           roomy={roomy}
           srText={view.sr.resonance}

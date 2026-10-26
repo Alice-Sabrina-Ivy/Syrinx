@@ -261,6 +261,9 @@ export const trailOpacity = (i, len) => (len <= 1 ? 0.45 : 0.12 + ((0.45 - 0.12)
 // q10–q90 spread of the 5 s readout 0.28–0.65 u on resynthesised
 // LibriSpeech runs, measurements/cue-strip-review-fixes-2026-10-07.md §3).
 export const RESONANCE_CHANGE_DEADBAND = 0.3;
+/** The start the header and the start ring use: the worker's shownStartU
+ *  (startU once set), or startU from a post that has none. */
+export const shownStart = (snap) => snap?.shownStartU ?? snap?.startU ?? null;
 export function resonanceHeader(state, snap) {
   switch (state) {
     case "starting": return "starting…";
@@ -277,9 +280,11 @@ export function resonanceHeader(state, snap) {
       const p = axisPos("resonance", snap?.u, { clamp: resonanceClamp(snap) });
       if (p && p.beyond !== 0) return "beyond the scale";
       if (snap?.u == null) return "last ~5 s of speech";
-      // The start reference is the median of the first ~12 s of voiced readouts.
-      if (snap.startU == null) return "finding your start…";
-      const d = snap.u - snap.startU;
+      // The start: the median of the readouts collected so far, final after
+      // ~12 s of voiced readouts (resonanceCue.js shownStartU, 2026-10-26).
+      const start = shownStart(snap);
+      if (start == null) return "finding your start…";
+      const d = snap.u - start;
       if (Math.abs(d) < RESONANCE_CHANGE_DEADBAND) return "about where you started";
       return d > 0 ? "brighter than your start" : "darker than your start";
     }
