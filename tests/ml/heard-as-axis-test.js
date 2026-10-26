@@ -156,8 +156,9 @@ console.log("\none side, the panel's own best guess (user decisions 2026-10-21)"
   check("old wording gone: no 'nearly all would say' / 'fewer than 1 in 10 would say' / ' · about' / a range, at the ends or the middle",
     [-7, -5, -3.5, -2.5, 2.5, 3.5, 5, 7].every((e) => !/nearly all would say|fewer than 1 in 10 would say| · about|\d–\d/i.test(ex(e))), [-7, 7].map(ex).join(" | "));
   const panelSrc = readFileSync(fileURLToPath(new URL("../../src/components/HeardAsPanel.jsx", import.meta.url)), "utf8");
+  // Since the dome (2026-10-25) the sentence sits inside the arc, so the line says "inside the arc" (it said "under the bar").
   check("the 'More' text says the sentence is the best guess, halfway values toward 5, inside the striped part (no 'middle of that range')",
-    panelSrc.includes("The sentence under the bar gives the panel&apos;s best guess for the side more listeners would choose, rounded to a whole tenth (halfway values toward 5 in 10); the best guess always lies inside the striped part.")
+    panelSrc.includes("The sentence inside the arc gives the panel&apos;s best guess for the side more listeners would choose, rounded to a whole tenth (halfway values toward 5 in 10); the best guess always lies inside the striped part.")
     && !panelSrc.includes("gives the middle of that range"));
 }
 
@@ -201,8 +202,10 @@ console.log("\nwords");
   check("wide: the bar's label is the same description (the visible 'Could go either way' is read from the line itself; not 'Can't tell yet', no hidden ranges); no unsure line then",
     w.srText === BAR_DESCRIPTION && w.rangeText === WIDE_TEXT && !/in 10/.test(w.srText) && !w.srText.includes("Can't tell") && !w.srText.includes("Best guess") && w.unsureText === null, w.srText);
   const panelSrc = readFileSync(fileURLToPath(new URL("../../src/components/HeardAsPanel.jsx", import.meta.url)), "utf8");
+  // Since the dome (2026-10-25) the sentence is drawn on two lines inside it (heardAsDome.js domeLines: joined with one
+  // space they are the sentence word for word — tests/ml/heard-as-dome-test.js).
   check("the panel labels the bar with srText and shows the sentence as plain visible text (not aria-hidden)",
-    panelSrc.includes('role="img" aria-label={axis.srText}') && /data-heard-as-range=""[^>]*>\s*\{view\.axis\.rangeText\}/.test(panelSrc)
+    panelSrc.includes('role="img" aria-label={axis.srText}') && /data-heard-as-range=""[^>]*>\s*\{domeLines\(view\.axis\.rangeText\)/.test(panelSrc)
     && !/data-heard-as-range=""[^>]*aria-hidden/.test(panelSrc));
 }
 
