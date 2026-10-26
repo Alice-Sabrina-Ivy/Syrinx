@@ -27,20 +27,25 @@ function* values(level, seed = 1) {
 
 console.log("resonanceCue — ungated equals the lab readout");
 {
-  const cue = createResonanceCue({ reference, gate: false });
+  // restart: null = the plain median shown; the shipped cue's uPlain is that readout too
+  const cue = createResonanceCue({ reference, gate: false, restart: null });
+  const shipped = createResonanceCue({ reference, gate: false });
   const ro = createReadout({ agg: "median", horizonS: 5, ref: reference.vtln });
   const v = values(0.03);
-  let ok = true;
+  let ok = true, okPlain = true;
   for (let i = 0; i < 120; i++) {
     const stamp = i * 0.12;
     const x = i % 7 === 3 ? null : v.next().value;
     cue.onStamped(i * 0.15, stamp, x);
+    shipped.onStamped(i * 0.15, stamp, x);
     ro.add(stamp, x);
-    const a = cue.snapshot(), b = ro.snapshot();
+    const a = cue.snapshot(), b = ro.snapshot(), c = shipped.snapshot();
     if (a.raw !== b.raw || a.n !== b.n || a.fill !== b.fill || a.voicedS !== b.voicedS) ok = false;
+    if (c.uPlain !== b.u || c.n !== b.n || c.fill !== b.fill || c.voicedS !== b.voicedS) okPlain = false;
   }
   check("every step: raw / n / fill / voicedS identical", ok);
-  const s = cue.snapshot();
+  check("every step: the shipped cue's uPlain / n / fill / voicedS = the lab readout", okPlain);
+  const s = shipped.snapshot();
   check("u in reference units", Math.abs(s.u - (s.raw - reference.vtln.menMedian) / G) < 1e-15);
 }
 
@@ -53,8 +58,8 @@ console.log("resonanceCue — startU and clamp");
     cue.onStamped(i * 0.15, i * 0.1, 0.02 + 0.03 * Math.sin(i / 7));
     const s = cue.snapshot();
     if (fullAt === null && s.fill >= 1) fullAt = i;
-    if (fullAt !== null && s.startU === null) us.push(s.u);
-    if (firstAt === null && s.startU !== null) firstAt = { i, startU: s.startU, startProgress: s.startProgress, u: s.u };
+    if (fullAt !== null && s.startU === null) us.push(s.uPlain);
+    if (firstAt === null && s.startU !== null) firstAt = { i, startU: s.startU, startProgress: s.startProgress, u: s.uPlain };
   }
   const med = (a) => { const q = [...a].sort((x, y) => x - y), h = q.length >> 1; return q.length % 2 ? q[h] : (q[h - 1] + q[h]) / 2; };
   check("startU null until 12 s of admitted voiced speech after the first fill", firstAt && fullAt !== null && Math.abs((firstAt.i - fullAt) * 0.1 - 12) < 0.15,
@@ -79,11 +84,11 @@ console.log("resonanceCue — shownStartU");
     if (fullAt === null) { if (s.shownStartU !== null) beforeFill = false; continue; }
     if (firstShown === null && s.shownStartU !== null) firstShown = i;
     if (s.startU === null) {
-      us.push(s.u);
+      us.push(s.uPlain);
       if (Math.abs(s.shownStartU - med(us)) > 1e-12) tracks = false;
     } else if (setAt === null) {
       setAt = i;
-      atSet = s.shownStartU === s.startU && Math.abs(s.startU - med([...us, s.u])) < 1e-12;
+      atSet = s.shownStartU === s.startU && Math.abs(s.startU - med([...us, s.uPlain])) < 1e-12;
     } else if (s.shownStartU !== s.startU) after = false;
   }
   check("shownStartU null before the readout fills", beforeFill);

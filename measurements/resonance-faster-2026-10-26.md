@@ -9,8 +9,10 @@ committed a366456 (sha256 b3c0040c…) before any candidate result.
 that follows a change sooner also moves the dot more on an unchanged voice
 (more jitter, more false "brighter / darker than your start", a larger
 error against the reader's long-run value); the pre-registered guards stop
-all of them. The cue is unchanged. Where the delay comes from and what is
-left to try: §1, §5.
+all of them. The cue was left unchanged by the study's rule. Where the delay
+comes from and what is left to try: §1, §5. **Since the owner's decision of
+2026-10-26 the closest candidate, E-ewm2.5, is shipped despite its failed
+guards: §6.**
 
 The owner's question (2026-10-26, after testing on a phone): "is there any
 way to make the resonance meter more responsive / have less delay without
@@ -223,6 +225,74 @@ not re-run.
   4. A better vtln bin (less than ~1 s of voicing per bin without more
      noise) would move the floor; B-t50 / B-t70 did not.
 
+## 6. Adopted by the owner (2026-10-26)
+
+After seeing the trade-offs of §5 the owner chose **E-ewm2.5** ("slightly
+faster, a bit jumpier"), knowing it fails the pre-registered guards on dev —
+as the 2026-10-21 restart shipped despite a failed guard. Shipped in
+`src/resonance/resonanceCue.js`: the restart rule unchanged (`RESTART`),
+and the shown value (u / raw / clamp) = the weighted median of the admitted
+bins in the 5 s voiced window, weights 2^(−age / `SHOWN_HALF_LIFE_S` = 2.5 s)
+with age in voiced seconds on the window's own clock (`weightedMedian`: the
+smallest value, in sorted order, whose cumulative weight reaches half the
+total; always one of the bins). `halfLifeS: null` gives the readout of
+2026-10-21 (S0); `restart: null` still gives the plain median. uPlain (the
+pitch-only warning's input), fill, voicedS, n, sinceResumeS, startU and
+shownStartU stay on the plain 5 s readout. `faster-candidates.mjs` S0 is now
+`halfLifeS: null`, and `faster-eval.mjs --posted=E-ewm2.5` checks runs of the
+new code.
+
+**It is the evaluated candidate.** The chain (§2) re-run with the new code
+on dev and test-other, the REAL resonance worker beside the replica:
+worker = replica on every field of all 75 720 / 75 720 posts of each set;
+`faster-eval.mjs`'s E-ewm2.5 replay = the posted u on 75 720 / 75 720 posts
+of each set. Against a run of the study's code (6496baf, S0) over the same
+pitch logs: every vtln bin identical (280 / 280 streams per set), and every
+post field other than u / raw — uPlain, shownStartU, startU, fill, voicedS,
+verdict, sinceResumeS, narrowband, voiced / holding — identical on all
+75 720 posts of each set (u differs on 62 632 dev / 58 840 test-other posts).
+The dev table of §3 reproduces exactly from the S0 code's run.
+
+**Dev** (§3; tuning set): score 0.89. 0.5 u T50 (↑m ↑f ↓m ↓f) 4.1 / 4.7 /
+4.7 / 4.5 → 3.3 / 3.7 / 3.8 / 3.4 s, 1.0 u T50 3.4 / 3.2 / 3.6 / 3.6 →
+3.2 / 3.2 / 3.5 / 3.5 s. Fails G1 for men and women (marginal: SD 0.179 /
+0.144 u vs bars 0.178 / 0.144) and G2 for men (false start words 13.9 % vs
+bar 13.9); G3 0.101 / 0.099, q90 0.318 / 0.249 (pass); G4–G7 pass.
+
+**Confirmation** (test-other, 10 men + 10 women, fresh; reported, no bar):
+
+| | S0 | E-ewm2.5 |
+|---|---|---|
+| score (mean of 16 cells vs S0) | 1.00 | **0.86** |
+| 0.5 u T50 ↑m / ↑f / ↓m / ↓f (s) | 4.7 / 5.4 / 4.7 / 5.3 | 4.1 / 4.1 / 3.4 / 4.1 |
+| 0.5 u T90 ↑m / ↑f / ↓m / ↓f | 7.5 / 7.5 / 9.3 / 6.3 | 7.1 / 6.2 / 7.5 / 5.7 |
+| 1.0 u T50 ↑m / ↑f / ↓m / ↓f | 3.8 / 4.3 / 3.5 / 3.2 | 3.8 / 4.1 / 3.2 / 3.2 |
+| 1.0 u T90 ↑m / ↑f / ↓m / ↓f | 4.1 / 5.9 / 5.7 / 4.4 | 4.1 / 4.5 / 4.2 / 3.8 |
+| G1 SD of shown u, men / women | 0.232 / 0.206 | 0.236 / 0.203 |
+| G2 false start words, men / women | 20.0 / 20.7 % | 20.7 / 23.0 % |
+| G3 \|u − long-run\| median, men / women | 0.128 / 0.125 | 0.129 / 0.129 |
+| G3 q90, men / women | 0.392 / 0.437 | 0.388 / 0.436 |
+| G4 first reading, men / women | 6.2 / 5.4 s | 6.2 / 5.4 s |
+| "about where you started", share of live / holding posts | 74.2 / 72.3 % | 74.1 / 70.0 % |
+| post-to-post move q90, men / women | 0.035 / 0.040 u | 0.051 / 0.053 u |
+| restarts per minute | 1.52 / 2.00 | 1.52 / 2.00 |
+
+Measured by the dev bars, test-other would fail only G2 for women (+2.3
+points against +1.0); G1 is within ×1.05 for both (men ×1.02, women 0.99).
+1.0 u steps by speakers' own changes with ±2 st (moves) T50 up / down 4.05 /
+3.60 → 4.05 / 3.15 s, T90 5.63 / 4.50 → 4.50 / 3.83 s.
+
+**Accepted cost (owner decision 2026-10-26):** a slightly jumpier dot on an
+unchanged voice — on dev SD +5 % (men 0.170 → 0.179, women 0.137 → 0.144 u),
+post-to-post moves q90 +40–50 % (0.030 → 0.043, 0.025 → 0.037 u), false
+"brighter / darker than your start" +1.0 point (men 12.9 → 13.9, women 12.0
+→ 13.0 %); on test-other the false words rose +0.7 / +2.3 points (men /
+women). Gain: 0.5 u changes halfway 0.8–1.1 s sooner on dev (0.6–1.3 s on
+test-other); 1.0 u T50 ≤ 0.3 s sooner (the restart already handles those),
+T90 up to 0.4 s on dev and 1.5 s on test-other. Unchanged: the pitch-only
+warning (uPlain identical), where and when a dot is drawn, the start.
+Tests: `tests/resonance/shown-ewm-test.js`.
+
 ## Reproduce
 
 ```
@@ -235,6 +305,7 @@ node scripts/resonance/faster.mjs pitch --tag=dev --shard=i/4                  #
 node scripts/resonance/faster.mjs bins  --tag=dev --worker --shard=i/4
 node scripts/resonance/faster.mjs bins  --tag=dev --trail=70 --shard=i/4       # and 50
 node scripts/resonance/faster-eval.mjs --runs=<bins-dev-main-*of4.jsonl> [--trail-runs="B-t70:<...>;B-t50:<...>"]
+#   (bins runs of the code since 2026-10-26 post E-ewm2.5: add --posted=E-ewm2.5)
 node scripts/resonance/faster-budget.mjs --runs=<...> --size=1.0               # and 0.5
 node scripts/resonance/faster-cpu.mjs --tag=dev
 # calibration: faster-streams --variants=N:0:0,C-12:0:-12,C-6:0:-6,C+6:0:6,C+12:0:12, then faster.mjs pitch/bins --set=calib

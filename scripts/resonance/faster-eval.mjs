@@ -2,13 +2,14 @@
 // responsiveness study (measurements/resonance-faster-prereg-2026-10-26.md).
 //
 //   node scripts/resonance/faster-eval.mjs --runs=<bins jsonl,...> [--trail-runs=B-t70:<jsonl,...>;B-t50:<...>]
-//        [--cands=all|S0,R-...] [--json=<out.json>] [--budget]
+//        [--cands=all|S0,R-...] [--posted=S0|E-ewm2.5] [--json=<out.json>] [--budget]
 //
 // Cue-only candidates are replayed over the logged bins of each stream
 // (faster.mjs bins): admitted flags and the cue's voiced clock (dropped bins'
 // voiced time taken out) exactly as resonanceCue.js, the bin count at each
-// 0.2 s post. S0's replay must equal the logged posted u on every post
-// (checked; the run aborts otherwise). Bin-level candidates (B-*) read the
+// 0.2 s post. The replay of the candidate the runs' code shipped (--posted,
+// default S0; E-ewm2.5 for runs of the code since 2026-10-26) must equal the
+// logged posted u on every post (checked; the run aborts otherwise). Bin-level candidates (B-*) read the
 // posted u of their own bins run. Row: cueStripModel.js on each post.
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -87,15 +88,16 @@ function series(id, name) {
   return s;
 }
 
-// exactness: S0 replay == posted u; R-s1.5-j0.6-n4 == S0
+// exactness: the posted candidate's replay == posted u; R-s1.5-j0.6-n4 == S0
+const POSTED = arg("posted", "S0");
 let exN = 0, exBad = 0, rN = 0, rBad = 0;
 for (const r of recs) {
-  const s = series(r.id, "S0");
-  r.posts.forEach((p, i) => { exN++; if (s[i].u !== p[P_.u]) exBad++; });
+  const s = series(r.id, "S0"), sp = series(r.id, POSTED);
+  r.posts.forEach((p, i) => { exN++; if (sp[i].u !== p[P_.u]) exBad++; });
   if (CANDIDATES["R-s1.5-j0.6-n4"]) { const s2 = series(r.id, "R-s1.5-j0.6-n4"); s.forEach((x, i) => { rN++; if (x.u !== s2[i].u) rBad++; }); }
 }
-console.log(`exactness: S0 replay = posted u on ${exN - exBad}/${exN} posts; R-s1.5-j0.6-n4 = S0 on ${rN - rBad}/${rN}`);
-if (exBad) throw new Error("S0 replay differs from the posted u");
+console.log(`exactness: ${POSTED} replay = posted u on ${exN - exBad}/${exN} posts; R-s1.5-j0.6-n4 = S0 on ${rN - rBad}/${rN}`);
+if (exBad) throw new Error(`${POSTED} replay differs from the posted u`);
 const wk = recs.filter((r) => r.worker);
 if (wk.length) console.log(`real worker = replica: ${wk.reduce((a, r) => a + r.worker.checked - r.worker.mismatch, 0)}/${wk.reduce((a, r) => a + r.worker.checked, 0)} posts (${wk.length} streams)`);
 

@@ -10,7 +10,9 @@
 // 5 s readout, so positions and starts are unchanged by construction.
 //
 // Families (ids as in the pre-registration):
-//   S0            the shipped readout (createRestartReadout, RESTART)
+//   S0            the readout shipped at the study (createRestartReadout,
+//                 RESTART, halfLifeS: null; E-ewm2.5 is shipped since the
+//                 owner's decision of 2026-10-26)
 //   P             the plain 5 s median (restart: null; before 2026-10-21)
 //   R-s<S>-j<J>-n<N>   the shipped restart rule retuned: short median over the
 //                 last S s of voiced time vs the 5 s median, |diff| >= J u with
@@ -150,7 +152,8 @@ function createKalman({ ref, q, r = 0.3, c = 2 }) {
 const sh = RESTART; // { shortS 1.5, jumpU 0.6, confirmN 4 }
 const shipTest = { kind: "short", shortS: sh.shortS, jumpU: sh.jumpU, confirmN: sh.confirmN };
 export const CANDIDATES = {
-  S0: { family: "S0", make: (ref) => createRestartReadout({ ref }) },
+  // the study's S0 = the readout shipped until 2026-10-26 (shown as the median)
+  S0: { family: "S0", make: (ref) => createRestartReadout({ ref, halfLifeS: null }) },
   P: { family: "P", make: (ref) => createRestartReadout({ ref, restart: null }) },
 };
 for (const kind of ["short", "two"]) {
