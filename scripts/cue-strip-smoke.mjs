@@ -139,7 +139,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import puppeteer from "puppeteer-core";
 import { PITCH_ONLY_TEXT } from "../src/ml/pitch-only-warning.js";
-import { sayText, restText, BAR_DESCRIPTION } from "../src/components/heardAsAxisModel.js";
+import { sayText, restText, BAR_DESCRIPTION, SPLIT_DESCRIPTION } from "../src/components/heardAsAxisModel.js";
 import { NARROWBAND_NOTICE, NARROWBAND_INFO } from "../src/components/cueStripModel.js";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -280,7 +280,7 @@ const state = (page) => page.evaluate(() => {
         const pr = p.getBoundingClientRect();
         // the key row: three items (would say man / unsure or neither / would say woman), one or two rows, plus the
         // bracket's "likely range" beside "unsure or neither" where the row wraps (else it leads the legend)
-        const shown = (e) => e.getClientRects().length > 0;
+        const shown = (e) => e.getClientRects().length > 0 && getComputedStyle(e).visibility !== "hidden";
         const ends = [...a.querySelectorAll("[data-axis-ends] [data-axis-item]")].filter(shown).map((e) => e.getBoundingClientRect());
         // the dome (data-split-bar, the SVG; viewBox 300 x 157, centre (150, 156), radii 144 / 118 —
         // src/components/heardAsDome.js): each kind's share = its tenth-segments / 10
@@ -535,8 +535,8 @@ function axisChecks(who, s) {
   const t = a?.t;
   const want = a ? sayText(t, a.wide) : "", wantRest = a ? restText(t, a.wide) : null;
   const count = (k) => (a?.tenths.match(new RegExp(k, "g")) ?? []).length;
-  check(`${who}: dome segments = the tenths in the words (deep "would say man" from the left foot, grey "unsure or neither" between, light "would say woman" from the right foot; all striped when split), summing to 10; a deep / grey / light key by "would say man" / "unsure or neither" / "would say woman" and the bracket's "likely range" key drawn once (key row or legend)`,
-    !!a && !a.dotShown && a.keys === "man,unsure,woman" && a.bracketKeys === 1 && a.onScreenOrder && a.tenths.length === 10
+  check(`${who}: dome segments = the tenths in the words (deep "would say man" from the left foot, grey "unsure or neither" between, light "would say woman" from the right foot; all striped when split), summing to 10; a deep / grey / light key by "would say man" / "unsure or neither" / "would say woman" and the bracket's "likely range" key drawn once (key row or legend); split: a striped "could go either way" key instead of the grey one, no bracket key`,
+    !!a && !a.dotShown && a.keys === (a.split ? "man,split,woman" : "man,unsure,woman") && a.bracketKeys === (a.split ? 0 : 1) && a.onScreenOrder && a.tenths.length === 10
     && t.man + t.unsure + t.woman === 10 && [t.man, t.unsure, t.woman].every(Number.isInteger)
     && (a.split ? a.tenths === "ssssssssss" : /^m*u*w*$/.test(a.tenths) && count("m") === t.man && count("u") === t.unsure && count("w") === t.woman)
     // the dome: 240-300 px centred; 200 px (220 on short desktops ≥ 1180 px wide) in the panel's row layout (short landscape, 2026-10-26)
@@ -557,7 +557,7 @@ function axisChecks(who, s) {
         && a.bracket.lo < a.bracket.hi && a.bracket.lo <= edge && edge <= a.bracket.hi && boundary(a.bracket.a0, a.bracket.lo) && boundary(a.bracket.a1, a.bracket.hi)),
     JSON.stringify(a?.bracket));
   check(`${who}: dome screen-reader label = the dome's own description, without the sentence; the sentence announced once (the visible line, not aria-hidden)`,
-    !!a && a.sr === BAR_DESCRIPTION && !a.sr.includes(a.range) && a.rangeAnnounced === 1, `${a?.sr} | sentence announced ${a?.rangeAnnounced}x`);
+    !!a && a.sr === (a.split ? SPLIT_DESCRIPTION : BAR_DESCRIPTION) && !a.sr.includes(a.range) && a.rangeAnnounced === 1, `${a?.sr} | sentence announced ${a?.rangeAnnounced}x`);
   check(`${who}: dome and the key items fit inside the panel, key items never overlap`, !!a && a.fits, JSON.stringify(a));
 }
 

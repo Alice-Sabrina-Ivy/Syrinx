@@ -148,7 +148,9 @@ console.log("\npanel wiring");
   check("hooks: data-heard-as-axis with wide / split / split-man / split-woman / split-guess / tenths-*, data-split-bar, data-split-part, data-bracket(-lo / -hi / -side), data-axis-ends, data-axis-key, data-heard-as-axis-empty",
     ["data-heard-as-axis=\"\"", "data-axis-wide=", "data-axis-split=", "data-split-man=", "data-split-woman=", "data-split-guess=", "data-tenths-man=", "data-tenths-unsure=", "data-tenths-woman=",
       "data-split-bar=\"\"", "data-split-part={k}", "data-bracket=\"\"", "data-bracket-lo=", "data-bracket-hi=", "data-bracket-side=", "data-axis-ends=\"\"", "data-axis-key={kind}", "data-heard-as-axis-empty=\"\""].every((h) => dome.includes(h)));
-  check("the old stripes key is gone (no 'could go either way' key item)", !panel.includes("EITHER_WORDS") && !panel.includes('key("either")'));
+  check("the striped key ('could go either way') only on split readings, in the grey key's slot; the bracket's keys kept invisible there",
+    !panel.includes("EITHER_WORDS") && !panel.includes('key("either")') && /\{split\s*\? <span[^>]*data-axis-item="split">\{key\("split"\)\}\{SPLIT_WORDS\}/.test(panel)
+    && panel.includes('<BracketKey where="key" hide={split} />') && panel.includes('<BracketKey where="legend" hide={split} />') && panel.includes("<DomeKey split={axis.split} />"));
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

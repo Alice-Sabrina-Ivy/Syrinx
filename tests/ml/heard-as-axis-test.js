@@ -18,7 +18,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { heardAsShares, shareTenths } from "../../src/ml/heard-as.js";
 import { HEARD_AS_CALIBRATION as C } from "../../src/ml/heardAsCalibration.js";
-import { heardAsAxis, AXIS_ENDS, unsureWords, shortReason, UNVOICED_SHARE, quickCheck, WIDE_TEXT, BAR_DESCRIPTION, threeTenths, sayText, restText } from "../../src/components/heardAsAxisModel.js";
+import { heardAsAxis, AXIS_ENDS, unsureWords, shortReason, UNVOICED_SHARE, quickCheck, WIDE_TEXT, BAR_DESCRIPTION, SPLIT_DESCRIPTION, threeTenths, sayText, restText } from "../../src/components/heardAsAxisModel.js";
 
 let passed = 0, failed = 0;
 function check(name, cond, detail = "") {
@@ -88,7 +88,7 @@ console.log("\nthe axis: tenths = the centre shares, words = the drawing");
       const stated = nums.reduce((x, y) => x + y, 0);
       good &&= stated === 10 && nums.length === (t[other] >= 1 ? 3 : 2);
       good &&= ax.unsureText.startsWith(t.unsure ? `About ${t.unsure} in 10 unsure or neither` : "Fewer than 1 in 10 unsure or neither");
-      good &&= t[other] >= 1 ? ax.unsureText.endsWith(` · about ${t[other]} in 10 would say ${other}`) : !ax.unsureText.includes("·");
+      good &&= t[other] >= 1 ? ax.unsureText.endsWith(`\u00a0· about ${t[other]} in 10 would say ${other}`) : !ax.unsureText.includes("·");
       // the bracket: tenth boundaries, contains the drawn edge, = the side's range rounded outward
       const [lo, hi] = ax.bracket, edge = side === "man" ? t.man : 10 - t.woman;
       const [rl, rh] = side === "man" ? shareTenths(sh.man) : shareTenths(sh.woman).map((x) => 10 - x).reverse();
@@ -102,7 +102,7 @@ console.log("\nthe axis: tenths = the centre shares, words = the drawing");
   const w = heardAsAxis(sharesAt(-1.5));
   check("example eta -1.5: 1 / 2 / 7, 'About 7 in 10 listeners would say woman', 'About 2 in 10 unsure or neither · about 1 in 10 would say man', bracket 0–9",
     JSON.stringify(w.tenths) === JSON.stringify({ man: 1, unsure: 2, woman: 7 }) && w.rangeText === "About 7 in 10 listeners would say woman"
-    && w.unsureText === "About 2 in 10 unsure or neither · about 1 in 10 would say man" && w.bracket.join() === "0,9", JSON.stringify(w));
+    && w.unsureText === "About 2 in 10 unsure or neither\u00a0· about 1 in 10 would say man" && w.bracket.join() === "0,9", JSON.stringify(w));
   const m = heardAsAxis(sharesAt(4));
   check("example eta 4: 10 / 0 / 0, 'Nearly all listeners would say man', 'Fewer than 1 in 10 unsure or neither', bracket 7–10",
     m.rangeText === "Nearly all listeners would say man" && m.unsureText === "Fewer than 1 in 10 unsure or neither" && m.bracket.join() === "7,10", JSON.stringify(m));
@@ -110,7 +110,7 @@ console.log("\nthe axis: tenths = the centre shares, words = the drawing");
   check("sayText / restText: sides within 1 tenth are split even when not wide (4 / 2 / 4, 4 / 3 / 3), 6 / 2 / 2 is not",
     sayText({ man: 4, unsure: 2, woman: 4 }, false) === WIDE_TEXT && sayText({ man: 4, unsure: 3, woman: 3 }, false) === WIDE_TEXT
     && restText({ man: 4, unsure: 3, woman: 3 }, false) === null && sayText({ man: 6, unsure: 2, woman: 2 }, false) === "About 6 in 10 listeners would say man"
-    && restText({ man: 6, unsure: 2, woman: 2 }, false) === "About 2 in 10 unsure or neither · about 2 in 10 would say woman");
+    && restText({ man: 6, unsure: 2, woman: 2 }, false) === "About 2 in 10 unsure or neither\u00a0· about 2 in 10 would say woman");
   check("unsureWords: 0 -> fewer than 1, 1 -> about 1, 4 -> about 4", unsureWords(0) === "fewer than 1 in 10" && unsureWords(1) === "about 1 in 10" && unsureWords(4) === "about 4 in 10");
 }
 
@@ -156,9 +156,15 @@ console.log("\nscreen-reader text");
   check("one sentence describing the three parts and the bracket; the visible sentence is not repeated",
     BAR_DESCRIPTION === "Arc of ten tenths of listeners: would say man fills from the left end, would say woman from the right end, unsure or neither in grey between, and a thin bracket outside the arc marks the likely range of the larger part's edge."
     && (BAR_DESCRIPTION.match(/\. |\.$/g) ?? []).length === 1);
-  let once = true;
-  for (const e of GRID) { const a = heardAsAxis(sharesAt(e)); if (a.srText !== BAR_DESCRIPTION || /in 10|Nearly all/.test(a.srText)) once = false; }
-  check("eta -7..7: the label is the description only", once);
+  check("split readings get their own one-sentence label (no grey, no bracket drawn there)",
+    SPLIT_DESCRIPTION === "Arc of ten tenths of listeners, striped as a whole: listeners would be split between would say man and would say woman."
+    && !/grey|bracket/.test(SPLIT_DESCRIPTION) && (SPLIT_DESCRIPTION.match(/\. |\.$/g) ?? []).length === 1);
+  let once = true, onceDetail = "";
+  for (const e of GRID) {
+    const a = heardAsAxis(sharesAt(e));
+    if (a.srText !== (a.split ? SPLIT_DESCRIPTION : BAR_DESCRIPTION) || /in 10|Nearly all/.test(a.srText)) { once = false; onceDetail ||= `eta ${e}`; }
+  }
+  check("eta -7..7: the label is the description only — BAR_DESCRIPTION, SPLIT_DESCRIPTION when split", once, onceDetail);
   check("the panel labels the dome with srText and shows the sentence as plain visible text (not aria-hidden)",
     panelSrc.includes('role="img" aria-label={axis.srText}') && /data-heard-as-range=""[^>]*>\s*\{domeLines\(view\.axis\.rangeText\)/.test(panelSrc)
     && !/data-heard-as-range=""[^>]*aria-hidden/.test(panelSrc));

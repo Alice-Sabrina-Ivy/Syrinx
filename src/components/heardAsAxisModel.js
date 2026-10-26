@@ -112,7 +112,9 @@ export function restText(t, wide) {
   if (sayText(t, wide) === WIDE_TEXT) return null;
   const other = t.man > t.woman ? "woman" : "man";
   const u = `${cap(unsureWords(t.unsure))} unsure or neither`;
-  return t[other] >= 1 ? `${u} · about ${t[other]} in 10 would say ${other}` : u;
+  // A no-break space before "·" so a wrapped line never starts with it
+  // (2026-10-26 review: "· about 1 in 10 would say man" at 360 px).
+  return t[other] >= 1 ? `${u}\u00a0· about ${t[other]} in 10 would say ${other}` : u;
 }
 
 // "short" splits in two for the words the panel shows (2026-10-07 UX review:
@@ -148,6 +150,9 @@ export function quickCheck(shown, voiceState) {
 // then: "Arc of listeners in tenths: would say man fills from the left end,
 // would say woman from the right end, and the striped part between could go
 // either way."
+// A split reading draws neither grey nor a bracket: the whole arc is striped
+// (2026-10-26 review: the three-part label described parts not drawn there).
+export const SPLIT_DESCRIPTION = "Arc of ten tenths of listeners, striped as a whole: listeners would be split between would say man and would say woman.";
 export const BAR_DESCRIPTION = "Arc of ten tenths of listeners: would say man fills from the left end, would say woman from the right end, unsure or neither in grey between, and a thin bracket outside the arc marks the likely range of the larger part's edge.";
 
 export const AXIS_ENDS = Object.freeze({ left: "would say man", right: "would say woman" });
@@ -170,7 +175,8 @@ export const AXIS_ENDS = Object.freeze({ left: "would say man", right: "would sa
  *    could fall; it contains the drawn edge (tenths.man for man, 10 −
  *    tenths.woman for woman).
  *    rangeText: the sentence; unsureText: the line under it (null when split).
- *    srText: the dome's own description (role img).
+ *    srText: the dome's own description (role img): BAR_DESCRIPTION, or
+ *    SPLIT_DESCRIPTION when split.
  */
 export function heardAsAxis(shares) {
   const wide = isWideShare([shares.sLow, shares.sHigh]);
@@ -204,6 +210,6 @@ export function heardAsAxis(shares) {
     bracket,
     rangeText,
     unsureText: restText(tenths, wide),
-    srText: BAR_DESCRIPTION,
+    srText: split ? SPLIT_DESCRIPTION : BAR_DESCRIPTION,
   };
 }

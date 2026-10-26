@@ -118,7 +118,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { heardAsShares } from "../ml/heard-as";
 import { heardAsAxis, AXIS_ENDS, shortReason, quickCheck } from "./heardAsAxisModel";
-import { DOME, DOME_PATHS, domeKinds, domeLines, domeBracketPath, UNSURE_WORDS, BRACKET_WORDS } from "./heardAsDome";
+import { DOME, DOME_PATHS, domeKinds, domeLines, domeBracketPath, UNSURE_WORDS, SPLIT_WORDS, BRACKET_WORDS } from "./heardAsDome";
 import { HEARD_AS_CALIBRATION } from "../ml/heardAsCalibration";
 import { PITCH_ONLY_TEXT } from "../ml/pitch-only-warning";
 
@@ -272,8 +272,10 @@ const REASONS = {
 };
 
 // (Until the dome, 2026-10-25, it ended "· striped = could go either way";
-// the key row under the dome now says that with its striped key.)
-const legendText = (stale) => `${stale ? "Older reading — waiting for more speech · " : ""}From your last ~8 s of speech · updates every 2 s`;
+// on split readings the key row now says that with its striped key, in the
+// grey key's slot, and the bracket's key keeps its box invisibly.)
+// No-break spaces keep "·" off the start of a line and "~8 s" / "2 s" whole.
+const legendText = (stale) => `${stale ? "Older reading — waiting for more speech\u00a0· " : ""}From your last ~8\u00a0s of speech\u00a0· updates every 2\u00a0s`;
 
 // Every text each line can show, from the same word functions the panel uses
 // (heardAsAxis over every reading the model can give; every reason), laid out invisibly so the
@@ -374,7 +376,7 @@ const DomeTick = ({ grey = false }) => (
 // at the left. Windows high contrast: keys like the dome (src/index.css).
 const KEY_CLS = "heard-key inline-block w-2.5 h-2.5 rounded-sm shrink-0";
 const KEY_ITEM = "inline-flex items-center gap-1 whitespace-nowrap";
-function DomeKey({ grey = false }) {
+function DomeKey({ grey = false, split = false }) {
   const key = (kind) => (grey
     ? <span className={`${KEY_CLS} heard-key-empty border border-neutral-700`} />
     : <span className={`${KEY_CLS} heard-${kind}`} data-axis-key={kind} />);
@@ -383,8 +385,10 @@ function DomeKey({ grey = false }) {
       <div className="grid grid-cols-[auto_auto_auto] justify-between gap-x-2 gap-y-0.5 text-[11px] leading-4 text-neutral-400 @max-[330px]:grid-cols-[auto_auto] @max-[230px]:grid-cols-1 @max-[230px]:gap-y-1" data-axis-ends="">
         <span className={KEY_ITEM} data-axis-item="man">{key("man")}{AXIS_ENDS.left}</span>
         <span className="inline-flex gap-x-3 @max-[330px]:col-span-2 @max-[330px]:row-start-2 @max-[330px]:justify-self-center @max-[230px]:col-span-1 @max-[230px]:row-start-auto @max-[230px]:justify-self-start">
-          <span className={KEY_ITEM} data-axis-item="unsure">{key("unsure")}{UNSURE_WORDS}</span>
-          {!grey && <BracketKey where="key" />}
+          {split
+            ? <span className={KEY_ITEM} data-axis-item="split">{key("split")}{SPLIT_WORDS}</span>
+            : <span className={KEY_ITEM} data-axis-item="unsure">{key("unsure")}{UNSURE_WORDS}</span>}
+          {!grey && <BracketKey where="key" hide={split} />}
         </span>
         <span className={`${KEY_ITEM} justify-self-end @max-[230px]:justify-self-start @max-[230px]:flex-row-reverse`} data-axis-item="woman">{AXIS_ENDS.right}{key("woman")}</span>
       </div>
@@ -407,19 +411,22 @@ const BRACKET_SVG = (
     <path d="M1 7.5V4.5A5 3.5 0 0 1 11 4.5V7.5" fill="none" strokeWidth="1.5" className="heard-bracket-key" />
   </svg>
 );
-function BracketKey({ where }) {
+function BracketKey({ where, hide = false }) {
+  // hide: a split reading draws no bracket — the key keeps its box (invisible),
+  // so nothing moves.
+  const inv = hide ? " invisible" : "";
   return where === "key" ? (
-    <span aria-hidden="true" className="hidden items-center gap-1 whitespace-nowrap @max-[330px]:inline-flex @max-[230px]:hidden" data-axis-item="bracket" data-bracket-key="key">
+    <span aria-hidden="true" className={`hidden items-center gap-1 whitespace-nowrap @max-[330px]:inline-flex @max-[230px]:hidden${inv}`} data-axis-item="bracket" data-bracket-key="key">
       {BRACKET_SVG}{BRACKET_WORDS}
     </span>
   ) : (
-    <span aria-hidden="true" className="whitespace-nowrap @min-[230px]:@max-[330px]:hidden [&>svg]:mr-1 [&>svg]:align-[-1px]" data-bracket-key="legend">
-      {BRACKET_SVG}{BRACKET_WORDS} ·{" "}
+    <span aria-hidden="true" className={`whitespace-nowrap @min-[230px]:@max-[330px]:hidden [&>svg]:mr-1 [&>svg]:align-[-1px]${inv}`} data-bracket-key="legend">
+      {BRACKET_SVG}{BRACKET_WORDS}{"\u00a0· "}
     </span>
   );
 }
-const Legend = ({ stale, className, ...rest }) => (
-  <p className={`@container ${className}`} {...rest}><BracketKey where="legend" />{legendText(stale)}</p>
+const Legend = ({ stale, split = false, className, ...rest }) => (
+  <p className={`@container ${className}`} {...rest}><BracketKey where="legend" hide={split} />{legendText(stale)}</p>
 );
 
 // The man <-> woman dome (owner's choice 2026-10-25; three parts adding to
@@ -468,7 +475,7 @@ function HeardAsAxis({ axis }) {
             data-bracket-lo={axis.bracket[0]} data-bracket-hi={axis.bracket[1]} data-bracket-side={axis.side} />
         )}
       </svg>
-      <DomeKey />
+      <DomeKey split={axis.split} />
     </div>
   );
 }
@@ -659,7 +666,7 @@ export function HeardAsPanel({
               {!view.pitchOnly && extraNote != null && extraNote !== false && (
                 <div className="mt-1 text-[11px] leading-snug text-amber-200/80 heardrow:col-[1/-1] heardrow:row-start-5" data-heard-as-note="extra">{extraNote}</div>
               )}
-              <Legend stale={stale} className={`${LEGEND_CLS} text-neutral-400`} data-heard-as-legend="" />
+              <Legend stale={stale} split={view.axis.split} className={`${LEGEND_CLS} text-neutral-400`} data-heard-as-legend="" />
             </div>
           )}
         </div>
@@ -690,7 +697,7 @@ export function HeardAsPanel({
           <li>Within clearly feminine or clearly masculine voices it does not track small changes — use the pitch and resonance meters for those.</li>
           <li>It uses only your pitch and a voice classifier; it ignores intonation, vocal weight and articulation.</li>
           <li data-heard-as-range-limits="">{RANGE_LIMITS_TEXT}</li>
-          <li data-heard-as-arc-more="">The arc shows the panel&apos;s best guess in tenths of listeners that add up to 10: would say man from the left, would say woman from the right, and those who might be unsure or say neither in grey between — the words give the same numbers. The thin bracket outside the arc marks where the edge of the larger part could fall: about 8 in 10 published listener groups fell inside it for clearly feminine or clearly masculine voices; less is known for in-between voices. When the two sides are within a tenth of each other, or the range covers most of the arc, the arc is striped and says &ldquo;Could go either way&rdquo;. The &ldquo;unsure or neither&rdquo; part counts listeners who answered &ldquo;another gender&rdquo; as well as those who weren&apos;t sure, and depends on how listeners are asked.</li>
+          <li data-heard-as-arc-more="">The arc shows the panel&apos;s best guess in tenths of listeners that add up to 10: would say man from the left, would say woman from the right, and those who might be unsure or say neither in grey between — the words give the same numbers. The thin bracket outside the arc marks where the edge of the larger part could fall: about 8 in 10 published listener groups fell inside it for clearly feminine or clearly masculine voices; less is known for in-between voices. When the two sides are within a tenth of each other, or the estimate is too uncertain to lean either way, the arc is striped and says &ldquo;Could go either way&rdquo;. The &ldquo;unsure or neither&rdquo; part counts listeners who answered &ldquo;another gender&rdquo; as well as those who weren&apos;t sure, and depends on how listeners are asked.</li>
           <li data-heard-as-noise="">{NOISE_TEXT}</li>
           <li>Nothing is stored or sent anywhere; it is computed on this device and forgotten when you stop.</li>
         </ul>

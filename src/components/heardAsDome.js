@@ -1,8 +1,8 @@
 // heardAsDome.js — the "Likely heard as" DOME (owner's choice 2026-10-25: the
 // "Twin columns" meters with the "Gauges" mockup's Likely-heard-as panel). It
 // replaced the 2026-10-20 split bar as the panel's drawing; the model —
-// numbers, words, screen-reader text — is still heardAsAxisModel.js,
-// unchanged. Pure numbers only (no React), so tests/ml/heard-as-dome-test.js
+// numbers, words, screen-reader text — is heardAsAxisModel.js (three parts
+// adding to 10 since 2026-10-26). Pure numbers only (no React), so tests/ml/heard-as-dome-test.js
 // checks them in Node.
 //
 // A semicircle from "would say man" (LEFT foot) to "would say woman" (RIGHT
@@ -86,4 +86,6 @@ export function domeLines(text) {
 /** The words beside the grey and bracket keys under the dome (the end words
  * are heardAsAxisModel.js's AXIS_ENDS). */
 export const UNSURE_WORDS = "unsure or neither";
+/** Split readings: the grey key's slot shows the stripes instead. */
+export const SPLIT_WORDS = "could go either way";
 export const BRACKET_WORDS = "likely range";
