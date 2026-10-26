@@ -20,9 +20,18 @@
 //                   the meters share the height beside the trace); each reads
 //                   upwards ("higher" / "brighter" above the track, "lower" /
 //                   "darker" below, the typical women's band above the men's);
-//                   every strip button's hit area >= 44 x 44 px. While live, a
+//                   every strip and heard-as panel button's hit area >= 44 x 44
+//                   px, hit-tested (elementFromPoint over every point of its
+//                   ::before box; 2026-10-26: the sum of the insets missed the
+//                   meter box covering the "i" buttons' lower rows and the
+//                   ::before being placed from the padding box). While live, a
 //                   thumb sits inside the target outline exactly when its value
-//                   is inside the target range (both columns).
+//                   is inside the target range (both columns). DESKTOP ALSO
+//                   (2026-10-26 review): at laptop sizes 1366 x 657, 1280 x 690
+//                   and 1280 x 720 (the heard-as panel in its row layout) the
+//                   right-hand column has no inner scroll and the caveat's More
+//                   is above the dock; at 1280 x 460 (lg and short landscape at
+//                   once) both meters are >= 100 px tall.
 //                   INFO POPOVERS: each row's "i" and the steadiness "i" open a
 //                   popover whose text wraps inside it (scrollWidth <=
 //                   clientWidth) and that is on top at its centre and inside
@@ -100,9 +109,12 @@
 //                   estimate in its own slot directly under the axis, with the
 //                   shipped words, as the only note, mirrored in the
 //                   always-mounted live region; on the first screen at
-//                   scrollTop 0 (desktop; elsewhere wherever the dome is —
-//                   on phones the dome may follow the twin columns below the
-//                   first screen since 2026-10-25); kept on >= 80 % of shown
+//                   scrollTop 0 (desktop; elsewhere whenever any line of the
+//                   dome's sentence is — on phones the dome follows the twin
+//                   columns below the first screen since 2026-10-25, its
+//                   sentence below the dock; 2026-10-26: the rule asked for
+//                   the whole dome, so a sentence line sliced by the dock with
+//                   the warning below passed); kept on >= 80 % of shown
 //                   estimates in the next 20 s.
 //   (--pitch-only-late=man,woman) pitch-only-late-<who>  a §8.8 hcsL session
 //                   (>= 170 s natural reading, then the pitch moved with the
@@ -349,18 +361,58 @@ const layout = (page) => page.evaluate(() => {
       endTop: mid(c.querySelector('[data-cue-end="top"]')), endBottom: mid(c.querySelector('[data-cue-end="bottom"]')),
       men: mid(c.querySelector('[data-cue-band="men"] rect')), women: mid(c.querySelector('[data-cue-band="women"] rect')) }];
   }));
-  // Hit areas: the button's box grown by its ::before overhang (the "i" toggles).
-  const hits = [...document.querySelectorAll("[data-cue-strip] button")].map((b) => {
-    const r = b.getBoundingClientRect(), cs = getComputedStyle(b, "::before");
-    const px = (v) => (cs.content && cs.content !== "none" && cs.position === "absolute" ? -parseFloat(v) || 0 : 0);
-    return { label: b.getAttribute("aria-label") ?? b.textContent.trim(), w: Math.round(r.width + px(cs.left) + px(cs.right)), h: Math.round(r.height + px(cs.top) + px(cs.bottom)) };
-  });
-  return { vh: innerHeight, vw: innerWidth, trace, strip, cols, hits, scrollW: document.documentElement.scrollWidth, clipped,
+  return { vh: innerHeight, vw: innerWidth, trace, strip, cols, scrollW: document.documentElement.scrollWidth, clipped,
     scrollH: Math.max(document.documentElement.scrollHeight, ...[...document.querySelectorAll("main, [data-dashboard]")].map((e) => e.scrollHeight)),
     panel: r("[data-heard-as]"), session: r("[data-practice-dock]") };
 });
 // In the first screen = above the practice dock pinned at the bottom.
 const inView = (b, L) => b && b.top >= 0 && b.bottom <= (L.session ? L.session.top + 0.5 : L.vh) && b.left >= 0 && b.right <= L.vw;
+
+// Hit areas, hit-tested: each strip / heard-as panel button scrolled into
+// view, its ::before box (placed from the button's padding box, grown by the
+// insets) sampled at every pixel centre with elementFromPoint; every point
+// must land on the button. Scrolls back to the top afterwards.
+const hitAreas = (page) => page.evaluate(() => {
+  const out = [...document.querySelectorAll("[data-cue-strip] button, [data-heard-as] button")].map((b) => {
+    b.scrollIntoView({ block: "center" });
+    const r = b.getBoundingClientRect(), cs = getComputedStyle(b, "::before"), bs = getComputedStyle(b);
+    const on = cs.content && cs.content !== "none" && cs.position === "absolute";
+    const ins = (v) => (on ? -parseFloat(v) || 0 : 0), bw = (k) => parseFloat(bs[k]) || 0;
+    const box = on
+      ? { l: r.left + bw("borderLeftWidth") - ins(cs.left), r: r.right - bw("borderRightWidth") + ins(cs.right), t: r.top + bw("borderTopWidth") - ins(cs.top), b: r.bottom - bw("borderBottomWidth") + ins(cs.bottom) }
+      : { l: r.left, r: r.right, t: r.top, b: r.bottom };
+    let n = 0, hit = 0;
+    const miss = new Set();
+    for (let y = Math.ceil(box.t) + 0.5; y < box.b; y += 1) {
+      for (let x = Math.ceil(box.l) + 0.5; x < box.r; x += 1) {
+        n++;
+        const e = document.elementFromPoint(x, y);
+        if (e && (e === b || b.contains(e))) hit++;
+        else miss.add(e ? `${e.tagName.toLowerCase()}${e.getAttributeNames().filter((a) => a.startsWith("data-")).map((a) => `[${a}]`).join("")}` : "outside");
+      }
+    }
+    return { label: b.getAttribute("aria-label") ?? b.textContent.trim(), w: Math.round(box.r - box.l), h: Math.round(box.b - box.t), hit: n ? hit / n : 0, miss: [...miss].slice(0, 3) };
+  });
+  for (const e of document.querySelectorAll("*")) if (e.scrollTop > 0) e.scrollTop = 0;
+  window.scrollTo(0, 0);
+  return out;
+});
+
+// Desktop at laptop sizes: the right-hand column (data-cue-column) never
+// scrolls inside, the caveat's More is above the practice dock, the meters'
+// heights. (The panel keeps one height in every state, so whatever it shows
+// now stands for all of them.)
+const desktopColumn = (page) => page.evaluate(() => {
+  for (const e of document.querySelectorAll("*")) if (e.scrollTop > 0) e.scrollTop = 0;
+  const col = document.querySelector("[data-cue-column]");
+  const more = [...document.querySelectorAll("[data-heard-as] button")].find((b) => /More|Less/.test(b.textContent));
+  const dock = document.querySelector("[data-practice-dock]")?.getBoundingClientRect();
+  const mr = more?.getBoundingClientRect();
+  return { vw: innerWidth, vh: innerHeight, sh: col?.scrollHeight ?? null, ch: col?.clientHeight ?? null,
+    meters: [...document.querySelectorAll("[data-cue-meter]")].map((m) => Math.round(m.getBoundingClientRect().height)),
+    more: mr ? Math.round(mr.bottom) : null, dock: dock ? Math.round(dock.top) : null,
+    row: document.querySelector("[data-heard-as] [data-heard-as-body]") ? getComputedStyle(document.querySelector("[data-heard-as] [data-heard-as-body] > div")).display : null };
+});
 
 // Opens one info toggle (by its aria-label), measures its popover, closes it.
 const probePopover = (page, label) => page.evaluate(async (label) => {
@@ -569,7 +621,29 @@ await sleep(600);
     const up = (c) => !!c && c.endTop < c.trackTop && c.endBottom > c.trackBottom && c.women !== null && c.men !== null && c.women < c.men;
     check("layout: both columns read upwards ('higher' / 'brighter' above the track, the typical women's band above the men's)",
       up(p) && (up(r) || (r && r.men === null)), JSON.stringify(L.cols));
-    check("touch targets: every strip button's hit area >= 44 x 44 px", L.hits.length >= 3 && L.hits.every((b) => b.w >= 44 && b.h >= 44), JSON.stringify(L.hits));
+    const hits = await hitAreas(page);
+    check("touch targets: every strip and heard-as panel button's hit area >= 44 x 44 px, every point of it hit-tested on the button",
+      hits.length >= 4 && hits.every((b) => b.w >= 44 && b.h >= 44 && b.hit === 1), JSON.stringify(hits));
+  }
+  if (VIEWPORT === "desktop") {
+    for (const [w, h] of [[1366, 657], [1280, 690], [1280, 720]]) {
+      await page.setViewport({ ...VIEWPORTS.desktop, width: w, height: h });
+      await sleep(600);
+      const d = await desktopColumn(page);
+      await shot(page, `01c-desktop-${w}x${h}`);
+      check(`desktop ${w} x ${h}: the right-hand column has no inner scroll (heard-as panel in its row layout), More above the dock, meters >= 120 px`,
+        d.sh !== null && d.sh <= d.ch + 1 && d.more !== null && d.dock !== null && d.more <= d.dock && d.meters.length === 2 && d.meters.every((m) => m >= 120), JSON.stringify(d));
+    }
+    await page.setViewport({ ...VIEWPORTS.desktop, width: 1280, height: 460 });
+    await sleep(600);
+    {
+      const d = await desktopColumn(page);
+      await shot(page, "01c-desktop-1280x460");
+      check("desktop 1280 x 460 (lg and short landscape at once): both meters drawn, >= 100 px tall (the column may scroll)",
+        d.meters.length === 2 && d.meters.every((m) => m >= 100), JSON.stringify(d));
+    }
+    await page.setViewport(VIEWPORTS.desktop);
+    await sleep(600);
   }
   log(`  first visit (panel on by default): trace ${L.trace?.top}-${L.trace?.bottom}, strip ${L.strip?.top}-${L.strip?.bottom}, panel ${L.panel?.top}-${L.panel?.bottom}, session ${L.session?.top}-${L.session?.bottom}, vh ${L.vh}, scrollH ${L.scrollH}`);
 }
@@ -823,24 +897,30 @@ for (const who of PITCH_ONLY) {
     const fold = await page.evaluate(() => {
       window.scrollTo(0, 0);
       for (const e of document.querySelectorAll("*")) if (e.scrollTop > 0) e.scrollTop = 0;
-      const n = document.querySelector("[data-pitch-only]"), a = document.querySelector("[data-heard-as-axis]");
+      const n = document.querySelector("[data-pitch-only]");
       if (!n) return null;
-      // the practice dock pinned under the tab content
+      // the practice dock pinned under the tab content, or the scroll area's bottom if that is higher
       const bar = document.querySelector("[data-practice-dock]");
-      const limit = bar ? bar.getBoundingClientRect().top : innerHeight;
-      const r = n.getBoundingClientRect(), ra = a?.getBoundingClientRect();
+      let sc = n.parentElement;
+      while (sc && !["auto", "scroll"].includes(getComputedStyle(sc).overflowY)) sc = sc.parentElement;
+      const limit = Math.min(bar ? bar.getBoundingClientRect().top : innerHeight, sc ? sc.getBoundingClientRect().bottom : innerHeight);
+      const r = n.getBoundingClientRect();
+      // any line of the dome's sentence (its text, not the line box) above the fold
+      const lines = [...document.querySelectorAll("[data-heard-as-range] > span")].map((e) => { const g = document.createRange(); g.selectNodeContents(e); return g.getBoundingClientRect(); });
       return { top: Math.round(r.top), bottom: Math.round(r.bottom), limit: Math.round(limit), inView: r.top >= 0 && r.bottom <= limit + 0.5,
-        axisInView: !!ra && ra.top >= 0 && ra.bottom <= limit + 0.5 };
+        sentenceLines: lines.map((l) => [Math.round(l.top), Math.round(l.bottom)]), sentenceShows: lines.some((l) => l.top + 3 < limit && l.bottom > 0) };
     });
     await sleep(150);
     await shot(page, `05c-pitch-only-${who}-first-screen`);
     log(`  pitch-only ${who} at scrollTop 0: ${JSON.stringify(fold)}`);
-    // Phones since 2026-10-25: the twin columns fill the first screen and the dome may follow below it (owner's
-    // choice), so on every phone size the rule is the conditional one; desktop keeps the dome in the right column.
+    // Phones since 2026-10-25: the twin columns fill the first screen and the dome follows below it (owner's
+    // choice), so on every phone size the rule is the conditional one — wherever users can read any of the
+    // sentence at scrollTop 0, they can read the warning too (2026-10-26: it asked for the whole dome and key row,
+    // so a sentence line sliced by the dock with the warning below passed); desktop keeps the dome in the right column.
     if (VIEWPORT === "desktop") {
       check(`pitch-only ${who}: the warning is on the first screen (scrollTop 0, above the bottom bar)`, !!fold?.inView, JSON.stringify(fold));
     } else {
-      check(`pitch-only ${who}: wherever the dome (with its key row) is on the first screen, so is the warning`, !!fold && (!fold.axisInView || fold.inView), JSON.stringify(fold));
+      check(`pitch-only ${who}: whenever any line of the dome's sentence is on the first screen, so is the warning`, !!fold && (!fold.sentenceShows || fold.inView), JSON.stringify(fold));
     }
     // Hold through brief hides: shown estimates in the next 20 s that carry it.
     let shownAfter = 0, warnedAfter = 0, wideWarned = 0;

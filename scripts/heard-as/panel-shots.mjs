@@ -6,9 +6,13 @@
 // panel's real drawing path; no network, the voice model is never fetched).
 //
 //   npm run build && node scripts/heard-as/panel-shots.mjs [--out=build/heard-as-panel-shots]
-//        [--states=mostly-man,mixed,...] [--viewports=p360,p448,desktop] [--schemes=dark,light]
+//        [--states=mostly-man,mixed,...] [--viewports=p360,p448,desktop,dshort,land] [--schemes=dark,light]
 //        [--forced-colors=1] [--css=<extra css to inject, e.g. to hide a part>] [--suffix=]
 //
+// dshort (1366 x 657) and land (890 x 448) show the panel's row layout (the
+// dome at the left, its key, unsure line and legend beside it; 2026-10-26).
+// --forced-colors=1 with --schemes=light is the light Windows contrast theme
+// (the cue strip's SVG words in CanvasText, its target in Highlight).
 // Writes <out>/<viewport>-<scheme>-<state>.png (the viewport, panel centred)
 // and <out>/panel-boxes.json (the panel's height and the practice dock's
 // top per state — the one-height check is in lab-layout-smoke.mjs).
@@ -40,6 +44,8 @@ const ALL_VIEWPORTS = {
   p360: { width: 360, height: 690, deviceScaleFactor: 2, isMobile: true, hasTouch: true },
   p448: { width: 448, height: 890, deviceScaleFactor: 2, isMobile: true, hasTouch: true },
   desktop: { width: 1280, height: 800, deviceScaleFactor: 1 },
+  dshort: { width: 1366, height: 657, deviceScaleFactor: 1 },
+  land: { width: 890, height: 448, deviceScaleFactor: 2, isMobile: true, hasTouch: true },
 };
 const VIEWPORTS = Object.fromEntries(arg("viewports", Object.keys(ALL_VIEWPORTS).join(",")).split(",").map((k) => [k, ALL_VIEWPORTS[k]]));
 const CHROME = ["C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",

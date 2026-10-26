@@ -40,7 +40,10 @@
 //     pitch-only note — its room is reserved from switch-on, review
 //     2026-10-20): the dome (the bar until 2026-10-25) is on screen in every state, and the panel's box,
 //     its buttons, the practice dock (record, notes, Mic off) keep
-//     their boxes (<= 0.5 px).
+//     their boxes (<= 0.5 px). Part 5 also runs at 1366 x 657 (a short
+//     desktop) and 890 x 448 (short landscape), where the panel is in its row
+//     layout (the dome at the left, its key, unsure line and legend beside
+//     it; 2026-10-26), so the one-height rule is checked there too.
 // Screenshots of each part in both states go to <out>/<viewport>-<part>-<state>.png.
 //
 // Process hygiene (CLAUDE.md hard rule 2): Chrome is launched by puppeteer with a fresh
@@ -76,6 +79,11 @@ const VIEWPORTS = {
   p360: { width: 360, height: 690, deviceScaleFactor: 2, isMobile: true, hasTouch: true },
   p448: { width: 448, height: 890, deviceScaleFactor: 2, isMobile: true, hasTouch: true },
   desktop: { width: 1280, height: 800, deviceScaleFactor: 1 },
+};
+// Part 5 only: the heard-as panel's row layout (HeardAsPanel.jsx, heardrow).
+const FORCED_ONLY_VIEWPORTS = {
+  dshort: { width: 1366, height: 657, deviceScaleFactor: 1 },
+  land: { width: 890, height: 448, deviceScaleFactor: 2, isMobile: true, hasTouch: true },
 };
 
 // speechS of speech / gapS of silence, repeated, from the source WAV (PCM 16-bit mono).
@@ -428,7 +436,7 @@ if (FORCED) {
     args: ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream", "--autoplay-policy=no-user-gesture-required", ...CHROME_BLOCK_MODEL_ARGS],
   });
   const STATES = allPanelStates();
-  for (const [vp, viewport] of Object.entries(VIEWPORTS)) {
+  for (const [vp, viewport] of Object.entries({ ...VIEWPORTS, ...FORCED_ONLY_VIEWPORTS })) {
     const errors = [];
     const page = await openPage(viewport, errors);
     const listening = await startListening(page);
