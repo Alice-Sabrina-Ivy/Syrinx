@@ -366,6 +366,9 @@ async function partFlow(v) {
   await sleep(400);
   const reply = await page.evaluate(() => document.querySelector("[data-feel-reply]").textContent);
   check("the feel answer saves", reply === "Saved.", reply);
+  // 2026-10-27 (Juni comparison fixes): a practice lesson offers the next practice lesson and the cool-down
+  const after = await page.evaluate(() => ({ next: document.querySelector("[data-next-lesson]")?.dataset.nextLesson ?? null, cool: !!document.querySelector("[data-cool-down]") }));
+  check("after a practice lesson: Next is the next practice lesson (R1), and the cool-down is offered too", after.next === "R1" && after.cool, JSON.stringify(after));
   await page.screenshot({ path: path.join(OUT, `${v}-flow-P6-result.png`) });
   await clickSel(page, "[data-card-next]"); // "Lessons" on the result card
   await page.waitForSelector("[data-exercises-list]", { timeout: 10000 });
@@ -400,6 +403,22 @@ async function partFlow(v) {
   const rows2 = await savedRows(page);
   check("…and opens it; two runs = exactly two saved rows, the second strained",
     rows2?.length === 2 && rows2.filter((r) => r.feel === "strained").length === 1, JSON.stringify(rows2?.map((r) => r.feel)));
+  // the cool-down's chart is neutral: no band, the level line judges nothing (2026-10-27)
+  await goToCard(page, "Sighs");
+  await sleep(1500);
+  const sighs = await page.evaluate(() => ({ neutral: document.querySelector("[data-live-view]")?.dataset.liveNeutral ?? null,
+    status: document.querySelector("[data-level-line]")?.dataset.levelStatus ?? "none", text: document.querySelector("[data-level-line]")?.textContent ?? "" }));
+  check("the cool-down's sigh chart is neutral: no band, no in / out-of-band words", sighs.neutral === "1" && sighs.status === "none" && !/band/.test(sighs.text), JSON.stringify(sighs));
+  await goToCard(page, "How did it go?");
+  await clickSel(page, '[data-feel-answer="easy"]');
+  await sleep(300);
+  check("after the cool-down: no next lesson and no cool-down button", !(await page.$("[data-next-lesson]")) && !(await page.$("[data-cool-down]")));
+  await openLesson(page, "W1");
+  await goToCard(page, "How did it go?");
+  await clickSel(page, '[data-feel-answer="easy"]');
+  await sleep(300);
+  const w1next = await page.evaluate(() => document.querySelector("[data-next-lesson]")?.dataset.nextLesson ?? null);
+  check("after the warm-up: Next is the first practice lesson, not the cool-down", w1next === "P5", String(w1next));
 
   // Tongue and lips: two takes
   await openLesson(page, "R3");
@@ -440,6 +459,16 @@ async function partFlow(v) {
   await sleep(300);
   check("…and the brighter version plays", (await page.evaluate(() => document.querySelector('[data-play="hear-10"]').getAttribute("aria-pressed"))) === "true");
   await page.screenshot({ path: path.join(OUT, `${v}-flow-R4-listen.png`) });
+  // nothing plays while a take records (no echo cancellation: the mic would record the playback; 2026-10-27)
+  await goToCard(page, "Your try");
+  await clickSel(page, '[data-take="try"] [data-take-record]');
+  await sleep(600);
+  const whileRec = await page.evaluate(() => [...document.querySelectorAll("[data-card-tool] [data-play]")].map((b) => `${b.dataset.play}:${b.disabled ? "off" : "on"}`));
+  check("Your try recording: every play button is off meanwhile", whileRec.length >= 3 && whileRec.every((x) => x.endsWith(":off")), whileRec.join());
+  await clickSel(page, '[data-take="try"] [data-take-stop]');
+  await sleep(400);
+  const afterRec = await page.evaluate(() => [...document.querySelectorAll("[data-card-tool] [data-play]")].map((b) => `${b.dataset.play}:${b.disabled ? "off" : "on"}`));
+  check("…and on again once it stops", afterRec.every((x) => x.endsWith(":on")), afterRec.join());
   check("no page errors", errors.length === 0, errors.slice(0, 3).join(" | "));
   await page.close();
 }

@@ -19,7 +19,7 @@ import { hzToNote } from "../utils/pitchUtils.js";
 import { getVoicePreviewCapture, onVoicePreviewCapture } from "../voice-preview/bridge.js";
 import { setExerciseFrameTap } from "./bridge.js";
 import {
-  LESSONS, GROUPS, LESSON_ORDER, UI, forDir, cardsFor, takesFor, hearShifts, lastDoneText,
+  LESSONS, GROUPS, PRACTICE, nextLessonAfter, UI, forDir, cardsFor, takesFor, hearShifts, lastDoneText,
 } from "./lessons.js";
 import { countResult } from "./results.js";
 import { saveResult, updateResult, lastDoneByLesson, recentResults } from "./store.js";
@@ -66,10 +66,10 @@ function Paragraphs({ items }) {
   return items.map((p, i) => <p key={i} className="mt-2 text-sm leading-relaxed text-neutral-200">{p}</p>);
 }
 
-function MicPrompt({ onStartListening }) {
+function MicPrompt({ onStartListening, optional = false }) {
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-neutral-700 bg-neutral-800/50 px-3 py-2" data-mic-prompt="">
-      <p className="text-sm text-neutral-300">{UI.micOff}</p>
+      <p className="text-sm text-neutral-300">{optional ? UI.micOffOptional : UI.micOff}</p>
       <button type="button" className={BTN_PRIMARY} onClick={onStartListening}>{UI.turnOnMic}</button>
     </div>
   );
@@ -206,10 +206,11 @@ function MeasureLine({ cardIndex }) {
 }
 
 function LiveView({ card, cardIndex, listening, onStartListening, pipeline, direction }) {
-  if (!listening) return <MicPrompt onStartListening={onStartListening} />;
-  const target = pitchTargetFor(direction);
+  if (!listening) return <MicPrompt onStartListening={onStartListening} optional={!!card.live?.optional} />;
+  // a neutral card (the cool-down) draws no band and judges nothing
+  const target = card.live?.neutral ? null : pitchTargetFor(direction);
   return (
-    <div className="space-y-1" data-live-view="">
+    <div className="space-y-1" data-live-view="" data-live-neutral={card.live?.neutral ? "1" : undefined}>
       <div className="h-[clamp(110px,22dvh,240px)] shortland:h-20">
         <PitchTrace
           compact
@@ -257,7 +258,8 @@ function TakeRow({ take, listening, sessionRec, s, many }) {
             {has ? UI.recordAgain : UI.record}
           </button>
         ))}
-      <PlayButton name={take.id} label={take.label} take={has} blocked={sessionRec || !!rec} short />
+      {/* nothing plays while any take records (no echo cancellation: the mic would record it) */}
+      <PlayButton name={take.id} label={take.label} take={has} blocked={sessionRec || !!s.recording} short />
     </div>
   );
 }
@@ -275,7 +277,7 @@ function RecordCard({ card, direction, listening, onStartListening, isSessionRec
       <div>
         {card.takes.map((t) => <TakeRow key={t.id} take={t} listening={listening} sessionRec={sessionRec} s={s} many={card.takes.length > 1} />)}
       </div>
-      {card.compareWithHear && <HearVersions direction={direction} sessionRec={sessionRec} withTitle />}
+      {card.compareWithHear && <HearVersions direction={direction} sessionRec={sessionRec} recording={!!s.recording} withTitle />}
       <SessionGuard sessionRec={sessionRec} />
     </div>
   );
@@ -305,7 +307,8 @@ function useHearState() {
   return [hear, h];
 }
 
-function HearVersions({ direction, sessionRec, withTitle = false }) {
+/** `recording`: a take is being recorded — nothing plays meanwhile (the mic would record it; no echo cancellation). */
+function HearVersions({ direction, sessionRec, recording = false, withTitle = false }) {
   const [hear, h] = useHearState();
   useEffect(() => { hear?.setShifts(hearShifts(direction)); }, [hear, direction]);
   if (!hear || !h || !h.original) {
@@ -317,9 +320,9 @@ function HearVersions({ direction, sessionRec, withTitle = false }) {
   return (
     <div className={withTitle ? "mt-2" : ""} data-hear-versions="">
       <div className="flex flex-wrap gap-2">
-        <PlayButton name="hear-original" label={UI.yourRecording} take={h.original} blocked={sessionRec} />
+        <PlayButton name="hear-original" label={UI.yourRecording} take={h.original} blocked={sessionRec || recording} />
         {shifts.map((pct) => (
-          <PlayButton key={pct} name={`hear-${pct}`} label={pct > 0 ? UI.brighter : UI.darker} take={h.versions[pct]} blocked={sessionRec} />
+          <PlayButton key={pct} name={`hear-${pct}`} label={pct > 0 ? UI.brighter : UI.darker} take={h.versions[pct]} blocked={sessionRec || recording} />
         ))}
       </div>
       {missing && <p className="mt-2 text-xs text-neutral-300" aria-live="polite">{UI.preparing}</p>}
@@ -455,9 +458,13 @@ function ResultCard({ lesson, direction, sessionId, s, onOpen }) {
     return () => { live = false; };
   }, [lesson, s.rowId]);
 
-  const nextId = LESSON_ORDER[LESSON_ORDER.indexOf(lesson.id) + 1];
-  const showCoolDown = s.feel === "strained" && lesson.id !== "W2" && lesson.id !== "S1";
-  const showNext = nextId && s.feel !== "strained" && (s.feel != null || !byFeel);
+  // Next follows S1 -> warm-up -> practice lessons (nextLessonAfter); every practice lesson also
+  // offers the cool-down ("finish with the cool-down", S1), first and alone after "Strained".
+  const nextId = nextLessonAfter(lesson.id);
+  const answered = s.feel != null || !byFeel;
+  const strained = s.feel === "strained";
+  const showCoolDown = (strained && lesson.id !== "W2" && lesson.id !== "S1") || (answered && PRACTICE.includes(lesson.id));
+  const showNext = nextId && answered && !strained;
 
   let lines;
   if (lesson.measures) {
@@ -496,12 +503,13 @@ function ResultCard({ lesson, direction, sessionId, s, onOpen }) {
       <p className="mt-3 text-sm text-neutral-200" role="status" data-feel-reply="">{s.feel ? UI.feelReply[s.feel] : ""}</p>
       {(showCoolDown || showNext) && (
         <div className="mt-3 flex flex-wrap gap-2">
-          {showCoolDown && <button type="button" className={BTN_PRIMARY} onClick={() => onOpen("W2")} data-cool-down="">{UI.coolDownNow}</button>}
+          {showCoolDown && strained && <button type="button" className={BTN_PRIMARY} onClick={() => onOpen("W2")} data-cool-down="">{UI.coolDownNow}</button>}
           {showNext && (
             <button type="button" className={BTN_SOFT} onClick={() => onOpen(nextId)} data-next-lesson={nextId}>
               {UI.nextLesson(forDir(LESSONS[nextId].title, direction))}
             </button>
           )}
+          {showCoolDown && !strained && <button type="button" className={BTN_SOFT} onClick={() => onOpen("W2")} data-cool-down="">{UI.coolDownNow}</button>}
         </div>
       )}
     </div>
@@ -516,6 +524,7 @@ function CardBody({ card, lesson, direction }) {
   const fill = (t) => (typeof t === "string" ? t.replace("{band}", band) : t);
   const body = forDir(card.body ?? [], direction).map(fill);
   const list = card.list ? forDir(card.list, direction) : null;
+  const after = card.after ? forDir(card.after, direction) : [];
   const safety = card.safety ? forDir(card.safety, direction) : null;
   const troubleshooting = card.troubleshooting ? forDir(card.troubleshooting, direction) : [];
   // The safety box uses the app's existing amber classes (the "Experimental" tag), so the
@@ -534,6 +543,7 @@ function CardBody({ card, lesson, direction }) {
           {list.map((x, i) => <li key={i}>{x}</li>)}
         </ul>
       )}
+      <Paragraphs items={after} />
       {troubleshooting.length > 0 && (
         <>
           <h3 className="mt-3 text-xs font-medium uppercase tracking-wide text-neutral-400">{UI.ifNot}</h3>

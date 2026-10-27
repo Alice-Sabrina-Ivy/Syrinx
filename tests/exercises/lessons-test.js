@@ -17,7 +17,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   LESSONS, GROUPS, LESSON_ORDER, UI, SAFETY, SENTENCE, DIRECTIONS, forDir, cardsFor, takesFor,
-  hearShifts, lastDoneText,
+  hearShifts, lastDoneText, PRACTICE, nextLessonAfter,
 } from "../../src/exercises/lessons.js";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -43,6 +43,7 @@ function lessonStrings(lesson, dir) {
     push(forDir(c.title, dir));
     push(forDir(c.body, dir));
     push(forDir(c.list, dir));
+    push(forDir(c.after, dir));
     push(forDir(c.safety, dir));
     push(forDir(c.troubleshooting, dir));
     for (const t of c.takes ?? []) push(t.label);
@@ -73,7 +74,7 @@ for (const id of LESSON_ORDER) {
     const tag = `${id} / ${dir ?? "no goal"}`;
     const title = forDir(L.title, dir), purpose = forDir(L.purpose, dir);
     const cards = cardsFor(L, dir);
-    const empty = cards.filter((c) => forDir(c.body ?? [], dir).length === 0);
+    const empty = cards.filter((c) => forDir(c.body ?? [], dir).length === 0 && forDir(c.list ?? [], dir).length === 0);
     if (!title || !purpose || empty.length || strs.some((x) => !x.trim())) {
       check(`${tag}: title, purpose and a body on every card`, false, empty.map((c) => c.title ?? c.kind).join(", "));
     }
@@ -135,6 +136,22 @@ check("every lesson is in exactly one group, in the list order", GROUPS.flatMap(
 check("the first version's lessons (no new measurement needed)", LESSON_ORDER.join() === "S1,W1,W2,P5,P6,R1,R2,R3,R4");
 check("only P6 measures", LESSON_ORDER.filter((id) => LESSONS[id].measures).join() === "P6"
   && LESSON_ORDER.every((id) => cardsFor(LESSONS[id], "feminine").every((c) => !c.live?.measure || LESSONS[id].measures)));
+
+console.log("\nlesson order and the cool-down (Juni comparison fixes, 2026-10-27)");
+check("Next: safety -> warm-up -> first practice lesson -> each practice lesson in turn; nothing after the cool-down or the last one",
+  nextLessonAfter("S1") === "W1" && nextLessonAfter("W1") === PRACTICE[0] && nextLessonAfter("W2") === null
+  && PRACTICE.every((id, i) => nextLessonAfter(id) === (PRACTICE[i + 1] ?? null)));
+check("the warm-up never leads straight into the cool-down", nextLessonAfter("W1") !== "W2" && !PRACTICE.includes("W1") && !PRACTICE.includes("W2"));
+{
+  const live = cardsFor(LESSONS.W2, "feminine").filter((c) => c.kind === "live");
+  check("the cool-down's live card is neutral (no band, never judged) and optional", live.length === 1 && live[0].live.neutral === true && live[0].live.optional === true);
+  const pitchLive = ["P5", "P6"].flatMap((id) => cardsFor(LESSONS[id], "feminine").filter((c) => c.kind === "live"));
+  check("the pitch lessons' live cards keep the band", pitchLive.length === 4 && pitchLive.every((c) => !c.live.neutral));
+}
+{
+  const c = cardsFor(LESSONS.S1, "feminine").find((x) => x.list);
+  check("S1: the stop signs come right under their heading (the rest after the list)", c && !c.body && Array.isArray(c.after) && c.after.length > 0);
+}
 
 console.log("\nforDir");
 check("string passes through", forDir("x", "feminine") === "x");

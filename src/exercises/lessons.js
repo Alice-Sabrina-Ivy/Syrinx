@@ -91,7 +91,8 @@ export const LESSONS = Object.freeze({
           "your voice cracking or cutting out more than usual",
           "hoarseness, or a tired voice the next morning",
         ],
-        body: [
+        // shown after the list (the list belongs right under the heading)
+        after: [
           "Rest means a break from practice and an easy, everyday speaking voice. Drink some water, and swallow or sip instead of clearing your throat.",
           "Skip practice while you have a cold or a sore throat.",
         ],
@@ -192,7 +193,8 @@ export const LESSONS = Object.freeze({
       {
         kind: "live",
         title: "Sighs",
-        live: { optional: true },
+        // neutral: no band and no on / off-target colour — a cool-down is never judged
+        live: { optional: true, neutral: true },
         body: [
           "Let the breath out on a gentle, voiced sigh that falls from a comfortable high note to a low one, like the “haaah” when you sit down after a long day. Do five, with a slow breath between them.",
           "Let each sigh fade out before it gets creaky. You don't need to reach the bottom of your voice.",
@@ -648,6 +650,20 @@ export function hearShifts(direction) {
   return [HEAR_SHIFT_PCT, -HEAR_SHIFT_PCT];
 }
 
+/** The practice lessons, in order (the warm-up leads into the first; each offers the cool-down). */
+export const PRACTICE = Object.freeze(["P5", "P6", "R1", "R2", "R3", "R4"]);
+
+/**
+ * The lesson a result card offers next: S1 -> the warm-up -> the first practice lesson -> the
+ * next practice lesson; nothing after the last one or after the cool-down (it ends a practice).
+ */
+export function nextLessonAfter(id) {
+  if (id === "S1") return "W1";
+  if (id === "W1") return PRACTICE[0];
+  const i = PRACTICE.indexOf(id);
+  return i >= 0 && i + 1 < PRACTICE.length ? PRACTICE[i + 1] : null;
+}
+
 export const GROUPS = Object.freeze([
   { id: "start", title: "Start here", lessons: ["S1"] },
   { id: "warm", title: "Warm-up and cool-down", lessons: ["W1", "W2"] },
@@ -692,6 +708,7 @@ export const UI = Object.freeze({
   ifNot: "If it isn't working",
   safetyTitle: "Safety",
   micOff: "The mic is off.",
+  micOffOptional: "The mic is off. You can do this step without it.",
   turnOnMic: "Turn on the mic",
   // live view
   level: (hz) => `Pitch level: ${hz} Hz`,
