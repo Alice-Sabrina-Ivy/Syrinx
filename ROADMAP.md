@@ -6,7 +6,7 @@ Last reviewed 2026-10-26.
 
 ## Next: guided exercises
 
-**Wanted (owner, 2026-10-26).** Short guided exercises that explain what to change (tongue position, mouth shape, larynx height, airflow) and let the user practise it with Syrinx's live cues. The reference for the overall shape is Juni, a voice training app for iOS and Android: a short daily routine, a library grouped by skill, plain-language instructions with a picture of what to do. The design is not started.
+**Wanted (owner, 2026-10-26).** Short guided exercises that explain what to change (tongue position, mouth shape, larynx height, airflow) and let the user practise it with Syrinx's live cues. The reference for the overall shape is Juni, a voice training app for iOS and Android: a short daily routine, a library grouped by skill, plain-language instructions with a picture of what to do. A design draft for the first version, waiting for the owner's review: [docs/guided-exercises-design.md](docs/guided-exercises-design.md).
 
 What exists to build on:
 
