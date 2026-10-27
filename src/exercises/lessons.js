@@ -92,7 +92,8 @@ export const LESSONS = Object.freeze({
           "hoarseness, or a tired voice the next morning",
         ],
         body: [
-          "Rest means a break from practice and an easy, everyday speaking voice. Drink some water.",
+          "Rest means a break from practice and an easy, everyday speaking voice. Drink some water, and swallow or sip instead of clearing your throat.",
+          "Skip practice while you have a cold or a sore throat.",
         ],
       },
       {
@@ -100,6 +101,7 @@ export const LESSONS = Object.freeze({
         title: "When to get help",
         body: [
           "If you're hoarse for more than three weeks, or speaking hurts, see a doctor.",
+          "See a doctor soon if you lose your voice suddenly, swallowing hurts, you cough up blood, or breathing is hard.",
           "Syrinx is not a voice teacher or a speech therapist. If you can, work with one as well, especially if you're changing your voice a lot or it tires easily.",
         ],
       },
@@ -124,7 +126,7 @@ export const LESSONS = Object.freeze({
       {
         kind: "intro",
         body: [
-          "Partly closing your mouth, with a straw or with buzzing lips, gives your voice a little back-pressure. That helps your vocal folds vibrate easily, with less effort. Voice teachers and speech therapists use it as a gentle warm-up (Titze 2006).",
+          "Partly closing your mouth, with a straw or with buzzing lips, gives your voice a little back-pressure. That helps your vocal folds vibrate easily, with less effort (Titze 2006). Voice teachers and speech therapists often use it as a gentle warm-up.",
           "This one is done by feel: the app doesn't measure it.",
         ],
       },
@@ -140,9 +142,9 @@ export const LESSONS = Object.freeze({
         kind: "text",
         title: "Hum through the straw",
         body: [
-          "Hold the straw between your lips and seal them around it. Hum an easy note through it for 3 to 5 seconds, then breathe. Do it five times.",
+          "Hold the straw between your lips and seal them around it. Make an easy “oo” sound into the straw for 3 to 5 seconds, then breathe. Do it five times.",
           "All the air should go through the straw: if you gently pinch your nose, nothing should change.",
-          "No straw? Do a lip buzz instead: let your lips flap loosely while you hum, like a motorboat. If they won't keep buzzing, press lightly on your cheeks beside the corners of your mouth.",
+          "No straw? Do a lip buzz instead: let your lips flap loosely while you make an easy voiced sound, like a motorboat. If they won't keep buzzing, press lightly on your cheeks beside the corners of your mouth.",
         ],
       },
       {
@@ -193,6 +195,7 @@ export const LESSONS = Object.freeze({
         live: { optional: true },
         body: [
           "Let the breath out on a gentle, voiced sigh that falls from a comfortable high note to a low one, like the “haaah” when you sit down after a long day. Do five, with a slow breath between them.",
+          "Let each sigh fade out before it gets creaky. You don't need to reach the bottom of your voice.",
           "If the mic is on, the chart shows each sigh. The line may break up on breathy sighs; that's fine.",
         ],
       },
@@ -272,6 +275,7 @@ export const LESSONS = Object.freeze({
             androgynous: "Slide into the band on “oo”, from below or from above. When you're there, say “one… two… three” slowly on that same note. Do it three times.",
             exploring: "Slide to a note you like, then say “one… two… three” slowly on it. Try it on three different notes.",
           },
+          { target: "If the note feels like work, land a little short of the band." },
         ],
       },
       {
@@ -315,7 +319,7 @@ export const LESSONS = Object.freeze({
         body: [
           { target: "Turn on the mic. If you've done “Glide to your target”, slide into the band once on “oo” to find it.", exploring: "Turn on the mic." },
           BAND_LINE,
-          { androgynous: "This band is narrow. Even a voice centred in it reads inside it only about two-thirds of the time, so a result around 60–70 % is normal here." },
+          { androgynous: "This band is narrow. Even a voice centred in it reads inside it only about two-thirds of the time, so don't expect a high share here." },
         ],
         safety: [SAFETY, PITCH_SAFETY],
       },
@@ -371,7 +375,7 @@ export const LESSONS = Object.freeze({
         body: [
           "Your voice box (larynx) sits at the front of your neck. On many necks you can see or feel it as a bump. It rises when you swallow and drops when you yawn.",
           "A higher voice box makes the space above it shorter, which sounds smaller and brighter. A lower one makes it longer, which sounds bigger and darker. With practice you can move it a little on purpose while you speak.",
-          { masculine: "In a case study of one speaker, a single practice session lowered the voice box and the speaking pitch, and the change had faded three days later (Buckley et al. 2020): it takes repetition." },
+          { masculine: "Research on this is still small: one published case study followed one transmasculine speaker through a voice session (Buckley et al. 2020). Changes like this come from gentle practice repeated over weeks, not from one big push." },
         ],
       },
       {
@@ -397,7 +401,7 @@ export const LESSONS = Object.freeze({
         title: "Pitch and height",
         body: [
           "With your fingers still there, say “hmm?” as a question, from low to high. You may feel the voice box rise a little with the pitch.",
-          "That's normal: pitch and voice-box height tend to move together. Other lessons work on moving them separately.",
+          "That's normal: pitch and voice-box height tend to move together. The resonance lessons work on the size of the sound without changing the pitch.",
         ],
       },
       {
@@ -438,7 +442,7 @@ export const LESSONS = Object.freeze({
           "Rest your fingers lightly on your voice box, as in “Find your voice box”. Open your mouth and let your tongue relax forward.",
           "Keep the panting soft and whispered, never forced.",
         ],
-        safety: [SAFETY, "Panting can make you light-headed. Do a few at a time, and breathe normally in between."],
+        safety: [SAFETY, "Panting can make you light-headed. Do a few at a time, and breathe normally in between. Sip some water afterwards.", "Let the voice box move on its own: never push it down or squeeze it up."],
       },
       {
         kind: "text",
@@ -448,7 +452,7 @@ export const LESSONS = Object.freeze({
       {
         kind: "text",
         title: "Little dog",
-        body: ["Now pant lightly, like a small, excited dog. The whisper sounds higher and smaller, and the voice box rises. Five pants."],
+        body: ["Now pant lightly, like a small, excited dog. The whisper sounds smaller and brighter, and the voice box rises. Five pants."],
       },
       {
         kind: "text",
@@ -472,7 +476,7 @@ export const LESSONS = Object.freeze({
         kind: "aim",
         body: [
           {
-            feminine: "You'll use the little dog's position for a brighter voice. It should feel light, never tight.",
+            feminine: "You'll use the little dog's position for a brighter voice. It should feel light. If your throat feels squeezed, or as if you're about to swallow, let it go.",
             masculine: "You'll use the big dog's position for a bigger, darker voice. It should feel open and relaxed, never pushed down.",
             androgynous: "Get to know both ends, then find a spot in between that feels easy.",
             exploring: "Neither one is right: they're two ends to explore.",
@@ -497,7 +501,7 @@ export const LESSONS = Object.freeze({
         body: [
           "The space between your voice box and your lips shapes the sound, a bit like the body of an instrument. Spreading your lips a little and moving your tongue forward make the sound brighter. Rounding your lips and letting your tongue sit back make it darker.",
           {
-            feminine: "In one study, ten trans women practised the bright version for five sessions, and most of them were rated more feminine afterwards (Carew, Dacakis & Oates 2007).",
+            feminine: "In a small study, ten trans women practised the bright version for five sessions. Afterwards their resonance measured brighter, and on average listeners heard their voices as more feminine (Carew, Dacakis & Oates 2007).",
             masculine: "Rounded lips make the space your voice sounds in a little longer, which makes it sound bigger and darker.",
           },
         ],
@@ -509,7 +513,7 @@ export const LESSONS = Object.freeze({
           "Slowly say “ee”, then “oo”, back and forth. On “ee”, feel your tongue move forward and up and your lips spread. On “oo”, feel your tongue pull back and your lips round.",
           "Turn on the mic for the next steps: you'll record yourself.",
         ],
-        safety: [SAFETY, "Your jaw and tongue shouldn't ache. If they do, stop and let them relax."],
+        safety: [SAFETY, "Your jaw and tongue shouldn't ache. If they do, stop and let them relax.", RESONANCE_SAFETY],
       },
       {
         kind: "record",
@@ -524,7 +528,7 @@ export const LESSONS = Object.freeze({
         kind: "record",
         title: "Dark",
         body: [
-          "Let your tongue relax down and back a little, as for “oh”. Round your lips slightly, as if you're about to say “oo”.",
+          "Let your tongue rest a little lower and further back, as for “oh”. Don't pull it back. Round your lips slightly, as if you're about to say “oo”.",
           `Record the same sentence: “${SENTENCE}”`,
         ],
         takes: [{ id: "dark", label: "Dark" }],
@@ -588,7 +592,7 @@ export const LESSONS = Object.freeze({
           "Turn on the mic, and find a quiet spot. Headphones make the playback easier to hear.",
           `You'll say the same sentence a few times: “${SENTENCE}”`,
         ],
-        safety: [SAFETY],
+        safety: [SAFETY, RESONANCE_SAFETY],
       },
       {
         kind: "hear",
@@ -729,7 +733,7 @@ export const UI = Object.freeze({
   feelReply: Object.freeze({
     easy: "Saved.",
     effort: "Saved. Some effort is normal while something is new. Keep it small and easy.",
-    strained: "Saved. Stop for today and give your voice a rest. If it still feels strained tomorrow, rest another day.",
+    strained: "Saved. Stop for today and give your voice a rest. If it still feels strained tomorrow, rest another day. If it hurts, or you're hoarse for weeks, see a doctor.",
   }),
   coolDownNow: "Do the cool-down",
   nextLesson: (title) => `Next: ${title}`,
