@@ -22,6 +22,11 @@
 //
 // Older exports are a single JSON.stringify line; the parser detects the
 // layout from line 1 and falls back to a whole-document JSON.parse.
+//
+// Since 2026-10-26 the header also carries `exerciseResults` (the guided
+// exercises' saved rows, src/exercises/results.js) after `sessions`: an
+// optional array — files without it import as before, and older Syrinx
+// versions ignore it.
 
 export const EXPORT_VERSION = 1;
 
@@ -39,12 +44,13 @@ export function stripSessionForExport(session) {
 
 // Line 1: the top-level object up to and including the frames array's
 // opening bracket. Key order matches the legacy export.
-export function exportHeader({ exportedAt, settings, sessions }) {
+export function exportHeader({ exportedAt, settings, sessions, exerciseResults }) {
   const head = JSON.stringify({
     version: EXPORT_VERSION,
     exportedAt,
     settings,
     sessions,
+    ...(Array.isArray(exerciseResults) ? { exerciseResults } : {}),
   });
   // head ends with "}" — reopen the object to append the frames array.
   return head.slice(0, -1) + "," + FRAMES_OPEN;
@@ -64,8 +70,8 @@ export function createFrameSerializer() {
 
 // Whole export as an array of string parts (Blob-ready). For tests and
 // small data; DataManagement streams the same pieces per session.
-export function serializeExport({ exportedAt, settings, sessions, frames }) {
-  const parts = [exportHeader({ exportedAt, settings, sessions })];
+export function serializeExport({ exportedAt, settings, sessions, exerciseResults, frames }) {
+  const parts = [exportHeader({ exportedAt, settings, sessions, exerciseResults })];
   const line = createFrameSerializer();
   for (const f of frames) parts.push(line(f));
   parts.push(EXPORT_FOOTER);
@@ -78,7 +84,8 @@ function assertHeader(data) {
     !data.version ||
     !Array.isArray(data.sessions) ||
     !Array.isArray(data.frames) ||
-    (data.settings != null && !Array.isArray(data.settings))
+    (data.settings != null && !Array.isArray(data.settings)) ||
+    (data.exerciseResults != null && !Array.isArray(data.exerciseResults))
   ) {
     throw new Error("Invalid export file format");
   }
@@ -244,6 +251,22 @@ export function classifyImportSession(session, knownStartedAt) {
   return "accepted";
 }
 
+// Guided exercise results: "accepted" | "skipped" (the same lesson run —
+// exerciseId and startedAt — is already here or earlier in this file) |
+// "rejected" (no string exerciseId or no numeric startedAt). Accepted keys
+// are added to `knownKeys`.
+export const exerciseResultKey = (row) => `${row.exerciseId}@${row.startedAt}`;
+export function classifyImportResult(row, knownKeys) {
+  if (!row || typeof row !== "object" || typeof row.exerciseId !== "string" || !row.exerciseId ||
+      !Number.isFinite(row.startedAt)) {
+    return "rejected";
+  }
+  const key = exerciseResultKey(row);
+  if (knownKeys.has(key)) return "skipped";
+  knownKeys.add(key);
+  return "accepted";
+}
+
 export function isImportableSettingsRow(row) {
   return !!row && typeof row === "object" &&
     (typeof row.id === "string" || typeof row.id === "number");
@@ -272,14 +295,19 @@ export function mergeImportedSettings(local, imported) {
 
 // The import itself, against a minimal async `store`:
 //   getSettings(id) / putSettings(row) / sessionStartTimes() /
-//   addSession(row) -> new id / addFrames(rows)
+//   addSession(row) -> new id / addFrames(rows) /
+//   exerciseResultKeys() / addExerciseResult(row) (optional: a store
+//   without them imports no exercise results)
 // DataManagement backs it with Dexie inside ONE rw transaction (every
 // store call returns an IndexedDB request promise, so the transaction
 // stays alive and a throw anywhere rolls the whole import back); the
 // tests back it with Maps. Returns { accepted, skipped, rejected }
-// session counts.
+// session counts, plus `exercises`: the same counts for exercise results.
+// An exercise result's sessionId is remapped to the imported session's new
+// id, or null when that session isn't imported (never left pointing at an
+// unrelated local session).
 export async function importExport(bytes, store, { batchSize = 5000 } = {}) {
-  const counts = { accepted: 0, skipped: 0, rejected: 0 };
+  const counts = { accepted: 0, skipped: 0, rejected: 0, exercises: { accepted: 0, skipped: 0, rejected: 0 } };
   const idMap = {};
   let batch = [];
   for (const rec of iterateExportRecords(bytes)) {
@@ -302,6 +330,18 @@ export async function importExport(bytes, store, { batchSize = 5000 } = {}) {
         if (verdict !== "accepted") continue;
         const { id: oldId, ...rest } = session;
         idMap[oldId] = await store.addSession(rest);
+      }
+      const results = rec.header.exerciseResults;
+      if (Array.isArray(results) && results.length && store.addExerciseResult) {
+        const knownKeys = new Set(await store.exerciseResultKeys());
+        for (const row of results) {
+          const verdict = classifyImportResult(row, knownKeys);
+          counts.exercises[verdict]++;
+          if (verdict !== "accepted") continue;
+          // eslint-disable-next-line no-unused-vars
+          const { id, sessionId, ...rest } = row;
+          await store.addExerciseResult({ ...rest, sessionId: idMap[sessionId] ?? null });
+        }
       }
       continue;
     }

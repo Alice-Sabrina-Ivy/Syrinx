@@ -164,7 +164,7 @@ console.log("\nApp.jsx");
 const app = readFileSync(path.join(REPO, "src/App.jsx"), "utf8");
 const tabsAt = app.indexOf("const TABS = [");
 const tabs = [...app.slice(tabsAt, app.indexOf("];", tabsAt)).matchAll(/label: "([^"]+)"/g)].map((m) => m[1]);
-T.check("tab \"Voice Shaper\" = S.tab, between History and Resonance lab", tabs.join(" | ") === `Dashboard | Pitch | History | ${S.tab} | Resonance lab`, tabs.join(" | "));
+T.check("tab \"Voice Shaper\" = S.tab, between History and Resonance lab", tabs.join(" | ") === `Dashboard | Exercises | Pitch | History | ${S.tab} | Resonance lab`, tabs.join(" | "));
 T.check("loading fallback = S.loading", app.includes(`>${S.loading}</p>`));
 T.check("load-error fallback (the tab's chunk failed to download) = S.loadError", app.includes(`>${S.loadError}</p>`));
 T.check("the tab's module is a lazy import, never a static one", /lazy\(\(\) => import\("\.\/voice-preview\/VoiceShaperView\.jsx"\)\)/.test(app)

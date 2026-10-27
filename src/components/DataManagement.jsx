@@ -21,6 +21,7 @@ import {
   EXPORT_FOOTER,
   stripSessionForExport,
   importExport,
+  exerciseResultKey,
 } from "../utils/exportFormat";
 import { TRAINING_DIRECTIONS, pitchTargetFor, formatTarget } from "../utils/trainingDirection";
 import { HeardAsSwitch } from "./HeardAsPanel";
@@ -126,6 +127,7 @@ export function DataManagement({
     try {
       const sessions = await db.sessions.toArray();
       const settings = await db.settings.toArray();
+      const exerciseResults = await db.exerciseResults.toArray();
 
       // Same version-1 schema as before, laid out one frame record per
       // line (see utils/exportFormat.js) and assembled from parts. Frames
@@ -136,6 +138,7 @@ export function DataManagement({
         exportedAt: new Date().toISOString(),
         settings,
         sessions: sessions.map(stripSessionForExport),
+        exerciseResults,
       })];
       let pendingChars = 0;
       let chunk = "";
@@ -198,13 +201,15 @@ export function DataManagement({
       // (dedupe sessions by startedAt, reject ones without it, settings
       // merged field-wise without overwriting local values or importing
       // recordAudio) lives in importExport — utils/exportFormat.js.
-      const counts = await db.transaction("rw", db.settings, db.sessions, db.frames, () =>
+      const counts = await db.transaction("rw", db.settings, db.sessions, db.frames, db.exerciseResults, () =>
         importExport(bytes, {
           getSettings: (id) => db.settings.get(id),
           putSettings: (row) => db.settings.put(row),
           sessionStartTimes: () => db.sessions.orderBy("startedAt").keys(),
           addSession: (row) => db.sessions.add(row),
           addFrames: (rows) => db.frames.bulkAdd(rows),
+          exerciseResultKeys: async () => (await db.exerciseResults.toArray()).map(exerciseResultKey),
+          addExerciseResult: (row) => db.exerciseResults.add(row),
         }),
       );
 
@@ -212,7 +217,10 @@ export function DataManagement({
       setStatus(
         `Imported ${counts.accepted} session${counts.accepted === 1 ? "" : "s"} · ` +
         `skipped ${counts.skipped} already present · ` +
-        `rejected ${counts.rejected} without a start time`,
+        `rejected ${counts.rejected} without a start time` +
+        (counts.exercises.accepted
+          ? ` · ${counts.exercises.accepted} exercise result${counts.exercises.accepted === 1 ? "" : "s"}`
+          : ""),
       );
       setTimeout(() => setStatus(null), 6000);
     } catch (err) {

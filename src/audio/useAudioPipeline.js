@@ -48,6 +48,7 @@ import {
 } from "../diag/diag";
 import { isResonanceLabRequested, onResonanceLabRequested } from "../resonance-lab/labRequest";
 import { setVoicePreviewCapture, voicePreviewPitchTap } from "../voice-preview/bridge";
+import { exerciseFrameTap, hasExerciseFrameTap } from "../exercises/bridge";
 import { FIRERED_MODEL, fireredModelSource } from "../dsp/firered-vad";
 
 // Silence-gate thresholds (SILENCE_THRESHOLD_DB, CONFIDENCE_THRESHOLD,
@@ -1417,13 +1418,16 @@ export function useAudioPipeline() {
         }));
       }
       if (DIAG_ENABLED) lastDisplayRef.current = { painted: false, shown: false, hidden: vadHide };
-      // Notify frame callback (session recording) even during silence
-      if (frameCallbackRef.current) {
-        frameCallbackRef.current({
+      // Notify frame callback (session recording) even during silence;
+      // the guided exercises' tap gets the same frame (exercises/bridge.js).
+      if (frameCallbackRef.current || hasExerciseFrameTap()) {
+        const frame = {
           voiced: false, f0: null, painted: false, f1: null, f2: null, f3: null,
           intensity, spectralTilt: null, hnr: null,
           ...(voiceGate ? { voiceGate } : {}),
-        });
+        };
+        frameCallbackRef.current?.(frame);
+        exerciseFrameTap(frame);
       }
       return;
     }
@@ -1607,8 +1611,9 @@ export function useAudioPipeline() {
     // pre-gap median — recording that as voiced is exactly the phantom
     // pollution this comment forbids. The hold still bridges the DISPLAY
     // (trace/readout) via the paint path above; recording stays honest.
-    if (frameCallbackRef.current) {
-      frameCallbackRef.current({
+    // The guided exercises' tap gets the same frame (exercises/bridge.js).
+    if (frameCallbackRef.current || hasExerciseFrameTap()) {
+      const frame = {
         voiced: hasPitch,
         f0: hasPitch ? smoothedPitch : null,
         // Display decision for this frame (what the live trace painted).
@@ -1626,7 +1631,9 @@ export function useAudioPipeline() {
         intensity,
         spectralTilt: currentTilt,
         hnr: currentHnr,
-      });
+      };
+      frameCallbackRef.current?.(frame);
+      exerciseFrameTap(frame);
     }
 
     // Throttled: only update React state for text readouts at ~5fps.

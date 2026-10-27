@@ -41,20 +41,33 @@ const LabView = lazy(() => import("./resonance-lab/LabView.jsx"));
 // not start the lab.
 const VoiceShaperView = lazy(() => import("./voice-preview/VoiceShaperView.jsx"));
 
+// Guided exercises (docs/guided-exercises-design.md, 2026-10-26): short lessons on pitch
+// and resonance. A lazy chunk fetched when the tab is first opened; the tab works with the
+// mic off too (reading a lesson needs no mic; its live cards offer "Turn on the mic").
+// exercises/bridge.js (the frame tap a lesson measures with) is the only part in the
+// main bundle. The texts below equal exercises/lessons.js UI.tab / UI.loading /
+// UI.loadError (tests/exercises/lessons-test.js checks them).
+const ExercisesView = lazy(() => import("./exercises/ExercisesView.jsx"));
+
 const TABS = [
   { id: "dashboard", label: "Dashboard" },
+  { id: "exercises", label: "Exercises" },
   { id: "pitch", label: "Pitch" },
   { id: "history", label: "History" },
   { id: "shaper", label: "Voice Shaper" },
   { id: "lab", label: "Resonance lab" },
 ];
-// Without the lab setting: the first four.
+// Without the lab setting: the first five.
 const TABS_NO_LAB = TABS.filter((t) => t.id !== "lab");
 
 // The tab bar (the same in every state). Below Tailwind's sm breakpoint the tabs
-// are narrower (px-2, gap-0.5) so the five fit on one row at 360 px, the two-word
-// labels wrapping onto two lines there; from sm up, px-4 / gap-1 as before the
-// Voice Shaper tab (2026-10-20). With larger text (125 % at 360 px) the row is
+// are narrower (px-2, gap-0.5) so the five fit on one row at 320 px and up (Dashboard,
+// Exercises, Pitch, History, Voice Shaper — the default, the lab setting off), the
+// two-word labels wrapping onto two lines there; from sm up, px-4 / gap-1 as before the
+// Voice Shaper tab (2026-10-20). With the Resonance lab on (six tabs, an opt-in
+// experiment) the row is ~376 px wide below sm: under ~410 px it scrolls sideways
+// inside itself (the last tab peeks out at the edge), and the active tab is scrolled
+// into view (Exercises tab, 2026-10-26). With larger text (125 % at 360 px) the row is
 // wider than the screen: `justify-center-safe` starts it at its first tab and it
 // scrolls sideways, instead of centring and cutting off "Dashboard" and
 // "Resonance lab" where nothing could scroll to them (review 2026-10-20). Under
@@ -67,11 +80,16 @@ const TABS_NO_LAB = TABS.filter((t) => t.id !== "lab");
 // the active tab. Four tabs (the lab setting off, the default) use the same
 // classes: they fit with room to spare.
 function TabNav({ activeTab, setActiveTab, tabs = TABS }) {
+  const activeRef = useRef(null);
+  useEffect(() => {
+    activeRef.current?.scrollIntoView?.({ inline: "nearest", block: "nearest" });
+  }, [activeTab, tabs.length]);
   return (
     <nav className="flex-shrink-0 flex justify-center-safe gap-0.5 sm:gap-1 overflow-x-auto -mx-1 max-[360px]:-mx-4 px-1 -mt-1 pt-1 pb-1 mb-2">
       {tabs.map((tab) => (
         <button
           key={tab.id}
+          ref={activeTab === tab.id ? activeRef : undefined}
           onClick={() => setActiveTab(tab.id)}
           aria-current={activeTab === tab.id ? "page" : undefined}
           className={`px-2 sm:px-4 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
@@ -98,6 +116,17 @@ class ShaperBoundary extends Component {
   render() {
     return this.state.failed
       ? <p className="text-sm text-neutral-300" data-vp-load-error="">Voice Shaper could not load. Reload the page to try again.</p>
+      : this.props.children;
+  }
+}
+
+// The same for the Exercises tab's chunk.
+class ExercisesBoundary extends Component {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  render() {
+    return this.state.failed
+      ? <p className="text-sm text-neutral-300" data-exercises-load-error="">The exercises could not load. Reload the page to try again.</p>
       : this.props.children;
   }
 }
@@ -358,6 +387,22 @@ function App() {
   // opened behind the question.
   const blocked = showDirectionPrompt || showSettings;
 
+  // The Exercises tab, idle or listening (only the live props differ).
+  const exercisesTab = (listening) => (
+    <ExercisesBoundary>
+      <Suspense fallback={<p className="text-sm text-neutral-400">Loading exercises…</p>}>
+        <ExercisesView
+          listening={listening}
+          direction={direction}
+          onStartListening={requestStart}
+          pipeline={listening ? { pitchTraceRef, subscribeTrace, pitchVoiced, pitchHolding, pitch, pitchLevel } : null}
+          sessionId={liveRecording?.sessionId ?? null}
+          isSessionRecording={() => sessionRef.current.recording}
+        />
+      </Suspense>
+    </ExercisesBoundary>
+  );
+
   // h-dvh, not h-screen: on phones 100vh is the viewport with the URL bar
   // HIDDEN, so with it showing the bottom row (the practice dock) sat below
   // the fold of a page that can't scroll. Every browser Tailwind 4
@@ -426,7 +471,7 @@ function App() {
 
       {/* Main content */}
       <div className="flex-1 flex flex-col items-center min-h-0" inert={blocked}>
-        {status === "idle" && activeTab !== "history" && (
+        {status === "idle" && activeTab !== "history" && activeTab !== "exercises" && (
           <div className="flex-1 flex flex-col w-full max-w-6xl min-h-0">
             {/* Tab navigation even when idle */}
             <TabNav activeTab={activeTab} setActiveTab={selectTab} tabs={tabs} />
@@ -447,6 +492,13 @@ function App() {
           <div className="flex-1 flex flex-col w-full max-w-6xl min-h-0">
             <TabNav activeTab={activeTab} setActiveTab={selectTab} tabs={tabs} />
             <SessionHistory openSessionId={openSessionId} />
+          </div>
+        )}
+
+        {status === "idle" && activeTab === "exercises" && (
+          <div className="flex-1 flex flex-col w-full max-w-6xl min-h-0">
+            <TabNav activeTab={activeTab} setActiveTab={selectTab} tabs={tabs} />
+            <div className="flex-1 flex flex-col min-h-0">{exercisesTab(false)}</div>
           </div>
         )}
 
@@ -539,6 +591,8 @@ function App() {
               )}
 
               {activeTab === "history" && <SessionHistory liveRecording={liveRecording} openSessionId={openSessionId} />}
+
+              {activeTab === "exercises" && exercisesTab(true)}
 
               {activeTab === "shaper" && (
                 <ShaperBoundary>

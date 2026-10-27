@@ -41,9 +41,14 @@ db.version(1).stores({
   //   voiced, f0, f1, f2, f3, intensity, spectralTilt, hnr }
   frames: "++id, sessionId, timestampMs",
 
-  // Exercise results (for later)
-  // Row shape: { id (auto), sessionId, exerciseId,
-  //   startedAt, completedAt, score, metrics, notes }
+  // Guided exercise results (used since 2026-10-26, src/exercises/results.js;
+  // the indexes are unchanged, so no schema bump). One row per lesson run
+  // that reached its result card:
+  // Row shape: { id (auto), exerciseId ("P6", …), startedAt, endedAt,
+  //   direction, sessionId (the session recording at the time, or null),
+  //   feel ("easy" | "effort" | "strained" | null),
+  //   results ({} or the lesson's numbers, e.g. { levelHz, inBandPct, voicedS }) }
+  // No audio.
   exerciseResults: "++id, sessionId, exerciseId, startedAt",
 });
 

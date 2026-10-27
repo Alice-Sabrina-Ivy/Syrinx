@@ -24,6 +24,8 @@ import {
   isImportableSettingsRow,
   mergeImportedSettings,
   importExport,
+  classifyImportResult,
+  exerciseResultKey,
 } from "../../src/utils/exportFormat.js";
 
 let failures = 0;
@@ -256,6 +258,49 @@ function memoryStore() {
   let threw = false;
   try { await importExport(enc.encode("{\"version\":1,\"frames\":[\n]}\n"), store2); } catch { threw = true; }
   check("malformed header: import throws, nothing written", threw && store2.sessions.size === 0 && store2.settings.size === 0);
+}
+
+// --- 5b. Guided exercise results (2026-10-26) -------------------------------------------
+{
+  const results = [
+    { id: 3, exerciseId: "P6", startedAt: 1700000200000, endedAt: 1700000260000, direction: "feminine", sessionId: 1, feel: "easy", results: { levelHz: 172.5, inBandPct: 64, voicedS: 21.3 } },
+    { id: 4, exerciseId: "R3", startedAt: 1700000300000, endedAt: 1700000360000, direction: "masculine", sessionId: 99, feel: null, results: {} },
+    { id: 5, exerciseId: "P6", startedAt: 1700000200000, endedAt: 1700000260001, direction: "feminine", sessionId: null, feel: null, results: {} }, // same run twice
+    { id: 6, exerciseId: "", startedAt: 1 },        // no exerciseId
+    { id: 7, exerciseId: "W2", startedAt: "soon" }, // no numeric startedAt
+  ];
+  const parts = serializeExport({ exportedAt, settings, sessions, exerciseResults: results, frames });
+  const parsed = parseExport(bytesOf(parts));
+  check("exercise results ride in the header after sessions", deepEq(parsed.exerciseResults, results)
+    && parts[0].indexOf('"sessions"') < parts[0].indexOf('"exerciseResults"') && parts[0].indexOf('"exerciseResults"') < parts[0].indexOf('"frames"'));
+  check("no exerciseResults given: the header is exactly as before", !exportHeader({ exportedAt, settings, sessions }).includes("exerciseResults"));
+  check("a non-array exerciseResults is an invalid file",
+    throwsMatching(() => parseExport(enc.encode(JSON.stringify({ version: 1, sessions: [], frames: [], exerciseResults: {} }))), /Invalid export/) === true);
+
+  const store = memoryStore();
+  store.results = [];
+  store.exerciseResultKeys = async () => store.results.map(exerciseResultKey);
+  store.addExerciseResult = async (row) => { store.results.push(row); };
+  const c = await importExport(bytesOf(parts), store);
+  check("exercise results: accepted / skipped (same run) / rejected counted", deepEq(c.exercises, { accepted: 2, skipped: 1, rejected: 2 }), JSON.stringify(c.exercises));
+  check("…ids stripped, sessionId remapped to the imported session or null",
+    store.results.length === 2 && store.results.every((r) => !("id" in r))
+    && store.results[0].sessionId === 10 && store.results[1].sessionId === null
+    && deepEq(store.results[0].results, results[0].results) && store.results[0].feel === "easy");
+  const c2 = await importExport(bytesOf(parts), store);
+  check("re-import: every exercise result skipped", c2.exercises.accepted === 0 && c2.exercises.skipped === 3 && store.results.length === 2, JSON.stringify(c2.exercises));
+  const old = memoryStore();
+  const c3 = await importExport(bytesOf(parts), old);
+  check("a store without the exercise calls imports sessions as before and no results", c3.accepted === 2 && c3.exercises.accepted === 0);
+  const plain = memoryStore();
+  plain.results = [];
+  plain.exerciseResultKeys = async () => [];
+  plain.addExerciseResult = async (row) => { plain.results.push(row); };
+  const c4 = await importExport(bytesOf(serializeExport({ exportedAt, settings, sessions, frames })), plain);
+  check("an older file without exercise results imports as before", c4.accepted === 2 && plain.results.length === 0 && deepEq(c4.exercises, { accepted: 0, skipped: 0, rejected: 0 }));
+  check("classifyImportResult", classifyImportResult({ exerciseId: "S1", startedAt: 5 }, new Set()) === "accepted"
+    && classifyImportResult({ exerciseId: "S1", startedAt: 5 }, new Set(["S1@5"])) === "skipped"
+    && classifyImportResult(null, new Set()) === "rejected");
 }
 
 // --- 6. Scale: no giant string, linear time ---------------------------------------------

@@ -1,6 +1,6 @@
 # Guided exercises: design draft
 
-**Status: draft for the owner's review, 2026-10-26. Nothing here is built.** The roadmap entry is [ROADMAP.md](../ROADMAP.md) ("Next: guided exercises").
+**Status (2026-10-26): the owner answered the questions (§11), and the first version is built on branch `guided-exercises`: the eight items that need no new measurement (S1, W1 without its live trace, W2, P5, P6, R1–R4) in a new Exercises tab. §12 lists what the build changed from this draft.** The roadmap entry is [ROADMAP.md](../ROADMAP.md) ("Next: guided exercises").
 
 This draft proposes a first version: how a lesson is laid out, which lessons come first, how each training direction is handled, what the app shows during each lesson and what it saves. Two lessons are written out in full (§7) so the tone can be judged before the rest is written.
 
@@ -208,13 +208,22 @@ P5, P6, R1–R4, S1 and the warm-up and cool-down need none of these and could b
 - **Pictures:** simple diagrams of the tongue, lips and voice box would help R1–R3. The first version is text only unless good diagrams can be made.
 - **Real-life scenes** (ordering, phone calls) and **videos**.
 
-## 11. Questions for the owner
+## 11. Questions for the owner — answered 2026-10-26
 
-1. **Tab:** a new "Exercises" tab makes five tabs, six with the lab on, and six may not fit one row at 360 px. Fit it as is, or fold the Pitch tab into the pitch lessons?
-2. **Routine:** the Today card in the first version, or the lesson list only?
-3. **Review of the text:** is there a voice teacher or speech-language pathologist who could read the lessons before release, especially the masculine ones?
-4. **Order of work:** build the lessons that need no new measurement first (P5, P6, R1–R4, S1, W2), then M2 and the rest of the pitch lessons, then M1 and R5 / T1?
-5. **Limits:** are the proposed note limits in §6 (4 semitones from the easy note per lesson) acceptable as a starting point?
+1. **Tab:** "hide the Resonance lab tab and only show it if it's enabled in settings" — it already is (off by default since 2026-10-21). So the default is five tabs (Dashboard, **Exercises**, Pitch, History, Voice Shaper), which fit one row from 320 px up; with the lab on, the six tabs scroll sideways inside the tab bar below ~410 px wide, and the selected tab scrolls into view.
+2. **Routine:** the lesson list only (no Today card). The list puts "Start here" and the warm-up and cool-down first, and a Strained answer offers the cool-down.
+3. **Review of the text:** no voice teacher or SLP is available. The text is written conservatively (small steps, a safety box before every exercise, nothing that pushes the voice box down or chases height or depth), and S1 still says Syrinx is not a voice teacher or speech therapist.
+4. **Order of work:** build the lessons that need no new measurement first; the rest (M1–M3 and the lessons that need them) maybe later.
+5. **Limits:** left to Claude. Decision: the first version picks no notes for the user, so no limit is needed yet; the glide lesson says to stop short of the band when it feels like work. The §6 proposal (within the comfortable range from P2, at most 4 semitones from the easy note per lesson) stays the starting point for P3 / P4.
+
+## 12. What the first version changed from this draft
+
+- **W1 is in, without its live trace.** The trace waits for M2 (the voice gate on lip trills and hums); the warm-up itself needs no measurement, so it is done by feel and says so.
+- **P5 glides on "oo", not "ng".** "ng" and "mm-hmm" are closed-mouth hums, which M2 has to check first. The second step lands on a word ("one… two… three") instead of "mm-hmm". P5 needs no easy note (P1): it starts from a comfortable note.
+- **R4 records its own phrase** ("We were away a year ago", said twice, 3–8 s) through Voice Shaper's controller and worker, and renders resonance-only versions at ±10 % (feminine +10, masculine −10, androgynous and exploring both), then records the user's try.
+- **Layout:** a card's tool (the trace, the recorder, the play buttons) sits between the card's text and Back / Next, so it stays on screen while the text scrolls; in short landscape the text and the tool sit side by side. Checked at 360 × 690, 402 × 750, 448 × 890, 890 × 360 and 1280 × 800 for every card in every direction (`scripts/exercises-smoke.mjs`).
+- **Measuring (P6)** uses a tap on the hook's per-frame record, the same frame a session recording stores (`src/exercises/bridge.js`), and the session statistics' own rule (`computeSummaryStats`): the result names the median pitch level and the share of voiced time whose level is in the band.
+- **Saved rows** are as §8 says. Export and import carry them (the export header's optional `exerciseResults`; an import skips a lesson run already present and remaps its session id).
 
 ## Sources
 
