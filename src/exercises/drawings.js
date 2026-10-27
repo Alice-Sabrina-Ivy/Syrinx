@@ -8,7 +8,7 @@
 // the drawing still reads when colour is gone.
 //
 //   straw       Side view of the lower face, facing right: nose, lips pursed and sealed
-//               round a drinking straw; an arrow along the straw shows the air going out (W1).
+//               round a drinking straw; an arrow inside the straw shows the air going out (W1).
 //   lipBuzz     Front view of the lower face: loosely closed lips, the line between them
 //               wavy (a lip trill); two fingertips resting on the cheeks beside the corners
 //               of the mouth (W1).
@@ -42,11 +42,13 @@ const EAR = "M 58 32 C 51 32 51 46 58 46";
 // the voice box: a small rounded shape whose top is at y, just behind the front of the neck
 const box = (y) =>
   `M 63 ${y + 3} C 63 ${y} 65 ${y} 67 ${y} L 71 ${y} C 73 ${y} 75 ${y} 75 ${y + 3} ` +
-  `L 75 ${y + 6} C 75 ${y + 9} 73 ${y + 9} 71 ${y + 9} L 67 ${y + 9} ` +
-  `C 65 ${y + 9} 63 ${y + 9} 63 ${y + 6} Z`;
-const BOX_REST = 85;
-const BOX_UP = 72;
-const BOX_DOWN = 98;
+  `L 75 ${y + 5} C 75 ${y + 8} 73 ${y + 8} 71 ${y + 8} L 67 ${y + 8} ` +
+  `C 65 ${y + 8} 63 ${y + 8} 63 ${y + 5} Z`;
+// a solid bar across the moved box, so it differs from the dashed rest outline by shape too
+const boxBar = (y) => `M 66 ${y + 4} L 72 ${y + 4}`;
+const BOX_REST = 83;
+const BOX_UP = 73;
+const BOX_DOWN = 93;
 
 // mouth cut-away shared by bright and dark
 const NOSE = "M 98 2 C 104 10 114 18 120 26 C 123 30 120 33 114 33 L 110 33";
@@ -59,7 +61,7 @@ const LOWER_TOOTH = "M 101 60 L 106 60 C 106 68 104 76 100 82 L 95 80 C 98 74 10
 
 // the upper contour of each tongue, tip to root; drawn dashed in the other picture
 const TONGUE_EE_TOP = "M 96 67 C 94 58 90 40 80 32 C 68 27 48 31 38 44 C 33 54 32 90 34 118";
-const TONGUE_OH_TOP = "M 95 76 C 88 70 76 62 62 56 C 50 51 38 50 30 58 C 23 66 22 90 24 118";
+const TONGUE_OH_TOP = "M 95 76 C 88 70 76 62 62 56 C 50 47 38 45 30 53 C 23 61 22 90 24 118";
 const TONGUE_FLOOR = " L 50 118 C 60 104 78 94 92 84 Z";
 const TONGUE_EE = TONGUE_EE_TOP + TONGUE_FLOOR;
 const TONGUE_OH = TONGUE_OH_TOP + TONGUE_FLOOR;
@@ -83,9 +85,9 @@ export const DRAWINGS = Object.freeze({
       { kind: "line", d: "M 86 66 C 88 66 90 67 90 70 C 90 74 86 77 80 79 C 86 84 90 94 84 102 C 78 108 64 110 50 110" },
       // the straw, from just inside the lips
       { kind: "line", d: "M 80 58 L 156 58 L 156 66 L 80 66" },
-      // air going out along it
-      { kind: "accent", d: "M 100 50 L 140 50" },
-      { kind: "accent", d: "M 135 46 L 140 50 L 135 54" },
+      // air going out through it
+      { kind: "accent", d: "M 98 62 L 144 62" },
+      { kind: "accent", d: "M 140 59.5 L 144 62 L 140 64.5" },
     ],
   },
 
@@ -115,8 +117,8 @@ export const DRAWINGS = Object.freeze({
       { kind: "line", d: PROFILE },
       { kind: "line", d: EAR },
       // two fingertips from the lower right, resting on the front of the neck
-      { kind: "accent", d: "M 158 105 L 86 84 C 80 82 78 90 84 92 L 156 113" },
-      { kind: "accent", d: "M 158 117 L 86 96 C 80 94 78 102 84 104 L 136 119.5" },
+      { kind: "accent", d: "M 158 103 L 86 82 C 81 80 80 88 84 90 L 156 111" },
+      { kind: "accent", d: "M 158 117 L 86 96 C 81 94 80 102 84 104 L 136 119.5" },
     ],
   },
 
@@ -128,7 +130,8 @@ export const DRAWINGS = Object.freeze({
       { kind: "ghost", d: box(BOX_REST) },
       { kind: "accentFill", d: box(BOX_UP) },
       { kind: "accent", d: box(BOX_UP) },
-      { kind: "accent", d: "M 55 100 L 55 74" },
+      { kind: "accent", d: boxBar(BOX_UP) },
+      { kind: "accent", d: "M 55 96 L 55 74" },
       { kind: "accent", d: "M 51 79 L 55 74 L 59 79" },
     ],
   },
@@ -141,8 +144,9 @@ export const DRAWINGS = Object.freeze({
       { kind: "ghost", d: box(BOX_REST) },
       { kind: "accentFill", d: box(BOX_DOWN) },
       { kind: "accent", d: box(BOX_DOWN) },
-      { kind: "accent", d: "M 55 81 L 55 107" },
-      { kind: "accent", d: "M 51 102 L 55 107 L 59 102" },
+      { kind: "accent", d: boxBar(BOX_DOWN) },
+      { kind: "accent", d: "M 55 80 L 55 102" },
+      { kind: "accent", d: "M 51 97 L 55 102 L 59 97" },
     ],
   },
 
@@ -150,8 +154,8 @@ export const DRAWINGS = Object.freeze({
     viewBox: VIEW,
     parts: [
       ...MOUTH,
-      { kind: "ghost", d: TONGUE_OH_TOP },
       { kind: "accentFill", d: TONGUE_EE },
+      { kind: "ghost", d: TONGUE_OH_TOP },
       { kind: "accent", d: TONGUE_EE },
       // lips thin and slightly spread, close to the teeth
       { kind: "accent", d: "M 110 33 C 113 40 116 48 115 53 C 114 56 110 57 106 57" },
@@ -163,8 +167,8 @@ export const DRAWINGS = Object.freeze({
     viewBox: VIEW,
     parts: [
       ...MOUTH,
-      { kind: "ghost", d: TONGUE_EE_TOP },
       { kind: "accentFill", d: TONGUE_OH },
+      { kind: "ghost", d: TONGUE_EE_TOP },
       { kind: "accent", d: TONGUE_OH },
       // lips rounded and forward
       { kind: "accent", d: "M 110 33 C 115 40 127 45 127 52 C 127 56 123 57 118 57" },
