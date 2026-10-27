@@ -267,6 +267,28 @@ export function classifyImportResult(row, knownKeys) {
   return "accepted";
 }
 
+// An accepted exercise result as stored: only the fields a lesson saves
+// (exercises/results.js resultRow), with anything malformed dropped to its
+// default (a hand-edited or newer file can't store odd values that would
+// show as "NaN Hz" in a later lesson's "Last time" line).
+const RESULT_FEELS = new Set(["easy", "effort", "strained"]);
+const RESULT_DIRECTIONS = new Set(["feminine", "masculine", "androgynous", "exploring"]);
+export function cleanImportedResult(row, sessionId) {
+  const results = {};
+  if (row.results && typeof row.results === "object" && !Array.isArray(row.results)) {
+    for (const [k, v] of Object.entries(row.results)) if (Number.isFinite(v)) results[k] = v;
+  }
+  return {
+    exerciseId: row.exerciseId,
+    startedAt: row.startedAt,
+    endedAt: Number.isFinite(row.endedAt) ? row.endedAt : null,
+    direction: RESULT_DIRECTIONS.has(row.direction) ? row.direction : null,
+    sessionId: Number.isFinite(sessionId) ? sessionId : null,
+    feel: RESULT_FEELS.has(row.feel) ? row.feel : null,
+    results,
+  };
+}
+
 export function isImportableSettingsRow(row) {
   return !!row && typeof row === "object" &&
     (typeof row.id === "string" || typeof row.id === "number");
@@ -297,18 +319,21 @@ export function mergeImportedSettings(local, imported) {
 //   getSettings(id) / putSettings(row) / sessionStartTimes() /
 //   addSession(row) -> new id / addFrames(rows) /
 //   exerciseResultKeys() / addExerciseResult(row) (optional: a store
-//   without them imports no exercise results)
+//   without them imports no exercise results) / localSessionId(startedAt)
+//   -> the id of the session already here with that start (optional)
 // DataManagement backs it with Dexie inside ONE rw transaction (every
 // store call returns an IndexedDB request promise, so the transaction
 // stays alive and a throw anywhere rolls the whole import back); the
 // tests back it with Maps. Returns { accepted, skipped, rejected }
 // session counts, plus `exercises`: the same counts for exercise results.
 // An exercise result's sessionId is remapped to the imported session's new
-// id, or null when that session isn't imported (never left pointing at an
-// unrelated local session).
+// id, or to the local twin of a session skipped as already here (same
+// startedAt), or null otherwise (never left pointing at an unrelated local
+// session). Accepted results are stored through cleanImportedResult.
 export async function importExport(bytes, store, { batchSize = 5000 } = {}) {
   const counts = { accepted: 0, skipped: 0, rejected: 0, exercises: { accepted: 0, skipped: 0, rejected: 0 } };
   const idMap = {};
+  const resultIdMap = {}; // file session id -> local id, for exercise results
   let batch = [];
   for (const rec of iterateExportRecords(bytes)) {
     if (rec.type === "header") {
@@ -323,24 +348,32 @@ export async function importExport(bytes, store, { batchSize = 5000 } = {}) {
       // Sessions: skip ones already here (same startedAt — e.g.
       // re-importing your own backup), reject ones without a numeric
       // startedAt; the rest get fresh ids from the store.
+      const results = rec.header.exerciseResults;
+      const withResults = Array.isArray(results) && results.length > 0 && !!store.addExerciseResult;
       const knownStartedAt = new Set(await store.sessionStartTimes());
       for (const session of sessions) {
         const verdict = classifyImportSession(session, knownStartedAt);
         counts[verdict]++;
+        const oldId = session?.id;
+        if (verdict === "skipped" && withResults && oldId != null && store.localSessionId) {
+          const localId = await store.localSessionId(session.startedAt);
+          if (localId != null) resultIdMap[oldId] = localId;
+        }
         if (verdict !== "accepted") continue;
-        const { id: oldId, ...rest } = session;
-        idMap[oldId] = await store.addSession(rest);
+        // eslint-disable-next-line no-unused-vars
+        const { id, ...rest } = session;
+        const newId = await store.addSession(rest);
+        // a session without an id in the file can't own frames or results
+        if (oldId != null) idMap[oldId] = resultIdMap[oldId] = newId;
       }
-      const results = rec.header.exerciseResults;
-      if (Array.isArray(results) && results.length && store.addExerciseResult) {
+      if (withResults) {
         const knownKeys = new Set(await store.exerciseResultKeys());
         for (const row of results) {
           const verdict = classifyImportResult(row, knownKeys);
           counts.exercises[verdict]++;
           if (verdict !== "accepted") continue;
-          // eslint-disable-next-line no-unused-vars
-          const { id, sessionId, ...rest } = row;
-          await store.addExerciseResult({ ...rest, sessionId: idMap[sessionId] ?? null });
+          const sessionId = row.sessionId != null ? resultIdMap[row.sessionId] : null;
+          await store.addExerciseResult(cleanImportedResult(row, sessionId));
         }
       }
       continue;
@@ -351,7 +384,7 @@ export async function importExport(bytes, store, { batchSize = 5000 } = {}) {
     // local session happens to own that id.
     // eslint-disable-next-line no-unused-vars
     const { id, sessionId, ...rest } = rec.frame;
-    const newSessionId = idMap[sessionId];
+    const newSessionId = sessionId != null ? idMap[sessionId] : undefined;
     if (newSessionId === undefined) continue;
     batch.push({ ...rest, sessionId: newSessionId });
     if (batch.length >= batchSize) {

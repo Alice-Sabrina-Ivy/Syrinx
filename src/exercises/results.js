@@ -19,6 +19,7 @@
 import { computeSummaryStats } from "../utils/sessionStats.js";
 import { pitchLevels } from "../utils/pitchLevel.js";
 import { pitchTargetFor, isTrainingDirection } from "../utils/trainingDirection.js";
+import { classifyImportResult, exerciseResultKey } from "../utils/exportFormat.js";
 
 export const MIN_VOICED_S = 3;
 const FRAME_S = 0.025;
@@ -84,11 +85,8 @@ export function resultRow({ exerciseId, startedAt, endedAt, direction = null, se
   };
 }
 
-/** Is this a row the import may add? (a string exerciseId and a numeric startedAt) */
-export function isImportableResult(row) {
-  return !!row && typeof row === "object" && typeof row.exerciseId === "string" && row.exerciseId.length > 0
-    && Number.isFinite(row.startedAt);
-}
+/** Is this a row the import may add? (the import's own rule, utils/exportFormat.js) */
+export const isImportableResult = (row) => classifyImportResult(row, new Set()) !== "rejected";
 
 /** The identity of a result across devices and backups (an import skips rows already here). */
-export const resultKey = (row) => `${row.exerciseId}@${row.startedAt}`;
+export const resultKey = exerciseResultKey;

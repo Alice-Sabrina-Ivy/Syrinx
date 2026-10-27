@@ -210,6 +210,7 @@ export function DataManagement({
           addFrames: (rows) => db.frames.bulkAdd(rows),
           exerciseResultKeys: async () => (await db.exerciseResults.toArray()).map(exerciseResultKey),
           addExerciseResult: (row) => db.exerciseResults.add(row),
+          localSessionId: async (startedAt) => (await db.sessions.where("startedAt").equals(startedAt).first())?.id ?? null,
         }),
       );
 
@@ -240,10 +241,13 @@ export function DataManagement({
     // later no-op-finalize the vanished session.
     window.dispatchEvent(new CustomEvent("syrinx:abort-recording"));
     try {
-      await db.frames.clear();
-      await db.sessions.clear();
-      await db.settings.clear();
-      await db.exerciseResults.clear();
+      // one transaction: all or nothing
+      await db.transaction("rw", db.frames, db.sessions, db.settings, db.exerciseResults, async () => {
+        await db.frames.clear();
+        await db.sessions.clear();
+        await db.settings.clear();
+        await db.exerciseResults.clear();
+      });
     } catch (err) {
       setStatus(`Delete failed: ${err.message}`);
       return;

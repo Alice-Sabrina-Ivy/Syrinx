@@ -298,6 +298,35 @@ function memoryStore() {
   plain.addExerciseResult = async (row) => { plain.results.push(row); };
   const c4 = await importExport(bytesOf(serializeExport({ exportedAt, settings, sessions, frames })), plain);
   check("an older file without exercise results imports as before", c4.accepted === 2 && plain.results.length === 0 && deepEq(c4.exercises, { accepted: 0, skipped: 0, rejected: 0 }));
+  // review 2026-10-27: a result whose session is skipped as already here points at the local twin
+  {
+    const twin = memoryStore();
+    twin.results = [];
+    twin.exerciseResultKeys = async () => [];
+    twin.addExerciseResult = async (row) => { twin.results.push(row); };
+    twin.localSessionId = async (t) => [...twin.sessions.values()].find((x) => x.startedAt === t)?.id ?? null;
+    await importExport(bytesOf(serializeExport({ exportedAt, settings, sessions, frames })), twin); // sessions first, no results
+    const before = twin.frames.length;
+    const c5 = await importExport(bytesOf(parts), twin);
+    check("re-import with results: a skipped session's result points at the local session",
+      c5.accepted === 0 && twin.results[0]?.sessionId === 10 && twin.results[1]?.sessionId === null && twin.frames.length === before,
+      JSON.stringify(twin.results.map((r) => r.sessionId)));
+  }
+  // malformed fields are dropped to their defaults; only the saved fields are kept
+  {
+    const odd = memoryStore();
+    odd.results = [];
+    odd.exerciseResultKeys = async () => [];
+    odd.addExerciseResult = async (row) => { odd.results.push(row); };
+    const file = { version: 1, sessions: [{ startedAt: 5, endedAt: 6 }], frames: [],
+      exerciseResults: [{ exerciseId: "P6", startedAt: 7, endedAt: "later", direction: "sideways", feel: "great", extra: 1,
+        results: { levelHz: "abc", inBandPct: 50, nested: { a: 1 } } }] };
+    await importExport(enc.encode(JSON.stringify(file)), odd);
+    check("imported results are cleaned (feel, direction, endedAt, non-numeric results, extra fields)",
+      deepEq(odd.results[0], { exerciseId: "P6", startedAt: 7, endedAt: null, direction: null, sessionId: null, feel: null, results: { inBandPct: 50 } }),
+      JSON.stringify(odd.results[0]));
+    check("a session without an id in the file owns no result", odd.sessions.size === 1 && odd.results[0].sessionId === null);
+  }
   check("classifyImportResult", classifyImportResult({ exerciseId: "S1", startedAt: 5 }, new Set()) === "accepted"
     && classifyImportResult({ exerciseId: "S1", startedAt: 5 }, new Set(["S1@5"])) === "skipped"
     && classifyImportResult(null, new Set()) === "rejected");
