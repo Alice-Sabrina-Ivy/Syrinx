@@ -293,7 +293,7 @@ async function startListening(page, direction = "exploring") {
   await sleep(200);
   await page.evaluate((id) => { document.querySelector(`[role=dialog] input[data-direction="${id}"]`)?.closest("label")?.click(); }, direction);
   await sleep(200);
-  await clickButton(page, ["Start — allow the microphone", "Start practicing"], "[role=dialog]");
+  await clickButton(page, ["Start — allow the microphone", "Start practicing"], "[role=dialog] button");
   await page.waitForFunction(() => document.body.innerText.includes("Mic off"), { timeout: 30000 });
   return Date.now();
 }
