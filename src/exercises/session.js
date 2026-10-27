@@ -17,6 +17,7 @@ const EMPTY = Object.freeze({
   measuredFrames: 0, // how many frames the measuring cards logged when it was computed
   feel: null,
   hearReady: false, // "Hear it first"'s Voice Shaper wrapper is loaded
+  ui: {},           // a card's own steps: rep counts, the phrase shown, the guess game ("<card>:<name>" -> value)
 });
 
 export function createLessonSession({ createPlayer = createTakePlayer } = {}) {
@@ -94,6 +95,9 @@ export function createLessonSession({ createPlayer = createTakePlayer } = {}) {
       return true;
     },
     stopTake() { stopRecorder(); },
+
+    /** A card's own step state (see EMPTY.ui); kept for the lesson run, dropped when it closes. */
+    setUi(key, value) { set({ ui: { ...state.ui, [key]: value } }); },
 
     setHear(h) { hear = h; set({ hearReady: !!h }); },
     getHear: () => hear,

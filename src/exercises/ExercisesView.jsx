@@ -13,6 +13,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import db from "../db.js";
 import { PitchTrace } from "../components/PitchTrace.jsx";
+import { SteadinessReadout } from "../components/SteadinessReadout.jsx";
 import { pitchTargetFor, pitchStatus, formatTarget } from "../utils/trainingDirection.js";
 import { statusTextClass } from "../utils/constants.js";
 import { hzToNote } from "../utils/pitchUtils.js";
@@ -25,6 +26,8 @@ import { countResult } from "./results.js";
 import { saveResult, updateResult, lastDoneByLesson, recentResults } from "./store.js";
 import { createLessonSession } from "./session.js";
 import { recordTake } from "./takes.js";
+import { createTakeVoiceLog, takeNote, takePitchHz } from "./takeChecks.js";
+import { newGuessRound, markPlayed, brighterIndex } from "./guess.js";
 
 // ---------------------------------------------------------------- the open lesson
 
@@ -94,8 +97,11 @@ function useSessionRec(isSessionRecording) {
   return rec;
 }
 
-/** `short`: the visible text is just "Play" (the take's name is beside it); the accessible name keeps it. */
-function PlayButton({ name, label, take, blocked, short = false }) {
+/**
+ * `short`: the visible text is just "Play" (the take's name is beside it); the accessible name keeps it.
+ * `onPlay`: called when this press starts playback (the guess card notes what was heard).
+ */
+function PlayButton({ name, label, take, blocked, short = false, onPlay }) {
   const pb = useSyncExternalStore(session.player.subscribe, session.player.getState);
   const playing = pb.playing === name;
   return (
@@ -105,7 +111,7 @@ function PlayButton({ name, label, take, blocked, short = false }) {
       aria-pressed={playing}
       aria-label={UI.play(label)}
       disabled={!take || blocked}
-      onClick={() => session.player.play(name, take)}
+      onClick={() => { if (session.player.play(name, take)) onPlay?.(); }}
       data-play={name}
     >
       <span aria-hidden="true" className="text-xs">{playing ? "■" : "▶"}</span>
@@ -168,12 +174,13 @@ function LessonList({ direction }) {
 
 // ---------------------------------------------------------------- live pitch view
 
+/** `target` null = neutral: the number only, no colour and no in / out-of-band words. */
 function LevelLine({ pipeline, target }) {
   const shows = (pipeline.pitchVoiced || pipeline.pitchHolding) && pipeline.pitchLevel != null;
   if (!shows) return <p className="text-sm tabular-nums text-neutral-400" data-level-line="">{UI.levelNone}</p>;
   // judged on the number shown, so "165 Hz" never reads "below the band" (165–255)
   const hz = Math.round(pipeline.pitchLevel);
-  const status = pitchStatus(hz, target);
+  const status = target ? pitchStatus(hz, target) : null;
   const where = status == null ? null : status === "in" ? UI.inBand : hz < target.low ? UI.belowBand : UI.aboveBand;
   return (
     <p className={`text-sm tabular-nums ${statusTextClass(status)}`} data-level-line="" data-level-status={status ?? "none"}>
@@ -207,10 +214,12 @@ function MeasureLine({ cardIndex }) {
 
 function LiveView({ card, cardIndex, listening, onStartListening, pipeline, direction }) {
   if (!listening) return <MicPrompt onStartListening={onStartListening} optional={!!card.live?.optional} />;
-  // a neutral card (the cool-down) draws no band and judges nothing
+  // a neutral card (the cool-down) draws no band and judges nothing; a glide card
+  // (judge: false) draws the band but judges nothing
   const target = card.live?.neutral ? null : pitchTargetFor(direction);
+  const judge = card.live?.judge !== false;
   return (
-    <div className="space-y-1" data-live-view="" data-live-neutral={card.live?.neutral ? "1" : undefined}>
+    <div className="space-y-1" data-live-view="" data-live-neutral={card.live?.neutral ? "1" : undefined} data-live-judge={judge ? undefined : "0"}>
       <div className="h-[clamp(110px,22dvh,240px)] shortland:h-20">
         <PitchTrace
           compact
@@ -221,38 +230,162 @@ function LiveView({ card, cardIndex, listening, onStartListening, pipeline, dire
           pitch={pipeline.pitch}
           pitchLevel={pipeline.pitchLevel}
           target={target}
+          judge={judge}
         />
       </div>
       <div className="flex flex-wrap items-center justify-between gap-x-3">
-        <LevelLine pipeline={pipeline} target={target} />
+        <LevelLine pipeline={pipeline} target={judge ? target : null} />
+        {card.live?.steadiness && (
+          <p className="text-sm text-neutral-300" data-steadiness="">
+            <SteadinessReadout value={pipeline.steadiness ?? null} held={!!pipeline.steadinessHeld} variant="inline" />
+          </p>
+        )}
         {card.live?.measure && <MeasureLine cardIndex={cardIndex} />}
       </div>
     </div>
   );
 }
 
+// ---------------------------------------------------------------- counters, timer, phrases
+
+/** A tap counter for a card's repetitions ("Slide 2 of 3"); no mic, nothing judged. */
+function RepCounter({ spec, cardIndex, direction, s }) {
+  const n = forDir(spec.count, direction);
+  const label = forDir(spec.label, direction);
+  const key = `${cardIndex}:reps`;
+  const done = Math.min(s.ui[key] ?? 0, n);
+  const all = done >= n;
+  return (
+    <div className="flex items-center justify-between gap-3" data-reps={done} data-reps-of={n}>
+      <p className="text-sm tabular-nums text-neutral-200" role="status">{all ? UI.repAll(n) : UI.rep(label, done + 1, n)}</p>
+      {all
+        ? <button type="button" className={BTN_SOFT} onClick={() => session.setUi(key, 0)} data-reps-again="">{UI.repAgain}</button>
+        : (
+          <button type="button" className={BTN_SOFT} aria-label={UI.repDoneName(label, done + 1)} onClick={() => session.setUi(key, done + 1)} data-reps-done="">
+            {UI.repDone}
+          </button>
+        )}
+    </div>
+  );
+}
+
+const RING_R = 15;
+const RING_C = 2 * Math.PI * RING_R;
+
+/** A tap-to-start hold timer per repetition ("Hum 2 of 5", up to `seconds`); no mic, nothing judged. */
+function HoldTimer({ spec, cardIndex, s }) {
+  const { reps: n, seconds: max, label } = spec;
+  const key = `${cardIndex}:reps`;
+  const done = Math.min(s.ui[key] ?? 0, n);
+  const [startAt, setStartAt] = useState(null);
+  const [elapsed, setElapsed] = useState(0);
+  const count = () => session.setUi(key, Math.min(n, (session.getState().ui[key] ?? 0) + 1));
+  useEffect(() => {
+    if (startAt == null) return undefined;
+    let ended = false; // a tick after the end (before this effect is cleaned up) must not count again
+    const t = setInterval(() => {
+      if (ended) return;
+      const e = (performance.now() - startAt) / 1000;
+      if (e >= max) { ended = true; clearInterval(t); setStartAt(null); setElapsed(0); count(); } else setElapsed(e);
+    }, 100);
+    return () => clearInterval(t);
+    // count() reads the session's current value; the interval only depends on the start
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startAt, max]);
+  const running = startAt != null;
+  const all = done >= n && !running;
+  const progress = running ? Math.min(1, elapsed / max) : 0;
+  return (
+    <div className="flex items-center gap-3" data-timer={running ? "running" : "idle"} data-reps={done} data-reps-of={n}>
+      {/* currentColor: in forced colours the ring takes the system text colour, the track stays fainter */}
+      <svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true" className="flex-shrink-0 text-purple-300">
+        <circle cx="20" cy="20" r={RING_R} fill="none" strokeWidth="4" stroke="currentColor" strokeOpacity="0.25" />
+        <circle
+          cx="20" cy="20" r={RING_R} fill="none" strokeWidth="4" strokeLinecap="round" stroke="currentColor"
+          strokeDasharray={RING_C} strokeDashoffset={RING_C * (1 - progress)} transform="rotate(-90 20 20)"
+        />
+      </svg>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm tabular-nums text-neutral-200" role="status">{all ? UI.repAll(n) : UI.rep(label, Math.min(done + 1, n), n)}</p>
+        <p className="text-xs tabular-nums text-neutral-400" aria-hidden="true">
+          {running ? UI.timerSeconds(Math.floor(elapsed)) : done > 0 && !all ? UI.timerRest : ""}
+        </p>
+      </div>
+      {all
+        ? <button type="button" className={BTN_SOFT} onClick={() => session.setUi(key, 0)} data-reps-again="">{UI.repAgain}</button>
+        : running
+          ? <button type="button" className={BTN_PRIMARY} onClick={() => { setStartAt(null); setElapsed(0); count(); }} data-timer-stop="">{UI.timerStop}</button>
+          : (
+            <button type="button" className={BTN_SOFT} onClick={() => { setElapsed(0); setStartAt(performance.now()); }} data-timer-start="">
+              {UI.timerStart(label, done + 1)}
+            </button>
+          )}
+    </div>
+  );
+}
+
+/** One phrase at a time, with "Next phrase" (P6). */
+function PhraseStepper({ card, cardIndex, direction, s }) {
+  const list = forDir(card.phrases, direction);
+  const key = `${cardIndex}:phrase`;
+  const i = Math.min(s.ui[key] ?? 0, list.length - 1);
+  const last = i === list.length - 1;
+  return (
+    <div className="flex items-center gap-3 rounded-lg border border-neutral-700 bg-neutral-800/50 px-3 py-1" data-phrase={i}>
+      <div className="min-w-0 flex-1" aria-live="polite">
+        <p className="text-xs tabular-nums text-neutral-400">{UI.phrase(i + 1, list.length)}</p>
+        <p className="text-sm leading-snug text-white" data-phrase-text="">“{list[i]}”</p>
+      </div>
+      <button type="button" className={BTN_SOFT} onClick={() => session.setUi(key, last ? 0 : i + 1)} data-next-phrase="">
+        {last ? UI.firstPhrase : UI.nextPhrase}
+      </button>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------- recordings
+
+/**
+ * Record a take while the frames the hook hands the exercise frame tap are counted
+ * (takeChecks.js: its pitch). The tap is this take's only while it records.
+ */
+function startCountedTake(takeId) {
+  return session.startTake(takeId, (onProgress, onDone) => {
+    const log = createTakeVoiceLog();
+    setExerciseFrameTap((frame) => log.push(frame));
+    const r = recordTake(getVoicePreviewCapture(), {
+      onProgress,
+      onDone: (t) => { setExerciseFrameTap(null); onDone(t ? { ...t, voice: log.stats() } : t); },
+    });
+    if (!r) setExerciseFrameTap(null);
+    return r;
+  });
+}
+
+function takeNoteText(take, spec) {
+  const note = takeNote(take, spec);
+  return note === "short" ? UI.takeShort(fmtS(take.seconds)) : null;
+}
 
 function TakeRow({ take, listening, sessionRec, s, many }) {
   const rec = s.recording?.takeId === take.id ? s.recording : null;
   const other = s.recording && !rec;
   const has = s.takes[take.id];
-  const start = () => session.startTake(take.id, (onProgress, onDone) =>
-    recordTake(getVoicePreviewCapture(), { onProgress, onDone }));
+  const note = has && !rec ? takeNoteText(has, take) : null;
   return (
-    <div className="flex flex-wrap items-center gap-2 py-1.5" data-take={take.id} data-take-recorded={has ? "1" : "0"}>
+    <div className="flex flex-wrap items-center gap-2 py-1.5" data-take={take.id} data-take-recorded={has ? "1" : "0"} data-take-note={note ? takeNote(has, take) : undefined}>
       <div className="flex-1">
         <p className="text-sm text-neutral-100">{take.label}</p>
         <p className="text-xs tabular-nums text-neutral-400">
           {rec ? UI.recording(Math.floor(rec.seconds)) : has ? UI.recorded(fmtS(has.seconds)) : UI.notRecorded}
         </p>
-        <p className="sr-only" role="status">{rec ? UI.srRecording : has ? UI.srRecorded(fmtS(has.seconds)) : ""}</p>
+        <p className="sr-only" role="status">{rec ? UI.srRecording : has ? `${UI.srRecorded(fmtS(has.seconds))}${note ? `. ${note}` : ""}` : ""}</p>
       </div>
       {listening && (rec
         ? <button type="button" className={BTN_PRIMARY} aria-label={many ? UI.stopTake(take.label) : undefined} onClick={() => session.stopTake()} data-take-stop="">{UI.stop}</button>
         : (
           <button
-            type="button" className={BTN_SOFT} disabled={!!other} onClick={start} data-take-record=""
+            type="button" className={BTN_SOFT} disabled={!!other} onClick={() => startCountedTake(take.id)} data-take-record=""
             aria-label={many ? (has ? UI.recordAgainTake(take.label) : UI.recordTake(take.label)) : undefined}
           >
             {has ? UI.recordAgain : UI.record}
@@ -260,6 +393,27 @@ function TakeRow({ take, listening, sessionRec, s, many }) {
         ))}
       {/* nothing plays while any take records (no echo cancellation: the mic would record it) */}
       <PlayButton name={take.id} label={take.label} take={has} blocked={sessionRec || !!s.recording} short />
+      {/* said before anything else about the take (design §2 rule 3) */}
+      {note && <p className="w-full text-xs leading-snug text-amber-200" aria-hidden="true" data-take-note-text="">{note}</p>}
+    </div>
+  );
+}
+
+/** The pitch of a take beside the pitch of the recording it is compared with (R4's try); numbers only. */
+function TakePitch({ take, s }) {
+  const [, h] = useHearState();
+  const has = s.takes[take.id];
+  if (!has || s.recording || takeNote(has, take)) return null;
+  // the recording's line only while that recording is the one kept (Voice Shaper accepted it)
+  const rec = h?.original ? s.ui["hear:voice"] : null;
+  const lines = [
+    rec ? (takePitchHz({ voice: rec }) != null ? UI.pitchOf(UI.yourRecording, takePitchHz({ voice: rec })) : UI.pitchNone(UI.yourRecording)) : null,
+    takePitchHz(has) != null ? UI.pitchOf(take.label, takePitchHz(has)) : UI.pitchNone(take.label),
+  ].filter(Boolean);
+  return (
+    <div className="mt-1" data-take-pitch="" data-take-pitch-hz={takePitchHz(has) ?? ""} data-recording-pitch-hz={rec ? takePitchHz({ voice: rec }) ?? "" : ""}>
+      <p className="text-xs text-neutral-400">{UI.pitchTitle}</p>
+      {lines.map((l, i) => <p key={i} className="text-sm tabular-nums text-neutral-200">{l}</p>)}
     </div>
   );
 }
@@ -277,6 +431,7 @@ function RecordCard({ card, direction, listening, onStartListening, isSessionRec
       <div>
         {card.takes.map((t) => <TakeRow key={t.id} take={t} listening={listening} sessionRec={sessionRec} s={s} many={card.takes.length > 1} />)}
       </div>
+      {card.takes.filter((t) => t.pitch).map((t) => <TakePitch key={t.id} take={t} s={s} />)}
       {card.compareWithHear && <HearVersions direction={direction} sessionRec={sessionRec} recording={!!s.recording} withTitle />}
       <SessionGuard sessionRec={sessionRec} />
     </div>
@@ -307,8 +462,13 @@ function useHearState() {
   return [hear, h];
 }
 
-/** `recording`: a take is being recorded — nothing plays meanwhile (the mic would record it; no echo cancellation). */
-function HearVersions({ direction, sessionRec, recording = false, withTitle = false }) {
+/**
+ * `recording`: a take is being recorded — nothing plays meanwhile (the mic would record it; no echo cancellation).
+ * `rebuilt` (the Listen card): the unchanged version is the recording rebuilt by the same
+ * vocoder as the changed ones, so only the resonance differs; on the try card the raw
+ * recording plays beside the raw try instead.
+ */
+function HearVersions({ direction, sessionRec, recording = false, withTitle = false, rebuilt = false }) {
   const [hear, h] = useHearState();
   useEffect(() => { hear?.setShifts(hearShifts(direction)); }, [hear, direction]);
   if (!hear || !h || !h.original) {
@@ -320,7 +480,9 @@ function HearVersions({ direction, sessionRec, recording = false, withTitle = fa
   return (
     <div className={withTitle ? "mt-2" : ""} data-hear-versions="">
       <div className="flex flex-wrap gap-2">
-        <PlayButton name="hear-original" label={UI.yourRecording} take={h.original} blocked={sessionRec || recording} />
+        {rebuilt
+          ? <PlayButton name="hear-rebuild" label={UI.unchanged} take={h.rebuild} blocked={sessionRec || recording} />
+          : <PlayButton name="hear-original" label={UI.yourRecording} take={h.original} blocked={sessionRec || recording} />}
         {shifts.map((pct) => (
           <PlayButton key={pct} name={`hear-${pct}`} label={pct > 0 ? UI.brighter : UI.darker} take={h.versions[pct]} blocked={sessionRec || recording} />
         ))}
@@ -338,6 +500,15 @@ function HearRecord({ listening, onStartListening, vs }) {
     const t = setInterval(() => setReadyMs(hear.readyInMs() ?? 0), 250);
     return () => clearInterval(t);
   }, [hear]);
+  // While the recording runs, count its voice the way a take's is counted (its pitch is
+  // shown beside the try's on the "Your try" card).
+  const recordingNow = h?.phase === "recording";
+  useEffect(() => {
+    if (!recordingNow) return undefined;
+    const log = createTakeVoiceLog();
+    setExerciseFrameTap((frame) => log.push(frame));
+    return () => { setExerciseFrameTap(null); session.setUi("hear:voice", log.stats()); };
+  }, [recordingNow]);
   if (!listening) return <MicPrompt onStartListening={onStartListening} />;
   if (!hear || !h || h.phase === "loading") return <p className="text-sm text-neutral-300">{UI.hearLoading}</p>;
   if (h.phase === "unsupported") return <p className="text-sm text-neutral-300">{UI.hearUnsupported}</p>;
@@ -399,6 +570,99 @@ function HearRecord({ listening, onStartListening, vs }) {
     <div className="flex flex-wrap items-center gap-2" data-hear-phase={h.phase}>
       {body}
       <p className="sr-only" role="status">{status}</p>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- test your ear
+
+/**
+ * The two recordings of a guess card: R3's two takes, or R4's unchanged rebuild and a
+ * changed version (`shift`, picked per round when the direction has two). null until ready.
+ */
+function guessItems(card, s, h, shift) {
+  if (card.guess.takes) {
+    const [x, y] = card.guess.takes;
+    if (!s.takes[x] || !s.takes[y]) return null;
+    return { [x]: { take: s.takes[x] }, [y]: { take: s.takes[y] } };
+  }
+  if (!h?.rebuild || shift == null || !h.versions[shift]) return null;
+  return { unchanged: { take: h.rebuild }, [`shift${shift}`]: { take: h.versions[shift], shift } };
+}
+
+function GuessCard({ card, lesson, direction, cardIndex, isSessionRecording, s }) {
+  const sessionRec = useSessionRec(isSessionRecording);
+  const [, h] = useHearState();
+  const key = `${cardIndex}:guess`;
+  const g = s.ui[key] ?? null;
+  const fromTakes = !!card.guess.takes;
+  // A round: which recording is A and which is B (random), and for R4 which change it uses.
+  // Made outside render (Math.random), once both recordings exist.
+  const shifts = hearShifts(direction);
+  const shiftsKey = shifts.join();
+  const shift = g?.shift ?? null;
+  const items = guessItems(card, s, h, fromTakes ? null : shift ?? shifts[0]);
+  const ready = !!items;
+  useEffect(() => {
+    const now = hearShifts(direction);
+    // the goal changed mid-lesson to one without this round's change: a new round
+    if (g && !fromTakes && !now.includes(g.shift)) { session.setUi(key, null); return; }
+    if (g || !ready) return;
+    session.setUi(key, newGuessRound(card, now));
+  }, [g, ready, key, card, fromTakes, direction, shiftsKey]);
+  if (!ready || !g) {
+    if (fromTakes) return <p className="text-sm text-neutral-300">{UI.guessNeedTakes}</p>;
+    return <p className="text-sm text-neutral-300">{h?.phase === "analysing" || (h?.original && !items) ? UI.preparing : UI.hearRecordFirst}</p>;
+  }
+  const ids = g.order;
+  const itemOf = (x) => (fromTakes ? s.takes[x] : x === "unchanged" ? h.rebuild : h.versions[g.shift]);
+  const blocked = sessionRec || !!s.recording;
+  const bothPlayed = g.played[0] && g.played[1];
+  const [nameA, nameB] = UI.guessNames;
+  const names = [nameA, nameB];
+  const play = (i) => () => { const next = markPlayed(g, i); if (next !== g) session.setUi(key, next); };
+  let reveal = null;
+  if (g.pick != null) {
+    const lines = [UI.guessPicked(names[g.pick])];
+    if (fromTakes) {
+      const label = (id) => takesFor(lesson, direction).find((t) => t.id === id)?.label ?? id;
+      lines.push(UI.guessTakes(label(ids[0]), label(ids[1])), UI.guessHintTakes);
+    } else {
+      const desc = (id) => (id === "unchanged" ? UI.guessUnchanged : UI.guessShifted(g.shift));
+      lines.push(UI.guessHear(desc(ids[0]), desc(ids[1])), UI.guessBrighter(names[brighterIndex(g)]), UI.guessHintHear);
+    }
+    reveal = lines;
+  }
+  return (
+    <div data-guess="" data-guess-order={ids.join(",")} data-guess-pick={g.pick ?? ""}>
+      <div className="flex flex-wrap gap-2">
+        {ids.map((id, i) => (
+          <PlayButton key={id} name={`guess-${i}`} label={names[i]} take={itemOf(id)} blocked={blocked} onPlay={play(i)} />
+        ))}
+      </div>
+      <fieldset className="mt-2" disabled={g.pick != null}>
+        <legend className="text-sm text-neutral-200">{UI.guessQuestion}</legend>
+        <div className="mt-1 flex flex-wrap items-center gap-2">
+          {names.map((n, i) => (
+            <button
+              key={n} type="button" className={BTN_TOGGLE} aria-pressed={g.pick === i} disabled={!bothPlayed}
+              onClick={() => session.setUi(key, { ...g, pick: i })} data-guess-answer={i}
+            >
+              {n}
+            </button>
+          ))}
+          {!bothPlayed && <p className="text-xs text-neutral-300">{UI.guessPlayFirst}</p>}
+        </div>
+      </fieldset>
+      <div className="mt-2" role="status" data-guess-reveal="">
+        {reveal?.map((l, i) => <p key={i} className="text-sm leading-snug text-neutral-100">{l}</p>)}
+      </div>
+      {reveal && (
+        <button type="button" className={`${BTN_SOFT} mt-2`} onClick={() => { session.player.stop(); session.setUi(key, newGuessRound(card, shifts)); }} data-guess-again="">
+          {UI.guessAgain}
+        </button>
+      )}
+      <SessionGuard sessionRec={sessionRec} />
     </div>
   );
 }
@@ -525,6 +789,7 @@ function CardBody({ card, lesson, direction }) {
   const body = forDir(card.body ?? [], direction).map(fill);
   const list = card.list ? forDir(card.list, direction) : null;
   const after = card.after ? forDir(card.after, direction) : [];
+  const feel = card.feel ? forDir(card.feel, direction) : [];
   const safety = card.safety ? forDir(card.safety, direction) : null;
   const troubleshooting = card.troubleshooting ? forDir(card.troubleshooting, direction) : [];
   // The safety box uses the app's existing amber classes (the "Experimental" tag), so the
@@ -544,6 +809,12 @@ function CardBody({ card, lesson, direction }) {
         </ul>
       )}
       <Paragraphs items={after} />
+      {feel.length > 0 && (
+        <div data-feel-before="">
+          <h3 className="mt-3 text-xs font-medium uppercase tracking-wide text-neutral-400">{UI.feelTitle}</h3>
+          <Paragraphs items={feel} />
+        </div>
+      )}
       {troubleshooting.length > 0 && (
         <>
           <h3 className="mt-3 text-xs font-medium uppercase tracking-wide text-neutral-400">{UI.ifNot}</h3>
@@ -560,14 +831,28 @@ function CardBody({ card, lesson, direction }) {
   );
 }
 
-const TOOL_KINDS = new Set(["live", "record", "compare", "hear"]);
+const TOOL_KINDS = new Set(["live", "record", "compare", "hear", "guess"]);
+const hasTool = (card) => TOOL_KINDS.has(card.kind) || !!card.reps || !!card.timer || !!card.phrases;
 
 /**
- * A card's tool (the live trace, the recorder, the play buttons): drawn in its own area
- * between the card's text and Back / Next, so it stays on screen while the text scrolls
- * (the design's phone rule, 360 x 690 and 448 x 890).
+ * A card's tool (the live trace, the recorder, the play buttons, a counter or timer, the
+ * phrase to say): drawn in its own area between the card's text and Back / Next, so it
+ * stays on screen while the text scrolls (the design's phone rule, 360 x 690 and 448 x 890).
  */
-function CardTool({ card, cardIndex, lesson, direction, listening, onStartListening, pipeline, isSessionRecording, s, vs }) {
+function CardTool(props) {
+  const { card, cardIndex, direction, s } = props;
+  const main = cardMainTool(props);
+  return (
+    <div className="space-y-2">
+      {card.timer && <HoldTimer spec={card.timer} cardIndex={cardIndex} s={s} />}
+      {card.reps && <RepCounter spec={card.reps} cardIndex={cardIndex} direction={direction} s={s} />}
+      {card.phrases && <PhraseStepper card={card} cardIndex={cardIndex} direction={direction} s={s} />}
+      {main}
+    </div>
+  );
+}
+
+function cardMainTool({ card, cardIndex, lesson, direction, listening, onStartListening, pipeline, isSessionRecording, s, vs }) {
   if (card.kind === "live") {
     return <LiveView card={card} cardIndex={cardIndex} listening={listening} onStartListening={onStartListening} pipeline={pipeline} direction={direction} />;
   }
@@ -577,6 +862,9 @@ function CardTool({ card, cardIndex, lesson, direction, listening, onStartListen
   if (card.kind === "compare") return <CompareCard lesson={lesson} direction={direction} isSessionRecording={isSessionRecording} s={s} />;
   if (card.kind === "hear" && card.stage === "record") return <HearRecord listening={listening} onStartListening={onStartListening} vs={vs} />;
   if (card.kind === "hear" && card.stage === "listen") return <HearListen direction={direction} isSessionRecording={isSessionRecording} />;
+  if (card.kind === "guess") {
+    return <GuessCard card={card} lesson={lesson} direction={direction} cardIndex={cardIndex} isSessionRecording={isSessionRecording} s={s} />;
+  }
   return null;
 }
 
@@ -584,7 +872,7 @@ function HearListen({ direction, isSessionRecording }) {
   const sessionRec = useSessionRec(isSessionRecording);
   return (
     <>
-      <HearVersions direction={direction} sessionRec={sessionRec} />
+      <HearVersions direction={direction} sessionRec={sessionRec} rebuilt />
       <SessionGuard sessionRec={sessionRec} />
     </>
   );
@@ -661,7 +949,7 @@ function LessonPlayer({ s, direction, listening, onStartListening, pipeline, ses
             )}
         </article>
       </div>
-      {!isResult && TOOL_KINDS.has(card.kind) && (
+      {!isResult && hasTool(card) && (
         <div className="flex-shrink-0 pt-2 shortland:w-[46%] shortland:overflow-y-auto shortland:pt-0" data-card-tool="">
           <CardTool
             key={index}

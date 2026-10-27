@@ -20,6 +20,10 @@
 //          the list then says "Last done: today"; "Tongue and lips": two takes recorded
 //          and played; "Hear it first": a recording, then the brighter version renders and
 //          plays; a Strained answer offers the cool-down, which opens it. No page errors.
+//          2026-10-27 (the ideas from the Juni decompile check): P6's phrases one at a time;
+//          P5's glide card neutral with steadiness and a tap counter; W1's hold timer and
+//          slide counter; R3's too-short note and its "test your ear" round; R4's listening
+//          on the unchanged rebuild, its ear test, and the try's pitch beside the recording's.
 //
 // Process hygiene (CLAUDE.md hard rule 2): Puppeteer's own Chrome with a per-run profile;
 // cleanup kills only its PID (taskkill /pid <pid> /T /F) and removes the profile.
@@ -340,6 +344,36 @@ const savedRows = (page) => page.evaluate(() => new Promise((resolve) => {
   req.onerror = () => resolve(null);
 }));
 
+/** One "test your ear" round: both play, the answers open, a pick shows which was which; a new round resets. */
+async function guessRound(page, id, revealRe) {
+  await goToCard(page, "Test your ear (optional)");
+  await page.waitForSelector("[data-guess]", { timeout: 30000 }).catch(() => {});
+  const state = () => page.evaluate(() => {
+    const g = document.querySelector("[data-guess]");
+    return g ? { order: g.dataset.guessOrder, pick: g.dataset.guessPick, answersOff: [...g.querySelectorAll("[data-guess-answer]")].every((b) => b.matches(":disabled")),
+      plays: [...g.querySelectorAll("[data-play]")].map((b) => (b.disabled ? "off" : "on")).join(), reveal: g.querySelector("[data-guess-reveal]").innerText } : null;
+  });
+  const s0 = await state();
+  check(`${id} ear test: A and B playable, the answers wait until both have played`, s0 && s0.plays === "on,on" && s0.answersOff && s0.reveal === "", JSON.stringify(s0));
+  await clickSel(page, '[data-guess] [data-play="guess-0"]');
+  await sleep(250);
+  await clickSel(page, '[data-guess] [data-play="guess-1"]');
+  await sleep(250);
+  await clickSel(page, '[data-guess] [data-play="guess-1"]'); // stop it
+  const s1 = await state();
+  check(`${id} ear test: after both played the answers open`, s1 && !s1.answersOff, JSON.stringify(s1));
+  await clickSel(page, '[data-guess-answer="0"]');
+  await sleep(200);
+  const s2 = await state();
+  const lines = (s2?.reveal ?? "").split("\n").filter(Boolean);
+  check(`${id} ear test: the pick shows which was which (no tally) and the answers lock`, s2 && s2.pick === "0" && lines[0] === "You picked A." && lines.some((l) => revealRe.test(l))
+    && s2.answersOff && !/\b(\d+ (of|out of) \d+|correct|wrong|score)\b/i.test(s2.reveal), JSON.stringify(s2));
+  await clickSel(page, "[data-guess-again]");
+  await sleep(200);
+  const s3 = await state();
+  check(`${id} ear test: Mix them up again starts a fresh round`, s3 && s3.pick === "" && s3.answersOff && s3.reveal === "", JSON.stringify(s3));
+}
+
 async function partFlow(v) {
   scope = `flow ${v}`;
   await launch();
@@ -356,6 +390,15 @@ async function partFlow(v) {
   check("Count to ten: voice collected while the card is on screen", voiced1 >= 2, `${voiced1} s`);
   check("…the level line names a level and where it sits", /Pitch level: \d+ Hz/.test(level ?? "") || /—/.test(level ?? ""), level);
   await goToCard(page, "Short phrases");
+  const phrase = async () => page.evaluate(() => ({ i: document.querySelector("[data-phrase]")?.dataset.phrase ?? null, text: document.querySelector("[data-phrase-text]")?.textContent ?? "" }));
+  const ph0 = await phrase();
+  await clickSel(page, "[data-next-phrase]");
+  await sleep(150);
+  const ph1 = await phrase();
+  for (let i = 0; i < 4; i++) { await clickSel(page, "[data-next-phrase]"); await sleep(80); }
+  const ph5 = await phrase();
+  check("Short phrases: one phrase at a time; Next phrase moves on, and after the last back to the first",
+    ph0.i === "0" && ph1.i === "1" && ph0.text !== ph1.text && /^“.+”$/.test(ph1.text) && ph5.i === "0", `${JSON.stringify(ph0)} ${JSON.stringify(ph1)} ${JSON.stringify(ph5)}`);
   await sleep(4000);
   await goToCard(page, "How did it go?");
   await page.waitForSelector("[data-result-lines]", { timeout: 10000 });
@@ -420,13 +463,59 @@ async function partFlow(v) {
   const w1next = await page.evaluate(() => document.querySelector("[data-next-lesson]")?.dataset.nextLesson ?? null);
   check("after the warm-up: Next is the first practice lesson, not the cool-down", w1next === "P5", String(w1next));
 
+  // Glide to your target: the glide card draws the band but judges nothing; steadiness; a tap counter
+  await openLesson(page, "P5");
+  await goToCard(page, "Slide on “oo”");
+  await sleep(2500);
+  const glide = await page.evaluate(() => ({ judge: document.querySelector("[data-live-view]")?.dataset.liveJudge ?? null,
+    status: document.querySelector("[data-level-line]")?.dataset.levelStatus ?? "none", text: document.querySelector("[data-level-line]")?.textContent ?? "",
+    target: document.querySelector("[data-live-view] canvas")?.dataset.target ?? null, steadiness: !!document.querySelector("[data-steadiness]") }));
+  check("P5 glide card: the band drawn, the level line neutral (no in / out-of-band words), steadiness shown",
+    glide.judge === "0" && glide.target === "165-255" && glide.status === "none" && !/band/.test(glide.text) && glide.steadiness, JSON.stringify(glide));
+  const reps = async () => page.evaluate(() => { const r = document.querySelector("[data-reps]"); return r ? `${r.dataset.reps}/${r.dataset.repsOf}:${r.querySelector('[role="status"]').textContent}` : null; });
+  const r0 = await reps();
+  for (let i = 0; i < 3; i++) { await clickSel(page, "[data-reps-done]"); await sleep(80); }
+  const r3 = await reps();
+  check("…a tap counter: Slide 1 of 3, then All 3 done.", r0 === "0/3:Slide 1 of 3" && r3 === "3/3:All 3 done.", `${r0} -> ${r3}`);
+  await clickSel(page, "[data-reps-again]");
+  await sleep(80);
+  check("…Count again starts over", (await reps()) === "0/3:Slide 1 of 3");
+
+  // Warm-up: the hold timer counts a hum when stopped, or by itself at 5 s
+  await openLesson(page, "W1");
+  await goToCard(page, "Hum through the straw");
+  await clickSel(page, "[data-timer-start]");
+  await sleep(400);
+  const running = await page.evaluate(() => document.querySelector("[data-timer]")?.dataset.timer);
+  await sleep(800);
+  await clickSel(page, "[data-timer-stop]");
+  await sleep(150);
+  const afterStop = await reps();
+  await clickSel(page, "[data-timer-start]");
+  await sleep(5500);
+  const afterAuto = await reps();
+  check("W1: the hold timer runs, counts a hum on Stop, and stops by itself at 5 s",
+    running === "running" && afterStop === "1/5:Hum 2 of 5" && afterAuto === "2/5:Hum 3 of 5"
+      && (await page.evaluate(() => document.querySelector("[data-timer]")?.dataset.timer)) === "idle", `${running} ${afterStop} ${afterAuto}`);
+  await goToCard(page, "Slow slides");
+  check("W1: the slides card has its own counter", (await reps()) === "0/5:Slide 1 of 5", await reps());
+
   // Tongue and lips: two takes
   await openLesson(page, "R3");
   await goToCard(page, "Bright");
+  // a take under 1 s gets the too-short note before anything else
+  await clickSel(page, '[data-take="bright"] [data-take-record]');
+  await sleep(650);
+  await clickSel(page, '[data-take="bright"] [data-take-stop]');
+  await sleep(400);
+  const shortNote = await page.evaluate(() => ({ note: document.querySelector('[data-take="bright"]')?.dataset.takeNote ?? null, text: document.querySelector('[data-take="bright"] [data-take-note-text]')?.textContent ?? "" }));
+  check("R3: a take under 1 s says it is very short", shortNote.note === "short" && /very short/.test(shortNote.text), JSON.stringify(shortNote));
   await clickSel(page, '[data-take="bright"] [data-take-record]');
   await sleep(2500);
   await clickSel(page, '[data-take="bright"] [data-take-stop]');
-  await sleep(300);
+  await sleep(400);
+  const okNote = await page.evaluate(() => document.querySelector('[data-take="bright"]')?.dataset.takeNote ?? null);
+  check("…a spoken 2.5 s take gets no note", okNote === null, String(okNote));
   await goToCard(page, "Dark");
   await clickSel(page, '[data-take="dark"] [data-take-record]');
   await sleep(2500);
@@ -439,6 +528,7 @@ async function partFlow(v) {
   await sleep(300);
   const pressed = await page.evaluate(() => document.querySelector('[data-compare] [data-play="bright"]').getAttribute("aria-pressed"));
   check("Play: the take plays (aria-pressed)", pressed === "true", pressed);
+  await guessRound(page, "R3", /^A was your (bright|dark) take, B your (dark|bright) take\.$/);
 
   // Hear it first
   await openLesson(page, "R4");
@@ -454,21 +544,28 @@ async function partFlow(v) {
   await goToCard(page, "Listen");
   await page.waitForFunction(() => { const b = document.querySelector('[data-play="hear-10"]'); return b && !b.disabled; }, { timeout: 60000 }).catch(() => {});
   const hearBtns = await page.evaluate(() => [...document.querySelectorAll("[data-hear-versions] [data-play]")].map((b) => `${b.dataset.play}:${b.disabled ? "off" : "on"}`));
-  check("Listen: your recording and the brighter version (feminine) are playable", hearBtns.join() === "hear-original:on,hear-10:on", hearBtns.join());
+  check("Listen: the unchanged rebuild and the brighter version (feminine) are playable", hearBtns.join() === "hear-rebuild:on,hear-10:on", hearBtns.join());
   await clickSel(page, '[data-play="hear-10"]');
   await sleep(300);
   check("…and the brighter version plays", (await page.evaluate(() => document.querySelector('[data-play="hear-10"]').getAttribute("aria-pressed"))) === "true");
   await page.screenshot({ path: path.join(OUT, `${v}-flow-R4-listen.png`) });
+  await clickSel(page, '[data-play="hear-10"]'); // stop it
+  await guessRound(page, "R4", /^A was (the unchanged version|10 % brighter), B (10 % brighter|the unchanged version)\.$/);
   // nothing plays while a take records (no echo cancellation: the mic would record the playback; 2026-10-27)
   await goToCard(page, "Your try");
   await clickSel(page, '[data-take="try"] [data-take-record]');
   await sleep(600);
   const whileRec = await page.evaluate(() => [...document.querySelectorAll("[data-card-tool] [data-play]")].map((b) => `${b.dataset.play}:${b.disabled ? "off" : "on"}`));
   check("Your try recording: every play button is off meanwhile", whileRec.length >= 3 && whileRec.every((x) => x.endsWith(":off")), whileRec.join());
+  await sleep(3800);
   await clickSel(page, '[data-take="try"] [data-take-stop]');
   await sleep(400);
   const afterRec = await page.evaluate(() => [...document.querySelectorAll("[data-card-tool] [data-play]")].map((b) => `${b.dataset.play}:${b.disabled ? "off" : "on"}`));
   check("…and on again once it stops", afterRec.every((x) => x.endsWith(":on")), afterRec.join());
+  const tryPitch = await page.evaluate(() => { const el = document.querySelector("[data-take-pitch]"); return el ? { text: el.innerText, tryHz: el.dataset.takePitchHz, recHz: el.dataset.recordingPitchHz } : null; });
+  check("the try's pitch shows beside the recording's, as numbers only",
+    tryPitch && /Your recording: about \d+ Hz/.test(tryPitch.text) && /Your try: about \d+ Hz/.test(tryPitch.text) && +tryPitch.tryHz > 0 && +tryPitch.recHz > 0, JSON.stringify(tryPitch));
+  await page.screenshot({ path: path.join(OUT, `${v}-flow-R4-try.png`) });
   check("no page errors", errors.length === 0, errors.slice(0, 3).join(" | "));
   await page.close();
 }

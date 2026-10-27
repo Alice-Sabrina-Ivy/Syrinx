@@ -9,13 +9,16 @@
 //     recordAgain, readyInMs, setShifts, dispose }
 //   state { phase (the controller's), seconds (while recording), stage ("model" | … while
 //     a noise-reduced analysis runs), rearming (Record waits: the controller's 1 s re-arm), original ({ pcm, rate } | null),
-//     versions ({ [pct]: { pcm, rate } }) }
+//     rebuild ({ pcm, rate } | null: the recording rebuilt unchanged — the versions go through
+//     the same vocoder, so the listening comparison is rebuild vs version, and the vocoder's
+//     own sound can't give the changed one away), versions ({ [pct]: { pcm, rate } }) }
 
 export function createHear({ shifts, createController }) {
   const ctl = createController();
   let wanted = [...shifts];
   let analysis = null;
-  let state = { phase: "loading", seconds: null, stage: null, rearming: false, original: null, versions: {} };
+  let rebuild = null;
+  let state = { phase: "loading", seconds: null, stage: null, rearming: false, original: null, rebuild: null, versions: {} };
   const listeners = new Set();
 
   function emit(patch) {
@@ -40,6 +43,11 @@ export function createHear({ shifts, createController }) {
       patch.original = s.analysis && s.original
         ? { pcm: s.original, rate: s.analysis.captureRate > 96000 ? s.analysis.rate : s.analysis.captureRate }
         : null;
+    }
+    // the rebuild comes with the analysis (and again after a noise-reduction re-analysis)
+    if (s.rebuild !== rebuild) {
+      rebuild = s.rebuild;
+      patch.rebuild = s.analysis && s.rebuild ? { pcm: s.rebuild, rate: s.analysis.rate } : null;
     }
     if (s.preview && s.preview.st === 0 && !(patch.versions ?? state.versions)[s.preview.pct]) {
       patch.versions = { ...(patch.versions ?? state.versions), [s.preview.pct]: { pcm: s.preview.pcm, rate: s.preview.rate } };

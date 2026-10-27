@@ -395,7 +395,7 @@ function App() {
           listening={listening}
           direction={direction}
           onStartListening={requestStart}
-          pipeline={listening ? { pitchTraceRef, subscribeTrace, pitchVoiced, pitchHolding, pitch, pitchLevel } : null}
+          pipeline={listening ? { pitchTraceRef, subscribeTrace, pitchVoiced, pitchHolding, pitch, pitchLevel, steadiness, steadinessHeld } : null}
           sessionId={liveRecording?.sessionId ?? null}
           isSessionRecording={() => sessionRef.current.recording}
         />

@@ -46,6 +46,11 @@ function lessonStrings(lesson, dir) {
     push(forDir(c.after, dir));
     push(forDir(c.safety, dir));
     push(forDir(c.troubleshooting, dir));
+    push(forDir(c.feel, dir));
+    push(forDir(c.phrases, dir));
+    for (const d of c.drawings ?? []) { push(d.caption); push(d.alt); }
+    if (c.reps) push(forDir(c.reps.label, dir));
+    if (c.timer) push(c.timer.label);
     for (const t of c.takes ?? []) push(t.label);
   }
   push(lesson.result?.done);
@@ -75,6 +80,8 @@ for (const id of LESSON_ORDER) {
     const title = forDir(L.title, dir), purpose = forDir(L.purpose, dir);
     const cards = cardsFor(L, dir);
     const empty = cards.filter((c) => forDir(c.body ?? [], dir).length === 0 && forDir(c.list ?? [], dir).length === 0);
+    const badDrawing = cards.flatMap((c) => c.drawings ?? []).filter((d) => !d.id || !d.caption || !d.alt);
+    if (badDrawing.length) check(`${tag}: every drawing has an id, a caption and alt text`, false, JSON.stringify(badDrawing[0]));
     if (!title || !purpose || empty.length || strs.some((x) => !x.trim())) {
       check(`${tag}: title, purpose and a body on every card`, false, empty.map((c) => c.title ?? c.kind).join(", "));
     }
@@ -151,6 +158,43 @@ check("the warm-up never leads straight into the cool-down", nextLessonAfter("W1
 {
   const c = cardsFor(LESSONS.S1, "feminine").find((x) => x.list);
   check("S1: the stop signs come right under their heading (the rest after the list)", c && !c.body && Array.isArray(c.after) && c.after.length > 0);
+}
+
+console.log("\nthe ideas from the Juni decompile check (2026-10-27)");
+{
+  const w1 = cardsFor(LESSONS.W1, "feminine");
+  const ready = w1.find((c) => forDir(c.title, "feminine") === "Get ready");
+  check("W1: how it should feel comes on Get ready, before the steps", ready && forDir(ready.feel, "feminine").length === 1
+    && w1.indexOf(ready) < w1.findIndex((c) => c.timer));
+  const hum = w1.find((c) => c.timer);
+  check("W1: a hold timer for the five hums (up to 5 s each), a counter for the five slides", hum?.timer.reps === 5 && hum.timer.seconds === 5
+    && w1.some((c) => c.reps?.count === 5 && c.reps.label === "Slide"));
+  check("W2: a counter for the five sighs", cardsFor(LESSONS.W2, "feminine").some((c) => c.kind === "live" && c.reps?.count === 5));
+  for (const dir of DIRS) {
+    const live = cardsFor(LESSONS.P5, dir).filter((c) => c.kind === "live");
+    const counts = live.map((c) => forDir(c.reps?.count, dir));
+    if (!(live.length === 2 && live.every((c) => c.live.judge === false && c.live.steadiness) && counts.every((n) => n >= 2))) {
+      check(`P5 / ${dir ?? "no goal"}: neutral glide cards with steadiness and a counter`, false, counts.join());
+    }
+  }
+  check("P5: three slides, four for androgynous (twice up, twice down)", forDir(cardsFor(LESSONS.P5, "feminine").find((c) => c.kind === "live").reps.count, "feminine") === 3
+    && forDir(cardsFor(LESSONS.P5, "androgynous").find((c) => c.kind === "live").reps.count, "androgynous") === 4);
+  const phrases = cardsFor(LESSONS.P6, "feminine").find((c) => c.phrases);
+  check("P6: the phrases are shown one at a time (a phrases card, no bulleted list)", phrases?.phrases.length === 5 && !phrases.list && phrases.live?.measure === "count");
+  const idx = (L, dir, pred) => cardsFor(LESSONS[L], dir).findIndex(pred);
+  for (const dir of DIRS) {
+    const g3 = idx("R3", dir, (c) => c.kind === "guess"), cmp = idx("R3", dir, (c) => c.kind === "compare");
+    const g4 = idx("R4", dir, (c) => c.kind === "guess"), listen = idx("R4", dir, (c) => c.stage === "listen"), tryAt = idx("R4", dir, (c) => c.compareWithHear);
+    if (!(g3 === cmp + 1 && g4 === listen + 1 && tryAt === g4 + 1)) check(`R3 / R4 / ${dir ?? "no goal"}: the ear test after listening, before the try`, false, `${g3} ${cmp} ${g4} ${listen} ${tryAt}`);
+  }
+  const g3 = cardsFor(LESSONS.R3, "feminine").find((c) => c.kind === "guess");
+  check("R3's ear test uses its bright and dark takes", g3.guess.takes.join() === "bright,dark" && g3.guess.takes.every((id) => takesFor(LESSONS.R3, "feminine").some((t) => t.id === id)));
+  check("R4's ear test uses Voice Shaper's versions", cardsFor(LESSONS.R4, "feminine").find((c) => c.kind === "guess").guess.hear === true);
+  const listenText = lessonStrings(LESSONS.R4, "feminine").join(" ");
+  check("R4's listening compares the unchanged rebuild with the changed one", /Play the unchanged version, then the brighter one/.test(listenText) && /rebuilt from your recording in the same way/.test(listenText));
+  const drawn = (L) => cardsFor(LESSONS[L], "feminine").flatMap((c) => (c.drawings ?? []).map((d) => d.id));
+  check("drawings: W1 straw + lip buzz, R1 fingertips / up / down, R2 down / up, R3 bright / dark",
+    drawn("W1").join() === "straw,lipBuzz" && drawn("R1").join() === "fingertips,boxUp,boxDown" && drawn("R2").join() === "boxDown,boxUp" && drawn("R3").join() === "bright,dark");
 }
 
 console.log("\nforDir");

@@ -6,6 +6,8 @@
 // speaking pitch, so intonation peaks and dips don't flip the colour.
 // With no target ("Just exploring" / not chosen yet): no band, neutral
 // line. Gaps during silence.
+// judge = false (the guided exercises' glide cards): the band is drawn but the
+// line stays neutral — nothing is judged while the voice glides through it.
 
 import { useRef, useEffect } from "react";
 import { hzToNote } from "../utils/pitchUtils";
@@ -33,6 +35,7 @@ export function PitchTrace({
   steadiness = null,
   steadinessHeld = false,
   compact = false,
+  judge = true,
 }) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
@@ -44,6 +47,8 @@ export function PitchTrace({
   // once even if no data is arriving).
   const redrawRef = useRef(null);
   useEffect(() => { targetRef.current = target; redrawRef.current?.(); }, [target]);
+  const judgeRef = useRef(judge);
+  useEffect(() => { judgeRef.current = judge; redrawRef.current?.(); }, [judge]);
   // Whether the readouts show a pitch now (the same props as the cue strip's
   // Pitch meter): the glow dot at "now" is drawn only then. The hook clears
   // the level at once when the paint gate holds back an octave jump or the
@@ -265,6 +270,8 @@ export function PitchTrace({
       ctx.rect(plotLeft, plotTop, plotRight - plotLeft, plotBottom - plotTop);
       ctx.clip();
 
+      // The colours judge against the band unless judging is off (then neutral).
+      const judged = judgeRef.current ? target : null;
       // The previous drawn point's colour is carried along (a gap ends the
       // segment, so it is only compared within a segment).
       let inSegment = false;
@@ -285,7 +292,7 @@ export function PitchTrace({
         }
 
         const y = hzToY(pt.pitch);
-        const color = statusColor(pitchStatus(levelAt(data, i), target));
+        const color = statusColor(pitchStatus(levelAt(data, i), judged));
 
         if (!inSegment) {
           ctx.beginPath();
@@ -314,7 +321,7 @@ export function PitchTrace({
       if (lastVoiced && now - lastVoiced.time < 500 && showsPitchRef.current) {
         const x = timeToX(lastVoiced.time, now);
         const y = hzToY(lastVoiced.pitch);
-        const color = statusColor(pitchStatus(levelAt(data, lastVoicedIdx), target));
+        const color = statusColor(pitchStatus(levelAt(data, lastVoicedIdx), judged));
 
         ctx.beginPath();
         ctx.arc(x, y, 5 * dpr, 0, Math.PI * 2);
@@ -363,7 +370,7 @@ export function PitchTrace({
   // Readout: the number is this moment's pitch; its colour judges the
   // pitch level, like the trace (null target = neutral).
   const noteInfo = pitch ? hzToNote(pitch) : null;
-  const levelStatus = pitch !== null ? pitchStatus(pitchLevel, target) : null;
+  const levelStatus = pitch !== null ? pitchStatus(pitchLevel, judge ? target : null) : null;
 
   return (
     <div className="flex flex-col h-full">

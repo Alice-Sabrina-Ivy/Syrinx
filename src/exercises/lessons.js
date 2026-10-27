@@ -21,7 +21,17 @@
 //   compare  playback of every take recorded in the lesson
 //   hear     "Hear it first": record, then the resonance-only versions (Voice Shaper)
 //   aim      what you're aiming for, and what to do if it isn't working
+//   guess    "test your ear": two recordings as A and B in a random order, pick the
+//            brighter one, then see which was which (no tally); guess.takes = two take ids
+//            of the lesson, guess.hear = "Hear it first"'s unchanged rebuild vs a changed version
 // Every lesson ends with the result card, which LessonPlayer adds.
+//
+// Optional card fields drawn in the card's tool area (ExercisesView.jsx): reps (a tap
+// counter, "Slide 2 of 3": { count, label }), timer (a tap-to-start hold timer per rep:
+// { reps, seconds, label }), phrases (shown one at a time with "Next phrase"). In the text:
+// feel (how it should feel, before the steps), drawings ([{ id, caption, alt }],
+// src/exercises/drawings.js). Takes: { id, label, minS (shorter = "too short"; default
+// 1 s), pitch (show its pitch beside the recording's) }.
 
 export const DIRECTIONS = Object.freeze(["feminine", "masculine", "androgynous", "exploring"]);
 
@@ -137,16 +147,23 @@ export const LESSONS = Object.freeze({
         body: [
           "A drinking straw, if you have one. Sit or stand comfortably, with your shoulders down and your jaw loose.",
         ],
+        feel: ["An easy buzz at your lips and the front of your face, and a throat that feels loose."],
         safety: [SAFETY, "If you feel light-headed, stop and breathe normally for a moment."],
       },
       {
         kind: "text",
         title: "Hum through the straw",
+        drawings: [
+          { id: "straw", caption: "Lips sealed around the straw: all the air goes out through it.", alt: "Side view of the lips closed around a drinking straw, with an arrow showing the air going out through the straw." },
+          { id: "lipBuzz", caption: "Or a lip buzz: loose lips flapping on an easy sound.", alt: "Front view of loosely closed lips with small marks showing them flapping, and two fingertips resting on the cheeks beside the corners of the mouth." },
+        ],
         body: [
           "Hold the straw between your lips and seal them around it. Make an easy “oo” sound into the straw for 3 to 5 seconds, then breathe. Do it five times.",
           "All the air should go through the straw: if you gently pinch your nose, nothing should change.",
           "No straw? Do a lip buzz instead: let your lips flap loosely while you make an easy voiced sound, like a motorboat. If they won't keep buzzing, press lightly on your cheeks beside the corners of your mouth.",
+          "The timer below can count them for you: press Start as you begin each one, and Stop whenever you want to breathe. It stops by itself at 5 seconds.",
         ],
+        timer: { reps: 5, seconds: 5, label: "Hum" },
       },
       {
         kind: "text",
@@ -155,11 +172,12 @@ export const LESSONS = Object.freeze({
           "On the straw or the lip buzz, slide slowly up a little and back down, like a gentle siren. Do five slides.",
           "Stay in the comfortable middle of your voice. It doesn't need to go high or low.",
         ],
+        reps: { count: 5, label: "Slide" },
       },
       {
         kind: "aim",
         body: [
-          "An easy buzz at your lips and the front of your face, and a throat that feels loose. Your voice should feel easier afterwards, not tired.",
+          "Your voice should feel easier afterwards, not tired.",
         ],
         troubleshooting: [
           "If it feels like pushing air, use less air and a softer sound.",
@@ -195,6 +213,7 @@ export const LESSONS = Object.freeze({
         title: "Sighs",
         // neutral: no band and no on / off-target colour — a cool-down is never judged
         live: { optional: true, neutral: true },
+        reps: { count: 5, label: "Sigh" },
         body: [
           "Let the breath out on a gentle, voiced sigh that falls from a comfortable high note to a low one, like the “haaah” when you sit down after a long day. Do five, with a slow breath between them.",
           "Let each sigh fade out before it gets creaky. You don't need to reach the bottom of your voice.",
@@ -236,7 +255,7 @@ export const LESSONS = Object.freeze({
         body: [
           "A slide changes your pitch gradually, so you can feel the change happen instead of jumping to a note and squeezing.",
           {
-            target: "The chart shows where your voice is, so you can find the band by ear and by sight. Stopping inside it for a moment teaches you what that pitch feels like.",
+            target: "The chart shows where your voice is, so you can find the band by ear and by sight. Stopping inside it for a moment teaches you what that pitch feels like. The line stays one colour here: it's there to guide you, nothing is judged.",
             exploring: "The chart shows where your voice goes, with no target.",
           },
         ],
@@ -253,7 +272,10 @@ export const LESSONS = Object.freeze({
       {
         kind: "live",
         title: "Slide on “oo”",
-        live: {},
+        // judge: false — the band is drawn, the line stays neutral (a glide passes through the
+        // band faster than the 1.5 s pitch level follows); steadiness shows how still a note sits
+        live: { judge: false, steadiness: true },
+        reps: { count: { all: 3, androgynous: 4 }, label: "Slide" },
         body: [
           {
             feminine: "Start on a comfortable low “oo” (as in “who”) and slide slowly up until the line is inside the band. Stay there for a moment, then slide back down. Do it three times.",
@@ -264,12 +286,14 @@ export const LESSONS = Object.freeze({
           {
             target: "Go only as far as is easy. If the band feels like work, stop short of it: getting closer over weeks is the aim, not reaching it today.",
           },
+          "Press Done after each one to keep count. “Steadiness” shows how still your note is while you stay on it: smaller is steadier.",
         ],
       },
       {
         kind: "live",
         title: "Land on a word",
-        live: {},
+        live: { judge: false, steadiness: true },
+        reps: { count: 3, label: { target: "Try", exploring: "Note" } },
         body: [
           {
             feminine: "Slide up into the band on “oo”. When you're there, say “one… two… three” slowly on that same note. Do it three times.",
@@ -341,9 +365,12 @@ export const LESSONS = Object.freeze({
         title: "Short phrases",
         live: { measure: "count" },
         body: [
-          { target: "Now say these, one at a time, in the band:", exploring: "Now say these, one at a time, in your everyday voice:" },
+          {
+            target: "Now some short phrases, one at a time, in the band. The phrase to say is above the chart; press “Next phrase” when you're ready for the next one.",
+            exploring: "Now some short phrases, one at a time, in your everyday voice. The phrase to say is above the chart; press “Next phrase” when you're ready for the next one.",
+          },
         ],
-        list: [
+        phrases: [
           "Good morning, how are you?",
           "Could I get a coffee, please?",
           "I'll see you on Friday.",
@@ -383,6 +410,9 @@ export const LESSONS = Object.freeze({
       {
         kind: "text",
         title: "Get ready",
+        drawings: [
+          { id: "fingertips", caption: "Two fingertips resting lightly on the front of your neck.", alt: "Side view of a head and neck, with two fingertips resting lightly on the front of the neck." },
+        ],
         body: [
           "Rest two fingertips lightly on the front of your neck: on the bump if you can find it, or on the middle of your neck if you can't.",
         ],
@@ -391,11 +421,17 @@ export const LESSONS = Object.freeze({
       {
         kind: "text",
         title: "Swallow",
+        drawings: [
+          { id: "boxUp", caption: "Swallowing: the voice box rises, then drops back.", alt: "Side view of a neck, with the voice box drawn higher than its resting place and an arrow pointing up." },
+        ],
         body: ["Swallow once. Feel the voice box rise, then drop back to where it rests."],
       },
       {
         kind: "text",
         title: "Yawn",
+        drawings: [
+          { id: "boxDown", caption: "Yawning: the voice box drops lower than where it rests.", alt: "Side view of a neck, with the voice box drawn lower than its resting place and an arrow pointing down." },
+        ],
         body: ["Start a slow yawn. Feel the voice box drop, lower than where it rests. Then let it come back."],
       },
       {
@@ -449,11 +485,17 @@ export const LESSONS = Object.freeze({
       {
         kind: "text",
         title: "Big dog",
+        drawings: [
+          { id: "boxDown", caption: "Big dog: the voice box drops, and the space above it gets longer.", alt: "Side view of a neck, with the voice box drawn lower than its resting place and an arrow pointing down." },
+        ],
         body: ["Pant slowly and deeply in a soft whisper, like a big, tired dog. Feel the voice box drop. Five pants."],
       },
       {
         kind: "text",
         title: "Little dog",
+        drawings: [
+          { id: "boxUp", caption: "Little dog: the voice box rises, and the space above it gets shorter.", alt: "Side view of a neck, with the voice box drawn higher than its resting place and an arrow pointing up." },
+        ],
         body: ["Now pant lightly, like a small, excited dog. The whisper sounds smaller and brighter, and the voice box rises. Five pants."],
       },
       {
@@ -520,6 +562,9 @@ export const LESSONS = Object.freeze({
       {
         kind: "record",
         title: "Bright",
+        drawings: [
+          { id: "bright", caption: "Bright: tongue high and forward, lips slightly spread.", alt: "Side cut-away view of the mouth: the tongue raised high and forward toward the roof of the mouth, the tip behind the lower front teeth, and the lips slightly spread." },
+        ],
         body: [
           "Rest the tip of your tongue behind your bottom front teeth. Let the middle of your tongue rise a little, as for “ee”, and smile very slightly at the corners.",
           `Record yourself saying: “${SENTENCE}”`,
@@ -529,6 +574,9 @@ export const LESSONS = Object.freeze({
       {
         kind: "record",
         title: "Dark",
+        drawings: [
+          { id: "dark", caption: "Dark: tongue lower and further back, lips slightly rounded.", alt: "Side cut-away view of the mouth: the tongue lower and further back, and the lips slightly rounded and forward." },
+        ],
         body: [
           "Let your tongue rest a little lower and further back, as for “oh”. Don't pull it back. Round your lips slightly, as if you're about to say “oo”.",
           `Record the same sentence: “${SENTENCE}”`,
@@ -549,6 +597,15 @@ export const LESSONS = Object.freeze({
         kind: "compare",
         title: "Compare",
         body: ["Play your recordings one after the other. Listen for the size and brightness of the sound, not the pitch."],
+      },
+      {
+        kind: "guess",
+        title: "Test your ear (optional)",
+        guess: { takes: ["bright", "dark"] },
+        body: [
+          "Your bright and dark takes play as A and B, in a random order. Listen to both, then pick the one that sounds brighter.",
+          "Nothing is counted or kept: it's a way to check that the difference you made can be heard.",
+        ],
       },
       {
         kind: "aim",
@@ -608,10 +665,24 @@ export const LESSONS = Object.freeze({
         stage: "listen",
         body: [
           {
-            feminine: "Play your recording, then the brighter version. Listen for the size and brightness of the sound: the pitch is the same.",
-            masculine: "Play your recording, then the darker version. Listen for the size and brightness of the sound: the pitch is the same.",
-            all: "Play your recording, then the brighter and the darker versions. Listen for the size and brightness of the sound: the pitch is the same.",
+            feminine: "Play the unchanged version, then the brighter one. Listen for the size and brightness of the sound: the pitch is the same.",
+            masculine: "Play the unchanged version, then the darker one. Listen for the size and brightness of the sound: the pitch is the same.",
+            all: "Play the unchanged version, then the brighter and the darker ones. Listen for the size and brightness of the sound: the pitch is the same.",
           },
+          "All of them are rebuilt from your recording in the same way, so the only difference you hear is the resonance.",
+        ],
+      },
+      {
+        kind: "guess",
+        title: "Test your ear (optional)",
+        guess: { hear: true },
+        body: [
+          {
+            feminine: "The unchanged version and the brighter one play as A and B, in a random order. Listen to both, then pick the one that sounds brighter.",
+            masculine: "The unchanged version and the darker one play as A and B, in a random order. Listen to both, then pick the one that sounds brighter.",
+            all: "The unchanged version and one of the changed ones play as A and B, in a random order. Listen to both, then pick the one that sounds brighter.",
+          },
+          "Nothing is counted or kept: it's a way to tune your ear to the change before you try it.",
         ],
       },
       {
@@ -623,8 +694,10 @@ export const LESSONS = Object.freeze({
             masculine: "Now say it again, twice, aiming for the darker version. Use what you found in “Tongue and lips” and “Big dog, little dog”, not a lower pitch. Record it.",
             all: "Now say it again, twice, aiming for one of the changed versions. Use what you found in “Tongue and lips” and “Big dog, little dog”, not a different pitch. Record it.",
           },
+          "After you record, the pitch of your try shows beside your recording's, so you can check that it stayed about where it was.",
         ],
-        takes: [{ id: "try", label: "Your try" }],
+        // the sentence twice, like the recording it is compared with (which needs 3 s)
+        takes: [{ id: "try", label: "Your try", minS: 3, pitch: true }],
         compareWithHear: true,
       },
       {
@@ -707,6 +780,7 @@ export const UI = Object.freeze({
   aimTitle: "What you're aiming for",
   ifNot: "If it isn't working",
   safetyTitle: "Safety",
+  feelTitle: "How it should feel",
   micOff: "The mic is off.",
   micOffOptional: "The mic is off. You can do this step without it.",
   turnOnMic: "Turn on the mic",
@@ -718,6 +792,20 @@ export const UI = Object.freeze({
   aboveBand: "above the band",
   voiceSoFar: (s) => `Voice so far: ${s} s`,
   startOver: "Start this step over",
+  // counters and the hold timer (no mic; nothing is judged)
+  rep: (label, i, n) => `${label} ${i} of ${n}`,
+  repDone: "Done",
+  repDoneName: (label, i) => `Done: ${label.toLowerCase()} ${i}`,
+  repAll: (n) => `All ${n} done.`,
+  repAgain: "Count again",
+  timerStart: (label, i) => `Start ${label.toLowerCase()} ${i}`,
+  timerStop: "Stop",
+  timerSeconds: (s) => `${s} s`,
+  timerRest: "Breathe, then start the next one when you're ready.",
+  // one phrase at a time
+  phrase: (i, n) => `Phrase ${i} of ${n}`,
+  nextPhrase: "Next phrase",
+  firstPhrase: "From the first phrase",
   // recorder
   record: "Record",
   stop: "Stop",
@@ -726,6 +814,12 @@ export const UI = Object.freeze({
   recordTake: (label) => `Record: ${label}`,
   stopTake: (label) => `Stop recording: ${label}`,
   recordAgainTake: (label) => `Record again: ${label}`,
+  // notes on a take (measurements/exercise-take-checks-2026-10-27.md)
+  takeShort: (s) => `That take is very short (${s} s). Record it again, all the way through.`,
+  // a take's pitch (R4's try), numbers only
+  pitchTitle: "Pitch, for comparison",
+  pitchOf: (label, hz) => `${label}: about ${hz} Hz`,
+  pitchNone: (label) => `${label}: not enough voice to read`,
   // screen-reader status (once per change, not every second)
   srRecording: "Recording",
   srRecorded: (s) => `Recorded, ${s} s`,
@@ -741,6 +835,7 @@ export const UI = Object.freeze({
   nothingToCompare: "Nothing recorded yet. Go back and record first.",
   // hear it first
   yourRecording: "Your recording",
+  unchanged: "Unchanged",
   brighter: "Brighter",
   darker: "Darker",
   preparing: "Preparing the changed versions…",
@@ -751,6 +846,21 @@ export const UI = Object.freeze({
   hearUnsupported: "This browser can't run Voice Shaper (it needs WebAssembly).",
   hearCancelled: "Recording stopped because the mic was turned off.",
   hearRecordFirst: "Record your usual voice first (the step before).",
+  // test your ear
+  guessNames: Object.freeze(["A", "B"]),
+  guessPlay: (x) => `Play ${x}`,
+  guessQuestion: "Which one sounds brighter?",
+  guessPlayFirst: "Play both first.",
+  guessPicked: (x) => `You picked ${x}.`,
+  guessTakes: (a, b) => `A was your ${a.toLowerCase()} take, B your ${b.toLowerCase()} take.`,
+  guessHear: (a, b) => `A was ${a}, B ${b}.`,
+  guessUnchanged: "the unchanged version",
+  guessShifted: (pct) => (pct > 0 ? `${pct} % brighter` : `${-pct} % darker`),
+  guessBrighter: (x) => `So the brighter one was ${x}.`,
+  guessHintTakes: "If they sounded alike, make the difference bigger next time, then bring it back halfway.",
+  guessHintHear: "The change is small. If it was hard to hear, try headphones and play them right after each other.",
+  guessAgain: "Mix them up again",
+  guessNeedTakes: "Record your bright and dark takes first (the steps before).",
   // result
   resultTitle: "How did it go?",
   feelQuestion: "How did that feel?",
