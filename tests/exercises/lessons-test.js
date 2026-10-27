@@ -19,6 +19,7 @@ import {
   LESSONS, GROUPS, LESSON_ORDER, UI, SAFETY, SENTENCE, DIRECTIONS, forDir, cardsFor, takesFor,
   hearShifts, lastDoneText, PRACTICE, nextLessonAfter,
 } from "../../src/exercises/lessons.js";
+import { DRAWINGS } from "../../src/exercises/drawings.js";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 let passed = 0, failed = 0;
@@ -195,6 +196,8 @@ console.log("\nthe ideas from the Juni decompile check (2026-10-27)");
   const drawn = (L) => cardsFor(LESSONS[L], "feminine").flatMap((c) => (c.drawings ?? []).map((d) => d.id));
   check("drawings: W1 straw + lip buzz, R1 fingertips / up / down, R2 down / up, R3 bright / dark",
     drawn("W1").join() === "straw,lipBuzz" && drawn("R1").join() === "fingertips,boxUp,boxDown" && drawn("R2").join() === "boxDown,boxUp" && drawn("R3").join() === "bright,dark");
+  const allDrawn = LESSON_ORDER.flatMap((id) => DIRS.flatMap((dir) => cardsFor(LESSONS[id], dir).flatMap((c) => (c.drawings ?? []).map((d) => d.id))));
+  check("every drawing a lesson names exists in drawings.js", allDrawn.length > 0 && allDrawn.every((id) => DRAWINGS[id]), allDrawn.filter((id) => !DRAWINGS[id]).join());
 }
 
 console.log("\nforDir");

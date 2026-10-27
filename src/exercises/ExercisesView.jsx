@@ -28,6 +28,7 @@ import { createLessonSession } from "./session.js";
 import { recordTake } from "./takes.js";
 import { createTakeVoiceLog, takeNote, takePitchHz } from "./takeChecks.js";
 import { newGuessRound, markPlayed, brighterIndex } from "./guess.js";
+import { Drawings } from "./Drawing.jsx";
 
 // ---------------------------------------------------------------- the open lesson
 
@@ -802,6 +803,8 @@ function CardBody({ card, lesson, direction }) {
           {!card.title && <h3 className="mt-3 text-xs font-medium uppercase tracking-wide text-neutral-400">{UI.whyItWorks}</h3>}
         </>
       )}
+      {/* the position the steps ask for, before the steps */}
+      <Drawings items={card.drawings} />
       <Paragraphs items={body} />
       {list && (
         <ul className="mt-2 list-disc space-y-1 pl-5 text-sm leading-relaxed text-neutral-200">

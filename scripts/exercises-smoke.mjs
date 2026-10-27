@@ -484,6 +484,12 @@ async function partFlow(v) {
   // Warm-up: the hold timer counts a hum when stopped, or by itself at 5 s
   await openLesson(page, "W1");
   await goToCard(page, "Hum through the straw");
+  const drawings = await page.evaluate(() => [...document.querySelectorAll("[data-drawing]")].map((f) => {
+    const svg = f.querySelector('svg[role="img"]'); const r = svg?.getBoundingClientRect();
+    return { id: f.dataset.drawing, label: svg?.getAttribute("aria-label") ?? "", caption: f.querySelector("figcaption")?.textContent ?? "", w: Math.round(r?.width ?? 0), h: Math.round(r?.height ?? 0), paths: svg?.querySelectorAll("path").length ?? 0 };
+  }));
+  check("W1: the straw and lip-buzz drawings show side by side, each with alt text and a caption, at most 160 px wide",
+    drawings.map((d) => d.id).join() === "straw,lipBuzz" && drawings.every((d) => d.label.length > 20 && d.caption.length > 10 && d.w > 60 && d.w <= 160 && Math.abs(d.h - d.w * 0.75) <= 2 && d.paths > 3), JSON.stringify(drawings));
   await clickSel(page, "[data-timer-start]");
   await sleep(400);
   const running = await page.evaluate(() => document.querySelector("[data-timer]")?.dataset.timer);
