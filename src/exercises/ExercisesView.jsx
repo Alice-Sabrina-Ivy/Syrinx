@@ -27,7 +27,7 @@ import { saveResult, updateResult, lastDoneByLesson, recentResults } from "./sto
 import { createLessonSession } from "./session.js";
 import { recordTake } from "./takes.js";
 import { createTakeVoiceLog, takeNote, takePitchHz } from "./takeChecks.js";
-import { newGuessRound, markPlayed, brighterIndex } from "./guess.js";
+import { newGuessRound, markPlayed, askedWord, revealLines } from "./guess.js";
 import { Drawings } from "./Drawing.jsx";
 
 // ---------------------------------------------------------------- the open lesson
@@ -52,14 +52,42 @@ function openLesson(id, direction) {
   if (id === "R4") {
     import("./hearShaper.js").then((m) => {
       const s = session.getState();
-      if (s.lessonId === "R4" && !session.getHear()) session.setHear(m.createShaperHear(hearShifts(direction)));
+      if (s.lessonId === "R4" && !session.getHear()) {
+        const hear = m.createShaperHear(hearShifts(direction));
+        session.setHear(hear);
+        trackHearVoice(hear);
+      }
     }).catch((err) => console.error("Exercises: Voice Shaper could not load", err));
   }
 }
 
+/**
+ * "Hear it first"'s recording: its voice is counted the way a take's is (its pitch shows
+ * beside the try's on the "Your try" card). Owned here, not by a component, so a tab switch
+ * while it records (the view unmounts, the recording goes on) keeps the whole count.
+ */
+function trackHearVoice(hear) {
+  let log = null;
+  hear.subscribe((st) => {
+    if (st.phase === "recording" && !log) {
+      const mine = createTakeVoiceLog();
+      log = mine;
+      setExerciseFrameTap((frame) => {
+        // the lesson closed while it recorded (hear disposed): the tap removes itself
+        if (session.getHear() !== hear) { setExerciseFrameTap(null); return; }
+        mine.push(frame);
+      });
+    } else if (st.phase !== "recording" && log) {
+      setExerciseFrameTap(null);
+      session.setUi("hear:voice", log.stats());
+      log = null;
+    }
+  });
+}
+
 // ---------------------------------------------------------------- shared bits
 
-const BTN = "inline-flex items-center justify-center rounded-lg border border-transparent text-sm transition-colors cursor-pointer min-h-11 px-3 disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-300";
+const BTN = "inline-flex items-center justify-center rounded-lg border border-transparent text-sm transition-colors cursor-pointer min-h-11 min-w-11 px-3 disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-300";
 const BTN_SOFT = `${BTN} bg-neutral-800 text-neutral-100 hover:bg-neutral-700 disabled:hover:bg-neutral-800`;
 const BTN_PRIMARY = `${BTN} bg-purple-600 text-white hover:bg-purple-700 disabled:hover:bg-purple-600`;
 const BTN_TOGGLE = `${BTN_SOFT} aria-pressed:bg-neutral-200 aria-pressed:text-neutral-900 aria-pressed:hover:bg-neutral-100 forced-colors:aria-pressed:bg-[Highlight] forced-colors:aria-pressed:text-[HighlightText]`;
@@ -299,7 +327,7 @@ function HoldTimer({ spec, cardIndex, s }) {
   return (
     <div className="flex items-center gap-3" data-timer={running ? "running" : "idle"} data-reps={done} data-reps-of={n}>
       {/* currentColor: in forced colours the ring takes the system text colour, the track stays fainter */}
-      <svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true" className="flex-shrink-0 text-purple-300">
+      <svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true" className="flex-shrink-0 text-purple-300 forced-colors:text-[CanvasText]">
         <circle cx="20" cy="20" r={RING_R} fill="none" strokeWidth="4" stroke="currentColor" strokeOpacity="0.25" />
         <circle
           cx="20" cy="20" r={RING_R} fill="none" strokeWidth="4" strokeLinecap="round" stroke="currentColor"
@@ -501,15 +529,6 @@ function HearRecord({ listening, onStartListening, vs }) {
     const t = setInterval(() => setReadyMs(hear.readyInMs() ?? 0), 250);
     return () => clearInterval(t);
   }, [hear]);
-  // While the recording runs, count its voice the way a take's is counted (its pitch is
-  // shown beside the try's on the "Your try" card).
-  const recordingNow = h?.phase === "recording";
-  useEffect(() => {
-    if (!recordingNow) return undefined;
-    const log = createTakeVoiceLog();
-    setExerciseFrameTap((frame) => log.push(frame));
-    return () => { setExerciseFrameTap(null); session.setUi("hear:voice", log.stats()); };
-  }, [recordingNow]);
   if (!listening) return <MicPrompt onStartListening={onStartListening} />;
   if (!hear || !h || h.phase === "loading") return <p className="text-sm text-neutral-300">{UI.hearLoading}</p>;
   if (h.phase === "unsupported") return <p className="text-sm text-neutral-300">{UI.hearUnsupported}</p>;
@@ -593,7 +612,7 @@ function guessItems(card, s, h, shift) {
 
 function GuessCard({ card, lesson, direction, cardIndex, isSessionRecording, s }) {
   const sessionRec = useSessionRec(isSessionRecording);
-  const [, h] = useHearState();
+  const [hear, h] = useHearState();
   const key = `${cardIndex}:guess`;
   const g = s.ui[key] ?? null;
   const fromTakes = !!card.guess.takes;
@@ -604,13 +623,33 @@ function GuessCard({ card, lesson, direction, cardIndex, isSessionRecording, s }
   const shift = g?.shift ?? null;
   const items = guessItems(card, s, h, fromTakes ? null : shift ?? shifts[0]);
   const ready = !!items;
+  // the recordings a round was made from: re-recording a take (R3) or the recording (R4,
+  // a new rebuild) makes a new round, so the answers wait until the new ones are heard
+  const src = fromTakes ? card.guess.takes.map((t) => s.takes[t] ?? null) : [h?.rebuild ?? null];
+  // the changed versions this card needs (the goal can change while it is open)
+  useEffect(() => { if (!fromTakes) hear?.setShifts(hearShifts(direction)); }, [hear, fromTakes, direction]);
+  const focusRef = useRef(null); // "again" after a pick, "play" after a new round
+  const againRef = useRef(null);
+  const firstPlayRef = useRef(null);
   useEffect(() => {
     const now = hearShifts(direction);
-    // the goal changed mid-lesson to one without this round's change: a new round
-    if (g && !fromTakes && !now.includes(g.shift)) { session.setUi(key, null); return; }
+    const stale = g && (g.src?.some((x, i) => x !== src[i]) || (!fromTakes && !now.includes(g.shift)));
+    // the goal changed mid-lesson to one without this round's change, or a recording changed: a new round
+    if (stale) { session.player.stop(); session.setUi(key, null); return; }
     if (g || !ready) return;
-    session.setUi(key, newGuessRound(card, now));
-  }, [g, ready, key, card, fromTakes, direction, shiftsKey]);
+    session.setUi(key, { ...newGuessRound(card, now), src });
+    // src's items are compared one by one above
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [g, ready, key, card, fromTakes, direction, shiftsKey, ...src]);
+  // Keyboard focus: the picked answer (and Mix them up again) become disabled / go away
+  // under it, so it moves to Mix them up again after a pick (the reveal above it is announced
+  // as a status) and to Play A after a new round.
+  useEffect(() => {
+    const where = focusRef.current;
+    focusRef.current = null;
+    if (where === "again") againRef.current?.focus();
+    else if (where === "play") firstPlayRef.current?.querySelector("button")?.focus();
+  }, [g?.pick, g?.order]);
   if (!ready || !g) {
     if (fromTakes) return <p className="text-sm text-neutral-300">{UI.guessNeedTakes}</p>;
     return <p className="text-sm text-neutral-300">{h?.phase === "analysing" || (h?.original && !items) ? UI.preparing : UI.hearRecordFirst}</p>;
@@ -622,44 +661,36 @@ function GuessCard({ card, lesson, direction, cardIndex, isSessionRecording, s }
   const [nameA, nameB] = UI.guessNames;
   const names = [nameA, nameB];
   const play = (i) => () => { const next = markPlayed(g, i); if (next !== g) session.setUi(key, next); };
-  let reveal = null;
-  if (g.pick != null) {
-    const lines = [UI.guessPicked(names[g.pick])];
-    if (fromTakes) {
-      const label = (id) => takesFor(lesson, direction).find((t) => t.id === id)?.label ?? id;
-      lines.push(UI.guessTakes(label(ids[0]), label(ids[1])), UI.guessHintTakes);
-    } else {
-      const desc = (id) => (id === "unchanged" ? UI.guessUnchanged : UI.guessShifted(g.shift));
-      lines.push(UI.guessHear(desc(ids[0]), desc(ids[1])), UI.guessBrighter(names[brighterIndex(g)]), UI.guessHintHear);
-    }
-    reveal = lines;
-  }
+  const desc = fromTakes
+    ? (id) => takesFor(lesson, direction).find((t) => t.id === id)?.label ?? id
+    : (id) => (id === "unchanged" ? UI.guessUnchanged : UI.guessShifted(g.shift));
+  const reveal = g.pick != null ? revealLines(g, names, desc, UI) : null;
   return (
     <div data-guess="" data-guess-order={ids.join(",")} data-guess-pick={g.pick ?? ""}>
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2" ref={firstPlayRef}>
         {ids.map((id, i) => (
           <PlayButton key={id} name={`guess-${i}`} label={names[i]} take={itemOf(id)} blocked={blocked} onPlay={play(i)} />
         ))}
       </div>
-      <fieldset className="mt-2" disabled={g.pick != null}>
-        <legend className="text-sm text-neutral-200">{UI.guessQuestion}</legend>
+      <fieldset className="mt-2" disabled={g.pick != null} aria-describedby={bothPlayed ? undefined : `${key}-first`}>
+        <legend className="text-sm text-neutral-200">{UI.guessQuestion(askedWord(g))}</legend>
         <div className="mt-1 flex flex-wrap items-center gap-2">
           {names.map((n, i) => (
             <button
               key={n} type="button" className={BTN_TOGGLE} aria-pressed={g.pick === i} disabled={!bothPlayed}
-              onClick={() => session.setUi(key, { ...g, pick: i })} data-guess-answer={i}
+              onClick={() => { focusRef.current = "again"; session.setUi(key, { ...g, pick: i }); }} data-guess-answer={i}
             >
               {n}
             </button>
           ))}
-          {!bothPlayed && <p className="text-xs text-neutral-300">{UI.guessPlayFirst}</p>}
+          {!bothPlayed && <p className="text-xs text-neutral-300" id={`${key}-first`}>{UI.guessPlayFirst}</p>}
         </div>
       </fieldset>
       <div className="mt-2" role="status" data-guess-reveal="">
         {reveal?.map((l, i) => <p key={i} className="text-sm leading-snug text-neutral-100">{l}</p>)}
       </div>
       {reveal && (
-        <button type="button" className={`${BTN_SOFT} mt-2`} onClick={() => { session.player.stop(); session.setUi(key, newGuessRound(card, shifts)); }} data-guess-again="">
+        <button type="button" ref={againRef} className={`${BTN_SOFT} mt-2`} onClick={() => { session.player.stop(); focusRef.current = "play"; session.setUi(key, { ...newGuessRound(card, shifts), src }); }} data-guess-again="">
           {UI.guessAgain}
         </button>
       )}

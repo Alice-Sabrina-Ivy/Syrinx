@@ -4,13 +4,13 @@
 //   - a take's pitch: the median voiced f0, only with at least TRY_PITCH_MIN_S of voice
 //   - notes: "short" under the card's minimum (default 1 s) and nothing else — the
 //     pre-registered voice check stopped (measurements/exercise-take-checks-2026-10-27.md)
-//   - the guess round: A / B in either order, R4's change from the direction's list, which
-//     one is brighter for a brighter and a darker change
+//   - the guess round: A / B in either order, R4's change from the direction's list, the
+//     question (brighter, or darker for a darker change), the answer and the reveal's words
 //
 //   node tests/exercises/take-checks-test.js
 import * as takeChecks from "../../src/exercises/takeChecks.js";
-import { newGuessRound, markPlayed, brighterIndex } from "../../src/exercises/guess.js";
-import { LESSONS, takesFor, hearShifts } from "../../src/exercises/lessons.js";
+import { newGuessRound, markPlayed, askedWord, answerIndex, revealLines } from "../../src/exercises/guess.js";
+import { LESSONS, UI, takesFor, hearShifts } from "../../src/exercises/lessons.js";
 
 const { createTakeVoiceLog, takeNote, takePitchHz, TRY_PITCH_MIN_S, DEFAULT_MIN_S } = takeChecks;
 let passed = 0, failed = 0;
@@ -40,11 +40,24 @@ console.log("the voice in a take");
   for (let i = 0; i < 40; i++) noGate.push({ voiced: true, f0: 150 });
   check("with no gate decision every voiced frame counts", noGate.stats().voicedS === 1 && noGate.stats().medianHz === 150);
 }
+{
+  // an even count with distinct middle values, pushed out of order: the median needs the sort
+  const log = createTakeVoiceLog();
+  for (let i = 0; i < 40; i++) log.push({ voiced: true, f0: i % 2 ? 150 : 250 });
+  log.push({ voiced: false, f0: 400 }); // unvoiced with a stray f0: not counted
+  check("median of an even count = mean of the two middle values (sorted first)", log.stats().medianHz === 200 && log.stats().voicedS === 1, JSON.stringify(log.stats()));
+  const odd = createTakeVoiceLog();
+  for (const f of [300, 100, 200, 120, 280, 90, 210, 250, 140, 230, 160, 190, 170, 180, 220, 130, 240, 110, 260, 150, 270, 290, 205, 195, 215, 185, 225, 175, 235, 165, 245, 155, 255, 145, 265, 135, 275, 125, 285, 115, 295]) {
+    odd.push({ voiced: true, f0: f });
+  }
+  check("median of an odd count = the middle value", odd.stats().medianHz === 200, String(odd.stats().medianHz));
+}
 
 console.log("\nnotes");
 {
   const voice = (s) => ({ voicedS: s, medianHz: 200, frames: 100 });
   check(`"short" under the default ${DEFAULT_MIN_S} s`, takeNote({ seconds: 0.8, voice: voice(0.7) }) === "short");
+  check("exactly the minimum is not short", takeNote({ seconds: 1 }) === null && takeNote({ seconds: 3 }, { minS: 3 }) === null);
   check("a card's own minimum (R4's try: 3 s)", takeNote({ seconds: 2.5, voice: voice(2) }, { minS: 3 }) === "short"
     && takeNote({ seconds: 3.2, voice: voice(2) }, { minS: 3 }) === null);
   check("no voice note at all, even with no voice (the measured check stopped)", takeNote({ seconds: 2, voice: voice(0) }, { minS: 1 }) === null
@@ -81,10 +94,22 @@ function seeded(seed) { let x = seed >>> 0; return () => { x = (x * 1664525 + 10
   const rand = seeded(11);
   for (let i = 0; i < 40; i++) shifts.add(newGuessRound(r4, hearShifts("androgynous"), rand).shift);
   check("R4 with two changes: both come up", shifts.has(10) && shifts.has(-10) && shifts.size === 2, [...shifts].join(" "));
-  check("brighter: the changed one when it moved brighter", brighterIndex({ order: ["unchanged", "shift10"], shift: 10 }) === 1
-    && brighterIndex({ order: ["shift10", "unchanged"], shift: 10 }) === 0);
-  check("brighter: the unchanged one when the change moved darker", brighterIndex({ order: ["unchanged", "shift-10"], shift: -10 }) === 0
-    && brighterIndex({ order: ["shift-10", "unchanged"], shift: -10 }) === 1);
+  const names = UI.guessNames;
+  const desc = (shift) => (id) => (id === "unchanged" ? UI.guessUnchanged : UI.guessShifted(shift));
+  const up = { order: ["unchanged", "shift10"], shift: 10, pick: 0 };
+  const upB = { order: ["shift10", "unchanged"], shift: 10, pick: 1 };
+  const down = { order: ["unchanged", "shift-10"], shift: -10, pick: 0 };
+  const downB = { order: ["shift-10", "unchanged"], shift: -10, pick: 1 };
+  check("the question: brighter for a brighter change, darker for a darker one, brighter on R3",
+    askedWord(up) === "brighter" && askedWord(down) === "darker" && askedWord({ order: ["bright", "dark"], shift: null }) === "brighter");
+  check("the answer is always the changed version", answerIndex(up) === 1 && answerIndex(upB) === 0 && answerIndex(down) === 1 && answerIndex(downB) === 0);
+  check("R4 reveal: which was which, in the round's order, and which one answers the question",
+    revealLines(down, names, desc(-10), UI).join("|") === `You picked A.|A was the unchanged version, B 10 % darker.|The darker one was B.|${UI.guessHintHear}`
+    && revealLines(upB, names, desc(10), UI).join("|") === `You picked B.|A was 10 % brighter, B the unchanged version.|The brighter one was A.|${UI.guessHintHear}`,
+    revealLines(down, names, desc(-10), UI).join("|"));
+  const r3lines = revealLines({ order: ["dark", "bright"], shift: null, pick: 0 }, names, (id) => (id === "dark" ? "Dark" : "Bright"), UI);
+  check("R3 reveal: what each take was meant as, and that nothing measured it", r3lines[1].startsWith("A was the take you meant as dark, B the one you meant as bright.")
+    && /doesn't measure/.test(r3lines[1]) && r3lines.length === 3, r3lines.join("|"));
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

@@ -20,11 +20,13 @@
 //               and an arrow pointing down (R1 yawn, R2 big dog).
 //   bright      Cut-away side view of the mouth, facing right: nose and chin, hard palate,
 //               soft palate raised against the back of the throat, front teeth; the tongue
-//               (filled) high and forward as for "ee", its tip behind the lower front teeth
-//               and its highest point under the front of the hard palate; lips thin, close to
+//               (filled) a little higher and forward as for "ee", its tip behind the lower
+//               front teeth and its highest point under the front of the hard palate, with
+//               an air channel left beneath it; lips thin, close to
 //               the teeth (slightly spread); a dashed outline of the "oh" tongue (R3).
-//   dark        The same view and outline: the tongue lower and further back as for "oh"
-//               (not pulled back hard), lips rounded and forward; a dashed outline of the
+//   dark        The same view and outline: the tongue lower and relaxed as for "oh", its
+//               root where it was (the throat not narrowed: "don't pull it back"), lips
+//               rounded and forward; a dashed outline of the
 //               "ee" tongue (R3).
 
 export const DRAWING_KINDS = Object.freeze(["line", "accent", "ghost", "accentFill"]);
@@ -60,8 +62,8 @@ const UPPER_TOOTH = "M 98 38 C 103 41 106 48 106 56 L 101 56 C 100 50 98 45 94 4
 const LOWER_TOOTH = "M 101 60 L 106 60 C 106 68 104 76 100 82 L 95 80 C 98 74 100 67 101 60 Z";
 
 // the upper contour of each tongue, tip to root; drawn dashed in the other picture
-const TONGUE_EE_TOP = "M 96 67 C 94 58 90 40 80 32 C 68 27 48 31 38 44 C 33 54 32 90 34 118";
-const TONGUE_OH_TOP = "M 95 76 C 88 70 76 62 62 56 C 50 47 38 45 30 53 C 23 61 22 90 24 118";
+const TONGUE_EE_TOP = "M 95 72 C 93 60 88 46 80 40 C 68 35 50 38 41 49 C 35 57 33 90 34 118";
+const TONGUE_OH_TOP = "M 95 76 C 88 70 76 62 62 56 C 52 50 42 50 37 56 C 33 62 32 90 33 118";
 const TONGUE_FLOOR = " L 50 118 C 60 104 78 94 92 84 Z";
 const TONGUE_EE = TONGUE_EE_TOP + TONGUE_FLOOR;
 const TONGUE_OH = TONGUE_OH_TOP + TONGUE_FLOOR;

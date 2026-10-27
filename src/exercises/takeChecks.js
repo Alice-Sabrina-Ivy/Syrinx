@@ -15,6 +15,9 @@
 // every voiced frame counts), 25 ms each. The pitch is their median f0, shown only with at
 // least TRY_PITCH_MIN_S of voice (Voice Shaper's own minimum for its recordings). Known
 // limitation (the note's §2.6): a steady hum the noise notch has not removed yet reads as voice.
+// The window is the recorder's (tap installed at Record, removed at its end; ≤ 8 s). "Hear it
+// first"'s recording is counted the same way over its "recording" phase (ExercisesView.jsx
+// trackHearVoice); that use was not part of the measurement.
 
 const FRAME_S = 0.025;
 

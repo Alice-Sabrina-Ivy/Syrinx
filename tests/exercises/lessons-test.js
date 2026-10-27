@@ -67,7 +67,7 @@ const uiStrings = [];
   } else if (v && typeof v === "object") Object.values(v).forEach(walk);
 })(UI);
 
-const VERDICT = /\b(score[sd]?|rating|grade[sd]?|pass(ed|es)?|fail(ed|s|ure)?|streaks?|perfect)\b/i;
+const VERDICT = /\b(score[sd]?|rating|grade[sd]?|pass(ed|es)?|fail(ed|s|ure)?|streaks?|perfect|correct(ly)?|well done|on target)\b/i;
 const GENDER = /\b(male|female|man|men|woman|women|boy|girl|lady|guy|gender\w*)\b/i;
 const ALLOWED_GENDER = /ten trans women practised/;
 
@@ -97,6 +97,8 @@ check("every lesson resolves for every direction and for no goal yet (no failure
 console.log("\nthe tab's own strings");
 const badUi = uiStrings.filter((x) => VERDICT.test(x) || GENDER.test(x));
 check("UI strings: no verdict / score / gender words", badUi.length === 0, badUi[0]);
+const badUiBraces = uiStrings.filter((x) => /\{[^}]*\}/.test(x) || !x.trim());
+check("UI strings: no unresolved {placeholders}, no empty strings", badUiBraces.length === 0, badUiBraces[0]);
 
 console.log("\nsafety and aims");
 before = failed;

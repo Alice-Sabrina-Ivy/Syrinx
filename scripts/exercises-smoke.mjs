@@ -345,7 +345,7 @@ const savedRows = (page) => page.evaluate(() => new Promise((resolve) => {
 }));
 
 /** One "test your ear" round: both play, the answers open, a pick shows which was which; a new round resets. */
-async function guessRound(page, id, revealRe) {
+async function guessRound(page, id, expectLines) {
   await goToCard(page, "Test your ear (optional)");
   await page.waitForSelector("[data-guess]", { timeout: 30000 }).catch(() => {});
   const state = () => page.evaluate(() => {
@@ -366,7 +366,9 @@ async function guessRound(page, id, revealRe) {
   await sleep(200);
   const s2 = await state();
   const lines = (s2?.reveal ?? "").split("\n").filter(Boolean);
-  check(`${id} ear test: the pick shows which was which (no tally) and the answers lock`, s2 && s2.pick === "0" && lines[0] === "You picked A." && lines.some((l) => revealRe.test(l))
+  // which was which must follow the round's own order (data-guess-order)
+  const want = expectLines((s2?.order ?? "").split(","));
+  check(`${id} ear test: the pick shows which was which, in the round's order (no tally), and the answers lock`, s2 && s2.pick === "0" && lines[0] === "You picked A." && want.every((w) => lines.includes(w))
     && s2.answersOff && !/\b(\d+ (of|out of) \d+|correct|wrong|score)\b/i.test(s2.reveal), JSON.stringify(s2));
   await clickSel(page, "[data-guess-again]");
   await sleep(200);
@@ -501,7 +503,7 @@ async function partFlow(v) {
   await sleep(5500);
   const afterAuto = await reps();
   check("W1: the hold timer runs, counts a hum on Stop, and stops by itself at 5 s",
-    running === "running" && afterStop === "1/5:Hum 2 of 5" && afterAuto === "2/5:Hum 3 of 5"
+    running === "running" && afterStop === "1/5:Sound 2 of 5" && afterAuto === "2/5:Sound 3 of 5"
       && (await page.evaluate(() => document.querySelector("[data-timer]")?.dataset.timer)) === "idle", `${running} ${afterStop} ${afterAuto}`);
   await goToCard(page, "Slow slides");
   check("W1: the slides card has its own counter", (await reps()) === "0/5:Slide 1 of 5", await reps());
@@ -534,7 +536,7 @@ async function partFlow(v) {
   await sleep(300);
   const pressed = await page.evaluate(() => document.querySelector('[data-compare] [data-play="bright"]').getAttribute("aria-pressed"));
   check("Play: the take plays (aria-pressed)", pressed === "true", pressed);
-  await guessRound(page, "R3", /^A was your (bright|dark) take, B your (dark|bright) take\.$/);
+  await guessRound(page, "R3", ([a, b]) => [`A was the take you meant as ${a}, B the one you meant as ${b}. The app doesn't measure which one sounds brighter: your ear decides.`]);
 
   // Hear it first
   await openLesson(page, "R4");
@@ -556,7 +558,8 @@ async function partFlow(v) {
   check("…and the brighter version plays", (await page.evaluate(() => document.querySelector('[data-play="hear-10"]').getAttribute("aria-pressed"))) === "true");
   await page.screenshot({ path: path.join(OUT, `${v}-flow-R4-listen.png`) });
   await clickSel(page, '[data-play="hear-10"]'); // stop it
-  await guessRound(page, "R4", /^A was (the unchanged version|10 % brighter), B (10 % brighter|the unchanged version)\.$/);
+  const r4Name = (x) => (x === "unchanged" ? "the unchanged version" : "10 % brighter");
+  await guessRound(page, "R4", ([a, b]) => [`A was ${r4Name(a)}, B ${r4Name(b)}.`, `The brighter one was ${a === "unchanged" ? "B" : "A"}.`]);
   // nothing plays while a take records (no echo cancellation: the mic would record the playback; 2026-10-27)
   await goToCard(page, "Your try");
   await clickSel(page, '[data-take="try"] [data-take-record]');

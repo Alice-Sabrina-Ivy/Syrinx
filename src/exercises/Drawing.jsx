@@ -1,16 +1,17 @@
 // Drawing.jsx — a lesson card's line drawing (src/exercises/drawings.js: pure path data,
-// viewBox 0 0 160 120) with its caption. Drawn with currentColor and opacity only, so
-// Windows high contrast turns every line into the system text colour; the moving part is
+// viewBox 0 0 160 120) with its caption. Drawn with currentColor and opacity only; in
+// Windows high contrast every line takes the system text colour (forced-colors classes:
+// SVG strokes keep their colour otherwise) and the dashed ghost GrayText; the moving part is
 // also marked by shape (an arrow, a dashed ghost of the other position), never by colour
 // alone. Shown at most 160 x 120 px, two side by side when a card has two.
 
 import { DRAWINGS } from "./drawings.js";
 
 const PART = {
-  line: { className: "text-neutral-300", fill: "none", stroke: "currentColor" },
-  accent: { className: "text-purple-300", fill: "none", stroke: "currentColor" },
-  ghost: { className: "text-neutral-500", fill: "none", stroke: "currentColor", strokeDasharray: "4 3" },
-  accentFill: { className: "text-purple-300", fill: "currentColor", fillOpacity: 0.18, stroke: "none" },
+  line: { className: "text-neutral-300 forced-colors:text-[CanvasText]", fill: "none", stroke: "currentColor" },
+  accent: { className: "text-purple-300 forced-colors:text-[CanvasText]", fill: "none", stroke: "currentColor" },
+  ghost: { className: "text-neutral-500 forced-colors:text-[GrayText]", fill: "none", stroke: "currentColor", strokeDasharray: "4 3" },
+  accentFill: { className: "text-purple-300 forced-colors:text-[CanvasText]", fill: "currentColor", fillOpacity: 0.18, stroke: "none" },
 };
 
 export function Drawing({ id, caption, alt }) {
