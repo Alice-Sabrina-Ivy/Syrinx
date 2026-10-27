@@ -34,9 +34,16 @@ onVoicePreviewCapture((h) => {
   if (!h) { session.stopTake(); session.player.stop(); }
 });
 
+// Leaving the page: the takes, the player's AudioContext and "Hear it first"'s worker go
+// (as Voice Shaper's card does on pagehide).
+if (typeof window !== "undefined") window.addEventListener("pagehide", () => session.close());
+
 let saving = null; // the lesson run (startedAt) whose result row is being written
+let pendingFeel = null; // { startedAt, feel }: answered before that run's row had an id
+let lastOpened = null; // the lesson the list gives the focus back to when it closes
 
 function openLesson(id, direction) {
+  lastOpened = id;
   session.open(id);
   if (id === "R4") {
     import("./hearShaper.js").then((m) => {
@@ -50,7 +57,7 @@ function openLesson(id, direction) {
 
 const BTN = "inline-flex items-center justify-center rounded-lg border border-transparent text-sm transition-colors cursor-pointer min-h-11 px-3 disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-300";
 const BTN_SOFT = `${BTN} bg-neutral-800 text-neutral-100 hover:bg-neutral-700 disabled:hover:bg-neutral-800`;
-const BTN_PRIMARY = `${BTN} bg-purple-600 text-white hover:bg-purple-500 disabled:hover:bg-purple-600`;
+const BTN_PRIMARY = `${BTN} bg-purple-600 text-white hover:bg-purple-700 disabled:hover:bg-purple-600`;
 const BTN_TOGGLE = `${BTN_SOFT} aria-pressed:bg-neutral-200 aria-pressed:text-neutral-900 aria-pressed:hover:bg-neutral-100 forced-colors:aria-pressed:bg-[Highlight] forced-colors:aria-pressed:text-[HighlightText]`;
 
 const fmtS = (s) => (Math.round(s * 10) / 10).toFixed(1);
@@ -113,8 +120,17 @@ function LessonList({ direction }) {
   const [done, setDone] = useState({});
   useEffect(() => {
     let live = true;
-    lastDoneByLesson(db.exerciseResults).then((d) => { if (live) setDone(d); });
-    return () => { live = false; };
+    const load = () => lastDoneByLesson(db.exerciseResults).then((d) => { if (live) setDone(d); });
+    load();
+    // an import or "Delete all data" in Settings (open over this tab)
+    window.addEventListener("syrinx:data-changed", load);
+    return () => { live = false; window.removeEventListener("syrinx:data-changed", load); };
+  }, []);
+  // back from a lesson: the focus goes to that lesson's row, not to the page
+  useEffect(() => {
+    if (!lastOpened) return;
+    document.querySelector(`[data-lesson="${lastOpened}"]`)?.focus();
+    lastOpened = null; // once: a later tab switch back to the list leaves the focus alone
   }, []);
   return (
     <div className="flex-1 min-h-0 overflow-y-auto w-full max-w-2xl mx-auto pb-4" data-exercises-list="">
@@ -216,7 +232,7 @@ function LiveView({ card, cardIndex, listening, onStartListening, pipeline, dire
 
 // ---------------------------------------------------------------- recordings
 
-function TakeRow({ take, listening, sessionRec, s }) {
+function TakeRow({ take, listening, sessionRec, s, many }) {
   const rec = s.recording?.takeId === take.id ? s.recording : null;
   const other = s.recording && !rec;
   const has = s.takes[take.id];
@@ -226,13 +242,21 @@ function TakeRow({ take, listening, sessionRec, s }) {
     <div className="flex flex-wrap items-center gap-2 py-1.5" data-take={take.id} data-take-recorded={has ? "1" : "0"}>
       <div className="flex-1">
         <p className="text-sm text-neutral-100">{take.label}</p>
-        <p className="text-xs tabular-nums text-neutral-400" aria-live="polite">
+        <p className="text-xs tabular-nums text-neutral-400">
           {rec ? UI.recording(Math.floor(rec.seconds)) : has ? UI.recorded(fmtS(has.seconds)) : UI.notRecorded}
         </p>
+        <p className="sr-only" role="status">{rec ? UI.srRecording : has ? UI.srRecorded(fmtS(has.seconds)) : ""}</p>
       </div>
       {listening && (rec
-        ? <button type="button" className={BTN_PRIMARY} onClick={() => session.stopTake()} data-take-stop="">{UI.stop}</button>
-        : <button type="button" className={BTN_SOFT} disabled={!!other} onClick={start} data-take-record="">{has ? UI.recordAgain : UI.record}</button>)}
+        ? <button type="button" className={BTN_PRIMARY} aria-label={many ? UI.stopTake(take.label) : undefined} onClick={() => session.stopTake()} data-take-stop="">{UI.stop}</button>
+        : (
+          <button
+            type="button" className={BTN_SOFT} disabled={!!other} onClick={start} data-take-record=""
+            aria-label={many ? (has ? UI.recordAgainTake(take.label) : UI.recordTake(take.label)) : undefined}
+          >
+            {has ? UI.recordAgain : UI.record}
+          </button>
+        ))}
       <PlayButton name={take.id} label={take.label} take={has} blocked={sessionRec || !!rec} short />
     </div>
   );
@@ -249,7 +273,7 @@ function RecordCard({ card, direction, listening, onStartListening, isSessionRec
     <div data-record-card="">
       {!listening && <MicPrompt onStartListening={onStartListening} />}
       <div>
-        {card.takes.map((t) => <TakeRow key={t.id} take={t} listening={listening} sessionRec={sessionRec} s={s} />)}
+        {card.takes.map((t) => <TakeRow key={t.id} take={t} listening={listening} sessionRec={sessionRec} s={s} many={card.takes.length > 1} />)}
       </div>
       {card.compareWithHear && <HearVersions direction={direction} sessionRec={sessionRec} withTitle />}
       <SessionGuard sessionRec={sessionRec} />
@@ -319,7 +343,7 @@ function HearRecord({ listening, onStartListening, vs }) {
     <button
       type="button"
       className={BTN_PRIMARY}
-      disabled={readyMs > 0}
+      disabled={readyMs > 0 || h.rearming || h.phase === "analysing"}
       onClick={() => (again ? hear.recordAgain() : hear.record())}
       data-hear-record=""
     >
@@ -330,21 +354,28 @@ function HearRecord({ listening, onStartListening, vs }) {
   const message = {
     "too-short": UI.hearTooShort, "no-voice": UI.hearNoVoice, cancelled: UI.hearCancelled, error: UI.hearError, memory: UI.hearError,
   }[h.phase];
+  const recordedS = fmtS(h.original ? h.original.pcm.length / h.original.rate : 0);
+  const analysingText = (h.stage === "model" ? vs.analysingModel : h.stage === "denoise" ? vs.analysingDenoise : null) ?? UI.preparing;
   let body;
   if (h.phase === "recording") {
     body = (
       <>
-        <p className="text-sm tabular-nums text-neutral-200" aria-live="polite">{UI.recording(Math.floor(h.seconds ?? 0))}</p>
+        <p className="text-sm tabular-nums text-neutral-200">{UI.recording(Math.floor(h.seconds ?? 0))}</p>
         <button type="button" className={BTN_PRIMARY} onClick={() => hear.stop()} data-hear-stop="">{UI.stop}</button>
       </>
     );
   } else if (h.phase === "analysing") {
-    const text = (h.stage === "model" ? vs.analysingModel : h.stage === "denoise" ? vs.analysingDenoise : null) ?? UI.preparing;
-    body = <p className="text-sm text-neutral-200" aria-live="polite">{text}</p>;
+    // a (disabled) button stays where Stop was, so the focus isn't dropped
+    body = (
+      <>
+        <p className="text-sm text-neutral-200">{analysingText}</p>
+        {recordBtn(true)}
+      </>
+    );
   } else if (h.phase === "preview") {
     body = (
       <>
-        <p className="text-sm text-neutral-200" data-hear-recorded="">{UI.recorded(fmtS(h.original ? h.original.pcm.length / h.original.rate : 0))}</p>
+        <p className="text-sm text-neutral-200" data-hear-recorded="">{UI.recorded(recordedS)}</p>
         {recordBtn(true)}
         {wait}
       </>
@@ -352,13 +383,21 @@ function HearRecord({ listening, onStartListening, vs }) {
   } else {
     body = (
       <>
-        {message && <p className="w-full text-sm text-neutral-200" aria-live="polite">{message}</p>}
+        {message && <p className="w-full text-sm text-neutral-200">{message}</p>}
         {recordBtn(h.phase === "error" || h.phase === "memory")}
         {wait}
       </>
     );
   }
-  return <div className="flex flex-wrap items-center gap-2" data-hear-phase={h.phase}>{body}</div>;
+  // one status for screen readers, mounted with the recorder and changed once per phase
+  const status = h.phase === "recording" ? UI.srRecording : h.phase === "analysing" ? analysingText
+    : h.phase === "preview" ? UI.srRecorded(recordedS) : message ?? "";
+  return (
+    <div className="flex flex-wrap items-center gap-2" data-hear-phase={h.phase}>
+      {body}
+      <p className="sr-only" role="status">{status}</p>
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------- result card
@@ -366,8 +405,9 @@ function HearRecord({ listening, onStartListening, vs }) {
 /** The answer to "How did that feel?" (the saved row follows; one that is still being written gets it then). */
 function chooseFeel(feel) {
   session.setSaved({ feel });
-  const { rowId } = session.getState();
+  const { rowId, startedAt } = session.getState();
   if (rowId != null) updateResult(db.exerciseResults, rowId, { feel, endedAt: Date.now() });
+  else pendingFeel = { startedAt, feel };
 }
 
 function ResultCard({ lesson, direction, sessionId, s, onOpen }) {
@@ -378,20 +418,35 @@ function ResultCard({ lesson, direction, sessionId, s, onOpen }) {
   useEffect(() => {
     if (s.rowId != null || saving === s.startedAt) return;
     saving = s.startedAt;
-    const result = lesson.measures ? countResult(session.allFrames(), direction) : null;
-    session.setSaved({ result });
+    const frames = lesson.measures ? session.allFrames() : [];
+    const result = lesson.measures ? countResult(frames, direction) : null;
+    session.setSaved({ result, measuredFrames: frames.length });
     const results = result ? { levelHz: result.levelHz, inBandPct: result.inBandPct, voicedS: result.voicedS } : {};
     saveResult(db.exerciseResults, {
       exerciseId: lesson.id, startedAt: s.startedAt, endedAt: Date.now(), direction,
       sessionId, feel: session.getState().feel, results,
     }).then((rowId) => {
-      const now = session.getState();
-      if (now.startedAt !== s.startedAt) return;
+      // answered while the row was being written (the lesson may have closed since)
+      const pf = pendingFeel?.startedAt === s.startedAt ? pendingFeel.feel : null;
+      if (pendingFeel?.startedAt === s.startedAt) pendingFeel = null;
+      if (rowId != null && pf != null) updateResult(db.exerciseResults, rowId, { feel: pf, endedAt: Date.now() });
+      if (session.getState().startedAt !== s.startedAt) return;
       session.setSaved({ rowId });
-      // answered while the row was being written
-      if (rowId != null && now.feel != null) updateResult(db.exerciseResults, rowId, { feel: now.feel });
     });
   }, [s.rowId, s.startedAt, lesson, direction, sessionId]);
+
+  // Back to the steps and here again (more speech, or "Start this step over"): the
+  // measured result is computed again and the saved row follows it.
+  useEffect(() => {
+    const { rowId, measuredFrames } = session.getState();
+    if (!lesson.measures || rowId == null) return;
+    const frames = session.allFrames();
+    if (frames.length === measuredFrames) return;
+    const result = countResult(frames, direction);
+    session.setSaved({ result, measuredFrames: frames.length });
+    const results = result ? { levelHz: result.levelHz, inBandPct: result.inBandPct, voicedS: result.voicedS } : {};
+    updateResult(db.exerciseResults, rowId, { results, endedAt: Date.now() });
+  }, [lesson, direction]);
 
   useEffect(() => {
     if (!lesson.measures || s.rowId == null) return undefined;
@@ -407,7 +462,7 @@ function ResultCard({ lesson, direction, sessionId, s, onOpen }) {
   let lines;
   if (lesson.measures) {
     const r = s.result;
-    if (r == null) lines = [UI.countTooLittle];
+    if (r == null) lines = [s.measuredFrames === 0 ? UI.countMicOff : UI.countTooLittle];
     else {
       const note = r.levelHz != null ? hzToNote(r.levelHz)?.name : null;
       lines = [
@@ -536,6 +591,18 @@ function LessonPlayer({ s, direction, listening, onStartListening, pipeline, ses
   const scrollRef = useRef(null);
   const [vs, setVs] = useState(null);
 
+  // The goal changed mid-lesson (Settings): stay on the same card, though a card that only
+  // one goal has (R3's "In between") moves the ones after it.
+  const cardsRef = useRef(cards);
+  useEffect(() => {
+    const prev = cardsRef.current;
+    cardsRef.current = cards;
+    if (prev === cards || prev.length === cards.length) return;
+    const was = Math.min(s.card, prev.length);
+    const now = was === prev.length ? cards.length : cards.indexOf(prev[was]);
+    if (now >= 0 && now !== s.card) session.setCard(now);
+  }, [cards, s.card]);
+
   // Voice Shaper's own state texts ("Hear it first" only; its strings module is tiny).
   useEffect(() => {
     if (lesson.id !== "R4") return undefined;
@@ -568,7 +635,7 @@ function LessonPlayer({ s, direction, listening, onStartListening, pipeline, ses
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto" data-card-scroll="">
         <div className="flex items-center gap-2 pb-1">
           <button type="button" className="min-h-11 cursor-pointer px-1 text-sm text-neutral-300 hover:text-white" onClick={() => session.close()} data-lesson-close="">
-            ← {UI.backToList}
+            <span aria-hidden="true">←</span> {UI.backToList}
           </button>
           <span className="ml-auto text-xs tabular-nums text-neutral-400" data-card-of="">{UI.cardOf(index + 1, total)}</span>
         </div>
@@ -594,7 +661,7 @@ function LessonPlayer({ s, direction, listening, onStartListening, pipeline, ses
         </div>
       )}
       </div>
-      <nav className="flex gap-2 pt-2" aria-label={lessonTitle}>
+      <nav className="flex gap-2 pt-2" aria-label={UI.cardNav}>
         <button type="button" className={`${BTN_SOFT} flex-1`} onClick={() => (index === 0 ? session.close() : go(index - 1))} data-card-back="">
           {index === 0 ? UI.backToList : UI.back}
         </button>

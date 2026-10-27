@@ -14,6 +14,7 @@ const EMPTY = Object.freeze({
   recording: null,  // { takeId, seconds } while a take is being recorded
   rowId: null,      // the saved exerciseResults row (once the result card was reached)
   result: null,     // what the result card computed (saved with the row)
+  measuredFrames: 0, // how many frames the measuring cards logged when it was computed
   feel: null,
   hearReady: false, // "Hear it first"'s Voice Shaper wrapper is loaded
 });
@@ -56,7 +57,12 @@ export function createLessonSession({ createPlayer = createTakePlayer } = {}) {
       set(EMPTY);
     },
     setCard(card) {
-      if (card !== state.card) { stopRecorder(); player.stop(); set({ card }); }
+      if (card === state.card) return;
+      stopRecorder();
+      player.stop();
+      // "Hear it first": leaving the card ends its recording (as Stop does)
+      if (hear && hear.getState().phase === "recording") hear.stop();
+      set({ card });
     },
 
     /** The frame log of a measuring card (created on first use). */

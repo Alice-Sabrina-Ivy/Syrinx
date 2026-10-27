@@ -115,6 +115,12 @@ console.log("\nlesson state");
   session.frameLog(4).push({ voiced: true, f0: 210 }, 0);
   check("frames of every measuring card, in time order", session.allFrames().map((x) => x.f0).join() === "210,200");
   session.player.play("bright", session.getState().takes.bright);
+  // "Hear it first" recording: a card change ends it (review 2026-10-27)
+  let hearStops = 0, hearPhase = "recording";
+  session.setHear({ getState: () => ({ phase: hearPhase }), stop: () => { hearStops++; hearPhase = "analysing"; }, dispose() {} });
+  session.setCard(2);
+  session.setCard(3);
+  check("a card change stops a \"Hear it first\" recording, once", hearStops === 1, String(hearStops));
   let disposed = 0;
   session.setHear({ dispose: () => disposed++ });
   session.close();

@@ -289,9 +289,13 @@ async function partCards(v) {
       await openLesson(page, id);
       const bad = [];
       let n = 0;
+      let safetySeen = false;
       for (let guard = 0; guard < 20; guard++) {
         const c = await cardInfo(page);
         n++;
+        // the safety box is on screen before the lesson's steps (lessons-test checks the text)
+        if (await page.$eval("[data-lesson-player]", (el) => (el.querySelector("[data-safety]")?.textContent ?? "").includes("Stop if it hurts"))) safetySeen = true;
+        if (c.kind === "result" && id !== "S1" && !safetySeen) bad.push(`${id}: no safety box shown on any card`);
         const navOk = c.navBottom <= c.dockTop + 0.5 && c.navTop >= 0;
         const wideOk = c.docW <= c.innerW;
         // the card's tool (trace / recorder / play buttons) sits between the text and
@@ -322,6 +326,19 @@ const goToCard = async (page, heading) => {
   }
   return null;
 };
+
+// the saved exerciseResults rows, read straight from IndexedDB (review 2026-10-27: "Saved."
+// alone comes from the page's state, not from the database)
+const savedRows = (page) => page.evaluate(() => new Promise((resolve) => {
+  const req = indexedDB.open("syrinx");
+  req.onsuccess = () => {
+    const db = req.result;
+    const all = db.transaction("exerciseResults").objectStore("exerciseResults").getAll();
+    all.onsuccess = () => { resolve(all.result); db.close(); };
+    all.onerror = () => { resolve(null); db.close(); };
+  };
+  req.onerror = () => resolve(null);
+}));
 
 async function partFlow(v) {
   scope = `flow ${v}`;
@@ -355,10 +372,21 @@ async function partFlow(v) {
   await sleep(400);
   const p6Done = await page.evaluate(() => document.querySelector('[data-lesson="P6"] [data-last-done]').textContent);
   check("the list: \"Last done: today\"", p6Done === "Last done: today", p6Done);
+  const rows1 = await savedRows(page);
+  check("one saved row for the run, with its feel and a measured level, no audio",
+    rows1?.length === 1 && rows1[0].exerciseId === "P6" && rows1[0].feel === "easy" && Number.isFinite(rows1[0].results?.levelHz)
+      && Object.keys(rows1[0]).sort().join() === "direction,endedAt,exerciseId,feel,id,results,sessionId,startedAt",
+    JSON.stringify(rows1));
   // a second run shows "Last time"
   await openLesson(page, "P6");
   await goToCard(page, "Count to ten");
   await sleep(5000);
+  // the frame tap goes with the card: on the next card nothing more is counted for this one
+  await goToCard(page, "Short phrases");
+  const tapAway = await page.evaluate(() => +document.querySelector("[data-voice-so-far]")?.dataset.voiceSoFar);
+  await sleep(2500);
+  const tapAway2 = await page.evaluate(() => +document.querySelector("[data-voice-so-far]")?.dataset.voiceSoFar);
+  check("Short phrases counts its own voice (a fresh log, the tap moved with the card)", tapAway < 1 && tapAway2 > tapAway, `${tapAway} → ${tapAway2}`);
   await goToCard(page, "How did it go?");
   await sleep(800);
   const lines2 = await page.evaluate(() => document.querySelector("[data-result-lines]").innerText);
@@ -369,7 +397,9 @@ async function partFlow(v) {
   check("Strained: the cool-down is offered, no next lesson", !!cool && !(await page.$("[data-next-lesson]")));
   await clickSel(page, "[data-cool-down]");
   await page.waitForSelector('[data-lesson-player="W2"]', { timeout: 10000 });
-  check("…and opens it", true);
+  const rows2 = await savedRows(page);
+  check("…and opens it; two runs = exactly two saved rows, the second strained",
+    rows2?.length === 2 && rows2.filter((r) => r.feel === "strained").length === 1, JSON.stringify(rows2?.map((r) => r.feel)));
 
   // Tongue and lips: two takes
   await openLesson(page, "R3");

@@ -104,6 +104,9 @@ for (const id of LESSON_ORDER) {
   }
 }
 check("every lesson that uses the voice shows the standard safety line before its steps", failed === before);
+// the check above keys on usesVoice: a lesson whose cards use the voice must say so
+check("every lesson with a live, record or hear card is marked usesVoice", LESSON_ORDER.every((id) =>
+  LESSONS[id].usesVoice || !LESSONS[id].cards.some((c) => ["live", "record", "hear"].includes(c.kind))));
 for (const id of ["P5", "P6"]) {
   const exploring = lessonStrings(LESSONS[id], "exploring").join(" ");
   check(`${id} for "Just exploring": no band and no target`, !/\bband\b(?!.*there's no band)/i.test(exploring.replace("there's no band", "")) && !/{band}/.test(exploring) && !/your target/i.test(exploring.replace("Glide to your target", "")), exploring.slice(0, 120));

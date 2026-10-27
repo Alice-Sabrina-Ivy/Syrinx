@@ -686,6 +686,7 @@ export const UI = Object.freeze({
   next: "Next",
   finish: "Finish",
   cardOf: (i, n) => `${i} of ${n}`,
+  cardNav: "Lesson steps",
   whyItWorks: "Why it works",
   aimTitle: "What you're aiming for",
   ifNot: "If it isn't working",
@@ -704,6 +705,13 @@ export const UI = Object.freeze({
   record: "Record",
   stop: "Stop",
   recordAgain: "Record again",
+  // the buttons' accessible names when a card has more than one take
+  recordTake: (label) => `Record: ${label}`,
+  stopTake: (label) => `Stop recording: ${label}`,
+  recordAgainTake: (label) => `Record again: ${label}`,
+  // screen-reader status (once per change, not every second)
+  srRecording: "Recording",
+  srRecorded: (s) => `Recorded, ${s} s`,
   recording: (s) => `Recording… ${s} s of 8`,
   play: (label) => `Play ${label}`,
   playShort: "Play",

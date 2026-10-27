@@ -8,14 +8,14 @@
 //   createHear({ shifts, createController }) -> { subscribe, getState, record, stop,
 //     recordAgain, readyInMs, setShifts, dispose }
 //   state { phase (the controller's), seconds (while recording), stage ("model" | … while
-//     a noise-reduced analysis runs), original ({ pcm, rate } | null),
+//     a noise-reduced analysis runs), rearming (Record waits: the controller's 1 s re-arm), original ({ pcm, rate } | null),
 //     versions ({ [pct]: { pcm, rate } }) }
 
 export function createHear({ shifts, createController }) {
   const ctl = createController();
   let wanted = [...shifts];
   let analysis = null;
-  let state = { phase: "loading", seconds: null, stage: null, original: null, versions: {} };
+  let state = { phase: "loading", seconds: null, stage: null, rearming: false, original: null, versions: {} };
   const listeners = new Set();
 
   function emit(patch) {
@@ -32,7 +32,7 @@ export function createHear({ shifts, createController }) {
   }
 
   const unsub = ctl.subscribe((s) => {
-    const patch = { phase: s.phase, seconds: s.level ? s.level.seconds : s.phase === "recording" ? 0 : null, stage: s.analysingStage };
+    const patch = { phase: s.phase, seconds: s.level ? s.level.seconds : s.phase === "recording" ? 0 : null, stage: s.analysingStage, rearming: !!s.rearming };
     if (s.analysis !== analysis) {
       // a new recording (or none): the old versions go
       analysis = s.analysis;
