@@ -34,7 +34,7 @@
 // a new recording at once — on a phone that recording of silence ended "There wasn't enough
 // voice…". When a recording ends (the phase leaves recording / analysing for a phase whose
 // button can act), `rearming` is true for REARM_MS and record() / recordAgain() refuse.
-import { getVoicePreviewCapture, onVoicePreviewCapture, setVoicePreviewPitchTap } from "./bridge.js";
+import { getVoicePreviewCapture, onVoicePreviewCapture, addVoicePreviewPitchTap } from "./bridge.js";
 
 export const RECORD_MAX_S = 8;
 export const RECORD_MIN_S = 3;
@@ -110,7 +110,10 @@ export function createVoicePreviewController({
     if (rearmTimer !== null) { clearTimer(rearmTimer); rearmTimer = null; }
   }
 
-  function removeTap() { setVoicePreviewPitchTap(null); }
+  // only this controller's own tap: another controller (Voice Shaper's tab, the exercises'
+  // "Hear it first") may be recording at the same time
+  let tapOff = null;
+  function removeTap() { if (tapOff) { tapOff(); tapOff = null; } }
 
   function unwatch() {
     if (watchdog !== null) { clearTimer(watchdog); watchdog = null; }
@@ -272,7 +275,8 @@ export function createVoicePreviewController({
     recPort = port;
     recHandle = h;
     const w = worker;
-    setVoicePreviewPitchTap((msg) => {
+    removeTap();
+    tapOff = addVoicePreviewPitchTap((msg) => {
       w.postMessage({
         type: "pitch",
         contextTime: msg.contextTime,
