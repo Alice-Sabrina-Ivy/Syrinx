@@ -1422,3 +1422,276 @@ call them, and they must stay unchanged anyway (§1).
    after-speech shard and a first `test:unit` run were stopped by their
    exact PIDs. The shard was resumed later; its interrupted stream was
    redone from the start. `test:unit` was re-run in full.
+
+## Dev results (2026-11-01)
+
+**Pick: K4 (VHR).** K4 is K3's own-voice hold plus an own-loudness
+reference. It passes T-QUIET, every dev guard, G-FT, G2–G4 and G5. K4, K3
+and K2 are eligible, in that order; K1 and K5 fail T-QUIET. These are
+in-sample results (§5.1). Only the confirmation (§10 steps 4–5) is a fair
+test, and it replays BASE, C1 and K4 only.
+
+**How the rule reached K4:**
+- Highest T-NOISY: K3 and K4 tie at 7 of 9, ahead of K2 at 3.
+- The tie-break, the pooled after-speech drawn excess (mean over L1 and
+  L2, all 157 clips), favours K4: +0.078 points against +0.126 for K3. The
+  difference, 0.048, is above the 0.005 tie tolerance.
+- G5 passed on K4, so no other candidate was tried.
+
+The frozen-code check passed before the replay (17 items). The replay is
+`narrow-report.mjs` at the frozen hash, on the freeze commit a486586.
+
+### Speech: T-QUIET and T-NOISY
+
+Pooled over the 12 readers, window 20–150 s. Each condition has 186 pauses
+of 1–5 s.
+
+Mean resonance trail (points):
+
+| condition | BASE | C1 | K1 | K2 | K3 | K4 | K5 |
+|---|---|---|---|---|---|---|---|
+| none | 2.1 | 11.7 | 9.3 | 11.2 | 11.6 | **11.6** | 9.4 |
+| brown −55 | 2.0 | 12.2 | 9.0 | 11.8 | 12.2 | **12.2** | 8.8 |
+| pink −55 | 2.0 | 12.2 | 8.8 | 11.8 | 12.2 | **12.2** | 8.5 |
+| AC −55 | 2.6 | 12.3 | 9.8 | 12.0 | 12.3 | **12.3** | 9.3 |
+| brown −50 | 1.8 | 12.7 | 2.7 | 4.4 | 12.6 | **12.6** | 5.9 |
+| pink −50 | 1.8 | 12.7 | 2.8 | 4.4 | 12.7 | **12.7** | 6.6 |
+| AC −50 | 6.7 | 12.9 | 7.8 | 12.2 | 12.9 | **12.9** | 9.5 |
+| brown −48 | 2.0 | 12.8 | 2.0 | 4.3 | 12.6 | **12.6** | 5.1 |
+| pink −48 | 2.0 | 13.0 | 2.0 | 4.4 | 12.8 | **12.7** | 5.2 |
+| AC −48 | 9.9 | 13.3 | 10.4 | 12.9 | 13.3 | **13.3** | 11.0 |
+| brown −40 | 1.6 | 12.9 | 1.6 | 2.7 | 3.6 | **3.3** | 1.7 |
+| pink −40 | 1.8 | 12.8 | 1.8 | 3.2 | 4.6 | **4.4** | 2.0 |
+| AC −40 | 10.1 | 13.4 | 10.1 | 12.7 | 12.8 | **12.5** | 10.1 |
+
+Share of 1–5 s pauses in which the thumb disappears (%; window from the
+pause's start to its end + 250 ms):
+
+| condition | BASE | C1 | K1 | K2 | K3 | K4 | K5 |
+|---|---|---|---|---|---|---|---|
+| none | 74.2 | 0.0 | 2.7 | 1.1 | 0.5 | **0.5** | 2.2 |
+| brown −55 | 79.6 | 0.0 | 3.8 | 0.5 | 0.0 | **0.0** | 5.9 |
+| pink −55 | 79.0 | 0.0 | 3.2 | 0.5 | 0.0 | **0.0** | 5.4 |
+| AC −55 | 68.3 | 0.0 | 3.8 | 0.5 | 0.0 | **0.0** | 5.4 |
+| brown −50 | 99.5 | 0.0 | 67.7 | 52.7 | 0.5 | **0.5** | 25.8 |
+| pink −50 | 100.0 | 0.0 | 73.1 | 57.0 | 0.0 | **0.0** | 22.0 |
+| AC −50 | 29.0 | 0.0 | 15.6 | 3.8 | 0.0 | **0.0** | 9.7 |
+| brown −48 | 100.0 | 0.0 | 97.8 | 58.6 | 1.1 | **1.1** | 36.0 |
+| pink −48 | 100.0 | 0.0 | 100.0 | 60.2 | 1.1 | **1.1** | 36.0 |
+| AC −48 | 12.9 | 0.0 | 9.7 | 2.7 | 0.0 | **0.0** | 7.0 |
+| brown −40 | 100.0 | 0.0 | 100.0 | 75.8 | 58.1 | **59.7** | 94.1 |
+| pink −40 | 100.0 | 0.0 | 100.0 | 73.7 | 50.5 | **52.2** | 92.5 |
+| AC −40 | 9.1 | 0.0 | 9.1 | 2.7 | 2.2 | **2.7** | 9.1 |
+
+| arm | T-QUIET | T-NOISY (of 9) | what decides it |
+|---|---|---|---|
+| K1 | FAIL | 0 | Trail 8.8–9.8 points at the quiet conditions (needs ≥ 10); the thumb criterion alone would pass (2.7–3.8 %). Both risks were foreseen in §3.2. |
+| K2 | PASS | 3 | Only the AC −50 / −48 / −40 conditions: in brown and pink noise from −50 dBFS the thumb still goes in 53–76 % of pauses, as §3.3 expected. |
+| K3 | PASS | 7 | Every −50 and −48 condition, and AC −40. Not brown or pink −40, where the voice is about 5 dB over the room (§3.4). |
+| K4 | PASS | 7 | The same 7 conditions as K3. |
+| K5 | FAIL | 0 | Trail 8.5–9.4 points at the quiet conditions, and the thumb gone in 5.4–5.9 % of pauses at −55 dBFS. |
+
+**K4, more measures**, against BASE, at none / brown −48 / brown −40:
+- **Row idle:** 0.0 / 0.0 / 6.2 % (BASE 4.4 / 11.1 / 14.3).
+- **Trail clears a minute:** 0.6 / 0.3 / 6.8 (BASE 10.3 / 10.6 / 12.8).
+- **Ticks with a drawable streak** (448 × 890): 97.1 / 98.4 / 72.6 % (BASE
+  62.8 / 60.2 / 48.8). The 360 × 690 shares are at most 2.1 points lower.
+- **0.3–1 s pauses with the thumb gone:** 0.0 / 0.0 / 19.5 % (BASE 42.4 /
+  27.2 / 41.9).
+- **Per sex, quiet conditions:** trail 12.3–13.0 points for men and
+  10.8–11.7 for women; thumb gone in at most 1.1 % of pauses for men and
+  0 % for women.
+- **Streak span.**
+  - With no noise, the trail is full on 53.9 % of ticks. The oldest point's
+    median age is 42.5 s on those ticks, and 38.8 s on ticks with ≥ 2
+    points.
+  - At brown −48 these are 65.8 %, 37.0 s and 35.3 s. At brown −40 they
+    are 0.5 %, 37.0 s and 8.0 s.
+
+### Noise guards (§9): every K arm passes all eight cells
+
+The talker class here is the screen's 7 clips: 5 DEMAND and 2 Freesound
+(the screen stage's note).
+
+- **"Not idle" and "keep talking…".** In every cell, each arm's Δ not idle
+  equals its Δ drawn. Its Δ "keep talking…" is 0.00.
+- **Cold-start bars.** In the cold-start cells the not-idle bars differ
+  from the drawn bars: +2.00 (speech-free), +5.32 (talker L1), +6.74
+  (talker L2).
+
+Δ drawn-thumb time, arm − BASE, pooled (points):
+
+| cell | clips | BASE drawn % | bar | C1 | K1 | K2 | K3 | K4 | K5 |
+|---|---|---|---|---|---|---|---|---|---|
+| speech-free L1 −48, cold | 150 | 1.33 | +1.00 | **+1.47** | +0.09 | +0.03 | +0.05 | +0.03 | +0.01 |
+| talker L1 −48, cold | 7 | 10.36 | +2.59 | **+5.20** | +0.61 | +0.57 | +0.57 | +0.00 | +1.02 |
+| speech-free L1 −48, after | 150 | 6.06 | +1.00 | **+5.18** | +0.31 | +0.04 | +0.05 | +0.05 | +0.09 |
+| talker L1 −48, after | 7 | 22.64 | +5.66 | **+11.16** | +2.16 | +0.30 | +0.30 | +0.08 | +1.97 |
+| speech-free L2 −40, cold | 150 | 3.39 | +1.00 | **+2.64** | +0.01 | +0.07 | +0.09 | +0.03 | +0.00 |
+| talker L2 −40, cold | 7 | 16.93 | +4.23 | **+15.81** | +0.15 | +0.86 | +0.86 | +0.00 | +1.21 |
+| speech-free L2 −40, after | 150 | 6.22 | +1.00 | **+8.48** | +0.02 | +0.11 | +0.15 | +0.06 | +0.07 |
+| talker L2 −40, after | 7 | 24.68 | +6.17 | **+28.93** | +0.35 | +1.08 | +1.08 | +1.08 | +1.32 |
+
+The largest single-clip excess per cell (bar +15.00), in the same order:
+- **C1:** +31.46, +12.63, +51.54, +21.25, +40.96, +25.50, +72.77, +45.62;
+  1–27 clips over +15 in seven cells.
+- **K1:** at most +8.29.
+- **K2:** at most +5.33.
+- **K3:** at most +8.83 (DEMAND TBUS 3, speech-free L2 after speech).
+- **K4:** at most +5.33: fs__254493, a server hard drive starting up, in
+  the talker class. The screen stage found Silero speech runs at 38–50 s
+  in it, where FireRedVAD also hears voice.
+- **K5:** at most +11.48 (DEMAND TMETRO 3, talker L1 after speech).
+
+C1 fails every cell again. Its after-speech figures, now through the real
+chain, are close to the earlier fixed-position replay. Pooled over both
+classes they are +5.45 (L1) and +9.40 (L2) points, against +4.68 / +7.86.
+
+**Pooled over both classes** (information), K4: +0.03 / +0.05 (L1 cold /
+after) and +0.03 / +0.10 points (L2).
+
+### G-FT (dev): every arm passes
+
+- On the foreground talkers BASE already draws the thumb 88.3–97.5 % of
+  the time, so the talker bars are +22.1 to +24.4 points.
+- Every K arm adds +2.2 to +2.8 points.
+- The largest single clip is +4.4 (ft__2412__1, after speech).
+
+### G2–G4: zero differences for every arm
+
+These cover every render point and tick of all 832 streams.
+
+- **G2:** the thumb's u is the same wherever both arms draw: 832 763
+  (speech), 21 560 (cold start), 283 168 (after speech) and 103 320 (G-FT)
+  render points.
+- **G3:** the pitch row is the same on every render point and tick.
+- **G4:**
+  - **Speech:** the resonance state and thumb differ only where BASE is
+    idle. For K4 that is 52 899 render points (C1 61 829, K1 18 556).
+  - **Noise** (information): the same, 0 differences where BASE is not
+    idle.
+
+### G5 on K4: PASS
+
+- **The working copy, uncommitted** (§3.1's pattern; `wire.mjs` in the
+  stage scratchpad):
+  - **`CueStrip.jsx`:** the tick creates `createVoiceHoldRef()` in place
+    of `createResonanceHold()`; `latest.current` gains `intensity`;
+    `hold.tick({ pitchVoiced: p.pitchVoiced, pitchHolding: p.pitchHolding,
+    pitchLevel: p.pitchLevel, intensity: p.intensity, snap, workerStatus:
+    p.resonanceStatus, hasRef: !!ref }, performance.now())`; a new
+    `intensity = null` prop.
+  - **`App.jsx` and `CombinedDashboard.jsx`** pass `intensity`.
+  - **`tests/audio/cue-strip-wiring-test.js`** checks every step 6 item
+    (18 checks): the factory beside the trails and not C1's, its inputs,
+    `intensity` in `latest.current`, the view and render hold, App and
+    CombinedDashboard passing `intensity`, and `useAudioPipeline.js`
+    unchanged from 7e00e59. A negative check confirmed that the new App
+    and CombinedDashboard assertions fail on the committed files.
+  - **Unchanged:** the info text (`RESONANCE_INFO`); §11 changes it only
+    on PASS.
+- **sha256 of the four working-copy files**, as on disk; for the two
+  CRLF checkouts, LF-normalised in brackets:
+
+  | file | sha256 |
+  |---|---|
+  | `src/components/CueStrip.jsx` | `edb080b6fc0cb778e8a1c5b6c8f1a1c27ee0c3a2544480a0adbc63e387c51f2b` |
+  | `src/App.jsx` | `0d16d0f5ef7ed6665e35d240d41d7ad5f267a00c81d00bcbf3ed96d4c4e0ffe3` (LF `a4a4b9e5c70d3dc31a4f9aedde25878c6bb48adcdd97d4cd1d23d38e954a2e3a`) |
+  | `src/components/CombinedDashboard.jsx` | `b32d2c8b88093c11cc5f597194c14bb579eea1d8844ab4a98509cdd69908172e` (LF `5dbf7d5e16807bd39ce3016b5351925543f1e560768e10f8ebc8828300b62efa`) |
+  | `tests/audio/cue-strip-wiring-test.js` | `5e163782a4fa95dfc693e00f29d0ff5e4da8b66c3a372d632f4274cffb57ec8b` |
+
+  Copies and the diff are kept outside the repo, in
+  `C:/Coding Projects/_oneshot/resonance-hold-narrow/g5-working-copy-K4/`.
+  The four files were then restored to the committed state:
+  `CueStrip.jsx` keeps C1 until the confirmation.
+- **Results on the working copy:**
+  - `npm run lint` clean; `npm run test:unit` 76 / 76; `npm run build` OK;
+  - the cue-strip tests: model 167 / 167, geometry 8 / 8, voice-gate
+    display 48 / 48, wiring 18 / 18;
+  - `scripts/cue-strip-smoke.mjs`: phone 97 / 97, p402 97 / 97, p360
+    97 / 97, desktop 103 / 103;
+  - `scripts/resonance-lab/lab-layout-smoke.mjs --panel=0`: 78 / 78.
+- **On the committed tree** (factories only, the freeze commit's code):
+  lint clean, `test:unit` 76 / 76, build OK (Freeze section).
+
+### Information (no bar), K4
+
+- **Streams with a position when the speech ended** (u at tCut): 157 / 157
+  at L1 and 156 / 157 at L2. Restricted to those streams, K4's
+  after-speech figures are the same as above (speech-free L2: 149 clips,
+  +0.06 points).
+- **Window from tLast + 7 s**, after speech: +0.02 / +0.08 points at L1
+  (speech-free / talker) and +0.05 / +1.12 at L2. The largest clip is
+  +5.55 (fs__254493).
+- **Without the 6 dev clips with a data-quality mark:** every cell would
+  still pass; the largest Δ is unchanged.
+- **By source**, after speech:
+  - DEMAND (85): +0.07 (L1) and +0.11 points (L2);
+  - Freesound (72): +0.04 and +0.10.
+- **By metadata subclass:** the largest is fans / PC / coil whine at L2
+  after speech, +0.36 points (fs__254493); public / café +0.11 (L1) and
+  +0.24 (L2); transport +0.07 and +0.17.
+- **Held render points in "needs running speech":** none, for every K arm,
+  on speech and on noise. C1 has a few on noise, e.g. 44 of 25 423 at
+  speech-free L2 from a cold start.
+- **Tick timing** (BASE and K4, dev speech):
+  - with `tickJitterMs` 150: K4 T-QUIET PASS, T-NOISY 7 (trail 11.5–12.2,
+    thumb gone ≤ 1.1 %);
+  - with `arrival40`: T-QUIET PASS, T-NOISY 7, the same quiet figures as
+    nominal;
+  - BASE is unchanged under both, within 0.1 point.
+
+### What K4 would change for the user (if confirmed)
+
+- **Quiet room or one up to about −48 dBFS** in pauses: the streak keeps
+  about 12–13 points (about the last 40 s), where it now keeps about 2. The
+  thumb stays, dimmed, in almost every pause of 1–5 s, and the blink at the
+  first word after a pause no longer clears the streak.
+- **About −40 dBFS** in pauses (brown or pink room noise): the voice stands
+  only about 5 dB over the room. The thumb still disappears in about half
+  of the 1–5 s pauses, with a trail of 3–4 points.
+- **Cost on dev noise:** pooled over all 157 clips, at most +0.10 point of
+  extra drawn-thumb time; +1.08 in the 7 talker clips at −40 dBFS after
+  speech; at most +5.3 points on any one clip. After speech, C1 cost +5.5
+  and +9.4 points pooled, and up to +73 on one clip.
+
+### Deviations in the dev stage
+
+1. **The working copy's wiring test.** Its first version of the new App
+   check did not normalise CRLF line endings. It failed on the CRLF
+   checkout of `App.jsx` before G5 was run, and was fixed in the test. No
+   factory changed, and no G5 check had failed, so the stub test of §10 was
+   not needed.
+2. **`dist/`.** The untracked build output is left built from the wired
+   working copy. Rebuild it before any later smoke on the committed tree.
+
+No other deviation.
+
+### Next
+
+Confirmation (§10 steps 4–5): BASE, C1 (reference) and K4 only, on the
+fresh readers and the fresh noise. It runs once both pushes are done: this
+dev pick, and the fresh list with its screen and pairing table. On PASS,
+K4 replaces C1 in `CueStrip.jsx` (§10 step 6, §11). On FAIL, STOP.
+
+### Reproduce (dev)
+
+```
+python -P scripts/resonance/faster-prep.py --libri="C:/Coding Projects/Syrinx-cache/resonance-lab/data" --split=dev-clean --tag=ft --n=9 --fill --out=build/resonance-mobile/narrow/ft-prep
+node scripts/resonance/mobile/ft-clips.mjs
+node scripts/resonance/mobile/as-run.mjs prep --set=dev           # asBase, tCut, tLast, narrow-pairing.json
+for i in 0 1 2; do node scripts/resonance/mobile/as-run.mjs run --set=dev --shard=$i/3 & done; wait
+# the real DSP worker + hook (speech, cold start, after speech / G-FT):
+for i in 0 1 2; do SO_TAP=0 node --import ./scripts/session-oracle/lib/register.mjs scripts/resonance/mobile/pause-row.mjs \
+  --runs=build/resonance-mobile/pause/runs --out=build/resonance-mobile/narrow/hook-speech \
+  --conds=clean,brown_m55,brown_m50,brown_m48,brown_m40,pink_m55,pink_m50,pink_m48,pink_m40,ac_m55,ac_m50,ac_m48,ac_m40 --shard=$i/3 & done; wait
+for i in 0 1 2; do SO_TAP=0 node --import ./scripts/session-oracle/lib/register.mjs scripts/resonance/mobile/pause-row.mjs \
+  --runs=build/resonance-mobile/hold/runs --out=build/resonance-mobile/narrow/hook-cold --shard=$i/3 & done; wait
+for i in 0 1 2; do SO_TAP=0 node --import ./scripts/session-oracle/lib/register.mjs scripts/resonance/mobile/pause-row.mjs \
+  --runs=build/resonance-mobile/narrow/runs-dev --out=build/resonance-mobile/narrow/hook-dev --shard=$i/3 & done; wait
+node --max-old-space-size=4096 scripts/resonance/mobile/narrow-report.mjs   # checks narrow-freeze.json first
+```
+
+The outputs are `build/resonance-mobile/narrow/report-dev.{md,json}`
+(gitignored), with every table above and the per-arm, per-condition and
+per-clip detail.
