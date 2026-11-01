@@ -65,6 +65,7 @@ import { useInfoPopover } from "./useInfoPopover";
 import {
   axisPos,
   bandsFor,
+  createResonanceHold,
   createTrail,
   cueResonanceRef,
   cueSummary,
@@ -146,8 +147,9 @@ const RESONANCE_INFO =
   "session (the middle of your first ~12 s of speech) and the words beside the meter say how far you have moved from it — that change is what this cue measures reliably. " +
   "The dashed bands are where 8 in 10 single readings of 20 men and 20 women reading audiobooks on good " +
   "microphones fell, so even typical speakers' readings land outside their band about 1 time in 5. Your microphone, " +
-  "room and distance shift the whole scale, so trust how the marker moves more than where it sits. What you say moves it too, so judge a change over " +
-  "tens of seconds, not sentence by sentence. The streak shows the last ~30 s.";
+  "room and distance shift the whole scale, so trust how the marker moves more than where it sits. Readings depend on " +
+  "the microphone and how you hold it, so compare yourself on one device, held the same way. What you say moves it too, so judge a change over " +
+  "tens of seconds, not sentence by sentence. The streak shows about the last 40 s and starts over after about 5 s without speech.";
 function directionNote(cue, direction) {
   if (!direction || direction === "exploring") return null;
   if (cue === "pitch") {
@@ -452,9 +454,10 @@ export function CueStrip({
   const roomy = useMedia("(min-width: 1024px) and (min-height: 600px)");
   const [assets, setAssets] = useState(null);
   // What the 4 Hz tick saw: the resonance worker's latest state, each cue's
-  // trail and (once a second) the screen-reader summaries. Render reads only
-  // this, never the refs.
-  const [view, setView] = useState({ snap: null, trails: { pitch: [], resonance: [] }, everVoiced: false, sr: {} });
+  // trail, the resonance row's hold (createResonanceHold: shown voice in the
+  // last 5 s; 2026-10-28) and (once a second) the screen-reader summaries.
+  // Render reads only this, never the refs.
+  const [view, setView] = useState({ snap: null, trails: { pitch: [], resonance: [] }, resonanceHold: false, everVoiced: false, sr: {} });
   const latest = useRef(null);
   useEffect(() => { latest.current = { pitchVoiced, pitchHolding, pitchLevel, resonanceStatus, direction }; });
 
@@ -478,10 +481,15 @@ export function CueStrip({
 
   const vtlnRef = useMemo(() => (assets?.reference?.vtln ? cueResonanceRef(assets.reference.vtln, assets.cueBands) : null), [assets]);
 
-  // One 4 Hz tick: sample each cue's value into its trail while live; the
-  // screen-reader summaries every 4th tick (1 Hz).
+  // One 4 Hz tick: the resonance row's hold clock, then sample each cue's
+  // value into its trail while live; the screen-reader summaries every 4th
+  // tick (1 Hz). The hold keeps the resonance row out of "idle" for up to
+  // 5 s after shown voice, so pauses (quiet or noisy) and the first frames
+  // of resumed speech no longer clear its trail
+  // (measurements/resonance-row-hold-2026-10-28.md).
   useEffect(() => {
     const t = { pitch: createTrail(), resonance: createTrail(RESONANCE_TRAIL.n, RESONANCE_TRAIL.everyTicks) };
+    const hold = createResonanceHold();
     let ever = false;
     let n = 0;
     let sr = {};
@@ -491,7 +499,8 @@ export function CueStrip({
       if (!p) return;
       const snap = resonanceRef?.current ?? null;
       if (p.pitchVoiced) ever = true;
-      const inputs = { ...p, snap, workerStatus: p.resonanceStatus };
+      const resonanceHold = hold.tick(!!p.pitchVoiced, performance.now());
+      const inputs = { ...p, snap, workerStatus: p.resonanceStatus, resonanceHold };
       const states = cueRowStates({ ...inputs, hasRef: !!ref });
       if (n++ % 4 === 0) {
         sr = {
@@ -501,6 +510,7 @@ export function CueStrip({
       }
       setView({
         snap,
+        resonanceHold,
         everVoiced: ever,
         sr,
         trails: {
@@ -513,7 +523,7 @@ export function CueStrip({
   }, [resonanceRef, assets]);
 
   const snap = view.snap;
-  const inputs = { pitchVoiced, pitchHolding, pitchLevel, snap, workerStatus: resonanceStatus };
+  const inputs = { pitchVoiced, pitchHolding, pitchLevel, snap, workerStatus: resonanceStatus, resonanceHold: view.resonanceHold };
   const { pitch: pState, resonance: rState } = cueRowStates({ ...inputs, hasRef: !!vtlnRef });
   // The big number IS the thumb: the 1.5 s level the target judges.
   const levelStatus = pitchLevel != null ? pitchStatus(pitchLevel, pitchTargetFor(direction)) : null;

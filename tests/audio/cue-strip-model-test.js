@@ -1,6 +1,7 @@
 // cue-strip-model-test.js — src/components/cueStripModel.js: the Dashboard
 // cue strip's axes, bands, direction highlight (the same in every direction),
-// dot colours (only pitch judges), trail and row states.
+// dot colours (only pitch judges), trail, row states and the resonance row's
+// hold through pauses (2026-10-28).
 //
 //   node tests/audio/cue-strip-model-test.js
 
@@ -10,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import {
   axisPos,
   bandsFor,
+  createResonanceHold,
   createTrail,
   cueResonanceRef,
   cueRowStates,
@@ -31,11 +33,12 @@ import {
   TRAIL_LEN,
   TRAIL_EVERY_MS,
   RESONANCE_TRAIL,
+  RESONANCE_HOLD_MS,
   CUES,
   NARROWBAND_NOTICE,
   NARROWBAND_INFO,
 } from "../../src/components/cueStripModel.js";
-import { COLORS, CUE_AXES, statusColor } from "../../src/utils/constants.js";
+import { COLORS, CUE_AXES, SILENCE_HOLD_MS, statusColor } from "../../src/utils/constants.js";
 import { PITCH_TARGETS, pitchStatus, pitchTargetFor, resonanceU } from "../../src/utils/trainingDirection.js";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -282,6 +285,113 @@ console.log("\nrow states");
     && cueSummary("weight", { state: "live", snap: snap({ u: 0.52, startU: 0.1 }), vtlnRef: REF }) === null);
   check("screen-reader: no '….' after a header that ends in an ellipsis",
     cueSummary("resonance", { state: "live", snap: snap({ u: 0.52, startU: null }), vtlnRef: REF }) === "Resonance (approximate): between the typical men's and women's bands, finding your start…");
+}
+
+// The resonance row's hold (owner decision 2026-10-28; measurements/
+// resonance-row-hold-2026-10-28.md): up to 5 s after the strip last saw
+// shown voice the row keeps its position (dimmed) whatever the pause's noise
+// floor, so pauses and the onset blink no longer clear its trail. A replay of
+// the CueStrip tick: hold.tick at each 250 ms tick, cueRowStates with the
+// tick's resonanceHold, the trails' tick.
+console.log("\nresonance row hold");
+{
+  check("hold = the pitch readout's silence hold (5 s)", RESONANCE_HOLD_MS === SILENCE_HOLD_MS && RESONANCE_HOLD_MS === 5000);
+  const h = createResonanceHold();
+  check("no hold before any shown voice", h.tick(false, 0) === false && h.tick(false, 1000) === false);
+  check("held on the voiced tick and up to 5 s after it",
+    h.tick(true, 2000) === true && h.tick(false, 2250) === true && h.tick(false, 7000) === true);
+  check("released once more than 5 s have passed", h.tick(false, 7250) === false && h.tick(false, 9000) === false);
+  check("a new voiced tick re-arms it", h.tick(true, 9250) === true && h.tick(false, 14250) === true && h.tick(false, 14500) === false);
+  h.clear();
+  check("clear() forgets the last voice", h.tick(false, 14600) === false);
+
+  const snap = (o) => ({ u: 0.8, raw: 0.03, fill: 1, voicedS: 6, verdict: "score", ...o });
+  const C = (o) => cueRowStates({ workerStatus: "ready", snap: snap({}), pitchLevel: null, pitchVoiced: false, pitchHolding: false, ...o });
+  check("held: an idle row shows the dimmed thumb (holding)", C({}).resonance === "idle" && C({ resonanceHold: true }).resonance === "holding"
+    && dotOpacity(C({ resonanceHold: true }).resonance) === 0.5);
+  check("held: settling and 'needs running speech' as in a quiet pause",
+    C({ resonanceHold: true, snap: snap({ voicedS: 3, fill: 0.6 }) }).resonance === "settling"
+    && C({ resonanceHold: true, snap: snap({ sinceResumeS: 0.5 }) }).resonance === "settling"
+    && C({ resonanceHold: true, snap: snap({ verdict: "sustained" }) }).resonance === "sustained");
+  check("held: never 'keep talking…' — a row with no position stays idle",
+    C({ resonanceHold: true, snap: snap({ voicedS: 1.2, fill: 0.24 }) }).resonance === "idle"
+    && C({ resonanceHold: true, snap: snap({ u: null }) }).resonance === "idle"
+    && C({ resonanceHold: true, snap: snap({ narrowband: { decided: false, on: false } }) }).resonance === "idle"
+    && C({ pitchHolding: true, snap: snap({ voicedS: 1.2, fill: 0.24 }) }).resonance === "warming");
+  check("held: the worker's own states and the notice come first, unchanged",
+    C({ resonanceHold: true, workerStatus: "error" }).resonance === "unavailable" && C({ resonanceHold: true, workerStatus: "overloaded" }).resonance === "paused"
+    && C({ resonanceHold: true, workerStatus: "loading" }).resonance === "starting" && C({ resonanceHold: true, snap: null }).resonance === "starting"
+    && C({ resonanceHold: true, hasRef: false }).resonance === "starting" && C({ resonanceHold: true, workerStatus: "reload" }).resonance === "reload"
+    && C({ resonanceHold: true, snap: snap({ narrowband: { decided: true, on: true } }) }).resonance === "narrowband");
+  {
+    // Only where the plain rule says idle: every other input gives the same states.
+    let same = true, n = 0;
+    const snaps = [snap({}), snap({ voicedS: 1, fill: 0.2 }), snap({ verdict: "sustained" }), snap({ fill: 0.5, voicedS: 3 }), snap({ sinceResumeS: 1 }), snap({ u: null }), null];
+    for (const pitchVoiced of [false, true]) for (const pitchHolding of [false, true]) for (const sn of snaps) {
+      for (const workerStatus of ["ready", "loading", "error", "overloaded"]) for (const pitchLevel of [null, 180]) {
+        const a = cueRowStates({ pitchVoiced, pitchHolding, pitchLevel, snap: sn, workerStatus });
+        const b = cueRowStates({ pitchVoiced, pitchHolding, pitchLevel, snap: sn, workerStatus, resonanceHold: true });
+        n++;
+        if (a.pitch !== b.pitch || (a.resonance !== "idle" && a.resonance !== b.resonance)) same = false;
+      }
+    }
+    check(`the hold changes the resonance row only where it would be idle, never the pitch row (${n} input sets)`, same);
+  }
+  check("summary and header while held read as in a quiet pause",
+    cueSummary("resonance", { state: C({ resonanceHold: true, snap: snap({ u: 0.52, startU: 0.1 }) }).resonance, snap: snap({ u: 0.52, startU: 0.1 }), vtlnRef: REF })
+      === "Resonance (approximate): between the typical men's and women's bands, brighter than your start."
+    && resonanceHeader("holding", snap({ u: 0.3, startU: 0.7 })) === "darker than your start");
+
+  // The strip over time: the CueStrip tick (hold, states, trails), one frame
+  // per 250 ms tick.
+  const strip = (frames, { held = true } = {}) => {
+    const hold = createResonanceHold();
+    const tr = { pitch: createTrail(), resonance: createTrail(RESONANCE_TRAIL.n, RESONANCE_TRAIL.everyTicks) };
+    const out = [];
+    frames.forEach((f, i) => {
+      const t = i * 250;
+      const resonanceHold = held ? hold.tick(!!f.pitchVoiced, t) : false;
+      const inputs = { pitchLevel: f.pitchVoiced || f.pitchHolding ? 180 : null, workerStatus: "ready", ...f, snap: snap(f.snap ?? {}), resonanceHold };
+      const st = cueRowStates(inputs);
+      out.push({ t, st, rTrail: tr.resonance.tick(st.resonance, rowValue("resonance", inputs)).length, pTrail: tr.pitch.tick(st.pitch, rowValue("pitch", inputs)).length });
+    });
+    return out;
+  };
+  const speech = (s) => Array.from({ length: Math.round(s * 4) }, () => ({ pitchVoiced: true }));
+  const noisyPause = (s) => Array.from({ length: Math.round(s * 4) }, () => ({ pitchVoiced: false, pitchHolding: false }));
+  const quietPause = (s) => Array.from({ length: Math.round(s * 4) }, () => ({ pitchVoiced: false, pitchHolding: true }));
+  {
+    const fr = [...speech(20), ...noisyPause(3), ...speech(4)];
+    const A = strip(fr), B = strip(fr, { held: false });
+    check("a 3 s pause that hears the room: the row holds throughout (thumb drawn)", A.slice(80, 92).every((x) => x.st.resonance === "holding"));
+    check("…and the trail is kept, then grows on", A[91].rTrail === A[79].rTrail && A[79].rTrail >= 9 && A[A.length - 1].rTrail > A[79].rTrail,
+      `${A[79].rTrail} -> ${A[91].rTrail} -> ${A[A.length - 1].rTrail}`);
+    check("the plain rule (no hold) goes idle and clears it", B.slice(80, 92).every((x) => x.st.resonance === "idle") && B[91].rTrail === 0);
+    check("the pitch row is the same with and without the hold", A.every((x, i) => x.st.pitch === B[i].st.pitch && x.pTrail === B[i].pTrail));
+  }
+  {
+    const fr = [...speech(20), ...noisyPause(8)];
+    const A = strip(fr);
+    // last voiced tick t = 19.75 s: held through 24.75 s, idle from 25.0 s
+    check("after 5 s without shown voice the row goes idle and the trail clears, as before",
+      A[99].st.resonance === "holding" && A[99].rTrail > 0 && A[100].st.resonance === "idle" && A[100].rTrail === 0
+      && A.slice(100).every((x) => x.st.resonance === "idle"));
+  }
+  {
+    // The onset blink: a quiet pause (the hook's silence hold), then one
+    // tick with both flags false before the resumed speech paints.
+    const fr = [...speech(20), ...quietPause(1.5), { pitchVoiced: false, pitchHolding: false }, ...speech(4)];
+    const A = strip(fr), B = strip(fr, { held: false });
+    check("the onset blink no longer clears the trail (holding, not idle)", A[86].st.resonance === "holding" && A[86].rTrail === A[85].rTrail && A[86].rTrail >= 9);
+    check("without the hold the blink is idle and clears it", B[86].st.resonance === "idle" && B[86].rTrail === 0);
+  }
+  {
+    const nbSnap = { narrowband: { decided: true, on: true, n: 400, f: -45 } };
+    const A = strip([...speech(20), { pitchVoiced: true, snap: nbSnap }, ...speech(2)]);
+    check("held or not, a change into 'phone-quality audio' still clears the trail", A[80].st.resonance === "narrowband" && A[80].rTrail === 0);
+    const S2 = strip([...speech(20), { pitchVoiced: false, pitchHolding: false, snap: { verdict: "sustained" } }, ...speech(2)]);
+    check("held or not, a change into 'needs running speech' still clears the trail", S2[80].st.resonance === "sustained" && S2[80].rTrail === 0);
+  }
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

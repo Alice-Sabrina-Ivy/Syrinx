@@ -37,6 +37,14 @@
 // frame, whatever the pause floor; the pitch row is unchanged. It has its
 // own trail (not cleared while the hold keeps the row out of "idle").
 //
+// Arm "cand" (2026-11-01, measurements/resonance-row-hold-2026-10-28.md): the
+// SHIPPED resonance row hold, wired as CueStrip.jsx wires it — at each tick
+// hold.tick(pitchVoiced, tick ms) (createResonanceHold) and cueRowStates({
+// ..., resonanceHold }); every render point uses the latest tick's
+// resonanceHold. Arm "act" = BASE (no resonanceHold). Every tick records,
+// per arm, the pitch row's state from the same cueRowStates call and the age
+// of the oldest trail point (the streak's span).
+//
 // Pauses: from the CLEAN condition's posted voicing (chain.mjs pitch cache,
 // display-hop index = the chunk whose handling posted the message): maximal
 // runs of chunks whose messages are all unvoiced, >= 12 chunks (0.3 s);
@@ -106,10 +114,12 @@ export function stripReplay(hook, chainRec, { from = 0, cfHoldMs = 5000 } = {}) 
   const cfHolding = (k) => !!(S[k] & 8) || (!(S[k] & 4) && (k + 1) * 25 - lastV[k] <= cfHoldMs);
 
   const arms = {};
-  for (const arm of ["act", "cf"]) {
-    const holdingAt = arm === "act" ? (k) => !!(S[k] & 8) : cfHolding;
+  for (const arm of ["act", "cf", "cand"]) {
+    const holdingAt = arm === "cf" ? cfHolding : (k) => !!(S[k] & 8);
     const tr = { pitch: CS.createTrail(), resonance: CS.createTrail(CS.RESONANCE_TRAIL.n, CS.RESONANCE_TRAIL.everyTicks) };
-    let view = { snap: null, trail: [], ptrail: [] };
+    const hold = arm === "cand" ? CS.createResonanceHold() : null;
+    let view = { snap: null, trail: [], ptrail: [], resonanceHold: false };
+    let prevTrail = null, trailT = []; // tick times (ms) of the trail's points, oldest first
     // grid series
     const rs = new Uint8Array(n), ps = new Uint8Array(n), thumb = new Uint8Array(n), thumbU = new Float64Array(n).fill(NaN);
     const ticks = []; // { t, rstate, trailLen, spanX, anchorX, drawable: {p448, p360}, u }
@@ -122,13 +132,17 @@ export function stripReplay(hook, chainRec, { from = 0, cfHoldMs = 5000 } = {}) 
         const kk = Math.min(n - 1, Math.floor(nextTick / 25) - 1);
         const fl = { pitchVoiced: !!(S[kk] & 4), pitchHolding: holdingAt(kk), pitchLevel: L[kk] };
         const snap = snapAt[kk] != null ? snaps[snapAt[kk]] : null;
-        const st = CS.cueRowStates({ ...fl, snap, workerStatus: "ready", hasRef: true });
+        const resonanceHold = hold ? hold.tick(fl.pitchVoiced, nextTick) : false;
+        const st = CS.cueRowStates({ ...fl, snap, workerStatus: "ready", hasRef: true, ...(hold ? { resonanceHold } : {}) });
         const pFlags = { ...fl, pitchHolding: !!(S[kk] & 8) }; // the pitch row never gets the counterfactual hold
-        const stP = CS.cueRowStates({ ...pFlags, snap, workerStatus: "ready", hasRef: true }).pitch;
+        // cand: the pitch row from the same call as the resonance row (the shipped wiring, G3)
+        const stP = arm === "cand" ? st.pitch : CS.cueRowStates({ ...pFlags, snap, workerStatus: "ready", hasRef: true }).pitch;
         const inputs = { ...fl, snap };
         const trail = tr.resonance.tick(st.resonance, CS.rowValue("resonance", inputs));
         const ptrail = tr.pitch.tick(stP, CS.rowValue("pitch", inputs));
-        view = { snap, trail, ptrail };
+        if (trail !== prevTrail) trailT = trail.length ? [...trailT, nextTick].slice(-trail.length) : [];
+        prevTrail = trail;
+        view = { snap, trail, ptrail, resonanceHold };
         // the render right after the tick: the streak
         const dotOp = CS.dotOpacity(st.resonance);
         const val = CS.rowValue("resonance", inputs);
@@ -140,13 +154,14 @@ export function stripReplay(hook, chainRec, { from = 0, cfHoldMs = 5000 } = {}) 
           spanX = Math.max(anchor, ...xs) - Math.min(anchor, ...xs);
           for (const [g, G] of Object.entries(GEOS)) drawable[g] = spanX * pxPerX(G) >= 3;
         }
-        ticks.push({ t: nextTick / 1000, rstate: st.resonance, pstate: stP, trailLen: trail.length, ptrailLen: ptrail.length, spanX, drawable, thumbU: dotPos ? val : null });
+        ticks.push({ t: nextTick / 1000, rstate: st.resonance, pstate: stP, trailLen: trail.length, ptrailLen: ptrail.length, spanX, drawable, thumbU: dotPos ? val : null,
+          ageS: trailT.length ? (nextTick - trailT[0]) / 1000 : null });
         nextTick += 250;
       }
       // render point at this chunk: current props + view.snap
       const fl = { pitchVoiced: !!(S[k] & 4), pitchHolding: holdingAt(k), pitchLevel: L[k] };
-      const st = CS.cueRowStates({ ...fl, snap: view.snap, workerStatus: "ready", hasRef: true });
-      const stP = CS.cueRowStates({ ...fl, pitchHolding: !!(S[k] & 8), snap: view.snap, workerStatus: "ready", hasRef: true }).pitch;
+      const st = CS.cueRowStates({ ...fl, snap: view.snap, workerStatus: "ready", hasRef: true, ...(hold ? { resonanceHold: view.resonanceHold } : {}) });
+      const stP = arm === "cand" ? st.pitch : CS.cueRowStates({ ...fl, pitchHolding: !!(S[k] & 8), snap: view.snap, workerStatus: "ready", hasRef: true }).pitch;
       rs[k] = STATES.indexOf(st.resonance);
       ps[k] = stP === "idle" ? 0 : stP === "holding" ? 1 : 2;
       const val = view.snap?.u;
@@ -177,7 +192,7 @@ export function stripReplay(hook, chainRec, { from = 0, cfHoldMs = 5000 } = {}) 
 }
 
 // ---- metrics over a window
-function windowMetrics(R, arm, { kFrom, kTo }) {
+export function windowMetrics(R, arm, { kFrom, kTo }) {
   const A = R.arms[arm];
   let idle = 0, pIdle = 0, thumb = 0, entries = 0, nPts = 0, warming = 0, notIdle = 0;
   for (let k = kFrom; k < kTo; k++) {
@@ -208,7 +223,7 @@ function windowMetrics(R, arm, { kFrom, kTo }) {
 }
 
 // ---- pauses from the clean condition's posted voicing
-function pausesFromClean(byChunk) {
+export function pausesFromClean(byChunk) {
   const n = byChunk.length, out = [];
   let s = -1;
   for (let k = 0; k <= n; k++) {
@@ -253,7 +268,7 @@ export function idleRuns(code, { kFrom = 0, kTo = code.length } = {}) {
   }
   return runs;
 }
-function pauseMetrics(R, arm, pauses, { kFrom }) {
+export function pauseMetrics(R, arm, pauses, { kFrom }) {
   const A = R.arms[arm];
   const runs = arm === "act" ? idleRuns(R.code, { kFrom: Math.max(1, kFrom - 400) }) : [];
   const mk = () => ({ n: 0, gone: 0, idle: 0, goneFrac: [], fall: 0, onset: 0 });
@@ -280,7 +295,7 @@ function pauseMetrics(R, arm, pauses, { kFrom }) {
   }
   return cls;
 }
-function pauseFloor(hook, cleanByChunk, pauses, { kFrom }) {
+export function pauseFloor(hook, cleanByChunk, pauses, { kFrom }) {
   const code = Buffer.from(hook.code, "base64");
   const v = [], quietIn = [0, 0];
   for (const [a, b] of pauses) {

@@ -167,7 +167,8 @@ for (const j of mine) {
     y0 = readF32(rd.variants.L);
     ctx = { id: r.id, reader: r.reader, sex: r.sex, kind: r.kind };
   } else if (r.kind === "ext") {
-    y0 = new Float32Array(SR * 150); // the zeros file the queue gives --f32
+    // the zeros the stream was built on (pause-queue.sh: 150 s; hold-noise-run.mjs: 60 s)
+    y0 = new Float32Array(meta.byChunk.length * CH);
     ctx = { id: r.id, reader: r.reader, sex: r.sex, kind: r.kind };
   } else throw new Error(`kind ${r.kind}`);
   const { y } = await applyPert(r.pert, y0, SR, ctx);

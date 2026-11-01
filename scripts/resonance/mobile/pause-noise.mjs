@@ -18,8 +18,10 @@
 //
 // kind "file" (params.path: a mono PCM16 WAV, e.g. the committed real
 // air-conditioner clip tests/dsp/data/notch-real/ac114.wav, MS-SNSD, CC0):
-// resampled to 48 kHz, looped from a seeded start offset, high-passed and
-// scaled the same way.
+// resampled to 48 kHz, looped from a seeded start offset (params.offset, in
+// samples at 48 kHz, overrides it: 0 = from the clip's start, no seam when
+// the clip is as long as the stream — the real-noise clips of
+// hold-noise-run.mjs), high-passed and scaled the same way.
 //
 // The seed is the given seed + a hash of the stream's reader / id
 // (perturb.mjs ctx), so every reader gets its own realisation, the same at
@@ -58,7 +60,7 @@ function readWav16Mono(p) {
   }
   throw new Error(`${p}: no data`);
 }
-export async function makeRoomNoise(n, sr, { kind, floorDb, hp = 50, hpN = 1, seed = 1, path: file = null }, key = "") {
+export async function makeRoomNoise(n, sr, { kind, floorDb, hp = 50, hpN = 1, seed = 1, path: file = null, offset = null }, key = "") {
   if (sr !== 48000) throw new Error("pause-noise: the DSP window is defined at 48 kHz");
   if (!["brown", "pink", "white", "file"].includes(kind)) throw new Error(`pause-noise: kind ${kind}`);
   if (!Number.isFinite(floorDb)) throw new Error("pause-noise: floorDb");
@@ -67,7 +69,7 @@ export async function makeRoomNoise(n, sr, { kind, floorDb, hp = 50, hpN = 1, se
   if (kind === "file") {
     const { x, sr: fsr } = readWav16Mono(file);
     const y = resampleClip(x, fsr, sr);
-    const off = s % y.length;
+    const off = offset != null ? offset % y.length : s % y.length;
     z = new Float32Array(n);
     for (let i = 0; i < n; i++) z[i] = y[(off + i) % y.length];
   } else z = makeNoise(kind, n, s);

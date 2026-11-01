@@ -46,6 +46,19 @@ const ik = inputs ? keysOf(inputs[1]) : [];
 check("the render's inputs carry pitchVoiced / pitchHolding", ik.includes("pitchVoiced") && ik.includes("pitchHolding"), ik.join(","));
 check("the render's inputs carry no raw voiced / holding", inputs && !ik.includes("voiced") && !ik.includes("holding"), ik.join(","));
 
+// The resonance row's hold (2026-10-28, measurements/resonance-row-hold-2026-10-28.md):
+// the 4 Hz tick runs createResonanceHold on the gated pitchVoiced, passes its
+// answer to its own cueRowStates call and keeps it in the view; the render
+// passes the view's answer. Never the raw voiced flag.
+check("the tick creates the resonance hold (createResonanceHold) beside its trails",
+  /const hold = createResonanceHold\(\);/.test(src));
+check("the tick feeds the hold the gated pitchVoiced and the clock",
+  /const resonanceHold = hold\.tick\(!!p\.pitchVoiced, performance\.now\(\)\);/.test(src));
+const tickInputs = src.match(/const inputs = \{ \.\.\.p, ([^}]*)\}/);
+check("the tick's cueRowStates inputs carry its resonanceHold", tickInputs && keysOf(tickInputs[1]).includes("resonanceHold"), tickInputs?.[1]);
+check("the tick keeps resonanceHold in the view", /setView\(\{\s*snap,\s*resonanceHold,/.test(src));
+check("the render passes the latest tick's hold", ik.includes("resonanceHold") && /resonanceHold: view\.resonanceHold/.test(src), ik.join(","));
+
 check("the caption's \"ever spoke\" flag follows pitchVoiced", /if \(p\.pitchVoiced\) ever = true/.test(src) && !/p\.voiced\b/.test(src));
 check("the caption text follows pitchVoiced", /view\.everVoiced \|\| pitchVoiced \?/.test(src));
 

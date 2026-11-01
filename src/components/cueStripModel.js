@@ -17,8 +17,9 @@
 //              fall inside their own band ~80 % of the time, men and women
 //              alike); approximate in absolute position, so dashed and never
 //              judged. The header says how far the dot is from where you
-//              started (the validated use); a slow trail (one sample every
-//              2 s, ~30 s) shows the drift.
+//              started (the validated use); a slow trail (one sample per
+//              2 s of live speech, 15 samples: ~30 s of speech, about the
+//              last 40 s with its pauses) shows the drift.
 //   (clarity)  HIDDEN since 2026-10-11 (user decision): the third row,
 //              "Clarity · approx." (raw CPP in σ from the session's own
 //              start; "Vocal weight" until 2026-10-11), is gone from the
@@ -32,13 +33,19 @@
 // detector is on (snap.narrowband.on), the resonance row is "narrowband": no
 // dot, no trail, no start ring, only the notice NARROWBAND_NOTICE; pitch is
 // untouched. measurements/resonance-narrowband-2026-10-19.md
+// Resonance row hold (owner decision 2026-10-28, built 2026-11-01): the row
+// keeps its position (dimmed) for up to 5 s after the strip last saw shown
+// voice, whatever the pause's noise floor, so the trail is no longer cleared
+// by short pauses or by the ~130 ms idle blink when speech resumes; it never
+// shows "keep talking…" from the hold. createResonanceHold / cueRowStates
+// resonanceHold; measurements/resonance-row-hold-2026-10-28.md.
 // Direction highlight: the same element and style for every direction,
 // only { low, high } changes; none for "Just exploring" / unanswered.
 // Only the pitch dot is coloured on / off target (statusColor(pitchStatus(...)),
 // the F0 readout's rule); the resonance dot is always neutral.
 // measurements/cue-strip-review-fixes-2026-10-07.md
 
-import { COLORS, CUE_AXES, statusColor } from "../utils/constants.js";
+import { COLORS, CUE_AXES, SILENCE_HOLD_MS, statusColor } from "../utils/constants.js";
 import {
   PITCH_TARGETS,
   pitchTargetFor,
@@ -52,7 +59,9 @@ export const CUES = ["pitch", "resonance"];
 export const TRAIL_LEN = 8;
 export const TRAIL_EVERY_MS = 250;
 // Resonance changes over seconds (5 s readout): a slower, longer trail.
-export const RESONANCE_TRAIL = Object.freeze({ n: 15, everyTicks: 8 }); // one per 2 s, ~30 s
+// One per 2 s of live speech, 15: ~30 s of speech, about the last 40 s with
+// its pauses (measurements/resonance-row-hold-2026-10-28.md, with the hold).
+export const RESONANCE_TRAIL = Object.freeze({ n: 15, everyTicks: 8 });
 
 // ---- axes: value -> fraction of the axis width [0, 1], plus where it fell
 function frac(cue, v) {
@@ -182,6 +191,31 @@ export function resonanceRowState({ workerStatus, snap, voiced, holding }) {
   return "live";
 }
 /**
+ * The resonance row's hold clock (2026-10-28 owner decision, built
+ * 2026-11-01; measurements/resonance-row-hold-2026-10-28.md). The strip's
+ * 4 Hz tick feeds it the gated pitchVoiced and the time; it answers whether
+ * at most holdMs have passed since a tick last saw it true (that tick
+ * included). CueStrip keeps the answer in its tick view and every render
+ * uses the latest tick's answer.
+ * Why: the hook's own hold (pitchHolding) exists only on its silence-gate
+ * path (50 ms intensity < -50 dBFS); in a pause that hears the room the row
+ * went idle ~0.8 s in, and on every device the first ~130 ms of resumed
+ * speech read idle too (the "onset blink"), and idle clears the trail —
+ * measurements/resonance-phone-vs-desktop-2026-10-28.md §5.
+ */
+export const RESONANCE_HOLD_MS = SILENCE_HOLD_MS; // 5 s, the pitch readout's silence hold
+export function createResonanceHold(holdMs = RESONANCE_HOLD_MS) {
+  let last = -Infinity;
+  return {
+    /** One tick: the gated pitchVoiced at nowMs (monotonic ms). */
+    tick(pitchVoiced, nowMs) {
+      if (pitchVoiced) last = nowMs;
+      return nowMs - last <= holdMs;
+    },
+    clear() { last = -Infinity; },
+  };
+}
+/**
  * Both rows' states, as the strip shows them. Both rows read the pitch
  * display's own flags, pitchVoiced / pitchHolding (useAudioPipeline: the raw
  * voiced / holding, except while the voice gate hides the pitch — setting on,
@@ -194,12 +228,24 @@ export function resonanceRowState({ workerStatus, snap, voiced, holding }) {
  * hasRef false: the reference bands are not loaded, so only the resonance
  * worker's own state can show (unavailable / paused / starting) — an error
  * is never hidden.
+ * resonanceHold (createResonanceHold, 2026-10-28): where the resonance row
+ * would be "idle", it takes the state it would have while holding —
+ * "holding" (the dimmed thumb), "settling" or "sustained" — but never
+ * "warming" ("keep talking…" with nobody speaking; a row with no position
+ * stays idle). So the row differs from the plain rule only where that rule
+ * says idle. The pitch row never reads it.
  */
-export function cueRowStates({ pitchVoiced, pitchHolding, pitchLevel, snap, workerStatus, hasRef = true }) {
+export function cueRowStates({ pitchVoiced, pitchHolding, pitchLevel, snap, workerStatus, hasRef = true, resonanceHold = false }) {
   const flags = { voiced: !!pitchVoiced, holding: !!pitchHolding };
+  const rSnap = hasRef ? snap : null;
+  let resonance = resonanceRowState({ ...flags, workerStatus, snap: rSnap });
+  if (resonance === "idle" && resonanceHold) {
+    const held = resonanceRowState({ voiced: false, holding: true, workerStatus, snap: rSnap });
+    if (held !== "warming") resonance = held;
+  }
   return {
     pitch: pitchRowState({ ...flags, pitchLevel }),
-    resonance: resonanceRowState({ ...flags, workerStatus, snap: hasRef ? snap : null }),
+    resonance,
   };
 }
 /** The value a row's dot shows, in the cue's units (null = none). */
@@ -225,7 +271,9 @@ export function dotOpacity(state) {
 
 // ---- trail: the last n samples, one every `everyTicks` 250 ms ticks while
 // LIVE. Frozen (no samples) in any other state; cleared when the row goes
-// idle and on any change into or out of "sustained" or "narrowband".
+// idle and on any change into or out of "sustained" or "narrowband". (The
+// resonance row's hold keeps it out of idle for up to 5 s after shown voice,
+// so its trail survives pauses — cueRowStates resonanceHold.)
 export function createTrail(n = TRAIL_LEN, everyTicks = 1) {
   let pts = [];
   let lastState = null;
