@@ -11,7 +11,11 @@ PR, no merge.
 
 **Status (2026-11-01): STOP.** G1 (the noise-only cost) failed, and T1, T2
 and G2–G5 passed. The candidate is kept on the branch for the owner's
-decision (§Results).
+decision (§Results). An independent review the same day reproduced every
+number and found that G1's cold-start streams understate the cost in the
+case the hold is for, noise in a pause after speech. That replay is added
+as information, without a bar (§"After speech"); the plan and its bars are
+unchanged.
 
 ## Plan (pre-registered, 2026-11-01, before any result)
 
@@ -212,10 +216,14 @@ metrics at the ticks.
 
 **Verdict: STOP.** G1 failed at both phone levels; T1, T2 and G2–G5 passed.
 
-- **What failed.** On fresh real noise, holding the thumb for 5 s draws it
-  for about twice as long as BASE does:
+- **What failed.** On fresh real noise, each clip played from a cold
+  start, holding the thumb for 5 s draws it longer than BASE does:
   - pooled, +1.6 points at −48 dBFS and +3.2 at −40 dBFS (bar +1.0);
   - one clip, +31.5 and +41.0 points (bar +15).
+- **After speech it costs more** (information, no bar). With a position
+  already on screen, as in a pause after the user has spoken, the same
+  noise gives +4.7 and +7.9 points pooled, with 21 and 35 clips over
+  +15 points.
 - **Rule applied.** Nothing was tuned. G2–G5 pass, so the candidate stays on
   the branch (commit 45e54f2), together with the info text. The owner
   decides whether to adopt it.
@@ -311,25 +319,109 @@ hide.
 - **Without the public / café class** (132 clips), not idle at −48 / −40:
   4.98 → 5.81 % and 4.76 → 6.49 %; thumb 1.21 → 2.04 % and 2.42 → 4.14 %.
   So G1 would still fail without it.
-- **By source.** Freesound alone (72 clips; mechanical sounds) changes
-  little: thumb 0.30 → 0.47 % and 0.36 → 0.61 %. DEMAND alone: thumb
-  2.94 → 5.82 % and 7.07 → 12.81 %.
+- **By source**, next to the pooled figure (cold start):
 
-**Why it fails.**
-- **CAND only extends BASE's own episodes.** No clip draws a thumb, or
-  leaves "idle", under CAND unless BASE does at some point too. Pooled
-  thumb time is 1.95× BASE at −48 and 1.81× at −40.
-- **The cost sits where the voice detector hears voice:**
-  - the babble of the DEMAND café, cafeteria, square and station scenes
-    (distant talkers, by nature);
-  - the living room;
-  - the metro and bus.
+  | source (clips) | not idle −48 | thumb −48 | not idle −40 | thumb −40 |
+  |---|---|---|---|---|
+  | DEMAND (85) | 9.71 → 12.58 % | 2.94 → 5.82 % | 12.43 → 18.17 % | 7.07 → 12.81 % |
+  | Freesound (72) | 2.15 → 2.32 % | 0.30 → 0.47 % | 1.96 → 2.21 % | 0.36 → 0.61 % |
+  | all (157) | 6.24 → 7.88 % | 1.73 → 3.36 % | 7.63 → 10.85 % | 3.99 → 7.22 % |
 
-  There BASE already shows a position whenever the gate lets painted pitch
-  through, and CAND keeps it for up to 5 s after each such moment.
-- **Machine noise barely moves:** fans, HVAC, fridge, mains, kitchen and
-  office.
+- **Without the two clips the corrected word rule drops** (deviation 3;
+  155 clips): thumb 1.75 → 3.41 % (+1.66) at −48 and 4.04 → 7.31 % (+3.26)
+  at −40; not idle +1.66 / +3.27; largest single clip unchanged
+  (+31.5 / +41.0). G1 fails the same way.
+
+**Why it fails, and what the cold start hides.**
+- **The hold only extends moments of shown voice.** It starts only at a
+  tick that saw the gated `pitchVoiced`, so no clip draws a thumb under
+  CAND unless BASE draws one at some point too. Pooled thumb time is
+  1.95× BASE at −48 and 1.81× at −40.
+- **Most clips never get a position from a cold start.** A noise-only
+  stream must first build about 3 voiced seconds before the worker has a
+  position at all. 136 of 157 clips at −48 and 128 at −40 never draw a
+  thumb in either arm, including 69 of the 72 Freesound clips. So the
+  cold-start figures say little about machine noise. The after-speech
+  replay below is the case the hold is for.
+- **Much of the cost comes from real distant speech**, not from machine
+  noise mistaken for voice. DEMAND's own description of its scenes
+  (DEMAND.pdf, §2) points to people in most of the classes behind the
+  failure:
+  - a busy office cafeteria, a university restaurant at lunchtime, the
+    main transfer area of a busy subway station, a town square with many
+    tourists, a café terrace on a public square;
+  - public transport: a subway and a public transit bus;
+  - also, among the rest, a well-visited city park, a sports field with
+    activity nearby, a small office with three people using computers, and
+    a hallway with individuals and groups passing by.
+
+  The living room is described only as "inside a living room". What the
+  detector hears there (shown voice on 9 % / 16 % of hops at −48 / −40,
+  class means) was not checked.
 - **"Keep talking…" is unchanged**, by design: the hold never shows it.
+
+### After speech (information, no bar, added after review)
+
+G1's streams start cold, so they understate the hold's cost in the case
+the hold exists for: noise in a pause after the user has spoken, when the
+column already shows a position.
+
+- **Method.** The same hook records (the real hook on the real noise
+  streams) were replayed through the same shipped functions (`stripReplay`,
+  `cueRowStates`, `createResonanceHold`). The resonance worker's state was
+  replaced by one established position for the whole stream: u 0.5,
+  fill 1, 30 voiced s, verdict "score", narrowband decided off, long since
+  resume. This is `hold-report.mjs`'s "After speech" section.
+- **Not modelled.** The worker's own changes in the noise (verdict,
+  settling, the narrowband detector) are left out; only the hook's flags
+  and, for CAND, the hold move.
+- **Reproduced.** The reviewer's own script on the same records gave the
+  same figures.
+
+With a position, BASE draws the thumb whenever the row is not idle, so
+BASE's thumb time here equals its cold-start not-idle time.
+
+| level | thumb drawn BASE → CAND | Δ | CAND / BASE | clips Δ > 15 points | largest clip Δ |
+|---|---|---|---|---|---|
+| −48 dBFS | 6.24 → 10.92 % | +4.68 | 1.75 | 21 | +44.4 (DEMAND SCAFE) |
+| −40 dBFS | 7.63 → 15.49 % | +7.86 | 2.03 | 35 | +56.9 (DEMAND SCAFE) |
+
+Against G1's cold-start figures: +1.63 / +3.22 points, with 6 / 18 clips
+over +15.
+
+Per class and source, thumb drawn BASE → CAND (%):
+
+| class (clips) | −48 dBFS | −40 dBFS | clips Δ > 15, −48 / −40 |
+|---|---|---|---|
+| public / café (25) | 12.91 → 30.70 | 22.74 → 47.62 | 14 / 16 |
+| living room (5) | 16.07 → 30.59 | 28.87 → 45.63 | 3 / 3 |
+| transport (15) | 13.96 → 21.04 | 19.17 → 37.57 | 4 / 10 |
+| traffic (13) | 5.65 → 7.22 | 3.35 → 7.66 | 0 / 1 |
+| outdoor (15) | 7.23 → 9.27 | 3.40 → 7.66 | 0 / 2 |
+| mains hum / transformer / ballast (14) | 2.12 → 3.49 | 3.49 → 7.60 | 0 / 2 |
+| fans / PC / coil whine (14) | 1.68 → 2.11 | 1.26 → 3.14 | 0 / 1 |
+| office (10) | 4.15 → 5.67 | 0.37 → 1.98 | 0 / 0 |
+| kitchen / washing (10) | 5.18 → 5.58 | 0.17 → 0.97 | 0 / 0 |
+| fridge / freezer (12) | 1.18 → 1.82 | 0.72 → 1.36 | 0 / 0 |
+| HVAC (14) | 0.64 → 1.25 | 0.46 → 1.07 | 0 / 0 |
+| washing machine / kitchen appliance (10) | 1.60 → 1.60 | 1.57 → 2.37 | 0 / 0 |
+| **source: DEMAND (85)** | 9.71 → 17.63 | 12.43 → 25.02 | 21 / 31 |
+| **source: Freesound (72)** | 2.15 → 3.01 | 1.96 → 4.24 | 0 / 4 |
+
+- **Without the public / café class:** thumb 4.98 → 7.18 % (7 clips over
+  +15) at −48 and 4.76 → 9.40 % (19 clips) at −40.
+- **Without the two word-rule clips:** 6.31 → 11.06 % and 7.71 → 15.62 %,
+  with the same clip counts (21 / 35).
+- **Machine noise is not free after speech.** At −40 dBFS, fans, mains hum,
+  traffic, outdoor and office noise roughly double to quintuple their small
+  BASE shares. Single machine-class clips rise a lot (−40 dBFS):
+  - a computer hard drive (fs__254493, fans): 17.0 → 43.3 %;
+  - an electric-arc buzz (fs__776446, mains): 38.8 → 64.4 %;
+  - a commuter train (fs__704618, mains): 5.8 → 29.2 %. It runs across
+    several stops, and whether it holds announcements was not checked.
+- **Street traffic.** Evening traffic in a city street with horns
+  (fs__439218) goes 19.3 → 58.3 % at −40 dBFS; voices in it were not
+  checked.
 
 ### G2–G4: PASS
 
@@ -384,25 +476,45 @@ Every render point (25 ms) and every tick:
 - **The info text now says:**
   - "The streak shows about the last 40 s and starts over after about 5 s
     without speech."
-  - "Readings depend on the microphone and how you hold it, so compare
-    yourself on one device, held the same way."
-- **The cost.** In places where the voice detector hears voice in the
-  background (cafés, a living room with a TV-like source, a metro or bus),
-  a stale resonance position stays on screen for up to 5 s after each
-  false moment. Pooled, that doubles the time a position is drawn on such
-  noise.
+  - "Readings depend on the microphone and how you hold or wear it, so
+    compare yourself on one device, held or worn the same way."
+- **The cost.** Wherever the voice detector hears voice in the background,
+  the column keeps a stale position on screen for up to 5 s after each
+  such moment. Most of these places have other people talking: cafés, a
+  station, a square, a metro or bus. DEMAND's living-room recording does
+  this too, and so do a few machine and traffic recordings.
+  - In a pause after speech, the position is drawn 10.9 % of the noise's
+    time instead of 6.2 % at −48 dBFS, and 15.5 % instead of 7.6 % at
+    −40 dBFS (pooled over the 157 clips).
+  - In the babble scenes it is drawn 31–48 % of the time instead of
+    13–23 %.
+- **Screen readers.** In a held pause the summary reads like a live
+  position (band words and "… than your start"), as it already does today
+  in quiet pauses. With the hold this happens in every pause of up to 5 s.
+  Before, a noisy pause read "no voice right now". Not changed here; see
+  below.
 
 ### For the owner's decision (nothing below was tried)
 
 - **Adopt as is.** This overrides G1: the streak fix and the noisy-pause
-  thumb, at the cost above.
+  thumb, at the cost above. The after-speech figures are the ones that
+  describe that cost; the cold-start G1 figures understate it.
 - **Revert.** The trail then holds about 2 points again, so the streak
   sentence must go back to something true for that behaviour (about the
   last 4 s). The device sentence holds either way.
 - **A narrower candidate, for a new pre-registered round.** For example,
   hold only across the ~130 ms onset blink, or only in pauses quieter than
   the preceding speech. This would need new targets and guards before any
-  result; it was not measured here.
+  result; it was not measured here. Such a round should:
+  - guard noise after speech (an established position), not only
+    cold-start noise;
+  - split the noise guard into a babble / talker class and a speech-free
+    class, and screen the speech-free list, for example by listening or
+    with a speech detector.
+- **Screen-reader wording (separate decision).** The held summary could
+  say it is the last reading, for example by adding "(last reading)". That
+  would change quiet pauses on `main` too, so it was left out of this
+  candidate.
 
 ### Deviations from the plan
 
@@ -412,6 +524,42 @@ Every render point (25 ms) and every tick:
    stayed in their own folder.
 2. **Streak rounding.** "Rounded to 5 s" fell on a tie (42.5 s); it was
    resolved as described above.
+3. **Word rule.** The plan drops a Freesound sound whose title or tags
+   contain a voice word. The fetch script matched whole words only, so two
+   inflected forms passed:
+   - fs__65808 (traffic), "talking traffic lights2.mp3": a pedestrian
+     crossing whose lights talk;
+   - fs__843696 (mains hum), tagged "musical" and "chiptune".
+
+   `voice_word()` now matches each stem with common English endings
+   (talking, musical, children, singers); a plain substring test would also
+   have dropped "passing" and "crossing". The evaluated list was not
+   re-selected. `hold-noise-fetch.py --check-list` marks the two clips
+   (`wordRuleMiss` in the list), and `hold-report.mjs` reports the figures
+   without them (above): G1 fails the same way.
+
+   Not excluded by the rule, but noted:
+   - fs__634551 (a refrigerator with a sound machine playing crickets);
+   - fs__845520 and fs__776446 (designed electrical effects, not room
+     noise);
+   - fs__848744 (a few birds in the background).
+4. **Freesound queries.** The plan fixed the classes, caps and rules, not
+   the search queries. The queries are in `hold-noise-fetch.py`. The
+   Freesound fetch started at 12:30 PM (US Central; the first cached search
+   page), 9 minutes before the DEMAND-only G1 result (12:39 PM, already a
+   FAIL). The script, queries included, was committed at 12:45 PM, and the
+   Freesound clips entered G1 at 1:33 PM. Nothing in the record shows that
+   the queries changed after 12:39 PM, but nothing pins them before it
+   either.
+   - DEMAND alone fails G1 more clearly than the pooled set: thumb +5.74
+     points at −40 dBFS, against +3.22 pooled.
+   - G1 is therefore also reported per source (above).
+   - The candidate did not change between the two results: all 170 DEMAND
+     rows, the speech rows and the speech G2–G4 counts are identical in
+     both summaries.
+5. **Device sentence.** The plan's wording was "the microphone and how it
+   is held". It became "how you hold or wear it", because a headset or
+   boom microphone is worn, not held. This is text only, not a bar.
 
 No other changes from the plan.
 
@@ -419,6 +567,7 @@ No other changes from the plan.
 
 ```
 python -P scripts/resonance/mobile/hold-noise-fetch.py --only=demand   # then --only=freesound
+python -P scripts/resonance/mobile/hold-noise-fetch.py --check-list    # marks the word-rule clips; no download
 for i in 0 1 2; do node scripts/resonance/mobile/hold-noise-run.mjs --shard=$i/3 & done; wait
 for i in 0 1 2; do SO_TAP=0 node --import ./scripts/session-oracle/lib/register.mjs scripts/resonance/mobile/pause-row.mjs \
   --runs=build/resonance-mobile/hold/runs --out=build/resonance-mobile/hold/hook --shard=$i/3 & done; wait
@@ -430,3 +579,6 @@ node scripts/resonance/mobile/hold-report.mjs      # speech from build/resonance
 - **Clips.** Under `C:/Coding Projects/Syrinx-cache/noise-real/clips/`.
   Every download and clip is pinned by sha256 in the list. No audio is
   committed.
+- **Review additions.** `hold-report.mjs` prints the after-speech replay
+  and the word-rule figures from the same hook records; no new runs are
+  needed. Its earlier output is unchanged line for line.

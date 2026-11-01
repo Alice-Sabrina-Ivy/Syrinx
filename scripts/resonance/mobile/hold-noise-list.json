@@ -2832,7 +2832,10 @@
    "durS": 60,
    "sr": 44100,
    "codec": "Freesound HQ preview (Vorbis)",
-   "origDurS": 223.54
+   "origDurS": 223.54,
+   "wordRuleMiss": [
+    "musical"
+   ]
   },
   {
    "id": "fs__845520",
@@ -3199,7 +3202,10 @@
    "durS": 60,
    "sr": 44100,
    "codec": "Freesound HQ preview (Vorbis)",
-   "origDurS": 182.035
+   "origDurS": 182.035,
+   "wordRuleMiss": [
+    "talking"
+   ]
   },
   {
    "id": "fs__689118",

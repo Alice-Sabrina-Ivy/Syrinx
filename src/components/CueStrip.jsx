@@ -148,7 +148,7 @@ const RESONANCE_INFO =
   "The dashed bands are where 8 in 10 single readings of 20 men and 20 women reading audiobooks on good " +
   "microphones fell, so even typical speakers' readings land outside their band about 1 time in 5. Your microphone, " +
   "room and distance shift the whole scale, so trust how the marker moves more than where it sits. Readings depend on " +
-  "the microphone and how you hold it, so compare yourself on one device, held the same way. What you say moves it too, so judge a change over " +
+  "the microphone and how you hold or wear it, so compare yourself on one device, held or worn the same way. What you say moves it too, so judge a change over " +
   "tens of seconds, not sentence by sentence. The streak shows about the last 40 s and starts over after about 5 s without speech.";
 function directionNote(cue, direction) {
   if (!direction || direction === "exploring") return null;

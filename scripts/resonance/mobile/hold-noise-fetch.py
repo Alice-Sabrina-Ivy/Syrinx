@@ -21,6 +21,16 @@
 #     the class cap; licence read on the sound's own page: CC0 or CC BY only;
 #     title / tags must not contain a voice word (VOICE_WORDS); at most 2
 #     sounds per uploader; the first 60 s.
+#
+# Word rule fix (2026-11-01, after the run): voice_word() first matched whole
+# words only, so inflected forms passed ("talking", "musical"). It now
+# matches each stem with a common English ending (VOICE_SUFFIXES) and a few
+# irregular forms; a plain substring test would also drop "passing" and
+# "crossing" (traffic). The evaluated list was NOT re-selected: run
+#   python -P scripts/resonance/mobile/hold-noise-fetch.py --check-list
+# to mark the list's clips that the fixed rule would have dropped
+# ("wordRuleMiss": the matching words; no download, no change to anything
+# else). hold-report.mjs reports G1 without them as information.
 import os, re, sys, io, json, time, html, hashlib, zipfile
 import numpy as np, soundfile as sf, requests
 
@@ -142,6 +152,8 @@ def demand():
 # ---- Freesound
 VOICE_WORDS = ["voice", "vocal", "speech", "speak", "talk", "sing", "song", "music", "radio", "tv", "television", "people",
                "crowd", "chatter", "conversation", "child", "kid", "baby", "laugh", "bird", "birds"]
+VOICE_SUFFIXES = ("", "s", "es", "ed", "ing", "ings", "er", "ers", "ian", "ians", "al", "ally", "ter", "ren", "y", "ie", "ies")
+VOICE_IRREGULAR = {"babies", "sang", "sung", "spoke", "spoken"}
 FS_CLASSES = [  # class, cap, queries (in order)
     ("fans / PC / coil whine", 14, ["computer fan noise", "pc fan", "desk fan", "box fan", "laptop fan", "coil whine", "server room"]),
     ("HVAC", 14, ["air conditioner", "hvac", "ventilation", "air handler", "heat pump", "furnace"]),
@@ -150,9 +162,12 @@ FS_CLASSES = [  # class, cap, queries (in order)
     ("washing machine / kitchen appliance", 10, ["washing machine", "dishwasher", "tumble dryer", "kitchen extractor", "microwave running"]),
     ("traffic", 8, ["traffic", "road traffic distant", "city traffic"]),
 ]
+def voice_hits(text):
+    """The words of text that are a voice word, inflections included (talking, musical, children, singers)."""
+    return [w for w in re.findall(r"[a-z]+", text.lower())
+            if w in VOICE_IRREGULAR or any(w == stem + end for stem in VOICE_WORDS for end in VOICE_SUFFIXES)]
 def voice_word(text):
-    words = re.findall(r"[a-z]+", text.lower())
-    return any(w in VOICE_WORDS for w in words)
+    return bool(voice_hits(text))
 
 def fs_search(q):
     url = "https://freesound.org/search/?" + requests.compat.urlencode({"q": q, "f": "duration:[60 TO 900]"})
@@ -221,6 +236,19 @@ def freesound():
                 print(f"freesound {cls}: {r['id']} {lic} {r['title'][:50]}", flush=True)
         if n < cap: print(f"freesound {cls}: only {n} of {cap}", flush=True)
     return recs
+
+if "check-list" in A:
+    # Mark (never re-select) the evaluated list's Freesound clips that the fixed word rule drops.
+    L = json.load(open(LIST, encoding="utf8"))
+    for r in L["clips"]:
+        r.pop("wordRuleMiss", None)
+        if r["source"] != "freesound": continue
+        hits = sorted(set(voice_hits(r["title"]) + [w for t in r["tags"] for w in voice_hits(t)]))
+        if hits:
+            r["wordRuleMiss"] = hits
+            print(f"word rule: {r['id']} ({r['cls']}) {hits}: {r['title'][:60]}", flush=True)
+    json.dump(L, open(LIST, "w"), indent=1)
+    sys.exit(0)
 
 old = json.load(open(LIST)) if os.path.exists(LIST) else {"clips": []}
 recs = [r for r in old["clips"] if ONLY and r["source"] != ONLY]

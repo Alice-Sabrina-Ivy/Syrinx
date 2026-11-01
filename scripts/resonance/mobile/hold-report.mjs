@@ -13,12 +13,27 @@
 // Speech: the planned conditions (none; brown / pink / real AC at -55 / -50 /
 // -48 / -40 dBFS pause floors), 12 readers, window 20-150 s. Noise only: the
 // real-noise clips at each level (RN_m48, RN_m40), whole 60 s streams.
+//
+// Information added after review (2026-11-01; no bar, the plan is unchanged):
+// - "After speech": G1's noise streams start cold, so most clips never get a
+//   resonance position in either arm. The same hook records are replayed
+//   with one established position instead (AFTER_SPEECH_POST: u 0.5, fill 1,
+//   30 voiced s, verdict score, narrowband decided off, long since resume)
+//   - the noise heard in a pause after the user has spoken. The worker's
+//   state is held fixed (its verdict / settling / narrowband changes in the
+//   noise are not modelled); only the hook's flags and the hold move.
+// - G1 without the clips the corrected Freesound word rule drops
+//   (hold-noise-list.json "wordRuleMiss", hold-noise-fetch.py --check-list).
 import { readFileSync, readdirSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { stripReplay, windowMetrics, pausesFromClean, pauseMetrics, pauseFloor } from "./pause-report.mjs";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+const NOISE_LIST = JSON.parse(readFileSync(path.join(repo, "scripts/resonance/mobile/hold-noise-list.json"), "utf8")).clips;
+const WORD_RULE_MISS = new Set(NOISE_LIST.filter((c) => c.wordRuleMiss?.length).map((c) => c.id));
+// chain.mjs post layout: [k, bins, u, raw, uPlain, shownStartU, startU, fill, voicedS, verdict (2 = score), sinceResumeS, nb.on, nb.decided]
+const AFTER_SPEECH_POST = [0, 0, 0.5, 0.5, 0.5, 0.5, 0.5, 1, 30, 2, 100, 0, 1];
 const arg = (k, d) => (process.argv.find((a) => a.startsWith(`--${k}=`)) ?? `=${d}`).split("=").slice(1).join("=");
 const R_ = (p) => path.resolve(repo, p);
 const SPEECH_RUNS = R_(arg("speech-runs", "build/resonance-mobile/pause/runs"));
@@ -121,6 +136,14 @@ for (const h of noiseHooks) {
     const w = windowMetrics(R, arm, { kFrom, kTo });
     row[arm] = { notIdle: w.notIdlePct, warming: w.warmingPct, thumb: w.thumbPct, idle: w.idlePct };
   }
+  // after speech (information): the same flags, one established position
+  const R2 = stripReplay(h, { posts: [AFTER_SPEECH_POST] }, { from: 0 });
+  row.after = {};
+  for (const arm of ["act", "cand"]) {
+    const w = windowMetrics(R2, arm, { kFrom: 0, kTo: R2.n });
+    row.after[arm] = { notIdle: w.notIdlePct, thumb: w.thumbPct };
+  }
+  row.wordRuleMiss = WORD_RULE_MISS.has(h.id);
   row.g = guards(R, { kFrom, kTo });
   addG(gNoise, row.g);
   noise.push(row);
@@ -181,6 +204,9 @@ for (const cond of noiseConds) {
   if (!res.pass) verdict.G1 = false;
   const nb = rr.filter((x) => x.cls !== "public / cafe");
   res.noBabble = { n: nb.length, notIdleA: pool(nb, "act", "notIdle"), notIdleC: pool(nb, "cand", "notIdle"), thumbA: pool(nb, "act", "thumb"), thumbC: pool(nb, "cand", "thumb") };
+  const wr = rr.filter((x) => !x.wordRuleMiss);
+  const dw = wr.map((x) => x.cand.thumb - x.act.thumb);
+  res.wordRule = { n: wr.length, notIdleA: pool(wr, "act", "notIdle"), notIdleC: pool(wr, "cand", "notIdle"), thumbA: pool(wr, "act", "thumb"), thumbC: pool(wr, "cand", "thumb"), maxD: Math.max(...dw) };
   g1[cond] = res;
   P(`**${cond} (median 50 ms level ${cond.replace("RN_m", "−")} dBFS), ${rr.length} clips:** not idle BASE ${f1(res.notIdleA, 2)} % → CAND ${f1(res.notIdleC, 2)} % (${sg(res.notIdleC - res.notIdleA, 2)} points; bar +2.0); thumb drawn ${f1(res.thumbA, 2)} % → ${f1(res.thumbC, 2)} % (${sg(res.thumbC - res.thumbA, 2)}; bar +1.0); "keep talking…" ${f1(res.warmA, 2)} → ${f1(res.warmC, 2)} %; largest single-clip thumb increase ${sg(res.maxD)} points (${res.worst}; bar +15) — **${res.pass ? "PASS" : "FAIL"}**. Without the public / café class (${nb.length} clips, information): not idle ${f1(res.noBabble.notIdleA, 2)} → ${f1(res.noBabble.notIdleC, 2)} %, thumb ${f1(res.noBabble.thumbA, 2)} → ${f1(res.noBabble.thumbC, 2)} %.`);
   P("");
@@ -205,6 +231,37 @@ for (const cond of noiseConds) {
   const top = [...rr].sort((x, y) => (y.cand.notIdle - y.act.notIdle) - (x.cand.notIdle - x.act.notIdle)).slice(0, 8);
   P(`Largest not-idle increases: ${top.map((x) => `${x.id} (${x.cls}) ${sg(x.cand.notIdle - x.act.notIdle)} / thumb ${sg(x.cand.thumb - x.act.thumb)}`).join("; ")}.`);
   P("");
+  P(`Without the ${rr.length - wr.length} clips the corrected word rule drops (${[...WORD_RULE_MISS].join(", ")}; information): ${wr.length} clips, not idle ${f1(res.wordRule.notIdleA, 2)} → ${f1(res.wordRule.notIdleC, 2)} % (${sg(res.wordRule.notIdleC - res.wordRule.notIdleA, 2)}), thumb ${f1(res.wordRule.thumbA, 2)} → ${f1(res.wordRule.thumbC, 2)} % (${sg(res.wordRule.thumbC - res.wordRule.thumbA, 2)}), largest single clip ${sg(res.wordRule.maxD)}.`);
+  P("");
+}
+// After speech (information, no bar)
+P("### After speech (information, no bar) — the same noise streams with one established resonance position");
+P("");
+P("G1's streams start cold: a thumb needs a position, which the noise itself must build. Here the worker's snapshot is one fixed position (u 0.5, fill 1, 30 voiced s, verdict score, narrowband decided off) for the whole stream: the noise as heard in a pause after the user has spoken. Only the hook's flags (the real records) and, for CAND, the hold move; the worker's own changes in the noise are not modelled.");
+P("");
+const g1after = {};
+for (const cond of noiseConds) {
+  const rr = noise.filter((x) => x.cond === cond);
+  const pool = (r, a, k) => sum(r.map((x) => x.after[a][k] * x.n)) / sum(r.map((x) => x.n));
+  const ranked = [...rr].sort((x, y) => (y.after.cand.thumb - y.after.act.thumb) - (x.after.cand.thumb - x.after.act.thumb));
+  const sub = (r) => ({ n: r.length, notIdleA: pool(r, "act", "notIdle"), notIdleC: pool(r, "cand", "notIdle"), thumbA: pool(r, "act", "thumb"), thumbC: pool(r, "cand", "thumb"),
+    over15: r.filter((x) => x.after.cand.thumb - x.after.act.thumb > 15).length, maxD: Math.max(...r.map((x) => x.after.cand.thumb - x.after.act.thumb)) });
+  const res = { ...sub(rr), top: ranked.slice(0, 6).map((x) => ({ id: x.id, cls: x.cls, a: x.after.act.thumb, c: x.after.cand.thumb })) };
+  res.noBabble = sub(rr.filter((x) => x.cls !== "public / cafe"));
+  res.wordRule = sub(rr.filter((x) => !x.wordRuleMiss));
+  res.bySource = Object.fromEntries([...new Set(rr.map((x) => x.source))].sort().map((src) => [src, sub(rr.filter((x) => x.source === src))]));
+  res.byClass = Object.fromEntries([...new Set(rr.map((x) => x.cls))].sort().map((c) => [c, sub(rr.filter((x) => x.cls === c))]));
+  g1after[cond] = res;
+  P(`**${cond}, ${rr.length} clips:** not idle BASE ${f1(res.notIdleA, 2)} % → CAND ${f1(res.notIdleC, 2)} % (${sg(res.notIdleC - res.notIdleA, 2)}); thumb drawn ${f1(res.thumbA, 2)} % → ${f1(res.thumbC, 2)} % (${sg(res.thumbC - res.thumbA, 2)}; CAND / BASE ${f1(res.thumbC / res.thumbA, 2)}); clips with Δthumb > 15 points: ${res.over15}; largest ${sg(res.maxD)}. Without the public / café class: thumb ${f1(res.noBabble.thumbA, 2)} → ${f1(res.noBabble.thumbC, 2)} %, ${res.noBabble.over15} clips > 15. Without the word-rule clips: thumb ${f1(res.wordRule.thumbA, 2)} → ${f1(res.wordRule.thumbC, 2)} %, ${res.wordRule.over15} clips > 15.`);
+  P("");
+  P("| class / source | clips | not idle BASE | CAND | thumb BASE | CAND | Δ | CAND / BASE | clips Δthumb > 15 | max Δthumb |");
+  P("|---|---|---|---|---|---|---|---|---|---|");
+  for (const [k, r] of [...Object.entries(res.byClass), ...Object.entries(res.bySource).map(([src, r]) => [`source: ${src}`, r]), ["**all**", res]]) {
+    P(`| ${k} | ${r.n} | ${f1(r.notIdleA, 2)} | ${f1(r.notIdleC, 2)} | ${f1(r.thumbA, 2)} | ${f1(r.thumbC, 2)} | ${sg(r.thumbC - r.thumbA, 2)} | ${r.thumbA > 0 ? f1(r.thumbC / r.thumbA, 2) : "—"} | ${r.over15} | ${sg(r.maxD)} |`);
+  }
+  P("");
+  P(`Largest increases: ${res.top.map((x) => `${x.id} (${x.cls}) ${f1(x.a)} → ${f1(x.c)} %`).join("; ")}.`);
+  P("");
 }
 if (!noiseConds.length) { verdict.G1 = false; P("G1: no noise-only runs found."); P(""); }
 // G2-G4
@@ -224,5 +281,5 @@ const md = L.join("\n");
 console.log(md);
 const jsonOut = R_(arg("json", "build/resonance-mobile/hold/summary.json"));
 mkdirSync(path.dirname(jsonOut), { recursive: true });
-writeFileSync(jsonOut, JSON.stringify({ verdict, g1, gSpeech, gNoise, tRows, noise: noise.map(({ g, ...x }) => x) }, null, 1));
+writeFileSync(jsonOut, JSON.stringify({ verdict, g1, g1after, gSpeech, gNoise, tRows, noise: noise.map(({ g, ...x }) => x) }, null, 1));
 writeFileSync(R_(arg("md", "build/resonance-mobile/hold/tables.md")), md);
