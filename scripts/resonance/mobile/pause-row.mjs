@@ -6,6 +6,7 @@
 //   SO_TAP=0 node --import ./scripts/session-oracle/lib/register.mjs \
 //     scripts/resonance/mobile/pause-row.mjs [--runs=build/resonance-mobile/pause/runs]
 //     [--out=build/resonance-mobile/pause/hook] [--conds=a,b,...] [--shard=i/n]
+//     [--readers=build/resonance-mobile/streams/readers-dev.json] [--quiet]
 //
 // Per stream (one chain.mjs record, gate on):
 //   1. the stream is rebuilt exactly as chain.mjs built it: the same source
@@ -35,6 +36,19 @@
 //      silence gate engaged after this frame (gateStateRef quietFrames >= 3),
 //      64 a DSP frame ran this chunk;
 //   and the pitch level (Hz, 0.1) per chunk where it is set.
+//
+// Narrower-hold round (2026-11-01, measurements/resonance-row-hold-narrow-
+// 2026-11-01.md §4.2; every field above is unchanged):
+//   - intenF64: base64 of a Float64Array, the DSP worker's intensity per
+//     chunk exactly as posted (NaN where no frame ran; -Infinity kept). The
+//     rounded `inten` maps -Infinity to -999 and rounds to 0.01 dB, so a
+//     threshold comparison on it could differ from the app's.
+//   - kind "as" (after speech, as-run.mjs): the stream is rebuilt from the
+//     record's asBase (the reader's speech, zero-padded to 60 s, float32 at
+//     48 kHz) instead of zeros, with the record's perturbation.
+//   - --readers: the readers list for kind "long" (default the dev list).
+//   - --quiet: per stream only its id, the hint equality, the level check
+//     and the timing.
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, appendFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -132,7 +146,8 @@ async function hookPass(byChunk, inten) {
 const runsDir = path.resolve(repo, arg("runs", "build/resonance-mobile/pause/runs"));
 const outDir = path.resolve(repo, arg("out", "build/resonance-mobile/pause/hook"));
 mkdirSync(outDir, { recursive: true });
-const readers = JSON.parse(readFileSync(path.join(repo, "build/resonance-mobile/streams/readers-dev.json"), "utf8")).readers;
+const readers = JSON.parse(readFileSync(path.resolve(repo, arg("readers", "build/resonance-mobile/streams/readers-dev.json")), "utf8")).readers;
+const QUIET = process.argv.includes("--quiet");
 const readF32 = (p) => { const b = readFileSync(p); return new Float32Array(b.buffer, b.byteOffset, b.byteLength / 4).slice(); };
 const conds = arg("conds", "") ? arg("conds", "").split(",") : readdirSync(runsDir).filter((d) => existsSync(path.join(runsDir, d, "pitch")));
 const jobs = [];
@@ -170,6 +185,11 @@ for (const j of mine) {
     // the zeros the stream was built on (pause-queue.sh: 150 s; hold-noise-run.mjs: 60 s)
     y0 = new Float32Array(meta.byChunk.length * CH);
     ctx = { id: r.id, reader: r.reader, sex: r.sex, kind: r.kind };
+  } else if (r.kind === "as") {
+    // after speech (as-run.mjs): the reader's speech segment, zero-padded to 60 s
+    y0 = readF32(r.asBase);
+    if (y0.length !== meta.byChunk.length * CH) throw new Error(`${r.id}: asBase length ${y0.length}`);
+    ctx = { id: r.id, reader: r.reader, sex: r.sex, kind: r.kind };
   } else throw new Error(`kind ${r.kind}`);
   const { y } = await applyPert(r.pert, y0, SR, ctx);
   const outActive = activeLevelDb(y, SR);
@@ -194,8 +214,9 @@ for (const j of mine) {
     inten: Array.from(inten, (v) => (Number.isNaN(v) ? null : Number.isFinite(v) ? Math.round(v * 100) / 100 : -999)),
     code: Buffer.from(H.code).toString("base64"),
     level: H.level,
+    intenF64: Buffer.from(inten.buffer, inten.byteOffset, inten.byteLength).toString("base64"),
   };
   appendFileSync(out, JSON.stringify(rec) + "\n");
-  console.log(`${j.cond} ${r.id}: hints ${H.hints.length - hintMismatch}/${want.length} equal, ${((Date.now() - t0) / 1000).toFixed(1)} s`);
+  console.log(`${j.cond} ${r.id}: hints ${H.hints.length - hintMismatch}/${want.length} equal${QUIET ? `, level ${levelSame ? "identical" : "DIFFERS"}` : ""}, ${((Date.now() - t0) / 1000).toFixed(1)} s`);
 }
 process.exit(0);

@@ -2,7 +2,7 @@
 (measurements/resonance-faster-2026-10-26.md).
 
   python -I scripts/resonance/faster-prep.py --libri=<dir holding LibriSpeech/> --split=dev-clean --tag=dev \
-      [--n=10] [--out=build/resonance-faster]
+      [--n=10] [--out=build/resonance-faster] [--fill]
 
 Per LibriSpeech reader of the split (the first n men and n women by numeric
 speaker id; sex from SPEAKERS.TXT), the reader's utterances in (chapter,
@@ -13,6 +13,11 @@ utterance) order:
                          between them (16 kHz float32) -- the unchanged-voice
                          guard streams
 listed in src-<tag>.json. Public data only (LibriSpeech, CC BY 4.0).
+
+--fill (2026-11-01, measurements/resonance-row-hold-narrow-2026-11-01.md
+§4.2): per sex, readers are taken in numeric id order until n of them pass
+the 54 s / 150 s rule. Without it the first n are taken and a skipped one is
+lost (unchanged; the dev lists were made this way).
 """
 import argparse, glob, json, os
 import numpy as np, soundfile as sf
@@ -25,6 +30,7 @@ ap.add_argument("--n", type=int, default=10)
 ap.add_argument("--out", default="build/resonance-faster")
 ap.add_argument("--src-s", type=float, default=54.0)
 ap.add_argument("--long-s", type=float, default=150.0)
+ap.add_argument("--fill", action="store_true")
 a = ap.parse_args()
 SR = 16000
 root = os.path.join(a.libri, "LibriSpeech")
@@ -40,8 +46,13 @@ for d in ("src", "long"):
     os.makedirs(os.path.join(a.out, d), exist_ok=True)
 rows = []
 for want in ("m", "f"):
-    picked = [s for s in spk_dirs if sex.get(s) == want][: a.n]
+    picked = [s for s in spk_dirs if sex.get(s) == want]
+    if not a.fill:
+        picked = picked[: a.n]
+    got = 0
     for spk in picked:
+        if a.fill and got >= a.n:
+            break
         files = sorted(glob.glob(os.path.join(root, a.split, spk, "*", "*.flac")),
                        key=lambda p: tuple(int(x) for x in os.path.basename(p)[:-5].split("-")[1:]))
         src, long_, d_src, d_long = [], [], 0.0, 0.0
@@ -63,5 +74,6 @@ for want in ("m", "f"):
         rows.append({"id": rid, "split": a.split, "tag": a.tag, "speaker": spk, "sex": want,
                      "src": os.path.abspath(os.path.join(a.out, "src", rid + ".f32")),
                      "long": os.path.abspath(os.path.join(a.out, "long", rid + ".f32"))})
+        got += 1
 json.dump(rows, open(os.path.join(a.out, f"src-{a.tag}.json"), "w"), indent=1)
 print(a.tag, {s: sum(r["sex"] == s for r in rows) for s in ("m", "f")}, "readers")

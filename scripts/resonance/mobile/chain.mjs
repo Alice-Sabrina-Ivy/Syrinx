@@ -4,7 +4,12 @@
 //   node scripts/resonance/mobile/chain.mjs run --cond=<name> [--pert=<spec>] [--gate=on|off|both]
 //        [--streams=build/resonance-mobile/streams] [--tag=dev] [--set=mobile] [--kinds=ctl,sw,long]
 //        [--only=<stream ids or reader ids>] [--shard=i/n] [--out=build/resonance-mobile/runs]
-//        [--hint-delay=<chunks>] [--worker] [--f32=<path> --id=<id> --sex=m|f]
+//        [--hint-delay=<chunks>] [--worker] [--f32=<path> --id=<id> --sex=m|f] [--quiet]
+//
+// --quiet (2026-11-01, measurements/resonance-row-hold-narrow-2026-11-01.md
+// §4.2, the confirmation data's quiet rule): per stream only its id, the
+// worker-parity count, the level check (the output's active level) and the
+// timing — no bins, posts, voiced or shown figures.
 //
 // What runs (the chain of scripts/resonance/faster.mjs, unchanged, with an
 // optional perturbation in front of it):
@@ -348,7 +353,8 @@ if (process.argv[2] === "run" && process.argv[1] && path.resolve(process.argv[1]
       };
       appendFileSync(out, JSON.stringify(rec) + "\n");
       if (r.worker) { totMis += r.worker.mismatch; totChk += r.worker.checked; }
-      console.log(`${it.id} gate ${gate} bins ${r.bins.length} posts ${r.posts.length}${r.worker ? ` worker ${r.worker.checked - r.worker.mismatch}/${r.worker.checked}` : ""} pitch ${(msPitch / 1000).toFixed(1)} s bins ${(msBins / 1000).toFixed(1)} s`);
+      if (process.argv.includes("--quiet")) console.log(`${it.id} gate ${gate}${r.worker ? ` worker ${r.worker.checked - r.worker.mismatch}/${r.worker.checked}` : ""} level out ${meta.level.outActiveDb == null ? "-" : meta.level.outActiveDb.toFixed(2)} dBFS pitch ${(msPitch / 1000).toFixed(1)} s bins ${(msBins / 1000).toFixed(1)} s`);
+      else console.log(`${it.id} gate ${gate} bins ${r.bins.length} posts ${r.posts.length}${r.worker ? ` worker ${r.worker.checked - r.worker.mismatch}/${r.worker.checked}` : ""} pitch ${(msPitch / 1000).toFixed(1)} s bins ${(msBins / 1000).toFixed(1)} s`);
     }
     audioS += y.length / SR;
     console.log(`  [${(audioS / ((Date.now() - t0) / 1000)).toFixed(1)}x real time]`);

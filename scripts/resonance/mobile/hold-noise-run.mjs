@@ -18,6 +18,10 @@
 // pitch/<clip id>.json, in chain.mjs's format (resumable).
 // Then: pause-row.mjs --runs=<out> --out=build/resonance-mobile/hold/hook, and
 // hold-report.mjs.
+// Narrower-hold round (2026-11-01, measurements/resonance-row-hold-narrow-
+// 2026-11-01.md §4.2): --quiet prints per stream only its id, the level check
+// (the stream's DSP median, dBFS) and the timing — no voiced or shown figures;
+// --list=<clip list json> (default the dev list hold-noise-list.json).
 import { readFileSync, writeFileSync, mkdirSync, existsSync, appendFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -35,7 +39,9 @@ export const clipPert = (clipPath, floorDb) => [{ type: "mod", path: MOD, params
 
 if (process.argv[1] && path.resolve(process.argv[1]).toLowerCase() === fileURLToPath(import.meta.url).toLowerCase()) {
   const root = arg("root", "C:/Coding Projects/Syrinx-cache/noise-real");
-  const list = JSON.parse(readFileSync(path.join(repo, "scripts/resonance/mobile/hold-noise-list.json"), "utf8")).clips;
+  const list = JSON.parse(readFileSync(path.resolve(repo, arg("list", "scripts/resonance/mobile/hold-noise-list.json")), "utf8")).clips;
+  const QUIET = process.argv.includes("--quiet");
+  const { dspMedianDb } = await import("./pause-noise.mjs");
   const levels = arg("levels", "-48,-40").split(",").map(Number);
   const outRoot = path.resolve(repo, arg("out", "build/resonance-mobile/hold/runs"));
   const [si, sn] = arg("shard", "0/1").split("/").map(Number);
@@ -83,7 +89,8 @@ if (process.argv[1] && path.resolve(process.argv[1]).toLowerCase() === fileURLTo
     appendFileSync(out, JSON.stringify(rec) + "\n");
     audioS += CLIP_S;
     const ps = rec.pitchStats;
-    console.log(`${cond} ${c.id}: voiced ${(100 * ps.voiced / ps.hops).toFixed(1)} % shown ${(100 * (ps.voiced - ps.hidden) / ps.hops).toFixed(1)} % [${(audioS / ((Date.now() - t0) / 1000)).toFixed(1)}x real time]`);
+    if (QUIET) console.log(`${cond} ${c.id}: level ${dspMedianDb(y).toFixed(2)} dBFS, pitch ${(msPitch / 1000).toFixed(1)} s [${(audioS / ((Date.now() - t0) / 1000)).toFixed(1)}x real time]`);
+    else console.log(`${cond} ${c.id}: voiced ${(100 * ps.voiced / ps.hops).toFixed(1)} % shown ${(100 * (ps.voiced - ps.hidden) / ps.hops).toFixed(1)} % [${(audioS / ((Date.now() - t0) / 1000)).toFixed(1)}x real time]`);
   }
   process.exit(0);
 }

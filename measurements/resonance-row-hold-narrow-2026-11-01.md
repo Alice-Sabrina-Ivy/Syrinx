@@ -1280,3 +1280,145 @@ f3f2203e86b74b2647b21c8c49075555cedd56bfd9661879650bccba614f3fcb  design-mechani
 540b8cc92a68bd44634f95f9d69ec621362fac50a17779aeec1aa9a7417e993f  design-mechanism/desc4-out.md
 d3734977fd2b60291583c24ff815efbd2f4fe6e248170f1d0c37754448a4c798  design-mechanism/desc4.mjs
 ```
+
+## Freeze (2026-11-01, before any K replay)
+
+This section is added after the plan; the plan section above is unchanged.
+It is committed and pushed before any of K1–K5 is replayed on any data. The
+only replays run so far are BASE and C1, the two reference arms: once to
+check the extended harness against the C1 round, and once to check
+`narrow-report.mjs` end to end on the new dev streams.
+
+### Frozen code
+
+`scripts/resonance/mobile/narrow-freeze.json` holds the sha256 of each
+LF-normalised `toString()` and file (Node v24.14.1). `narrow-report.mjs`
+checks every entry before it replays any K arm and stops on a mismatch.
+
+| item | sha256 |
+|---|---|
+| K1 `createQuietOnsetBridge` | `5ccea137e4b73b7e864c108006f11c68918e483f8796eeb61b7cc6be1d60fc9a` |
+| K2 `createVoiceArmedBridge` | `d089228a89aadd9e222fcf04ed458cc3c1f833671d1bf677a9ea4694c16c3141` |
+| K3 `createVoiceHold` | `fabfcefecd1d4fe29ea45fd9e8b00d2ed15ccf736435a983eedba4258f9ab1a0` |
+| K4 `createVoiceHoldRef` | `4fefbc784c2ddb9aff5afaa9154f689f08d21205b70622a30eb373e2657e4219` |
+| K5 `createQuietPauseHold` | `2ec846d5f80a68f879377d739eb1328a0f88131520a8647179eb8c5d000569e2` |
+| `holdQuantile` | `dfdd9c1d229bd8f93c92d46a12878955854f2ba36d33c7ad12112bf17688ce93` |
+| `holdMedian` | `19b9c1ced7dc66f55a6bf26f8efae8faf4b4815b7fc1f49bce396d028ef7a31b` |
+| `cueRowStates` | `acafc1c040df4febf963ca4b7ff50a57eace66f61db1d292d24c978ba6708353` |
+| `resonanceRowState` | `61c808a3d1c99a34289a561f1dbb688ea5606667b3585a624ee7c252f415c0a4` |
+| `createTrail` | `9b997d00d5dea60179816eb2c88c2863c6856688a030a2dbb39da3183aafe1ac` |
+| `createResonanceHold` (C1) | `74c3dd30bafc020b127a117e41f82614c992238c8c6492706a4ac3f1d16ed186` |
+| `dotOpacity` | `6f02e408a33feba640f0e4bc30f1efd3e71537e2a64ff9ecea7e0fd438446d47` |
+| `rowValue` | `3dfc1bc8df879a1862b6b88e1f132363e189860e2b1df1bf5dfc518e39ab5dd7` |
+| `axisPos` | `db516a8feb71cae782cbb111667679821bc83fb76a40044a1e22e6f523d1ce3b` |
+| `resonanceClamp` | `bd24831d06f655846d9a94410ec110857674694c1e1a0b04ddcf1914d2e5460b` |
+| `scripts/resonance/mobile/pause-report.mjs` | `d782bbdf67c7100341fd8522053c79668f8cbb3065e59cf06e09458574c85107` |
+| `scripts/resonance/mobile/narrow-report.mjs` | `16df41227df51cc2f669a5e5f1a3603c2ee166520156e1a60ff9818a5eeb1c4c` |
+
+The model functions after the five factories are hashed too: the factories
+call them, and they must stay unchanged anyway (§1).
+
+### What the freeze commit contains
+
+- **`src/components/cueStripModel.js`:** the five factories, `holdQuantile`,
+  `holdMedian` and `RESONANCE_HOLD_CANDIDATES` (K1–K5 by name). Nothing
+  else in the module changed.
+- **`tests/audio/cue-strip-model-test.js`:** 72 new checks (167 in all),
+  covering every item of §10 step 2. Each check's expected flags were worked
+  out by hand from the §3 code, tick by tick.
+- **Harness:**
+  - `pause-report.mjs`: `stripReplay` carries the throttled `intensity`,
+    named candidate arms, `tickJitterMs` and `arrival40`; `STATES` is
+    exported;
+  - `pause-row.mjs`: `intenF64`, kind `"as"`, `--readers`, `--quiet`;
+  - `chain.mjs` and `hold-noise-run.mjs`: `--quiet` (and `--list` for
+    `hold-noise-run.mjs`);
+  - new: `as-run.mjs`, `ft-clips.mjs`, `narrow-report.mjs`;
+  - `faster-prep.py --fill`, `faster-streams.mjs --long-only`, and the
+    `pause-queue.sh` overrides.
+- **Data records:**
+  - `narrow-pairing.json` (`sets.dev`): the dev pairing table, 157 clips
+    plus the 12 G-FT clips, with each reader's tCut and tLast;
+  - `narrow-freeze.json`;
+  - the dev `narrow-screen.json`, committed earlier (ad7e8cd) and
+    unchanged.
+- **Unchanged:** `CueStrip.jsx`, `App.jsx` and `CombinedDashboard.jsx`
+  (C1 stays wired). `useAudioPipeline.js` is byte-identical to 7e00e59
+  (sha256 of the LF text `03f07112…bef28e205`).
+- **On this tree:** `npm run lint` clean, `npm run test:unit` 76 / 76
+  scripts, `npm run build` OK.
+
+### Harness checks (§4.4): all pass
+
+- **Hook records regenerated with `intenF64`** (156 speech, 314 cold
+  start). Every pre-existing field is byte-identical, and so is each whole
+  line without the added field, 470 / 470. `intenF64` rounds to `inten`
+  at every chunk.
+- **The extended `stripReplay` reproduces the C1 round.**
+  - `hold-report.mjs` on the regenerated records: its tables are identical
+    line for line to `build/resonance-mobile/hold/tables.md`, and its
+    summary JSON is byte-identical to a run of the unextended code.
+  - `narrow-report.mjs --arms=BASE,C1` gives the C1 note's figures. On
+    speech, for example: trail 2.1 → 11.7 and thumb gone 74.2 → 0.0 % with
+    no noise. On cold start, pooled: drawn 1.73 → 3.36 % (−48) and 3.99 →
+    7.22 % (−40); worst clips +31.46 (PCAFETER 1) and +40.96 (SCAFE 4).
+- **Real resonance worker = replica:** 96 292 / 96 292 posts on all 362
+  new streams (dev after speech 314, G-FT cold start 24, G-FT after speech
+  24).
+- **Hints and levels.**
+  - The hook's hints equal the runner's: 2 554 240 / 2 554 240 over 832
+    streams.
+  - Every rebuilt stream reproduces the runner's active level: 832 / 832.
+  - Speech after the level step: −32.00 dBFS active on every stream.
+  - Noise alone: its DSP median equals L to within 0.0001 dB.
+  - tLast, tCut and the reader in each record equal the pairing table,
+    338 / 338.
+
+### Dev streams built (§4.3, §4.5)
+
+- **G-FT talkers:** `faster-prep.py --split=dev-clean --tag=ft --n=9
+  --fill` skipped no reader, so the talkers are the planned ones: men 2078,
+  2086, 2428; women 2035, 2277, 2412.
+  - Twelve 60 s clips, written by `ft-clips.mjs`. The PCM16 copies are
+    exact.
+  - The ft-prep long streams of the 12 dev readers equal the dev streams
+    (4 spot checks).
+- **Readers** (R = m1, f1, …: 174, 84, 251, 1462, 422, 1673, 652, 1919,
+  777, 1988, 1272, 1993):
+  - In 8 readers the cut lies in a gap's middle. There, the 48 kHz stream
+    is exactly 0 for ± 50 ms around it.
+  - Four readers (422, 1919, 1272, 1993) have no gap starting in
+    [25, 30] s. They take tCut = 30.0 s with the fade-out.
+  - Each reader's L stream rebuilt from long16 equals its file.
+- **Positions when the speech ended** (u ≠ null at tCut): at −48 dBFS,
+  157 / 157 streams; at −40 dBFS, 156 / 157 (one speech-free clip without
+  one); G-FT 24 / 24. Every stream with u also has fill = 1.
+
+### Deviations so far (all before any K replay)
+
+1. **Python flag.** `faster-prep.py` ran with `python -P`, not `-I`: `-I`
+   hides the user site-packages that hold numpy (as in the C1 round).
+2. **Unread preamble values.** The transcription leaves out values the rule
+   never reads: `rBase` in K1 and K5, and `h` in K2–K4. `cueRowStates` is
+   pure, so nothing changes. Everything else is line for line.
+3. **`hold-noise-run.mjs --list`.** §4.2 does not list this option. The
+   default stays the dev list; the option lets the fresh set use the same
+   script.
+4. **Wider freeze.** The freeze also hashes the model functions the
+   factories call, and the helpers. This is stricter than §4.4.
+5. **tLast after tCut for one reader.** For dev__1993 tLast is 30.075 s,
+   after tCut (30.0 s): a pitch message's `contextTime` trails the audio it
+   describes. The window is defined on tLast, as planned.
+6. **BASE and C1 on the new streams.** They were replayed on the new dev
+   after-speech and G-FT streams before the freeze, to check
+   `narrow-report.mjs` (reference arms only).
+7. **G-FT bars.** G-FT applies the three talker-class bars of §9 (drawn,
+   not idle, single clip). "Keep talking…" is reported there as
+   information; the both-classes bar is applied in the eight real-noise
+   cells.
+8. **Not in this commit:** `narrow-noise-fetch.py` and
+   `librispeech-fetch.py`. The confirmation-data stage writes them.
+9. **Compute.** The machine reached 91 % total CPU (other sessions), so one
+   after-speech shard and a first `test:unit` run were stopped by their
+   exact PIDs. The shard was resumed later; its interrupted stream was
+   redone from the start. `test:unit` was re-run in full.

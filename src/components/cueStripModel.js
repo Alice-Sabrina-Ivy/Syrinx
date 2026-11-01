@@ -39,6 +39,10 @@
 // by short pauses or by the ~130 ms idle blink when speech resumes; it never
 // shows "keep talking…" from the hold. createResonanceHold / cueRowStates
 // resonanceHold; measurements/resonance-row-hold-2026-10-28.md.
+// Narrower holds (2026-11-01, candidates of a pre-registered round, not
+// wired): K1–K5 below, each a factory whose tick answers the same
+// resonanceHold flag from the tick's flags, the throttled DSP level and the
+// worker's snapshot; measurements/resonance-row-hold-narrow-2026-11-01.md §3.
 // Direction highlight: the same element and style for every direction,
 // only { low, high } changes; none for "Just exploring" / unanswered.
 // Only the pitch dot is coloured on / off target (statusColor(pitchStatus(...)),
@@ -54,6 +58,7 @@ import {
   resonanceU,
 } from "../utils/trainingDirection.js";
 import { VTLN_CLAMP_EDGE } from "../resonance/resonanceCue.js";
+import { SILENCE_THRESHOLD_DB } from "../audio/pitchGate.js";
 
 export const CUES = ["pitch", "resonance"];
 export const TRAIL_LEN = 8;
@@ -215,6 +220,202 @@ export function createResonanceHold(holdMs = RESONANCE_HOLD_MS) {
     clear() { last = -Infinity; },
   };
 }
+
+// ---- narrower holds: candidates K1–K5 (2026-11-01, pre-registered;
+// measurements/resonance-row-hold-narrow-2026-11-01.md §3, whose code blocks
+// are normative and transcribed here line for line). Not wired: the strip
+// still uses createResonanceHold. Every factory's tick has one signature,
+//   tick({ pitchVoiced, pitchHolding, pitchLevel, intensity, snap, workerStatus, hasRef }, nowMs)
+// and is pure (the clock is passed in). intensity is the hook's throttled
+// `intensity`: the 50 ms full-band DSP level (dBFS) of the frame that fired
+// the latest 200 ms state update; null when not listening / no frame yet.
+// The common preamble (§3.1) runs first in each: null / NaN intensity resets
+// the factory to its initial state and answers false; a worker that is not
+// "ready" answers false and changes nothing; the level is clamped at
+// -120 dBFS (digital silence, -Infinity, reads -120); rBase = the plain
+// rule's resonance row (cueRowStates without a hold) — computed only where
+// the rule reads it (K2–K4; cueRowStates is pure, so leaving it out of K1
+// and K5 changes nothing). The answer acts only where that plain rule says
+// "idle" and never shows "warming" (cueRowStates resonanceHold).
+
+/** §3.1 quantile: the sorted copy, interpolated at p·(n − 1). */
+export function holdQuantile(a, p) {
+  const s = [...a].sort((x, y) => x - y);
+  const i = p * (s.length - 1), lo = Math.floor(i), hi = Math.ceil(i);
+  return s[lo] + (s[hi] - s[lo]) * (i - lo);
+}
+/** §3.1 median: the middle value of the sorted copy, or the mean of the two middle values. */
+export function holdMedian(a) {
+  const s = [...a].sort((x, y) => x - y), m = s.length >> 1;
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+}
+
+/**
+ * K1 QB, the quiet-hold onset bridge (§3.2): the next two ticks after a tick
+ * that showed the hook's own dim hold in a pause quieter than the silence
+ * threshold, within 5 s of shown voice. Parameters (4): bridge 700 ms,
+ * recency 5000 ms, level -50 dBFS, clamp -120 dBFS.
+ */
+export function createQuietOnsetBridge() {
+  let lastV = -Infinity, lastArm = -Infinity;
+  const reset = () => { lastV = -Infinity; lastArm = -Infinity; };
+  return {
+    tick({ pitchVoiced, pitchHolding, intensity, workerStatus }, nowMs) {
+      if (intensity == null || Number.isNaN(intensity)) { reset(); return false; }
+      if (workerStatus !== "ready") return false;
+      const t = nowMs;
+      const v = !!pitchVoiced, h = !!pitchHolding;
+      const x = Math.max(-120, intensity);
+      if (v) lastV = t;
+      if (h && !v && x < SILENCE_THRESHOLD_DB && t - lastV <= SILENCE_HOLD_MS) lastArm = t;
+      return t - lastArm <= 700;
+    },
+    clear: reset,
+  };
+}
+
+/**
+ * K2 VB, the own-voice-armed bridge (§3.3): the next two ticks after any
+ * tick where the plain rule's resonance row was not idle, armed only by a
+ * tick in the last 6 s that showed a voice >= 10 dB over the room (q20 of
+ * the last 40 tick levels) while the worker was scoring. Parameters (8):
+ * ring 40 ticks, at least 16 ticks, quantile 0.2, margin 10 dB, bridge
+ * 700 ms, arming 6000 ms, clamp -120 dBFS, verdict set.
+ */
+export function createVoiceArmedBridge() {
+  let L = [], lastQ = -Infinity, lastNI = -Infinity;
+  const reset = () => { L = []; lastQ = -Infinity; lastNI = -Infinity; };
+  return {
+    tick({ pitchVoiced, pitchHolding, pitchLevel, intensity, snap, workerStatus, hasRef }, nowMs) {
+      if (intensity == null || Number.isNaN(intensity)) { reset(); return false; }
+      if (workerStatus !== "ready") return false;
+      const t = nowMs;
+      const v = !!pitchVoiced;
+      const x = Math.max(-120, intensity);
+      const rBase = cueRowStates({ pitchVoiced, pitchHolding, pitchLevel, snap, workerStatus, hasRef }).resonance;
+      L.push(x); if (L.length > 40) L.shift();
+      const floor = L.length >= 16 ? holdQuantile(L, 0.2) : null;
+      const own = v && floor !== null && x >= floor + 10
+        && (snap?.verdict === "score" || snap?.verdict === "pause");
+      if (own) lastQ = t;
+      if (rBase !== "idle" && rBase !== "starting") lastNI = t;
+      return t - lastNI <= 700 && t - lastQ <= 6000;
+    },
+    clear: reset,
+  };
+}
+
+/**
+ * K3 VH, the own-voice hold (§3.4): K2, plus a hold that each own-voice tick
+ * extends to 1 s per own-voice tick in the last 5 s, at most 5 s.
+ * Parameters (11): K2's 8, 1000 ms per tick, the 5000 ms cap, the 5000 ms
+ * evidence window.
+ */
+export function createVoiceHold() {
+  let L = [], Q = [], lastQ = -Infinity, lastNI = -Infinity, holdUntil = -Infinity;
+  const reset = () => { L = []; Q = []; lastQ = -Infinity; lastNI = -Infinity; holdUntil = -Infinity; };
+  return {
+    tick({ pitchVoiced, pitchHolding, pitchLevel, intensity, snap, workerStatus, hasRef }, nowMs) {
+      if (intensity == null || Number.isNaN(intensity)) { reset(); return false; }
+      if (workerStatus !== "ready") return false;
+      const t = nowMs;
+      const v = !!pitchVoiced;
+      const x = Math.max(-120, intensity);
+      const rBase = cueRowStates({ pitchVoiced, pitchHolding, pitchLevel, snap, workerStatus, hasRef }).resonance;
+      L.push(x); if (L.length > 40) L.shift();
+      const floor = L.length >= 16 ? holdQuantile(L, 0.2) : null;
+      const own = v && floor !== null && x >= floor + 10
+        && (snap?.verdict === "score" || snap?.verdict === "pause");
+      if (own) {
+        lastQ = t;
+        Q = Q.filter((u) => u > t - 5000); Q.push(t);
+        holdUntil = Math.max(holdUntil, t + Math.min(5000, 1000 * Q.length));
+      }
+      if (rBase !== "idle" && rBase !== "starting") lastNI = t;
+      return (t - lastNI <= 700 && t - lastQ <= 6000) || t <= holdUntil;
+    },
+    clear: reset,
+  };
+}
+
+/**
+ * K4 VHR, K3 with an own-loudness reference (§3.5): an own-voice tick must
+ * also be within 6 dB of the median of the loud shown ticks of the last 60 s
+ * (the current tick included; at least 8). Parameters (14): K3's 11, the
+ * 60000 ms window, at least 8 ticks, 6 dB.
+ */
+export function createVoiceHoldRef() {
+  let L = [], R = [], Q = [], lastQ = -Infinity, lastNI = -Infinity, holdUntil = -Infinity;
+  const reset = () => { L = []; R = []; Q = []; lastQ = -Infinity; lastNI = -Infinity; holdUntil = -Infinity; };
+  return {
+    tick({ pitchVoiced, pitchHolding, pitchLevel, intensity, snap, workerStatus, hasRef }, nowMs) {
+      if (intensity == null || Number.isNaN(intensity)) { reset(); return false; }
+      if (workerStatus !== "ready") return false;
+      const t = nowMs;
+      const v = !!pitchVoiced;
+      const x = Math.max(-120, intensity);
+      const rBase = cueRowStates({ pitchVoiced, pitchHolding, pitchLevel, snap, workerStatus, hasRef }).resonance;
+      L.push(x); if (L.length > 40) L.shift();
+      const floor = L.length >= 16 ? holdQuantile(L, 0.2) : null;
+      const marginOK = v && floor !== null && x >= floor + 10;
+      if (marginOK) R.push({ t, x }); // before ref: the current tick counts
+      R = R.filter((e) => e.t >= t - 60000);
+      const ref = R.length >= 8 ? holdMedian(R.map((e) => e.x)) : null;
+      const own = marginOK && (snap?.verdict === "score" || snap?.verdict === "pause")
+        && ref !== null && x >= ref - 6;
+      if (own) {
+        lastQ = t;
+        Q = Q.filter((u) => u > t - 5000); Q.push(t);
+        holdUntil = Math.max(holdUntil, t + Math.min(5000, 1000 * Q.length));
+      }
+      if (rBase !== "idle" && rBase !== "starting") lastNI = t;
+      return (t - lastNI <= 700 && t - lastQ <= 6000) || t <= holdUntil;
+    },
+    clear: reset,
+  };
+}
+
+/**
+ * K5 QP, hold while the pause stays quieter than the speech before it
+ * (§3.6): support = a quiet tick (>= 8 dB below the median shown voice of
+ * the last 2 s, within 5 s of it) where the hook's own hold is on, or the
+ * second of two consecutive quiet ticks; each support tick bridges the next
+ * two ticks; never more than 5 s after the last shown-voice tick.
+ * Parameters (6): bridge 700 ms, recency 5000 ms, window 2000 ms, 8 dB,
+ * clamp -120 dBFS, two consecutive ticks.
+ */
+export function createQuietPauseHold() {
+  let lastV = -Infinity, lastSupport = -Infinity, V = [], prevQ = false;
+  const reset = () => { lastV = -Infinity; lastSupport = -Infinity; V = []; prevQ = false; };
+  return {
+    tick({ pitchVoiced, pitchHolding, intensity, workerStatus }, nowMs) {
+      if (intensity == null || Number.isNaN(intensity)) { reset(); return false; }
+      if (workerStatus !== "ready") return false;
+      const t = nowMs;
+      const v = !!pitchVoiced, h = !!pitchHolding;
+      const x = Math.max(-120, intensity);
+      if (v) { lastV = t; V.push({ t, x }); }
+      V = V.filter((e) => e.t >= lastV - 2000);
+      const voiceDb = V.length ? holdMedian(V.map((e) => e.x)) : null;
+      const recent = t - lastV <= SILENCE_HOLD_MS;
+      const q = !v && recent && voiceDb !== null && x <= voiceDb - 8;
+      if (q && (h || prevQ)) lastSupport = t; // shown-voice ticks are never support
+      prevQ = q;
+      return recent && t - lastSupport <= 700;
+    },
+    clear: reset,
+  };
+}
+
+/** The round's candidates by name (§2): the harness and the tests read this. */
+export const RESONANCE_HOLD_CANDIDATES = Object.freeze({
+  K1: createQuietOnsetBridge,
+  K2: createVoiceArmedBridge,
+  K3: createVoiceHold,
+  K4: createVoiceHoldRef,
+  K5: createQuietPauseHold,
+});
+
 /**
  * Both rows' states, as the strip shows them. Both rows read the pitch
  * display's own flags, pitchVoiced / pitchHolding (useAudioPipeline: the raw

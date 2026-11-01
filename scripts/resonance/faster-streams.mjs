@@ -11,6 +11,9 @@
 // scale, upsampled to 48 kHz (resampleClip) -> <out>/v/<reader>__<name>.f32;
 // the reader's own 150 s stream upsampled the same way -> <out>/v/<reader>__L.f32.
 // Writes <out>/readers-<tag>.json (variants merged with any earlier run).
+// --long-only (2026-11-01, measurements/resonance-row-hold-narrow-2026-11-01.md
+// §4.2): only the L variant (resampleClip(long16, 16000, 48000)), no WORLD
+// renders; --variants is ignored.
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -21,12 +24,13 @@ const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
 const arg = (k, d) => (process.argv.find((a) => a.startsWith(`--${k}=`)) ?? `=${d}`).split("=").slice(1).join("=");
 const OUT = path.resolve(repo, arg("out", "build/resonance-faster"));
 const tag = arg("tag", "dev");
-const VARIANTS = Object.fromEntries(arg("variants", "N:0:0").split(",").map((s) => { const [n, st, pct] = s.split(":"); return [n, [Number(st), Number(pct)]]; }));
+const LONG_ONLY = process.argv.includes("--long-only");
+const VARIANTS = LONG_ONLY ? {} : Object.fromEntries(arg("variants", "N:0:0").split(",").map((s) => { const [n, st, pct] = s.split(":"); return [n, [Number(st), Number(pct)]]; }));
 const only = new Set(arg("only", "").split(",").filter(Boolean));
 
 const { loadSrc, runWorkers } = await import(pathToFileURL(path.join(repo, "scripts/session-oracle/lib/chain.mjs")).href);
-const S = await loadSrc(path.join(repo, "src"));
-const world = await loadWorld("simd");
+const S = LONG_ONLY ? null : await loadSrc(path.join(repo, "src"));
+const world = LONG_ONLY ? null : await loadWorld("simd");
 let readers = JSON.parse(readFileSync(path.join(OUT, `src-${tag}.json`), "utf8"));
 if (only.size) readers = readers.filter((r) => only.has(r.id));
 mkdirSync(path.join(OUT, "v"), { recursive: true });

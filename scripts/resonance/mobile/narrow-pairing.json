@@ -1,0 +1,1322 @@
+{
+ "note": "Pairing tables of the narrower resonance-row hold round: measurements/resonance-row-hold-narrow-2026-11-01.md §4.3 (as-run.mjs prep). The same pairing at both levels (-48, -40 dBFS).",
+ "sets": {
+  "dev": {
+   "R": [
+    "dev__174",
+    "dev__84",
+    "dev__251",
+    "dev__1462",
+    "dev__422",
+    "dev__1673",
+    "dev__652",
+    "dev__1919",
+    "dev__777",
+    "dev__1988",
+    "dev__1272",
+    "dev__1993"
+   ],
+   "levels": [
+    -48,
+    -40
+   ],
+   "readers": [
+    {
+     "id": "dev__174",
+     "speaker": "174",
+     "sex": "m",
+     "tCut": 26.415,
+     "fade": false,
+     "gapStartS": 26.265,
+     "tLast": 25.675
+    },
+    {
+     "id": "dev__84",
+     "speaker": "84",
+     "sex": "f",
+     "tCut": 27.383687499999997,
+     "fade": false,
+     "gapStartS": 27.2336875,
+     "tLast": 26.95
+    },
+    {
+     "id": "dev__251",
+     "speaker": "251",
+     "sex": "m",
+     "tCut": 29.02,
+     "fade": false,
+     "gapStartS": 28.87,
+     "tLast": 28.7
+    },
+    {
+     "id": "dev__1462",
+     "speaker": "1462",
+     "sex": "f",
+     "tCut": 26.549999999999997,
+     "fade": false,
+     "gapStartS": 26.4,
+     "tLast": 26.25
+    },
+    {
+     "id": "dev__422",
+     "speaker": "422",
+     "sex": "m",
+     "tCut": 30,
+     "fade": true,
+     "gapStartS": null,
+     "tLast": 29.725
+    },
+    {
+     "id": "dev__1673",
+     "speaker": "1673",
+     "sex": "f",
+     "tCut": 29.174999999999997,
+     "fade": false,
+     "gapStartS": 29.025,
+     "tLast": 28.4
+    },
+    {
+     "id": "dev__652",
+     "speaker": "652",
+     "sex": "m",
+     "tCut": 28.615,
+     "fade": false,
+     "gapStartS": 28.465,
+     "tLast": 27.975
+    },
+    {
+     "id": "dev__1919",
+     "speaker": "1919",
+     "sex": "f",
+     "tCut": 30,
+     "fade": true,
+     "gapStartS": null,
+     "tLast": 29.65
+    },
+    {
+     "id": "dev__777",
+     "speaker": "777",
+     "sex": "m",
+     "tCut": 25.154999999999998,
+     "fade": false,
+     "gapStartS": 25.005,
+     "tLast": 24.25
+    },
+    {
+     "id": "dev__1988",
+     "speaker": "1988",
+     "sex": "f",
+     "tCut": 27.779999999999998,
+     "fade": false,
+     "gapStartS": 27.63,
+     "tLast": 26.85
+    },
+    {
+     "id": "dev__1272",
+     "speaker": "1272",
+     "sex": "m",
+     "tCut": 30,
+     "fade": true,
+     "gapStartS": null,
+     "tLast": 29.65
+    },
+    {
+     "id": "dev__1993",
+     "speaker": "1993",
+     "sex": "f",
+     "tCut": 30,
+     "fade": true,
+     "gapStartS": null,
+     "tLast": 30.075
+    }
+   ],
+   "as": [
+    {
+     "clip": "demand__DKITCHEN__0",
+     "family": "speech-free",
+     "reader": "dev__174",
+     "tCut": 26.415,
+     "tLast": 25.675
+    },
+    {
+     "clip": "demand__DKITCHEN__1",
+     "family": "speech-free",
+     "reader": "dev__84",
+     "tCut": 27.383687499999997,
+     "tLast": 26.95
+    },
+    {
+     "clip": "demand__DKITCHEN__2",
+     "family": "speech-free",
+     "reader": "dev__251",
+     "tCut": 29.02,
+     "tLast": 28.7
+    },
+    {
+     "clip": "demand__DKITCHEN__3",
+     "family": "speech-free",
+     "reader": "dev__1462",
+     "tCut": 26.549999999999997,
+     "tLast": 26.25
+    },
+    {
+     "clip": "demand__DKITCHEN__4",
+     "family": "speech-free",
+     "reader": "dev__422",
+     "tCut": 30,
+     "tLast": 29.725
+    },
+    {
+     "clip": "demand__DLIVING__0",
+     "family": "speech-free",
+     "reader": "dev__1673",
+     "tCut": 29.174999999999997,
+     "tLast": 28.4
+    },
+    {
+     "clip": "demand__DLIVING__1",
+     "family": "speech-free",
+     "reader": "dev__652",
+     "tCut": 28.615,
+     "tLast": 27.975
+    },
+    {
+     "clip": "demand__DLIVING__2",
+     "family": "speech-free",
+     "reader": "dev__1919",
+     "tCut": 30,
+     "tLast": 29.65
+    },
+    {
+     "clip": "demand__DLIVING__3",
+     "family": "speech-free",
+     "reader": "dev__777",
+     "tCut": 25.154999999999998,
+     "tLast": 24.25
+    },
+    {
+     "clip": "demand__DLIVING__4",
+     "family": "speech-free",
+     "reader": "dev__1988",
+     "tCut": 27.779999999999998,
+     "tLast": 26.85
+    },
+    {
+     "clip": "demand__DWASHING__0",
+     "family": "speech-free",
+     "reader": "dev__1272",
+     "tCut": 30,
+     "tLast": 29.65
+    },
+    {
+     "clip": "demand__DWASHING__1",
+     "family": "speech-free",
+     "reader": "dev__1993",
+     "tCut": 30,
+     "tLast": 30.075
+    },
+    {
+     "clip": "demand__DWASHING__2",
+     "family": "speech-free",
+     "reader": "dev__174",
+     "tCut": 26.415,
+     "tLast": 25.675
+    },
+    {
+     "clip": "demand__DWASHING__3",
+     "family": "speech-free",
+     "reader": "dev__84",
+     "tCut": 27.383687499999997,
+     "tLast": 26.95
+    },
+    {
+     "clip": "demand__DWASHING__4",
+     "family": "speech-free",
+     "reader": "dev__251",
+     "tCut": 29.02,
+     "tLast": 28.7
+    },
+    {
+     "clip": "demand__NRIVER__0",
+     "family": "speech-free",
+     "reader": "dev__1462",
+     "tCut": 26.549999999999997,
+     "tLast": 26.25
+    },
+    {
+     "clip": "demand__NRIVER__1",
+     "family": "speech-free",
+     "reader": "dev__422",
+     "tCut": 30,
+     "tLast": 29.725
+    },
+    {
+     "clip": "demand__NRIVER__2",
+     "family": "speech-free",
+     "reader": "dev__1673",
+     "tCut": 29.174999999999997,
+     "tLast": 28.4
+    },
+    {
+     "clip": "demand__NRIVER__3",
+     "family": "speech-free",
+     "reader": "dev__652",
+     "tCut": 28.615,
+     "tLast": 27.975
+    },
+    {
+     "clip": "demand__NRIVER__4",
+     "family": "speech-free",
+     "reader": "dev__1919",
+     "tCut": 30,
+     "tLast": 29.65
+    },
+    {
+     "clip": "demand__STRAFFIC__0",
+     "family": "speech-free",
+     "reader": "dev__777",
+     "tCut": 25.154999999999998,
+     "tLast": 24.25
+    },
+    {
+     "clip": "demand__STRAFFIC__1",
+     "family": "speech-free",
+     "reader": "dev__1988",
+     "tCut": 27.779999999999998,
+     "tLast": 26.85
+    },
+    {
+     "clip": "demand__STRAFFIC__2",
+     "family": "speech-free",
+     "reader": "dev__1272",
+     "tCut": 30,
+     "tLast": 29.65
+    },
+    {
+     "clip": "demand__STRAFFIC__3",
+     "family": "speech-free",
+     "reader": "dev__1993",
+     "tCut": 30,
+     "tLast": 30.075
+    },
+    {
+     "clip": "demand__STRAFFIC__4",
+     "family": "speech-free",
+     "reader": "dev__174",
+     "tCut": 26.415,
+     "tLast": 25.675
+    },
+    {
+     "clip": "demand__TCAR__0",
+     "family": "speech-free",
+     "reader": "dev__84",
+     "tCut": 27.383687499999997,
+     "tLast": 26.95
+    },
+    {
+     "clip": "demand__TCAR__1",
+     "family": "speech-free",
+     "reader": "dev__251",
+     "tCut": 29.02,
+     "tLast": 28.7
+    },
+    {
+     "clip": "demand__TCAR__2",
+     "family": "speech-free",
+     "reader": "dev__1462",
+     "tCut": 26.549999999999997,
+     "tLast": 26.25
+    },
+    {
+     "clip": "demand__TCAR__3",
+     "family": "speech-free",
+     "reader": "dev__422",
+     "tCut": 30,
+     "tLast": 29.725
+    },
+    {
+     "clip": "demand__TCAR__4",
+     "family": "speech-free",
+     "reader": "dev__1673",
+     "tCut": 29.174999999999997,
+     "tLast": 28.4
+    },
+    {
+     "clip": "fs__117086",
+     "family": "speech-free",
+     "reader": "dev__652",
+     "tCut": 28.615,
+     "tLast": 27.975
+    },
+    {
+     "clip": "fs__125390",
+     "family": "speech-free",
+     "reader": "dev__1919",
+     "tCut": 30,
+     "tLast": 29.65
+    },
+    {
+     "clip": "fs__156088",
+     "family": "speech-free",
+     "reader": "dev__777",
+     "tCut": 25.154999999999998,
+     "tLast": 24.25
+    },
+    {
+     "clip": "fs__156397",
+     "family": "speech-free",
+     "reader": "dev__1988",
+     "tCut": 27.779999999999998,
+     "tLast": 26.85
+    },
+    {
+     "clip": "fs__167673",
+     "family": "speech-free",
+     "reader": "dev__1272",
+     "tCut": 30,
+     "tLast": 29.65
+    },
+    {
+     "clip": "fs__182011",
+     "family": "speech-free",
+     "reader": "dev__1993",
+     "tCut": 30,
+     "tLast": 30.075
+    },
+    {
+     "clip": "fs__211994",
+     "family": "speech-free",
+     "reader": "dev__174",
+     "tCut": 26.415,
+     "tLast": 25.675
+    },
+    {
+     "clip": "fs__23064",
+     "family": "speech-free",
+     "reader": "dev__84",
+     "tCut": 27.383687499999997,
+     "tLast": 26.95
+    },
+    {
+     "clip": "fs__254493",
+     "family": "speech-free",
+     "reader": "dev__251",
+     "tCut": 29.02,
+     "tLast": 28.7
+    },
+    {
+     "clip": "fs__266318",
+     "family": "speech-free",
+     "reader": "dev__1462",
+     "tCut": 26.549999999999997,
+     "tLast": 26.25
+    },
+    {
+     "clip": "fs__27164",
+     "family": "speech-free",
+     "reader": "dev__422",
+     "tCut": 30,
+     "tLast": 29.725
+    },
+    {
+     "clip": "fs__328725",
+     "family": "speech-free",
+     "reader": "dev__1673",
+     "tCut": 29.174999999999997,
+     "tLast": 28.4
+    },
+    {
+     "clip": "fs__334144",
+     "family": "speech-free",
+     "reader": "dev__652",
+     "tCut": 28.615,
+     "tLast": 27.975
+    },
+    {
+     "clip": "fs__339697",
+     "family": "speech-free",
+     "reader": "dev__1919",
+     "tCut": 30,
+     "tLast": 29.65
+    },
+    {
+     "clip": "fs__348012",
+     "family": "speech-free",
+     "reader": "dev__777",
+     "tCut": 25.154999999999998,
+     "tLast": 24.25
+    },
+    {
+     "clip": "fs__365255",
+     "family": "speech-free",
+     "reader": "dev__1988",
+     "tCut": 27.779999999999998,
+     "tLast": 26.85
+    },
+    {
+     "clip": "fs__367842",
+     "family": "speech-free",
+     "reader": "dev__1272",
+     "tCut": 30,
+     "tLast": 29.65
+    },
+    {
+     "clip": "fs__369177",
+     "family": "speech-free",
+     "reader": "dev__1993",
+     "tCut": 30,
+     "tLast": 30.075
+    },
+    {
+     "clip": "fs__381258",
+     "family": "speech-free",
+     "reader": "dev__174",
+     "tCut": 26.415,
+     "tLast": 25.675
+    },
+    {
+     "clip": "fs__383422",
+     "family": "speech-free",
+     "reader": "dev__84",
+     "tCut": 27.383687499999997,
+     "tLast": 26.95
+    },
+    {
+     "clip": "fs__384120",
+     "family": "speech-free",
+     "reader": "dev__251",
+     "tCut": 29.02,
+     "tLast": 28.7
+    },
+    {
+     "clip": "fs__403399",
+     "family": "speech-free",
+     "reader": "dev__1462",
+     "tCut": 26.549999999999997,
+     "tLast": 26.25
+    },
+    {
+     "clip": "fs__425225",
+     "family": "speech-free",
+     "reader": "dev__422",
+     "tCut": 30,
+     "tLast": 29.725
+    },
+    {
+     "clip": "fs__427853",
+     "family": "speech-free",
+     "reader": "dev__1673",
+     "tCut": 29.174999999999997,
+     "tLast": 28.4
+    },
+    {
+     "clip": "fs__432712",
+     "family": "speech-free",
+     "reader": "dev__652",
+     "tCut": 28.615,
+     "tLast": 27.975
+    },
+    {
+     "clip": "fs__439218",
+     "family": "speech-free",
+     "reader": "dev__1919",
+     "tCut": 30,
+     "tLast": 29.65
+    },
+    {
+     "clip": "fs__454265",
+     "family": "speech-free",
+     "reader": "dev__777",
+     "tCut": 25.154999999999998,
+     "tLast": 24.25
+    },
+    {
+     "clip": "fs__457437",
+     "family": "speech-free",
+     "reader": "dev__1988",
+     "tCut": 27.779999999999998,
+     "tLast": 26.85
+    },
+    {
+     "clip": "fs__462648",
+     "family": "speech-free",
+     "reader": "dev__1272",
+     "tCut": 30,
+     "tLast": 29.65
+    },
+    {
+     "clip": "fs__478572",
+     "family": "speech-free",
+     "reader": "dev__1993",
+     "tCut": 30,
+     "tLast": 30.075
+    },
+    {
+     "clip": "fs__481058",
+     "family": "speech-free",
+     "reader": "dev__174",
+     "tCut": 26.415,
+     "tLast": 25.675
+    },
+    {
+     "clip": "fs__483573",
+     "family": "speech-free",
+     "reader": "dev__84",
+     "tCut": 27.383687499999997,
+     "tLast": 26.95
+    },
+    {
+     "clip": "fs__515859",
+     "family": "speech-free",
+     "reader": "dev__251",
+     "tCut": 29.02,
+     "tLast": 28.7
+    },
+    {
+     "clip": "fs__569046",
+     "family": "speech-free",
+     "reader": "dev__1462",
+     "tCut": 26.549999999999997,
+     "tLast": 26.25
+    },
+    {
+     "clip": "fs__582966",
+     "family": "speech-free",
+     "reader": "dev__422",
+     "tCut": 30,
+     "tLast": 29.725
+    },
+    {
+     "clip": "fs__608722",
+     "family": "speech-free",
+     "reader": "dev__1673",
+     "tCut": 29.174999999999997,
+     "tLast": 28.4
+    },
+    {
+     "clip": "fs__625419",
+     "family": "speech-free",
+     "reader": "dev__652",
+     "tCut": 28.615,
+     "tLast": 27.975
+    },
+    {
+     "clip": "fs__631894",
+     "family": "speech-free",
+     "reader": "dev__1919",
+     "tCut": 30,
+     "tLast": 29.65
+    },
+    {
+     "clip": "fs__634551",
+     "family": "speech-free",
+     "reader": "dev__777",
+     "tCut": 25.154999999999998,
+     "tLast": 24.25
+    },
+    {
+     "clip": "fs__638091",
+     "family": "speech-free",
+     "reader": "dev__1988",
+     "tCut": 27.779999999999998,
+     "tLast": 26.85
+    },
+    {
+     "clip": "fs__640904",
+     "family": "speech-free",
+     "reader": "dev__1272",
+     "tCut": 30,
+     "tLast": 29.65
+    },
+    {
+     "clip": "fs__647675",
+     "family": "speech-free",
+     "reader": "dev__1993",
+     "tCut": 30,
+     "tLast": 30.075
+    },
+    {
+     "clip": "fs__65808",
+     "family": "speech-free",
+     "reader": "dev__174",
+     "tCut": 26.415,
+     "tLast": 25.675
+    },
+    {
+     "clip": "fs__689118",
+     "family": "speech-free",
+     "reader": "dev__84",
+     "tCut": 27.383687499999997,
+     "tLast": 26.95
+    },
+    {
+     "clip": "fs__696045",
+     "family": "speech-free",
+     "reader": "dev__251",
+     "tCut": 29.02,
+     "tLast": 28.7
+    },
+    {
+     "clip": "fs__699890",
+     "family": "speech-free",
+     "reader": "dev__1462",
+     "tCut": 26.549999999999997,
+     "tLast": 26.25
+    },
+    {
+     "clip": "fs__704618",
+     "family": "speech-free",
+     "reader": "dev__422",
+     "tCut": 30,
+     "tLast": 29.725
+    },
+    {
+     "clip": "fs__706330",
+     "family": "speech-free",
+     "reader": "dev__1673",
+     "tCut": 29.174999999999997,
+     "tLast": 28.4
+    },
+    {
+     "clip": "fs__728366",
+     "family": "speech-free",
+     "reader": "dev__652",
+     "tCut": 28.615,
+     "tLast": 27.975
+    },
+    {
+     "clip": "fs__733739",
+     "family": "speech-free",
+     "reader": "dev__1919",
+     "tCut": 30,
+     "tLast": 29.65
+    },
+    {
+     "clip": "fs__735826",
+     "family": "speech-free",
+     "reader": "dev__777",
+     "tCut": 25.154999999999998,
+     "tLast": 24.25
+    },
+    {
+     "clip": "fs__746461",
+     "family": "speech-free",
+     "reader": "dev__1988",
+     "tCut": 27.779999999999998,
+     "tLast": 26.85
+    },
+    {
+     "clip": "fs__776264",
+     "family": "speech-free",
+     "reader": "dev__1272",
+     "tCut": 30,
+     "tLast": 29.65
+    },
+    {
+     "clip": "fs__776446",
+     "family": "speech-free",
+     "reader": "dev__1993",
+     "tCut": 30,
+     "tLast": 30.075
+    },
+    {
+     "clip": "fs__788365",
+     "family": "speech-free",
+     "reader": "dev__174",
+     "tCut": 26.415,
+     "tLast": 25.675
+    },
+    {
+     "clip": "fs__800471",
+     "family": "speech-free",
+     "reader": "dev__84",
+     "tCut": 27.383687499999997,
+     "tLast": 26.95
+    },
+    {
+     "clip": "fs__818086",
+     "family": "speech-free",
+     "reader": "dev__251",
+     "tCut": 29.02,
+     "tLast": 28.7
+    },
+    {
+     "clip": "fs__819165",
+     "family": "speech-free",
+     "reader": "dev__1462",
+     "tCut": 26.549999999999997,
+     "tLast": 26.25
+    },
+    {
+     "clip": "fs__824080",
+     "family": "speech-free",
+     "reader": "dev__422",
+     "tCut": 30,
+     "tLast": 29.725
+    },
+    {
+     "clip": "fs__824120",
+     "family": "speech-free",
+     "reader": "dev__1673",
+     "tCut": 29.174999999999997,
+     "tLast": 28.4
+    },
+    {
+     "clip": "fs__830376",
+     "family": "speech-free",
+     "reader": "dev__652",
+     "tCut": 28.615,
+     "tLast": 27.975
+    },
+    {
+     "clip": "fs__833312",
+     "family": "speech-free",
+     "reader": "dev__1919",
+     "tCut": 30,
+     "tLast": 29.65
+    },
+    {
+     "clip": "fs__843696",
+     "family": "speech-free",
+     "reader": "dev__777",
+     "tCut": 25.154999999999998,
+     "tLast": 24.25
+    },
+    {
+     "clip": "fs__845520",
+     "family": "speech-free",
+     "reader": "dev__1988",
+     "tCut": 27.779999999999998,
+     "tLast": 26.85
+    },
+    {
+     "clip": "fs__848744",
+     "family": "speech-free",
+     "reader": "dev__1272",
+     "tCut": 30,
+     "tLast": 29.65
+    },
+    {
+     "clip": "fs__848745",
+     "family": "speech-free",
+     "reader": "dev__1993",
+     "tCut": 30,
+     "tLast": 30.075
+    },
+    {
+     "clip": "fs__855983",
+     "family": "speech-free",
+     "reader": "dev__174",
+     "tCut": 26.415,
+     "tLast": 25.675
+    },
+    {
+     "clip": "fs__860956",
+     "family": "speech-free",
+     "reader": "dev__84",
+     "tCut": 27.383687499999997,
+     "tLast": 26.95
+    },
+    {
+     "clip": "fs__863043",
+     "family": "speech-free",
+     "reader": "dev__251",
+     "tCut": 29.02,
+     "tLast": 28.7
+    },
+    {
+     "clip": "fs__864396",
+     "family": "speech-free",
+     "reader": "dev__1462",
+     "tCut": 26.549999999999997,
+     "tLast": 26.25
+    },
+    {
+     "clip": "fs__864761",
+     "family": "speech-free",
+     "reader": "dev__422",
+     "tCut": 30,
+     "tLast": 29.725
+    },
+    {
+     "clip": "fs__875103",
+     "family": "speech-free",
+     "reader": "dev__1673",
+     "tCut": 29.174999999999997,
+     "tLast": 28.4
+    },
+    {
+     "clip": "demand__NFIELD__0",
+     "family": "talker",
+     "reader": "dev__652",
+     "tCut": 28.615,
+     "tLast": 27.975
+    },
+    {
+     "clip": "demand__NFIELD__1",
+     "family": "talker",
+     "reader": "dev__1919",
+     "tCut": 30,
+     "tLast": 29.65
+    },
+    {
+     "clip": "demand__NFIELD__2",
+     "family": "talker",
+     "reader": "dev__777",
+     "tCut": 25.154999999999998,
+     "tLast": 24.25
+    },
+    {
+     "clip": "demand__NFIELD__3",
+     "family": "talker",
+     "reader": "dev__1988",
+     "tCut": 27.779999999999998,
+     "tLast": 26.85
+    },
+    {
+     "clip": "demand__NFIELD__4",
+     "family": "talker",
+     "reader": "dev__1272",
+     "tCut": 30,
+     "tLast": 29.65
+    },
+    {
+     "clip": "demand__NPARK__0",
+     "family": "talker",
+     "reader": "dev__1993",
+     "tCut": 30,
+     "tLast": 30.075
+    },
+    {
+     "clip": "demand__NPARK__1",
+     "family": "talker",
+     "reader": "dev__174",
+     "tCut": 26.415,
+     "tLast": 25.675
+    },
+    {
+     "clip": "demand__NPARK__2",
+     "family": "talker",
+     "reader": "dev__84",
+     "tCut": 27.383687499999997,
+     "tLast": 26.95
+    },
+    {
+     "clip": "demand__NPARK__3",
+     "family": "talker",
+     "reader": "dev__251",
+     "tCut": 29.02,
+     "tLast": 28.7
+    },
+    {
+     "clip": "demand__NPARK__4",
+     "family": "talker",
+     "reader": "dev__1462",
+     "tCut": 26.549999999999997,
+     "tLast": 26.25
+    },
+    {
+     "clip": "demand__OHALLWAY__0",
+     "family": "talker",
+     "reader": "dev__422",
+     "tCut": 30,
+     "tLast": 29.725
+    },
+    {
+     "clip": "demand__OHALLWAY__1",
+     "family": "talker",
+     "reader": "dev__1673",
+     "tCut": 29.174999999999997,
+     "tLast": 28.4
+    },
+    {
+     "clip": "demand__OHALLWAY__2",
+     "family": "talker",
+     "reader": "dev__652",
+     "tCut": 28.615,
+     "tLast": 27.975
+    },
+    {
+     "clip": "demand__OHALLWAY__3",
+     "family": "talker",
+     "reader": "dev__1919",
+     "tCut": 30,
+     "tLast": 29.65
+    },
+    {
+     "clip": "demand__OHALLWAY__4",
+     "family": "talker",
+     "reader": "dev__777",
+     "tCut": 25.154999999999998,
+     "tLast": 24.25
+    },
+    {
+     "clip": "demand__OOFFICE__0",
+     "family": "talker",
+     "reader": "dev__1988",
+     "tCut": 27.779999999999998,
+     "tLast": 26.85
+    },
+    {
+     "clip": "demand__OOFFICE__1",
+     "family": "talker",
+     "reader": "dev__1272",
+     "tCut": 30,
+     "tLast": 29.65
+    },
+    {
+     "clip": "demand__OOFFICE__2",
+     "family": "talker",
+     "reader": "dev__1993",
+     "tCut": 30,
+     "tLast": 30.075
+    },
+    {
+     "clip": "demand__OOFFICE__3",
+     "family": "talker",
+     "reader": "dev__174",
+     "tCut": 26.415,
+     "tLast": 25.675
+    },
+    {
+     "clip": "demand__OOFFICE__4",
+     "family": "talker",
+     "reader": "dev__84",
+     "tCut": 27.383687499999997,
+     "tLast": 26.95
+    },
+    {
+     "clip": "demand__PCAFETER__0",
+     "family": "talker",
+     "reader": "dev__251",
+     "tCut": 29.02,
+     "tLast": 28.7
+    },
+    {
+     "clip": "demand__PCAFETER__1",
+     "family": "talker",
+     "reader": "dev__1462",
+     "tCut": 26.549999999999997,
+     "tLast": 26.25
+    },
+    {
+     "clip": "demand__PCAFETER__2",
+     "family": "talker",
+     "reader": "dev__422",
+     "tCut": 30,
+     "tLast": 29.725
+    },
+    {
+     "clip": "demand__PCAFETER__3",
+     "family": "talker",
+     "reader": "dev__1673",
+     "tCut": 29.174999999999997,
+     "tLast": 28.4
+    },
+    {
+     "clip": "demand__PCAFETER__4",
+     "family": "talker",
+     "reader": "dev__652",
+     "tCut": 28.615,
+     "tLast": 27.975
+    },
+    {
+     "clip": "demand__PRESTO__0",
+     "family": "talker",
+     "reader": "dev__1919",
+     "tCut": 30,
+     "tLast": 29.65
+    },
+    {
+     "clip": "demand__PRESTO__1",
+     "family": "talker",
+     "reader": "dev__777",
+     "tCut": 25.154999999999998,
+     "tLast": 24.25
+    },
+    {
+     "clip": "demand__PRESTO__2",
+     "family": "talker",
+     "reader": "dev__1988",
+     "tCut": 27.779999999999998,
+     "tLast": 26.85
+    },
+    {
+     "clip": "demand__PRESTO__3",
+     "family": "talker",
+     "reader": "dev__1272",
+     "tCut": 30,
+     "tLast": 29.65
+    },
+    {
+     "clip": "demand__PRESTO__4",
+     "family": "talker",
+     "reader": "dev__1993",
+     "tCut": 30,
+     "tLast": 30.075
+    },
+    {
+     "clip": "demand__PSTATION__0",
+     "family": "talker",
+     "reader": "dev__174",
+     "tCut": 26.415,
+     "tLast": 25.675
+    },
+    {
+     "clip": "demand__PSTATION__1",
+     "family": "talker",
+     "reader": "dev__84",
+     "tCut": 27.383687499999997,
+     "tLast": 26.95
+    },
+    {
+     "clip": "demand__PSTATION__2",
+     "family": "talker",
+     "reader": "dev__251",
+     "tCut": 29.02,
+     "tLast": 28.7
+    },
+    {
+     "clip": "demand__PSTATION__3",
+     "family": "talker",
+     "reader": "dev__1462",
+     "tCut": 26.549999999999997,
+     "tLast": 26.25
+    },
+    {
+     "clip": "demand__PSTATION__4",
+     "family": "talker",
+     "reader": "dev__422",
+     "tCut": 30,
+     "tLast": 29.725
+    },
+    {
+     "clip": "demand__SCAFE__0",
+     "family": "talker",
+     "reader": "dev__1673",
+     "tCut": 29.174999999999997,
+     "tLast": 28.4
+    },
+    {
+     "clip": "demand__SCAFE__1",
+     "family": "talker",
+     "reader": "dev__652",
+     "tCut": 28.615,
+     "tLast": 27.975
+    },
+    {
+     "clip": "demand__SCAFE__2",
+     "family": "talker",
+     "reader": "dev__1919",
+     "tCut": 30,
+     "tLast": 29.65
+    },
+    {
+     "clip": "demand__SCAFE__3",
+     "family": "talker",
+     "reader": "dev__777",
+     "tCut": 25.154999999999998,
+     "tLast": 24.25
+    },
+    {
+     "clip": "demand__SCAFE__4",
+     "family": "talker",
+     "reader": "dev__1988",
+     "tCut": 27.779999999999998,
+     "tLast": 26.85
+    },
+    {
+     "clip": "demand__SPSQUARE__0",
+     "family": "talker",
+     "reader": "dev__1272",
+     "tCut": 30,
+     "tLast": 29.65
+    },
+    {
+     "clip": "demand__SPSQUARE__1",
+     "family": "talker",
+     "reader": "dev__1993",
+     "tCut": 30,
+     "tLast": 30.075
+    },
+    {
+     "clip": "demand__SPSQUARE__2",
+     "family": "talker",
+     "reader": "dev__174",
+     "tCut": 26.415,
+     "tLast": 25.675
+    },
+    {
+     "clip": "demand__SPSQUARE__3",
+     "family": "talker",
+     "reader": "dev__84",
+     "tCut": 27.383687499999997,
+     "tLast": 26.95
+    },
+    {
+     "clip": "demand__SPSQUARE__4",
+     "family": "talker",
+     "reader": "dev__251",
+     "tCut": 29.02,
+     "tLast": 28.7
+    },
+    {
+     "clip": "demand__TBUS__0",
+     "family": "talker",
+     "reader": "dev__1462",
+     "tCut": 26.549999999999997,
+     "tLast": 26.25
+    },
+    {
+     "clip": "demand__TBUS__1",
+     "family": "talker",
+     "reader": "dev__422",
+     "tCut": 30,
+     "tLast": 29.725
+    },
+    {
+     "clip": "demand__TBUS__2",
+     "family": "talker",
+     "reader": "dev__1673",
+     "tCut": 29.174999999999997,
+     "tLast": 28.4
+    },
+    {
+     "clip": "demand__TBUS__3",
+     "family": "talker",
+     "reader": "dev__652",
+     "tCut": 28.615,
+     "tLast": 27.975
+    },
+    {
+     "clip": "demand__TBUS__4",
+     "family": "talker",
+     "reader": "dev__1919",
+     "tCut": 30,
+     "tLast": 29.65
+    },
+    {
+     "clip": "demand__TMETRO__0",
+     "family": "talker",
+     "reader": "dev__777",
+     "tCut": 25.154999999999998,
+     "tLast": 24.25
+    },
+    {
+     "clip": "demand__TMETRO__1",
+     "family": "talker",
+     "reader": "dev__1988",
+     "tCut": 27.779999999999998,
+     "tLast": 26.85
+    },
+    {
+     "clip": "demand__TMETRO__2",
+     "family": "talker",
+     "reader": "dev__1272",
+     "tCut": 30,
+     "tLast": 29.65
+    },
+    {
+     "clip": "demand__TMETRO__3",
+     "family": "talker",
+     "reader": "dev__1993",
+     "tCut": 30,
+     "tLast": 30.075
+    },
+    {
+     "clip": "demand__TMETRO__4",
+     "family": "talker",
+     "reader": "dev__174",
+     "tCut": 26.415,
+     "tLast": 25.675
+    }
+   ],
+   "ft": [
+    {
+     "clip": "ft__2035__0",
+     "family": "talker",
+     "reader": "dev__174",
+     "tCut": 26.415,
+     "tLast": 25.675
+    },
+    {
+     "clip": "ft__2035__1",
+     "family": "talker",
+     "reader": "dev__84",
+     "tCut": 27.383687499999997,
+     "tLast": 26.95
+    },
+    {
+     "clip": "ft__2078__0",
+     "family": "talker",
+     "reader": "dev__251",
+     "tCut": 29.02,
+     "tLast": 28.7
+    },
+    {
+     "clip": "ft__2078__1",
+     "family": "talker",
+     "reader": "dev__1462",
+     "tCut": 26.549999999999997,
+     "tLast": 26.25
+    },
+    {
+     "clip": "ft__2086__0",
+     "family": "talker",
+     "reader": "dev__422",
+     "tCut": 30,
+     "tLast": 29.725
+    },
+    {
+     "clip": "ft__2086__1",
+     "family": "talker",
+     "reader": "dev__1673",
+     "tCut": 29.174999999999997,
+     "tLast": 28.4
+    },
+    {
+     "clip": "ft__2277__0",
+     "family": "talker",
+     "reader": "dev__652",
+     "tCut": 28.615,
+     "tLast": 27.975
+    },
+    {
+     "clip": "ft__2277__1",
+     "family": "talker",
+     "reader": "dev__1919",
+     "tCut": 30,
+     "tLast": 29.65
+    },
+    {
+     "clip": "ft__2412__0",
+     "family": "talker",
+     "reader": "dev__777",
+     "tCut": 25.154999999999998,
+     "tLast": 24.25
+    },
+    {
+     "clip": "ft__2412__1",
+     "family": "talker",
+     "reader": "dev__1988",
+     "tCut": 27.779999999999998,
+     "tLast": 26.85
+    },
+    {
+     "clip": "ft__2428__0",
+     "family": "talker",
+     "reader": "dev__1272",
+     "tCut": 30,
+     "tLast": 29.65
+    },
+    {
+     "clip": "ft__2428__1",
+     "family": "talker",
+     "reader": "dev__1993",
+     "tCut": 30,
+     "tLast": 30.075
+    }
+   ]
+  }
+ }
+}

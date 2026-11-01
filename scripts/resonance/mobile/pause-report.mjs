@@ -45,6 +45,27 @@
 // per arm, the pitch row's state from the same cueRowStates call and the age
 // of the oldest trail point (the streak's span).
 //
+// Narrower-hold round (2026-11-01, measurements/resonance-row-hold-narrow-
+// 2026-11-01.md §4.1–4.2; with the options below off, every output above is
+// unchanged):
+//   - the throttled props also carry `intensity` (the hook's throttled state:
+//     the DSP level of the firing frame, from the record's intenF64; null
+//     before the first firing);
+//   - cands = { name: () => factory }: named candidate arms. Per tick
+//     factory.tick({ pitchVoiced, pitchHolding, pitchLevel, intensity, snap,
+//     workerStatus: "ready", hasRef: true }, tick ms) and cueRowStates({ ...,
+//     resonanceHold }); the pitch row from the same call (the shipped wiring,
+//     as "cand"); every render point uses the latest tick's flag (arms[name].flag).
+//   - tickJitterMs (information only, default 0): tick j at 350 + 250 j + δj
+//     ms, δj uniform on [0, tickJitterMs) from mulberry32 seeded 20261101
+//     (restarted per replay, so every arm sees the same ticks; no
+//     accumulation);
+//   - arrival40 (information only, default false): DSP frame k is delivered
+//     at ceil((k + 1)·25 / 40)·40 ms (40 ms capture buffers); the throttle
+//     and the render points run on delivery times (a burst's later frames
+//     wait for the next 200 ms firing), a tick sees the frames delivered by
+//     its time.
+//
 // Pauses: from the CLEAN condition's posted voicing (chain.mjs pitch cache,
 // display-hop index = the chunk whose handling posted the message): maximal
 // runs of chunks whose messages are all unvoiced, >= 12 chunks (0.3 s);
@@ -63,7 +84,7 @@ const arg = (k, d) => (process.argv.find((a) => a.startsWith(`--${k}=`)) ?? `=${
 const CS = await import(pathToFileURL(path.join(repo, "src/components/cueStripModel.js")).href);
 const GEO = await import(pathToFileURL(path.join(repo, "src/components/cueMeterGeometry.js")).href);
 const VERD = ["silent", "warming", "score", "sustained", "pause", "stale"];
-const STATES = ["starting", "restarting", "reload", "unavailable", "paused", "narrowband", "idle", "sustained", "warming", "settling", "holding", "live"];
+export const STATES = ["starting", "restarting", "reload", "unavailable", "paused", "narrowband", "idle", "sustained", "warming", "settling", "holding", "live"];
 const P_ = { k: 0, u: 2, raw: 3, shownStartU: 5, startU: 6, fill: 7, voicedS: 8, verdict: 9, since: 10, nbOn: 11, nbDec: 12 };
 const runsDir = path.resolve(repo, arg("runs", "build/resonance-mobile/pause/runs"));
 const hookDir = path.resolve(repo, arg("hook", "build/resonance-mobile/pause/hook"));
@@ -87,16 +108,32 @@ function loadJsonl(dir, re) {
 }
 
 // ---- one stream: the strip over time, actual and counterfactual
-export function stripReplay(hook, chainRec, { from = 0, cfHoldMs = 5000 } = {}) {
+const mulberry32 = (a) => () => { a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+/** The record's DSP intensity per chunk, exactly as posted (pause-row.mjs intenF64), or null. */
+export function intenOf(hook) {
+  if (!hook.intenF64) return null;
+  const b = Buffer.from(hook.intenF64, "base64");
+  return new Float64Array(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength));
+}
+export function stripReplay(hook, chainRec, { from = 0, cfHoldMs = 5000, cands = null, tickJitterMs = 0, arrival40 = false } = {}) {
   const n = hook.n;
   const code = Buffer.from(hook.code, "base64");
+  const f64 = intenOf(hook);
+  if (cands && Object.keys(cands).length && !f64) throw new Error(`${hook.cond} ${hook.id}: candidate arms need the record's intenF64 (pause-row.mjs)`);
+  // delivery (render) time of DSP frame k, ms
+  const del = new Float64Array(n);
+  for (let k = 0; k < n; k++) del[k] = arrival40 ? Math.ceil(((k + 1) * 25) / 40) * 40 : (k + 1) * 25;
+  // tick times: 350 + 250 j (+ jitter)
+  const jit = [];
+  const rnd = tickJitterMs ? mulberry32(20261101) : null;
+  const tickAt = (j) => { if (!rnd) return 350 + 250 * j; while (jit.length <= j) jit.push(rnd() * tickJitterMs); return 350 + 250 * j + jit[j]; };
   // throttled props per chunk
-  const S = new Uint8Array(n), L = new Array(n).fill(null);
-  let lastFire = -Infinity, cur = 0, curL = null;
+  const S = new Uint8Array(n), L = new Array(n).fill(null), IN = new Array(n).fill(null);
+  let lastFire = -Infinity, cur = 0, curL = null, curI = null;
   for (let k = 0; k < n; k++) {
-    const tms = (k + 1) * 25;
-    if (code[k] & 64 && tms - lastFire >= 200) { lastFire = tms; cur = code[k] & 63; curL = hook.level[k]; }
-    S[k] = cur; L[k] = curL;
+    const tms = del[k];
+    if (code[k] & 64 && tms - lastFire >= 200) { lastFire = tms; cur = code[k] & 63; curL = hook.level[k]; curI = f64 ? f64[k] : null; }
+    S[k] = cur; L[k] = curL; IN[k] = curI;
   }
   // snaps: post index active at chunk k (post made at the end of chunk p[0])
   const posts = chainRec.posts;
@@ -114,29 +151,37 @@ export function stripReplay(hook, chainRec, { from = 0, cfHoldMs = 5000 } = {}) 
   const cfHolding = (k) => !!(S[k] & 8) || (!(S[k] & 4) && (k + 1) * 25 - lastV[k] <= cfHoldMs);
 
   const arms = {};
-  for (const arm of ["act", "cf", "cand"]) {
+  for (const arm of ["act", "cf", "cand", ...Object.keys(cands ?? {})]) {
     const holdingAt = arm === "cf" ? cfHolding : (k) => !!(S[k] & 8);
     const tr = { pitch: CS.createTrail(), resonance: CS.createTrail(CS.RESONANCE_TRAIL.n, CS.RESONANCE_TRAIL.everyTicks) };
-    const hold = arm === "cand" ? CS.createResonanceHold() : null;
+    const named = arm !== "act" && arm !== "cf" && arm !== "cand";
+    const hold = arm === "cand" ? CS.createResonanceHold() : named ? cands[arm]() : null;
+    const flag = new Uint8Array(n);
+    let mp = -1; // arrival40: the latest frame delivered by a tick's time
+    const latestAt = (tau) => { if (!arrival40) return Math.min(n - 1, Math.floor(tau / 25) - 1); while (mp + 1 < n && del[mp + 1] <= tau) mp++; return mp; };
+    let tj = 0;
     let view = { snap: null, trail: [], ptrail: [], resonanceHold: false };
     let prevTrail = null, trailT = []; // tick times (ms) of the trail's points, oldest first
     // grid series
     const rs = new Uint8Array(n), ps = new Uint8Array(n), thumb = new Uint8Array(n), thumbU = new Float64Array(n).fill(NaN);
     const ticks = []; // { t, rstate, trailLen, spanX, anchorX, drawable: {p448, p360}, u }
-    let nextTick = 100 + 250; // ms: setInterval phase (arbitrary): 350, 600, ...
+    let nextTick = tickAt(tj); // ms: setInterval phase (arbitrary): 350, 600, ...
     for (let k = 0; k < n; k++) {
-      const tms = (k + 1) * 25;
+      const tms = del[k];
       // ticks due up to this chunk's time (state = this chunk's props if the tick is at/after it)
       while (nextTick <= tms) {
         // the latest chunk whose time <= tick
-        const kk = Math.min(n - 1, Math.floor(nextTick / 25) - 1);
+        const kk = latestAt(nextTick);
+        if (kk < 0) { nextTick = tickAt(++tj); continue; }
         const fl = { pitchVoiced: !!(S[kk] & 4), pitchHolding: holdingAt(kk), pitchLevel: L[kk] };
         const snap = snapAt[kk] != null ? snaps[snapAt[kk]] : null;
-        const resonanceHold = hold ? hold.tick(fl.pitchVoiced, nextTick) : false;
+        const resonanceHold = !hold ? false : named
+          ? hold.tick({ pitchVoiced: fl.pitchVoiced, pitchHolding: fl.pitchHolding, pitchLevel: fl.pitchLevel, intensity: IN[kk], snap, workerStatus: "ready", hasRef: true }, nextTick)
+          : hold.tick(fl.pitchVoiced, nextTick);
         const st = CS.cueRowStates({ ...fl, snap, workerStatus: "ready", hasRef: true, ...(hold ? { resonanceHold } : {}) });
         const pFlags = { ...fl, pitchHolding: !!(S[kk] & 8) }; // the pitch row never gets the counterfactual hold
         // cand: the pitch row from the same call as the resonance row (the shipped wiring, G3)
-        const stP = arm === "cand" ? st.pitch : CS.cueRowStates({ ...pFlags, snap, workerStatus: "ready", hasRef: true }).pitch;
+        const stP = arm === "cand" || named ? st.pitch : CS.cueRowStates({ ...pFlags, snap, workerStatus: "ready", hasRef: true }).pitch;
         const inputs = { ...fl, snap };
         const trail = tr.resonance.tick(st.resonance, CS.rowValue("resonance", inputs));
         const ptrail = tr.pitch.tick(stP, CS.rowValue("pitch", inputs));
@@ -155,19 +200,20 @@ export function stripReplay(hook, chainRec, { from = 0, cfHoldMs = 5000 } = {}) 
           for (const [g, G] of Object.entries(GEOS)) drawable[g] = spanX * pxPerX(G) >= 3;
         }
         ticks.push({ t: nextTick / 1000, rstate: st.resonance, pstate: stP, trailLen: trail.length, ptrailLen: ptrail.length, spanX, drawable, thumbU: dotPos ? val : null,
-          ageS: trailT.length ? (nextTick - trailT[0]) / 1000 : null });
-        nextTick += 250;
+          ageS: trailT.length ? (nextTick - trailT[0]) / 1000 : null, ...(named ? { hold: resonanceHold } : {}) });
+        nextTick = tickAt(++tj);
       }
       // render point at this chunk: current props + view.snap
       const fl = { pitchVoiced: !!(S[k] & 4), pitchHolding: holdingAt(k), pitchLevel: L[k] };
       const st = CS.cueRowStates({ ...fl, snap: view.snap, workerStatus: "ready", hasRef: true, ...(hold ? { resonanceHold: view.resonanceHold } : {}) });
-      const stP = arm === "cand" ? st.pitch : CS.cueRowStates({ ...fl, pitchHolding: !!(S[k] & 8), snap: view.snap, workerStatus: "ready", hasRef: true }).pitch;
+      const stP = arm === "cand" || named ? st.pitch : CS.cueRowStates({ ...fl, pitchHolding: !!(S[k] & 8), snap: view.snap, workerStatus: "ready", hasRef: true }).pitch;
+      flag[k] = view.resonanceHold ? 1 : 0;
       rs[k] = STATES.indexOf(st.resonance);
       ps[k] = stP === "idle" ? 0 : stP === "holding" ? 1 : 2;
       const val = view.snap?.u;
       if (CS.dotOpacity(st.resonance) !== null && val != null) { thumb[k] = 1; thumbU[k] = val; }
     }
-    arms[arm] = { rs, ps, thumb, thumbU, ticks };
+    arms[arm] = { rs, ps, thumb, thumbU, ticks, flag };
   }
   // per-frame (unthrottled) row state with the latest post per chunk — the
   // 2026-10-21 note's method (voice-gate-resonance.mjs --row: per 25 ms chunk)
@@ -188,7 +234,7 @@ export function stripReplay(hook, chainRec, { from = 0, cfHoldMs = 5000 } = {}) 
     if (stC === "warming") perFrame.cfWarming++;
     if (CS.dotOpacity(stC) !== null && snap?.u != null) perFrame.cfDot++;
   }
-  return { n, S, code, arms, perFrame, kFrom: Math.max(0, Math.round(from / 0.025) - 1) };
+  return { n, S, IN, del, code, arms, perFrame, snapAt, snaps, kFrom: Math.max(0, Math.round(from / 0.025) - 1) };
 }
 
 // ---- metrics over a window
