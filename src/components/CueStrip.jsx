@@ -493,7 +493,7 @@ export function CueStrip({
   // and near the user's own recent loud voice, for up to 5 s into a pause,
   // so those no longer clear its trail; a room within ~5 dB of the voice
   // still clears it, and so does a voice that drops > ~6 dB below its own
-  // last-minute level (phone moved away), for ~10–30 s until that level
+  // last-minute level (phone moved away), for ~12–33 s until that level
   // catches up (synthetic probe, review 2026-11-01; never worse than without
   // the hold) (measurements/resonance-row-hold-narrow-2026-11-01.md;
   // C1, the 5 s hold at any floor, failed its noise guards:

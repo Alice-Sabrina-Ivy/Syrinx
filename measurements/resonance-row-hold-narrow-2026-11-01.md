@@ -1904,6 +1904,8 @@ Then the §11 text and the comment updates were made:
   - the hold in the view and in the render;
   - App and CombinedDashboard passing `intensity`;
   - the hook unchanged.
+  *(Superseded in review: the hook hash was replaced by 4 structural checks,
+  21 in all — see Review and fixes item 6.)*
 - **`cueStripModel.js`:** comments only (C1 is now the harness's reference
   arm, K4 the wired one, and the trail's span). The frozen `toString()`
   hashes are unchanged (17 / 17).
@@ -1911,7 +1913,7 @@ Then the §11 text and the comment updates were made:
 Results on the final tree:
 - `npm run lint` clean; `npm run test:unit` 76 / 76; `npm run build` OK.
 - The cue-strip tests: model 167 / 167, geometry 8 / 8, voice-gate display
-  48 / 48, wiring 18 / 18.
+  48 / 48, wiring 18 / 18 (21 / 21 after the review fixes).
 - `scripts/cue-strip-smoke-wavs.mjs` with the same inputs (test-clean
   readers 121 and 61): every WAV is byte-identical to the dev stage's.
 - `scripts/cue-strip-smoke.mjs`: phone 97 / 97, p402 97 / 97, p360 97 / 97,
@@ -2015,8 +2017,9 @@ also passed G5 with the final text. No PR and no merge.
     it keeps about 2 (7–10 with the air-conditioner recording at −50 /
     −48 dBFS).
   - In 1–5 s pauses the thumb stays, dimmed, in 96–100 % of pauses. Now it
-    goes in 78–100 % of them with no noise or with brown or pink noise
-    (19–31 % with the air-conditioner recording).
+    goes in 84–100 % of them with no noise or with brown or pink noise
+    (78 % with the air-conditioner recording at −55 dBFS, 19–31 % at −50 /
+    −48).
   - The short blink when speech starts again no longer wipes the streak.
 - **A room about 5 dB under the voice** (brown or pink noise at −40 dBFS):
   - The streak still starts over in about 45 % of 1–5 s pauses, about 1 s
