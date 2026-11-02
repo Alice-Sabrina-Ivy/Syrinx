@@ -65,9 +65,20 @@ check("the tick's inputs (latest.current) carry intensity", lk.includes("intensi
   check("App reads the hook's intensity and passes it to CombinedDashboard",
     /\n\s*intensity,\n[^]*?\} = useAudioPipeline\(\);/.test(app) && block(app, "CombinedDashboard").includes("intensity={intensity}"));
   check("CombinedDashboard passes intensity to CueStrip", /\n\s*intensity = null,\n/.test(dash) && block(dash, "CueStrip").includes("intensity={intensity}"));
-  const hook = readFileSync(new URL("../../src/audio/useAudioPipeline.js", import.meta.url), "utf8").replace(/\r\n/g, "\n");
-  const { createHash } = await import("node:crypto");
-  check("useAudioPipeline.js is unchanged from 7e00e59", createHash("sha256").update(hook, "utf8").digest("hex") === "03f07112a13bde96e705f17c150167d5767e10683fe9c9040663a9bbef28e205");
+  // What the hold reads from the hook (the hook itself is not changed by the
+  // hold: the round's harness checked it bit for bit, narrow-freeze.json /
+  // pause-row.mjs; a whole-file hash here would fail on any later, unrelated
+  // hook change — review fix 2026-11-01): the throttled state's `intensity`
+  // is the latest DSP frame's own level in every updater, null at start and
+  // after stop(), and the hook returns the state.
+  const hook = readFileSync(new URL("../../src/audio/useAudioPipeline.js", import.meta.url), "utf8").replace(/\r\n/g, "\n").replace(/\/\/[^\n]*/g, "");
+  check("the hook's analysis handler takes intensity from the DSP frame", /const \{ intensity,[^}]*\} = data;/.test(hook));
+  const updaters = [...hook.matchAll(/throttledSetState\(\(s\) => \(\{([^]*?)\}\)\);/g)].map((m) => m[1]);
+  check("every throttled state update sets intensity from that frame (3 updaters)",
+    updaters.length === 3 && updaters.every((b) => /\n\s*intensity,\n/.test(b)), `${updaters.length} updaters`);
+  check("intensity is null in the initial state and after stop()",
+    /useState\(\{\s*status: "idle",[^]*?\n\s*intensity: null,/.test(hook) && /setState\(\(s\) => \(\{\s*\.\.\.s,\s*status: "idle",[^]*?\n\s*intensity: null,/.test(hook));
+  check("the hook returns its state (so intensity reaches App)", /return \{\s*\.\.\.state,/.test(hook));
 }
 const tickInputs = src.match(/const inputs = \{ \.\.\.p, ([^}]*)\}/);
 check("the tick's cueRowStates inputs carry its resonanceHold", tickInputs && keysOf(tickInputs[1]).includes("resonanceHold"), tickInputs?.[1]);

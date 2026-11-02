@@ -1842,8 +1842,8 @@ talker scenes (46–58 %) than on dev's (10–25 %).
     speech-free. The app's own voice gate does hear voice there: BASE draws
     the thumb 62–88 % of the time.
   - It is the one place where K4's cost came near a bar.
-- **Clips with any excess:** 12 of 191 from a cold start, and 17 (L1) / 19
-  (L2) after speech. Over +5 points: 2–4 clips per cell. Over +10: one clip
+- **Clips with any excess:** 12 of 191 at each level from a cold start (13
+  distinct clips over both levels), and 17 (L1) / 19 (L2) after speech. Over +5 points: 2–4 clips per cell. Over +10: one clip
   (fs__873562), in two cells. No clip shows less thumb time than BASE.
 - **C1** (reference) fails all eight cells, as on dev; the two talker
   cold-start cells only on the single-clip bar. Pooled over both
@@ -1945,8 +1945,13 @@ From the confirmation-data stage (all decided before any replay):
 1. **A silent preview.** Filter 7 also skipped a preview whose first 60 s
    are digital silence: fs__583249, a washing machine. Its noise-alone DSP
    median was −300 dBFS, so the level rule could not apply. Its subclass
-   then took fs__388097, and the freed uploader slot changed one "people
-   nearby" pick (fs__543817 in, fs__857741 out).
+   then took fs__388097. *(Corrected in review; see Review and fixes.)* In
+   the base list the freed uploader slot also changed one "people nearby"
+   pick (fs__543817 in, fs__857741 out), but extension 1 then redid the
+   talker family and both clips are in the final list. The rule's only
+   effect on the final list is fs__583249 → fs__388097, one speech-free
+   clip. Without it the base talker class would have been 22, not 23;
+   both are under 30, so extension 1 would have run either way.
 2. **File names.** The list and its screen are
    `narrow-confirm-noise-list.json` and `narrow-confirm-screen.json`, not
    the plan's `narrow-noise-list.json`. The fresh classes were also written
@@ -1981,13 +1986,27 @@ From this stage:
    cleared". The definition used (above) was fixed in the script before T
    was computed, after the verdict.
 
+Added in review (see Review and fixes):
+
+10. **Voicing summaries in the confirmation records.**
+    `narrow-confirm-chain.mjs` writes `pitchStats` (hops, voiced and
+    hidden counts) into every chain record it makes. So voicing figures of
+    confirmation data were computed and stored before the dev pick was
+    pushed (speech records) and before the list was pushed (cold-start
+    records), against the letter of §10 step 4. They were never printed or
+    read: the logs show only integrity lines.
+11. **Memory cap.** The fresh report ran with `--max-old-space-size=6144`,
+    not §12's 4096. A rerun with 4096 is byte-identical (json `31dd7e1f…`,
+    md `d0039bbe…`).
+
 ## Verdict (2026-11-01)
 
 **PASS. K4 (`createVoiceHoldRef`) is confirmed and replaces C1 in
 `CueStrip.jsx` on `resonance-hold-narrow`.** It passed T-QUIET and every
-guard on fresh readers and 191 fresh real-noise clips (160 speech-free, 31
-talker), at −48 and −40 dBFS, from a cold start and after speech. It also
-passed G5 with the final text. No PR and no merge.
+guard on fresh readers and 191 fresh real-noise clips (160 in the plan's
+"speech-free" class, i.e. clips the independent screen heard no speech in,
+and 31 talker), at −48 and −40 dBFS, from a cold start and after speech. It
+also passed G5 with the final text. No PR and no merge.
 
 **What changes for the user** (on this branch):
 - **A quiet room, or one up to about −48 dBFS in the pauses** (the voice
@@ -2005,8 +2024,12 @@ passed G5 with the final text. No PR and no merge.
   - It keeps 5–7 points; now it keeps about 2.
 - **What it costs in noise when the user is not speaking** (extra time with
   the thumb drawn, pooled):
-  - Speech-free scenes: +0.07 to +0.12 points from a cold start, and +0.13
-    (L1) / +0.26 (L2) after speech, on BASE's 4–10 %.
+  - Scenes the screen heard no speech in (the "speech-free" class): +0.07
+    to +0.12 points from a cold start, and +0.13 (L1) / +0.26 (L2) after
+    speech, on BASE's 4–10 %. *(Split added in review.)* Its machine,
+    traffic, weather and appliance clips (100) cost +0.00 to +0.07; its 60
+    TV, café, station and people recordings cost +0.17 to +0.57, because
+    the screen missed the voices in many of them (see Review and fixes).
   - Talker scenes (people, cafés, TV, a meeting): +0.97 (L1) / +0.96 (L2)
     points from a cold start, and +0.62 / +0.95 after speech, on BASE's
     46–58 %. The
@@ -2027,6 +2050,34 @@ passed G5 with the final text. No PR and no merge.
 - speech much quieter than −32 dBFS active, which brings the voice closer
   to the room.
 
+*Added in review* (details in Review and fixes):
+- **Only the default voice-gate path was measured.** Every guard used the
+  gate-on records. With "Only show pitch while I'm speaking" off, or before
+  the detector has decided (model loading, "slow"), the hold runs on the
+  raw voiced flag, which is unmeasured.
+- **A mid-session voice-level drop was not in the data.** Every stream ran
+  at a fixed −32 dBFS. In a synthetic probe, a drop of more than ~6 dB
+  below the voice's own last-minute level (the phone moved away, the head
+  turned) switches the blink bridge and the hold off for ~12–33 s, until
+  the reference catches up. The row is then as without the hold, never
+  worse.
+
+**How strong the evidence is** *(added in review)*:
+- **K4 over K3 was an in-sample choice.** They tied on T-NOISY (7 / 7) and
+  K4 won the dev tie-break by about 0.05 points (+0.078 vs +0.126). Their
+  parameters were chosen with descriptive dev statistics in view (§5.1).
+  Only K4 was tested on fresh data, so the confirmation shows K4 passes; it
+  does not show that K4 beats K3.
+- **The bound on the cost near other talkers is weak.** G-FT (dev) hit a
+  ceiling and could not tell the candidates apart. The talker bars scale
+  with BASE (+11.6 to +14.6 points). The talker class reached its size
+  rule by one clip (31 vs 30), and two of its clips are machine room tones
+  with no excess in any arm, so 29 clips inform it. The cost where other
+  people talk is bounded mainly by the per-clip +15 bar. Its closest clip,
+  a muffled TV programme the screen heard as speech-free, is at +14.17, and
+  under phone-like 40 ms capture buffers another of its cells comes to
+  +14.66.
+
 ### Reproduce (confirmation)
 
 ```
@@ -2037,7 +2088,7 @@ for i in 0 1 2; do node scripts/resonance/mobile/as-run.mjs run --set=fresh --li
   --readers=build/resonance-mobile/narrow/confirm/streams/readers-conf.json --shard=$i/3 --quiet & done; wait
 for i in 0 1 2; do SO_TAP=0 node --import ./scripts/session-oracle/lib/register.mjs scripts/resonance/mobile/pause-row.mjs \
   --runs=build/resonance-mobile/narrow/runs-fresh --out=build/resonance-mobile/narrow/hook-fresh --shard=$i/3 --quiet & done; wait
-node --max-old-space-size=6144 scripts/resonance/mobile/narrow-report.mjs --set=fresh --arms=BASE,C1,K4 \
+node --max-old-space-size=4096 scripts/resonance/mobile/narrow-report.mjs --set=fresh --arms=BASE,C1,K4 \
   --list=scripts/resonance/mobile/narrow-confirm-noise-list.json \
   --speech-runs=build/resonance-mobile/narrow/confirm/pause/runs --speech-hook=build/resonance-mobile/narrow/confirm/pause/hook \
   --cold-runs=build/resonance-mobile/narrow/confirm/hold/runs --cold-hook=build/resonance-mobile/narrow/confirm/hold/hook
@@ -2050,3 +2101,230 @@ The speech and cold-start chain and hook records came from
 `build/resonance-mobile/narrow/report-fresh.{md,json}` (gitignored; sha256
 `d0039bbe…` / `31dd7e1f…`); copies are in
 `C:/Coding Projects/_oneshot/resonance-hold-narrow/confirm/`.
+
+## Review and fixes (2026-11-01)
+
+Three independent reviewers checked the round after the confirmation:
+- one checked the pre-registration and its timeline;
+- one checked the app code and its wiring;
+- one reproduced the numbers.
+
+None of them found an error in a computation, and the **PASS verdict
+stands**. Every number they reproduced matched exactly. None of the fixes
+below changes the plan, a candidate, a bar, the dev pick or the verdict.
+They are one test change, comments, wording, four added deviations or
+qualifications, and some added information with no bar.
+
+### What was reproduced
+
+- **Reports and freeze.** The dev and fresh reports are byte-identical
+  when rebuilt from the committed tree. The freeze check is 17 / 17. The
+  shipped `createVoiceHoldRef` equals the normative code of §3.1 + §3.5 on
+  800 000 fuzzed ticks (0 mismatches).
+- **Chain and hook runs.** Independent re-runs of 60 speech streams and 40
+  noise streams (dev and fresh; cold start through `hold-noise-run.mjs`,
+  after speech through `as-run.mjs`) gave chain records identical field for
+  field and hook records identical byte for byte. tLast, tCut and the
+  pairing tables were rebuilt the same way.
+- **Data.** The screen classes, the disjointness from dev, the licences
+  (12 Freesound pages and the Zenodo record) and all 191 clip hashes check
+  out.
+- **This stage.**
+  - The fresh report rerun with a 4096 MB cap is byte-identical.
+  - `scripts/resonance/mobile/narrow-review-info.mjs` (below) reproduces
+    the report's BASE and K4 row of every real-noise stream: 764 / 764
+    fresh and 628 / 628 dev.
+
+### Findings and what was done
+
+**Review 1 (pre-registration):**
+1. *Medium: the pre-plan descriptive statistics came close to a replay.*
+   They computed K2–K4's arming predicate and outcome proxies on dev (§5.1:
+   K3's hold coverage, a proxy for K2's T-QUIET, K4's −6 vs −3 dB
+   reference), so K4 over K3 was an in-sample, partly tuned choice.
+   **Accepted.** §5.1 already said so. The Verdict now adds that K4 won the
+   tie-break by about 0.05 points and that only K4 was tested on fresh
+   data. **Lesson for later rounds:** compute no candidate's own predicate,
+   coverage or outcome proxy on the selection data before the plan, or
+   split dev into a design half and a selection half.
+2. *Low: voicing summaries in the confirmation records* (`pitchStats`,
+   computed before the pushes, never printed or read). **Accepted:** added
+   as deviation 10.
+3. *Low: deviation 1 misdescribed the silent-preview rule's effect.*
+   **Accepted:** corrected in place. The only change to the final list is
+   fs__583249 → fs__388097, one speech-free clip. The "people nearby" swap
+   held only in the base list, which extension 1 superseded: fs__543817
+   and fs__857741 are both in the final list.
+4. *Low: the fresh report ran with a 6 GB memory cap, not 4 GB.*
+   **Accepted:** added as deviation 11. The rerun at 4096 MB is
+   byte-identical, and the Reproduce block now says 4096.
+5. *Low: the guards had little power against nearby talkers.*
+   **Accepted:** see "How strong the evidence is" in the Verdict.
+
+**Review 2 (app code):**
+6. *Medium: the wiring test pinned the sha256 of the whole hook.* Any later
+   hook change would fail `npm run test:unit` (CI and deploy), and
+   `guided-exercises`' hook already differs. **Accepted.** The whole-file
+   hash is gone. Four structural checks replace it, on what the hold reads
+   from the hook:
+   - the analysis handler takes `intensity` from the DSP frame;
+   - all 3 throttled updaters set it;
+   - it is null in the initial state and after `stop()`;
+   - the hook returns `...state`.
+
+   The four checks pass on this branch's hook and on the hooks of
+   `origin/main` and `origin/guided-exercises`. The wiring test now has 21
+   checks (it had 18). That the hook is unchanged on this branch rests on
+   the round's harness (`narrow-freeze.json`, `pause-row.mjs` hint
+   equality) and on git: `git diff 7e00e59 HEAD --
+   src/audio/useAudioPipeline.js` is empty (LF sha256 `03f07112…`, the same
+   as `origin/main`).
+7. *Low: stale comments in `cueStripModel.js`.* They still described C1 as
+   the wired hold. **Accepted:** the header, the `cueRowStates` doc and the
+   `createTrail` comment now describe K4 as the wired hold and C1 as the
+   reference arm. All three sit outside function bodies, so the frozen
+   `toString()` hashes stay 17 / 17. The tick comment in `CueStrip.jsx` now
+   names the level-drop case (finding 8). Both are comment-only changes.
+8. *Low: a mid-session voice-level drop was never measured.* K4 counts an
+   own-voice tick only within 6 dB of the median of the last 60 s of
+   margin-qualified shown ticks. **Accepted:** added to the Verdict's
+   limits. The rule is frozen and unchanged.
+
+   The reviewer's synthetic probe, re-run as
+   `scripts/resonance/mobile/narrow-level-drop-probe.mjs` (quiet room;
+   cycles of 3 s of voice, 1 s of silence hold and an onset-blink tick;
+   the voice drops after 60 s; fixed seed):
+
+   | voice drop | trail clears in the next 90 s, K4 / BASE | mean trail, K4 / BASE | last blink that clears the trail |
+   |---|---|---|---|
+   | 0 dB | 0 / 21 | 15.0 / 1.4 | none |
+   | 4 dB | 0 / 21 | 15.0 / 1.4 | none |
+   | 7 dB | 1 / 21 | 11.7 / 1.4 | 12.0 s after the drop |
+   | 10 dB | 6 / 21 | 8.5 / 1.4 | 33.3 s after the drop |
+
+   The reviewer's run continued one random draw across the drops and got
+   7 clears and a trail of 7.8 at 10 dB; the other figures are the same.
+   K4 is never below BASE here: it acts only where BASE is idle (G4). A
+   level step (for example −32 → −40 dBFS) belongs in the phone and
+   headset session or the next round.
+9. *Low: the voice gate's off and no-decision paths were never measured.*
+   Every guard used gate-on records (`pause-row.mjs` skips the rest).
+   **Accepted** as a stated limit in the Verdict.
+
+   **Declined: the optional gate-off replay.** The existing chain records
+   hold only the resonance posts made with gate-on hints. With the gate
+   off, the resonance worker gets voiced hints on noise that the pitch
+   chain voices, so its positions differ. A fair replay needs new
+   resonance-chain runs with gate-off hints. That is a new measurement,
+   not a fix of this round.
+
+**Review 3 (numbers):**
+10. *Medium: the "speech-free" class includes voiced scenes.* 60 of its 160
+    fresh clips are TV, café, station or people recordings that Silero
+    scored S = 0.
+    **Accepted in substance.** The class name is the plan's (F5, §6), so it
+    stays in the tables and bars. The Verdict now describes it as the clips
+    the screen heard no speech in, and reports the split below. Checked on
+    the −40 dBFS cold-start pitch caches:
+    - 20 of those 60 have FireRedVAD "voice" together with posted pitch on
+      10.4–64.9 % of pitch messages;
+    - in the 102 clips of the speech-free metadata family, only fs__513489
+      (a power pylon on a contact mic) reaches 10 % (17.9 %).
+
+    The three clips named in the review do carry voices, by their list
+    metadata:
+    - fs__873562 "Muffled TV Program #7", tagged television / tv / program
+      / show;
+    - fs__333960 "indoor_ apartments_hall_noise 2", tagged television / tv
+      / voice / voices / people;
+    - fs__569649 "One.wav", tagged Television / Number / Weird.
+
+    The direction is conservative. These clips face the stricter
+    speech-free bars (+1.0 pooled), so PASS is not weakened.
+11. *Low: the talker class reached 30 by one clip.* Two of its 31 clips are
+    machine room tones (fs__403670 "ROOM TONE_KITCHEN", fs__182600 "Room
+    Tone House") with a 2–3 s voice-like event that both detectors agree
+    on. **Accepted:** see the Verdict.
+    One correction to the review: neither clip has any K4 excess in any
+    cell, but one is not at 0 %. fs__182600 after speech at L1 is drawn
+    2.09 % in BASE and in K4. C1 adds +4.47 on fs__403670 after speech, at
+    both levels.
+12. *Low: the per-clip margin depends on timing.* **Accepted:** the noise
+    timing rows are below. Every cell keeps every bar under both options,
+    on fresh and dev data. Under `arrival40` (phone-like 40 ms capture
+    buffers), the muffled-TV clip after speech at L1 comes to +14.66 (bar
+    +15).
+13. *Low: the after-speech window can catch the end of the reader's own
+    speech.* In noise, the chain can post and show the reader's last words
+    later than tLast, which comes from the speech-alone run. Example: dev
+    fs__365255 at −48. Its tLast is 26.85 s, but the noisy mix's last
+    posted voiced message before tCut + 1 s is at 27.975 s, and the hook
+    last shows voice at 28.425 s. K4's hold of those words then runs to
+    33.325 s, past the window's start at 32.850 s. That 0.5 s is this
+    clip's whole excess (+1.84, BASE 0 %). This adds to K4's measured cost,
+    so the guard is conservative. The tLast + 7 s rows (Information, fresh)
+    already bound it. **Accepted:** stated here; no rule change.
+14. *Minor: "12 of 191 from a cold start" holds per level.* There are 13
+    distinct clips over both levels. **Accepted:** corrected in place.
+
+### Information added (no bar)
+
+Both tables come from `node --max-old-space-size=4096
+scripts/resonance/mobile/narrow-review-info.mjs --set=fresh|dev`. It
+replays BASE and K4 with `pause-report.mjs` `stripReplay` exactly as
+`narrow-report.mjs` does, and checks its nominal rows against the report's.
+
+**The screen class by metadata family** (nominal; K4 − BASE drawn, pooled,
+in points):
+
+| set | screen class | metadata family | clips | cold L1 | cold L2 | after L1 | after L2 | worst clip | BASE drawn |
+|---|---|---|---|---|---|---|---|---|---|
+| fresh | speech-free | speech-free (machines, traffic, weather, appliances) | 100 | +0.00 | +0.01 | +0.01 | +0.07 | +4.40 | 0.00–2.78 % |
+| fresh | speech-free | talker (TV, café, station, people) | 60 | +0.31 | +0.17 | +0.32 | +0.57 | +14.17 | 10.21–25.42 % |
+| fresh | talker | speech-free (2 room tones) | 2 | +0.00 | +0.00 | +0.00 | +0.00 | +0.00 | 0.00–1.07 % |
+| fresh | talker | talker | 29 | +1.03 | +1.02 | +0.66 | +1.02 | +7.90 | 49.60–62.58 % |
+| dev | speech-free | speech-free | 100 | +0.05 | +0.04 | +0.03 | +0.02 | +4.67 | 0.55–4.16 % |
+| dev | speech-free | talker | 50 | +0.00 | +0.00 | +0.09 | +0.13 | +4.10 | 2.88–14.78 % |
+| dev | talker | speech-free | 2 | +0.00 | +0.00 | +0.00 | +2.72 | +5.33 | 2.83–27.36 % |
+| dev | talker | talker | 5 | +0.00 | +0.00 | +0.11 | +0.48 | +2.29 | 13.12–28.85 % |
+
+**Noise guards under the timing options.** K4 − BASE drawn, pooled / the
+worst clip, in points. `tickJitter150` uses one fixed seed (20261101).
+Every §9 bar is recomputed on each option's BASE.
+
+| fresh cell | clips | nominal | tickJitter150 | arrival40 |
+|---|---|---|---|---|
+| speech-free L1 −48, cold | 160 | +0.12 / +14.17 (fs__873562) | +0.11 / +13.96 (fs__873562) | +0.12 / +14.21 (fs__873562) |
+| talker L1 −48, cold | 31 | +0.97 / +5.92 (fs__161929) | +0.96 / +6.25 (fs__161929) | +0.96 / +7.54 (fs__161929) |
+| speech-free L1 −48, after | 160 | +0.13 / +7.48 (fs__873562) | +0.10 / +5.72 (fs__873562) | +0.15 / +14.66 (fs__873562) |
+| talker L1 −48, after | 31 | +0.62 / +7.28 (fs__594415) | +0.38 / +3.42 (fs__660748) | +0.64 / +5.20 (fs__594415) |
+| speech-free L2 −40, cold | 160 | +0.07 / +7.67 (fs__873562) | +0.09 / +7.67 (fs__873562) | +0.10 / +7.67 (fs__873562) |
+| talker L2 −40, cold | 31 | +0.96 / +7.50 (fs__161929) | +1.03 / +7.63 (demand__OMEETING__3) | +1.08 / +10.67 (fs__161929) |
+| speech-free L2 −40, after | 160 | +0.26 / +11.64 (fs__873562) | +0.25 / +11.64 (fs__873562) | +0.28 / +11.64 (fs__873562) |
+| talker L2 −40, after | 31 | +0.95 / +7.90 (demand__OMEETING__3) | +0.86 / +7.47 (fs__161929) | +0.86 / +7.80 (demand__OMEETING__3) |
+
+Every bar holds in all 24 fresh cells and all 24 dev cells. On dev the
+largest single clip under any option is +5.92 (fs__254493, talker L2 after
+speech, `tickJitter150`).
+
+### Checks after the fixes
+
+The changes were comment-only in `src/` plus the wiring test, and G5 was
+re-run in full on the final tree:
+- `npm run lint`: clean.
+- `npm run test:unit`: 76 / 76 (including `tests/site/no-local-paths-test.js`).
+- `npm run build`: OK.
+- The cue-strip tests: model 167 / 167, geometry 8 / 8, voice-gate display
+  48 / 48, wiring 21 / 21.
+- `scripts/cue-strip-smoke.mjs`: phone 97 / 97, p402 97 / 97, p360 97 / 97,
+  desktop 103 / 103.
+- `scripts/resonance-lab/lab-layout-smoke.mjs --panel=0`: 78 / 78.
+- The frozen hashes: 17 / 17 unchanged.
+
+### Still open
+
+- The phone and headset session (kit at 7e00e59), with a mid-session voice
+  level step.
+- The gate-off and no-decision paths: new chain runs with gate-off hints.
+- Screen readers still read a held pause as a live position. Adding
+  "(last reading)" is a separate owner decision.

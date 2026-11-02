@@ -33,16 +33,23 @@
 // detector is on (snap.narrowband.on), the resonance row is "narrowband": no
 // dot, no trail, no start ring, only the notice NARROWBAND_NOTICE; pitch is
 // untouched. measurements/resonance-narrowband-2026-10-19.md
-// Resonance row hold (owner decision 2026-10-28, built 2026-11-01): the row
-// keeps its position (dimmed) for up to 5 s after the strip last saw shown
-// voice, whatever the pause's noise floor, so the trail is no longer cleared
-// by short pauses or by the ~130 ms idle blink when speech resumes; it never
-// shows "keep talking…" from the hold. createResonanceHold / cueRowStates
-// resonanceHold; measurements/resonance-row-hold-2026-10-28.md.
-// Narrower holds (2026-11-01, candidates of a pre-registered round, not
-// wired): K1–K5 below, each a factory whose tick answers the same
+// Resonance row hold (cueRowStates resonanceHold): where the plain rule says
+// "idle", the row keeps its position (dimmed) instead, so the trail survives
+// short pauses and the ~130 ms idle blink when speech resumes; it never
+// shows "keep talking…" from the hold. The wired hold is K4,
+// createVoiceHoldRef (narrower-hold round, confirmed on fresh data
+// 2026-11-01; measurements/resonance-row-hold-narrow-2026-11-01.md): it
+// bridges the blink and holds up to 5 s into a pause only after ticks of
+// the user's own voice (>= 10 dB over the room and near the voice's own
+// recent level), so a room within ~5 dB of the voice, or a voice that drops
+// > ~6 dB below its own last-minute level, still clears the trail. C1,
+// createResonanceHold (5 s after any shown voice, any noise floor; owner
+// decision 2026-10-28, measurements/resonance-row-hold-2026-10-28.md),
+// failed its noise guards and is only the harness's reference arm now; K1–K3
+// and K5 below are the round's other candidates, kept for the harness and
+// the tests. Each candidate is a factory whose tick answers the same
 // resonanceHold flag from the tick's flags, the throttled DSP level and the
-// worker's snapshot; measurements/resonance-row-hold-narrow-2026-11-01.md §3.
+// worker's snapshot (§3 of that note).
 // Direction highlight: the same element and style for every direction,
 // only { low, high } changes; none for "Just exploring" / unanswered.
 // Only the pitch dot is coloured on / off target (statusColor(pitchStatus(...)),
@@ -433,7 +440,9 @@ export const RESONANCE_HOLD_CANDIDATES = Object.freeze({
  * hasRef false: the reference bands are not loaded, so only the resonance
  * worker's own state can show (unavailable / paused / starting) — an error
  * is never hidden.
- * resonanceHold (createResonanceHold, 2026-10-28): where the resonance row
+ * resonanceHold (the wired hold's answer: K4, createVoiceHoldRef, since
+ * 2026-11-01; C1's createResonanceHold, 2026-10-28, in the harness's
+ * reference arm only): where the resonance row
  * would be "idle", it takes the state it would have while holding —
  * "holding" (the dimmed thumb), "settling" or "sustained" — but never
  * "warming" ("keep talking…" with nobody speaking; a row with no position
@@ -477,8 +486,10 @@ export function dotOpacity(state) {
 // ---- trail: the last n samples, one every `everyTicks` 250 ms ticks while
 // LIVE. Frozen (no samples) in any other state; cleared when the row goes
 // idle and on any change into or out of "sustained" or "narrowband". (The
-// resonance row's hold keeps it out of idle for up to 5 s after shown voice,
-// so its trail survives pauses — cueRowStates resonanceHold.)
+// resonance row's hold, K4, keeps it out of idle through the onset blink and
+// for up to 5 s into a pause after the user's own voice, so its trail
+// survives those; in a room within ~5 dB of the voice it still clears about
+// 1 s into a pause — cueRowStates resonanceHold.)
 export function createTrail(n = TRAIL_LEN, everyTicks = 1) {
   let pts = [];
   let lastState = null;
