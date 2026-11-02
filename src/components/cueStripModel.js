@@ -65,7 +65,8 @@ export const TRAIL_LEN = 8;
 export const TRAIL_EVERY_MS = 250;
 // Resonance changes over seconds (5 s readout): a slower, longer trail.
 // One per 2 s of live speech, 15: ~30 s of speech, about the last 40 s with
-// its pauses (measurements/resonance-row-hold-2026-10-28.md, with the hold).
+// its pauses with the K4 hold (measurements/resonance-row-hold-narrow-2026-11-01.md:
+// median age of the oldest point 39.75 s on fresh clean speech).
 export const RESONANCE_TRAIL = Object.freeze({ n: 15, everyTicks: 8 });
 
 // ---- axes: value -> fraction of the axis width [0, 1], plus where it fell
@@ -196,12 +197,14 @@ export function resonanceRowState({ workerStatus, snap, voiced, holding }) {
   return "live";
 }
 /**
- * The resonance row's hold clock (2026-10-28 owner decision, built
- * 2026-11-01; measurements/resonance-row-hold-2026-10-28.md). The strip's
- * 4 Hz tick feeds it the gated pitchVoiced and the time; it answers whether
- * at most holdMs have passed since a tick last saw it true (that tick
- * included). CueStrip keeps the answer in its tick view and every render
- * uses the latest tick's answer.
+ * C1, the resonance row's first hold clock (2026-10-28 owner decision, built
+ * 2026-11-01; measurements/resonance-row-hold-2026-10-28.md). It failed its
+ * noise guards and is no longer wired (the strip uses K4,
+ * createVoiceHoldRef, below); kept as the harness's reference arm and for
+ * the tests. Fed the gated pitchVoiced and the time at each 4 Hz tick, it
+ * answers whether at most holdMs have passed since a tick last saw it true
+ * (that tick included). CueStrip keeps a hold's answer in its tick view and
+ * every render uses the latest tick's answer.
  * Why: the hook's own hold (pitchHolding) exists only on its silence-gate
  * path (50 ms intensity < -50 dBFS); in a pause that hears the room the row
  * went idle ~0.8 s in, and on every device the first ~130 ms of resumed
@@ -223,8 +226,9 @@ export function createResonanceHold(holdMs = RESONANCE_HOLD_MS) {
 
 // ---- narrower holds: candidates K1–K5 (2026-11-01, pre-registered;
 // measurements/resonance-row-hold-narrow-2026-11-01.md §3, whose code blocks
-// are normative and transcribed here line for line). Not wired: the strip
-// still uses createResonanceHold. Every factory's tick has one signature,
+// are normative and transcribed here line for line). K4 (createVoiceHoldRef)
+// passed the fresh confirmation (2026-11-01) and is the one CueStrip wires;
+// the others stay for the harness and the tests. Every factory's tick has one signature,
 //   tick({ pitchVoiced, pitchHolding, pitchLevel, intensity, snap, workerStatus, hasRef }, nowMs)
 // and is pure (the clock is passed in). intensity is the hook's throttled
 // `intensity`: the 50 ms full-band DSP level (dBFS) of the frame that fired

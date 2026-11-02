@@ -46,14 +46,29 @@ const ik = inputs ? keysOf(inputs[1]) : [];
 check("the render's inputs carry pitchVoiced / pitchHolding", ik.includes("pitchVoiced") && ik.includes("pitchHolding"), ik.join(","));
 check("the render's inputs carry no raw voiced / holding", inputs && !ik.includes("voiced") && !ik.includes("holding"), ik.join(","));
 
-// The resonance row's hold (2026-10-28, measurements/resonance-row-hold-2026-10-28.md):
-// the 4 Hz tick runs createResonanceHold on the gated pitchVoiced, passes its
-// answer to its own cueRowStates call and keeps it in the view; the render
-// passes the view's answer. Never the raw voiced flag.
-check("the tick creates the resonance hold (createResonanceHold) beside its trails",
-  /const hold = createResonanceHold\(\);/.test(src));
-check("the tick feeds the hold the gated pitchVoiced and the clock",
-  /const resonanceHold = hold\.tick\(!!p\.pitchVoiced, performance\.now\(\)\);/.test(src));
+// The resonance row's hold (K4, createVoiceHoldRef, confirmed 2026-11-01:
+// measurements/resonance-row-hold-narrow-2026-11-01.md; it replaced C1's
+// createResonanceHold of 2026-10-28): the 4 Hz tick runs it on the gated
+// flags, the pitch level, the hook's throttled intensity, the resonance
+// snapshot, the worker status and the clock, passes its answer to its own
+// cueRowStates call and keeps it in the view; the render passes the view's
+// answer. Never the raw voiced flag.
+check("the tick creates the picked hold (createVoiceHoldRef) beside its trails, not C1's",
+  /const hold = createVoiceHoldRef\(\);/.test(src) && !/createResonanceHold/.test(src));
+check("the tick feeds it the gated flags, the level, intensity, the snapshot, the worker status and the clock",
+  /const resonanceHold = hold\.tick\(\{ pitchVoiced: p\.pitchVoiced, pitchHolding: p\.pitchHolding, pitchLevel: p\.pitchLevel, intensity: p\.intensity, snap, workerStatus: p\.resonanceStatus, hasRef: !!ref \}, performance\.now\(\)\);/.test(src));
+check("the tick's inputs (latest.current) carry intensity", lk.includes("intensity"), lk.join(","));
+{
+  const app = readFileSync(new URL("../../src/App.jsx", import.meta.url), "utf8").replace(/\r\n/g, "\n").replace(/\/\/[^\n]*/g, "");
+  const dash = readFileSync(new URL("../../src/components/CombinedDashboard.jsx", import.meta.url), "utf8").replace(/\r\n/g, "\n").replace(/\/\/[^\n]*/g, "");
+  const block = (s, tag) => s.match(new RegExp(`<${tag}\\b[^]*?\\/>`))?.[0] ?? "";
+  check("App reads the hook's intensity and passes it to CombinedDashboard",
+    /\n\s*intensity,\n[^]*?\} = useAudioPipeline\(\);/.test(app) && block(app, "CombinedDashboard").includes("intensity={intensity}"));
+  check("CombinedDashboard passes intensity to CueStrip", /\n\s*intensity = null,\n/.test(dash) && block(dash, "CueStrip").includes("intensity={intensity}"));
+  const hook = readFileSync(new URL("../../src/audio/useAudioPipeline.js", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+  const { createHash } = await import("node:crypto");
+  check("useAudioPipeline.js is unchanged from 7e00e59", createHash("sha256").update(hook, "utf8").digest("hex") === "03f07112a13bde96e705f17c150167d5767e10683fe9c9040663a9bbef28e205");
+}
 const tickInputs = src.match(/const inputs = \{ \.\.\.p, ([^}]*)\}/);
 check("the tick's cueRowStates inputs carry its resonanceHold", tickInputs && keysOf(tickInputs[1]).includes("resonanceHold"), tickInputs?.[1]);
 check("the tick keeps resonanceHold in the view", /setView\(\{\s*snap,\s*resonanceHold,/.test(src));

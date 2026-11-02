@@ -65,7 +65,7 @@ import { useInfoPopover } from "./useInfoPopover";
 import {
   axisPos,
   bandsFor,
-  createResonanceHold,
+  createVoiceHoldRef,
   createTrail,
   cueResonanceRef,
   cueSummary,
@@ -149,7 +149,8 @@ const RESONANCE_INFO =
   "microphones fell, so even typical speakers' readings land outside their band about 1 time in 5. Your microphone, " +
   "room and distance shift the whole scale, so trust how the marker moves more than where it sits. Readings depend on " +
   "the microphone and how you hold or wear it, so compare yourself on one device, held or worn the same way. What you say moves it too, so judge a change over " +
-  "tens of seconds, not sentence by sentence. The streak shows about the last 40 s and starts over after about 5 s without speech.";
+  "tens of seconds, not sentence by sentence. The streak shows about the last 40 s and starts over after about 5 s without speech; " +
+  "in a noisy room it can start over sooner, about 1 s into a pause.";
 function directionNote(cue, direction) {
   if (!direction || direction === "exploring") return null;
   if (cue === "pitch") {
@@ -449,17 +450,20 @@ export function CueStrip({
   hnr,
   resonanceRef,
   resonanceStatus,
+  // The hook's throttled 50 ms DSP level (dBFS; null when not listening):
+  // the resonance row's hold reads it (narrower-hold round, 2026-11-01).
+  intensity = null,
   shortLandscape = false,
 }) {
   const roomy = useMedia("(min-width: 1024px) and (min-height: 600px)");
   const [assets, setAssets] = useState(null);
   // What the 4 Hz tick saw: the resonance worker's latest state, each cue's
-  // trail, the resonance row's hold (createResonanceHold: shown voice in the
-  // last 5 s; 2026-10-28) and (once a second) the screen-reader summaries.
+  // trail, the resonance row's hold (createVoiceHoldRef, K4; 2026-11-01) and
+  // (once a second) the screen-reader summaries.
   // Render reads only this, never the refs.
   const [view, setView] = useState({ snap: null, trails: { pitch: [], resonance: [] }, resonanceHold: false, everVoiced: false, sr: {} });
   const latest = useRef(null);
-  useEffect(() => { latest.current = { pitchVoiced, pitchHolding, pitchLevel, resonanceStatus, direction }; });
+  useEffect(() => { latest.current = { pitchVoiced, pitchHolding, pitchLevel, intensity, resonanceStatus, direction }; });
 
   useEffect(() => {
     if (assets) return undefined;
@@ -483,13 +487,17 @@ export function CueStrip({
 
   // One 4 Hz tick: the resonance row's hold clock, then sample each cue's
   // value into its trail while live; the screen-reader summaries every 4th
-  // tick (1 Hz). The hold keeps the resonance row out of "idle" for up to
-  // 5 s after shown voice, so pauses (quiet or noisy) and the first frames
-  // of resumed speech no longer clear its trail
-  // (measurements/resonance-row-hold-2026-10-28.md).
+  // tick (1 Hz). The hold (K4, createVoiceHoldRef) keeps the resonance row
+  // out of "idle" for the first ticks of resumed speech after a pause (the
+  // onset blink) and, after a tick whose level stood >= 10 dB over the room
+  // and near the user's own recent loud voice, for up to 5 s into a pause,
+  // so those no longer clear its trail; a room within ~5 dB of the voice
+  // still clears it (measurements/resonance-row-hold-narrow-2026-11-01.md;
+  // C1, the 5 s hold at any floor, failed its noise guards:
+  // resonance-row-hold-2026-10-28.md).
   useEffect(() => {
     const t = { pitch: createTrail(), resonance: createTrail(RESONANCE_TRAIL.n, RESONANCE_TRAIL.everyTicks) };
-    const hold = createResonanceHold();
+    const hold = createVoiceHoldRef();
     let ever = false;
     let n = 0;
     let sr = {};
@@ -499,7 +507,7 @@ export function CueStrip({
       if (!p) return;
       const snap = resonanceRef?.current ?? null;
       if (p.pitchVoiced) ever = true;
-      const resonanceHold = hold.tick(!!p.pitchVoiced, performance.now());
+      const resonanceHold = hold.tick({ pitchVoiced: p.pitchVoiced, pitchHolding: p.pitchHolding, pitchLevel: p.pitchLevel, intensity: p.intensity, snap, workerStatus: p.resonanceStatus, hasRef: !!ref }, performance.now());
       const inputs = { ...p, snap, workerStatus: p.resonanceStatus, resonanceHold };
       const states = cueRowStates({ ...inputs, hasRef: !!ref });
       if (n++ % 4 === 0) {
