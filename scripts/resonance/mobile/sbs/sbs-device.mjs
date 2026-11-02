@@ -361,7 +361,7 @@ function adbRun(args, { dry = false, log = console.log } = {}) {
   const full = ADB_SERIAL && !dry ? ["-s", ADB_SERIAL, ...args] : args;
   if (dry) { log(`  [dry-run] adb ${args.join(" ")}`); return { stdout: "", stderr: "", status: 0, dry: true }; }
   const r = spawnSync("adb", full, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
-  if (r.error) throw new Error(`adb not on PATH (${r.error.message}). Install Android Platform Tools (CLAUDE.md "Mobile diag capture harness").`);
+  if (r.error) throw new Error(`adb not on PATH (${r.error.message}). Install Android Platform Tools (docs/device-testing.md "Mobile diag capture harness").`);
   return { stdout: r.stdout ?? "", stderr: r.stderr ?? "", status: r.status };
 }
 /** A serial of a wireless-debugging connection (adb connect ip:port, or an mDNS name). */

@@ -60,7 +60,7 @@ for (const r of rir) c(`${r.name}__c`, r.name, CLEANLVL, "IR at the reader's cle
 // far set at a physically lower level (no AGC): -34 dBFS at 0.25 m -> 20 log10(0.25 / d)
 c("far-d100-a20-rt06-sh__q", "far-d100-a20-rt06-sh", { level: -34 + 20 * Math.log10(0.25 / 1.0), noiseRelDb: -47 + 20 * Math.log10(1.0 / 0.25) }, "1 m at the physically lower level (-46 dBFS), the same absolute noise floor");
 // a finger / palm partly over the bottom-edge port: the core handheld position plus a 2nd-order
-// low-pass (RBJ, Q 0.707; perturb.mjs "lp") — the "muffled" end of the hand variants (assumption)
+// low-pass (RBJ, Q 0.707; perturb.mjs "lp") â€” the "muffled" end of the hand variants (assumption)
 for (const fc of [2500, 3500, 5000]) {
   conds[`cover${fc / 100}__c`] = { ir: "hh-d20-a40-rt06-sh", note: `core IR + lp ${fc} Hz (port partly covered), clean level`,
     pert: [conds["hh-d20-a40-rt06-sh__c"].pert[0], { type: "lp", fc, q: Math.SQRT1_2, n: 1 }] };

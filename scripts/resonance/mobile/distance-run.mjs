@@ -4,7 +4,7 @@
 //   node scripts/resonance/mobile/distance-run.mjs go --cond=<name> [--pert=<spec>] [--gate=on|off|both]
 //        [--kinds=ctl,sw,exc,long] [--exc=3,5,8] [--exc-len=30] [--only=<ids>] [--shard=i/n]
 //        [--out=build/resonance-mobile/distance/runs] [--worker] [--pitch-from=<clean pitch cache dir>[,...]]
-// --pitch-from: attribution mode — the pitch hints / voice-gate decisions come from the CLEAN
+// --pitch-from: attribution mode â€” the pitch hints / voice-gate decisions come from the CLEAN
 //   run's pitch cache (the real pitch worker on unperturbed audio); only the resonance chain
 //   hears the perturbed audio (separates the resonance estimator from pitch / voice-gate effects).
 //

@@ -10,7 +10,7 @@
 //   duration: 30 seconds of capture window
 //   url:      https://10.0.0.41:5173/Syrinx/?diag=1
 //
-// Prerequisites (one-time): see CLAUDE.md "Mobile diag capture harness".
+// Prerequisites (one-time): see docs/device-testing.md "Mobile diag capture harness".
 //
 // Output:
 //   - Console summary of the captured snapshot.
@@ -62,7 +62,7 @@ function adb(...adbArgs) {
   if (r.error) {
     throw new Error(
       `adb not on PATH or failed to spawn: ${r.error.message}\n` +
-      `Install Android Platform Tools (see CLAUDE.md "Mobile diag capture harness").`,
+      `Install Android Platform Tools (see docs/device-testing.md "Mobile diag capture harness").`,
     );
   }
   return { stdout: r.stdout ?? "", stderr: r.stderr ?? "", status: r.status };
