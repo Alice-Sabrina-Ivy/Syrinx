@@ -189,6 +189,7 @@ function App() {
     modelStatus,
     modelProgress,
     resonanceStatus,
+    intensity,
     start,
     stop,
     pitchTraceRef,
@@ -506,6 +507,7 @@ function App() {
                 genderStateRef={genderStateRef}
                 resonanceRef={resonanceRef}
                 resonanceStatus={resonanceStatus}
+                intensity={intensity}
                 heardAsRef={heardAsRef}
                 pitchOnlyRef={pitchOnlyRef}
                 audioClockRef={audioClockRef}

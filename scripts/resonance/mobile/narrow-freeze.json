@@ -1,0 +1,25 @@
+{
+ "note": "Frozen code of the narrower resonance-row hold round (measurements/resonance-row-hold-narrow-2026-11-01.md §4.4, §10 step 2): sha256 of each LF-normalised toString() / file. narrow-report.mjs checks it before any K replay.",
+ "node": "v24.14.1",
+ "functions": {
+  "K1 createQuietOnsetBridge": "5ccea137e4b73b7e864c108006f11c68918e483f8796eeb61b7cc6be1d60fc9a",
+  "K2 createVoiceArmedBridge": "d089228a89aadd9e222fcf04ed458cc3c1f833671d1bf677a9ea4694c16c3141",
+  "K3 createVoiceHold": "fabfcefecd1d4fe29ea45fd9e8b00d2ed15ccf736435a983eedba4258f9ab1a0",
+  "K4 createVoiceHoldRef": "4fefbc784c2ddb9aff5afaa9154f689f08d21205b70622a30eb373e2657e4219",
+  "K5 createQuietPauseHold": "2ec846d5f80a68f879377d739eb1328a0f88131520a8647179eb8c5d000569e2",
+  "holdQuantile": "dfdd9c1d229bd8f93c92d46a12878955854f2ba36d33c7ad12112bf17688ce93",
+  "holdMedian": "19b9c1ced7dc66f55a6bf26f8efae8faf4b4815b7fc1f49bce396d028ef7a31b",
+  "cueRowStates": "acafc1c040df4febf963ca4b7ff50a57eace66f61db1d292d24c978ba6708353",
+  "resonanceRowState": "61c808a3d1c99a34289a561f1dbb688ea5606667b3585a624ee7c252f415c0a4",
+  "createTrail": "9b997d00d5dea60179816eb2c88c2863c6856688a030a2dbb39da3183aafe1ac",
+  "createResonanceHold": "74c3dd30bafc020b127a117e41f82614c992238c8c6492706a4ac3f1d16ed186",
+  "dotOpacity": "6f02e408a33feba640f0e4bc30f1efd3e71537e2a64ff9ecea7e0fd438446d47",
+  "rowValue": "3dfc1bc8df879a1862b6b88e1f132363e189860e2b1df1bf5dfc518e39ab5dd7",
+  "axisPos": "db516a8feb71cae782cbb111667679821bc83fb76a40044a1e22e6f523d1ce3b",
+  "resonanceClamp": "bd24831d06f655846d9a94410ec110857674694c1e1a0b04ddcf1914d2e5460b"
+ },
+ "files": {
+  "scripts/resonance/mobile/pause-report.mjs": "d782bbdf67c7100341fd8522053c79668f8cbb3065e59cf06e09458574c85107",
+  "scripts/resonance/mobile/narrow-report.mjs": "16df41227df51cc2f669a5e5f1a3603c2ee166520156e1a60ff9818a5eeb1c4c"
+ }
+}

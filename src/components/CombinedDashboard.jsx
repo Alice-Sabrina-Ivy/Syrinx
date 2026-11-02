@@ -84,6 +84,7 @@ export function CombinedDashboard({
   genderStateRef,
   resonanceRef,
   resonanceStatus,
+  intensity = null,
   heardAsRef,
   pitchOnlyRef,
   audioClockRef,
@@ -611,6 +612,7 @@ export function CombinedDashboard({
             hnr={hnr}
             resonanceRef={resonanceRef}
             resonanceStatus={resonanceStatus}
+            intensity={intensity}
             shortLandscape={shortLandscape && !wide}
           />
           {wide && (
