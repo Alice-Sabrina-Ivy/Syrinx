@@ -487,6 +487,14 @@ Every render point (25 ms) and every tick:
     without speech."
   - "Readings depend on the microphone and how you hold or wear it, so
     compare yourself on one device, held or worn the same way."
+    *[2026-11-02: merged with the sentence before it in the info ("Your
+    microphone, room and distance shift the whole scale, so trust how the
+    marker moves more than where it sits.") into one: "Your microphone,
+    how you hold or wear it, the room and distance all shift the whole
+    scale, so compare yourself on one device used the same way, and trust
+    how the marker moves more than where it sits." See
+    [resonance-row-hold-narrow-2026-11-01.md](resonance-row-hold-narrow-2026-11-01.md),
+    "After the round".]*
 - **The cost.** Wherever the voice detector hears voice in the background,
   the column keeps a stale position on screen for up to 5 s after each
   such moment. Most of these places have other people talking: cafés, a

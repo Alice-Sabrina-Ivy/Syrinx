@@ -18,7 +18,8 @@ decision 2026-11-02). One side-by-side session with the test sound only (no
 voice steps) ran on 2026-11-01; see the status block of
 [resonance-phone-vs-desktop-2026-10-28.md](resonance-phone-vs-desktop-2026-10-28.md).
 Local folder paths in this note were replaced by placeholders the same day
-(Review and fixes, "Local folder paths").
+(Review and fixes, "Local folder paths"). Also on 2026-11-02: K4 checked by
+hand on a Pixel phone, and two display-text changes ("After the round").
 
 ## Plan (pre-registered, 2026-11-01, before any result)
 
@@ -2053,7 +2054,8 @@ also passed G5 with the final text. No PR and no merge.
     points pooled in the same cells, and up to +69 on one clip.
 - **Unchanged:** the pitch column, the hook, every u and the recorded
   sessions. Screen readers still read a held pause like a live position;
-  adding "(last reading)" stays a separate owner decision.
+  adding "(last reading)" stays a separate owner decision. *(2026-11-02:
+  decided and built — see "After the round".)*
 
 **What the confirmation does not cover:**
 - a real phone or headset (the side-by-side kit, commit 7e00e59, is still
@@ -2361,12 +2363,45 @@ their folder only (`seen/`, `g5-working-copy-K4/`, `confirm/`).
   `screen-silero.mjs --set=fresh --only=fs__240634` gives the committed
   row; the freeze check is 17 / 17.
 
+### After the round (2026-11-02, display text only, outside the frozen functions)
+
+- **One microphone sentence in the resonance info** (chosen 2026-11-02).
+  Old, two sentences: "Your microphone, room and distance shift the whole
+  scale, so trust how the marker moves more than where it sits. Readings
+  depend on the microphone and how you hold or wear it, so compare
+  yourself on one device, held or worn the same way." New, one sentence:
+  "Your microphone, how you hold or wear it, the room and distance all
+  shift the whole scale, so compare yourself on one device used the same
+  way, and trust how the marker moves more than where it sits." The
+  streak sentence of §11 ("… in a noisy room it can start over sooner,
+  about 1 s into a pause.") is unchanged.
+- **"(last reading)" for screen readers** (chosen 2026-11-02). While a
+  row is "holding", its 1 Hz summary (`cueSummary`, `[data-cue-sr]`) says
+  so: the pitch row "Pitch level N Hz (last reading)" when it keeps a
+  level, the resonance row "Resonance (approximate, last reading): …"
+  in the silence-gate hold and in K4's hold. The visible words are
+  unchanged.
+- **Outside the freeze.** `RESONANCE_INFO` and `cueSummary` are not
+  among the frozen items; the freeze check is 17 / 17 after the change.
+  No state, hold, trail or position changes.
+- **Checks:** `npm run lint` clean; `npm run test:unit` 76 / 76 (cue-strip
+  model 172 / 172, wiring 26 / 26); on a build of the change,
+  `scripts/cue-strip-smoke.mjs` phone, p402, p360 and landscape 97 / 97,
+  desktop 103 / 103, and `scripts/resonance-lab/lab-layout-smoke.mjs
+  --panel=0` 78 / 78.
+- **Hand check on a phone.** On a Pixel phone over the dev server, the
+  K4 hold kept the resonance marker when speech stopped. No numbers were
+  recorded; the measured phone / headset session stays paused.
+
 ### Still open
 
 - **Paused (user decision 2026-11-02):** the phone and headset session (kit
   at 7e00e59), with a mid-session voice level step. One session with the
-  test sound only ran on 2026-11-01 (status at the top).
+  test sound only ran on 2026-11-01 (status at the top). *(2026-11-02: K4
+  was checked by hand on a Pixel phone — the hold keeps the marker when
+  speech stops; no numbers, so the measured session stays paused.
+  "After the round".)*
 - The gate-off and no-decision paths: new chain runs with gate-off hints.
-- Screen readers still read a held pause as a live position. Adding
-  "(last reading)" is a separate owner decision. *(2026-11-02: the wording
-  is being decided in a follow-up commit.)*
+- **Resolved 2026-11-02:** screen readers read a held pause as a live
+  position. Decided and built the same day: the summary says "(last
+  reading)" while a row is holding, both rows ("After the round").
