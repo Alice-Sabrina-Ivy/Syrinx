@@ -274,6 +274,7 @@ function SessionCard({ session, expanded, onToggle, onDelete }) {
       {/* Card header — always visible */}
       <button
         onClick={onToggle}
+        aria-expanded={expanded}
         className="w-full text-left px-4 py-3 cursor-pointer"
       >
         <div className="flex items-center justify-between">
@@ -286,10 +287,14 @@ function SessionCard({ session, expanded, onToggle, onDelete }) {
               {formatTime(session.startedAt)}
             </span>
           </div>
-          <span className="text-xs text-neutral-500 font-mono tabular-nums">
-            {session.endedAt == null && isLiveSession(session.id)
-              ? "recording…"
-              : formatDuration(session.durationSeconds)}
+          <span className="flex items-center gap-2 text-xs text-neutral-500">
+            <span className="font-mono tabular-nums">
+              {session.endedAt == null && isLiveSession(session.id)
+                ? "recording…"
+                : formatDuration(session.durationSeconds)}
+            </span>
+            {/* Open / closed sign (2026-11-02): the card opens on a tap. */}
+            <svg viewBox="0 0 12 12" className={`w-3 h-3 ${expanded ? "rotate-180" : ""}`} aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M2.5 4.5 6 8l3.5-3.5" /></svg>
           </span>
         </div>
 
@@ -526,7 +531,7 @@ function SessionTraces({ sessionId, directionLog, pitchTargetRule }) {
       </div>
       <div>
         <span className="text-[10px] text-neutral-500 uppercase tracking-wider">
-          Resonance (F2)
+          Second formant (F2) · depends on the vowel
         </span>
         <div
           ref={resContainerRef}
