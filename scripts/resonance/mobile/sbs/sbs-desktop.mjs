@@ -1,5 +1,5 @@
 // sbs-desktop.mjs — the desktop half of the phone-vs-headset kit on its own:
-// attaches to the owner's Chrome started with the debug port (the
+// attaches to the user's Chrome started with the debug port (the
 // desktop-diag-capture-attach.js pattern: its OWN new window, only that target
 // is ever closed), injects the page logger before the app loads, starts
 // listening, and records into a timestamped run folder.

@@ -27,7 +27,7 @@ Branch `resonance-mobile` (from `main` 9e1696b). Diagnosis only: nothing under
 dev-clean, CC BY 4.0; one CC0 air-conditioner clip already in
 `tests/dsp/data/notch-real/`).
 
-**The report (owner, 2026-10-27).** The owner ran the app side by side on two
+**The user's report (2026-10-27).** The user ran the app side by side on two
 devices at once:
 - a desktop with an Audeze Maxwell headset, whose boom mic sits a few cm from
   the mouth and has its own noise filter;
@@ -317,7 +317,7 @@ Older phone diagnostic captures (Chrome 147, before the preset change; kept
 outside this repo) put speech far above the voice detector's limit and the
 noise-only pause floor close to the −50 dBFS threshold.
 
-## 7. Fix options (none adopted; owner decision)
+## 7. Fix options (none adopted; user decision)
 
 **Historical (superseded 2026-11-02):** "none adopted". The first two
 rows were then built in a narrower form, K4

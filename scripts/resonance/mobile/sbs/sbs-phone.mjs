@@ -12,7 +12,7 @@
 //        [--phone-cdp-port=<PC port; default a free one>] [--phone-serial=<adb serial, e.g. ip:port for wireless debugging>]
 //        [--dry-run=<http://127.0.0.1:PORT of another Chrome>]
 //
-// Without --auto-start the owner taps the goal sheet / Start on the phone.
+// Without --auto-start the user taps the goal sheet / Start on the phone.
 // --dry-run runs no adb at all (prints the commands) and points the CDP part at
 // another Chrome's debugging endpoint — for checking the code path without a phone.
 // Recording stops after --duration s or on Enter. Output and next steps: sbs-session.mjs.

@@ -43,7 +43,7 @@
 // the user's own voice (>= 10 dB over the room and near the voice's own
 // recent level), so a room within ~5 dB of the voice, or a voice that drops
 // > ~6 dB below its own last-minute level, still clears the trail. C1,
-// createResonanceHold (5 s after any shown voice, any noise floor; owner
+// createResonanceHold (5 s after any shown voice, any noise floor; user
 // decision 2026-10-28, measurements/resonance-row-hold-2026-10-28.md),
 // failed its noise guards and is only the harness's reference arm now; K1–K3
 // and K5 below are the round's other candidates, kept for the harness and
@@ -204,7 +204,7 @@ export function resonanceRowState({ workerStatus, snap, voiced, holding }) {
   return "live";
 }
 /**
- * C1, the resonance row's first hold clock (2026-10-28 owner decision, built
+ * C1, the resonance row's first hold clock (2026-10-28 user decision, built
  * 2026-11-01; measurements/resonance-row-hold-2026-10-28.md). It failed its
  * noise guards and is no longer wired (the strip uses K4,
  * createVoiceHoldRef, below); kept as the harness's reference arm and for

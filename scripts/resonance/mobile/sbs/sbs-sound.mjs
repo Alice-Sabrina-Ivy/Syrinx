@@ -1,5 +1,5 @@
 // sbs-sound.mjs — the public test sound for the phone-vs-headset session
-// (a WAV the owner plays from a loudspeaker to the Maxwell boom and the
+// (a WAV the user plays from a loudspeaker to the Maxwell boom and the
 // Pixel side by side). Public material only: synthetic clicks / pink noise /
 // a sweep, and two LibriSpeech dev-clean readers (CC BY 4.0) from the WORLD
 // renders of the mobile diagnosis (build/resonance-mobile/streams/v/).

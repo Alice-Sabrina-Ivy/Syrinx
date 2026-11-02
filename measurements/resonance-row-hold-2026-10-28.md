@@ -3,14 +3,14 @@
 Branch `resonance-mobile` (from `main` 9e1696b + the diagnosis 7afa3c1).
 Public data only. Follows
 [resonance-phone-vs-desktop-2026-10-28.md](resonance-phone-vs-desktop-2026-10-28.md)
-§5 (the onset blink and the noisy-pause dropout). Owner decisions of
+§5 (the onset blink and the noisy-pause dropout). User decisions of
 2026-10-28: build (1) the streak-blink fix, (2) keep the resonance thumb
 through noisy pauses, (3) a phone-vs-headset measurement kit (separate
 work, not in this note) and (4) fix the info text. On the branch only: no
 PR, no merge.
 
 **Status (2026-11-01): STOP.** G1 (the noise-only cost) failed, and T1, T2
-and G2–G5 passed. The candidate is kept on the branch for the owner's
+and G2–G5 passed. The candidate is kept on the branch for the user's
 decision (§Results). An independent review the same day reproduced every
 number and found that G1's cold-start streams understate the cost in the
 case the hold is for, noise in a pause after speech. That replay is added
@@ -23,7 +23,10 @@ narrower hold of
 which replaced C1 in `CueStrip.jsx` on branch `resonance-hold-narrow`. The
 same day the local folder paths in this note were replaced by
 `../Syrinx-cache/…` (the local data cache beside the repo); nothing else
-changed.
+changed. Wording only, also 2026-11-02: "owner" was replaced by "user" in
+this note, including two lines of the pre-registered plan (§Selection rule
+and the §Info text heading); no target, guard, rule or number changed. The
+plan as committed is 2e14965.
 
 ## Plan (pre-registered, 2026-11-01, before any result)
 
@@ -206,10 +209,10 @@ metrics at the ticks.
 - **Every target and guard passes:** CAND is committed to the branch, with
   the info text (below) and the CLAUDE.md row.
 - **Any target or guard fails:** STOP. No tuning. The code stays on the
-  branch only if G2–G5 pass. The numbers are reported for an owner
+  branch only if G2–G5 pass. The numbers are reported for a user
   decision.
 
-### Info text (owner decision 4)
+### Info text (user decision 4)
 
 - **The streak.** The resonance info's sentence "The streak shows the last
   ~30 s." is replaced by the measured span on clean speech: the median over
@@ -234,7 +237,7 @@ metrics at the ticks.
   noise gives +4.7 and +7.9 points pooled, with 21 and 35 clips over
   +15 points.
 - **Rule applied.** Nothing was tuned. G2–G5 pass, so the candidate stays on
-  the branch (commit 45e54f2), together with the info text. The owner
+  the branch (commit 45e54f2), together with the info text. The user
   decides whether to adopt it.
 
 ### Speech: T1 and T2 pass
@@ -511,7 +514,7 @@ Every render point (25 ms) and every tick:
   Before, a noisy pause read "no voice right now". Not changed here; see
   below.
 
-### For the owner's decision (nothing below was tried)
+### For the user's decision (nothing below was tried)
 
 - **Adopt as is.** This overrides G1: the streak fix and the noisy-pause
   thumb, at the cost above. The after-speech figures are the ones that

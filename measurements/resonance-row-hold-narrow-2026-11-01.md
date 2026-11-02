@@ -8,7 +8,7 @@ noise floor) passed its speech targets and failed its noise guard, and
 [resonance-phone-vs-desktop-2026-10-28.md](resonance-phone-vs-desktop-2026-10-28.md)
 §5 (the onset blink and the noisy-pause dropout).
 
-Owner decision 2026-11-01: "Try a narrower version in a new measured round"
+User decision 2026-11-01: "Try a narrower version in a new measured round"
 (instead of adopting C1 or reverting it).
 
 **Status (2026-11-02):** K4 (`createVoiceHoldRef`) is wired into
@@ -20,6 +20,9 @@ voice steps) ran on 2026-11-01; see the status block of
 Local folder paths in this note were replaced by placeholders the same day
 (Review and fixes, "Local folder paths"). Also on 2026-11-02: K4 checked by
 hand on a Pixel phone, and two display-text changes ("After the round").
+Wording only, 2026-11-02: "owner" was replaced by "user" in this note,
+including three lines of the pre-registered plan (§1, §3.1 and §3.6); no
+target, guard, rule or number changed. The plan as committed is 8ab1703.
 
 ## Plan (pre-registered, 2026-11-01, before any result)
 
@@ -62,7 +65,7 @@ Two critics reviewed the draft; §13 lists every finding and what was done.
   replaces only "idle", and keeps "idle" where the held state would be
   "warming".
 - **Hard rule 3.** These files are not on its list. This round is
-  pre-registered by the owner's decision.
+  pre-registered by user decision.
 
 ### 2. Arms
 
@@ -157,7 +160,7 @@ A held tick is not idle, so it does not clear the trail.
   and the start-relative words.
 - A held noisy pause therefore reads like a live position where BASE read
   "no voice right now".
-- Adding "(last reading)" stays a separate owner decision. It is not part
+- Adding "(last reading)" stays a separate user decision. It is not part
   of this round.
 
 **Parameter count** (for F8's last tie-break): every number a candidate's
@@ -290,7 +293,7 @@ return (t - lastNI <= 700 && t - lastQ <= 6000) || t <= holdUntil;
 
 #### 3.6 K5 QP: hold while the pause stays quieter than the speech before it
 
-This is the owner's second example, taken literally. It holds while the
+This is the user's second example, taken literally. It holds while the
 pause's level stays at least 8 dB below the median of the shown voice of
 the last 2 s.
 
@@ -2054,7 +2057,7 @@ also passed G5 with the final text. No PR and no merge.
     points pooled in the same cells, and up to +69 on one clip.
 - **Unchanged:** the pitch column, the hook, every u and the recorded
   sessions. Screen readers still read a held pause like a live position;
-  adding "(last reading)" stays a separate owner decision. *(2026-11-02:
+  adding "(last reading)" stays a separate user decision. *(2026-11-02:
   decided and built — see "After the round".)*
 
 **What the confirmation does not cover:**

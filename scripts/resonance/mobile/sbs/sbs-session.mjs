@@ -1,8 +1,8 @@
 // sbs-session.mjs — the phone-vs-headset session: drives the Pixel (ADB + CDP)
-// and the desktop Chrome with the Maxwell (attach to the owner's debug Chrome)
+// and the desktop Chrome with the Maxwell (attach to the user's debug Chrome)
 // at once, both with the page logger (sbs-logger.mjs), syncs both clocks with
 // repeated minimum-round-trip probes at the start and the end, and cues the
-// owner step by step in this terminal (step names + countdowns). Every step's
+// user step by step in this terminal (step names + countdowns). Every step's
 // start / end (PC clock) goes into session.json for sbs-analyze.mjs.
 //
 //   node scripts/resonance/mobile/sbs/sbs-session.mjs
@@ -20,7 +20,7 @@
 //
 // Output: <out>/<ISO time>[-tag]/{session.json, phone/, desktop/} — each
 // device folder: log.jsonl, pcm.f32 + pcm.jsonl, clock.jsonl, meta.json (+ the
-// phone's dumpsys snapshots). The owner's voice is in these files: they stay
+// phone's dumpsys snapshots). The user's voice is in these files: they stay
 // in the gitignored build/ folder and are never committed (CLAUDE.md
 // §Private session data).
 import path from "node:path";

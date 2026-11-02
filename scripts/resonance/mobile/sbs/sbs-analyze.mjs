@@ -30,7 +30,7 @@
 //
 // "a" is the device under test (the Pixel), "b" the reference (the Maxwell
 // boom on the desktop). Everything is written to <out>/analysis.json and
-// analysis.md inside the (gitignored) run folder: it describes the owner's
+// analysis.md inside the (gitignored) run folder: it describes the user's
 // own voice in parts, so it stays out of the repo. Results that may go into a
 // public note: the test-sound response, its prediction on the public readers
 // and the device diagnostics; the own-voice parts (holds, tries, placements,
@@ -438,7 +438,7 @@ export function probeDisplay(S, D, occ) {
     return { durS: z.e - z.s, floorDb: r2(median(fl)), found: !!p, pauseS: p ? r2(p.b - p.a) : null, ...(g ?? {}), goneFrac: g ? r2(g.goneFrac) : null };
   });
 }
-/** The cued "pauseN-quiet" steps (3 s of silence after a sentence): the actual pause found around the cue (the owner may start early or late). */
+/** The cued "pauseN-quiet" steps (3 s of silence after a sentence): the actual pause found around the cue (the user may start early or late). */
 export function cuedSilences(D, steps) {
   const { tl, valueAt } = resTimeline(D);
   const w = devWallOfPc(D.clock), vct = gatedVoicedCts(D);

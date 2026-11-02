@@ -2,7 +2,7 @@
 // client, the recorder (pulls the page logger's rows and PCM every second
 // into a run folder, min-round-trip clock sync), and three ways to get a page
 // with the logger in it:
-//   desktopAttach  the owner's Chrome started with --remote-debugging-port
+//   desktopAttach  the user's Chrome started with --remote-debugging-port
 //                  (9223) and its own --user-data-dir: opens ITS OWN window
 //                  (Target.createTarget newWindow) and closes only that target;
 //   desktopSpawn   a fresh Chrome (unique --user-data-dir, fake mic = a WAV):
@@ -244,7 +244,7 @@ export async function heardAsOff(cdp) {
   for (let i = 0; i < 120; i++) { try { if (await cdp.eval("!!window.__sbs && !!document.querySelector('#root > *')", 5000)) return; } catch { /* reloading */ } await sleep(250); }
 }
 
-// ---------------------------------------------------------------- desktop: attach to the owner's Chrome
+// ---------------------------------------------------------------- desktop: attach to the user's Chrome
 /** Best-effort download cap for a page (the app's models on first use; the PC's ~100 MB/s rule). Applies to the page target. */
 async function capDownloads(cdp, mbps, log) {
   try { await cdp.send("Network.enable"); await cdp.send("Network.emulateNetworkConditions", { offline: false, latency: 0, downloadThroughput: mbps * 1024 * 1024, uploadThroughput: -1 }); }

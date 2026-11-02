@@ -324,7 +324,7 @@ console.log("\nrow states");
   }
 }
 
-// The resonance row's hold (owner decision 2026-10-28; measurements/
+// The resonance row's hold (user decision 2026-10-28; measurements/
 // resonance-row-hold-2026-10-28.md): up to 5 s after the strip last saw
 // shown voice the row keeps its position (dimmed) whatever the pause's noise
 // floor, so pauses and the onset blink no longer clear its trail. A replay of
