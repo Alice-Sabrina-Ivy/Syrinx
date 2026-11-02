@@ -21,6 +21,7 @@ import {
 import { createGateState, evaluateFrameGate } from "./pitchGate";
 import { createPaintGate, EXCURSION_SEMI } from "./pitchPaintGate";
 import { createSteadinessTracker } from "./steadiness";
+import { createHnrReadout } from "./hnrReadout";
 import { pitchLevelAt } from "../utils/pitchLevel";
 import { createCaptureSource } from "./captureSource";
 import {
@@ -253,6 +254,9 @@ export function useAudioPipeline() {
   // DSP frame by handleAnalysisResult (published on the throttled state
   // cadence). Fresh per start().
   const steadinessRef = useRef(null);
+  // HNR readout (hnrReadout.js): median of the voiced frames' fresh HNR
+  // over the last 3 s — display only. Reset on stop and after silence.
+  const hnrReadoutRef = useRef(createHnrReadout());
   // Periodic AudioContext state sampler interval — set up in start(),
   // cleared in stop(). Diag-mode-only; the ref stays null in production.
   const ctxSamplerRef = useRef(null);
@@ -400,6 +404,7 @@ export function useAudioPipeline() {
     startingRef.current = true;
 
     steadinessRef.current = createSteadinessTracker();
+    hnrReadoutRef.current.reset();
     pitchOnlyRef.current.reset();
 
     setState((s) => ({ ...s, status: "requesting", error: null }));
@@ -1103,6 +1108,7 @@ export function useAudioPipeline() {
     genderStateRef.current = null;
     dspGateRef.current = { voiced: false, holding: false };
     steadinessRef.current = null;
+    hnrReadoutRef.current.reset();
     setState((s) => ({
       ...s,
       status: "idle",
@@ -1399,6 +1405,7 @@ export function useAudioPipeline() {
         f2SmoothRef.current = [];
         f3SmoothRef.current = [];
         paintGateRef.current.reset();
+        hnrReadoutRef.current.reset();
         throttledSetState((s) => ({
           ...s,
           voiced: false,
@@ -1583,6 +1590,12 @@ export function useAudioPipeline() {
     // Use new values when provided, otherwise hold previous
     const currentTilt = spectralTilt ?? lastVoicedRef.current.spectralTilt;
     const currentHnr = hnr ?? lastVoicedRef.current.hnr;
+    // HNR readout (display only; recorded frames keep currentHnr): the
+    // median of the voiced frames' fresh HNR over the last 3 s, as the
+    // session statistics count only voiced frames; with none, the last
+    // value the readout showed (hnrReadout.js, 2026-11-02).
+    hnrReadoutRef.current.push(now, hnr, hasPitch && !vadHide);
+    const readoutHnr = hnrReadoutRef.current.value(now) ?? lastVoicedRef.current.shownHnr;
 
     // Save as last voiced values (for hold behavior). On pitchless frames
     // the measured fields (formants/tilt/HNR) still update, but the last
@@ -1594,8 +1607,8 @@ export function useAudioPipeline() {
       formants: smoothedFormants,
       spectralTilt: currentTilt,
       hnr: currentHnr,
-      // The readout below shows currentHnr unless the gate hides this frame.
-      shownHnr: vadHide ? lastVoicedRef.current.shownHnr : currentHnr,
+      // The readout below shows readoutHnr unless the gate hides this frame.
+      shownHnr: vadHide ? lastVoicedRef.current.shownHnr : readoutHnr,
     };
 
     // Notify frame callback (session recording) with smoothed values.
@@ -1648,7 +1661,7 @@ export function useAudioPipeline() {
       spectralTilt: currentTilt,
       // Voice gate: HNR readout "—" while the gate hides (display only; the
       // recorded frame above keeps the measured value).
-      hnr: vadHide ? null : currentHnr,
+      hnr: vadHide ? null : readoutHnr,
     }));
   }
 

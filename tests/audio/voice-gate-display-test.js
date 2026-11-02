@@ -216,8 +216,9 @@ console.log("\nsilence after speech: the 5 s silence hold is unchanged");
   // speech's 12 when the noise starts after the pitch hold ended (the held
   // pitch shows too); "—" when the noise follows the speech at once (the
   // 400 ms pitch hold paints into the noise, the gate hides that, so the
-  // pitch readout shows "—" as well). The ungated app holds the noise's 3
-  // there (the case is real). Review finding 2026-10-21.
+  // pitch readout shows "—" as well). Until 2026-11-02 the ungated app held
+  // the noise's 3 there (review finding 2026-10-21); since the HNR readout
+  // counts only voiced frames (hnrReadout.js) it no longer does either.
   const ALONE = [...rep("l", 40, false, 3), ...rep("q", 40, false, 3)];
   const AFTER = [...rep(205, 60, true, 12), ...rep("l", 20, true, 12), ...rep("l", 40, false, 3), ...rep("q", 40, false, 3)];
   const AT_ONCE = [...rep(205, 60, true, 12), ...rep("l", 40, false, 3), ...rep("q", 40, false, 3)];
@@ -239,8 +240,8 @@ console.log("\nsilence after speech: the 5 s silence hold is unchanged");
       g.out.map((o, i) => (!q[i] || o.hnr === want ? "" : `${i}:${o.hnr}`)).filter(String).slice(0, 6).join(","));
     check(`hidden unpainted noise (${name}): the held pitch readout agrees (${wantPitch === null ? "—" : wantPitch})`,
       g.out.every((o, i) => !q[i] || (wantPitch === null ? o.pitch === null : Math.round(o.pitch) === wantPitch)));
-    check(`hidden unpainted noise (${name}): the ungated app holds the noise's HNR there (the case is real)`,
-      b.out.filter((o, i) => q[i] && o.hnr === 3).length === 38);
+    check(`hidden unpainted noise (${name}): the ungated app no longer shows the noise's HNR 3 either (voiced frames only, 2026-11-02)`,
+      b.out.every((o, i) => !(n[i] || q[i]) || o.hnr !== 3));
     check(`hidden unpainted noise (${name}): recorded hnr unchanged (display only)`, g.rec.every((r, i) => r.hnr === b.rec[i].hnr));
   }
 }
