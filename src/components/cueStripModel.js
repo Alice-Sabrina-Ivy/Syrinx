@@ -570,11 +570,18 @@ function bandWords(u, ref) {
 // A header that already ends a sentence ("finding your start…") gets no
 // extra period (2026-10-07 UX review: "…." read aloud).
 const sentence = (t) => (/[.…!?]$/.test(t) ? t : `${t}.`);
+// "holding" = the dimmed thumb kept through a pause (pitch: the hook's 5 s
+// silence hold or a brief dropout; resonance: the same, or the row's own
+// hold, createVoiceHoldRef): the summary says it is the last reading, so a
+// screen reader does not hear a held position as a live one (2026-11-02
+// decision; screen-reader text only — the visible words are unchanged).
+const LAST_READING = "last reading";
 export function cueSummary(cue, { state, direction = null, pitchLevel = null, snap = null, vtlnRef = null } = {}) {
+  const held = state === "holding";
   if (cue === "pitch") {
     if (state === "idle" || pitchLevel == null) return "Pitch: no voice right now.";
     const t = pitchTargetFor(direction);
-    const hz = `Pitch level ${Math.round(pitchLevel)} Hz`;
+    const hz = `Pitch level ${Math.round(pitchLevel)} Hz${held ? ` (${LAST_READING})` : ""}`;
     if (!t) return `${hz}.`;
     const st = pitchStatus(pitchLevel, t);
     const range = `${t.low} to ${t.high} Hz`;
@@ -587,7 +594,7 @@ export function cueSummary(cue, { state, direction = null, pitchLevel = null, sn
     if (state === "narrowband") return "Resonance (approximate): paused, phone-quality audio — the sound is cut off above about 4 kHz. Pitch still works.";
     if (state !== "live" && state !== "holding") return `Resonance (approximate): ${resonanceHeader(state, snap)}`;
     const w = bandWords(snap?.u, vtlnRef);
-    return sentence(`Resonance (approximate)${w ? `: ${w}` : ""}, ${resonanceHeader(state, snap)}`);
+    return sentence(`Resonance (approximate${held ? `, ${LAST_READING}` : ""})${w ? `: ${w}` : ""}, ${resonanceHeader(state, snap)}`);
   }
   // Any other cue (the hidden clarity row, an unknown name): no sentence,
   // matching rowValue — a future row must add its own branch.

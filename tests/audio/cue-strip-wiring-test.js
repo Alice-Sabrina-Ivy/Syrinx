@@ -88,5 +88,33 @@ check("the render passes the latest tick's hold", ik.includes("resonanceHold") &
 check("the caption's \"ever spoke\" flag follows pitchVoiced", /if \(p\.pitchVoiced\) ever = true/.test(src) && !/p\.voiced\b/.test(src));
 check("the caption text follows pitchVoiced", /view\.everVoiced \|\| pitchVoiced \?/.test(src));
 
+// The screen-reader summaries (cueSummary; their words are checked in
+// cue-strip-model-test.js) take each row's shown state from the tick's own
+// cueRowStates call, hold included, so a held row is read as the last
+// reading (2026-11-02 decision).
+check("the 1 Hz summaries take each row's state from the tick's cueRowStates (hold included)",
+  /const states = cueRowStates\(\{ \.\.\.inputs, hasRef: !!ref \}\);/.test(src)
+  && /pitch: cueSummary\("pitch", \{ state: states\.pitch,/.test(src)
+  && /resonance: cueSummary\("resonance", \{ state: states\.resonance,/.test(src));
+
+// The resonance info popover (2026-11-02 decision): the microphone point is
+// ONE sentence (it was two in a row: "Your microphone, room and distance
+// shift the whole scale, so trust …" then "Readings depend on the microphone
+// and how you hold or wear it, so compare yourself on one device, held or
+// worn the same way.").
+{
+  const m = src.replace(/\r\n/g, "\n").match(/const RESONANCE_INFO =\n((?:\s*"(?:[^"\\\n]|\\.)*"\s*\+?)+);/);
+  const info = m ? [...m[1].matchAll(/"((?:[^"\\\n]|\\.)*)"/g)].map((x) => x[1]).join("") : "";
+  const MIC = "Your microphone, how you hold or wear it, the room and distance all shift the whole scale, so compare yourself " +
+    "on one device used the same way, and trust how the marker moves more than where it sits.";
+  check("the resonance info text is found", info.length > 500, `${info.length} chars`);
+  check("the resonance info says the microphone point once, in one sentence", info.split(MIC).length === 2, info);
+  check("the two old microphone sentences are gone",
+    !/Readings depend on/.test(info) && !/held or worn/.test(info) && (info.match(/whole scale/g) ?? []).length === 1
+    && (info.match(/hold or wear/g) ?? []).length === 1);
+  check("the sentences before and after it are unchanged",
+    info.includes(`readings land outside their band about 1 time in 5. ${MIC} What you say moves it too, so judge a change over tens of seconds, not sentence by sentence.`));
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);

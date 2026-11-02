@@ -294,6 +294,34 @@ console.log("\nrow states");
     && cueSummary("weight", { state: "live", snap: snap({ u: 0.52, startU: 0.1 }), vtlnRef: REF }) === null);
   check("screen-reader: no '….' after a header that ends in an ellipsis",
     cueSummary("resonance", { state: "live", snap: snap({ u: 0.52, startU: null }), vtlnRef: REF }) === "Resonance (approximate): between the typical men's and women's bands, finding your start…");
+  // A held position (the dimmed thumb kept through a pause) is read as the
+  // last reading, never as a live one (2026-11-02 decision); the visible
+  // words stay those of the live row.
+  check("screen-reader: a held pitch level is the last reading",
+    cueSummary("pitch", { state: "holding", direction: "feminine", pitchLevel: 168 }) === "Pitch level 168 Hz (last reading), on target (165 to 255 Hz)."
+    && cueSummary("pitch", { state: "holding", direction: "masculine", pitchLevel: 180 }) === "Pitch level 180 Hz (last reading), above your target 85 to 155 Hz."
+    && cueSummary("pitch", { state: "holding", direction: "masculine", pitchLevel: 80 }) === "Pitch level 80 Hz (last reading), below your target 85 to 155 Hz."
+    && cueSummary("pitch", { state: "holding", direction: null, pitchLevel: 180 }) === "Pitch level 180 Hz (last reading)."
+    && cueSummary("pitch", { state: "holding", direction: "feminine", pitchLevel: null }) === "Pitch: no voice right now.");
+  check("screen-reader: the pitch row's silence hold (pitchHolding, level kept) reads as the last reading",
+    cueSummary("pitch", { state: C({ pitchVoiced: false, pitchHolding: true, pitchLevel: 200 }).pitch, direction: "feminine", pitchLevel: 200 })
+      === "Pitch level 200 Hz (last reading), on target (165 to 255 Hz).");
+  check("screen-reader: a held resonance position is the last reading",
+    cueSummary("resonance", { state: "holding", snap: snap({ u: 0.52, startU: 0.1 }), vtlnRef: REF }) === "Resonance (approximate, last reading): between the typical men's and women's bands, brighter than your start."
+    && cueSummary("resonance", { state: "holding", snap: snap({ u: 0.52, startU: null }), vtlnRef: REF }) === "Resonance (approximate, last reading): between the typical men's and women's bands, finding your start…"
+    && cueSummary("resonance", { state: C({ pitchVoiced: false, pitchHolding: true, snap: snap({ u: 0.52, startU: 0.1 }) }).resonance, snap: snap({ u: 0.52, startU: 0.1 }), vtlnRef: REF })
+      === "Resonance (approximate, last reading): between the typical men's and women's bands, brighter than your start.");
+  check("held rows: the visible header stays the live one (screen-reader text only)",
+    resonanceHeader("holding", snap({ u: 0.52, startU: 0.1 })) === resonanceHeader("live", snap({ u: 0.52, startU: 0.1 }))
+    && resonanceHeader("holding", snap({ u: 0.52, startU: 0.1 })) === "brighter than your start");
+  {
+    const rStates = ["starting", "restarting", "reload", "unavailable", "paused", "narrowband", "idle", "sustained", "warming", "settling", "live"];
+    const said = [
+      ...rStates.map((state) => cueSummary("resonance", { state, snap: snap({ u: 0.52, startU: 0.1, narrowband: state === "narrowband" ? { on: true, decided: true } : undefined }), vtlnRef: REF })),
+      ...["idle", "live"].map((state) => cueSummary("pitch", { state, direction: "feminine", pitchLevel: 200 })),
+    ];
+    check("screen-reader: no state but holding says 'last reading'", said.every((s) => !/last reading/.test(s)), said.filter((s) => /last reading/.test(s)).join(" | "));
+  }
 }
 
 // The resonance row's hold (owner decision 2026-10-28; measurements/
@@ -346,9 +374,13 @@ console.log("\nresonance row hold");
     }
     check(`the hold changes the resonance row only where it would be idle, never the pitch row (${n} input sets)`, same);
   }
+  // The row's own hold reads as the quiet-pause hold: the position, said to
+  // be the last reading (2026-11-02 decision; until then it read as live).
   check("summary and header while held read as in a quiet pause",
     cueSummary("resonance", { state: C({ resonanceHold: true, snap: snap({ u: 0.52, startU: 0.1 }) }).resonance, snap: snap({ u: 0.52, startU: 0.1 }), vtlnRef: REF })
-      === "Resonance (approximate): between the typical men's and women's bands, brighter than your start."
+      === "Resonance (approximate, last reading): between the typical men's and women's bands, brighter than your start."
+    && cueSummary("resonance", { state: C({ resonanceHold: true, snap: snap({ u: 0.52, startU: 0.1 }) }).resonance, snap: snap({ u: 0.52, startU: 0.1 }), vtlnRef: REF })
+      === cueSummary("resonance", { state: C({ pitchHolding: true, snap: snap({ u: 0.52, startU: 0.1 }) }).resonance, snap: snap({ u: 0.52, startU: 0.1 }), vtlnRef: REF })
     && resonanceHeader("holding", snap({ u: 0.3, startU: 0.7 })) === "darker than your start");
 
   // The strip over time: the CueStrip tick (hold, states, trails), one frame
