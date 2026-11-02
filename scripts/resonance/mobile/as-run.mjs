@@ -52,6 +52,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+const CACHE = path.resolve(repo, "..", "Syrinx-cache"); // the local data cache beside the repo (outside it; not published)
 const arg = (k, d) => (process.argv.find((a) => a.startsWith(`--${k}=`)) ?? `=${d}`).split("=").slice(1).join("=");
 const { pitchPass, binsPass, pitchStats, voicedHopRms, SR, CH } = await import("./chain.mjs");
 const { applyPert, activeLevelDb } = await import("./perturb.mjs");
@@ -63,12 +64,12 @@ export const AS = Object.freeze({ speechDbfs: -32, cutFromS: 25.0, cutToS: 30.0,
 const SETS = {
   dev: {
     readers: "build/resonance-mobile/streams/readers-dev.json",
-    list: "scripts/resonance/mobile/hold-noise-list.json", root: "C:/Coding Projects/Syrinx-cache/noise-real",
+    list: "scripts/resonance/mobile/hold-noise-list.json", root: path.join(CACHE, "noise-real"),
     ft: { list: "build/resonance-mobile/narrow/ft-clips/ft-list.json", root: "build/resonance-mobile/narrow/ft-clips" },
   },
   fresh: {
     readers: null, // --readers (the confirmation readers' faster-streams list)
-    list: "scripts/resonance/mobile/narrow-noise-list.json", root: "C:/Coding Projects/Syrinx-cache/noise-real-narrow",
+    list: "scripts/resonance/mobile/narrow-noise-list.json", root: path.join(CACHE, "noise-real-narrow"),
     ft: null,
   },
 };

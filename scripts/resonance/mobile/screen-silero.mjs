@@ -6,14 +6,15 @@
 //
 //   node scripts/resonance/mobile/screen-silero.mjs --set=dev|fresh
 //        [--list=<clip list json>] [--root=<folder holding clips/<id>.wav>]
-//        [--model=C:/Coding Projects/Syrinx-cache/models/silero/silero_vad.onnx]
+//        [--model=<onnx file; default ../Syrinx-cache/models/silero/silero_vad.onnx beside the repo>]
 //        [--out=scripts/resonance/mobile/narrow-screen.json] [--replace]
 //        [--only=<id,id,...>]   (prints only; never writes --out)
 //
 // Defaults per set: dev = scripts/resonance/mobile/hold-noise-list.json with
-// clips under C:/Coding Projects/Syrinx-cache/noise-real; fresh =
+// clips under ../Syrinx-cache/noise-real; fresh =
 // scripts/resonance/mobile/narrow-noise-list.json with clips under
-// C:/Coding Projects/Syrinx-cache/noise-real-narrow. Clip i is read from
+// ../Syrinx-cache/noise-real-narrow (the local data cache beside the repo,
+// outside it). Clip i is read from
 // <root>/clips/<id>.wav (as hold-noise-run.mjs).
 //
 // What runs (plan §6, fixed before any result):
@@ -52,6 +53,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+const CACHE = path.resolve(repo, "..", "Syrinx-cache"); // the local data cache beside the repo (outside it; not published)
 const arg = (k, d) => (process.argv.find((a) => a.startsWith(`--${k}=`)) ?? `=${d}`).split("=").slice(1).join("=");
 const imp = (p) => import(pathToFileURL(path.join(repo, p)).href);
 const sha256 = (buf) => createHash("sha256").update(buf).digest("hex");
@@ -187,8 +189,8 @@ if (process.argv[1] && path.resolve(process.argv[1]).toLowerCase() === fileURLTo
   const set = arg("set", "");
   if (!["dev", "fresh"].includes(set)) throw new Error("--set=dev|fresh");
   const listPath = path.resolve(repo, arg("list", set === "dev" ? "scripts/resonance/mobile/hold-noise-list.json" : "scripts/resonance/mobile/narrow-noise-list.json"));
-  const root = arg("root", set === "dev" ? "C:/Coding Projects/Syrinx-cache/noise-real" : "C:/Coding Projects/Syrinx-cache/noise-real-narrow");
-  const modelPath = arg("model", "C:/Coding Projects/Syrinx-cache/models/silero/silero_vad.onnx");
+  const root = arg("root", path.join(CACHE, set === "dev" ? "noise-real" : "noise-real-narrow"));
+  const modelPath = arg("model", path.join(CACHE, "models", "silero", "silero_vad.onnx"));
   const outPath = path.resolve(repo, arg("out", "scripts/resonance/mobile/narrow-screen.json"));
   const only = arg("only", "").split(",").filter(Boolean);
   const replace = process.argv.includes("--replace");

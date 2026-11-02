@@ -10,8 +10,9 @@
 //
 // One-time: start the debug Chrome (your normal Chrome can stay open: its own
 // --user-data-dir makes it a separate browser) with
-//   & "C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9223 --user-data-dir="C:\temp\chrome-debug-profile"
-// and pick the Maxwell as the microphone in that profile (chrome://settings/content/microphone).
+//   & "C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9223 --user-data-dir="$env:TEMP\chrome-debug-profile"
+// (any folder outside your normal Chrome profile; reuse the same one so the microphone choice
+// is kept) and pick the Maxwell as the microphone in that profile (chrome://settings/content/microphone).
 // Recording stops after --duration s or on Enter.
 import { runSession, deviceSpecsFrom, argOf } from "./sbs-session.mjs";
 

@@ -3,7 +3,7 @@
 # §5.3; the plan's `narrow-noise-fetch.py`), built from hold-noise-fetch.py.
 #
 #   python -P scripts/resonance/mobile/narrow-confirm-noise-fetch.py
-#          [--root=C:/Coding Projects/Syrinx-cache/noise-real-narrow]
+#          [--root=<folder; default ../Syrinx-cache/noise-real-narrow beside the repo>]
 #          [--list=scripts/resonance/mobile/narrow-confirm-noise-list.json] [--rate=60]
 #          [--ext1=talker|speech-free|both] [--ext2=talker|speech-free|both]
 #
@@ -56,7 +56,14 @@ import numpy as np, soundfile as sf, requests
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, "../../.."))
 A = dict((a[2:].split("=", 1) + ["1"])[:2] for a in sys.argv[1:] if a.startswith("--"))
-ROOT = A.get("root", "C:/Coding Projects/Syrinx-cache/noise-real-narrow")
+CACHE = os.path.normpath(os.path.join(REPO, "..", "Syrinx-cache"))  # the local data cache beside the repo (outside it; not published)
+ROOT = A.get("root", os.path.join(CACHE, "noise-real-narrow"))
+def shown_root(p):
+    """--root as written to the committed list: relative to the repo, so the list names no local folder."""
+    try:
+        return os.path.relpath(p, REPO).replace("\\", "/")
+    except ValueError:   # another drive: only the folder name
+        return os.path.basename(os.path.normpath(p))
 LIST = os.path.join(REPO, A.get("list", "scripts/resonance/mobile/narrow-confirm-noise-list.json"))
 DEV_LIST = os.path.join(REPO, "scripts/resonance/mobile/hold-noise-list.json")
 RATE = float(A.get("rate", "60")) * 1e6
@@ -417,7 +424,7 @@ out = {
             "Clips: 60 s, mono PCM16 WAV at the source rate, under --root (outside the repo); no audio is committed. "
             "Made by scripts/resonance/mobile/narrow-confirm-noise-fetch.py. Classes from screen-silero.mjs --set=fresh (screen*).",
     "fetched": time.strftime("%Y-%m-%d"),
-    "root": ROOT.replace("\\", "/"),
+    "root": shown_root(ROOT),
     "extensions": {"ext1": EXT1 or None, "ext2": EXT2 or None},
     "devExclusions": {"list": "scripts/resonance/mobile/hold-noise-list.json", "freesoundIds": len(DEV_IDS), "uploaders": len(DEV_USERS)},
     "demand": demand_meta,

@@ -9,7 +9,16 @@ noise floor) passed its speech targets and failed its noise guard, and
 §5 (the onset blink and the noisy-pause dropout).
 
 Owner decision 2026-11-01: "Try a narrower version in a new measured round"
-(instead of adopting C1 or reverting it). On the branch only: no PR, no merge.
+(instead of adopting C1 or reverting it).
+
+**Status (2026-11-02):** K4 (`createVoiceHoldRef`) is wired into
+`CueStrip.jsx` on this branch and proposed for `main` with the rest of the
+branch. The phone / headset investigation behind this round is paused (user
+decision 2026-11-02). One side-by-side session with the test sound only (no
+voice steps) ran on 2026-11-01; see the status block of
+[resonance-phone-vs-desktop-2026-10-28.md](resonance-phone-vs-desktop-2026-10-28.md).
+Local folder paths in this note were replaced by placeholders the same day
+(Review and fixes, "Local folder paths").
 
 ## Plan (pre-registered, 2026-11-01, before any result)
 
@@ -640,9 +649,8 @@ about a day. stats4–stats7 had printed to the console only; on 2026-11-01
 they were re-run unchanged (descriptive, BASE records only) with their
 output written to `stats4-out.md` … `stats7-out.md`. All three folders,
 with `ticks.json` (feat.mjs's BASE tick features, the input of every stats
-script), are copied to
-`C:/Coding Projects/_oneshot/resonance-hold-narrow/seen/` (outside the
-repo). Its `MANIFEST.sha256` (36 files; Appendix A) has sha256
+script), are copied to a local folder outside the repo (`seen/`; not
+published). Its `MANIFEST.sha256` (36 files; Appendix A) has sha256
 `9970da018fb5528c13db0d04653f758f18d8baa3b4c840d02620974d41b8c568`.
 
 Their throttle replay reproduced the C1 note's BASE pause figures exactly.
@@ -730,13 +738,13 @@ step 4 (§10).
 - `https://www.openslr.org/resources/12/train-clean-100.tar.gz` (6.39 GB;
   mirror openslr.elda.org), one connection, a token bucket at 60 MB/s,
   downloaded in full to
-  `C:/Coding Projects/Syrinx-cache/resonance-lab/data/train-clean-100.tar.gz`;
+  `../Syrinx-cache/resonance-lab/data/train-clean-100.tar.gz`;
 - its MD5 checked against the same folder's `md5sum.txt` **before any
   member is extracted**; a mismatch deletes the download and stops;
 - extracted in one pass, only `LibriSpeech/train-clean-100/<id>/` for the
   first 8 readers of each sex — men 26, 27, 60, 78, 118, 163, 196, 201;
   women 19, 32, 39, 40, 83, 87, 89, 103 — into
-  `C:/Coding Projects/Syrinx-cache/resonance-lab/data/LibriSpeech/`
+  `../Syrinx-cache/resonance-lab/data/LibriSpeech/`
   (outside the repo);
 - the archive is kept until the 12 readers are fixed. If fewer than 6 of a
   sex's 8 pass the 54 s / 150 s rule, that sex's next readers by id are
@@ -755,7 +763,7 @@ step 4 (§10).
 #### 5.3 Confirmation real noise: fresh
 
 At least 100 clips of 60 s, under
-`C:/Coding Projects/Syrinx-cache/noise-real-narrow/` (outside the repo). The
+`../Syrinx-cache/noise-real-narrow/` (outside the repo). The
 committed list holds per clip the id, URL, licence, sha256 of the download
 and of the clip, uploader, subclass and query; and per cached search page
 its URL, sha256 and fetch time.
@@ -895,7 +903,7 @@ It is independent of the app's own detector (FireRedVAD).
 - **Model.** Silero VAD v6.2.3, the repo's speech-detector model. It comes
   from the pinned URL `SPEECH_DETECTOR.modelUrl` and is checked against
   `modelSha256`, then stored in
-  `C:/Coding Projects/Syrinx-cache/models/silero/`.
+  `../Syrinx-cache/models/silero/`.
 - **Run offline** through `scripts/heard-as/chain.mjs` `loadSpeechDetector`:
   onnxruntime-web WASM, 1 thread, `createSpeechFramer` +
   `createSileroRunner`, fresh state per clip.
@@ -1213,7 +1221,7 @@ G-FT is the only added requirement, and it is stricter.
 |---|---|---|
 | 1.1 (high) | The per-clip +15 bar mixed pooled and own-clip BASE. | §7 / §9: per clip = candidate − the same clip's BASE, in that clip's own window, unrounded; fails if > 15.00. Pooled BASE only for the pooled bars. |
 | 1.2 (high) | The fresh speech-free family dropped dev's machine classes, and the synth / glitch / game / designed rule matched clips C1's results singled out. | §5.3: dev's six Freesound classes with dev's queries, order and caps come first; the new subclasses follow at smaller caps (speech-free 102, as dev's metadata speech-free count); the filters are dev's. The data-quality words only mark clips; the guards without them are information. The composition is stated as fixed after C1's per-class results. |
-| 1.3 (medium) | The seen record left out the compared alternatives; evidence in a scratchpad. | §5.1 names every alternative and says dev is in-sample. stats4–7 re-run unchanged to files; everything copied to `_oneshot` with a sha256 manifest (Appendix A); the desc4 sentence corrected (its output was in a file). |
+| 1.3 (medium) | The seen record left out the compared alternatives; evidence in a scratchpad. | §5.1 names every alternative and says dev is in-sample. stats4–7 re-run unchanged to files; everything copied to a local folder outside the repo with a sha256 manifest (Appendix A); the desc4 sentence corrected (its output was in a file). |
 | 1.4 (medium) | Nothing frozen before the first replay. | §10 step 2: a freeze commit (factories, tests, scripts, dev screen, dev pairing) before any K replay; hashes in the note and checked by every replay (§4.4). |
 | 1.5 (medium) | Fetch rules open (end state, caps, URL, rejected sounds, filter order). | §5.3: pinned and verified URL with a pin check, pages 1–3 then extension 1 (caps +50 %, pages 1–5, redo from the start), extension 2 (reserve queries), terminal STOP; rejected sounds stay eligible (dev behaviour); filter order written out; page sha256s and fetch times committed. |
 | 1.6 (medium) | Confirmation runners print BASE summaries early. | §10 step 4 quiet rule; `--quiet` on `chain.mjs`, `hold-noise-run.mjs`, `pause-row.mjs`, `as-run.mjs`, `QUIET=1` in `pause-queue.sh`. |
@@ -1238,8 +1246,8 @@ G-FT is the only added requirement, and it is stricter.
 
 ## Appendix A: seen evidence manifest
 
-`C:/Coding Projects/_oneshot/resonance-hold-narrow/seen/MANIFEST.sha256`
-(sha256 of the manifest file:
+`seen/MANIFEST.sha256`, in the local folder of §5.1 (not published;
+sha256 of the manifest file:
 `9970da018fb5528c13db0d04653f758f18d8baa3b4c840d02620974d41b8c568`):
 
 ```
@@ -1600,8 +1608,8 @@ These cover every render point and tick of all 832 streams.
   | `src/components/CombinedDashboard.jsx` | `b32d2c8b88093c11cc5f597194c14bb579eea1d8844ab4a98509cdd69908172e` (LF `5dbf7d5e16807bd39ce3016b5351925543f1e560768e10f8ebc8828300b62efa`) |
   | `tests/audio/cue-strip-wiring-test.js` | `5e163782a4fa95dfc693e00f29d0ff5e4da8b66c3a372d632f4274cffb57ec8b` |
 
-  Copies and the diff are kept outside the repo, in
-  `C:/Coding Projects/_oneshot/resonance-hold-narrow/g5-working-copy-K4/`.
+  Copies and the diff are kept in a local folder outside the repo
+  (`g5-working-copy-K4/`; not published).
   The four files were then restored to the committed state:
   `CueStrip.jsx` keeps C1 until the confirmation.
 - **Results on the working copy:**
@@ -1677,7 +1685,7 @@ K4 replaces C1 in `CueStrip.jsx` (§10 step 6, §11). On FAIL, STOP.
 ### Reproduce (dev)
 
 ```
-python -P scripts/resonance/faster-prep.py --libri="C:/Coding Projects/Syrinx-cache/resonance-lab/data" --split=dev-clean --tag=ft --n=9 --fill --out=build/resonance-mobile/narrow/ft-prep
+python -P scripts/resonance/faster-prep.py --libri="../Syrinx-cache/resonance-lab/data" --split=dev-clean --tag=ft --n=9 --fill --out=build/resonance-mobile/narrow/ft-prep
 node scripts/resonance/mobile/ft-clips.mjs
 node scripts/resonance/mobile/as-run.mjs prep --set=dev           # asBase, tCut, tLast, narrow-pairing.json
 for i in 0 1 2; do node scripts/resonance/mobile/as-run.mjs run --set=dev --shard=$i/3 & done; wait
@@ -1725,7 +1733,8 @@ bar). By §10 step 6, K4 replaces C1 in `CueStrip.jsx` on this branch.
   - The hook's hints equal the runner's (935 220 / 935 220), and every
     rebuilt stream is identical (156 / 156).
 - **Fresh real noise** (§5.3): 191 clips of 60 s
-  (`narrow-confirm-noise-list.json`, sha256 `9d59d8b3…`).
+  (`narrow-confirm-noise-list.json`, sha256 `249b7a5f…`; `9d59d8b3…` before
+  the 2026-11-02 path edit, Review and fixes).
   - The base fetch gave 163 clips with only 23 in the talker class, so
     extension 1 was applied to the talker family (caps +50 %, pages 1–5,
     redone from the start). No extension 2.
@@ -1884,8 +1893,9 @@ talker scenes (46–58 %) than on dev's (10–25 %).
 
 ### G5 with K4 wired: PASS
 
-The dev stage's working copy (`_oneshot/…/g5-working-copy-K4/wiring.diff`)
-was applied unchanged. Its four files are LF-equal to the dev G5 hashes.
+The dev stage's working copy (`g5-working-copy-K4/wiring.diff`, outside the
+repo) was applied unchanged. Its four files are LF-equal to the dev G5
+hashes.
 Then the §11 text and the comment updates were made:
 
 - **`CueStrip.jsx`:**
@@ -2047,7 +2057,8 @@ also passed G5 with the final text. No PR and no merge.
 
 **What the confirmation does not cover:**
 - a real phone or headset (the side-by-side kit, commit 7e00e59, is still
-  to be run);
+  to be run; *2026-11-02: that investigation is paused by user decision,
+  after one session with the test sound only — see the status at the top*);
 - noise louder than −40 dBFS in the pauses;
 - speech in languages other than English;
 - speech much quieter than −32 dBFS active, which brings the voice closer
@@ -2102,8 +2113,8 @@ The speech and cold-start chain and hook records came from
 `narrow-confirm-queue.sh` (3 shards), `narrow-confirm-chain.mjs noise` and
 `pause-row.mjs --quiet` (see those scripts' headers). The report is
 `build/resonance-mobile/narrow/report-fresh.{md,json}` (gitignored; sha256
-`d0039bbe…` / `31dd7e1f…`); copies are in
-`C:/Coding Projects/_oneshot/resonance-hold-narrow/confirm/`.
+`d0039bbe…` / `31dd7e1f…`); copies are kept in a local folder outside the
+repo (`confirm/`; not published).
 
 ## Review and fixes (2026-11-01)
 
@@ -2324,10 +2335,38 @@ re-run in full on the final tree:
 - `scripts/resonance-lab/lab-layout-smoke.mjs --panel=0`: 78 / 78.
 - The frozen hashes: 17 / 17 unchanged.
 
+### Local folder paths (2026-11-02)
+
+2026-11-02: local folder paths replaced by placeholders in this note,
+`resonance-row-hold-2026-10-28.md`, `narrow-confirm-noise-list.json` (its
+`root`), `narrow-confirm-readers.json` (the archive's `file`), the default
+paths and comments of `as-run.mjs`, `screen-silero.mjs`,
+`hold-noise-run.mjs`, `hold-noise-fetch.py`, `narrow-confirm-chain.mjs`,
+`narrow-confirm-noise-fetch.py`, `narrow-confirm-librispeech-fetch.py` and
+`ft-clips.mjs`, and the side-by-side kit's README and Chrome hints (no data
+change). `../Syrinx-cache/` is the local data cache beside the repo (not
+published); the scripts' defaults now resolve to it from the repo's own
+folder, the same folder as before. Local evidence copies are named by
+their folder only (`seen/`, `g5-working-copy-K4/`, `confirm/`).
+- The earlier sha256 `9d59d8b30c8c…` of `narrow-confirm-noise-list.json`
+  refers to commit fd60472. It is now `249b7a5f2f3b…`, and so is the
+  `listSha256` in `narrow-screen.json` (`sets.fresh`) and in
+  `narrow-confirm-screen.json`.
+- The screens' `scriptSha256` `cfdcbba3057c…` (also in the list's
+  `screen`) is left as recorded: it is `screen-silero.mjs` at fd60472,
+  the version that ran. The edited script differs only in comments and
+  default paths.
+- Checked after the edit: all 191 confirmation clips and all 157 dev clips
+  are found under the new default folders with their list sha256;
+  `screen-silero.mjs --set=fresh --only=fs__240634` gives the committed
+  row; the freeze check is 17 / 17.
+
 ### Still open
 
-- The phone and headset session (kit at 7e00e59), with a mid-session voice
-  level step.
+- **Paused (user decision 2026-11-02):** the phone and headset session (kit
+  at 7e00e59), with a mid-session voice level step. One session with the
+  test sound only ran on 2026-11-01 (status at the top).
 - The gate-off and no-decision paths: new chain runs with gate-off hints.
 - Screen readers still read a held pause as a live position. Adding
-  "(last reading)" is a separate owner decision.
+  "(last reading)" is a separate owner decision. *(2026-11-02: the wording
+  is being decided in a follow-up commit.)*

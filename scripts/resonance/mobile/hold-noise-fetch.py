@@ -1,7 +1,7 @@
 # hold-noise-fetch.py — the fresh public REAL-NOISE set for the resonance row
 # hold's noise-only guard (measurements/resonance-row-hold-2026-10-28.md, G1).
 #
-#   python -I scripts/resonance/mobile/hold-noise-fetch.py [--root=C:/Coding Projects/Syrinx-cache/noise-real]
+#   python -I scripts/resonance/mobile/hold-noise-fetch.py [--root=<folder; default ../Syrinx-cache/noise-real beside the repo>]
 #          [--list=scripts/resonance/mobile/hold-noise-list.json] [--only=demand|freesound] [--rate=60]
 #
 # Downloads (treated as untrusted) go to <root>/dl/<source>/; the 60 s clips
@@ -37,7 +37,8 @@ import numpy as np, soundfile as sf, requests
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, "../../.."))
 A = dict((a[2:].split("=", 1) + ["1"])[:2] for a in sys.argv[1:] if a.startswith("--"))
-ROOT = A.get("root", "C:/Coding Projects/Syrinx-cache/noise-real")
+CACHE = os.path.normpath(os.path.join(REPO, "..", "Syrinx-cache"))  # the local data cache beside the repo (outside it; not published)
+ROOT = A.get("root", os.path.join(CACHE, "noise-real"))
 LIST = os.path.join(REPO, A.get("list", "scripts/resonance/mobile/hold-noise-list.json"))
 RATE = float(A.get("rate", "60")) * 1e6  # bytes / s
 ONLY = A.get("only", "")

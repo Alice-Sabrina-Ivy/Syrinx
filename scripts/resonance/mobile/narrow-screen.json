@@ -173,7 +173,7 @@
     },
     "fresh": {
       "list": "scripts/resonance/mobile/narrow-confirm-noise-list.json",
-      "listSha256": "9d59d8b30c8c9583292e2b3f5534f0171bf8786886655c4acc2f2cf4dffebba2",
+      "listSha256": "249b7a5f2f3b0ec9611164597bb4aa4d7227587f4143d1358509e73c630bab07",
       "scriptSha256": "cfdcbba3057ca1551ca2f2d6cda163cd0109ee2722b14108633eed40d549d10f",
       "ranAt": "2026-11-02T01:37:04.611Z",
       "node": "v24.14.1",

@@ -29,8 +29,8 @@ what the app computed, and what the meter showed.
   placements, the pause floor of your own speech, the cued silences) goes to
   the private project only (CLAUDE.md §Private session data).
 
-The kit lives in `C:\Coding Projects\Syrinx-mobile` (branch
-`resonance-mobile`). Every command below runs from that folder.
+The kit is in this repo, under `scripts/resonance/mobile/sbs/` (added on
+branch `resonance-mobile`). Every command below runs from the repo root.
 
 ## One-time setup
 
@@ -38,8 +38,11 @@ The kit lives in `C:\Coding Projects\Syrinx-mobile` (branch
    with its own `--user-data-dir` this starts a separate Chrome. In PowerShell:
 
    ```powershell
-   & "C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9223 --user-data-dir="C:\temp\chrome-debug-profile"
+   & "C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9223 --user-data-dir="$env:TEMP\chrome-debug-profile"
    ```
+
+   Any folder outside your normal Chrome profile will do; use the same one
+   every time, so the microphone choice below is kept.
 
    - Check that <http://localhost:9223/json/version> answers.
    - In that Chrome, open `chrome://settings/content/microphone` and choose
@@ -68,11 +71,12 @@ The kit lives in `C:\Coding Projects\Syrinx-mobile` (branch
      `node scripts/resonance/mobile/sbs/sbs-sound.mjs`.
    - Set the volume to about a normal speaking voice at 25 cm.
    - To let this PC play the sound itself, add
-     `--play-pc="C:\Coding Projects\Syrinx-mobile\build\resonance-mobile\sbs\sound\sbs-test.wav"`
-     to the session command. **It plays through Windows' default playback
-     device**, which on this PC is currently the Maxwell. The session checks
-     the device and refuses when it is the headset. Set the PC speakers as the
-     default first (Windows Settings > System > Sound > Output).
+     `--play-pc="<repo>\build\resonance-mobile\sbs\sound\sbs-test.wav"`
+     to the session command, with `<repo>` the full path of this repo's
+     folder. **It plays through Windows' default playback device**, which on
+     this PC is currently the Maxwell. The session checks the device and
+     refuses when it is the headset. Set the PC speakers as the default first
+     (Windows Settings > System > Sound > Output).
 
 ### Wireless debugging (needed for the dongle step; optional otherwise)
 
@@ -91,7 +95,7 @@ last step, so the session must reach the phone over Wi-Fi instead:
 
 ## The session
 
-From `C:\Coding Projects\Syrinx-mobile`:
+From the repo root:
 
 ```
 node scripts/resonance/mobile/sbs/sbs-session.mjs

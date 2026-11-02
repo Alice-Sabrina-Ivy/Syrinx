@@ -5,7 +5,7 @@
 // worker's chain (gate on), at a phone level.
 //
 //   node scripts/resonance/mobile/hold-noise-run.mjs [--levels=-48,-40] [--shard=i/n]
-//        [--root=C:/Coding Projects/Syrinx-cache/noise-real] [--out=build/resonance-mobile/hold/runs]
+//        [--root=<folder; default ../Syrinx-cache/noise-real beside the repo>] [--out=build/resonance-mobile/hold/runs]
 //
 // Each clip (60 s, mono PCM16 WAV at its source rate) becomes a 60 s, 48 kHz
 // noise-only stream exactly as pause-noise.mjs builds room noise: resampled
@@ -27,6 +27,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+const CACHE = path.resolve(repo, "..", "Syrinx-cache"); // the local data cache beside the repo (outside it; not published)
 const arg = (k, d) => (process.argv.find((a) => a.startsWith(`--${k}=`)) ?? `=${d}`).split("=").slice(1).join("=");
 const { pitchPass, binsPass, pitchStats, voicedHopRms, SR } = await import("./chain.mjs");
 const { applyPert, activeLevelDb } = await import("./perturb.mjs");
@@ -38,7 +39,7 @@ const MOD = path.join(repo, "scripts/resonance/mobile/pause-noise.mjs").replace(
 export const clipPert = (clipPath, floorDb) => [{ type: "mod", path: MOD, params: { kind: "file", path: clipPath.replace(/\\/g, "/"), floorDb, hp: 50, hpN: 1, seed: SEED, offset: 0 } }];
 
 if (process.argv[1] && path.resolve(process.argv[1]).toLowerCase() === fileURLToPath(import.meta.url).toLowerCase()) {
-  const root = arg("root", "C:/Coding Projects/Syrinx-cache/noise-real");
+  const root = arg("root", path.join(CACHE, "noise-real"));
   const list = JSON.parse(readFileSync(path.resolve(repo, arg("list", "scripts/resonance/mobile/hold-noise-list.json")), "utf8")).clips;
   const QUIET = process.argv.includes("--quiet");
   const { dspMedianDb } = await import("./pause-noise.mjs");

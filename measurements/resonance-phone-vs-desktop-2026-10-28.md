@@ -1,5 +1,27 @@
 # Resonance cue: why it reads darker and moves less on a phone than on a headset (2026-10-28)
 
+**Status (2026-11-02): paused (user decision).** Two fixes from §7 were
+built on branch `resonance-hold-narrow`: the cue strip's resonance-row hold
+(K4, [resonance-row-hold-narrow-2026-11-01.md](resonance-row-hold-narrow-2026-11-01.md);
+it holds the row through short pauses and bridges the onset blink, but only
+after the user's own voice was clearly heard) and the info-text correction.
+The side-by-side kit of §6 now exists,
+[scripts/resonance/mobile/sbs/](../scripts/resonance/mobile/sbs/README.md)
+(7e00e59), so §6's "does not exist yet" and §7's "none adopted" are
+superseded. One side-by-side session with the test sound only (no voice
+steps) ran on 2026-11-01:
+- **Darker: inconclusive.** The darker lean rested on one narrow band near
+  800 Hz that looks like mic placement, and smoothing that band flips the
+  sign.
+- **Smaller swing: not seen.** On the same sound the phone's meter did not
+  move less (about 1.1× the boom).
+- **Pauses.** The phone heard more room noise in the gaps (about −50 dBFS),
+  so its resonance marker went idle in pauses more often.
+
+With K4, §6's on-screen pause check should watch the pitch number only: the
+resonance thumb can now stay through such pauses, so it no longer shows the
+pause floor.
+
 Branch `resonance-mobile` (from `main` 9e1696b). Diagnosis only: nothing under
 `src/` changed. Public data and synthetic conditions only (LibriSpeech
 dev-clean, CC BY 4.0; one CC0 air-conditioner clip already in
@@ -274,9 +296,11 @@ clips) was not kept, and on the synthetic noise here nothing is shown voiced.
   phone side by side. That gives the phone / boom transfer function. Applied
   as an FIR (`perturb.mjs fir:`) to the 12 readers, it predicts the bias and
   swing on public speech.
-  - Recording each device's resonance posts and raw capture over time needs
-    harness-side logging (CDP injection, no `src/` change); it does not exist
-    yet.
+  - **Historical (superseded 2026-11-02):** Recording each device's
+    resonance posts and raw capture over time needs harness-side logging
+    (CDP injection, no `src/` change); it does not exist yet. *(It now
+    does: the side-by-side kit, `scripts/resonance/mobile/sbs/`, 7e00e59;
+    see the status at the top.)*
   - Decision rules: the phone reads ≥ 0.15 u darker than the boom, or its
     swing is ≤ 0.85 of the boom's, on the same sound → the device / mic path.
     Within ±0.1 u and ≥ 0.9 → look at placement, noise and the reference.
@@ -294,6 +318,12 @@ outside this repo) put speech far above the voice detector's limit and the
 noise-only pause floor close to the −50 dBFS threshold.
 
 ## 7. Fix options (none adopted; owner decision)
+
+**Historical (superseded 2026-11-02):** "none adopted". The first two
+rows were then built in a narrower form, K4
+([resonance-row-hold-narrow-2026-11-01.md](resonance-row-hold-narrow-2026-11-01.md);
+the 5 s hold at any floor, C1, failed its noise guard), and the info text
+was corrected; see the status at the top.
 
 | option | targets | rule | notes |
 |---|---|---|---|

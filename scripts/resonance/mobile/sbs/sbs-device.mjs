@@ -259,7 +259,7 @@ export async function desktopAttach({ port = 9223, url = DEFAULT_URL, cfg = {}, 
   let ver;
   try { ver = await jsonFetch(`http://127.0.0.1:${port}/json/version`); } catch {
     throw new Error(`no Chrome debugging endpoint on port ${port}. Start the debug Chrome (your normal Chrome can stay open: its own --user-data-dir makes it a separate browser):\n` +
-      `  & "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" --remote-debugging-port=${port} --user-data-dir="C:\\temp\\chrome-debug-profile"\n` +
+      `  & "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" --remote-debugging-port=${port} --user-data-dir="$env:TEMP\\chrome-debug-profile"\n` +
       `and check http://localhost:${port}/json/version answers.`);
   }
   const base = `http://127.0.0.1:${port}`;

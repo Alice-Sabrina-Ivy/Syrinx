@@ -1,7 +1,7 @@
 // ft-clips.mjs — the G-FT foreground-talker clips of the narrower resonance-row
 // hold round (measurements/resonance-row-hold-narrow-2026-11-01.md §4.5).
 //
-//   python -P scripts/resonance/faster-prep.py --libri="C:/Coding Projects/Syrinx-cache/resonance-lab/data" \
+//   python -P scripts/resonance/faster-prep.py --libri=../Syrinx-cache/resonance-lab/data \
 //     --split=dev-clean --tag=ft --n=9 --fill --out=build/resonance-mobile/narrow/ft-prep
 //   node scripts/resonance/mobile/ft-clips.mjs [--prep=build/resonance-mobile/narrow/ft-prep]
 //        [--out=build/resonance-mobile/narrow/ft-clips] [--dev=build/resonance-mobile/streams/readers-dev.json]

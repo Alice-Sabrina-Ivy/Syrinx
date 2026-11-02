@@ -17,6 +17,14 @@ case the hold is for, noise in a pause after speech. That replay is added
 as information, without a bar (§"After speech"); the plan and its bars are
 unchanged.
 
+**Status (2026-11-02):** C1 was not adopted. It is superseded by K4, the
+narrower hold of
+[resonance-row-hold-narrow-2026-11-01.md](resonance-row-hold-narrow-2026-11-01.md),
+which replaced C1 in `CueStrip.jsx` on branch `resonance-hold-narrow`. The
+same day the local folder paths in this note were replaced by
+`../Syrinx-cache/…` (the local data cache beside the repo); nothing else
+changed.
+
 ## Plan (pre-registered, 2026-11-01, before any result)
 
 Written and committed before the candidate is implemented or any of the
@@ -94,9 +102,10 @@ The diagnosis's display chain, extended (no copy of the model logic):
   candidate changes nothing upstream of the strip. Spot check: `pause-row.mjs`
   re-run on three conditions must give byte-identical hook records.
 - **Real noise (fresh, public, noise only; for G1).** At least 150 clips of
-  60 s, downloaded to `C:/Coding Projects/Syrinx-cache/noise-real/` (outside
-  the repo). The list (id, URL, licence, sha256, class) and the fetch script
-  are committed under `scripts/resonance/mobile/`. Selection, fixed now:
+  60 s, downloaded to `../Syrinx-cache/noise-real/` (the local data cache
+  beside the repo, outside it). The list (id, URL, licence, sha256, class)
+  and the fetch script are committed under `scripts/resonance/mobile/`.
+  Selection, fixed now:
   - **DEMAND** (Zenodo 1227121; the record says CC BY 4.0, the dataset's own
     document CC BY-SA 3.0 Unported), 48 kHz, channel 1 only (HTTP range
     reads).
@@ -576,7 +585,8 @@ node scripts/resonance/mobile/hold-report.mjs      # speech from build/resonance
 
 - **Speech inputs.** `pause-queue.sh` and `pause-row.mjs`, as in the
   diagnosis.
-- **Clips.** Under `C:/Coding Projects/Syrinx-cache/noise-real/clips/`.
+- **Clips.** Under `../Syrinx-cache/noise-real/clips/` (the local data cache
+  beside the repo).
   Every download and clip is pinned by sha256 in the list. No audio is
   committed.
 - **Review additions.** `hold-report.mjs` prints the after-speech replay

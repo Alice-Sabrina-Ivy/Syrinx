@@ -1,7 +1,7 @@
 {
  "note": "Fresh real-noise confirmation set of measurements/resonance-row-hold-narrow-2026-11-01.md §5.3 (the plan's narrow-noise-list.json). Clips: 60 s, mono PCM16 WAV at the source rate, under --root (outside the repo); no audio is committed. Made by scripts/resonance/mobile/narrow-confirm-noise-fetch.py. Classes from screen-silero.mjs --set=fresh (screen*).",
  "fetched": "2026-11-01",
- "root": "C:/Coding Projects/Syrinx-cache/noise-real-narrow",
+ "root": "../Syrinx-cache/noise-real-narrow",
  "extensions": {
   "ext1": "talker",
   "ext2": null

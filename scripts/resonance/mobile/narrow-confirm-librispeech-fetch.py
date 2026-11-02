@@ -3,7 +3,7 @@
 # §5.2; the plan's `librispeech-fetch.py`).
 #
 #   python -P scripts/resonance/mobile/narrow-confirm-librispeech-fetch.py
-#          [--data=C:/Coding Projects/Syrinx-cache/resonance-lab/data] [--rate=60]
+#          [--data=<folder; default ../Syrinx-cache/resonance-lab/data beside the repo>] [--rate=60]
 #          [--extra=<id,id,...>]   (more readers from the kept archive, plan §5.2)
 #          [--prefer=elda]         (try the openslr.elda.org mirror first)
 #
@@ -28,7 +28,9 @@ import hashlib, os, re, sys, tarfile, time
 import requests
 
 A = dict((a[2:].split("=", 1) + ["1"])[:2] for a in sys.argv[1:] if a.startswith("--"))
-DATA = A.get("data", "C:/Coding Projects/Syrinx-cache/resonance-lab/data")
+REPO = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../.."))
+CACHE = os.path.normpath(os.path.join(REPO, "..", "Syrinx-cache"))  # the local data cache beside the repo (outside it; not published)
+DATA = A.get("data", os.path.join(CACHE, "resonance-lab", "data"))
 RATE = float(A.get("rate", "60")) * 1e6
 NAME = "train-clean-100.tar.gz"
 URLS = [f"https://www.openslr.org/resources/12/{NAME}", f"https://openslr.elda.org/resources/12/{NAME}"]

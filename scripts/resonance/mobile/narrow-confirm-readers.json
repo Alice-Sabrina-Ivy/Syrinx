@@ -1,7 +1,7 @@
 {
  "note": "Confirmation readers of measurements/resonance-row-hold-narrow-2026-11-01.md §5.2: LibriSpeech train-clean-100 (OpenSLR SLR12, CC BY 4.0), the first 6 men and 6 women by numeric speaker id that pass faster-prep.py's 54 s / 150 s rule (--fill; none was skipped), sex from SPEAKERS.TXT. Streams: faster-prep.py --split=train-clean-100 --tag=conf --n=6 --fill, then faster-streams.mjs --tag=conf --long-only, under build/resonance-mobile/narrow/confirm/streams (gitignored). No audio is committed.",
  "archive": {
-  "file": "C:/Coding Projects/Syrinx-cache/resonance-lab/data/train-clean-100.tar.gz (kept)",
+  "file": "../Syrinx-cache/resonance-lab/data/train-clean-100.tar.gz (kept; the local data cache beside the repo, not published)",
   "url": "https://www.openslr.org/resources/12/train-clean-100.tar.gz; the first 2.53 GB from it, the rest from the mirror https://openslr.elda.org/resources/12/ by HTTP range (the primary had slowed to ~0.6 MB/s)",
   "md5": "2a93770f6d5c6c964bc36631d331a522",
   "md5Source": "https://www.openslr.org/resources/12/md5sum.txt (checked before extraction)",

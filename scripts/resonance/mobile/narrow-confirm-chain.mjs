@@ -15,7 +15,7 @@
 //   cold-start noise (hold-noise-run.mjs):
 //     node --max-old-space-size=4096 scripts/resonance/mobile/narrow-confirm-chain.mjs noise
 //          --list=scripts/resonance/mobile/narrow-confirm-noise-list.json
-//          --root=C:/Coding Projects/Syrinx-cache/noise-real-narrow [--levels=-48,-40]
+//          [--root=<folder; default ../Syrinx-cache/noise-real-narrow beside the repo>] [--levels=-48,-40]
 //          --out=build/resonance-mobile/narrow/confirm/hold/runs [--shard=i/n] [--worker]
 //
 // Level checks printed: speech — the active level of the speech after the
@@ -30,6 +30,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+const CACHE = path.resolve(repo, "..", "Syrinx-cache"); // the local data cache beside the repo (outside it; not published)
 const arg = (k, d) => (process.argv.find((a) => a.startsWith(`--${k}=`)) ?? `=${d}`).split("=").slice(1).join("=");
 const mode = process.argv[2];
 if (mode !== "speech" && mode !== "noise") throw new Error("mode: speech | noise");
@@ -122,7 +123,7 @@ if (mode === "speech") {
 }
 
 // ---- cold-start noise: hold-noise-run.mjs's loop, quiet
-const root = arg("root", "C:/Coding Projects/Syrinx-cache/noise-real-narrow");
+const root = arg("root", path.join(CACHE, "noise-real-narrow"));
 const listPath = path.resolve(repo, arg("list", "scripts/resonance/mobile/narrow-confirm-noise-list.json"));
 const list = JSON.parse(readFileSync(listPath, "utf8")).clips;
 const levels = arg("levels", "-48,-40").split(",").map(Number);
