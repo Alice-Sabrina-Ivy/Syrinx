@@ -6,8 +6,9 @@
 // compared), at 1200-sample chunks, 48 kHz. Then pause-row.mjs (the REAL DSP
 // worker + REAL hook) and narrow-report.mjs.
 //
-//   node scripts/resonance/mobile/as-run.mjs prep [--set=dev|fresh] [--readers=<readers json>] [--quiet] [--replace]
-//   node scripts/resonance/mobile/as-run.mjs run  [--set=dev|fresh] [--levels=-48,-40] [--what=as,ft,ftas] [--shard=i/n] [--quiet]
+//   node scripts/resonance/mobile/as-run.mjs prep [--set=dev|fresh] [--readers=<readers json>] [--list=<clip list json>] [--quiet] [--replace]
+//   node scripts/resonance/mobile/as-run.mjs run  [--set=dev|fresh] [--list=<clip list json>] [--levels=-48,-40] [--what=as,ft,ftas] [--shard=i/n] [--quiet]
+//   (--list, added at the confirmation: the set's clip list; default dev hold-noise-list.json, fresh narrow-noise-list.json)
 //
 // prep — per reader (each sex by numeric speaker id; R = [m1, f1, …, m6, f6]):
 //   long16 = the reader's 150 s 16 kHz stream (faster-prep.py: utterances in
@@ -125,7 +126,7 @@ if (process.argv[1] && path.resolve(process.argv[1]).toLowerCase() === fileURLTo
   const screen = JSON.parse(readFileSync(path.join(repo, "scripts/resonance/mobile/narrow-screen.json"), "utf8")).sets?.[set];
   if (!screen) throw new Error(`narrow-screen.json has no set ${set} (run screen-silero.mjs --set=${set})`);
   const scr = new Map(screen.clips.map((c) => [c.id, c]));
-  const list = JSON.parse(readFileSync(path.resolve(repo, S.list), "utf8")).clips;
+  const list = JSON.parse(readFileSync(path.resolve(repo, arg("list", "") || S.list), "utf8")).clips; // --list: the confirmation stage's list file (narrow-confirm-noise-list.json)
   for (const c of list) if (!scr.has(c.id)) throw new Error(`${c.id}: not in the screen`);
   const pairs = pairClips(list, (c) => scr.get(c.id).family, R);
   const ftList = S.ft ? JSON.parse(readFileSync(path.resolve(repo, S.ft.list), "utf8")).clips : [];
